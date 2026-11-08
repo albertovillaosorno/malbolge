@@ -404,7 +404,8 @@ fn validate_shape(
         return Err(LinearLayoutError::TooShort);
     }
     if operations.len() > MAX_LINEAR_CELLS
-        || operations.len() > usize::try_from(profile.memory_words()).unwrap_or(0)
+        || operations.len()
+            > usize::try_from(profile.memory_words()).unwrap_or(0)
     {
         return Err(LinearLayoutError::TooLong);
     }
@@ -422,24 +423,22 @@ fn validate_shape(
     let relocation = operations
         .iter()
         .position(|op| *op == LinearOpcode::RelocateDataPointer);
-    // A second j is safe only immediately before halt. It changes D but
-    // leaves no following output or data mutation; its loader operand is
-    // proved separately from the original source, not from code memory.
-    let second_relocation = relocation.is_some_and(|first| {
+    // At most two j instructions are admitted. For the second one the
+    // checker proves a fresh expanded-loader operand and a source-disjoint
+    // destination before any later arithmetic is allowed.
+    let additional_relocations = relocation.map_or(0, |first| {
         operations
             .iter()
-            .enumerate()
             .skip(first.saturating_add(1))
-            .any(|(position, op)| {
-                *op == LinearOpcode::RelocateDataPointer
-                    && position != before_last.saturating_sub(1)
-            })
+            .filter(|&&op| op == LinearOpcode::RelocateDataPointer)
+            .count()
     });
-    let unplaced_arithmetic = operations.iter().enumerate().any(|(position, op)| {
-        matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData)
-            && relocation.is_none_or(|base| position <= base)
-    });
-    if second_relocation || unplaced_arithmetic {
+    let unplaced_arithmetic =
+        operations.iter().enumerate().any(|(position, op)| {
+            matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData)
+                && relocation.is_none_or(|base| position <= base)
+        });
+    if additional_relocations > 1 || unplaced_arithmetic {
         return Err(LinearLayoutError::UnsafeDataPlacement);
     }
     validate_jump_shape(operations)
@@ -535,11 +534,10 @@ fn planned_data_write(
     Ok(Some(data_address))
 }
 
-/// The one optional terminal second j reads a fresh, as-yet-unwritten
-/// loader-expanded word. Source code cells are encrypted during execution,
-/// but loader expansion happened before that encryption and depends on the
-/// original final two graphical bytes.
-fn terminal_loader_word(
+/// A second j reads an as-yet-unwritten loader-expanded word. The loader
+/// expands the complete original graphical source before self-encryption and
+/// data writes; only the original final two cells determine this word.
+fn unwritten_loader_word(
     source: &[u8],
     address: usize,
     profile: &ProfileDescriptor,
@@ -578,71 +576,106 @@ fn derive_execution_positions(
     let mut encrypted = Vec::new();
     let mut writes = Vec::new();
     // Jumps and the first relocation read exact source-memory cells.
-    // Following arithmetic has disjoint, monotonically increasing data
-    // addresses. Only the optional penultimate j reads expanded loader data;
-    // no instruction after it can write or emit before the final halt.
-    let mut code_cells: Vec<u32> = source.iter().copied().map(u32::from).collect();
+    // A second j may change D again, but only using an unwritten expanded
+    // loader word. The checker preserves actual profile-memory wraparound
+    // and refuses arithmetic writes into source code after either move.
+    let mut code_cells: Vec<u32> =
+        source.iter().copied().map(u32::from).collect();
     let mut data_pointer = 0usize;
     let mut position = 0usize;
     while let Some(operation) = operations.get(position) {
-        let code = u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?;
+        let code = u32::try_from(position)
+            .map_err(|_error| LinearLayoutError::TooLong)?;
         executed.push(code);
-        let data_address =
-            u32::try_from(data_pointer).map_err(|_error| LinearLayoutError::TooLong)?;
+        let data_address = u32::try_from(data_pointer)
+            .map_err(|_error| LinearLayoutError::TooLong)?;
         data.push(data_address);
-        writes.push(planned_data_write(*operation, data_address, source.len())?);
+        writes.push(planned_data_write(
+            *operation,
+            data_address,
+            source.len(),
+        )?);
         if *operation == LinearOpcode::Halt {
             break;
         }
         let (encryption_address, next_position) = match operation {
             LinearOpcode::JumpForward { target } => {
-                let next = jump_successor(&code_cells, data_pointer, position, *target)?;
+                let next = jump_successor(
+                    &code_cells,
+                    data_pointer,
+                    position,
+                    *target,
+                )?;
                 (next.encryption, next.position)
-            }
+            },
             LinearOpcode::CrazyData
             | LinearOpcode::InputWord
             | LinearOpcode::NoOperation
             | LinearOpcode::OutputByte
             | LinearOpcode::RelocateDataPointer
-            | LinearOpcode::RotateData => (position, position.saturating_add(1)),
-            LinearOpcode::Halt => return Err(LinearLayoutError::EarlyHalt { position }),
+            | LinearOpcode::RotateData => {
+                (position, position.saturating_add(1))
+            },
+            LinearOpcode::Halt => {
+                return Err(LinearLayoutError::EarlyHalt { position });
+            },
         };
-        let next_data_pointer = if *operation
-            == LinearOpcode::RelocateDataPointer
-        {
-            let final_relocation = data_pointer >= source.len()
-                && position == operations.len().saturating_sub(2);
-            let data_word = if final_relocation {
-                usize::try_from(terminal_loader_word(
-                    source,
-                    data_pointer,
-                    profile,
-                )?)
-                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-            } else {
-                usize::try_from(
-                    *code_cells
-                        .get(data_pointer)
-                        .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
-                )
-                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-            };
-            if !final_relocation && data_word < source.len() {
-                return Err(LinearLayoutError::UnsafeDataPlacement);
-            }
-            data_word.saturating_add(1)
-                % usize::try_from(profile.memory_words())
+        let memory_words = usize::try_from(profile.memory_words())
+            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
+        let next_data_pointer =
+            if *operation == LinearOpcode::RelocateDataPointer {
+                let expanded_operand = data_pointer >= source.len();
+                if expanded_operand
+                    && writes.iter().flatten().any(|&address| {
+                        usize::try_from(address).ok() == Some(data_pointer)
+                    })
+                {
+                    // The source-tail recurrence no longer describes this word
+                    // after a prior data write. Do not guess its runtime value.
+                    return Err(LinearLayoutError::UnsafeDataPlacement);
+                }
+                let data_word = if expanded_operand {
+                    usize::try_from(unwritten_loader_word(
+                        source,
+                        data_pointer,
+                        profile,
+                    )?)
                     .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-        } else {
-            data_pointer.saturating_add(1)
-        };
+                } else {
+                    usize::try_from(
+                        *code_cells
+                            .get(data_pointer)
+                            .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
+                    )
+                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
+                };
+                // First relocations must use a graphical source word that
+                // already points beyond the entire source, not merely a
+                // post-increment address that happens to be out of bounds.
+                if !expanded_operand && data_word < source.len() {
+                    return Err(LinearLayoutError::UnsafeDataPlacement);
+                }
+                let next = data_word.saturating_add(1) % memory_words;
+                // The final j is output-neutral; otherwise even a source-only
+                // post-move pointer must remain outside executable source code.
+                if position != operations.len().saturating_sub(2)
+                    && next < source.len()
+                {
+                    return Err(LinearLayoutError::UnsafeDataPlacement);
+                }
+                next
+            } else {
+                data_pointer.saturating_add(1) % memory_words
+            };
         let code_cell = code_cells
             .get_mut(encryption_address)
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
         *code_cell = malbolge::encrypt_profile_cell(*code_cell)
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
-        encrypted
-            .push(u32::try_from(encryption_address).map_err(|_error| LinearLayoutError::TooLong)?);
+        encrypted.push(
+            u32::try_from(encryption_address)
+                .map_err(|_error| LinearLayoutError::TooLong)?,
+        );
         position = next_position;
         data_pointer = next_data_pointer;
     }

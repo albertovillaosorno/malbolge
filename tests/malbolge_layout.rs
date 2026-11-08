@@ -551,7 +551,7 @@ fn relocated_data_limit_is_exactly_encoded_code_zero_cell() -> Result<(), String
 }
 
 #[test]
-fn relocation_proofs_reject_aliases_and_unplaced_arithmetic() {
+fn relocation_proofs_reject_aliases_and_unplaced_arithmetic() -> Result<(), String> {
     let profile = current_profile();
     assert_eq!(
         encode_linear_layout(
@@ -576,19 +576,24 @@ fn relocation_proofs_reject_aliases_and_unplaced_arithmetic() {
         ),
         Err(LinearLayoutError::UnsafeDataPlacement),
     );
-    assert_eq!(
-        encode_linear_layout(
-            profile,
-            &[
-                LinearOpcode::NoOperation,
-                LinearOpcode::RelocateDataPointer,
-                LinearOpcode::RelocateDataPointer,
-                LinearOpcode::NoOperation,
-                LinearOpcode::Halt,
-            ]
-        ),
-        Err(LinearLayoutError::UnsafeDataPlacement),
-    );
+    let safe_second_move = encode_linear_layout(
+        profile,
+        &[
+            LinearOpcode::NoOperation,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::NoOperation,
+            LinearOpcode::Halt,
+        ],
+    )
+    .map_err(|error| format!("safe output-neutral move: {error:?}"))?;
+    let mut safe_vm = ProfileMachine::from_source(
+        profile,
+        safe_second_move.source(),
+        Vec::new(),
+    )
+    .map_err(|error| format!("second relocation VM: {error:?}"))?;
+    verify_execution_witness(&mut safe_vm, &safe_second_move)?;
     let mut aliased = vec![LinearOpcode::NoOperation; 130];
     if let Some(first) = aliased.first_mut() {
         *first = LinearOpcode::RelocateDataPointer;
@@ -600,6 +605,7 @@ fn relocation_proofs_reject_aliases_and_unplaced_arithmetic() {
         encode_linear_layout(profile, &aliased),
         Err(LinearLayoutError::UnsafeDataPlacement),
     );
+    Ok(())
 }
 
 #[test]
@@ -2094,7 +2100,7 @@ fn auto_relocate_first_fit_matches_all_profile_decoder_phases_and_suffix_sizes()
 }
 
 #[test]
-fn second_relocation_is_admitted_only_immediately_before_halt()
+fn second_relocation_terminal_and_triple_relocation_boundaries()
 -> Result<(), String> {
     let profile = current_profile();
     let mut operations = vec![LinearOpcode::NoOperation; 8];
@@ -2114,18 +2120,150 @@ fn second_relocation_is_admitted_only_immediately_before_halt()
     verify_execution_witness(&mut vm, &admitted)?;
     assert_eq!(vm.output().len(), 1);
 
-    let mut unsafe_operations = operations.clone();
-    unsafe_operations
-        .insert(unsafe_operations.len() - 1, LinearOpcode::NoOperation);
-    assert_eq!(
-        encode_linear_layout(profile, &unsafe_operations),
-        Err(LinearLayoutError::UnsafeDataPlacement),
-    );
+    let mut continued = operations.clone();
+    continued.insert(continued.len() - 1, LinearOpcode::NoOperation);
+    let continued_layout = encode_linear_layout(profile, &continued)
+        .map_err(|error| format!("continued relocation: {error:?}"))?;
+    let mut continued_vm = ProfileMachine::from_source(
+        profile,
+        continued_layout.source(),
+        Vec::new(),
+    )
+    .map_err(|error| format!("continued relocation VM: {error:?}"))?;
+    verify_execution_witness(&mut continued_vm, &continued_layout)?;
     let mut triple = operations;
     triple.insert(9, LinearOpcode::RelocateDataPointer);
     assert_eq!(
         encode_linear_layout(profile, &triple),
         Err(LinearLayoutError::UnsafeDataPlacement),
     );
+    Ok(())
+}
+
+#[test]
+fn second_relocation_before_live_write_matches_independent_vm()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    // Build a real graphical guest without relying on the layout admission
+    // under test. All cells except the second j are already admitted by
+    // the established single-relocation encoder.
+    let mut baseline = operations.clone();
+    baseline[9] = LinearOpcode::NoOperation;
+    let first = encode_linear_layout(profile, &baseline)
+        .map_err(|error| format!("baseline encoding: {error:?}"))?;
+    let mut raw = first.source().to_vec();
+    raw[9] = (33..=126)
+        .find(|&byte| {
+            decode_profile_instruction(u32::from(byte), 9) == Some(b'j')
+        })
+        .ok_or("second j has no graphical encoding")?;
+    let mut independent =
+        ProfileMachine::from_source(profile, &raw, vec![255, 0])
+            .map_err(|error| format!("independent VM load: {error:?}"))?;
+    if !matches!(independent.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len())
+    {
+        return Err(String::from("real nonterminal second j did not halt"));
+    }
+    if independent.output().len() != 1 || independent.input_consumed() != 0 {
+        return Err(String::from("real second j failed guest byte output"));
+    }
+    let recorded = independent.output().to_vec();
+    let admitted = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("live second j rejected: {error:?}"))?;
+    if admitted.source() != raw
+        || admitted.data_write_positions().iter().flatten().count() != 1
+    {
+        return Err(String::from("live second j changed graphical program"));
+    }
+    let mut checked =
+        ProfileMachine::from_source(profile, admitted.source(), Vec::new())
+            .map_err(|error| format!("checked VM load: {error:?}"))?;
+    verify_execution_witness(&mut checked, &admitted)?;
+    if checked.output() != recorded {
+        return Err(String::from("independent second j output disagrees"));
+    }
+    Ok(())
+}
+
+#[test]
+fn midstream_second_relocation_preserves_two_real_guest_outputs()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let mut without_second = operations.clone();
+    without_second[11] = LinearOpcode::NoOperation;
+    let prior = encode_linear_layout(profile, &without_second)
+        .map_err(|error| format!("source-only seed: {error:?}"))?;
+    let mut raw = prior.source().to_vec();
+    raw[11] = (33..=126)
+        .find(|&byte| {
+            decode_profile_instruction(u32::from(byte), 11) == Some(b'j')
+        })
+        .ok_or("no graphical code for second j")?;
+    let mut raw_machine =
+        ProfileMachine::from_source(profile, &raw, vec![0, 255])
+            .map_err(|error| format!("source-independent VM: {error:?}"))?;
+    if !matches!(raw_machine.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len())
+    {
+        return Err(String::from("midstream guest did not halt"));
+    }
+    let expected = raw_machine.output().to_vec();
+    if expected != [54, 8] || raw_machine.input_consumed() != 0 {
+        return Err(String::from("midstream guest bytes changed"));
+    }
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("midstream relocation refused: {error:?}"))?;
+    if layout.data_pointer_positions().get(12)
+        == prior.data_pointer_positions().get(12)
+    {
+        return Err(String::from("second j did not change the D pointer"));
+    }
+    if layout.source() != raw
+        || layout.data_write_positions().iter().flatten().count() != 2
+    {
+        return Err(String::from(
+            "midstream admitted guest changed provenance",
+        ));
+    }
+    let mut traced =
+        ProfileMachine::from_source(profile, layout.source(), Vec::new())
+            .map_err(|error| format!("trace VM: {error:?}"))?;
+    verify_execution_witness(&mut traced, &layout)?;
+    if traced.output() != expected {
+        return Err(String::from("replayed output differed from raw guest"));
+    }
+    let mut changed = raw;
+    changed[11] = prior.source()[11];
+    if admit_linear_layout(
+        profile,
+        &operations,
+        &changed,
+        LinearProfileIdentity {
+            id: profile.id(),
+            fingerprint: profile.fingerprint(),
+        },
+    ) != Err(LinearLayoutError::DecodeMismatch { position: 11 })
+    {
+        return Err(String::from("forged nonterminal j passed admission"));
+    }
     Ok(())
 }

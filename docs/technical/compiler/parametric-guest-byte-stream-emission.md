@@ -1662,12 +1662,13 @@ all second data-pointer relocations, even this output-neutral final move.
 The final `j` also changes the last loader source seed, which the bounded
 output-stream search had not considered.
 
-The linear checker now admits **only** a second `j` as the penultimate source
-instruction. It reconstructs the as-yet-unwritten expanded loader operand
-from the original final source bytes and proves the exact resulting D pointer
-with profile-width wraparound. Any nonterminal second relocation and any
-third relocation still reject, as do aliased arithmetic writes. The bridge
-preview models the terminal move only, and the source search tries the new
+At that stage, the linear checker admitted **only** a second `j` as the
+penultimate source instruction. It reconstructed the unwritten expanded
+loader operand from the original final source bytes and proved D's exact
+profile-width wraparound. At that stage nonterminal second relocations and
+all third relocations rejected; source-aliased arithmetic also rejected.
+The bridge preview models the terminal move only, and the source search
+tries the new
 seed after the established earlier choices. Actual positional encoding,
 disjoint-write checks and both empty/nonempty-input normative VM executions
 remain mandatory for admission. The independent 35-step guest and the bounded
@@ -1832,3 +1833,28 @@ runtime or a witness for the original Fibonacci outputs; P0 stays open.
   pinned C-to-Malbolge source with twelve ordered `putchar` effects pass.
   The original conditional Fibonacci C source still fails closed at layout;
   this is bounded guest synthesis, not general runtime C state or P0 closure.
+
+### Live second relocation as a new guest layout capability
+
+A full retry of the twelve-iteration Fibonacci C source still fails safely at
+its original unsupported guest output stream; no capsule is published. A
+source-independent 13-step real Malbolge program instead exposed a different
+layout limitation: after `j`, a second `j` can read a fresh expanded-loader
+word, relocate D again, execute a real crazy-data write and emit a byte
+before halt. The old linear validator refused this valid sequence solely
+because the second `j` was not penultimate. A separate 15-step guest proves
+that a live second `j` between two arithmetic/output pairs changes the
+actual D path and emits `36 08`, without consuming supplied input. The
+unrelocated comparison happens to emit the same two bytes; the proven
+semantic difference is the guest's data address, not its output value.
+
+The corrected layout checker permits **at most two** relocations, derives
+the fresh operand from the original graphical source's loader-tail recurrence,
+refuses operands already written by the guest, and checks source-disjoint
+writes and exact profile-memory D-pointer wraparound after either move.
+The raw independently encoded guests now match every admitted code,
+encryption, D and data-write position during traced normative execution.
+A replaced second-j opcode and a third relocation still reject. This
+advances address-sensitive guest layout, not the byte-stream proposal search:
+the C-to-guest publisher does not yet synthesize this nonterminal shape,
+and the original Fibonacci output oracle remains unsupported. P0 stays open.

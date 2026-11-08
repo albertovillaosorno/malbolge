@@ -25,10 +25,10 @@ This document governs the following declared TODO scope:
 `src/compiler/malbolge-layout/composition/lib.rs` owns a bounded position-
 sensitive source encoder for profile `InputWord`, `OutputByte`, `NoOperation`,
 `RotateData`, `CrazyData`, one optional initial `RelocateDataPointer` after
-jump-free or forward-jump code, an optional second `RelocateDataPointer`
-**only immediately before halt**, and terminal `Halt`. The encoder
-assigns code positions from zero and inverts the normative VM instruction
-decoder over all 94 graphical source bytes,
+jump-free or forward-jump code, at most one additional `j` with a proven
+fresh loader operand (including before live arithmetic/output), and final
+`Halt`. The encoder assigns code positions from zero and inverts the
+normative VM instruction decoder over all 94 graphical source bytes,
 requires exactly one encoding at each address, and independently re-admits
 the emitted source with canonical profile ID and fingerprint.
 
@@ -42,14 +42,17 @@ the original encoded `j` source byte. The verifier replays prior XLAT2
 mutation of source-memory cells before checking that the resulting base is
 at least the complete emitted source length. This exact bound keeps all
 later rotate/crazy writes disjoint from source code. Later jumps,
-nonterminal duplicate or unreachable relocations, early arithmetic, and
-overlapping bases reject. The penultimate second relocation
-reads the fresh expanded-loader word at its exact post-first-relocation data
-address; the checker derives this word from the original final source cells,
-not encrypted source memory. After that `j`, only halt remains, so its moved
-pointer cannot alias any subsequent data write. The verifier retains its
-exact D-pointer witness, including profile-memory wraparound. The automatic
-forward-padding planner remains stricter and does not create second moves.
+unsafe initial relocations and source/data aliases reject. A second `j`
+reads a fresh expanded-loader word at its exact current D address. The
+checker derives this word from the original final source cells, not from
+already encrypted source memory, and rejects an operand modified by a
+prior guest data write. It follows the new D pointer with profile-memory
+wraparound, refusing any subsequent arithmetic write into graphical code.
+A penultimate second `j` may point inside source, because only halt remains.
+Third relocations and post-relocation jumps are unsupported. Every admitted
+code/D/write/encryption position is independently replayed in traced VM
+regressions. The automatic forward-padding planner remains stricter and
+does not create second moves.
 
 A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout
@@ -421,8 +424,8 @@ source admission and the normative VM. Ten different byte values
 `55, 64, 65, 66, 163, 164, 165, 182, 183, 200` have a separately
 verified two-output seed table. Third- through thirty-third-output phases
 add 21, 24, 18, 19, 18, 21, 21, 25, 17, 20, 19, 22, 17, 24,
-19, 20, 19, 21, 20, 25, 21, 21, 19, 22, 18, 22, 19, 20, 19, 20 and 18 independently
-re-executed
+19, 20, 19, 21, 20, 25, 21, 21, 19, 22, 18, 22, 19, 20, 19, 20 and 18
+independently re-executed
 distinct byte values, respectively. All 26 reviewed phases for counts
 three through fourteen and sixteen through twenty halt with equal nonzero
 bytes. Fifteen outputs have 25 verified phases; phase 20 is excluded.

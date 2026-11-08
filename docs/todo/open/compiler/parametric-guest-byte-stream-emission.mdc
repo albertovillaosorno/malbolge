@@ -804,3 +804,15 @@ a compiler capability gap, not a reason to return to N+1.
   with normative VM parity under empty and nonempty input, rejects an extra
   source output and a forged guest byte, while the original Fibonacci still
   refuses safely at layout. General synthesis and P0 remain pending.
+
+- A source-independent real guest VM experiment now demonstrates a safe
+  **nonterminal second `j`**: a 13-step guest relocates D twice before a
+  crazy-data write and byte output, while a 15-step guest relocates between
+  two real arithmetic/output pairs and emits `36 08` with a different D
+  path from the nonrelocated guest. The prior layout checker rejected
+  both. The repaired linear checker derives the untouched
+  loader operand, verifies D wraparound and source-disjoint guest writes,
+  and matches actual traced VM memory/code/encryption witnesses. Tampered
+  source and a third relocation reject. The current output-stream proposal
+  search does not yet generate this layout, so the original twelve-output
+  Fibonacci C program still fails closed at guest layout. P0 is pending.
