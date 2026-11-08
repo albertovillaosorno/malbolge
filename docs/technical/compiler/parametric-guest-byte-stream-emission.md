@@ -2126,3 +2126,21 @@ input streams, and forged-output refusal. This is one additional finite
 proposal shape, not shortest-code optimality, general byte-stream synthesis,
 or C guest-runtime arithmetic. The original twelve-output Fibonacci source
 remains the P0 acceptance target.
+
+### Uneven compact three-region relocation spacing
+
+The independent 28-cell guest places live `j` instructions at positions 8,
+14 and 21, with a no-op data stride before the second region's first write.
+Its nine real output effects are `00 50 50 3f 36 36 3f 00 12`. It exercises
+both repeated and nonadjacent zero bytes, not nine host-emulated writes.
+The existing bounded three-region search missed this source-independent,
+positionally admitted guest because its fixed lengths skipped 28 cells.
+
+A parameterized `3 * N + 1` compact geometry now allows the second extra
+relocation to shift independently by one cell. The red-first test requires
+an equally short or shorter three-`j` guest, the same actual initial zero
+instruction, source-disjoint writes, normative VM replay with two input
+streams left unread, and forged-byte refusal. Existing geometry priorities
+and per-search work limits are preserved. This neither proves shortest-code
+optimality nor implements general C runtime state: the original twelve-byte
+Fibonacci P0 acceptance remains pending.

@@ -1030,6 +1030,9 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
             // final data region still needs one extra stride. Explore a
             // compact, unequal split without replacing established shapes.
             (N.checked_mul(3)?, [0, 1]),
+            // One extra no-op stride can shift the last relocation
+            // independently of the first while keeping the guest compact.
+            (N.checked_mul(3)?.checked_add(1)?, [0, 1]),
         ] {
             if length < minimum || length > source_cells.len() {
                 continue;

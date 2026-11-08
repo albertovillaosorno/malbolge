@@ -1164,3 +1164,156 @@ fn three_regions_recover_short_repeated_output_guest() -> Result<(), String> {
     );
     Ok(())
 }
+
+// A compact source-independent guest with three unequal relocation regions.
+// Keep its construction separate from the proposal under test.
+fn unbalanced_three_region_source() -> Vec<LinearOpcode> {
+    let mut operations = vec![LinearOpcode::OutputByte];
+    operations.extend([LinearOpcode::NoOperation; 7]);
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::NoOperation,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    operations
+}
+
+type UnbalancedGuestEvidence = ([u8; 9], Vec<u8>);
+
+fn unbalanced_guest_oracle(
+    profile: &'static ProfileDescriptor,
+    operations: &[LinearOpcode],
+    cells: &[[u8; 6]],
+) -> Result<UnbalancedGuestEvidence, String> {
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing independently encoded source")?;
+    let mut oracle = ProfileMachine::from_source(profile, &raw, vec![255])
+        .map_err(|error| format!("guest VM load: {error:?}"))?;
+    if !matches!(oracle.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len())
+    {
+        return Err(String::from("independent guest did not halt"));
+    }
+    let expected: [u8; 9] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("independent output: {error:?}"))?;
+    if oracle.input_consumed() != 0 {
+        return Err(String::from("independent guest consumed stdin"));
+    }
+    Ok((expected, raw))
+}
+
+fn verify_unbalanced_recovery(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; 9],
+    raw: &[u8],
+    cells: &[[u8; 6]],
+) -> Result<(), String> {
+    let recovered =
+        verified_three_split_relocation_output_layout(profile, expected, cells)
+            .ok_or_else(|| {
+                format!("missed unequal-split guest {expected:02x?}")
+            })?;
+    if recovered.source().len() > raw.len()
+        || recovered.source().first() != raw.first()
+    {
+        return Err(String::from("compact zero-output source not recovered"));
+    }
+    let source_length = u32::try_from(recovered.source().len())
+        .map_err(|error| format!("guest source length: {error:?}"))?;
+    let relocations = recovered
+        .source()
+        .iter()
+        .enumerate()
+        .filter(|(position, byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(**byte),
+                u32::try_from(*position).unwrap_or(u32::MAX),
+            ) == Some(b'j')
+        })
+        .count();
+    if relocations != 3
+        || recovered
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .any(|&address| address < source_length)
+    {
+        return Err(String::from("relocation or guest data overlap"));
+    }
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        let step_limit = recovered.source().len();
+        if !matches!(replay.run(step_limit),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == step_limit)
+            || replay.output() != expected
+            || replay.input_consumed() != 0
+        {
+            return Err(String::from("normative guest replay mismatch"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_unbalanced_guest() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // j at positions 8, 14 and 21; extra no-op before the second write.
+    let operations = unbalanced_three_region_source();
+    if operations.len() != 28 {
+        return Err(String::from("unexpected independent source length"));
+    }
+    let (expected, raw) =
+        unbalanced_guest_oracle(profile, &operations, &cells)?;
+    if expected != [0, 0x50, 0x50, 0x3f, 0x36, 0x36, 0x3f, 0, 0x12]
+        || proposed_output_stream(&operations, &cells) != Some(expected)
+        || verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_none()
+    {
+        return Err(String::from("source-independent byte proof failed"));
+    }
+    let mut forged = expected;
+    forged[4] ^= 1;
+    if verified_output_stream_layout(profile, &operations, forged, &cells)
+        .is_some()
+    {
+        return Err(String::from("forged guest transcript admitted"));
+    }
+    verify_unbalanced_recovery(profile, expected, &raw, &cells)
+}
+
+#[test]
+fn three_regions_recover_unbalanced_source_geometry() {
+    assert_eq!(validate_unbalanced_guest(), Ok(()));
+}

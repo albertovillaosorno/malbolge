@@ -945,3 +945,12 @@ a compiler capability gap, not a reason to return to N+1.
   three relocations, disjoint writes, two-input VM parity and forged-output
   refusal. The original full twelve-byte Fibonacci C program is still
   unimplemented at guest layout; P0 stays open.
+
+- A red-first 28-cell source-independent three-`j` guest with unequal
+  relocation spacing (positions 8, 14 and 21) emits real VM bytes
+  `00 50 50 3f 36 36 3f 00 12`. The fixed three-region search omitted
+  that compact length. A bounded `3 * N + 1` geometry now recovers an
+  equally short, verified three-relocation layout with unchanged prior
+  geometry priorities, source-disjoint writes, two-input normative VM
+  parity and forged-byte refusal. Original full Fibonacci C compilation
+  and general guest byte-stream synthesis remain P0 work.
