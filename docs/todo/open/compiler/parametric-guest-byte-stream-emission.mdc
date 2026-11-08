@@ -964,3 +964,13 @@ a compiler capability gap, not a reason to return to N+1.
   recovery, source-disjoint writes and normative VM replay under both input
   conditions, without changing independent publisher admission. The original
   twelve-byte Fibonacci C program remains uncompiled; P0 stays open.
+
+- A red-first source-independent 30-cell guest with four live data
+  relocations and an extra early no-op stride emits nine VM bytes
+  `00 41 41 8a c4 c4 8a c6 86`. The previous fixed 29-cell
+  four-region geometry could not recover it. A bounded `3 * N + 3`
+  candidate is now searched after the established `3 * N + 2` shape;
+  independent positional/source-disjoint admission, two-input normative
+  VM replay, and forged-byte refusal remain mandatory. The original
+  twelve-output Fibonacci C program still refuses safely at guest layout;
+  guest runtime state and general synthesis are not yet implemented.

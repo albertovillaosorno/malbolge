@@ -2187,3 +2187,20 @@ and normative VM replay with empty and nonempty input; forged expected bytes
 refuse. This removes a gratuitous output-value gate within one bounded
 geometry, **not** a complete generalized layout solver or guest-runtime C
 state. The original twelve-byte Fibonacci C acceptance remains pending.
+
+### Uneven four-region source with an early data stride
+
+The original twelve-iteration Fibonacci C program was rerun and still
+refuses guest publication at layout. A separately encoded 30-cell guest
+inserts a no-op immediately after the first `j`, moving subsequent live
+relocations to positions 15, 20 and 23. The actual VM emits nine bytes
+`00 41 41 8a c4 c4 8a c6 86` and consumes no stdin. The existing
+29-cell four-region proposal missed this independently admitted guest.
+
+A bounded `3 * N + 3` proposal now admits the shifted four-region geometry
+after the previously established `3 * N + 2` shape. The red-first
+regression independently decodes the source, checks genuine four-`j`
+recovery, replays the normative VM under two inputs, and rejects a forged
+output. Source-disjoint writes and exact effect order remain independent
+publisher obligations. This is a new finite geometry, not a general C
+runtime or the full Fibonacci P0 acceptance.

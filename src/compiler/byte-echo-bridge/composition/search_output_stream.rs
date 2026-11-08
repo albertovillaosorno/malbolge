@@ -1117,59 +1117,68 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
     {
         return None;
     }
-    // The compact shape has three additional j operands and at least one
-    // real operation in each relocated region.
-    let length = N.checked_mul(3)?.checked_add(2)?;
+    // A longer compact shape can place an extra no-op immediately after
+    // the first j, shifting the next two j operands independently of the
+    // last. These are only proposal shapes, not admission rules.
     let prefix = 8usize;
-    if length > source_cells.len()
-        || length
-            < N.saturating_add(required_writes(0, &expected))
-                .saturating_add(6)
-    {
-        return None;
-    }
-    let body = length.checked_sub(prefix)?.checked_sub(3)?;
-    let start = prefix.checked_add(1)?;
-    let positions = [
-        start.checked_add(body.div_euclid(4))?.checked_add(1)?,
-        start
-            .checked_add(body.checked_mul(2)?.div_euclid(4))?
-            .checked_add(1)?,
-        start.checked_add(body.checked_mul(3)?.div_euclid(4))?,
-    ];
     let leading_zeros = expected
         .iter()
         .take_while(|&&byte| byte == 0)
         .count()
         .min(prefix);
-    for prefix_outputs in (0..=leading_zeros).rev() {
-        let geometry = SearchGeometry {
-            memory: &[],
-            prefix,
-            prefix_outputs,
-            source_length: length,
-        };
-        let spec = SplitSearchSpec {
-            geometry: &geometry,
-            additional_relocations: &positions,
-            terminal: TerminalSuffix::Noop,
-            step_budget: 32_768,
-        };
-        let Some(operations) = proposed_split_geometry_with_budget(
-            profile,
-            source_cells,
-            spec,
-            expected,
-        ) else {
+    for (length, offsets) in [
+        (N.checked_mul(3)?.checked_add(2)?, [1, 1, 0]),
+        (N.checked_mul(3)?.checked_add(3)?, [2, 2, 0]),
+    ] {
+        if length > source_cells.len()
+            || length
+                < N.saturating_add(required_writes(0, &expected))
+                    .saturating_add(6)
+        {
             continue;
-        };
-        if let Some(layout) = verified_output_stream_layout(
-            profile,
-            &operations,
-            expected,
-            source_cells,
-        ) {
-            return Some(layout);
+        }
+        let body = length.checked_sub(prefix)?.checked_sub(3)?;
+        let start = prefix.checked_add(1)?;
+        let positions = [
+            start
+                .checked_add(body.div_euclid(4))?
+                .checked_add(offsets[0])?,
+            start
+                .checked_add(body.checked_mul(2)?.div_euclid(4))?
+                .checked_add(offsets[1])?,
+            start
+                .checked_add(body.checked_mul(3)?.div_euclid(4))?
+                .checked_add(offsets[2])?,
+        ];
+        for prefix_outputs in (0..=leading_zeros).rev() {
+            let geometry = SearchGeometry {
+                memory: &[],
+                prefix,
+                prefix_outputs,
+                source_length: length,
+            };
+            let spec = SplitSearchSpec {
+                geometry: &geometry,
+                additional_relocations: &positions,
+                terminal: TerminalSuffix::Noop,
+                step_budget: 32_768,
+            };
+            let Some(operations) = proposed_split_geometry_with_budget(
+                profile,
+                source_cells,
+                spec,
+                expected,
+            ) else {
+                continue;
+            };
+            if let Some(layout) = verified_output_stream_layout(
+                profile,
+                &operations,
+                expected,
+                source_cells,
+            ) {
+                return Some(layout);
+            }
         }
     }
     None
