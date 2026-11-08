@@ -2087,3 +2087,22 @@ checks exactly three live relocations, an actual output instruction at the
 first source cell, and forged-output refusal. This improves source-layout
 coverage but does not implement arbitrary C state or complete the original
 twelve-byte Fibonacci guest; P0 remains open.
+
+### Compact two-region sources with a zero-output prefix
+
+An independently encoded 22-instruction guest emits zero before any `j`,
+then executes two live data relocations with both repeated and distinct
+outputs. The real VM emits `00 53 53 42 39 38` without consuming stdin.
+The earlier two-region search missed this complete source: descending
+lengths exhausted its 1,500-geometry attempt cap before reaching shorter
+valid layouts, and the searched prefixes excluded initial zero outputs.
+
+A compact-source pass now checks lengths through 28 under a separate
+600-geometry limit before the unchanged 1,500-geometry descending scan.
+Both passes retain the existing per-beam work cap.
+Source-proven leading zero effects can occupy prefix instructions, with the
+old no-op prefix retained as a fallback. The red-first test requires a
+source no longer than the independent guest, its actual first zero-output
+instruction, both live relocations, source-disjoint writes, and VM parity
+under empty and nonempty input; a forged byte refuses admission, but the
+full twelve-output Fibonacci C acceptance remains unimplemented.

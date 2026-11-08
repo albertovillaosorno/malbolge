@@ -949,3 +949,107 @@ fn three_regions_recover_zero_output_before_first_relocation()
     );
     Ok(())
 }
+
+#[test]
+fn two_regions_recover_compact_guest_with_early_zero_output()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source decoder")?;
+    // Independently encode a short real guest: zero output occurs before
+    // any relocation, followed by repeated and distinct data-region bytes.
+    let mut operations = vec![LinearOpcode::OutputByte];
+    operations.extend([LinearOpcode::NoOperation; 7]);
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    assert_eq!(operations.len(), 22);
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &opcode)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(opcode)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing independent decoder cell")?;
+    let mut oracle = ProfileMachine::from_source(profile, &raw, vec![255])
+        .map_err(|error| format!("source guest VM load: {error:?}"))?;
+    assert!(matches!(oracle.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+    let expected: [u8; 6] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("source guest output: {error:?}"))?;
+    assert_eq!(expected, [0, 0x53, 0x53, 0x42, 0x39, 0x38]);
+    assert_eq!(oracle.input_consumed(), 0);
+    assert!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_some()
+    );
+    let recovered =
+        verified_split_relocation_output_layout(profile, expected, &cells)
+            .ok_or_else(|| {
+                format!("two-region search missed guest: {expected:02x?}")
+            })?;
+    assert_eq!(recovered.source().first(), raw.first());
+    assert!(recovered.source().len() <= raw.len());
+    assert_eq!(
+        recovered
+            .source()
+            .iter()
+            .enumerate()
+            .filter(|(position, byte)| {
+                malbolge::decode_profile_instruction(
+                    u32::from(**byte),
+                    u32::try_from(*position).unwrap_or(u32::MAX),
+                ) == Some(b'j')
+            })
+            .count(),
+        2,
+    );
+    let length = u32::try_from(recovered.source().len())
+        .map_err(|error| format!("source length conversion: {error:?}"))?;
+    assert!(
+        recovered
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .all(|&address| address >= length)
+    );
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    for input in [Vec::new(), vec![0, 128, 255]] {
+        let mut guest =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        let steps = recovered.source().len();
+        assert!(matches!(
+            guest.run(steps),
+            Ok(RunOutcome::Terminated { steps: actual, .. }) if actual == steps
+        ));
+        assert_eq!(guest.output(), expected);
+        assert_eq!(guest.input_consumed(), 0);
+    }
+    Ok(())
+}

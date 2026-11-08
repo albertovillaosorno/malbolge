@@ -922,6 +922,17 @@ a compiler capability gap, not a reason to return to N+1.
   found the same transcript using different instructions but could not
   reconstruct the real initial zero-output source. A red-first regression
   now recovers that exact prefix behavior without weakening the separate
-  positional/source-disjoint admission or two-input VM replay. Forged
+  positional/source-disjoint admission or two-input VM replay; forged
   output refuses. The original complete twelve-byte Fibonacci source
   still safely refuses layout; P0 remains pending.
+
+- A source-independent 22-instruction two-region guest first outputs zero,
+  then emits `53 53 42 39 38` using real relocated data writes. The old
+  bounded proposer exhausted 1,500 attempts on long geometries and never
+  reached the compact source, and it lacked pre-relocation zero effects.
+  Compact lengths through 28 now receive a separate 600-attempt pass,
+  preserving all 1,500 established descending attempts; the prefix can
+  emit proven zero bytes. The red-first VM regression confirms
+  compact source recovery, two live relocations, disjoint writes and two-
+  input replay and forged-output refusal; the original Fibonacci P0
+  remains open.

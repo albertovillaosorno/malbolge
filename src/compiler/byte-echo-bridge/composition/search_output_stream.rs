@@ -920,50 +920,78 @@ fn verified_split_relocation_output_layout<const N: usize>(
         .saturating_add(required_writes(0, &expected))
         .saturating_add(4);
     let mut attempts = 0usize;
+    let mut compact_attempts = 0usize;
     for terminal in [
         TerminalSuffix::Noop,
         TerminalSuffix::Output,
         TerminalSuffix::Crazy,
         TerminalSuffix::Rotate,
     ] {
-        for length in (minimum..=52.min(source_cells.len())).rev() {
+        // A separate small-source budget preserves every geometry from
+        // the established descending scan if compact proposals all miss.
+        let maximum = 52.min(source_cells.len());
+        let compact_lengths =
+            (minimum..=28.min(maximum)).map(|length| (length, true));
+        let established_lengths =
+            (minimum..=maximum).rev().map(|length| (length, false));
+        for (length, compact_pass) in compact_lengths.chain(established_lengths)
+        {
             for prefix in [8, 0, 4, 12, 16, 24] {
                 if prefix + 6 >= length {
                     continue;
                 }
                 for second_position in (prefix + 2)..(length - 3) {
-                    attempts += 1;
-                    if attempts > 1_500 {
-                        return None;
-                    }
-                    let geometry = SearchGeometry {
-                        memory: &[],
-                        prefix,
-                        prefix_outputs: 0,
-                        source_length: length,
-                    };
-                    let positions = [second_position];
-                    let spec = SplitSearchSpec {
-                        geometry: &geometry,
-                        additional_relocations: &positions,
-                        terminal,
-                        step_budget: 16_384,
-                    };
-                    let Some(operations) = proposed_split_geometry_with_budget(
-                        profile,
-                        source_cells,
-                        spec,
-                        expected,
-                    ) else {
-                        continue;
-                    };
-                    if let Some(layout) = verified_output_stream_layout(
-                        profile,
-                        &operations,
-                        expected,
-                        source_cells,
-                    ) {
-                        return Some(layout);
+                    // The VM can output its initial zero directly from a
+                    // graphical prefix before the first data relocation.
+                    let leading_zeros = expected
+                        .iter()
+                        .take_while(|&&byte| byte == 0)
+                        .count()
+                        .min(prefix)
+                        .min(terminal.emitted_before_tail(N));
+                    for prefix_outputs in (0..=leading_zeros).rev() {
+                        if compact_pass {
+                            if compact_attempts >= 600 {
+                                continue;
+                            }
+                            compact_attempts += 1;
+                        } else {
+                            attempts += 1;
+                            if attempts > 1_500 {
+                                return None;
+                            }
+                        }
+                        let geometry = SearchGeometry {
+                            memory: &[],
+                            prefix,
+                            prefix_outputs,
+                            source_length: length,
+                        };
+                        let positions = [second_position];
+                        let spec = SplitSearchSpec {
+                            geometry: &geometry,
+                            additional_relocations: &positions,
+                            terminal,
+                            step_budget: 16_384,
+                        };
+                        let Some(operations) =
+                            proposed_split_geometry_with_budget(
+                                profile,
+                                source_cells,
+                                spec,
+                                expected,
+                            )
+                        else {
+                            continue;
+                        };
+                        if let Some(layout) = verified_output_stream_layout(
+                            profile,
+                            &operations,
+                            expected,
+                            source_cells,
+                        ) {
+                            return Some(layout);
+                        }
                     }
                 }
             }
