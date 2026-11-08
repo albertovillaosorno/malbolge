@@ -858,3 +858,17 @@ a compiler capability gap, not a reason to return to N+1.
   compile-time C state projection and bounded straight-line guest effects,
   not guest runtime arithmetic or generalized streams. The original twelve-
   output Fibonacci C program still refuses safely; P0 remains pending.
+
+- A new five-iteration source C recurrence initially refused its nonzero-
+  first `35 08 dc 08 a3` trace at the five-effect bridge, then at the
+  independent publisher. A bounded generalized proposer now explores four
+  live guest `j` relocations with nonempty variable-length write/output
+  regions, with exact fresh loader operands and source-disjoint writes.
+  Independent VM examples emit `38 17 2a 2a` and `35 08 dc 08 a3`,
+  including a non-immediate final relocation. The repaired five-effect
+  publisher independently decodes the four-`j` grammar, re-admits the
+  positional layout and replays the normative VM. The complete C loop,
+  branch, arithmetic and five output calls now emit real guest bytes under
+  empty and supplied input; invalid division refuses publication. The
+  C state and branching still fold at compilation, and the original
+  twelve-byte Fibonacci guest stream is not yet witnessed. P0 stays open.

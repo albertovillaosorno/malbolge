@@ -322,3 +322,159 @@ fn third_relocation_after_two_effects_is_not_a_fixed_split()
     }
     Ok(())
 }
+
+#[test]
+fn fourth_live_relocation_reconstructs_independent_guest() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing graphical phases")?;
+    let mut operations = Vec::new();
+    for index in 0..4 {
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            if index % 2 == 0 {
+                LinearOpcode::CrazyData
+            } else {
+                LinearOpcode::RotateData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    // Encode the original guest from public decoder phases, not the search
+    // algorithm whose output is under test.
+    let source = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing positional fourth-j byte")?;
+    let mut oracle =
+        ProfileMachine::from_source(profile, &source, vec![255])
+            .map_err(|error| format!("four-j guest load: {error:?}"))?;
+    if !matches!(oracle.run(source.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == source.len())
+    {
+        return Err(String::from("four-j guest did not halt"));
+    }
+    let expected: [u8; 4] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("four-j output: {error:?}"))?;
+    assert_eq!(oracle.input_consumed(), 0);
+    assert_eq!(expected, [0x38, 0x17, 0x2a, 0x2a]);
+    let recovered =
+        verified_four_relocation_write_layout(profile, expected, &cells)
+            .ok_or("four-j guest missing from multi-region proposal")?;
+    assert_eq!(recovered.source(), source);
+    assert_eq!(recovered.data_write_positions().iter().flatten().count(), 4);
+    let count = recovered
+        .source()
+        .iter()
+        .enumerate()
+        .filter(|(position, byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(**byte),
+                u32::try_from(*position).unwrap_or(u32::MAX),
+            ) == Some(b'j')
+        })
+        .count();
+    assert_eq!(count, 4);
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| format!("four-j replay load: {error:?}"))?;
+        assert!(matches!(replay.run(source.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == source.len()));
+        assert_eq!(replay.output(), expected);
+        assert_eq!(replay.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[3] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}
+
+#[test]
+fn fourth_relocation_after_multiple_outputs_is_not_a_fixed_split()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing decoder phases")?;
+    let mut operations = vec![LinearOpcode::RelocateDataPointer];
+    for index in 0..5 {
+        if matches!(index, 1 | 2 | 4) {
+            operations.push(LinearOpcode::RelocateDataPointer);
+        }
+        operations.extend([
+            if index % 2 == 0 {
+                LinearOpcode::CrazyData
+            } else {
+                LinearOpcode::RotateData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing fourth-j source phase")?;
+    let mut oracle = ProfileMachine::from_source(profile, &raw, Vec::new())
+        .map_err(|error| format!("five-output oracle load: {error:?}"))?;
+    assert!(matches!(oracle.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+    let expected: [u8; 5] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("five-output bytes: {error:?}"))?;
+    assert_eq!(expected, [0x35, 0x08, 0xdc, 0x08, 0xa3]);
+    assert_eq!(proposed_output_stream(&operations, &cells), Some(expected));
+    let recovered =
+        verified_four_relocation_write_layout(profile, expected, &cells)
+            .ok_or("four-j later-split grammar missed independent source")?;
+    assert_eq!(recovered.source(), raw);
+    assert_eq!(recovered.data_write_positions().iter().flatten().count(), 5);
+    let jumps = recovered
+        .source()
+        .iter()
+        .enumerate()
+        .filter(|(position, byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(**byte),
+                u32::try_from(*position).unwrap_or(u32::MAX),
+            ) == Some(b'j')
+        })
+        .count();
+    assert_eq!(jumps, 4);
+    for input in [Vec::new(), vec![0, 128, 255]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| {
+                    format!("five-output replay load: {error:?}")
+                })?;
+        assert!(matches!(vm.run(raw.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}

@@ -134,6 +134,70 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", rejected.stderr)
             self.assertFalse(rejected_guest.exists())
 
+    def test_five_effect_recurrence_reaches_guest_after_layout_fix(self) -> None:
+        """Project a complete stateful loop, branch and five guest bytes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_four_relocation_five_output_branch_stream.c"
+        )
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(5):
+            next_value = (previous + current) & 255
+            if next_value % 2 == 0:
+                expected.append(((next_value // 2) * 241 + 68) & 255)
+            else:
+                expected.append(
+                    ((next_value // 2) * 212 + (next_value // 8) * 119 + 52)
+                    & 255
+                )
+            previous, current = current, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex("3508dc08a3"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "five-effects.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/five-effect-c-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, expected)
+                self.assertRegex(replay.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            invalid = Path(scratch) / "five-effects-invalid.c"
+            invalid.write_text(source.read_text().replace("next / 2U", "next / 0U"))
+            rejected_guest = Path(scratch) / "rejected.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(invalid)],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
+
     def test_whole_program_rejection_or_guest_parity(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

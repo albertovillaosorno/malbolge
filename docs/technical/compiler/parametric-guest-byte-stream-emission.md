@@ -1954,3 +1954,36 @@ unsupported division rejects without artifact publication. This remains
 **compile-time** evaluation of bounded C state, not Malbolge runtime C
 arithmetic or arbitrary guest byte-stream synthesis. The original twelve-
 output Fibonacci acceptance oracle remains unwitnessed; P0 stays open.
+
+### Four live relocations and a nonzero-first five-output C recurrence
+
+An independent source-code experiment first exercised the five-iteration
+Fibonacci-style unsigned C recurrence with locally maintained state, an
+odd/even branch, checked division and multiplication, and five distinct
+`putchar` effects. Its independently calculated output is
+`35 08 dc 08 a3`. The existing compiler first rejected the nonzero-first
+five-output stream at its bounded bridge, then rejected its actual candidate
+at the separate file publisher. Neither stage published a guest artifact.
+
+A generalized deterministic proposal now enumerates the positions of up to
+three internal `j` splits among three to twelve output effects, rather than
+assuming a particular region length. Each relocation reads an exact untouched
+loader operand; every arithmetic write is outside the complete code source
+and all guest writes are disjoint. All accepted proposals still undergo
+independent positional encoding, source re-admission and normative guest VM
+replay with empty and nonempty input. A separate four-output guest emits
+`38 17 2a 2a` using four live relocations. A five-output guest with a
+later split emits `35 08 dc 08 a3` using four relocations and five genuine
+write/output pairs. Forged output is rejected. The generalized three-region
+search retains the previously verified three-relocation grammars.
+
+The five-effect publisher now also independently decodes its staged source,
+checks the exact four-relocation instruction grammar, reads the precise
+profile identity and verifies five separate source-disjoint write addresses
+before performing its own normative VM replay. The complete pinned C pipeline
+now publishes a genuine capsule for the five-iteration recurrence and the VM
+emits exactly `35 08 dc 08 a3` under both empty and nonempty input. A C
+division-by-zero mutation refuses without producing a guest file. This
+still compiles C recurrence arithmetic and control flow **at compile time**,
+not inside the guest; full twelve-output Fibonacci and general guest runtime
+C state remain unsupported, so P0 remains pending.

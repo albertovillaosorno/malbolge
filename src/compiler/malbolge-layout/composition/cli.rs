@@ -4225,9 +4225,103 @@ fn verify_distinct_literal_quint(
     if !(bytes == *b"Q\"\x1b79" && artifact.steps == 23
         || bytes[0] == 0 && (2..=126).contains(&artifact.steps))
     {
-        return Err(String::from(
-            "distinct-literal quint has no guest witness",
-        ));
+        // Admit the additional bounded four-relocation geometry only after
+        // independently decoding the published bytes. The bridge's search
+        // choice is not evidence for the file publisher.
+        if artifact.source.len() != artifact.steps
+            || !(15..=126).contains(&artifact.steps)
+        {
+            return Err(String::from(
+                "distinct-literal quint has no guest witness",
+            ));
+        }
+        let decoded = artifact
+            .source
+            .iter()
+            .enumerate()
+            .map(|(position, &byte)| {
+                malbolge::decode_profile_instruction(
+                    u32::from(byte),
+                    u32::try_from(position).ok()?,
+                )
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or("distinct-literal quint decoder disagrees")?;
+        let mut position = decoded.iter().take_while(|&&op| op == b'o').count();
+        if position > 32 || decoded.get(position) != Some(&b'j') {
+            return Err(String::from(
+                "distinct-literal quint relocation grammar disagrees",
+            ));
+        }
+        position += 1;
+        let mut relocations = 1;
+        for output_index in 0..5 {
+            if output_index > 0 && decoded.get(position) == Some(&b'j') {
+                relocations += 1;
+                position += 1;
+            }
+            if !matches!(decoded.get(position), Some(b'p' | b'*'))
+                || decoded.get(position + 1)
+                    != Some(&profile.output_instruction())
+            {
+                return Err(String::from(
+                    "distinct-literal quint arithmetic grammar disagrees",
+                ));
+            }
+            position += 2;
+        }
+        if relocations != 4
+            || position + 1 != decoded.len()
+            || decoded.get(position) != Some(&b'v')
+        {
+            return Err(String::from(
+                "distinct-literal quint effect grammar disagrees",
+            ));
+        }
+        let operations = decoded
+            .iter()
+            .map(|&code| match code {
+                b'o' => Some(LinearOpcode::NoOperation),
+                b'j' => Some(LinearOpcode::RelocateDataPointer),
+                b'p' => Some(LinearOpcode::CrazyData),
+                b'*' => Some(LinearOpcode::RotateData),
+                b'v' => Some(LinearOpcode::Halt),
+                code if code == profile.output_instruction() => {
+                    Some(LinearOpcode::OutputByte)
+                },
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or("distinct-literal quint instructions disagree")?;
+        let layout = admit_linear_layout(
+            profile,
+            &operations,
+            &artifact.source,
+            LinearProfileIdentity {
+                fingerprint: profile.fingerprint(),
+                id: profile.id(),
+            },
+        )
+        .map_err(|error| {
+            format!("distinct-literal quint layout admission: {error:?}")
+        })?;
+        let writes: Vec<_> = layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .copied()
+            .collect();
+        if writes.len() != 5
+            || writes.iter().copied().collect::<BTreeSet<_>>().len() != 5
+            || writes
+                .iter()
+                .any(|&address| address < artifact.source.len() as u32)
+            || layout.executed_code_positions().len() != artifact.steps
+        {
+            return Err(String::from(
+                "distinct-literal quint data writes disagree",
+            ));
+        }
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
         let mut vm =

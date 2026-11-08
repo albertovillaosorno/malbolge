@@ -2555,17 +2555,27 @@ pub fn encode_distinct_literal_quint(
         *slot = scalar.bits();
     }
     if expected != *b"Q\"\x1b79" {
-        // A leading zero can be emitted by the real initial accumulator
-        // before relocation, followed by independently verified guest writes.
-        if expected[0] != 0 {
-            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
-        }
         let cells = pair_source_cells(profile)
             .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
-        return search_output_stream::verified_state_space_output_layout(
-            profile, expected, &cells,
-        )
-        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
+        // Keep the established leading-zero search order. Other streams
+        // may need additional live relocations even when the first guest
+        // accumulator is nonzero. The verifier, not this byte gate,
+        // decides whether a proposed source can be published.
+        let verified = if expected[0] == 0 {
+            search_output_stream::verified_state_space_output_layout(
+                profile, expected, &cells,
+            )
+        } else {
+            search_output_stream::verified_four_relocation_write_layout(
+                profile, expected, &cells,
+            )
+            .or_else(|| {
+                search_output_stream::verified_state_space_output_layout(
+                    profile, expected, &cells,
+                )
+            })
+        };
+        return verified.ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut operations = vec![LinearOpcode::NoOperation; 11];
     operations.push(LinearOpcode::RelocateDataPointer);

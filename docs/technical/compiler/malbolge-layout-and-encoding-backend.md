@@ -682,3 +682,18 @@ nonempty guest input must terminate with exactly the source-proven bytes.
 The five-write `35 c0 09 e3` guest proves the added interleaving grammar;
 older four-write witnesses remain supported. Search proposals never publish
 without this separate normative VM check.
+
+### Independent publication of bounded four-relocation byte effects
+
+The five-effect source publisher now recognizes a source-independent
+nonzero-first byte stream only when its staged source exactly decodes as a
+maximum-32-no-op prefix, an initial `j`, five real crazy/rotate-and-output
+pairs, three further `j` moves between the pairs, and a final halt. The
+publisher independently admits that positional source for the canonical
+profile and proves five disjoint data-write addresses outside all source
+code before normative VM replay with two different input streams. The
+complete five-iteration source-C recurrence now emits `35 08 dc 08 a3`,
+where the earlier five-effect fixed whitelist rejected the valid candidate.
+The legacy five-byte teaching witness and previously accepted leading-zero
+shape remain intact. This is bounded byte-output synthesis, not general
+C execution or arbitrary data-pointer control flow.
