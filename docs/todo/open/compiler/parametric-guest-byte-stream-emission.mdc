@@ -915,3 +915,13 @@ a compiler capability gap, not a reason to return to N+1.
   nonempty input. Forged-output refusal remains intact. The complete
   twelve-iteration Fibonacci C program still refuses safely at layout;
   general synthesis and guest runtime state remain P0 work.
+
+- A source-independent 34-cell guest outputs zero before the first `j`,
+  then nine more bytes across three relocated data regions. The normative
+  VM emits `00 3e 3e 2e 0a 3d 3d 10 40 19`. The old three-region search
+  found the same transcript using different instructions but could not
+  reconstruct the real initial zero-output source. A red-first regression
+  now recovers that exact prefix behavior without weakening the separate
+  positional/source-disjoint admission or two-input VM replay. Forged
+  output refuses. The original complete twelve-byte Fibonacci source
+  still safely refuses layout; P0 remains pending.

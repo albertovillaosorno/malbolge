@@ -1014,33 +1014,45 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
                         body.checked_mul(2)?.div_euclid(3) + split_bias,
                     )?,
                 ];
-                let geometry = SearchGeometry {
-                    memory: &[],
-                    prefix,
-                    prefix_outputs: 0,
-                    source_length: length,
-                };
-                let spec = SplitSearchSpec {
-                    geometry: &geometry,
-                    additional_relocations: &split_positions,
-                    terminal,
-                    step_budget: 32_768,
-                };
-                let Some(operations) = proposed_split_geometry_with_budget(
-                    profile,
-                    source_cells,
-                    spec,
-                    expected,
-                ) else {
-                    continue;
-                };
-                if let Some(layout) = verified_output_stream_layout(
-                    profile,
-                    &operations,
-                    expected,
-                    source_cells,
-                ) {
-                    return Some(layout);
+                // Initial output instructions observe the VM's zero A
+                // before the first j; they need no guest arithmetic write.
+                // Previously the split proposer spent those prefix cells
+                // exclusively on no-ops, missing a real source behavior.
+                let leading_zeros = expected
+                    .iter()
+                    .take_while(|&&byte| byte == 0)
+                    .count()
+                    .min(prefix)
+                    .min(terminal.emitted_before_tail(N));
+                for prefix_outputs in (0..=leading_zeros).rev() {
+                    let geometry = SearchGeometry {
+                        memory: &[],
+                        prefix,
+                        prefix_outputs,
+                        source_length: length,
+                    };
+                    let spec = SplitSearchSpec {
+                        geometry: &geometry,
+                        additional_relocations: &split_positions,
+                        terminal,
+                        step_budget: 32_768,
+                    };
+                    let Some(operations) = proposed_split_geometry_with_budget(
+                        profile,
+                        source_cells,
+                        spec,
+                        expected,
+                    ) else {
+                        continue;
+                    };
+                    if let Some(layout) = verified_output_stream_layout(
+                        profile,
+                        &operations,
+                        expected,
+                        source_cells,
+                    ) {
+                        return Some(layout);
+                    }
                 }
             }
         }

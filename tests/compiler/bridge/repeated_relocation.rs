@@ -826,3 +826,126 @@ fn three_region_search_recovers_uneven_noop_strides() -> Result<(), String> {
     );
     Ok(())
 }
+
+#[test]
+fn three_regions_recover_zero_output_before_first_relocation()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells =
+        pair_source_cells(profile).ok_or("missing positional decoder")?;
+    // A full guest emits zero while A is still zero, then uses three live
+    // data regions. Source bytes are derived from decoder phases, not search.
+    let mut operations = vec![LinearOpcode::OutputByte];
+    operations.extend([LinearOpcode::NoOperation; 7]);
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    assert_eq!(operations.len(), 34);
+    let original = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing independent source bytes")?;
+    let mut oracle =
+        ProfileMachine::from_source(profile, &original, vec![1, 255])
+            .map_err(|error| format!("independent guest VM: {error:?}"))?;
+    assert!(matches!(oracle.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()));
+    let expected: [u8; 10] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("independent output: {error:?}"))?;
+    assert_eq!(expected, [
+        0, 0x3e, 0x3e, 0x2e, 0x0a, 0x3d, 0x3d, 0x10, 0x40, 0x19
+    ]);
+    assert_eq!(oracle.input_consumed(), 0);
+    assert!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_some(),
+        "independent guest layout refused"
+    );
+    let recovered = verified_three_split_relocation_output_layout(
+        profile, expected, &cells,
+    )
+    .ok_or_else(|| {
+        format!("missed source-proven zero prefix {expected:02x?}")
+    })?;
+    assert_eq!(
+        recovered.source().first(),
+        original.first(),
+        "initial guest zero-output instruction not reconstructed"
+    );
+    assert_eq!(
+        recovered
+            .source()
+            .iter()
+            .enumerate()
+            .filter(|(position, byte)| {
+                malbolge::decode_profile_instruction(
+                    u32::from(**byte),
+                    u32::try_from(*position).unwrap_or(u32::MAX),
+                ) == Some(b'j')
+            })
+            .count(),
+        3,
+    );
+    let source_length = u32::try_from(recovered.source().len())
+        .map_err(|error| format!("source length conversion: {error:?}"))?;
+    assert!(
+        recovered
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .all(|&address| address >= source_length)
+    );
+    for supplied in [Vec::new(), vec![0, 255, 1]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, recovered.source(), supplied)
+                .map_err(|error| format!("recovered guest load: {error:?}"))?;
+        let step_limit = recovered.source().len();
+        assert!(matches!(replay.run(step_limit),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == step_limit));
+        assert_eq!(replay.output(), expected);
+        assert_eq!(replay.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

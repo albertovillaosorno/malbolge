@@ -2065,3 +2065,25 @@ disjoint data writes, VM parity on two input streams, and forged-output
 rejection. The original twelve-iteration Fibonacci program was retried
 first and still refuses at layout. This is bounded proposal coverage, not
 a general layout solver or guest runtime C-state implementation.
+
+### Source-zero outputs before the first relocated data region
+
+A separate source-independent 34-instruction Malbolge program executes an
+initial output while the accumulator is still zero, followed by three live
+`j` data relocations and nine more byte effects. Its actual current-profile
+VM transcript is `00 3e 3e 2e 0a 3d 3d 10 40 19`. The prior three-region
+search could synthesize the same bytes by a different guest program, but
+**could not recover an initial zero-output instruction**: it forced every
+pre-relocation source position to be a no-op. A red-first regression checks
+this missing executable layout behavior rather than falsely claiming the
+output transcript was altogether unreachable.
+
+The bounded three-region proposer now considers proven leading zero outputs
+in the graphical source prefix before falling back to the old no-op path.
+It still derives all later `j` operands from untouched loader memory and
+only accepts candidates after independent positional/source-disjoint layout
+admission and normative VM replay under empty and nonempty input. The test
+checks exactly three live relocations, an actual output instruction at the
+first source cell, and forged-output refusal. This improves source-layout
+coverage but does not implement arbitrary C state or complete the original
+twelve-byte Fibonacci guest; P0 remains open.
