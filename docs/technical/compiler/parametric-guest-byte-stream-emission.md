@@ -1987,3 +1987,25 @@ division-by-zero mutation refuses without producing a guest file. This
 still compiles C recurrence arithmetic and control flow **at compile time**,
 not inside the guest; full twelve-output Fibonacci and general guest runtime
 C state remain unsupported, so P0 remains pending.
+
+### Independent twelve-byte publication admission
+
+The full twelve-iteration Fibonacci C source was rerun after the four-live-`j`
+work and still fails closed at guest layout, with no published capsule. A
+separate red-first publication regression exposed a different verifier gap:
+a real forward-jump guest that skips inert source cells emits twelve zeros
+and halts in the normative VM, yet the twelve-byte publisher previously
+accepted that output transcript despite the bridge never proposing `i`
+control flow. VM byte parity alone was not a proof of the allowed linear
+machine-code shape.
+
+The twelve-byte publisher now independently decodes the entire staged
+source, requires one opcode per byte effect, re-admits positional code and
+current-profile identity with the linear layout checker, and verifies every
+arithmetic write address is unique and outside source. It requires the
+reconstructed execution to cover the source in exact step order before
+replaying the same real VM byte oracle with empty and nonempty input.
+The red-first forward-jump guest now refuses, while an independently encoded
+12-output relocated arithmetic guest still passes. This tightens source
+publication proof, **not** the range of synthesizable byte sequences; the
+original Fibonacci reference and general guest runtime C state remain open.

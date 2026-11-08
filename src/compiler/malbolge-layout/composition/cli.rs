@@ -4517,21 +4517,114 @@ fn verify_distinct_literal_eleven(
     Ok(())
 }
 
+// Independently re-decode the publisher's twelve-byte linear effect grammar.
+// An output-correct guest may still execute a branch or input instruction.
+fn decode_distinct_twelve_operations(
+    profile: &'static malbolge::ProfileDescriptor,
+    source: &[u8],
+) -> Result<Vec<LinearOpcode>, String> {
+    let operations = source
+        .iter()
+        .enumerate()
+        .map(|(position, &byte)| {
+            let decoded = malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(position).ok()?,
+            )?;
+            match decoded {
+                b'o' => Some(LinearOpcode::NoOperation),
+                b'j' => Some(LinearOpcode::RelocateDataPointer),
+                b'p' => Some(LinearOpcode::CrazyData),
+                b'*' => Some(LinearOpcode::RotateData),
+                b'v' => Some(LinearOpcode::Halt),
+                code if code == profile.output_instruction() => {
+                    Some(LinearOpcode::OutputByte)
+                },
+                _ => None,
+            }
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("distinct-literal twelve decoder disagrees")?;
+    if operations
+        .iter()
+        .filter(|&&operation| operation == LinearOpcode::OutputByte)
+        .count()
+        != 12
+    {
+        return Err(String::from(
+            "distinct-literal twelve output opcode count disagrees",
+        ));
+    }
+    Ok(operations)
+}
+
+fn verify_distinct_twelve_layout(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+) -> Result<(), String> {
+    if artifact.source.len() != artifact.steps {
+        return Err(String::from(
+            "distinct-literal twelve execution geometry disagrees",
+        ));
+    }
+    let operations = decode_distinct_twelve_operations(profile, &artifact.source)?;
+    let layout = admit_linear_layout(
+        profile,
+        &operations,
+        &artifact.source,
+        LinearProfileIdentity {
+            fingerprint: profile.fingerprint(),
+            id: profile.id(),
+        },
+    )
+    .map_err(|error| {
+        format!("distinct-literal twelve layout admission: {error:?}")
+    })?;
+    let expected_writes = operations
+        .iter()
+        .filter(|&&operation| {
+            matches!(
+                operation,
+                LinearOpcode::CrazyData | LinearOpcode::RotateData
+            )
+        })
+        .count();
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    let source_limit = u32::try_from(artifact.source.len())
+        .map_err(|error| format!("twelve source geometry: {error:?}"))?;
+    if writes.len() != expected_writes
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
+        || writes
+            .iter()
+            .any(|&address| address < source_limit)
+        || layout.executed_code_positions().len() != artifact.steps
+    {
+        return Err(String::from(
+            "distinct-literal twelve data writes disagree",
+        ));
+    }
+    Ok(())
+}
+
 // Reopen the twelve-source-byte claim under the normative profile VM.
 fn verify_distinct_literal_twelve(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
     bytes: [u8; 12],
 ) -> Result<(), String> {
-    // Source-independent, bounded twelve-output proposals have already
-    // passed the bridge's disjoint-write check and normative VM replay.
-    // Reopen the actual claimed bytes instead of retaining a fixture gate.
-    if !(26..=126).contains(&artifact.steps)
-    {
+    if !(26..=126).contains(&artifact.steps) {
         return Err(String::from(
             "distinct-literal twelve has no guest witness",
         ));
     }
+    // Do not trust the bridge's proposal, nor only the real VM transcript.
+    // Prove positional execution and source-disjoint writes first.
+    verify_distinct_twelve_layout(profile, artifact)?;
     for input in [Vec::new(), vec![255, 0, 128]] {
         let mut vm =
             ProfileMachine::from_source(profile, &artifact.source, input)
@@ -6055,3 +6148,7 @@ mod canonical_wire_read_tests;
 #[cfg(test)]
 #[path = "../../../../tests/compiler/layout/staging_retry.rs"]
 mod staging_retry_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/layout/twelve_stream_admission.rs"]
+mod twelve_stream_admission_tests;

@@ -872,3 +872,15 @@ a compiler capability gap, not a reason to return to N+1.
   empty and supplied input; invalid division refuses publication. The
   C state and branching still fold at compilation, and the original
   twelve-byte Fibonacci guest stream is not yet witnessed. P0 stays open.
+
+- After rerunning the original twelve-iteration Fibonacci source (still a
+  layout-stage refusal without a guest artifact), a red-first adversarial
+  twelve-byte publication test found that a real VM forward-jump guest
+  outputting twelve zeros was admitted by output parity alone. The publisher
+  now independently decodes the entire staged source, excludes unsupported
+  jump/input opcodes, re-admits exact positional instructions and profile
+  identity, counts all twelve real outputs and proves every guest data write
+  is disjoint from source and other writes. The forged forward-jump guest
+  now refuses while an independent relocated twelve-output guest passes.
+  This repairs a verification boundary, not general byte-stream synthesis or
+  dynamic guest C state; P0 remains open.
