@@ -1104,20 +1104,21 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
 /// Explore four live data-pointer regions with outputs that may reuse A.
 /// The extra source relocation can revisit an already read data cell as a
 /// no-op/output, whereas each later j operand still must be untouched.
-/// This is a bounded zero-prefixed proposal, never independent admission.
+/// The prefix may output initial zero bytes or contain only no-ops; nonzero
+/// first effects must follow an actual relocated arithmetic write.
+/// This is a bounded proposal, never independent admission.
 fn verified_four_split_relocation_output_layout<const N: usize>(
     profile: &'static ProfileDescriptor,
     expected: [u8; N],
     source_cells: &[[u8; 6]],
 ) -> Option<LinearLayout> {
     if !(8..=12).contains(&N)
-        || expected.first().copied() != Some(0)
         || profile.id() != malbolge::current_profile().id()
     {
         return None;
     }
-    // The compact shape has three additional j operands, an output before
-    // the first j, and at least one real operation in each relocated region.
+    // The compact shape has three additional j operands and at least one
+    // real operation in each relocated region.
     let length = N.checked_mul(3)?.checked_add(2)?;
     let prefix = 8usize;
     if length > source_cells.len()

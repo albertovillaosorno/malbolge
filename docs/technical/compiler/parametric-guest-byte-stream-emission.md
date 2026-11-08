@@ -2168,3 +2168,22 @@ recovery, four real relocations, normative guest replay under two inputs,
 and forged-output refusal. This is a finite candidate grammar, not general
 stream synthesis, runtime guest C state or completion of the P0 Fibonacci
 program.
+
+### Nonzero-first effects in the four-region proposal
+
+A separate independently encoded 29-cell guest retains four live `j`
+relocations, repeated output effects and read-only data revisits, but moves
+its initial zero output into an existing later data stride. Its actual VM
+transcript is `42 42 03 03 b7 b7 ff b9 a9`, not a host-produced output
+record. The prior four-region fallback rejected the trace before search
+because it required the first byte to be zero, although the unchanged
+independent verifier admitted its complete source and write footprint.
+
+The four-region proposer now also explores a no-output prefix for nonzero-first
+streams. The first byte still requires a genuine relocated arithmetic write;
+no source or data changes are inferred from the host output bytes. Recovered
+code must pass independent positional decoding, source-disjoint write proof,
+and normative VM replay with empty and nonempty input; forged expected bytes
+refuse. This removes a gratuitous output-value gate within one bounded
+geometry, **not** a complete generalized layout solver or guest-runtime C
+state. The original twelve-byte Fibonacci C acceptance remains pending.

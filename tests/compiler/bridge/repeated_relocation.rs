@@ -1413,3 +1413,93 @@ fn four_regions_recover_nonpaired_guest_outputs() -> Result<(), String> {
     );
     Ok(())
 }
+
+#[test]
+fn four_regions_recover_nonzero_first_reused_outputs() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // Move the initial zero output into an existing read-only data stride.
+    // This preserves nine real guest outputs and four live j instructions,
+    // but the first observable byte now comes from a relocated data write.
+    let mut operations = unbalanced_three_region_source();
+    operations.insert(19, LinearOpcode::RelocateDataPointer);
+    assert_eq!(operations.len(), 29);
+    assert_eq!(operations[0], LinearOpcode::OutputByte);
+    assert_eq!(operations[15], LinearOpcode::NoOperation);
+    operations[0] = LinearOpcode::NoOperation;
+    operations[15] = LinearOpcode::OutputByte;
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing positional guest source")?;
+    let mut original =
+        ProfileMachine::from_source(profile, &raw, Vec::new())
+            .map_err(|error| format!("original VM load: {error:?}"))?;
+    assert!(matches!(original.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+    let expected: [u8; 9] = original
+        .output()
+        .try_into()
+        .map_err(|error| format!("original VM output: {error:?}"))?;
+    assert_eq!(expected, [
+        0x42, 0x42, 0x03, 0x03, 0xb7, 0xb7, 0xff, 0xb9, 0xa9
+    ]);
+    assert_eq!(original.input_consumed(), 0);
+    assert_eq!(proposed_output_stream(&operations, &cells), Some(expected));
+    assert!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_some(),
+        "independent four-region source rejected"
+    );
+    let layout =
+        verified_four_split_relocation_output_layout(profile, expected, &cells)
+            .ok_or("nonzero-first four-region search missed real guest")?;
+    assert_eq!(layout.source().len(), 29);
+    let decoded = layout
+        .source()
+        .iter()
+        .enumerate()
+        .map(|(index, &byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(index).unwrap_or(u32::MAX),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(decoded.iter().filter(|&&op| op == Some(b'j')).count(), 4);
+    assert!(
+        layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .all(|&address| {
+                usize::try_from(address).is_ok_and(|value| value >= raw.len())
+            })
+    );
+    for supplied in [Vec::new(), vec![255, 0, 128]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, layout.source(), supplied)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        let step_limit = layout.source().len();
+        assert!(matches!(replay.run(step_limit),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == step_limit));
+        assert_eq!(replay.output(), expected);
+        assert_eq!(replay.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[2] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells,)
+            .is_none()
+    );
+    Ok(())
+}

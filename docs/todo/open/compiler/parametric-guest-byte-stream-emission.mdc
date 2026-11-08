@@ -954,3 +954,13 @@ a compiler capability gap, not a reason to return to N+1.
   geometry priorities, source-disjoint writes, two-input normative VM
   parity and forged-byte refusal. Original full Fibonacci C compilation
   and general guest byte-stream synthesis remain P0 work.
+
+- A new source-independent 29-cell guest moved the prior zero-prefixed
+  four-region output into a read-only relocated data stride. It executes
+  four genuine `j` relocations, emits nine nonzero-first bytes
+  (`42 42 03 03 b7 b7 ff b9 a9`), and terminates with no input read.
+  The four-region producer previously rejected this complete source because
+  its first byte was nonzero. A red-first regression now verifies guest
+  recovery, source-disjoint writes and normative VM replay under both input
+  conditions, without changing independent publisher admission. The original
+  twelve-byte Fibonacci C program remains uncompiled; P0 stays open.
