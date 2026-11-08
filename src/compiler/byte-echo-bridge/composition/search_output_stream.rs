@@ -416,6 +416,131 @@ fn proposed_geometry<const N: usize>(
     )
 }
 
+// A second live relocation re-seeds the remaining data stream from an
+// untouched loader word. Each region may contain arbitrary no-ops, guest
+// arithmetic and outputs; neither region assumes one write per byte.
+fn proposed_split_geometry_with_budget<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    source_cells: &[[u8; 6]],
+    geometry: &SearchGeometry<'_>,
+    second_position: usize,
+    expected: [u8; N],
+    terminal: TerminalSuffix,
+    step_budget: usize,
+) -> Option<Vec<LinearOpcode>> {
+    let SearchGeometry {
+        prefix,
+        prefix_outputs,
+        source_length,
+        ..
+    } = *geometry;
+    let target_emitted = terminal.emitted_before_tail(N);
+    if prefix_outputs > prefix
+        || prefix_outputs > target_emitted
+        || expected[..prefix_outputs].iter().any(|&byte| byte != 0)
+        || second_position <= prefix.saturating_add(1)
+        || second_position >= source_length.saturating_sub(3)
+    {
+        return None;
+    }
+    let memory_words = usize::try_from(profile.memory_words()).ok()?;
+    let first_base = usize::from(*source_cells.get(prefix)?.get(1)?) + 1;
+    let first_count = second_position.checked_sub(prefix + 1)?;
+    let second_operand = first_base.checked_add(first_count)?;
+    let (_, tail_slot) = terminal.before_halt();
+    let mut source = vec![0u8; source_length];
+    *source.get_mut(source_length.checked_sub(2)?)? =
+        *source_cells.get(source_length - 2)?.get(tail_slot)?;
+    *source.get_mut(source_length.checked_sub(1)?)? =
+        *source_cells.get(source_length - 1)?.get(5)?;
+    let relocated =
+        super::layout::unwritten_loader_word(&source, second_operand, profile)
+            .ok()?;
+    let second_base =
+        usize::try_from(relocated).ok()?.checked_add(1)? % memory_words;
+    let second_count = source_length.checked_sub(second_position + 3)?;
+    // We only search disjoint, source-external, nonwrapping loader regions.
+    // The independent verifier still checks the exact operations and VM.
+    if first_base < source_length
+        || second_base < source_length
+        || second_operand.checked_add(3)? >= memory_words
+        || second_base.checked_add(second_count)?.checked_add(3)?
+            >= memory_words
+        || (second_base <= second_operand
+            && second_base.checked_add(second_count)? >= first_base)
+    {
+        return None;
+    }
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let mut states = BTreeMap::from([((prefix_outputs, 0u32), 0usize)]);
+    for position in (prefix + 1)..source_length.saturating_sub(2) {
+        if position == second_position {
+            let mut successors = BTreeMap::new();
+            for (&key, &predecessor) in &states {
+                let index = steps.len();
+                steps.push(SearchStep {
+                    operation: LinearOpcode::RelocateDataPointer,
+                    predecessor,
+                });
+                let _previous = successors.insert(key, index);
+            }
+            states = successors;
+            continue;
+        }
+        let address = if position < second_position {
+            first_base.checked_add(position.checked_sub(prefix + 1)?)?
+        } else {
+            second_base
+                .checked_add(position.checked_sub(second_position + 1)?)?
+        };
+        let remaining = source_length
+            .saturating_sub(position + 3)
+            .saturating_sub(usize::from(position < second_position));
+        let word = |offset: usize| {
+            super::layout::unwritten_loader_word(
+                &source,
+                address.checked_add(offset)?,
+                profile,
+            )
+            .ok()
+        };
+        states = append_successors(
+            &states,
+            &mut steps,
+            SearchWord {
+                remaining,
+                target_emitted,
+                value: word(0)?,
+                next_value: word(1)?,
+                next_next_value: word(2)?,
+                next_next_next_value: word(3)?,
+            },
+            expected,
+        );
+        if position > second_position {
+            if let Some((_, &last_index)) = states.iter().find(|(key, _)| {
+                key.0 == target_emitted
+                    && (!matches!(terminal, TerminalSuffix::Output)
+                        || matches_byte(key.1, *expected.last().unwrap_or(&0)))
+            }) {
+                return reconstruct_path(
+                    &steps, last_index, geometry, terminal,
+                );
+            }
+        }
+        if states.is_empty()
+            || states.len() > MAX_STATES_PER_POSITION
+            || steps.len() > step_budget
+        {
+            return None;
+        }
+    }
+    None
+}
+
 fn verified_terminal_layout_range<const N: usize>(
     profile: &'static ProfileDescriptor,
     expected: [u8; N],
@@ -716,6 +841,72 @@ pub(super) fn verified_state_space_output_layout<const N: usize>(
         })
 }
 
+/// Search two live data regions without assuming one write per output.
+///
+/// This finite proposal search never authorizes publication: only independent
+/// positional admission and normative VM replay may accept an artifact.
+fn verified_split_relocation_output_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if !(2..=12).contains(&N)
+        || profile.id() != malbolge::current_profile().id()
+    {
+        return None;
+    }
+    let minimum = N
+        .saturating_add(required_writes(0, &expected))
+        .saturating_add(4);
+    let mut attempts = 0usize;
+    for terminal in [
+        TerminalSuffix::Noop,
+        TerminalSuffix::Output,
+        TerminalSuffix::Crazy,
+        TerminalSuffix::Rotate,
+    ] {
+        for length in (minimum..=52.min(source_cells.len())).rev() {
+            for prefix in [8, 0, 4, 12, 16, 24] {
+                if prefix + 6 >= length {
+                    continue;
+                }
+                for second_position in (prefix + 2)..(length - 3) {
+                    attempts += 1;
+                    if attempts > 1_500 {
+                        return None;
+                    }
+                    let geometry = SearchGeometry {
+                        memory: &[],
+                        prefix,
+                        prefix_outputs: 0,
+                        source_length: length,
+                    };
+                    let Some(operations) = proposed_split_geometry_with_budget(
+                        profile,
+                        source_cells,
+                        &geometry,
+                        second_position,
+                        expected,
+                        terminal,
+                        16_384,
+                    ) else {
+                        continue;
+                    };
+                    if let Some(layout) = verified_output_stream_layout(
+                        profile,
+                        &operations,
+                        expected,
+                        source_cells,
+                    ) {
+                        return Some(layout);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Try short multi-effect guest traces without extending hostile-input cost.
 ///
 /// Unlike a fixed `p`/output ladder, this bounded beam admits repeated
@@ -795,6 +986,9 @@ pub(super) fn verified_short_output_layout<const N: usize>(
                     profile, expected, source_cells,
                 )
             })
+    })
+    .or_else(|| {
+        verified_split_relocation_output_layout(profile, expected, source_cells)
     })
 }
 

@@ -884,3 +884,14 @@ a compiler capability gap, not a reason to return to N+1.
   now refuses while an independent relocated twelve-output guest passes.
   This repairs a verification boundary, not general byte-stream synthesis or
   dynamic guest C state; P0 remains open.
+
+- The original full Fibonacci C source was tried again and still refuses
+  safely at the layout stage. A separately constructed real twelve-output
+  Malbolge guest uses two live `j` relocations, data no-op strides, repeated
+  output, and nonpaired arithmetic effects; the previous bounded proposer
+  missed its `36 36 01 fe a2 0e 28 fe b1 85 fe b1` transcript. The new
+  finite second-relocation state-space search recovers the bytes and requires
+  independent positional/source-disjoint layout plus normative VM replay on
+  empty and supplied input. Forged-byte rejection remains mandatory. This
+  does not witness the original Fibonacci trace or guest C runtime state,
+  so the P0 remains pending.

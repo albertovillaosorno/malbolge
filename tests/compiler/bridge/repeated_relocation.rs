@@ -478,3 +478,155 @@ fn fourth_relocation_after_multiple_outputs_is_not_a_fixed_split()
     }
     Ok(())
 }
+
+#[test]
+fn split_relocation_with_nonpaired_effects_reconstructs_guest()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source cells")?;
+    // An independent twelve-effect guest with two live relocations, one
+    // repeated output and a no-op stride between guest data writes.
+    let prefix = 8;
+    let mut operations = vec![LinearOpcode::NoOperation; prefix];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    let mut expanded = vec![LinearOpcode::NoOperation; prefix];
+    for (index, &operation) in operations[prefix..].iter().enumerate() {
+        expanded.push(operation);
+        if index % 3 == 0
+            && matches!(
+                operation,
+                LinearOpcode::CrazyData
+                    | LinearOpcode::RotateData
+                    | LinearOpcode::OutputByte
+            )
+        {
+            expanded.push(LinearOpcode::NoOperation);
+        }
+    }
+    operations = expanded;
+    let original_source = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &opcode)| {
+            cells
+                .get(position)
+                .and_then(|cell| {
+                    cell.get(super::super::pair_opcode_slot(opcode)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("original source position decoder")?;
+    let mut guest =
+        ProfileMachine::from_source(profile, &original_source, vec![255, 0])
+            .map_err(|error| format!("original VM loader: {error:?}"))?;
+    if !matches!(guest.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+    {
+        return Err(String::from("independent source did not halt"));
+    }
+    let expected: [u8; 12] = guest
+        .output()
+        .try_into()
+        .map_err(|error| format!("original output count: {error:?}"))?;
+    if expected
+        != [
+            0x36, 0x36, 0x01, 0xfe, 0xa2, 0x0e, 0x28, 0xfe, 0xb1, 0x85, 0xfe,
+            0xb1,
+        ]
+    {
+        return Err(format!(
+            "independent guest output changed: {expected:02x?}"
+        ));
+    }
+    let end_to_end = verified_short_output_layout(profile, expected, &cells)
+        .ok_or("public stream search did not find new guest geometry")?;
+    if end_to_end.source().is_empty() {
+        return Err(String::from("public search returned empty guest"));
+    }
+    let writes: Vec<_> = end_to_end
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() < 2
+        || writes
+            .iter()
+            .any(|&address| address < end_to_end.source().len() as u32)
+    {
+        return Err(String::from("split search did not prove guest writes"));
+    }
+    let decoded = end_to_end
+        .source()
+        .iter()
+        .enumerate()
+        .map(|(position, &byte)| {
+            [
+                LinearOpcode::NoOperation,
+                LinearOpcode::RelocateDataPointer,
+                LinearOpcode::CrazyData,
+                LinearOpcode::RotateData,
+                LinearOpcode::OutputByte,
+                LinearOpcode::Halt,
+            ]
+            .into_iter()
+            .find(|&op| {
+                super::super::pair_opcode_slot(op).and_then(|slot| {
+                    cells
+                        .get(position)
+                        .and_then(|phase| phase.get(slot))
+                        .copied()
+                }) == Some(byte)
+            })
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("recovered source does not decode")?;
+    if decoded
+        .iter()
+        .filter(|&&op| op == LinearOpcode::RelocateDataPointer)
+        .count()
+        != 2
+    {
+        return Err(String::from(
+            "split search omitted the live second relocation",
+        ));
+    }
+    let mut forged = expected;
+    forged[0] ^= 1;
+    if verified_output_stream_layout(profile, &decoded, forged, &cells)
+        .is_some()
+    {
+        return Err(String::from("forged guest output admitted"));
+    }
+    Ok(())
+}

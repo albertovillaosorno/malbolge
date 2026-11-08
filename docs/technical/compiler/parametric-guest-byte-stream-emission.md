@@ -2009,3 +2009,25 @@ The red-first forward-jump guest now refuses, while an independently encoded
 12-output relocated arithmetic guest still passes. This tightens source
 publication proof, **not** the range of synthesizable byte sequences; the
 original Fibonacci reference and general guest runtime C state remain open.
+
+### Two live relocations without paired output effects
+
+The complete twelve-iteration Fibonacci C program was rerun first and still
+refuses safely at guest layout. A separate source-independent real Malbolge
+program exposes a wider capability gap: it executes two live `j` relocations,
+intersperses no-op data strides, and emits repeated and distinct bytes without
+one `p`/`*` write for each output. Its twelve-byte VM transcript is
+`36 36 01 fe a2 0e 28 fe b1 85 fe b1`. The prior bounded output search
+could not reconstruct that transcript.
+
+The finite search now admits a second relocation at an independently checked
+source position, derives the new data pointer from the untouched expanded
+loader word, and resumes accumulator/output state search on its new data
+region. It rejects overlapping or source-bound data regions before proposing
+code and caps both the per-geometry search and the number of geometries.
+Every proposal still passes canonical positional layout, disjoint guest write
+proof, and normative VM execution with empty and nonempty input. A source-
+independent test constructs the original machine code without using the
+search under test, checks the real VM bytes, recovers a two-relocation guest,
+and rejects forged expected output. This advances general guest synthesis,
+not runtime C state or the original Fibonacci target; P0 remains open.
