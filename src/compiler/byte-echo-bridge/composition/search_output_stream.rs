@@ -991,9 +991,13 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
         .saturating_add(required_writes(0, &expected))
         .saturating_add(5);
     for terminal in [TerminalSuffix::Noop, TerminalSuffix::Output] {
-        for length in [
-            N.checked_mul(3)?.checked_add(4)?,
-            N.checked_mul(3)?.checked_add(2)?,
+        // The longer shape allows no-op strides to accumulate in an early
+        // region, moving both later live relocations beyond balanced thirds.
+        // Preserve the established short-geometry priority and work caps.
+        for (length, split_bias) in [
+            (N.checked_mul(3)?.checked_add(4)?, 0),
+            (N.checked_mul(3)?.checked_add(2)?, 0),
+            (N.checked_mul(3)?.checked_add(6)?, 1),
         ] {
             if length < minimum || length > source_cells.len() {
                 continue;
@@ -1005,9 +1009,10 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
                 let body = length.checked_sub(prefix)?.checked_sub(3)?;
                 let split_start = prefix.checked_add(1)?;
                 let split_positions = [
-                    split_start.checked_add(body.div_euclid(3))?,
-                    split_start
-                        .checked_add(body.checked_mul(2)?.div_euclid(3))?,
+                    split_start.checked_add(body.div_euclid(3) + split_bias)?,
+                    split_start.checked_add(
+                        body.checked_mul(2)?.div_euclid(3) + split_bias,
+                    )?,
                 ];
                 let geometry = SearchGeometry {
                     memory: &[],

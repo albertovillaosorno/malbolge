@@ -2054,3 +2054,14 @@ nine bytes can also be realized by a simpler one-relocation guest: the test
 establishes that three live relocations can be **proposed and verified**, not
 that they are necessary for those bytes. This is neither general guest
 byte-stream synthesis nor guest-runtime C state; P0 remains open.
+
+A further red-first 33-cell guest exercises the same real three-region
+semantics but concentrates two additional no-op data strides before the
+second relocation. It emits `35 35 86 af 8f 8f b5 83 c4` in the normative
+VM; the previous 29/31-cell balanced search missed this transcript. A
+bounded 33-cell, one-position-offset split geometry now reconstructs an
+independently admitted 33-cell guest with three live relocations, source-
+disjoint data writes, VM parity on two input streams, and forged-output
+rejection. The original twelve-iteration Fibonacci program was retried
+first and still refuses at layout. This is bounded proposal coverage, not
+a general layout solver or guest runtime C-state implementation.

@@ -905,3 +905,13 @@ a compiler capability gap, not a reason to return to N+1.
   three relocations are a constructive capability, not a necessity claim.
   The original twelve-output Fibonacci C program still refuses at layout;
   P0 remains pending on generalized guest synthesis and runtime C semantics.
+
+- A red-first 33-instruction three-relocation Malbolge guest with two
+  additional uneven no-op strides executes nine actual byte outputs
+  `35 35 86 af 8f 8f b5 83 c4`; the earlier balanced 29/31-cell
+  three-region fallback failed to reconstruct it. A bounded longer,
+  offset-split geometry now admits a 33-cell proposal only after separate
+  positional, source-disjoint and normative VM proof under empty and
+  nonempty input. Forged-output refusal remains intact. The complete
+  twelve-iteration Fibonacci C program still refuses safely at layout;
+  general synthesis and guest runtime state remain P0 work.

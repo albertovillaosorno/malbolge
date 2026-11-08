@@ -723,3 +723,106 @@ fn third_live_relocation_between_nonpaired_byte_effects() -> Result<(), String>
     }
     Ok(())
 }
+
+#[test]
+fn three_region_search_recovers_uneven_noop_strides() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source decoder")?;
+    // A complete nine-effect guest with no-op strides concentrated before
+    // the first split, rather than the balanced fallback's fixed regions.
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    assert_eq!(operations.len(), 33);
+    let source = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &opcode)| {
+            cells
+                .get(position)
+                .and_then(|cell| {
+                    cell.get(super::super::pair_opcode_slot(opcode)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("independent graphical source")?;
+    let mut oracle =
+        ProfileMachine::from_source(profile, &source, vec![255, 0])
+            .map_err(|error| format!("original guest load: {error:?}"))?;
+    assert!(matches!(oracle.run(source.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == source.len()));
+    let expected: [u8; 9] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("guest output: {error:?}"))?;
+    assert_eq!(expected, [
+        0x35, 0x35, 0x86, 0xaf, 0x8f, 0x8f, 0xb5, 0x83, 0xc4
+    ]);
+    assert_eq!(oracle.input_consumed(), 0);
+    let original =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or("independent positional guest proof failed")?;
+    assert_eq!(original.source(), source);
+    let recovered = verified_three_split_relocation_output_layout(
+        profile, expected, &cells,
+    )
+    .ok_or_else(|| {
+        format!("missed uneven three-region guest {expected:02x?}")
+    })?;
+    assert_eq!(recovered.source().len(), 33);
+    let relocations = recovered
+        .source()
+        .iter()
+        .enumerate()
+        .filter(|(pos, byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(**byte),
+                u32::try_from(*pos).unwrap_or(u32::MAX),
+            ) == Some(b'j')
+        })
+        .count();
+    assert_eq!(relocations, 3);
+    for supplied in [Vec::new(), vec![0, 255, 1]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, recovered.source(), supplied)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        let limit = recovered.source().len();
+        assert!(matches!(vm.run(limit),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == limit));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}
