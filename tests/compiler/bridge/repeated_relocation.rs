@@ -1053,3 +1053,114 @@ fn two_regions_recover_compact_guest_with_early_zero_output()
     }
     Ok(())
 }
+
+#[test]
+fn three_regions_recover_short_repeated_output_guest() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // Build a source-independent 27-cell guest with three live j moves.
+    // An initial zero and repeated outputs remove required arithmetic writes.
+    let mut operations = vec![LinearOpcode::OutputByte];
+    operations.extend([LinearOpcode::NoOperation; 7]);
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    assert_eq!(operations.len(), 27);
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing independent source encoding")?;
+    let mut oracle = ProfileMachine::from_source(profile, &raw, vec![255])
+        .map_err(|error| format!("guest VM load: {error:?}"))?;
+    assert!(matches!(oracle.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+    let expected: [u8; 9] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("independent guest bytes: {error:?}"))?;
+    assert_eq!(expected, [
+        0, 0x38, 0x38, 0x82, 0xce, 0xce, 0xc6, 0x7b, 0x8b
+    ]);
+    assert_eq!(oracle.input_consumed(), 0);
+    assert!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_some(),
+        "real guest failed independent positional/source-disjoint admission"
+    );
+    let recovered = verified_three_split_relocation_output_layout(
+        profile, expected, &cells,
+    )
+    .ok_or_else(|| format!("missed short 3-region guest {expected:02x?}"))?;
+    assert!(
+        recovered.source().len() <= raw.len(),
+        "short valid geometry was not considered"
+    );
+    assert_eq!(recovered.source().first(), raw.first());
+    assert_eq!(
+        recovered
+            .source()
+            .iter()
+            .enumerate()
+            .filter(|(position, byte)| {
+                malbolge::decode_profile_instruction(
+                    u32::from(**byte),
+                    u32::try_from(*position).unwrap_or(u32::MAX),
+                ) == Some(b'j')
+            })
+            .count(),
+        3,
+    );
+    let length = u32::try_from(recovered.source().len())
+        .map_err(|error| format!("guest length: {error:?}"))?;
+    assert!(
+        recovered
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .all(|&address| address >= length)
+    );
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        let step_limit = recovered.source().len();
+        assert!(matches!(replay.run(step_limit),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == step_limit));
+        assert_eq!(replay.output(), expected);
+        assert_eq!(replay.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[1] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

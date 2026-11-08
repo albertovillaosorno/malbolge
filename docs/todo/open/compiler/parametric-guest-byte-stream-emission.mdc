@@ -936,3 +936,12 @@ a compiler capability gap, not a reason to return to N+1.
   compact source recovery, two live relocations, disjoint writes and two-
   input replay and forged-output refusal; the original Fibonacci P0
   remains open.
+
+- A red-first 27-cell guest with an initial zero output, three live `j`
+  relocations and repeated output effects emits nine real VM bytes
+  `00 38 38 82 ce ce c6 7b 8b`. The previous three-region lengths
+  29/31/33 missed the shorter valid source. A bounded `3 * N`-cell
+  unequal-split geometry now recovers an independently encoded guest with
+  three relocations, disjoint writes, two-input VM parity and forged-output
+  refusal. The original full twelve-byte Fibonacci C program is still
+  unimplemented at guest layout; P0 stays open.

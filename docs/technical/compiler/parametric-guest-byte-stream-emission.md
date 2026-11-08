@@ -2106,3 +2106,23 @@ source no longer than the independent guest, its actual first zero-output
 instruction, both live relocations, source-disjoint writes, and VM parity
 under empty and nonempty input; a forged byte refuses admission, but the
 full twelve-output Fibonacci C acceptance remains unimplemented.
+
+### Compact three-region source with repeated outputs
+
+A separately positionally encoded 27-cell guest outputs an initial zero,
+then nine total bytes across three live `j` relocations, six arithmetic
+writes, and repeated output effects. The normative current-profile VM emits
+`00 38 38 82 ce ce c6 7b 8b` without consuming its supplied input. The
+old three-region fallback tested 29, 31 and 33 cells for this nine-byte
+stream and missed the valid shorter program even though the independent
+layout checker admitted its source and disjoint guest data writes.
+
+An additional bounded `3 * N`-cell geometry now places its two subsequent
+relocations at independently offset thirds, retaining all previous search
+priorities and work caps. The red-first regression requires a recovered
+source of at most 27 cells with a real first zero-output instruction,
+three live relocations, source-disjoint writes, normative VM parity on two
+input streams, and forged-output refusal. This is one additional finite
+proposal shape, not shortest-code optimality, general byte-stream synthesis,
+or C guest-runtime arithmetic. The original twelve-output Fibonacci source
+remains the P0 acceptance target.

@@ -1022,10 +1022,14 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
         // The longer shape allows no-op strides to accumulate in an early
         // region, moving both later live relocations beyond balanced thirds.
         // Preserve the established short-geometry priority and work caps.
-        for (length, split_bias) in [
-            (N.checked_mul(3)?.checked_add(4)?, 0),
-            (N.checked_mul(3)?.checked_add(2)?, 0),
-            (N.checked_mul(3)?.checked_add(6)?, 1),
+        for (length, [first_offset, second_offset]) in [
+            (N.checked_mul(3)?.checked_add(4)?, [0, 0]),
+            (N.checked_mul(3)?.checked_add(2)?, [0, 0]),
+            (N.checked_mul(3)?.checked_add(6)?, [1, 1]),
+            // Repeated outputs can remove multiple write cells while the
+            // final data region still needs one extra stride. Explore a
+            // compact, unequal split without replacing established shapes.
+            (N.checked_mul(3)?, [0, 1]),
         ] {
             if length < minimum || length > source_cells.len() {
                 continue;
@@ -1037,10 +1041,12 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
                 let body = length.checked_sub(prefix)?.checked_sub(3)?;
                 let split_start = prefix.checked_add(1)?;
                 let split_positions = [
-                    split_start.checked_add(body.div_euclid(3) + split_bias)?,
-                    split_start.checked_add(
-                        body.checked_mul(2)?.div_euclid(3) + split_bias,
-                    )?,
+                    split_start
+                        .checked_add(body.div_euclid(3))?
+                        .checked_add(first_offset)?,
+                    split_start
+                        .checked_add(body.checked_mul(2)?.div_euclid(3))?
+                        .checked_add(second_offset)?,
                 ];
                 // Initial output instructions observe the VM's zero A
                 // before the first j; they need no guest arithmetic write.
