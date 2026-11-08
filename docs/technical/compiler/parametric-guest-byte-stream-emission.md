@@ -2204,3 +2204,22 @@ recovery, replays the normative VM under two inputs, and rejects a forged
 output. Source-disjoint writes and exact effect order remain independent
 publisher obligations. This is a new finite geometry, not a general C
 runtime or the full Fibonacci P0 acceptance.
+
+### Four-region output in the final source instruction
+
+The original complete twelve-output Fibonacci C program still refuses at
+guest layout without publishing a guest. A separately encoded 30-cell guest
+with four live `j` operands moves a repeated output into the penultimate
+source cell, immediately before halt. This changes the loader expansion seed
+and emits the actual nine-byte VM trace `00 41 8a ce ce 0b bb 09 09`.
+The independent publisher admitted its positional source and source-disjoint
+write footprint, but the four-region proposer searched only a final no-op.
+
+That proposal now tests the existing no-op terminal first and a real terminal
+output second for each bounded four-region geometry. The last output must
+match the current guest accumulator; source-tail memory changes are not
+guessed from the desired bytes. Red-first recovery, four-relocation decoding,
+empty and nonempty input VM parity, and forged-output rejection pass.
+
+This widens one bounded candidate grammar, not general synthesis or runtime C
+arithmetic. The original Fibonacci P0 acceptance is still pending.

@@ -974,3 +974,14 @@ a compiler capability gap, not a reason to return to N+1.
   VM replay, and forged-byte refusal remain mandatory. The original
   twelve-output Fibonacci C program still refuses safely at guest layout;
   guest runtime state and general synthesis are not yet implemented.
+
+- A separate 30-cell source-independent guest with four genuine `j`
+  relocations outputs `00 41 8a ce ce 0b bb 09 09` by executing the final
+  source instruction before halt as `<`; its earlier repeated output moves
+  to that terminal cell, changing the loader seed. The independent publisher
+  already admitted it, but the four-region proposer only searched terminal
+  no-ops. A red-first regression now recovers the terminal-output source with
+  source-disjoint writes, two-input normative VM parity and forged-byte
+  refusal. The complete twelve-output C Fibonacci source still safely refuses
+  layout, so P0 remains pending on generalized guest synthesis and runtime
+  C computation.

@@ -1561,3 +1561,68 @@ fn four_regions_recover_uneven_split_with_extra_early_stride()
     );
     Ok(())
 }
+
+#[test]
+fn four_regions_recover_output_at_terminal_source_cell() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // Move one repeated output to the final source cell before halt. This
+    // changes the loader tail seed, so the guest is independently re-run.
+    let mut operations = unbalanced_three_region_source();
+    operations.insert(19, LinearOpcode::RelocateDataPointer);
+    operations.insert(9, LinearOpcode::NoOperation);
+    if operations.len() != 30
+        || operations.get(12) != Some(&LinearOpcode::OutputByte)
+        || operations.get(28) != Some(&LinearOpcode::NoOperation)
+    {
+        return Err(String::from("unexpected independent source geometry"));
+    }
+    *operations.get_mut(12).ok_or("missing repeated output")? =
+        LinearOpcode::NoOperation;
+    *operations.get_mut(28).ok_or("missing terminal output")? =
+        LinearOpcode::OutputByte;
+    let (expected, raw) =
+        unbalanced_guest_oracle(profile, &operations, &cells)?;
+    assert_eq!(expected, [
+        0x00, 0x41, 0x8a, 0xce, 0xce, 0x0b, 0xbb, 0x09, 0x09
+    ]);
+    assert_eq!(proposed_output_stream(&operations, &cells), Some(expected));
+    assert!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_some(),
+        "the independent verifier rejected terminal-output source"
+    );
+    let recovered =
+        verified_four_split_relocation_output_layout(profile, expected, &cells)
+            .ok_or("four-region proposal omitted a terminal output seed")?;
+    assert_eq!(recovered.source().len(), raw.len());
+    let decoded = recovered
+        .source()
+        .iter()
+        .enumerate()
+        .map(|(index, byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(*byte),
+                u32::try_from(index).unwrap_or(u32::MAX),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(decoded.iter().filter(|&&op| op == Some(b'j')).count(), 4);
+    assert_eq!(decoded.get(raw.len() - 2), Some(&Some(b'<')));
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        assert!(matches!(vm.run(raw.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[4] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

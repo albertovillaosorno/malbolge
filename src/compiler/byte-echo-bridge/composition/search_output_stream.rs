@@ -1150,34 +1150,38 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
                 .checked_add(body.checked_mul(3)?.div_euclid(4))?
                 .checked_add(offsets[2])?,
         ];
-        for prefix_outputs in (0..=leading_zeros).rev() {
-            let geometry = SearchGeometry {
-                memory: &[],
-                prefix,
-                prefix_outputs,
-                source_length: length,
-            };
-            let spec = SplitSearchSpec {
-                geometry: &geometry,
-                additional_relocations: &positions,
-                terminal: TerminalSuffix::Noop,
-                step_budget: 32_768,
-            };
-            let Some(operations) = proposed_split_geometry_with_budget(
-                profile,
-                source_cells,
-                spec,
-                expected,
-            ) else {
-                continue;
-            };
-            if let Some(layout) = verified_output_stream_layout(
-                profile,
-                &operations,
-                expected,
-                source_cells,
-            ) {
-                return Some(layout);
+        // The source cell before halt is a real instruction. A terminal
+        // output both supplies the last byte effect and changes the loader
+        // seed, so the entire source must be re-verified for that variant.
+        for terminal in [TerminalSuffix::Noop, TerminalSuffix::Output] {
+            let layout = (0..=leading_zeros).rev().find_map(|prefix_outputs| {
+                let geometry = SearchGeometry {
+                    memory: &[],
+                    prefix,
+                    prefix_outputs,
+                    source_length: length,
+                };
+                let spec = SplitSearchSpec {
+                    additional_relocations: &positions,
+                    geometry: &geometry,
+                    step_budget: 32_768,
+                    terminal,
+                };
+                let operations = proposed_split_geometry_with_budget(
+                    profile,
+                    source_cells,
+                    spec,
+                    expected,
+                )?;
+                verified_output_stream_layout(
+                    profile,
+                    &operations,
+                    expected,
+                    source_cells,
+                )
+            });
+            if layout.is_some() {
+                return layout;
             }
         }
     }
