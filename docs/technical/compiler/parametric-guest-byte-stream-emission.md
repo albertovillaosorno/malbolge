@@ -1883,3 +1883,24 @@ still rejects at independent source re-admission. This removes an artificial
 relocation *count* ceiling, not the proof limits on modified operands,
 post-relocation jumps, source aliasing, runtime input-dependent state, or
 full source-C synthesis. The P0 acceptance oracle remains unsupported.
+
+### Constant-time untouched loader-tail relocation proof
+
+The original source-backed twelve-iteration Fibonacci C program still needs
+a guest layout. A follow-up experiment on repeated live `j` relocation
+found that the loader's crazy recurrence has a six-word period starting
+with the first expanded memory word. Each of its nine possible pairs of
+ternary digits has period dividing six from that point; the independent
+word-width components preserve the same property for both historical 10-
+and current 15-trit memory.
+
+The exact layout admission helper now computes untouched loader operands
+with at most six crazy steps, rather than expanding up to distant source-
+memory addresses through 1024-word checkpoints. Tests exhaust the nine
+single-trit seeds, check both profile VMs at source-adjacent, middle and
+final memory positions with two different graphical terminal seeds, and
+retain separate three-live-relocation VM trace checks. Source-overlapping
+or guest-written operand reads remain disallowed; this changes verification
+cost, not accepted guest semantics or production proposal coverage. The
+byte-stream generator still proposes only its original first `j`, and P0
+remains pending.

@@ -2161,6 +2161,105 @@ fn terminal_relocation_continuation_and_safe_third_move() -> Result<(), String>
 }
 
 #[test]
+fn all_trit_pair_loader_recurrences_repeat_every_six_expanded_words() {
+    // Crazy's nine possible adjacent trit pairs exhaust every component
+    // independently of the other trits in a 10-/15-trit machine word.
+    for previous in 0..3 {
+        for latest in 0..3 {
+            let mut words = vec![previous, latest];
+            for index in 2..20 {
+                words.push(malbolge::profile_crazy(
+                    words[index - 2],
+                    words[index - 1],
+                    1,
+                ));
+            }
+            for index in 2..14 {
+                assert_eq!(words[index], words[index + 6]);
+            }
+        }
+    }
+}
+
+#[test]
+fn far_unwritten_loader_operands_match_normative_vm_memory()
+-> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        for terminal in [LinearOpcode::NoOperation, LinearOpcode::CrazyData] {
+            let mut operations = vec![LinearOpcode::NoOperation; 8];
+            operations.extend([
+                LinearOpcode::RelocateDataPointer,
+                LinearOpcode::CrazyData,
+                LinearOpcode::OutputByte,
+                terminal,
+                LinearOpcode::Halt,
+            ]);
+            let layout = encode_linear_layout(profile, &operations)
+                .map_err(|error| format!("tail source: {error:?}"))?;
+            let vm = ProfileMachine::from_source(
+                profile,
+                layout.source(),
+                Vec::new(),
+            )
+            .map_err(|error| format!("normative tail: {error:?}"))?;
+            let source_len = layout.source().len();
+            let memory_words = usize::try_from(profile.memory_words())
+                .map_err(|error| format!("memory geometry: {error}"))?;
+            for address in [
+                source_len,
+                source_len + 1,
+                source_len + 2,
+                source_len + 3,
+                source_len + 4,
+                source_len + 5,
+                source_len + 6,
+                source_len + 7,
+                source_len + 1023,
+                memory_words / 2,
+                memory_words - 2,
+                memory_words - 1,
+            ] {
+                let predicted = layout::unwritten_loader_word(
+                    layout.source(),
+                    address,
+                    profile,
+                )
+                .map_err(|error| format!("far operand {address}: {error:?}"))?;
+                let actual = vm
+                    .memory_word(
+                        u32::try_from(address)
+                            .map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| format!("VM word {address}: {error:?}"))?;
+                assert_eq!(
+                    predicted,
+                    actual,
+                    "{address} under {}",
+                    profile.id()
+                );
+            }
+            assert_eq!(
+                layout::unwritten_loader_word(
+                    layout.source(),
+                    source_len - 1,
+                    profile
+                ),
+                Err(LinearLayoutError::UnsafeDataPlacement),
+            );
+            assert_eq!(
+                layout::unwritten_loader_word(
+                    layout.source(),
+                    memory_words,
+                    profile
+                ),
+                Err(LinearLayoutError::UnsafeDataPlacement),
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn repeated_fresh_loader_relocations_match_independent_guest_vm()
 -> Result<(), String> {
     for profile in [current_profile(), historical_profile()] {

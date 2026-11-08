@@ -527,53 +527,31 @@ fn planned_data_write(
 }
 
 /// A later j reads an as-yet-unwritten loader-expanded word. The loader
-/// expands the complete original graphical source before self-encryption and
-/// data writes; only its final two cells determine an untouched tail word.
-/// Sparse checkpoints also bound repeated, nonmonotonic tail queries to one
-/// forward expansion and at most a short partial block per relocation.
-fn unwritten_loader_word(
+/// expands the original graphical source before any guest mutation; only its
+/// final two cells determine an untouched data word beyond the source.
+///
+/// Every ternary crazy recurrence enters a period dividing six at the *first*
+/// expanded word: each of the nine possible adjacent trit pairs has period
+/// two or three (possibly after one initial pair). The 10-/15-trit words are
+/// componentwise independent, so six steps suffice even for a far relocation.
+/// This shortcut is invalid for any data address previously written by a
+/// guest instruction; the calling checker rejects those addresses separately.
+pub(crate) fn unwritten_loader_word(
     source: &[u8],
     address: usize,
     profile: &ProfileDescriptor,
-    checkpoints: &mut Vec<(u32, u32)>,
 ) -> Result<u32, LinearLayoutError> {
-    const CHECKPOINT_STRIDE: usize = 1024;
     if address < source.len()
         || address >= usize::try_from(profile.memory_words()).unwrap_or(0)
     {
         return Err(LinearLayoutError::UnsafeDataPlacement);
     }
-    if checkpoints.is_empty() {
-        let previous = u32::from(
-            *source
-                .get(source.len().saturating_sub(2))
-                .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
-        );
-        let latest = u32::from(
-            *source
-                .last()
-                .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
-        );
-        checkpoints.push((previous, latest));
-    }
-    let offset = address.saturating_sub(source.len().saturating_sub(1));
-    let block = offset / CHECKPOINT_STRIDE;
-    while checkpoints.len() <= block {
-        let (mut previous, mut latest) = *checkpoints
-            .last()
-            .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
-        for _ in 0..CHECKPOINT_STRIDE {
-            let next =
-                malbolge::profile_crazy(previous, latest, profile.word_trits());
-            previous = latest;
-            latest = next;
-        }
-        checkpoints.push((previous, latest));
-    }
-    let (mut previous, mut latest) = *checkpoints
-        .get(block)
-        .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
-    for _ in 0..offset % CHECKPOINT_STRIDE {
+    let [.., previous_cell, latest_cell] = source else {
+        return Err(LinearLayoutError::TooShort);
+    };
+    let mut previous = u32::from(*previous_cell);
+    let mut latest = u32::from(*latest_cell);
+    for _ in 0..=((address - source.len()) % 6) {
         let next =
             malbolge::profile_crazy(previous, latest, profile.word_trits());
         previous = latest;
@@ -591,7 +569,6 @@ fn derive_execution_positions(
     let mut executed = Vec::new();
     let mut encrypted = Vec::new();
     let mut writes = Vec::new();
-    let mut loader_tail_checkpoints = Vec::new();
     // Jumps and the first relocation read exact source-memory cells.
     // Later j instructions may move D using unwritten expanded loader words.
     // The checker preserves exact profile-memory wraparound and refuses
@@ -656,7 +633,6 @@ fn derive_execution_positions(
                         source,
                         data_pointer,
                         profile,
-                        &mut loader_tail_checkpoints,
                     )?)
                     .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
                 } else {

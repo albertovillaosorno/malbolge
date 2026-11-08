@@ -46,10 +46,13 @@ unsafe initial relocations and source/data aliases reject. Each later `j`
 reads the exact current D word: a tracked XLAT2 source-memory cell if D has
 wrapped into code, or an untouched expanded-loader cell otherwise. The
 checker derives expanded words from the original final source cells, not
-encrypted source memory, and rejects operands modified by data writes. Sparse
-1024-word recurrence checkpoints prevent repeated long-prefix expansion
-when relocation addresses move backward as well as forward. Every new D
-pointer uses exact profile-memory wraparound, and subsequent arithmetic
+encrypted source memory, and rejects operands modified by data writes. The
+nine single-trit crazy-recurrence seeds all repeat every six words starting
+with the first expanded cell, so an untouched loader word at any address
+requires at most six recurrence steps instead of long-prefix checkpoints.
+The rule applies componentwise to both 10- and 15-trit profiles; direct
+normative VM comparisons cover near, middle and final memory addresses.
+Every new D pointer uses exact profile-memory wraparound, and subsequent arithmetic
 writes must stay outside graphical code. A penultimate `j` may point inside
 source, because only halt remains. Arbitrarily many source-bounded `j`
 operations may be admitted when these per-move checks pass; post-relocation

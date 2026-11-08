@@ -826,3 +826,13 @@ a compiler capability gap, not a reason to return to N+1.
   against independent VM state. The original twelve-byte Fibonacci C still
   reaches layout refusal, and the production proposal search does not yet
   synthesize repeated relocations. P0 remains pending.
+
+- The repeated-relocation checker no longer expands a potentially distant
+  loader prefix to derive an untouched operand. Exhaustive nine-trit-pair
+  recurrence checks prove a six-word cycle from the first expanded cell;
+  historical and current normative VM memory agree at near, middle and end
+  addresses under two terminal seeds. The static layout verifier now uses at
+  most six recurrence steps per untouched operand and retains its separate
+  source-disjoint write and relocation trace proofs. The production output
+  proposer still does not synthesize repeated relocations, and the original
+  twelve-output Fibonacci C acceptance remains pending.
