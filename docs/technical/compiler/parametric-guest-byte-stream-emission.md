@@ -1904,3 +1904,21 @@ or guest-written operand reads remain disallowed; this changes verification
 cost, not accepted guest semantics or production proposal coverage. The
 byte-stream generator still proposes only its original first `j`, and P0
 remains pending.
+
+### Bounded second-relocation guest proposal
+
+The longer-stream bridge previously reconstructed only an initial guest `j`,
+although the independent layout checker could verify additional moves. A
+red-first source-independent guest with two arithmetic/output effects and a
+second live `j` emits `36 08` in the normative VM. The bounded byte-stream
+proposer now explores two relocation regions separated by actual guest
+arithmetic and output effects. The second `j` operand comes from the exact
+untouched loader tail, never from a guessed destination.
+
+A second, three-effect guest with two outputs before the later `j` also
+reconstructs, with real normative VM byte parity and disjoint data writes.
+A forged byte oracle rejects. The new proposer examines up to 33 source
+prefix positions, at most twelve bytes, and fixed final output/halt cells.
+It runs only after previous finite search shapes fail. The original full
+Fibonacci program still has no verified guest layout; this is bounded
+synthesis of arithmetic/byte effects, not runtime C state or P0 closure.

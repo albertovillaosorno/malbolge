@@ -1532,60 +1532,65 @@ fn proposed_output_stream<const N: usize>(
             source_cells.get(position).map(|cells| cells[slot])
         })
         .collect::<Option<Vec<_>>>()?;
-    let relocation = operations.iter().position(|operation| {
-        *operation == LinearOpcode::RelocateDataPointer
-    })?;
-    let relocated = usize::from(*source.get(relocation)?);
-    if relocated < source.len() || relocated + operations.len() >= 4096 {
-        return None;
-    }
-    let mut memory: Vec<u32> = source.into_iter().map(u32::from).collect();
-    while memory.len() <= relocated + operations.len() {
-        let index = memory.len();
-        memory.push(malbolge::profile_crazy(
-            memory[index - 2],
-            memory[index - 1],
-            15,
-        ));
-    }
+    let memory_words =
+        usize::try_from(current_profile().memory_words()).ok()?;
     let mut accumulator = 0u32;
-    let mut address = relocated + 1;
+    let mut data_pointer = 0usize;
+    let mut relocated = false;
+    let mut written = BTreeSet::new();
     let mut output = Vec::with_capacity(N);
-    // Before relocation D follows C, and A is still zero. Emitting zero
-    // here has a real guest effect but does not change the later data tail.
-    for operation in &operations[..relocation] {
+    // Preview only untouched loader operands. The independent checker still
+    // owns code encryption, relocation safety, and guest output admission.
+    for (position, operation) in operations.iter().enumerate() {
         match operation {
-            LinearOpcode::OutputByte => output.push(0),
-            LinearOpcode::NoOperation => {},
-            _ => return None,
-        }
-    }
-    for (position, operation) in
-        operations.iter().enumerate().skip(relocation + 1)
-    {
-        match operation {
-            LinearOpcode::CrazyData => {
-                accumulator = malbolge::profile_crazy(
-                    *memory.get(address)?,
-                    accumulator,
-                    15,
-                );
-                memory[address] = accumulator;
+            LinearOpcode::RelocateDataPointer => {
+                // A final relocation cannot affect the output or the halt.
+                if position == operations.len().saturating_sub(2) && relocated {
+                    continue;
+                }
+                let operand = if !relocated && data_pointer < source.len() {
+                    u32::from(*source.get(data_pointer)?)
+                } else {
+                    if written.contains(&data_pointer) {
+                        return None;
+                    }
+                    layout::unwritten_loader_word(
+                        &source,
+                        data_pointer,
+                        current_profile(),
+                    )
+                    .ok()?
+                };
+                let next = usize::try_from(operand).ok()?.saturating_add(1)
+                    % memory_words;
+                if next < source.len() {
+                    return None;
+                }
+                data_pointer = next;
+                relocated = true;
+                continue;
             },
-            LinearOpcode::RotateData => {
-                let word = *memory.get(address)?;
-                accumulator = word / 3 + (word % 3) * HIGH_TRIT_WEIGHT;
-                memory[address] = accumulator;
+            LinearOpcode::CrazyData | LinearOpcode::RotateData => {
+                if !relocated || !written.insert(data_pointer) {
+                    return None;
+                }
+                let word = layout::unwritten_loader_word(
+                    &source,
+                    data_pointer,
+                    current_profile(),
+                )
+                .ok()?;
+                accumulator = if *operation == LinearOpcode::CrazyData {
+                    malbolge::profile_crazy(word, accumulator, 15)
+                } else {
+                    word / 3 + (word % 3) * HIGH_TRIT_WEIGHT
+                };
             },
             LinearOpcode::OutputByte => output.push(accumulator as u8),
             LinearOpcode::NoOperation | LinearOpcode::Halt => {},
-            // A second relocation in the penultimate source cell changes
-            // only D. No later data operation or output can observe it.
-            LinearOpcode::RelocateDataPointer
-                if position == operations.len().saturating_sub(2) => {},
             _ => return None,
         }
-        address += 1;
+        data_pointer = data_pointer.saturating_add(1) % memory_words;
     }
     output.try_into().ok()
 }

@@ -836,3 +836,11 @@ a compiler capability gap, not a reason to return to N+1.
   source-disjoint write and relocation trace proofs. The production output
   proposer still does not synthesize repeated relocations, and the original
   twelve-output Fibonacci C acceptance remains pending.
+
+- The byte-stream bridge now explores two live `j` relocations with actual
+  guest crazy/rotate writes and outputs in each region. A two-effect real VM
+  witness `36 08` and a separate three-effect witness both reconstruct after
+  the existing source/VM verifier, with a forged byte rejected. The second
+  operand is derived from untouched loader memory, not guessed. Search is
+  bounded to twelve effects and does not yet emit the original Fibonacci
+  source, so generalized P0 remains pending.
