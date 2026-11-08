@@ -1922,3 +1922,35 @@ prefix positions, at most twelve bytes, and fixed final output/halt cells.
 It runs only after previous finite search shapes fail. The original full
 Fibonacci program still has no verified guest layout; this is bounded
 synthesis of arithmetic/byte effects, not runtime C state or P0 closure.
+
+### Bounded third-relocation proposal through real source C
+
+An independently constructed 18-instruction Malbolge guest, with three live
+`j` relocations separated by crazy/rotate writes and output effects, emits
+`51 a2 fe` in the normative current-profile VM. The previous output-stream
+proposer supported at most a second relocation even though the standalone
+layout verifier could already validate the third one. A red-first test
+reproduced that gap. A separate five-output guest with later relocation
+splits emits `54 08 a7 b1 bc`, proving the new search is not tied to a
+one-effect-per-region split.
+
+The bounded third-relocation proposal enumerates 0 through 32 initial
+no-operation cells and two interior splits among 3 through 12 output effects.
+Each region contains at least one arithmetic write and an actual byte output.
+The proposal derives each fresh `j` operand from untouched loader memory;
+it refuses reads of source bytes or guest-written addresses, aliases among
+arithmetic writes, and unsafe source overlap. The final output/halt cells
+fix the loader seed for this finite straight-line grammar. Every proposed
+source is independently re-decoded, checked for exact data addresses and
+replayed in the normative VM before acceptance.
+
+The real pinned Clang C pipeline now admits a three-iteration Fibonacci-style
+unsigned recurrence with local state, arithmetic, a branch and three `putchar`
+effects. Its independently computed reference is `51 a2 fe`, matching actual
+VM output with empty and supplied input. The distinct-triple publisher has
+its own explicit three-`j` grammar and repeats source-disjoint layout and
+VM proofs; it does not trust the bridge's proposal. Source mutation to
+unsupported division rejects without artifact publication. This remains
+**compile-time** evaluation of bounded C state, not Malbolge runtime C
+arithmetic or arbitrary guest byte-stream synthesis. The original twelve-
+output Fibonacci acceptance oracle remains unwitnessed; P0 stays open.

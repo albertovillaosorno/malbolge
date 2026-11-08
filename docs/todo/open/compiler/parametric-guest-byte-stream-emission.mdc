@@ -844,3 +844,17 @@ a compiler capability gap, not a reason to return to N+1.
   operand is derived from untouched loader memory, not guessed. Search is
   bounded to twelve effects and does not yet emit the original Fibonacci
   source, so generalized P0 remains pending.
+
+- A complete three-iteration unsigned C recurrence with local state,
+  arithmetic, a conditional and three `putchar` effects now reaches genuine
+  guest execution after a red-first layout refusal. A bounded proposer
+  explores three live `j` regions with independently derived untouched loader
+  operands. The publisher independently admits each relocation and all
+  three disjoint writes, then replays empty and nonempty VM input. The
+  separately computed C oracle and guest output both equal `51 a2 fe`.
+  A source-independent five-output guest `54 08 a7 b1 bc` also verifies
+  that relocation splits can occur after multiple byte effects. Invalid
+  C division and forged guest output refuse without publication. This is
+  compile-time C state projection and bounded straight-line guest effects,
+  not guest runtime arithmetic or generalized streams. The original twelve-
+  output Fibonacci C program still refuses safely; P0 remains pending.

@@ -704,6 +704,13 @@ pub(super) fn verified_state_space_output_layout<const N: usize>(
         }
     }
     verified_two_relocation_write_layout(profile, expected, source_cells)
+        .or_else(|| {
+            verified_three_relocation_write_layout(
+                profile,
+                expected,
+                source_cells,
+            )
+        })
 }
 
 /// Try short multi-effect guest traces without extending hostile-input cost.
@@ -775,6 +782,13 @@ pub(super) fn verified_short_output_layout<const N: usize>(
     })
     .or_else(|| {
         verified_two_relocation_write_layout(profile, expected, source_cells)
+            .or_else(|| {
+                verified_three_relocation_write_layout(
+                    profile,
+                    expected,
+                    source_cells,
+                )
+            })
     })
 }
 
@@ -909,3 +923,126 @@ mod alternate_terminal_tests;
 #[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/repeated_relocation.rs"]
 mod repeated_relocation_tests;
+
+/// Propose three live relocation regions from exact, untouched loader words.
+/// The guest must perform at least one arithmetic/output effect in each
+/// region; interleaved no-ops and input-dependent state remain outside this
+/// finite grammar. Positional layout and normative VM replay still decide.
+pub(super) fn verified_three_relocation_write_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if !(3..=12).contains(&N)
+        || profile.id() != malbolge::current_profile().id()
+    {
+        return None;
+    }
+    let memory_words = usize::try_from(profile.memory_words()).ok()?;
+    for prefix in 0..=32usize {
+        let length = prefix.checked_add(N.checked_mul(2)?)?.checked_add(4)?;
+        let first_base = usize::from(*source_cells.get(prefix)?.get(1)?);
+        if first_base < length {
+            continue;
+        }
+        // The output followed by halt fixes the two loader-tail seeds.
+        let mut source = vec![0u8; length];
+        source[length - 2] = *source_cells.get(length - 2)?.get(4)?;
+        source[length - 1] = *source_cells.get(length - 1)?.get(5)?;
+        for first_split in 1..N - 1 {
+            for second_split in first_split + 1..N {
+                let mut address = (first_base + 1) % memory_words;
+                let mut written = std::collections::BTreeSet::new();
+                let mut words = Vec::with_capacity(N);
+                for index in 0..N {
+                    if index == first_split || index == second_split {
+                        // A relocation reads at the current D. A previously
+                        // written cell is not a fresh loader operand.
+                        if address < length || written.contains(&address) {
+                            break;
+                        }
+                        let relocated = super::layout::unwritten_loader_word(
+                            &source, address, profile,
+                        )
+                        .ok()?;
+                        address = (usize::try_from(relocated).ok()? + 1)
+                            % memory_words;
+                    }
+                    if address < length || !written.insert(address) {
+                        break;
+                    }
+                    words.push(
+                        super::layout::unwritten_loader_word(
+                            &source, address, profile,
+                        )
+                        .ok()?,
+                    );
+                    // Arithmetic and output each advance D one position.
+                    address = (address + 2) % memory_words;
+                }
+                if words.len() != N {
+                    continue;
+                }
+                let mut paths = vec![(0u32, 0u16)];
+                for (index, (&word, &target)) in
+                    words.iter().zip(expected.iter()).enumerate()
+                {
+                    let rotated = word / 3 + (word % 3) * HIGH_TRIT_WEIGHT;
+                    let mut next = Vec::new();
+                    for &(accumulator, mask) in &paths {
+                        for (value, rotate) in [
+                            (
+                                malbolge::profile_crazy(word, accumulator, 15),
+                                false,
+                            ),
+                            (rotated, true),
+                        ] {
+                            if matches_byte(value, target) {
+                                next.push((
+                                    value,
+                                    if rotate {
+                                        mask | (1 << index)
+                                    } else {
+                                        mask
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    paths = next;
+                    if paths.is_empty() || paths.len() > 256 {
+                        break;
+                    }
+                }
+                for (_, mask) in paths {
+                    let mut operations =
+                        vec![LinearOpcode::NoOperation; prefix];
+                    operations.push(LinearOpcode::RelocateDataPointer);
+                    for index in 0..N {
+                        if index == first_split || index == second_split {
+                            operations.push(LinearOpcode::RelocateDataPointer);
+                        }
+                        operations.extend([
+                            if mask & (1 << index) == 0 {
+                                LinearOpcode::CrazyData
+                            } else {
+                                LinearOpcode::RotateData
+                            },
+                            LinearOpcode::OutputByte,
+                        ]);
+                    }
+                    operations.push(LinearOpcode::Halt);
+                    if let Some(layout) = verified_output_stream_layout(
+                        profile,
+                        &operations,
+                        expected,
+                        source_cells,
+                    ) {
+                        return Some(layout);
+                    }
+                }
+            }
+        }
+    }
+    None
+}

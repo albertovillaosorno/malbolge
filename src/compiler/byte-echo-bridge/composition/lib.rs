@@ -6815,6 +6815,11 @@ pub fn encode_distinct_literal_triple(
         }
     }
     verified_four_write_triple_layout(profile, expected, &source_cells)
+        .or_else(|| {
+            search_output_stream::verified_three_relocation_write_layout(
+                profile, expected, &source_cells,
+            )
+        })
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 

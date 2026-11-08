@@ -4051,6 +4051,25 @@ fn verify_distinct_triple_grammar(
             "distinct-literal triple relocation disagrees",
         ));
     }
+    // Three live relocation regions are a separate source-length-sensitive
+    // grammar. Every move follows a completed guest output and precedes
+    // another real arithmetic write. The independent layout admission below
+    // must still prove each operand fresh and every write source-disjoint.
+    if prefix <= 32 {
+        let tail = &decoded[prefix..];
+        if tail.len() == 10
+            && [0, 3, 6].iter().all(|&index| tail[index] == b'j')
+            && [1, 4, 7]
+                .iter()
+                .all(|&index| matches!(tail[index], b'p' | b'*'))
+            && [2, 5, 8]
+                .iter()
+                .all(|&index| tail[index] == output_instruction)
+            && tail[9] == b'v'
+        {
+            return Ok(3);
+        }
+    }
     let mut cursor = prefix + 1;
     let mut gaps = Vec::with_capacity(4);
     let mut after_write = Vec::with_capacity(4);

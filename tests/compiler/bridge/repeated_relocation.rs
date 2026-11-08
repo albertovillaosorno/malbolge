@@ -164,3 +164,161 @@ fn second_relocation_after_two_guest_outputs_is_not_count_specific()
     }
     Ok(())
 }
+
+#[test]
+fn third_live_relocation_has_an_independent_proposal() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing graphical phases")?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    // Build the original graphical program directly from decoder phases,
+    // not by asking the layout checker under test to encode the guest.
+    let original = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing positional source cell")?;
+    let mut vm = ProfileMachine::from_source(profile, &original, vec![255, 0])
+        .map_err(|error| format!("independent three-j load: {error:?}"))?;
+    if !matches!(vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+    {
+        return Err(String::from("original three-j guest did not halt"));
+    }
+    let expected: [u8; 3] = vm
+        .output()
+        .try_into()
+        .map_err(|error| format!("three-j output: {error:?}"))?;
+    assert_eq!(expected, [0x51, 0xa2, 0xfe]);
+    if vm.input_consumed() != 0 {
+        return Err(String::from("three-j guest consumed stdin"));
+    }
+    assert_eq!(proposed_output_stream(&operations, &cells), Some(expected));
+    let recovered =
+        verified_three_relocation_write_layout(profile, expected, &cells)
+            .ok_or("proposer missed independent live three-j guest")?;
+    assert_eq!(recovered.data_write_positions().iter().flatten().count(), 3);
+    assert_eq!(recovered.source(), original);
+    let step_limit = recovered.source().len();
+    for input in [Vec::new(), vec![0, 255, 1]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| format!("recovered guest load: {error:?}"))?;
+        if !matches!(replay.run(step_limit),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == step_limit)
+            || replay.output() != expected
+            || replay.input_consumed() != 0
+        {
+            return Err(String::from("three-j recovered guest drifted"));
+        }
+    }
+    let mut forged = expected;
+    forged[2] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}
+
+#[test]
+fn third_relocation_after_two_effects_is_not_a_fixed_split()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing graphical phases")?;
+    let mut operations = Vec::new();
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing positional source byte")?;
+    let mut oracle = ProfileMachine::from_source(profile, &raw, Vec::new())
+        .map_err(|error| format!("original five-output VM: {error:?}"))?;
+    if !matches!(oracle.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len())
+    {
+        return Err(String::from("original five-output VM did not halt"));
+    }
+    let expected: [u8; 5] = oracle
+        .output()
+        .try_into()
+        .map_err(|error| format!("five source bytes: {error:?}"))?;
+    assert_eq!(expected, [0x54, 0x08, 0xa7, 0xb1, 0xbc]);
+    let original =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or("five-byte source failed independent layout proof")?;
+    assert_eq!(original.source(), raw);
+    assert_eq!(original.data_write_positions().iter().flatten().count(), 5);
+    let recovered =
+        verified_three_relocation_write_layout(profile, expected, &cells)
+            .ok_or("three-j grammar missed a later split")?;
+    let jumps = recovered
+        .source()
+        .iter()
+        .enumerate()
+        .filter(|(position, byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(**byte),
+                u32::try_from(*position).unwrap_or(u32::MAX),
+            ) == Some(b'j')
+        })
+        .count();
+    assert_eq!(jumps, 3);
+    assert_eq!(recovered.data_write_positions().iter().flatten().count(), 5);
+    let guest_steps = recovered.source().len();
+    for data in [Vec::new(), vec![0, 255]] {
+        let mut guest =
+            ProfileMachine::from_source(profile, recovered.source(), data)
+                .map_err(|error| {
+                    format!("five-output replay load: {error:?}")
+                })?;
+        assert!(matches!(guest.run(guest_steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == guest_steps));
+        assert_eq!(guest.output(), expected);
+        assert_eq!(guest.input_consumed(), 0);
+    }
+    Ok(())
+}

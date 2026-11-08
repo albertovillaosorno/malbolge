@@ -73,6 +73,67 @@ class CompoundCPipelineTests(unittest.TestCase):
         self.assertEqual(reference_bytes(), EXPECTED)
         self.assertEqual(len(EXPECTED), 12)
 
+    def test_three_live_relocations_reach_real_guest_from_c(self) -> None:
+        """Closed C arithmetic/branch, three actual relocated guest writes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_three_relocation_branch_stream.c"
+        )
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(3):
+            next_value = (previous + current) & 255
+            if next_value % 2 == 0:
+                expected.append((next_value * 40 + 1) & 255)
+            else:
+                expected.append((next_value * 46 + 24) & 255)
+            previous, current = current, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex("51a2fe"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "three-relocations.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/three-relocation-c-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, expected)
+                self.assertRegex(replay.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            invalid = Path(scratch) / "three-relocations-invalid.c"
+            invalid.write_text(source.read_text().replace("next * 46U", "next / 0U"))
+            rejected_guest = Path(scratch) / "rejected.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(invalid)],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
+
     def test_whole_program_rejection_or_guest_parity(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
