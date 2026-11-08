@@ -2144,3 +2144,27 @@ streams left unread, and forged-byte refusal. Existing geometry priorities
 and per-search work limits are preserved. This neither proves shortest-code
 optimality nor implements general C runtime state: the original twelve-byte
 Fibonacci P0 acceptance remains pending.
+
+### Four live data regions with read-only operand revisits
+
+The complete twelve-iteration Fibonacci C source was rerun first. It still
+fails closed at guest layout, without publishing an artifact. A separate,
+independently encoded 29-instruction guest then demonstrated four live `j`
+relocations, nonpaired writes/outputs, repeated byte effects and a genuine
+read-only revisit of an earlier data operand. The normative VM emits
+`00 42 42 03 b7 b7 ff b9 a9` without consuming supplied input. Its exact
+positional source, data writes and VM execution independently pass the
+publisher, while the previous split proposer rejected the layout.
+
+The split proposal now admits three additional relocation operands after
+the first `j`, with each later `j` still required to read an untouched
+loader word. A data address may be revisited by a later no-op or output:
+it need not be reserved as another write. The independent layout verifier
+continues to exclude overlapping writes and replays the actual VM trace,
+so proposal uncertainty cannot authorize publication. A compact bounded
+four-region zero-prefixed fallback now explores the `3 * N + 2` source
+geometry after existing search priorities. The red-first regression proves
+recovery, four real relocations, normative guest replay under two inputs,
+and forged-output refusal. This is a finite candidate grammar, not general
+stream synthesis, runtime guest C state or completion of the P0 Fibonacci
+program.

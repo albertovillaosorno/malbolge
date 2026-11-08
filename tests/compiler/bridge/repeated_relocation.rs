@@ -1317,3 +1317,99 @@ fn validate_unbalanced_guest() -> Result<(), String> {
 fn three_regions_recover_unbalanced_source_geometry() {
     assert_eq!(validate_unbalanced_guest(), Ok(()));
 }
+
+#[test]
+fn four_regions_recover_nonpaired_guest_outputs() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // The fourth live j separates two real arithmetic/output regions;
+    // several outputs reuse A instead of requiring paired arithmetic.
+    let mut operations = unbalanced_three_region_source();
+    operations.insert(19, LinearOpcode::RelocateDataPointer);
+    assert_eq!(operations.len(), 29);
+    let original = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("independent four-j layout: {error:?}"))?;
+    let mut vm = ProfileMachine::from_source(profile, original.source(), vec![
+        255, 0, 128,
+    ])
+    .map_err(|error| format!("independent guest load: {error:?}"))?;
+    assert!(matches!(vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()));
+    assert_eq!(vm.input_consumed(), 0);
+    let expected: [u8; 9] = vm
+        .output()
+        .try_into()
+        .map_err(|error| format!("independent guest outputs: {error:?}"))?;
+    assert_eq!(proposed_output_stream(&operations, &cells), Some(expected));
+    assert!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_some(),
+        "four-region original failed independent guest verification"
+    );
+    let geometry = SearchGeometry {
+        memory: &[],
+        prefix: 8,
+        prefix_outputs: 1,
+        source_length: 29,
+    };
+    let splits = [14, 19, 22];
+    let spec = SplitSearchSpec {
+        geometry: &geometry,
+        additional_relocations: &splits,
+        terminal: TerminalSuffix::Noop,
+        step_budget: 32_768,
+    };
+    let recovered =
+        proposed_split_geometry_with_budget(profile, &cells, spec, expected)
+            .ok_or_else(|| {
+                format!(
+                    "missed independently valid four-j stream {expected:02x?}"
+                )
+            })?;
+    let verified = verified_output_stream_layout(
+        profile, &recovered, expected, &cells,
+    )
+    .ok_or("four-j proposal failed independent output and layout admission")?;
+    assert_eq!(
+        recovered
+            .iter()
+            .filter(|&&op| op == LinearOpcode::RelocateDataPointer)
+            .count(),
+        4
+    );
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, verified.source(), input)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        assert!(matches!(
+            replay.run(recovered.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == recovered.len()
+        ));
+        assert_eq!(replay.output(), expected);
+        assert_eq!(replay.input_consumed(), 0);
+    }
+    let published =
+        verified_four_split_relocation_output_layout(profile, expected, &cells)
+            .ok_or("production four-region fallback missed verified guest")?;
+    assert_eq!(
+        published
+            .source()
+            .iter()
+            .enumerate()
+            .filter(|(index, byte)| {
+                malbolge::decode_profile_instruction(
+                    u32::from(**byte),
+                    u32::try_from(*index).unwrap_or(u32::MAX),
+                ) == Some(b'j')
+            })
+            .count(),
+        4
+    );
+    let mut forged = expected;
+    forged[4] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

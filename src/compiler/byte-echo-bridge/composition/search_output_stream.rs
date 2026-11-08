@@ -446,7 +446,7 @@ fn split_unwritten_addresses<const N: usize>(
     if prefix_outputs > prefix
         || prefix_outputs > target_emitted
         || expected.get(..prefix_outputs)?.iter().any(|&byte| byte != 0)
-        || !(1..=2).contains(&additional_relocations.len())
+        || !(1..=3).contains(&additional_relocations.len())
         || additional_relocations
             .first()
             .is_none_or(|&position| position <= prefix.saturating_add(1))
@@ -470,19 +470,23 @@ fn split_unwritten_addresses<const N: usize>(
         .get(tail_slot)?;
     *source.get_mut(source_length.checked_sub(1)?)? =
         *source_cells.get(source_length.checked_sub(1)?)?.get(5)?;
-    // Conservatively reserve every data address, including no-ops and j
-    // operands. This guarantees that a later j reads an untouched loader
-    // word regardless of which arithmetic paths the beam selects.
+    // Track every visited data address to keep future j operands untouched.
+    // A no-op/output may revisit an earlier operand after relocation: it
+    // does not write memory, and the independent verifier rechecks the
+    // complete candidate's write footprint and actual VM trace.
     let mut reserved = BTreeSet::new();
     let mut addresses = vec![None; source_length];
     for position in first_body..source_length.saturating_sub(2) {
-        if pointer < source_length
-            || pointer >= memory_words
-            || !reserved.insert(pointer)
-        {
+        if pointer < source_length || pointer >= memory_words {
             return None;
         }
+        let untouched = reserved.insert(pointer);
         if additional_relocations.binary_search(&position).is_ok() {
+            if !untouched {
+                // This j may read a prior arithmetic write. Without a
+                // path-specific memory version its operand is unknowable.
+                return None;
+            }
             let operand =
                 super::layout::unwritten_loader_word(&source, pointer, profile)
                     .ok()?;
@@ -1097,6 +1101,79 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
     None
 }
 
+/// Explore four live data-pointer regions with outputs that may reuse A.
+/// The extra source relocation can revisit an already read data cell as a
+/// no-op/output, whereas each later j operand still must be untouched.
+/// This is a bounded zero-prefixed proposal, never independent admission.
+fn verified_four_split_relocation_output_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if !(8..=12).contains(&N)
+        || expected.first().copied() != Some(0)
+        || profile.id() != malbolge::current_profile().id()
+    {
+        return None;
+    }
+    // The compact shape has three additional j operands, an output before
+    // the first j, and at least one real operation in each relocated region.
+    let length = N.checked_mul(3)?.checked_add(2)?;
+    let prefix = 8usize;
+    if length > source_cells.len()
+        || length
+            < N.saturating_add(required_writes(0, &expected))
+                .saturating_add(6)
+    {
+        return None;
+    }
+    let body = length.checked_sub(prefix)?.checked_sub(3)?;
+    let start = prefix.checked_add(1)?;
+    let positions = [
+        start.checked_add(body.div_euclid(4))?.checked_add(1)?,
+        start
+            .checked_add(body.checked_mul(2)?.div_euclid(4))?
+            .checked_add(1)?,
+        start.checked_add(body.checked_mul(3)?.div_euclid(4))?,
+    ];
+    let leading_zeros = expected
+        .iter()
+        .take_while(|&&byte| byte == 0)
+        .count()
+        .min(prefix);
+    for prefix_outputs in (0..=leading_zeros).rev() {
+        let geometry = SearchGeometry {
+            memory: &[],
+            prefix,
+            prefix_outputs,
+            source_length: length,
+        };
+        let spec = SplitSearchSpec {
+            geometry: &geometry,
+            additional_relocations: &positions,
+            terminal: TerminalSuffix::Noop,
+            step_budget: 32_768,
+        };
+        let Some(operations) = proposed_split_geometry_with_budget(
+            profile,
+            source_cells,
+            spec,
+            expected,
+        ) else {
+            continue;
+        };
+        if let Some(layout) = verified_output_stream_layout(
+            profile,
+            &operations,
+            expected,
+            source_cells,
+        ) {
+            return Some(layout);
+        }
+    }
+    None
+}
+
 /// Try short multi-effect guest traces without extending hostile-input cost.
 ///
 /// Unlike a fixed `p`/output ladder, this bounded beam admits repeated
@@ -1186,6 +1263,13 @@ pub(super) fn verified_short_output_layout<const N: usize>(
     })
     .or_else(|| {
         verified_three_split_relocation_output_layout(
+            profile,
+            expected,
+            source_cells,
+        )
+    })
+    .or_else(|| {
+        verified_four_split_relocation_output_layout(
             profile,
             expected,
             source_cells,
