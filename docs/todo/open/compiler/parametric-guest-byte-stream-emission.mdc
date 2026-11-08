@@ -816,3 +816,13 @@ a compiler capability gap, not a reason to return to N+1.
   source and a third relocation reject. The current output-stream proposal
   search does not yet generate this layout, so the original twelve-output
   Fibonacci C program still fails closed at guest layout. P0 is pending.
+
+- A later red-first guest experiment proves three real `j` relocations
+  interleaved with crazy/rotate and three output effects, under both canonical
+  normative VMs. The encoder previously refused a third `j` solely by count.
+  The repaired per-relocation proof now admits unchanged loader operands and
+  source-disjoint writes, with cached long-tail recurrence checkpoints.
+  A separate far-address third `j` and forged-source refusal are replayed
+  against independent VM state. The original twelve-byte Fibonacci C still
+  reaches layout refusal, and the production proposal search does not yet
+  synthesize repeated relocations. P0 remains pending.

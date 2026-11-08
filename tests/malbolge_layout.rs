@@ -2100,8 +2100,8 @@ fn auto_relocate_first_fit_matches_all_profile_decoder_phases_and_suffix_sizes()
 }
 
 #[test]
-fn second_relocation_terminal_and_triple_relocation_boundaries()
--> Result<(), String> {
+fn terminal_relocation_continuation_and_safe_third_move() -> Result<(), String>
+{
     let profile = current_profile();
     let mut operations = vec![LinearOpcode::NoOperation; 8];
     operations.push(LinearOpcode::RelocateDataPointer);
@@ -2133,10 +2133,92 @@ fn second_relocation_terminal_and_triple_relocation_boundaries()
     verify_execution_witness(&mut continued_vm, &continued_layout)?;
     let mut triple = operations;
     triple.insert(9, LinearOpcode::RelocateDataPointer);
+    let triple_layout = encode_linear_layout(profile, &triple)
+        .map_err(|error| format!("third relocation layout: {error:?}"))?;
+    let mut triple_vm = ProfileMachine::from_source(
+        profile,
+        triple_layout.source(),
+        Vec::new(),
+    )
+    .map_err(|error| format!("third relocation VM: {error:?}"))?;
+    verify_execution_witness(&mut triple_vm, &triple_layout)?;
+    assert_eq!(triple_vm.output().len(), 1);
+    let mut tampered = triple_layout.source().to_vec();
+    tampered[9] = admitted.source()[9];
     assert_eq!(
-        encode_linear_layout(profile, &triple),
-        Err(LinearLayoutError::UnsafeDataPlacement),
+        admit_linear_layout(
+            profile,
+            &triple,
+            &tampered,
+            LinearProfileIdentity {
+                id: profile.id(),
+                fingerprint: profile.fingerprint(),
+            },
+        ),
+        Err(LinearLayoutError::DecodeMismatch { position: 9 }),
     );
+    Ok(())
+}
+
+#[test]
+fn repeated_fresh_loader_relocations_match_independent_guest_vm()
+-> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let mut operations = vec![LinearOpcode::NoOperation; 8];
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let mut baseline = operations.clone();
+        baseline[14] = LinearOpcode::NoOperation;
+        let initial = encode_linear_layout(profile, &baseline)
+            .map_err(|error| format!("two-relocation baseline: {error:?}"))?;
+        let mut raw = initial.source().to_vec();
+        raw[14] = (33..=126)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), 14) == Some(b'j')
+            })
+            .ok_or("no third-j graphical source")?;
+        let mut oracle = ProfileMachine::from_source(profile, &raw, vec![0x7f])
+            .map_err(|error| format!("independent guest load: {error:?}"))?;
+        if !matches!(oracle.run(raw.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len())
+        {
+            return Err(String::from(
+                "independent triple-j guest did not halt",
+            ));
+        }
+        let expected = oracle.output().to_vec();
+        if expected.len() != 3 || oracle.input_consumed() != 0 {
+            return Err(String::from("triple-j guest I/O did not execute"));
+        }
+        let layout =
+            encode_linear_layout(profile, &operations).map_err(|error| {
+                format!("verified triple-j guest refused: {error:?}")
+            })?;
+        if layout.source() != raw
+            || layout.data_write_positions().iter().flatten().count() != 3
+            || layout.data_pointer_positions().get(15)
+                == initial.data_pointer_positions().get(15)
+        {
+            return Err(String::from("third relocation was not live"));
+        }
+        let mut checked =
+            ProfileMachine::from_source(profile, layout.source(), vec![0])
+                .map_err(|error| format!("verified guest load: {error:?}"))?;
+        verify_execution_witness(&mut checked, &layout)?;
+        if checked.output() != expected {
+            return Err(String::from("triple relocation guest output drifted"));
+        }
+    }
     Ok(())
 }
 
@@ -2264,6 +2346,58 @@ fn midstream_second_relocation_preserves_two_real_guest_outputs()
     ) != Err(LinearLayoutError::DecodeMismatch { position: 11 })
     {
         return Err(String::from("forged nonterminal j passed admission"));
+    }
+    Ok(())
+}
+
+#[test]
+fn distant_loader_operand_replays_exact_guest_state()
+-> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let mut operations = vec![LinearOpcode::NoOperation; 13];
+        for index in [8usize, 9usize, 10usize] {
+            operations[index] = LinearOpcode::RelocateDataPointer;
+        }
+        operations[12] = LinearOpcode::Halt;
+        let mut baseline = operations.clone();
+        baseline[10] = LinearOpcode::NoOperation;
+        let initial = encode_linear_layout(profile, &baseline)
+            .map_err(|error| format!("two-relocation candidate: {error:?}"))?;
+        let mut raw = initial.source().to_vec();
+        raw[10] = (33..=126)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), 10) == Some(b'j')
+            })
+            .ok_or("missing third-j code byte")?;
+        let mut oracle = ProfileMachine::from_source(profile, &raw, Vec::new())
+            .map_err(|error| format!("independent far-tail VM: {error:?}"))?;
+        if !matches!(oracle.run(raw.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len())
+        {
+            return Err(String::from(
+                "independent far-tail guest did not halt",
+            ));
+        }
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("third far-tail relocation: {error:?}"))?;
+        if layout.source() != raw
+            || layout.data_pointer_positions()[10] <= 1024
+            || layout.data_pointer_positions()[11]
+                == layout.data_pointer_positions()[10]
+        {
+            return Err(String::from(
+                "distinct far-tail relocations were not proven",
+            ));
+        }
+        let mut replay =
+            ProfileMachine::from_source(profile, layout.source(), Vec::new())
+                .map_err(|error| format!("traced far-tail guest: {error:?}"))?;
+        verify_execution_witness(&mut replay, &layout)?;
+        if !replay.output().is_empty() || replay.input_consumed() != 0 {
+            return Err(String::from(
+                "far-tail guest unexpectedly used byte I/O",
+            ));
+        }
     }
     Ok(())
 }

@@ -1858,3 +1858,28 @@ A replaced second-j opcode and a third relocation still reject. This
 advances address-sensitive guest layout, not the byte-stream proposal search:
 the C-to-guest publisher does not yet synthesize this nonterminal shape,
 and the original Fibonacci output oracle remains unsupported. P0 stays open.
+
+### Source-bounded repeated relocation with loader checkpoints
+
+The unchanged full twelve-iteration Fibonacci C program remains a guest-layout
+refusal, not an emitted guest program. A separate red-first, source-independent
+18-step Malbolge experiment instead executes three live `j` operations,
+interleaved with crazy/rotate writes and three actual guest byte outputs. The
+previous layout checker rejected the graphical program solely because it
+permitted no more than two relocations. Both historical and current normative
+VMs execute the raw independently reconstructed source; the repaired layout
+encoder now emits those identical graphical bytes and matches every traced
+code, data-pointer, encryption and write address. A second triple-`j` guest
+reads a later operand thousands or millions of words past source and changes
+D again; its independent VM trace agrees under both profiles.
+
+The linear admission proof now checks each relocation independently: a later
+`j` must read an exact source-shadow or untouched expanded-loader word, and
+all following arithmetic
+writes must remain disjoint from graphical source, with exact D wraparound.
+Sparse 1024-word recurrence checkpoints amortize distant, repeated and
+backward operand queries without storing full VM memory. A forged `j` opcode
+still rejects at independent source re-admission. This removes an artificial
+relocation *count* ceiling, not the proof limits on modified operands,
+post-relocation jumps, source aliasing, runtime input-dependent state, or
+full source-C synthesis. The P0 acceptance oracle remains unsupported.
