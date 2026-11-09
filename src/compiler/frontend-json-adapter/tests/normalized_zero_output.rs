@@ -187,6 +187,84 @@ fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
 }
 
 #[test]
+fn source_ordered_literal_ssa_preserves_repeated_and_changed_bytes()
+-> Result<(), String> {
+    // Distinct guest layouts are not inferred from this frontend projection.
+    // The source-backed byte effects must preserve both SSA identity and order.
+    for (expected, definitions, uses, mode) in [
+        (
+            [65u8, 65, 65],
+            vec![(0u32, 65u8)],
+            vec![0u32, 0, 0],
+            FrontendGuestMode::SeededByteLiteral,
+        ),
+        (
+            [65u8, 66, 67],
+            vec![(0u32, 65u8), (1, 66), (2, 67)],
+            vec![0u32, 1, 2],
+            FrontendGuestMode::DistinctLiteralTriple,
+        ),
+        (
+            [65u8, 65, 66],
+            vec![(0u32, 65u8), (1, 66)],
+            vec![0u32, 0, 1],
+            FrontendGuestMode::DistinctLiteralTriple,
+        ),
+    ] {
+        let mut source = repeated_literal_input(65, 3);
+        let nodes = source
+            .get_mut("nodes")
+            .and_then(Value::as_array_mut)
+            .ok_or("missing normalized Clang nodes")?;
+        for (position, value) in [5usize, 9, 13].into_iter().zip(expected) {
+            let literal = nodes.get_mut(position).ok_or("missing C literal")?;
+            literal["literal"] = json!(value.to_string());
+            literal["constant_integer"] = json!(value.to_string());
+        }
+        let (wire, observed_mode) =
+            canonical_guest_typed_ir(&bytes(&source))
+                .map_err(|error| format!("{expected:?}: {error:?}"))?;
+        assert_eq!(observed_mode, mode);
+        let module = typed::canonical_module(&wire)
+            .map_err(|error| format!("canonical typed IR: {error:?}"))?;
+        let instructions = module
+            .functions()
+            .first()
+            .and_then(|function| function.blocks().first())
+            .ok_or("missing source-proven function")?
+            .instructions();
+        let mut observed_definitions = Vec::new();
+        let mut observed_uses = Vec::new();
+        for instruction in instructions {
+            match instruction.instruction() {
+                typed::Instruction::ConstantInteger {
+                    constant,
+                    result,
+                    ..
+                } => {
+                    let value = constant
+                        .little_endian()
+                        .first()
+                        .copied()
+                        .ok_or("missing byte constant")?;
+                    assert_eq!(constant.bit_width(), 8);
+                    observed_definitions.push((result.value(), value));
+                },
+                typed::Instruction::ByteOutput { value } => {
+                    observed_uses.push(value.value());
+                },
+                other => {
+                    return Err(format!("unexpected source effect: {other:?}"));
+                },
+            }
+        }
+        assert_eq!(observed_definitions, definitions);
+        assert_eq!(observed_uses, uses);
+    }
+    Ok(())
+}
+
+#[test]
 #[expect(
     clippy::panic_in_result_fn,
     reason = "real VM witness failure must identify the offending source literal"
@@ -787,20 +865,13 @@ fn malformed_character_literal_evidence_fails_closed() {
 #[expect(
     clippy::indexing_slicing,
     clippy::default_numeric_fallback,
-    clippy::panic_in_result_fn,
-    reason = "fixed-shape rejected unsupported or drifted C literal fixtures"
+    reason = "rejected forged C literal metadata and source ranges"
 )]
-fn unsupported_or_inconsistent_nonzero_calls_fail_closed() -> Result<(), String> {
-    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
-    let mut mutations = vec![
-        repeated_literal_input(1, 1),
-        repeated_literal_input(23, 2),
-        repeated_literal_input(255, 1),
-    ];
-    let mut mismatched = repeated_literal_input(65, 2);
-    mismatched["nodes"][9]["literal"] = json!("66");
-    mismatched["nodes"][9]["constant_integer"] = json!("66");
-    mutations.push(mismatched);
+fn unsupported_or_inconsistent_nonzero_calls_fail_closed() {
+    // A source-proven 1, 23/23, 255 or 65/66 trace is semantically valid;
+    // a newly verified guest may now implement it. Reject forged evidence,
+    // not an authentic byte value that target synthesis can prove.
+    let mut mutations = Vec::new();
     let mut hex = repeated_literal_input(23, 1);
     hex["nodes"][5]["literal"] = json!("0x17");
     mutations.push(hex);
@@ -817,25 +888,11 @@ fn unsupported_or_inconsistent_nonzero_calls_fail_closed() -> Result<(), String>
     forged_span["nodes"][9]["span"]["end"]["byte"] = json!(59);
     mutations.push(forged_span);
     for (index, source) in mutations.iter().enumerate() {
-        // An unsupported literal may form valid MCTI but MUST be refused by
-        // the independent guest layout; the source adapter itself refuses
-        // incorrect literals, spans, and mixed-byte traces.
-        if index < 3 {
-            let (wire, mode) = canonical_guest_typed_ir(&bytes(source))
-                .map_err(|error| format!("C literal {index} admission: {error:?}"))?;
-            assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
-            assert!(
-                adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile).is_err(),
-                "unsupported source byte {index} reached target"
-            );
-        } else {
-            assert!(
-                canonical_guest_typed_ir(&bytes(source)).is_err(),
-                "C literal source mutation {index} was accepted"
-            );
-        }
+        assert!(
+            canonical_guest_typed_ir(&bytes(source)).is_err(),
+            "forged C literal metadata mutation {index} was accepted"
+        );
     }
-    Ok(())
 }
 
 #[test]
@@ -856,10 +913,6 @@ fn forged_second_zero_call_or_excess_calls_fail_closed() {
     changed["nodes"][7]["parent"] = json!(3);
     mutations.push(changed);
     let mut changed = base.clone();
-    changed["nodes"][9]["constant_integer"] = json!("1");
-    changed["nodes"][9]["literal"] = json!("1");
-    mutations.push(changed);
-    let mut changed = base.clone();
     changed["nodes"][6]["span"]["begin"]["byte"] = json!(46);
     mutations.push(changed);
     let mut changed = base.clone();
@@ -868,13 +921,69 @@ fn forged_second_zero_call_or_excess_calls_fail_closed() {
     let mut changed = base;
     let _removed = changed["nodes"].as_array_mut().unwrap().remove(8);
     mutations.push(changed);
-    mutations.push(repeated_input(34));
     for (index, candidate) in mutations.iter().enumerate() {
         assert!(
             canonical_guest_typed_ir(&bytes(candidate)).is_err(),
             "unsupported repeated C output mutation {index} was accepted"
         );
     }
+}
+
+#[test]
+fn thirty_four_source_proven_zero_calls_preserve_all_effects()
+-> Result<(), String> {
+    // A valid 34-call C source is no longer outside the supported frontend
+    // bound. Its target layout must still be independently guest-verified.
+    let (wire, mode) = canonical_guest_typed_ir(&bytes(&repeated_input(34)))
+        .map_err(|error| format!("34 C zero-output calls: {error:?}"))?;
+    assert_eq!(mode, FrontendGuestMode::InitialZeroOutput);
+    let module = typed::canonical_module(&wire)
+        .map_err(|error| format!("canonical typed IR: {error:?}"))?;
+    let instructions = module
+        .functions()
+        .first()
+        .and_then(|function| function.blocks().first())
+        .ok_or("missing C function")?
+        .instructions();
+    assert_eq!(instructions.len(), 35);
+    assert!(instructions.iter().skip(1).all(|effect| matches!(
+        effect.instruction(),
+        typed::Instruction::ByteOutput { .. }
+    )));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "source-proven zero-then-one mutation covers its exact C byte"
+)]
+fn zero_then_one_requires_real_guest_or_explicit_refusal() -> Result<(), String>
+{
+    let mut source = repeated_input(2);
+    source["nodes"][9]["constant_integer"] = json!("1");
+    source["nodes"][9]["literal"] = json!("1");
+    let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+        .map_err(|error| format!("legitimate C byte 1: {error:?}"))?;
+    assert_eq!(mode, FrontendGuestMode::ZeroThenLiteral);
+    let profile =
+        target_profile("malbolge-2026").ok_or("missing current profile")?;
+    if let Ok(compiled) =
+        adapter::compile_canonical_typed_zero_then_literal(&wire, profile)
+    {
+        let mut vm = ProfileMachine::from_source(
+            profile,
+            compiled.layout().source(),
+            Vec::new(),
+        )
+        .map_err(|error| format!("load zero-then-one VM: {error:?}"))?;
+        assert!(matches!(
+            vm.run(compiled.layout().executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.output(), &[0, 1]);
+    }
+    Ok(())
 }
 
 #[expect(

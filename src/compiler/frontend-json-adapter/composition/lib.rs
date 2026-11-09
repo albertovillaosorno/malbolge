@@ -32,7 +32,8 @@
 //
 
 //! Closed, dependency-isolated adapter from normalized C frontend JSON to MCTI.
-//! This is an artifact boundary, not a native C frontend or executable entry ABI.
+//! This is an artifact boundary, not a native C frontend or executable entry
+//! ABI.
 
 #[path = "../../typed-ir/composition/lib.rs"]
 pub mod typed;
@@ -442,6 +443,7 @@ struct LiteralOutputNodes<'node> {
     forty_seventh_byte: Option<u8>,
     forty_eighth_byte: Option<u8>,
     returned: Option<&'node Node>,
+    source_bytes: Vec<u8>,
 }
 
 // Track the Clang semantic preorder through nested lexical compound blocks.
@@ -1169,6 +1171,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         return Err(FrontendJsonError::Unsupported);
     }
     let mut calls = Vec::new();
+    let mut source_bytes = Vec::new();
     let mut selected_byte = None;
     let mut mixed_byte = None;
     let mut third_byte = None;
@@ -2023,6 +2026,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         scope.previous_end = node.span.end.byte;
         scope.previous_span_has_terminator = false;
         calls.push((call, argument));
+        source_bytes.push(byte);
         offset = end;
     }
     let root = scopes.first().ok_or(FrontendJsonError::Unsupported)?;
@@ -2537,11 +2541,14 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         forty_seventh_byte,
         forty_eighth_byte,
         returned,
+        source_bytes,
     })
 }
 
-/// Compile one through 33 identical source-proven byte `putchar(N)` calls
-/// with bounded inert statements and an explicit or implicit void return.
+/// Lower up to 48 source-proven literal `putchar(N)` outputs to canonical IR.
+///
+/// The guest layout remains separately responsible for proving the executable
+/// effect trace; this layer only preserves validated C output semantics.
 #[expect(
     clippy::too_many_lines,
     reason = "canonical typed-effect projection and re-admission"
@@ -2618,6 +2625,7 @@ fn canonical_literal_output_typed_ir(
         forty_eighth_byte,
         calls,
         returned,
+        source_bytes,
     } = admit_literal_output_nodes(&input.nodes)?;
     let name = function
         .name
@@ -2672,576 +2680,33 @@ fn canonical_literal_output_typed_ir(
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let first_argument = calls.first().ok_or(FrontendJsonError::Unsupported)?.1;
-    let mut instructions = Vec::with_capacity(calls.len().saturating_mul(2).saturating_add(1));
-    instructions.push(LocatedInstruction::new(
-        Instruction::ConstantInteger {
-            constant: IntegerConstant::new(8, vec![byte]),
-            result: ValueId::new(0),
-            type_id: TypeId::new(0),
-        },
-        typed_span(&first_argument.span),
-    ));
-    for (index, (call, argument)) in calls.into_iter().enumerate() {
-        if index == 1
-            && let Some(second) = mixed_byte
-        {
+    // Source admission already proved each argument's complete Clang subtree.
+    // Preserve one SSA constant per changed output while reusing the first
+    // definition for repeated identical literals. The independent target
+    // verifier, not an output-count-specific SSA builder, admits guest code.
+    if source_bytes.len() != calls.len() {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    let mut instructions = Vec::with_capacity(calls.len().saturating_mul(2));
+    let mut last_value_id = 0u32;
+    for (index, ((call, argument), current_byte)) in
+        calls.into_iter().zip(source_bytes).enumerate()
+    {
+        // Multiple repeated first-byte calls reuse the first SSA value;
+        // every distinct call thereafter receives the next contiguous ID.
+        let value_id = if current_byte == byte {
+            0
+        } else {
+            last_value_id = last_value_id
+                .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            last_value_id
+        };
+        if index == 0 || value_id != 0 {
             instructions.push(LocatedInstruction::new(
                 Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![second]),
-                    result: ValueId::new(1),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 2
-            && let Some(third) = third_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![third]),
-                    result: ValueId::new(2),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 3
-            && let Some(fourth) = fourth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![fourth]),
-                    result: ValueId::new(3),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 4
-            && let Some(fifth) = fifth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![fifth]),
-                    result: ValueId::new(4),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 5
-            && let Some(sixth) = sixth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![sixth]),
-                    result: ValueId::new(5),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 6
-            && let Some(seventh) = seventh_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![seventh]),
-                    result: ValueId::new(6),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 7
-            && let Some(eighth) = eighth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![eighth]),
-                    result: ValueId::new(7),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 8
-            && let Some(ninth) = ninth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![ninth]),
-                    result: ValueId::new(8),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 9
-            && let Some(tenth) = tenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![tenth]),
-                    result: ValueId::new(9),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 10
-            && let Some(eleventh) = eleventh_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![eleventh]),
-                    result: ValueId::new(10),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 11
-            && let Some(twelfth) = twelfth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twelfth]),
-                    result: ValueId::new(11),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 12
-            && let Some(thirteenth) = thirteenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirteenth]),
-                    result: ValueId::new(12),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 13
-            && let Some(fourteenth) = fourteenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![fourteenth]),
-                    result: ValueId::new(13),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 14
-            && let Some(fifteenth) = fifteenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![fifteenth]),
-                    result: ValueId::new(14),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 15
-            && let Some(sixteenth) = sixteenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![sixteenth]),
-                    result: ValueId::new(15),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 16
-            && let Some(seventeenth) = seventeenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![seventeenth]),
-                    result: ValueId::new(16),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 17
-            && let Some(eighteenth) = eighteenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![eighteenth]),
-                    result: ValueId::new(17),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 18
-            && let Some(nineteenth) = nineteenth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![nineteenth]),
-                    result: ValueId::new(18),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 19
-            && let Some(twentieth) = twentieth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twentieth]),
-                    result: ValueId::new(19),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 20
-            && let Some(twenty_first) = twenty_first_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_first]),
-                    result: ValueId::new(20),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 21
-            && let Some(twenty_second) = twenty_second_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_second]),
-                    result: ValueId::new(21),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 22
-            && let Some(twenty_third) = twenty_third_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_third]),
-                    result: ValueId::new(22),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 23
-            && let Some(twenty_fourth) = twenty_fourth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_fourth]),
-                    result: ValueId::new(23),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 24
-            && let Some(twenty_fifth) = twenty_fifth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_fifth]),
-                    result: ValueId::new(24),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 25
-            && let Some(twenty_sixth) = twenty_sixth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_sixth]),
-                    result: ValueId::new(25),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 26
-            && let Some(twenty_seventh) = twenty_seventh_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_seventh]),
-                    result: ValueId::new(26),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 27
-            && let Some(twenty_eighth) = twenty_eighth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_eighth]),
-                    result: ValueId::new(27),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 28
-            && let Some(twenty_ninth) = twenty_ninth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![twenty_ninth]),
-                    result: ValueId::new(28),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 29
-            && let Some(thirtieth) = thirtieth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirtieth]),
-                    result: ValueId::new(29),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 30
-            && let Some(thirty_first) = thirty_first_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_first]),
-                    result: ValueId::new(30),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 31
-            && let Some(thirty_second) = thirty_second_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_second]),
-                    result: ValueId::new(31),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 32
-            && let Some(thirty_third) = thirty_third_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_third]),
-                    result: ValueId::new(32),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 33
-            && let Some(thirty_fourth) = thirty_fourth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_fourth]),
-                    result: ValueId::new(33),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 34
-            && let Some(thirty_fifth) = thirty_fifth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_fifth]),
-                    result: ValueId::new(34),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 35
-            && let Some(thirty_sixth) = thirty_sixth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_sixth]),
-                    result: ValueId::new(35),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 36
-            && let Some(thirty_seventh) = thirty_seventh_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_seventh]),
-                    result: ValueId::new(36),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 37
-            && let Some(thirty_eighth) = thirty_eighth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_eighth]),
-                    result: ValueId::new(37),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 38
-            && let Some(thirty_ninth) = thirty_ninth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![thirty_ninth]),
-                    result: ValueId::new(38),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 39
-            && let Some(fortieth) = fortieth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![fortieth]),
-                    result: ValueId::new(39),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 40
-            && let Some(forty_first) = forty_first_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_first]),
-                    result: ValueId::new(40),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 41
-            && let Some(forty_second) = forty_second_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_second]),
-                    result: ValueId::new(41),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 42
-            && let Some(forty_third) = forty_third_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_third]),
-                    result: ValueId::new(42),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 43
-            && let Some(forty_fourth) = forty_fourth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_fourth]),
-                    result: ValueId::new(43),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 44
-            && let Some(forty_fifth) = forty_fifth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_fifth]),
-                    result: ValueId::new(44),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 45
-            && let Some(forty_sixth) = forty_sixth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_sixth]),
-                    result: ValueId::new(45),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 46
-            && let Some(forty_seventh) = forty_seventh_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_seventh]),
-                    result: ValueId::new(46),
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&argument.span),
-            ));
-        }
-        if index == 47
-            && let Some(forty_eighth) = forty_eighth_byte
-        {
-            instructions.push(LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(8, vec![forty_eighth]),
-                    result: ValueId::new(47),
+                    constant: IntegerConstant::new(8, vec![current_byte]),
+                    result: ValueId::new(value_id),
                     type_id: TypeId::new(0),
                 },
                 typed_span(&argument.span),
@@ -3249,102 +2714,7 @@ fn canonical_literal_output_typed_ir(
         }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(
-                    if index == 47 && forty_eighth_byte.is_some() {
-                    47
-                } else if index == 46 && forty_seventh_byte.is_some() {
-                    46
-                } else if index == 45 && forty_sixth_byte.is_some() {
-                    45
-                } else if index == 44 && forty_fifth_byte.is_some() {
-                    44
-                } else if index == 43 && forty_fourth_byte.is_some() {
-                    43
-                } else if index == 42 && forty_third_byte.is_some() {
-                    42
-                } else if index == 41 && forty_second_byte.is_some() {
-                    41
-                } else if index == 40 && forty_first_byte.is_some() {
-                    40
-                } else if index == 39 && fortieth_byte.is_some() {
-                    39
-                } else if index == 38 && thirty_ninth_byte.is_some() {
-                    38
-                } else if index == 37 && thirty_eighth_byte.is_some() {
-                    37
-                } else if index == 36 && thirty_seventh_byte.is_some() {
-                    36
-                } else if index == 35 && thirty_sixth_byte.is_some() {
-                    35
-                } else if index == 34 && thirty_fifth_byte.is_some() {
-                    34
-                } else if index == 33 && thirty_fourth_byte.is_some() {
-                    33
-                } else if index == 32 && thirty_third_byte.is_some() {
-                    32
-                } else if index == 31 && thirty_second_byte.is_some() {
-                    31
-                } else if index == 30 && thirty_first_byte.is_some() {
-                    30
-                } else if index == 29 && thirtieth_byte.is_some() {
-                    29
-                } else if index == 28 && twenty_ninth_byte.is_some() {
-                    28
-                } else if index == 27 && twenty_eighth_byte.is_some() {
-                    27
-                } else if index == 26 && twenty_seventh_byte.is_some() {
-                    26
-                } else if index == 25 && twenty_sixth_byte.is_some() {
-                    25
-                } else if index == 24 && twenty_fifth_byte.is_some() {
-                    24
-                } else if index == 23 && twenty_fourth_byte.is_some() {
-                    23
-                } else if index == 22 && twenty_third_byte.is_some() {
-                    22
-                } else if index == 21 && twenty_second_byte.is_some() {
-                    21
-                } else if index == 20 && twenty_first_byte.is_some() {
-                    20
-                } else if index == 19 && twentieth_byte.is_some() {
-                    19
-                } else if index == 18 && nineteenth_byte.is_some() {
-                    18
-                } else if index == 17 && eighteenth_byte.is_some() {
-                    17
-                } else if index == 16 && seventeenth_byte.is_some() {
-                    16
-                } else if index == 15 && sixteenth_byte.is_some() {
-                    15
-                } else if index == 14 && fifteenth_byte.is_some() {
-                    14
-                } else if index == 13 && fourteenth_byte.is_some() {
-                    13
-                } else if index == 12 && thirteenth_byte.is_some() {
-                    12
-                } else if index == 11 && twelfth_byte.is_some() {
-                    11
-                } else if index == 10 && eleventh_byte.is_some() {
-                    10
-                } else if index == 9 && tenth_byte.is_some() {
-                    9
-                } else if index == 8 && ninth_byte.is_some() {
-                    8
-                } else if index == 7 && eighth_byte.is_some() {
-                    7
-                } else if index == 6 && seventh_byte.is_some() {
-                    6
-                } else if index == 5 && sixth_byte.is_some() {
-                    5
-                } else if index == 4 && fifth_byte.is_some() {
-                    4
-                } else if index == 3 && fourth_byte.is_some() {
-                    3
-                } else if index == 2 && third_byte.is_some() {
-                    2
-                } else {
-                    u32::from(index == 1 && mixed_byte.is_some())
-                }),
+                value: ValueId::new(value_id),
             },
             typed_span(&call.span),
         ));
