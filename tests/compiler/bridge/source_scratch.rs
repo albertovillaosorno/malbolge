@@ -75,8 +75,7 @@ fn fibonacci_prefix_uses_source_scratch_not_host_output() -> Result<(), String>
 }
 
 #[test]
-fn scratch_search_emits_a_third_byte_after_a_forward_jump() -> Result<(), String>
-{
+fn scratch_emits_third_byte_after_jump() -> Result<(), String> {
     let expected = [0x02, 0x59, 0x1b];
     let profile = malbolge::current_profile();
     let cells = pair_source_cells(profile).ok_or("missing decoder phases")?;
@@ -122,6 +121,59 @@ fn variable_source_scratch_emits_masked_twelve_fibonacci_bytes()
             Ok(RunOutcome::Terminated { .. })
         ));
         assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}
+
+#[test]
+fn skipped_jump_and_input_codes_are_inert_guest_data() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let first_jump = (33u8..=126)
+        .find(|&byte| {
+            malbolge::decode_profile_instruction(u32::from(byte), 0)
+                == Some(b'i')
+        })
+        .ok_or("missing first jump")?;
+    let target = u32::from(first_jump) + 1;
+    for opcode in [b'i', profile.input_instruction()] {
+        let operand = (33u8..=126)
+            .find(|&byte| {
+                malbolge::decode_profile_instruction(u32::from(byte), 1)
+                    == Some(opcode)
+            })
+            .ok_or("missing loader-valid scratch word")?;
+        let mut operations = vec![LinearOpcode::NoOperation; target as usize];
+        operations[0] = LinearOpcode::JumpForward { target };
+        operations[1] =
+            LinearOpcode::SkippedDataByte { byte: u32::from(operand) };
+        operations.extend([
+            LinearOpcode::CrazyData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let layout = super::super::encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("scratch layout: {error:?}"))?;
+        assert_eq!(
+            layout
+                .data_write_positions()
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>(),
+            [1]
+        );
+        let result = malbolge::profile_crazy(u32::from(operand), 0, 15) as u8;
+        for input in [Vec::new(), vec![255, 0, 128]] {
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), input)
+                    .map_err(|error| format!("guest load: {error:?}"))?;
+            assert!(matches!(
+                vm.run(layout.executed_code_positions().len()),
+                Ok(RunOutcome::Terminated { .. })
+            ));
+            assert_eq!(vm.output(), [result]);
+            assert_eq!(vm.input_consumed(), 0);
+        }
     }
     Ok(())
 }

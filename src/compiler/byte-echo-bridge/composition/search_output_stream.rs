@@ -1334,45 +1334,104 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
     // operand is an independently selected, original graphical byte.
     let scratch_limit = target.checked_sub(2)?;
     let source_cells = super::pair_source_cells(profile)?;
-    type ScratchPath = Vec<(LinearOpcode, Option<u8>)>;
-    type ScratchStates = BTreeMap<(usize, u32), ScratchPath>;
-    fn retain_first(
-        paths: &mut ScratchStates,
-        accumulator: u32,
-        proposal: ScratchPath,
-    ) {
-        let _previous = paths
-            .entry((proposal.len(), accumulator))
-            .or_insert(proposal);
+    // An unreachable source cell still must be loader-valid, but can
+    // decode as a jump or input: those two bytes were missing from the
+    // six-opcode reached-instruction cache. Resolve once per address,
+    // rather than repeating 188 decodes for every candidate state.
+    let operand_cells = source_cells
+        .iter()
+        .enumerate()
+        .map(|(address, cells)| {
+            let phase = u32::try_from(address).ok()?;
+            let encoded = |opcode| {
+                (33u8..=126).find(|&byte| {
+                    malbolge::decode_profile_instruction(u32::from(byte), phase)
+                        == Some(opcode)
+                })
+            };
+            Some([
+                cells[0],
+                cells[1],
+                cells[2],
+                cells[3],
+                cells[4],
+                cells[5],
+                encoded(b'i')?,
+                encoded(profile.input_instruction())?,
+            ])
+        })
+        .collect::<Option<Vec<_>>>()?;
+    // Persist only predecessor indices. Copying full paths at every beam
+    // successor multiplies the cost of complete, branch-derived C streams.
+    #[derive(Clone, Copy)]
+    struct ScratchLink {
+        operation: LinearOpcode,
+        operand: Option<u8>,
+        predecessor: usize,
     }
+    type ScratchStates = BTreeMap<(usize, u32), usize>;
+    fn retain_first(
+        states: &mut ScratchStates,
+        links: &mut Vec<ScratchLink>,
+        key: (usize, u32),
+        predecessor: usize,
+        operation: LinearOpcode,
+        operand: Option<u8>,
+    ) {
+        if let std::collections::btree_map::Entry::Vacant(entry) =
+            states.entry(key)
+        {
+            let index = links.len();
+            links.push(ScratchLink {
+                operation,
+                operand,
+                predecessor,
+            });
+            let _inserted = entry.insert(index);
+        }
+    }
+    let mut links = vec![ScratchLink {
+        operation: LinearOpcode::NoOperation,
+        operand: None,
+        predecessor: 0,
+    }];
     // The same accumulator at different D phases has different future
     // graphical operands. Preserve both rather than merging by value alone.
-    let mut states = ScratchStates::from([((0, 0u32), ScratchPath::new())]);
+    let mut states = ScratchStates::from([((0, 0u32), 0usize)]);
     for &byte in &expected {
         let mut frontier = states;
         let mut finished = ScratchStates::new();
         for depth in 0..=5 {
-            for (&(_, accumulator), path) in &frontier {
-                if matches_byte(accumulator, byte) && path.len() < scratch_limit
-                {
-                    let mut output = path.clone();
-                    output.push((LinearOpcode::OutputByte, None));
-                    retain_first(&mut finished, accumulator, output);
+            for (&(length, accumulator), &predecessor) in &frontier {
+                if matches_byte(accumulator, byte) && length < scratch_limit {
+                    retain_first(
+                        &mut finished,
+                        &mut links,
+                        (length + 1, accumulator),
+                        predecessor,
+                        LinearOpcode::OutputByte,
+                        None,
+                    );
                 }
             }
             if depth == 5 {
                 break;
             }
             let mut successors = ScratchStates::new();
-            for (&(_, accumulator), path) in &frontier {
-                if path.len().saturating_add(2) > scratch_limit {
+            for (&(length, accumulator), &predecessor) in &frontier {
+                if length.saturating_add(2) > scratch_limit {
                     continue;
                 }
-                let address = path.len().checked_add(1)?;
-                let options = source_cells.get(address)?;
-                let mut no_op = path.clone();
-                no_op.push((LinearOpcode::NoOperation, None));
-                retain_first(&mut successors, accumulator, no_op);
+                let address = length.checked_add(1)?;
+                let options = operand_cells.get(address)?;
+                retain_first(
+                    &mut successors,
+                    &mut links,
+                    (length + 1, accumulator),
+                    predecessor,
+                    LinearOpcode::NoOperation,
+                    None,
+                );
                 for &data in options {
                     let operand = u32::from(data);
                     for (operation, result) in [
@@ -1388,9 +1447,14 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
                             ),
                         ),
                     ] {
-                        let mut proposal = path.clone();
-                        proposal.push((operation, Some(data)));
-                        retain_first(&mut successors, result, proposal);
+                        retain_first(
+                            &mut successors,
+                            &mut links,
+                            (length + 1, result),
+                            predecessor,
+                            operation,
+                            Some(data),
+                        );
                     }
                 }
             }
@@ -1404,7 +1468,15 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
         }
         states = finished;
     }
-    let (_, path) = states.into_iter().min_by_key(|(key, _)| key.0)?;
+    let (_, &last) = states.iter().min_by_key(|(key, _)| key.0)?;
+    let mut cursor = last;
+    let mut path = Vec::new();
+    while cursor != 0 {
+        let link = links.get(cursor)?;
+        path.push((link.operation, link.operand));
+        cursor = link.predecessor;
+    }
+    path.reverse();
     let mut operations = vec![LinearOpcode::NoOperation; target];
     *operations.first_mut()? = LinearOpcode::JumpForward {
         target: u32::try_from(target).ok()?,

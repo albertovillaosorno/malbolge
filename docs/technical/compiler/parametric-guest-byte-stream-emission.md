@@ -2362,3 +2362,23 @@ This is bounded output arithmetic in Malbolge after **compile-time**
 source-checked C state/branch/loop projection. It does not implement C
 runtime loops, arbitrary guest memory, or the original unmasked twelve-byte
 Fibonacci stream. The general P0 output-language goal remains open.
+
+The bounded scratch state search now stores predecessor indices instead of
+copying full opcode/operand paths for every alternative. Skipped code cells
+may also decode as the profile's input instruction or as a jump: the loader
+accepts those graphical bytes, but the actual jump skips them, so the guest
+reads them **only as data**. The proposal precomputes all eight
+loader-valid source bytes at each decoder phase. An independent layout/VM
+regression places the otherwise executable input and jump byte at skipped
+address one, proves its arithmetic data write lies strictly behind code,
+and confirms it consumes no stdin under two inputs. The exact-address layout
+checker and normative VM still own acceptance, not the search.
+
+A second source-derived twelve-iteration conditional Fibonacci program
+preserves six bits instead of five in each output arm (`& 63U`), with
+independent unsigned-C oracle `02 19 1f 08 17 0f 22 2d 03 10 33 23`.
+The pinned C frontend, canonical byte bridge and graphical publisher emit a
+real VM guest reproducing those twelve bytes on empty and nonempty stdin;
+a source mutation introducing division by zero is rejected without an
+artifact. This is a semantic-width matrix case, not proof of arbitrary
+six-bit streams or of the unchanged unmasked `02 59 5f ...` program.

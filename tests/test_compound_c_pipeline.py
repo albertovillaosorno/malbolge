@@ -144,6 +144,72 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", rejected.stderr)
             self.assertFalse(rejected_guest.exists())
 
+    def test_six_bit_masked_fibonacci_full_c_guest_parity(self) -> None:
+        """Twelve source-proven conditional bytes retain all six low bits."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            if following % 2 == 0:
+                expected.append(following & 63)
+            else:
+                expected.append((following ^ 0x1A) & 63)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f222d03103323"))
+        original = MASKED_FIBONACCI.read_text()
+        self.assertIn("next & 31U", original)
+        self.assertIn("(next ^ 0x1AU) & 31U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "six-bit-fibonacci.c"
+            source.write_text(original.replace("31U", "63U"))
+            guest = Path(scratch) / "six-bit-fibonacci.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/six-bit-fibonacci-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=150
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            altered = Path(scratch) / "six-bit-unsupported.c"
+            altered.write_text(
+                source.read_text().replace(
+                    "((next ^ 0x1AU) & 63U)", "((next ^ 0x1AU) / 0U)"
+                )
+            )
+            rejected_guest = Path(scratch) / "rejected.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(altered)],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
+
     def test_three_live_relocations_reach_real_guest_from_c(self) -> None:
         """Closed C arithmetic/branch, three actual relocated guest writes."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

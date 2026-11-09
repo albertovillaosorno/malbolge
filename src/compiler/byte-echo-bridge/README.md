@@ -902,6 +902,24 @@ profile, SSA binding, input independence and 121-step normative VM execution
 must agree. Changed bytes, forged effects, short prefixes and foreign profiles
 reject. This is a finite proof, not C-source admission or arbitrary output.
 
+### Expanded loader-valid source scratch and six-bit recurrence
+
+The bounded forward-jump source-scratch proposal now retains predecessor
+links instead of copying full candidate paths. Its skipped-data operands
+include both the canonical input and jump graphical code cells, in addition
+to the six reached opcodes, selected once per address-sensitive decoder
+phase. Those skipped cells are data, never executed: independent positional
+layout admission and real VM replay decide whether the resulting guest is
+valid. `tests/compiler/bridge/source_scratch.rs` checks both kinds of skipped
+words have genuine arithmetic effects without consuming input.
+
+`tests/test_compound_c_pipeline.py` independently validates twelve full
+Fibonacci C loop/conditional effects under a six-bit mask, yielding
+`02 19 1f 08 17 0f 22 2d 03 10 33 23` with real guest execution on empty
+and nonempty input. Division-by-zero mutation refuses publication. The
+unmasked original C stream still refuses at layout; finite source-scratch
+search is neither a complete C runtime nor arbitrary output synthesis.
+
 ### Bounded search beyond the one-byte witness tables
 
 When the existing positional one-byte witness selector has no entry, the
