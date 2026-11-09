@@ -54,6 +54,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a full twelve-iteration masked Fibonacci recurrence
+  using descending unsigned `for` induction was first refused by the typed
+  adapter. Source-proven strict `>` and checked `--i`, `i--`, and `i -= 2U`
+  countdown forms now replay only bounded, nonwrapping trip sequences.
+  The real `--i` guest emits the independent twelve-byte masked oracle in
+  47 VM steps. Negative source and forged AST evidence reject without guest
+  publication. The compiler still folds known C state on the host, and the
+  original unmasked stream remains a P0 layout gap.
 - On 2026-11-09 the first full twelve-iteration *masked* Fibonacci C
   recurrence compiled through the pinned Clang, normalized frontend,
   typed bridge, layout publisher, and actual guest VM after a red-first

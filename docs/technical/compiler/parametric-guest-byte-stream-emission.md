@@ -2477,3 +2477,23 @@ normative Malbolge VM reproduce that entire stream with both empty and
 nonempty stdin. This broadens compile-time closed-loop evaluation, not
 runtime C arithmetic or guest control flow. The unmasked original Fibonacci
 stream still has no admitted guest layout; general P0 completion remains open.
+
+### Source-proven descending bounded induction
+
+The full masked twelve-iteration Fibonacci C source was retried with
+`for (unsigned i = 12U; i > 0U; --i)` after the bounded increasing-loop
+projector rejected it at the first declaration. The adapter now checks a
+strict typed `>` comparison and permits prefix/postfix `--` or literal `-=`
+steps on the same unsigned induction symbol. It replays the actual counter
+values with checked subtraction, rejects wraparound, and enforces a maximum
+of twelve executed iterations rather than a numeric start limit. A zero-trip
+body is still fully source-admitted on shadow state without retaining output.
+
+The entire `--i` C recurrence reaches the normative Malbolge VM and emits
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 guest steps, agreeing with an
+independently calculated unsigned-C oracle. `tests/test_compound_c_pipeline.py`
+checks prefix/postfix decrement and a 24-to-zero two-step countdown against
+both empty and nonempty stdin, plus unsafe step, wraparound, loop-bound,
+source-symbol and forged Clang-AST mutations. These are **compile-time**
+closed-state loops; guest runtime C induction and the unmodified twelve-byte
+Fibonacci output remain unsupported.

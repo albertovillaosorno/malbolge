@@ -414,6 +414,224 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
 
+    def test_descending_for_induction_emits_complete_masked_fibonacci(self) -> None:
+        """Real guest parity for a source-proven bounded C countdown."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        self.assertEqual(original.count("i = 0U"), 1)
+        self.assertEqual(original.count("i < 12U"), 1)
+        self.assertEqual(original.count("++i"), 1)
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            oracle.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, start, step in (
+                ("prefix", "12U", "--i"),
+                ("postfix", "12U", "i--"),
+                ("stride-two", "24U", "i -= 2U"),
+            ):
+                with self.subTest(label=label):
+                    changed = (
+                        original.replace("i = 0U", f"i = {start}")
+                        .replace("i < 12U", "i > 0U")
+                        .replace("++i", step)
+                    )
+                    source = Path(scratch) / f"countdown-{label}.c"
+                    source.write_text(changed)
+                    guest = Path(scratch) / f"countdown-{label}.malbolge"
+                    command = [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/countdown-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(source),
+                    ]
+                    compiled = subprocess.run(
+                        command, capture_output=True, check=False, timeout=180
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, oracle)
+                        self.assertRegex(
+                            executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                        )
+
+    def test_descending_for_induction_invalid_sources_fail_closed(self) -> None:
+        """A changed countdown cannot smuggle effects into the guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        changed = (
+            original.replace("i = 0U", "i = 24U")
+            .replace("i < 12U", "i > 0U")
+            .replace("++i", "i -= 2U")
+        )
+        variants = (
+            ("zero-step", changed.replace("i -= 2U", "i -= 0U")),
+            ("wide-step", changed.replace("i -= 2U", "i -= 13U")),
+            ("wrong-direction", changed.replace("i -= 2U", "i += 2U")),
+            ("wrong-counter", changed.replace("i -= 2U", "b -= 2U")),
+            ("thirteen-trips", changed.replace("i = 24U", "i = 26U")),
+            ("underflow", changed.replace("i = 24U", "i = 23U")),
+            ("non-strict", changed.replace("i > 0U", "i >= 0U")),
+            (
+                "invalid-zero-trip-shadow",
+                changed.replace("i = 24U", "i = 0U").replace(
+                    "next ^ 0x1AU", "next * 0x1AU"
+                ),
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, variant in variants:
+                with self.subTest(label=label):
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(variant)
+                    guest = Path(scratch) / f"invalid-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/countdown-invalid-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_descending_for_induction_rejects_forged_ast(self) -> None:
+        """A matching operator cannot compensate for forged C loop evidence."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        changed = (
+            MASKED_FIBONACCI.read_text()
+            .replace("i = 0U", "i = 24U")
+            .replace("i < 12U", "i > 0U")
+            .replace("++i", "i -= 2U")
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "countdown-ast.c"
+            source.write_text(changed)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/countdown-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            loop = next(node for node in nodes if node["kind"] == "for-statement")
+            comparison = next(
+                node
+                for node in nodes
+                if node["parent"] == loop["id"] and node.get("operation") == ">"
+            )
+            increment = next(
+                node
+                for node in nodes
+                if node["parent"] == loop["id"]
+                and node["kind"] == "compound-assignment-expression"
+            )
+            children = [node for node in nodes if node["parent"] == increment["id"]]
+            self.assertEqual(
+                [node["kind"] for node in children],
+                ["declaration-reference-expression", "integer-literal"],
+            )
+            read, literal = children
+            for label in (
+                "comparison",
+                "increment",
+                "zero-stride",
+                "operand",
+                "symbol",
+                "increment-span",
+                "literal-span",
+            ):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    changed_nodes = forged["nodes"]
+                    comparison_copy = changed_nodes[cast(int, comparison["id"]) - 1]
+                    increment_copy = changed_nodes[cast(int, increment["id"]) - 1]
+                    literal_copy = changed_nodes[cast(int, literal["id"]) - 1]
+                    if label == "comparison":
+                        comparison_copy["operation"] = ">="
+                    elif label == "increment":
+                        increment_copy["operation"] = "+="
+                    elif label == "zero-stride":
+                        literal_copy["constant_integer"] = "0"
+                        literal_copy["literal"] = "0"
+                    elif label == "operand":
+                        literal_copy["literal"] = "1"
+                    elif label == "symbol":
+                        changed_nodes[cast(int, read["id"]) - 1]["reference"] = (
+                            "other@0"
+                        )
+                    elif label == "increment-span":
+                        span = cast(dict[str, dict[str, int]], increment_copy["span"])
+                        span["begin"]["byte"] += 1
+                    else:
+                        span = cast(dict[str, dict[str, int]], literal_copy["span"])
+                        span["end"]["byte"] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_compound_for_induction_rejects_forged_ast(self) -> None:
         """A typed += operator alone cannot prove the correct loop step."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):

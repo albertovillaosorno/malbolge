@@ -530,8 +530,8 @@ impl<'node> Flow<'node> {
         Some((local.byte, local.source))
     }
 
-    /// Prove a bounded `for (unsigned i = start; i < N; i += step)` and
-    /// replay its source-checked body, or discard a zero-trip shadow.
+    /// Prove a bounded unsigned `for` induction in either strict direction
+    /// and replay its source-checked body, or discard a zero-trip shadow.
     /// Neither the loop counter nor any other local may escape its C scope.
     #[expect(
         clippy::cognitive_complexity,
@@ -555,16 +555,15 @@ impl<'node> Flow<'node> {
             self.declaration(statement, statement.span.begin.byte)?;
         let counter = self.locals.get(outer_len)?;
         let start = counter.byte;
-        if start > MAX_STATIC_LOOP_ITERATIONS {
-            return None;
-        }
         let symbol = counter.symbol;
         let comparison = self.take(statement.id, "binary-expression")?;
         let load = self.take(comparison.id, "cast-expression")?;
         let read = self.take(load.id, "declaration-reference-expression")?;
         let bound_node = self.take(comparison.id, "integer-literal")?;
         let bound = literal_byte(bound_node)?;
-        if !typed_less_than(comparison)
+        if !typed_strict_loop_comparison(comparison)
+            || (comparison.operation.as_deref() == Some("<")
+                && start > MAX_STATIC_LOOP_ITERATIONS)
             || !typed_operator(load, "lvalue-to-rvalue")
             || !assigned_local_reference(read, symbol)
             || !span_within(&statement.span, &comparison.span)
@@ -578,6 +577,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
+        let descending = comparison.operation.as_deref() == Some(">");
         let separated = comparison.span.end.byte < self.peek()?.span.begin.byte;
         let increment_kind = self.peek()?.kind.as_str();
         if !matches!(
@@ -591,8 +591,8 @@ impl<'node> Flow<'node> {
             self.take(increment.id, "declaration-reference-expression")?;
         let stride = match increment_kind {
             "unary-expression" => {
-                // Discarded ++i and i++ both advance a closed induction
-                // variable by one; postfix syntax has an exact two-byte tail.
+                // A discarded prefix/postfix increment or decrement has
+                // no observable result beyond the proven counter update.
                 let prefix = increment.span.end == increment_read.span.end
                     && increment.span.begin.byte
                         < increment_read.span.begin.byte;
@@ -610,7 +610,14 @@ impl<'node> Flow<'node> {
                         .column
                         .checked_sub(increment_read.span.end.column)
                         == Some(2);
-                (typed_operator(increment, "++") && (prefix || postfix))
+                (typed_operator(
+                    increment,
+                    if descending {
+                        "--"
+                    } else {
+                        "++"
+                    },
+                ) && (prefix || postfix))
                     .then_some(1)?
             },
             "compound-assignment-expression" => {
@@ -618,8 +625,14 @@ impl<'node> Flow<'node> {
                 // typed right operand and source span, not from the bound.
                 let step = self.take(increment.id, "integer-literal")?;
                 let stride = literal_byte(step)?;
-                (typed_operator(increment, "+=")
-                    && (1..=MAX_STATIC_LOOP_ITERATIONS).contains(&stride)
+                (typed_operator(
+                    increment,
+                    if descending {
+                        "-="
+                    } else {
+                        "+="
+                    },
+                ) && (1..=MAX_STATIC_LOOP_ITERATIONS).contains(&stride)
                     && increment.span.begin.byte
                         == increment_read.span.begin.byte
                     && increment.span.end == step.span.end
@@ -660,7 +673,14 @@ impl<'node> Flow<'node> {
         let body_start = self.position;
         self.loop_counter = Some(symbol);
         let mut body_end = None;
-        if start >= bound {
+        let continues = |value: u8| {
+            if descending {
+                value > bound
+            } else {
+                value < bound
+            }
+        };
+        if !continues(start) {
             // Even a nonexecuted for body must be a complete, admissible
             // source subtree. No speculative state or output may escape.
             let starting_locals = self.locals.clone();
@@ -672,7 +692,7 @@ impl<'node> Flow<'node> {
         }
         let mut counter_value = start;
         let mut trips = 0;
-        while counter_value < bound {
+        while continues(counter_value) {
             if trips >= MAX_STATIC_LOOP_ITERATIONS {
                 return None;
             }
@@ -690,7 +710,11 @@ impl<'node> Flow<'node> {
             if current_counter.byte != counter_value {
                 return None;
             }
-            counter_value = counter_value.checked_add(stride)?;
+            counter_value = if descending {
+                counter_value.checked_sub(stride)?
+            } else {
+                counter_value.checked_add(stride)?
+            };
             current_counter.byte = counter_value;
             current_counter.source = increment;
             trips = trips.checked_add(1)?;
@@ -906,8 +930,8 @@ const fn bare_typed_node(node: &Node) -> bool {
         && node.storage_duration.is_none()
 }
 
-fn typed_less_than(node: &Node) -> bool {
-    node.operation.as_deref() == Some("<")
+fn typed_strict_loop_comparison(node: &Node) -> bool {
+    matches!(node.operation.as_deref(), Some("<" | ">"))
         && node.type_name.as_deref() == Some("i32")
         && node.name.is_none()
         && node.reference.is_none()
