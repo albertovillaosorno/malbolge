@@ -52,6 +52,10 @@ RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 GUEST_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
 EXPECTED = bytes.fromhex("02595f08574f226d0390b323")
 LOOP_OUTPUT = ROOT / "tests/compiler/c-frontend/accepted/local_loop_branch_output.c"
+MASKED_FIBONACCI = (
+    ROOT / "tests/compiler/c-frontend/accepted/"
+    "local_masked_fibonacci_branch_stream.c"
+)
 WIDE_STREAM = (
     ROOT / "tests/compiler/c-frontend/accepted/local_loop_wide_branch_stream.c"
 )
@@ -72,6 +76,73 @@ class CompoundCPipelineTests(unittest.TestCase):
     def test_fibonacci_branch_oracle_is_independent_and_stable(self) -> None:
         self.assertEqual(reference_bytes(), EXPECTED)
         self.assertEqual(len(EXPECTED), 12)
+
+    def test_masked_twelve_iteration_fibonacci_reaches_real_guest(self) -> None:
+        """An entire C recurrence selects twelve actual guest byte effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            if following % 2 == 0:
+                expected.append(following & 31)
+            else:
+                expected.append((following ^ 0x1A) & 31)
+            previous, current = current, following
+        self.assertEqual(
+            bytes(expected), bytes.fromhex("02191f08170f020d03101303")
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "masked-fibonacci.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/masked-fibonacci-guest-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(MASKED_FIBONACCI),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=150
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+            altered = Path(scratch) / "masked-fibonacci-invalid.c"
+            source = MASKED_FIBONACCI.read_text()
+            self.assertIn("((next ^ 0x1AU) & 31U)", source)
+            altered.write_text(
+                source.replace(
+                    "((next ^ 0x1AU) & 31U)", "((next ^ 0x1AU) / 0U)"
+                )
+            )
+            rejected_guest = Path(scratch) / "rejected.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(altered)],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
 
     def test_three_live_relocations_reach_real_guest_from_c(self) -> None:
         """Closed C arithmetic/branch, three actual relocated guest writes."""

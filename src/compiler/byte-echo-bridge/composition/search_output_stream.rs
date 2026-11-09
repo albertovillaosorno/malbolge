@@ -1311,6 +1311,137 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
     None
 }
 
+/// Give the skipped forward-jump cells independent graphical data bytes.
+///
+/// Unlike fixed no-op padding, these bytes are never fetched as opcodes.
+/// The guest reads them through D and really executes crazy/rotation writes
+/// before each output. A bounded search retains the exact D phase with the
+/// accumulator and tests up to five guest steps per effect. Source cells
+/// still require valid loader opcodes even when skipped. Independent source
+/// layout and two normative VM replays verify every accepted proposal.
+pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+) -> Option<LinearLayout> {
+    if N == 0 || N > 12 || profile.id() != malbolge::current_profile().id() {
+        return None;
+    }
+    let jump_cell = (33u8..=126).find(|&byte| {
+        malbolge::decode_profile_instruction(u32::from(byte), 0) == Some(b'i')
+    })?;
+    let target = usize::from(jump_cell).checked_add(1)?;
+    // The first jump encrypts target - 1. Leave it unused: every scratch
+    // operand is an independently selected, original graphical byte.
+    let scratch_limit = target.checked_sub(2)?;
+    let source_cells = super::pair_source_cells(profile)?;
+    type ScratchPath = Vec<(LinearOpcode, Option<u8>)>;
+    type ScratchStates = BTreeMap<(usize, u32), ScratchPath>;
+    fn retain_first(
+        paths: &mut ScratchStates,
+        accumulator: u32,
+        proposal: ScratchPath,
+    ) {
+        let _previous = paths
+            .entry((proposal.len(), accumulator))
+            .or_insert(proposal);
+    }
+    // The same accumulator at different D phases has different future
+    // graphical operands. Preserve both rather than merging by value alone.
+    let mut states = ScratchStates::from([((0, 0u32), ScratchPath::new())]);
+    for &byte in &expected {
+        let mut frontier = states;
+        let mut finished = ScratchStates::new();
+        for depth in 0..=5 {
+            for (&(_, accumulator), path) in &frontier {
+                if matches_byte(accumulator, byte) && path.len() < scratch_limit
+                {
+                    let mut output = path.clone();
+                    output.push((LinearOpcode::OutputByte, None));
+                    retain_first(&mut finished, accumulator, output);
+                }
+            }
+            if depth == 5 {
+                break;
+            }
+            let mut successors = ScratchStates::new();
+            for (&(_, accumulator), path) in &frontier {
+                if path.len().saturating_add(2) > scratch_limit {
+                    continue;
+                }
+                let address = path.len().checked_add(1)?;
+                let options = source_cells.get(address)?;
+                let mut no_op = path.clone();
+                no_op.push((LinearOpcode::NoOperation, None));
+                retain_first(&mut successors, accumulator, no_op);
+                for &data in options {
+                    let operand = u32::from(data);
+                    for (operation, result) in [
+                        (
+                            LinearOpcode::CrazyData,
+                            malbolge::profile_crazy(operand, accumulator, 15),
+                        ),
+                        (
+                            LinearOpcode::RotateData,
+                            malbolge::profile_rotate(
+                                operand,
+                                profile.memory_words(),
+                            ),
+                        ),
+                    ] {
+                        let mut proposal = path.clone();
+                        proposal.push((operation, Some(data)));
+                        retain_first(&mut successors, result, proposal);
+                    }
+                }
+            }
+            frontier = successors;
+            if frontier.is_empty() || frontier.len() > 50_000 {
+                break;
+            }
+        }
+        if finished.is_empty() {
+            return None;
+        }
+        states = finished;
+    }
+    let (_, path) = states.into_iter().min_by_key(|(key, _)| key.0)?;
+    let mut operations = vec![LinearOpcode::NoOperation; target];
+    *operations.first_mut()? = LinearOpcode::JumpForward {
+        target: u32::try_from(target).ok()?,
+    };
+    for (index, (_, byte)) in path.iter().enumerate() {
+        if let Some(byte) = byte {
+            *operations.get_mut(index.checked_add(1)?)? =
+                LinearOpcode::SkippedDataByte { byte: u32::from(*byte) };
+        }
+    }
+    operations.extend(path.into_iter().map(|(operation, _)| operation));
+    operations.push(LinearOpcode::Halt);
+    let layout = super::encode_linear_layout(profile, &operations).ok()?;
+    if layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .any(|&write| write >= layout.source().len() as u32)
+    {
+        return None;
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            super::ProfileMachine::from_source(profile, layout.source(), input)
+                .ok()?;
+        if !matches!(vm.run(layout.executed_code_positions().len()),
+            Ok(super::RunOutcome::Terminated { steps, .. })
+                if steps == layout.executed_code_positions().len())
+            || vm.input_consumed() != 0
+            || vm.output() != expected
+        {
+            return None;
+        }
+    }
+    Some(layout)
+}
+
 /// Try short multi-effect guest traces without extending hostile-input cost.
 ///
 /// Unlike a fixed `p`/output ladder, this bounded beam admits repeated

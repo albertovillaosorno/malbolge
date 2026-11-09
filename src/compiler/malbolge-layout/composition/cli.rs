@@ -3643,13 +3643,12 @@ fn verify_source_scratch_literal_stream<const N: usize>(
             .ok_or("scratch jump target overflow")?;
     if decoded.first() != Some(&b'i')
         || target >= decoded.len()
-        || decoded[1..target].iter().any(|&opcode| opcode != b'o')
         || decoded.last() != Some(&b'v')
         || decoded[target..decoded.len() - 1].iter().any(|&opcode| {
             !matches!(opcode, b'o' | b'p' | b'*')
                 && opcode != profile.output_instruction()
         })
-        || decoded
+        || decoded[target..]
             .iter()
             .filter(|&&op| op == profile.output_instruction())
             .count()
@@ -3661,6 +3660,11 @@ fn verify_source_scratch_literal_stream<const N: usize>(
         .iter()
         .enumerate()
         .map(|(position, &opcode)| match opcode {
+            _ if position > 0 && position < target => {
+                Some(LinearOpcode::SkippedDataByte {
+                    byte: u32::from(artifact.source[position]),
+                })
+            },
             b'i' if position == 0 => Some(LinearOpcode::JumpForward {
                 target: u32::try_from(target).ok()?,
             }),
@@ -4733,6 +4737,11 @@ fn verify_distinct_literal_twelve(
         return Err(String::from(
             "distinct-literal twelve has no guest witness",
         ));
+    }
+    // Source-scratch writes are inside source but behind the running code.
+    // The independent forward-jump proof owns their distinct safety rule.
+    if artifact.source.len() != artifact.steps {
+        return verify_source_scratch_literal_stream(profile, artifact, bytes);
     }
     // Do not trust the bridge's proposal, nor only the real VM transcript.
     // Prove positional execution and source-disjoint writes first.

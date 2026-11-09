@@ -66,6 +66,13 @@ pub enum LinearOpcode {
     },
     /// The canonical explicit `o` no-operation instruction.
     NoOperation,
+    /// A graphical data byte in an unreachable forward-jump gap.
+    ///
+    /// It is never executed; its byte becomes a real guest memory operand.
+    SkippedDataByte {
+        /// Exact printable source word, independently checked for reachability.
+        byte: u32,
+    },
     /// Emit one byte using the profile's output instruction.
     OutputByte,
     /// Redirect the data pointer from the original graphical code cell.
@@ -81,7 +88,7 @@ impl LinearOpcode {
             Self::InputWord => profile.input_instruction(),
             Self::JumpForward { .. } => b'i',
             Self::OutputByte => profile.output_instruction(),
-            Self::NoOperation => NO_OP_INSTRUCTION,
+            Self::NoOperation | Self::SkippedDataByte { .. } => NO_OP_INSTRUCTION,
             Self::Halt => HALT_INSTRUCTION,
             Self::RelocateDataPointer => b'j',
             Self::RotateData => b'*',
@@ -111,8 +118,9 @@ impl LinearLayout {
 
     /// Returns each reached step's planned guest data-write address.
     /// Rotate/crazy write the current D word; all other steps write none.
-    /// The final halt has no write, and every admitted address is outside
-    /// the graphical source region. This does not predict the written value.
+    /// The final halt has no write; addresses either lie beyond source or
+    /// strictly behind the executed code pointer after a forward jump.
+    /// This does not predict the written value.
     #[must_use]
     pub fn data_write_positions(&self) -> &[Option<u32>] {
         &self.data_write_positions
@@ -428,10 +436,13 @@ fn validate_shape(
     validate_jump_shape(operations)
 }
 
-fn validate_jump_shape(operations: &[LinearOpcode]) -> Result<(), LinearLayoutError> {
+fn validate_jump_shape(
+    operations: &[LinearOpcode],
+) -> Result<(), LinearLayoutError> {
     let relocation = operations
         .iter()
         .position(|operation| *operation == LinearOpcode::RelocateDataPointer);
+    let mut skipped_data = vec![false; operations.len()];
     for (position, operation) in operations.iter().enumerate() {
         let LinearOpcode::JumpForward { target } = operation else {
             continue;
@@ -441,20 +452,27 @@ fn validate_jump_shape(operations: &[LinearOpcode]) -> Result<(), LinearLayoutEr
         if relocation.is_some_and(|relocate_at| position > relocate_at) {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
-        let target_position =
-            usize::try_from(*target).map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+        let target_position = usize::try_from(*target)
+            .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
         if target_position <= position || target_position >= operations.len() {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         let skip_begin = position.saturating_add(1);
-        if operations
-            .iter()
-            .skip(skip_begin)
-            .take(target_position.saturating_sub(skip_begin))
-            .any(|skipped| *skipped != LinearOpcode::NoOperation)
-        {
-            return Err(LinearLayoutError::JumpPathUnsupported);
+        for address in skip_begin..target_position {
+            match operations[address] {
+                LinearOpcode::NoOperation => {},
+                LinearOpcode::SkippedDataByte { .. } => {
+                    skipped_data[address] = true
+                },
+                _ => return Err(LinearLayoutError::JumpPathUnsupported),
+            }
         }
+    }
+    if operations.iter().enumerate().any(|(position, operation)| {
+        matches!(operation, LinearOpcode::SkippedDataByte { .. })
+            && !skipped_data[position]
+    }) {
+        return Err(LinearLayoutError::JumpPathUnsupported);
     }
     Ok(())
 }
@@ -464,6 +482,25 @@ fn unique_graphical_cell(
     operation: LinearOpcode,
     position: usize,
 ) -> Result<u8, LinearLayoutError> {
+    if let LinearOpcode::SkippedDataByte { byte } = operation {
+        if !(u32::from(GRAPHICAL_START)..=u32::from(GRAPHICAL_END))
+            .contains(&byte)
+        {
+            return Err(LinearLayoutError::NoEncoding { position });
+        }
+        let address = u32::try_from(position)
+            .map_err(|_error| LinearLayoutError::TooLong)?;
+        let decoded = decode_profile_instruction(byte, address);
+        if !decoded.is_some_and(|opcode| {
+            matches!(opcode, b'j' | b'i' | b'*' | b'p' | b'v' | b'o')
+                || opcode == profile.input_instruction()
+                || opcode == profile.output_instruction()
+        }) {
+            return Err(LinearLayoutError::NoEncoding { position });
+        }
+        return u8::try_from(byte)
+            .map_err(|_error| LinearLayoutError::NoEncoding { position });
+    }
     let address = u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?;
     let decoded = operation.decoded(profile);
     let mut candidate = None;
@@ -642,6 +679,9 @@ fn derive_execution_positions(
             | LinearOpcode::RelocateDataPointer
             | LinearOpcode::RotateData => {
                 (position, position.saturating_add(1))
+            },
+            LinearOpcode::SkippedDataByte { .. } => {
+                return Err(LinearLayoutError::JumpPathUnsupported);
             },
             LinearOpcode::Halt => {
                 return Err(LinearLayoutError::EarlyHalt { position });

@@ -54,6 +54,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 the first full twelve-iteration *masked* Fibonacci C
+  recurrence compiled through the pinned Clang, normalized frontend,
+  typed bridge, layout publisher, and actual guest VM after a red-first
+  `Layout(UnsupportedEffectTrace)` repro. Its independently computed
+  twelve-byte oracle is `02 19 1f 08 17 0f 02 0d 03 10 13 03`; the emitted
+  guest executes 49 steps and matches under empty/nonempty stdin. This uses
+  phase-valid skipped graphical source cells as arithmetic operands and
+  checks their unreachable geometry independently; malformed loader cells
+  and a source mutation involving division by zero reject safely.
+- The **unmodified** complete Fibonacci C still refuses at layout for
+  `02 59 5f 08 57 4f 22 6d 03 90 b3 23`. The compiler evaluates its
+  closed C locals/branch/loop at compile time; the output VM performs
+  actual low-level arithmetic, not runtime C control flow. The broad P0
+  semantic and verification matrix remains pending.
+
 - The owner directed agents on 2026-11-05 to attempt ambitious programs
   first, repair actual failures, and then run detailed automated tests.
 - The C48 teaching capsule executes 121 graphical instructions and emits

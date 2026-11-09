@@ -2327,3 +2327,38 @@ the same bytes through the pinned pipeline and guest VM. The C control flow
 and arithmetic still project at compile time; no guest C integer runtime or
 arbitrary output-stream synthesis is claimed. The original twelve-byte
 Fibonacci target remains unsupported at layout.
+
+### Loader-valid variable source scratch for twelve-effect C streams
+
+The unchanged twelve-output Fibonacci target still fails closed at layout:
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23` has no admitted guest within
+these bounds. Its early `5f` effect is a concrete blocker for the previous
+fixed-no-op source-scratch geometry. The compiler now supports a distinct,
+source-proven complete twelve-iteration C recurrence whose two conditional
+arms mask the selected Fibonacci values to five bits. The independent C
+oracle is `02 19 1f 08 17 0f 02 0d 03 10 13 03`.
+
+The first attempt at that complete C program reached typed IR but refused
+at the guest layout boundary. The repaired layout admits explicit graphical
+`SkippedDataByte` words **only inside a proven forward-jump gap**, and only
+when the exact decoder phase yields an instruction the normative loader
+accepts. The code pointer never executes those cells; the data pointer
+reads them as distinct real operands. A finite source-scratch search tracks
+both the exact accumulator and its advancing data phase, allowing up to
+five arithmetic/no-op steps between output effects. Each candidate is
+re-admitted positionally and rerun under two normative VM input streams.
+
+The independent publisher reconstructs the jump and every skipped source
+byte from the staged artifact; it does not trust the search proposal or
+interpret skipped data as executed opcodes. It proves all source writes are
+strictly behind code and distinct, rejects overwritten pending code, and
+checks both exact guest byte order and input independence. The full pinned
+C pipeline now emits an actual capsule that terminates after 49 VM steps
+with all twelve masked bytes under empty and nonempty stdin. Mutating its
+source to introduce undefined division is refused before guest publication;
+loader-invalid and reachable-as-data placements are negative regressions.
+
+This is bounded output arithmetic in Malbolge after **compile-time**
+source-checked C state/branch/loop projection. It does not implement C
+runtime loops, arbitrary guest memory, or the original unmasked twelve-byte
+Fibonacci stream. The general P0 output-language goal remains open.

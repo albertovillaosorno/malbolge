@@ -152,3 +152,35 @@ fn jump_encrypted_skip_cell_is_a_real_guest_operand() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn skipped_graphical_data_requires_valid_loader_opcode_and_unreachable_cell()
+-> Result<(), String> {
+    let profile = current_profile();
+    let target =
+        usize::try_from(jump_target(0)?).map_err(|error| error.to_string())?;
+    let mut operations = vec![LinearOpcode::NoOperation; target + 2];
+    operations[0] = LinearOpcode::JumpForward {
+        target: u32::try_from(target).map_err(|error| error.to_string())?,
+    };
+    operations[target] = LinearOpcode::OutputByte;
+    operations[target + 1] = LinearOpcode::Halt;
+    // ASCII '2' is graphical at address one but does not decode to a
+    // legal source instruction. Never publish a guest the VM cannot load.
+    operations[1] = LinearOpcode::SkippedDataByte { byte: 50 };
+    assert_eq!(
+        encode_linear_layout(profile, &operations),
+        Err(LinearLayoutError::NoEncoding { position: 1 })
+    );
+    // Position one is not unreachable when no forward jump skips over it.
+    let reachable = [
+        LinearOpcode::NoOperation,
+        LinearOpcode::SkippedDataByte { byte: 50 },
+        LinearOpcode::Halt,
+    ];
+    assert_eq!(
+        encode_linear_layout(profile, &reachable),
+        Err(LinearLayoutError::JumpPathUnsupported)
+    );
+    Ok(())
+}

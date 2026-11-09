@@ -2100,6 +2100,7 @@ fn preview_four_write_quad(
             | LinearOpcode::InputWord
             | LinearOpcode::JumpForward { .. }
             | LinearOpcode::NoOperation
+            | LinearOpcode::SkippedDataByte { .. }
             | LinearOpcode::OutputByte
             | LinearOpcode::RelocateDataPointer => return None,
         };
@@ -3240,6 +3241,11 @@ pub fn encode_distinct_literal_twelve(
         .or_else(|| {
             search_output_stream::verified_short_output_layout(
                 profile, expected, &cells,
+            )
+        })
+        .or_else(|| {
+            search_output_stream::verified_variable_source_scratch_layout(
+                profile, expected,
             )
         })
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);

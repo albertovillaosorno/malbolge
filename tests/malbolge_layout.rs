@@ -265,6 +265,7 @@ fn all_94_profile_decode_phases_admit_machine_io_and_halt() -> Result<(), String
                     LinearOpcode::InputWord => profile.input_instruction(),
                     LinearOpcode::OutputByte => profile.output_instruction(),
                     LinearOpcode::NoOperation
+                    | LinearOpcode::SkippedDataByte { .. }
                     | LinearOpcode::Halt
                     | LinearOpcode::RelocateDataPointer
                     | LinearOpcode::JumpForward { .. } => {
@@ -956,6 +957,7 @@ fn relocated_arithmetic_encodes_every_safely_addressable_phase() -> Result<(), S
                     | LinearOpcode::InputWord
                     | LinearOpcode::JumpForward { .. }
                     | LinearOpcode::NoOperation
+                    | LinearOpcode::SkippedDataByte { .. }
                     | LinearOpcode::OutputByte
                     | LinearOpcode::RelocateDataPointer => {
                         return Err(String::from("incorrect arithmetic fixture"));

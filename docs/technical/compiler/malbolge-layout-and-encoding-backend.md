@@ -697,3 +697,22 @@ where the earlier five-effect fixed whitelist rejected the valid candidate.
 The legacy five-byte teaching witness and previously accepted leading-zero
 shape remain intact. This is bounded byte-output synthesis, not general
 C execution or arbitrary data-pointer control flow.
+
+### Unreachable source cells as valid guest data
+
+A strictly forward `i` jump may skip graphical source cells that remain
+behind the executable code pointer, while guest `p`/`*` instructions
+subsequently read and write those cells through D. The linear layout now
+represents an explicit `SkippedDataByte` carrying its exact graphical word.
+This variant must lie in the unreachable gap of a checked forward jump,
+not in an executed position. Its word must decode to a *loader-valid*
+canonical opcode at its own source phase, even though no VM instruction
+fetch ever occurs there. Encoding, independent admission, the data shadow,
+source write footprints, and normative VM replay use those same bytes.
+
+A new source-scratch search exploits the extra positional data freedom
+without modifying the VM loader or bypassing its input validation. One
+complete twelve-iteration masked Fibonacci C program now emits its twelve
+expected bytes in 49 normative guest steps. Invalid skipped opcodes and
+reachable pseudo-data cells reject during layout. The original unmasked
+Fibonacci output remains outside the proved finite search language.

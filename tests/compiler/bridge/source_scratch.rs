@@ -95,3 +95,33 @@ fn scratch_search_emits_a_third_byte_after_a_forward_jump() -> Result<(), String
     }
     Ok(())
 }
+
+#[test]
+fn variable_source_scratch_emits_masked_twelve_fibonacci_bytes()
+-> Result<(), String> {
+    let expected = [
+        0x02, 0x19, 0x1f, 0x08, 0x17, 0x0f, 0x02, 0x0d, 0x03, 0x10, 0x13, 0x03,
+    ];
+    let profile = malbolge::current_profile();
+    let layout = verified_variable_source_scratch_layout(profile, expected)
+        .ok_or("missing twelve real masked Fibonacci effects")?;
+    assert!(layout.source().len() > layout.executed_code_positions().len());
+    assert!(
+        layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .any(|&write| write < layout.source().len() as u32)
+    );
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}
