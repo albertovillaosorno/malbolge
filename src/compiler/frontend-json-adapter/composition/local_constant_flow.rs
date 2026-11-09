@@ -530,7 +530,7 @@ impl<'node> Flow<'node> {
         Some((local.byte, local.source))
     }
 
-    /// Prove a bounded unsigned `for` induction in either strict direction
+    /// Prove a bounded unsigned `for` induction in either direction
     /// and replay its source-checked body, or discard a zero-trip shadow.
     /// Neither the loop counter nor any other local may escape its C scope.
     #[expect(
@@ -561,7 +561,7 @@ impl<'node> Flow<'node> {
         let read = self.take(load.id, "declaration-reference-expression")?;
         let bound_node = self.take(comparison.id, "integer-literal")?;
         let bound = literal_byte(bound_node)?;
-        if !typed_strict_loop_comparison(comparison)
+        if !typed_bounded_loop_comparison(comparison, load, bound_node)
             || (comparison.operation.as_deref() == Some("<")
                 && start > MAX_STATIC_LOOP_ITERATIONS)
             || !typed_operator(load, "lvalue-to-rvalue")
@@ -577,7 +577,10 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let descending = comparison.operation.as_deref() == Some(">");
+        let descending =
+            matches!(comparison.operation.as_deref(), Some(">" | ">="));
+        let inclusive =
+            matches!(comparison.operation.as_deref(), Some("<=" | ">="));
         let separated = comparison.span.end.byte < self.peek()?.span.begin.byte;
         let increment_kind = self.peek()?.kind.as_str();
         if !matches!(
@@ -675,9 +678,9 @@ impl<'node> Flow<'node> {
         let mut body_end = None;
         let continues = |value: u8| {
             if descending {
-                value > bound
+                value > bound || (inclusive && value == bound)
             } else {
-                value < bound
+                value < bound || (inclusive && value == bound)
             }
         };
         if !continues(start) {
@@ -930,8 +933,25 @@ const fn bare_typed_node(node: &Node) -> bool {
         && node.storage_duration.is_none()
 }
 
-fn typed_strict_loop_comparison(node: &Node) -> bool {
-    matches!(node.operation.as_deref(), Some("<" | ">"))
+fn typed_bounded_loop_comparison(
+    node: &Node,
+    counter: &Node,
+    bound: &Node,
+) -> bool {
+    // This bounded source shape admits one ASCII space on either side of
+    // the comparison token. In particular, a forged `<=` -> `<` or `>` ->
+    // `>=` AST mutation cannot change the trip count while reusing the
+    // same token geometry. Other whitespace spellings fail closed.
+    let separator = match node.operation.as_deref() {
+        Some("<" | ">") => 3,
+        Some("<=" | ">=") => 4,
+        _ => return false,
+    };
+    bound.span.begin.byte.checked_sub(counter.span.end.byte) == Some(separator)
+        && bound.span.begin.column.checked_sub(counter.span.end.column)
+            == Some(separator)
+        && node.span.begin.line == counter.span.end.line
+        && counter.span.end.line == bound.span.begin.line
         && node.type_name.as_deref() == Some("i32")
         && node.name.is_none()
         && node.reference.is_none()

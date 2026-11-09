@@ -414,6 +414,199 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
 
+    def test_inclusive_for_induction_emits_complete_masked_fibonacci(self) -> None:
+        """Inclusive ascending/descending bounds preserve a full C recurrence."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            expected.append(selected & 31)
+            previous, current = current, following
+        oracle = bytes(expected)
+        self.assertEqual(oracle, bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, start, comparison, step in (
+                ("ascending", "0U", "i <= 11U", "++i"),
+                ("descending", "12U", "i >= 1U", "--i"),
+                ("strided", "1U", "i <= 23U", "i += 2U"),
+            ):
+                with self.subTest(label=label):
+                    changed = (
+                        original.replace("i = 0U", f"i = {start}")
+                        .replace("i < 12U", comparison)
+                        .replace("++i", step)
+                    )
+                    source = Path(scratch) / f"inclusive-{label}.c"
+                    source.write_text(changed)
+                    guest = Path(scratch) / f"inclusive-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/inclusive-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, oracle)
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_inclusive_for_induction_rejects_bad_sources(self) -> None:
+        """Reject unsafe inclusive loops before an output artifact is written."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        inclusive = original.replace("i < 12U", "i <= 11U")
+        variants = (
+            ("thirteen-trips", inclusive.replace("i <= 11U", "i <= 12U")),
+            ("wrong-direction", inclusive.replace("++i", "--i")),
+            ("wrong-counter", inclusive.replace("++i", "++b")),
+            ("unsupported-test", inclusive.replace("i <= 11U", "i != 11U")),
+            (
+                "zero-trip-invalid-shadow",
+                inclusive.replace("i = 0U", "i = 12U").replace(
+                    "next ^ 0x1AU", "next * 0x1AU"
+                ),
+            ),
+            (
+                "descending-underflow",
+                inclusive.replace("i = 0U", "i = 12U")
+                .replace("i <= 11U", "i >= 0U")
+                .replace("++i", "--i"),
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, variant in variants:
+                with self.subTest(label=label):
+                    source = Path(scratch) / f"inclusive-invalid-{label}.c"
+                    source.write_text(variant)
+                    guest = Path(scratch) / f"inclusive-invalid-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/inclusive-invalid-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(compiled.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_inclusive_for_induction_rejects_forged_ast(self) -> None:
+        """A shortened comparison token cannot change source loop semantics."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        inclusive = original.replace("i < 12U", "i <= 11U")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "inclusive-source.c"
+            source.write_text(inclusive)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/inclusive-source-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            loop = next(node for node in nodes if node["kind"] == "for-statement")
+            comparison = next(
+                node
+                for node in nodes
+                if node["parent"] == loop["id"]
+                and node.get("operation") == "<="
+            )
+            bound = next(
+                node
+                for node in nodes
+                if node["parent"] == comparison["id"]
+                and node["kind"] == "integer-literal"
+            )
+            for label in ("shortened", "reversed", "forged-bound", "span"):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    changed_nodes = forged["nodes"]
+                    comparison_copy = changed_nodes[cast(int, comparison["id"]) - 1]
+                    bound_copy = changed_nodes[cast(int, bound["id"]) - 1]
+                    if label == "shortened":
+                        comparison_copy["operation"] = "<"
+                    elif label == "reversed":
+                        comparison_copy["operation"] = ">="
+                    elif label == "forged-bound":
+                        bound_copy["constant_integer"] = "12"
+                        bound_copy["literal"] = "12U"
+                    else:
+                        span = cast(
+                            dict[str, dict[str, int]], comparison_copy["span"]
+                        )
+                        span["end"]["byte"] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_descending_for_induction_emits_complete_masked_fibonacci(self) -> None:
         """Real guest parity for a source-proven bounded C countdown."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

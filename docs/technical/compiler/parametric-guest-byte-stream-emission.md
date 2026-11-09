@@ -2478,6 +2478,33 @@ nonempty stdin. This broadens compile-time closed-loop evaluation, not
 runtime C arithmetic or guest control flow. The unmasked original Fibonacci
 stream still has no admitted guest layout; general P0 completion remains open.
 
+### Inclusive unsigned induction in the complete C recurrence
+
+The twelve-output masked Fibonacci C experiment was first retried with
+`for (unsigned i = 0U; i <= 11U; ++i)` and a descending
+`for (unsigned i = 12U; i >= 1U; --i)`. Both were accepted by the pinned
+Clang frontend but rejected by the normalized JSON-to-typed adapter before
+publishing guest code. Strict `<` and `>` were the only proven `for` bounds.
+
+The bounded projector now admits `<=` and `>=` against an unsigned literal
+bound, with canonical one-space comparison-token geometry independently
+checked against Clang source spans. This rejects shortening an inclusive
+operator in forged AST metadata while retaining the existing closed-source
+provenance and exact counter identity checks. It supports ascending and
+descending unary or bounded compound steps, checks each update against
+unsigned underflow or the adapter's byte-range ceiling, and refuses any
+thirteenth body iteration. Even zero-trip loops must have an admissible
+body, and their speculative effects are discarded.
+
+The complete ascending, descending and two-step inclusive C recurrence
+variants have the same independent twelve-byte oracle as the strict source:
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`. Tests under
+`tests/test_compound_c_pipeline.py` compile each entire variant to guest
+Malbolge, compare normative VM stdout with empty and nonempty stdin, and
+check source and AST mutation refusals. This is compile-time C state folding,
+not runtime guest C induction. The original unmasked Fibonacci output is
+still outside the bounded layout publisher, so the P0 remains open.
+
 ### Source-proven descending bounded induction
 
 The full masked twelve-iteration Fibonacci C source was retried with

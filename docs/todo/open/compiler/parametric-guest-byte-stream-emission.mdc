@@ -54,6 +54,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 the full twelve-output masked Fibonacci C program
+  exposed a missing inclusive `for` comparison proof. The pinned frontend
+  accepted `i <= 11U` and `i >= 1U`, but the adapter refused both before
+  guest publication. The bounded projector now admits source-proven `<=`
+  and `>=` with canonical one-space operator geometry, checked induction,
+  zero-trip shadow validation and at most twelve executed iterations.
+  Inclusive asc/desc/stride-two guest parity, negative C and forged-AST
+  evidence are checked by `tests/test_compound_c_pipeline.py`. This remains
+  compile-time state folding; original unmasked layout and guest runtime
+  C control flow remain unsupported.
 - On 2026-11-09 a full twelve-iteration masked Fibonacci recurrence
   using descending unsigned `for` induction was first refused by the typed
   adapter. Source-proven strict `>` and checked `--i`, `i--`, and `i -= 2U`
