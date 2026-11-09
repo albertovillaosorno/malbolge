@@ -300,6 +300,41 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertNotIn(b"normalized frontend rejected", process.stderr)
             self.assertFalse(guest.exists(), "unwitnessed C published a guest")
 
+    def test_three_iteration_branch_uses_guest_source_scratch(self) -> None:
+        """Closed C state selects three bytes, guest computes their output."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = SOURCE.read_text()
+        expression = "next ^ (0x5AU ^ ((next & 4U) * 17U))"
+        expected = bytes((2, 3 ^ 0x5A, 5 ^ (0x5A ^ (4 * 17))))
+        self.assertEqual(expected, bytes.fromhex("02591b"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-three-scratch.c"
+            source.write_text(
+                original.replace("i < 12U", "i < 3U")
+                .replace("next ^ 0x5AU", expression)
+            )
+            guest = Path(scratch) / "fibonacci-three-scratch.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/conditional-fibonacci-three-scratch-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, check=False, capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, expected)
+                self.assertRegex(replay.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+
     def test_original_fibonacci_three_output_prefix_on_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

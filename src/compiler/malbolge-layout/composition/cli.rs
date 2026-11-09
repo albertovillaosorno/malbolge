@@ -3620,10 +3620,10 @@ fn verify_zero_then_literal(
 // the running code pointer. Independent linear admission proves that scratch
 // writes never overwrite pending instructions; this publisher then rechecks
 // the exact jump, byte effects, write addresses and two normative VM replays.
-fn verify_source_scratch_literal_pair(
+fn verify_source_scratch_literal_stream<const N: usize>(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
-    expected: [u8; 2],
+    expected: [u8; N],
 ) -> Result<(), String> {
     let decoded = artifact
         .source
@@ -3653,7 +3653,7 @@ fn verify_source_scratch_literal_pair(
             .iter()
             .filter(|&&op| op == profile.output_instruction())
             .count()
-            != 2
+            != N
     {
         return Err(String::from("source-scratch guest shape disagrees"));
     }
@@ -3693,7 +3693,7 @@ fn verify_source_scratch_literal_pair(
         .collect::<Vec<_>>();
     if writes.len()
         < usize::from(expected[0] != 0)
-            + usize::from(expected[0] != expected[1])
+            + expected.windows(2).filter(|pair| pair[0] != pair[1]).count()
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
         || writes
             .iter()
@@ -3736,7 +3736,7 @@ fn verify_distinct_literal_pair(
     // Unequal pairs require distinct guest writes. Equal pairs allow one or
     // two writes before adjacent output instructions with no host copying.
     if artifact.source.len() != artifact.steps {
-        return verify_source_scratch_literal_pair(
+        return verify_source_scratch_literal_stream(
             profile,
             artifact,
             [first, second],
@@ -4252,7 +4252,7 @@ fn verify_distinct_literal_triple(
     // The grammar independently distinguishes three-write and four-write
     // layouts; every guest arithmetic write must be disjoint from source.
     if artifact.source.len() != artifact.steps {
-        return Err(String::from("distinct-literal triple geometry disagrees"));
+        return verify_source_scratch_literal_stream(profile, artifact, bytes);
     }
     let decoded = artifact
         .source

@@ -1219,9 +1219,9 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
         malbolge::decode_profile_instruction(u32::from(byte), 0) == Some(b'i')
     })?;
     let target = usize::from(jump_cell).checked_add(1)?;
-    // Cell `target - 1` is encrypted by the initial jump. Keep all data
-    // reads strictly below it so the search's operand bytes stay immutable.
-    let body_limit = target.checked_sub(2)?;
+    // The initial jump encrypts cell `target - 1` once. The guest may read
+    // that already-encrypted scratch value; it never executes that cell.
+    let body_limit = target.checked_sub(1)?;
     if body_limit < N || target > source_cells.len() {
         return None;
     }
@@ -1233,9 +1233,13 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
     for index in 0..body_limit {
         let address = index.checked_add(1)?;
         let word = |offset: usize| {
-            source_cells
-                .get(address.checked_add(offset)?)
-                .map(|cell| u32::from(cell[0]))
+            let at = address.checked_add(offset)?;
+            let value = u32::from(*source_cells.get(at)?.first()?);
+            if at == target - 1 {
+                malbolge::encrypt_profile_cell(value)
+            } else {
+                Some(value)
+            }
         };
         states = append_successors(
             &states,

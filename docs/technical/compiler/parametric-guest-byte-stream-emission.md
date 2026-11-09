@@ -2308,3 +2308,22 @@ rejection and the independent VM oracle cover this new semantic boundary.
 This is **not** runtime C loop or arithmetic lowering: the frontend still
 projects closed C state at compile time. The full twelve-byte Fibonacci
 stream remains unwitnessed by the bounded layout grammar, and P0 stays open.
+
+### Forward-jump scratch streams beyond two effects
+
+The bounded source-scratch search now tracks the jump-encrypted skipped cell
+as an exact prospective operand, rather than assuming its original no-op
+byte. The guest may rotate or apply crazy arithmetic to that cell after the
+forward jump, since it remains behind the code pointer. A targeted layout
+regression checks the post-jump encryption value, actual source mutation and
+normative VM byte output on two input streams.
+
+The source-scratch proposal also reaches three guest output effects for
+`02 59 1b`. The three-distinct-output bridge can propose this geometry and
+the file publisher independently decodes its forward jump, re-admits exact
+source-cell writes and replays the normative VM. A complete three-iteration C
+recurrence with unsigned locals, branch selection and nested arithmetic emits
+the same bytes through the pinned pipeline and guest VM. The C control flow
+and arithmetic still project at compile time; no guest C integer runtime or
+arbitrary output-stream synthesis is claimed. The original twelve-byte
+Fibonacci target remains unsupported at layout.

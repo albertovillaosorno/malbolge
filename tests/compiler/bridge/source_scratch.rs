@@ -73,3 +73,25 @@ fn fibonacci_prefix_uses_source_scratch_not_host_output() -> Result<(), String>
     }
     Ok(())
 }
+
+#[test]
+fn scratch_search_emits_a_third_byte_after_a_forward_jump() -> Result<(), String>
+{
+    let expected = [0x02, 0x59, 0x1b];
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing decoder phases")?;
+    let layout =
+        verified_source_scratch_output_layout(profile, expected, &cells)
+            .ok_or("missing third guest effect")?;
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}

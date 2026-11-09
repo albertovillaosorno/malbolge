@@ -1022,3 +1022,11 @@ a compiler capability gap, not a reason to return to N+1.
   The pinned C pipeline produced an 85-step guest with two-input parity. The
   full twelve-output Fibonacci source remains safely refused at layout; this
   is compiler-time C state projection, not general guest runtime arithmetic.
+
+- Source-scratch proposals now account for the one skipped cell encrypted by
+  the initial forward jump. A separate layout/VM test proves its actual
+  rotated guest value. A three-output source-scratch witness emits `02 59 1b`;
+  the triple bridge and independent publisher accept this bounded grammar,
+  and a complete three-iteration stateful C variant reaches two-input guest
+  VM parity. The original twelve-output program remains unsupported, and
+  guest runtime C state has not been implemented.

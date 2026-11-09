@@ -6835,6 +6835,11 @@ pub fn encode_distinct_literal_triple(
                 profile, expected, &source_cells,
             )
         })
+        .or_else(|| {
+            search_output_stream::verified_source_scratch_output_layout(
+                profile, expected, &source_cells,
+            )
+        })
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 

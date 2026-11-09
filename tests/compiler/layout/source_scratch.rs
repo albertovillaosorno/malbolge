@@ -112,3 +112,43 @@ fn source_scratch_refuses_writes_at_pending_code() {
         Err(LinearLayoutError::UnsafeDataPlacement)
     );
 }
+
+#[test]
+fn jump_encrypted_skip_cell_is_a_real_guest_operand() -> Result<(), String> {
+    let profile = current_profile();
+    let target =
+        usize::try_from(jump_target(0)?).map_err(|error| error.to_string())?;
+    let mut operations = vec![LinearOpcode::NoOperation; target + target + 1];
+    operations[0] = LinearOpcode::JumpForward {
+        target: u32::try_from(target).map_err(|error| error.to_string())?,
+    };
+    operations[target + target - 2] = LinearOpcode::RotateData;
+    operations[target + target - 1] = LinearOpcode::OutputByte;
+    operations[target + target] = LinearOpcode::Halt;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("encrypted scratch layout: {error:?}"))?;
+    let cell = u32::from(layout.source()[target - 1]);
+    let encrypted =
+        encrypt_profile_cell(cell).ok_or("missing jump encryption")?;
+    let expected = malbolge::profile_rotate(encrypted, profile.memory_words());
+    assert_eq!(
+        layout.data_write_positions().iter().flatten().last(),
+        Some(&(target as u32 - 1))
+    );
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.output(), [expected as u8]);
+        assert_eq!(
+            vm.memory_word(target as u32 - 1)
+                .map_err(|error| format!("guest scratch: {error:?}"))?,
+            expected
+        );
+    }
+    Ok(())
+}
