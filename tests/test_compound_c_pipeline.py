@@ -345,6 +345,75 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
 
+    def test_strided_for_induction_emits_complete_masked_fibonacci(self) -> None:
+        """A two-step induction controls a twelve-effect C recurrence."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        self.assertEqual(original.count("i = 0U"), 1)
+        self.assertEqual(original.count("++i"), 1)
+        changed = original.replace("i = 0U", "i = 1U").replace(
+            "++i", "i += 2U"
+        ).replace("i < 12U", "i < 25U")
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(1, 25, 2):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            oracle.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-stride-two.c"
+            source.write_text(changed)
+            guest = Path(scratch) / "fibonacci-stride-two.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/fibonacci-stride-two-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            for label, variant in (
+                ("zero-step", changed.replace("i += 2U", "i += 0U")),
+                ("decrement", changed.replace("i += 2U", "i -= 2U")),
+                ("foreign-counter", changed.replace("i += 2U", "b += 2U")),
+                ("unbounded-step", changed.replace("i += 2U", "i += 13U")),
+                ("too-many-trips", changed.replace("i < 25U", "i < 27U")),
+            ):
+                rejected_source = Path(scratch) / f"invalid-{label}.c"
+                rejected_source.write_text(variant)
+                refused = Path(scratch) / f"invalid-{label}.malbolge"
+                attempt = subprocess.run(
+                    [*command[:-2], str(refused), str(rejected_source)],
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertNotEqual(attempt.returncode, 0, label)
+                self.assertFalse(refused.exists(), label)
+
     def test_compound_for_induction_rejects_forged_ast(self) -> None:
         """A typed += operator alone cannot prove the correct loop step."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
@@ -405,8 +474,10 @@ class CompoundCPipelineTests(unittest.TestCase):
                     if label == "operator":
                         increment_copy["operation"] = "-="
                     elif label == "step":
-                        step_copy["constant_integer"] = "2"
-                        step_copy["literal"] = "2"
+                        # A different supported stride is a valid typed
+                        # input, but a stride beyond the bounded proof is not.
+                        step_copy["constant_integer"] = "13"
+                        step_copy["literal"] = "13"
                     elif label == "literal":
                         step_copy["literal"] = "2"
                     elif label == "symbol":

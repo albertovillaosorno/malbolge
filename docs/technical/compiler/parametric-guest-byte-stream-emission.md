@@ -2451,3 +2451,29 @@ operators and steps other than one remain unsupported. The compiler still
 folds the closed C recurrence at compile time, not in guest-side C control
 flow. The unchanged unmasked twelve-byte Fibonacci target remains unsupported
 at guest layout; the P0 generalized guest-output language goal stays open.
+
+### Bounded non-unit induction with a source-derived trip count
+
+A complete masked Fibonacci C program was first attempted with
+`for (unsigned i = 1U; i < 12U; i += 2U)`. The typed frontend rejected
+its nonzero start and two-step induction before guest publication. Its
+six-byte output required a distinct, expensive guest layout search, so the
+whole-program acceptance was instead retained at twelve iterations by
+changing the checked loop bound to `25U`.
+
+The bounded loop projector now proves a source-typed unsigned initial value,
+positive literal `+=` stride up to twelve, and the exact counter progression
+until the `<` test becomes false. The limit is on actual iterations, rather
+than the numeric bound. It retains exact source order, canonical counter
+identity, typed operands and checked spans. Zero-trip bodies are still proved
+without publishing their speculative effects. A zero step, subtraction,
+wrong increment symbol, step beyond twelve and thirteen-trip loop are rejected
+without a guest artifact.
+
+The independently calculated twelve-iteration C recurrence with `i = 1U`,
+`i < 25U`, `i += 2U` emits
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`. The real pinned compiler and
+normative Malbolge VM reproduce that entire stream with both empty and
+nonempty stdin. This broadens compile-time closed-loop evaluation, not
+runtime C arithmetic or guest control flow. The unmasked original Fibonacci
+stream still has no admitted guest layout; general P0 completion remains open.

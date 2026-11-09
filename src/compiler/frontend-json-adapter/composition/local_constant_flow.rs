@@ -530,8 +530,8 @@ impl<'node> Flow<'node> {
         Some((local.byte, local.source))
     }
 
-    /// Prove one `for (unsigned i = 0U; i < N; ++i)` and replay its
-    /// source-checked body, or validate and discard a zero-trip shadow.
+    /// Prove a bounded `for (unsigned i = start; i < N; i += step)` and
+    /// replay its source-checked body, or discard a zero-trip shadow.
     /// Neither the loop counter nor any other local may escape its C scope.
     #[expect(
         clippy::cognitive_complexity,
@@ -554,7 +554,8 @@ impl<'node> Flow<'node> {
         let (declaration_end, _) =
             self.declaration(statement, statement.span.begin.byte)?;
         let counter = self.locals.get(outer_len)?;
-        if counter.byte != 0 {
+        let start = counter.byte;
+        if start > MAX_STATIC_LOOP_ITERATIONS {
             return None;
         }
         let symbol = counter.symbol;
@@ -574,7 +575,6 @@ impl<'node> Flow<'node> {
             || load.span.end.byte >= bound_node.span.begin.byte
             || comparison.span.end.byte != bound_node.span.end.byte
             || declaration_end >= comparison.span.begin.byte
-            || bound > MAX_STATIC_LOOP_ITERATIONS
         {
             return None;
         }
@@ -589,7 +589,7 @@ impl<'node> Flow<'node> {
         let increment = self.take(statement.id, increment_kind)?;
         let increment_read =
             self.take(increment.id, "declaration-reference-expression")?;
-        let supported_increment = match increment_kind {
+        let stride = match increment_kind {
             "unary-expression" => {
                 // Discarded ++i and i++ both advance a closed induction
                 // variable by one; postfix syntax has an exact two-byte tail.
@@ -610,15 +610,16 @@ impl<'node> Flow<'node> {
                         .column
                         .checked_sub(increment_read.span.end.column)
                         == Some(2);
-                typed_operator(increment, "++") && (prefix || postfix)
+                (typed_operator(increment, "++") && (prefix || postfix))
+                    .then_some(1)?
             },
             "compound-assignment-expression" => {
-                // The only admitted compound step is i += 1U: its full
-                // typed RHS and source order must be witnessed, not inferred
-                // from a lone operator or the target loop bound.
+                // Prove a positive, bounded literal stride from the exact
+                // typed right operand and source span, not from the bound.
                 let step = self.take(increment.id, "integer-literal")?;
-                typed_operator(increment, "+=")
-                    && literal_byte(step) == Some(1)
+                let stride = literal_byte(step)?;
+                (typed_operator(increment, "+=")
+                    && (1..=MAX_STATIC_LOOP_ITERATIONS).contains(&stride)
                     && increment.span.begin.byte
                         == increment_read.span.begin.byte
                     && increment.span.end == step.span.end
@@ -636,12 +637,12 @@ impl<'node> Flow<'node> {
                         .byte
                         .checked_sub(increment_read.span.end.byte)
                         .is_some_and(|gap| gap <= 16)
-                    && span_within(&increment.span, &step.span)
+                    && span_within(&increment.span, &step.span))
+                .then_some(stride)?
             },
-            _ => false,
+            _ => return None,
         };
-        if !supported_increment
-            || !assigned_local_reference(increment_read, symbol)
+        if !assigned_local_reference(increment_read, symbol)
             || !span_within(&statement.span, &increment.span)
             || !span_within(&increment.span, &increment_read.span)
             || !separated
@@ -659,7 +660,7 @@ impl<'node> Flow<'node> {
         let body_start = self.position;
         self.loop_counter = Some(symbol);
         let mut body_end = None;
-        if bound == 0 {
+        if start >= bound {
             // Even a nonexecuted for body must be a complete, admissible
             // source subtree. No speculative state or output may escape.
             let starting_locals = self.locals.clone();
@@ -669,7 +670,12 @@ impl<'node> Flow<'node> {
             self.locals = starting_locals;
             self.outputs.truncate(starting_outputs);
         }
-        for iteration in 0..bound {
+        let mut counter_value = start;
+        let mut trips = 0;
+        while counter_value < bound {
+            if trips >= MAX_STATIC_LOOP_ITERATIONS {
+                return None;
+            }
             self.position = body_start;
             self.loop_body(loop_body)?;
             if body_end
@@ -681,11 +687,13 @@ impl<'node> Flow<'node> {
             // Inner automatic locals must not remain visible after the brace.
             self.locals.truncate(outer_len.checked_add(1)?);
             let current_counter = self.locals.get_mut(outer_len)?;
-            if current_counter.byte != iteration {
+            if current_counter.byte != counter_value {
                 return None;
             }
-            current_counter.byte = current_counter.byte.checked_add(1)?;
+            counter_value = counter_value.checked_add(stride)?;
+            current_counter.byte = counter_value;
             current_counter.source = increment;
+            trips = trips.checked_add(1)?;
         }
         self.position = body_end?;
         self.locals.truncate(outer_len);
