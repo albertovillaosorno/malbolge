@@ -220,6 +220,141 @@ class CompoundCPipelineTests(unittest.TestCase):
                             rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
                         )
 
+    def test_postfix_for_induction_preserves_complete_c_guest_stream(self) -> None:
+        """A discarded i++ controls twelve actual source-proven byte effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        self.assertEqual(original.count("++i"), 1)
+        changed = original.replace("++i", "i++")
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            oracle.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-postfix.c"
+            source.write_text(changed)
+            guest = Path(scratch) / "fibonacci-postfix.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/fibonacci-postfix-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            for label, variant in (
+                ("decrement", changed.replace("i++", "i--")),
+                ("compound-assignment", changed.replace("i++", "i += 1U")),
+            ):
+                rejected = Path(scratch) / f"rejected-{label}.c"
+                rejected.write_text(variant)
+                rejected_guest = Path(scratch) / f"rejected-{label}.malbolge"
+                attempt = subprocess.run(
+                    [*command[:-2], str(rejected_guest), str(rejected)],
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertNotEqual(attempt.returncode, 0, label)
+                self.assertIn(b"Unsupported", attempt.stderr, label)
+                self.assertFalse(rejected_guest.exists(), label)
+
+    def test_postfix_induction_ast_shape_must_be_source_proven(self) -> None:
+        """A forged increment span or symbol cannot publish guest output."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        changed = MASKED_FIBONACCI.read_text().replace("++i", "i++")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-postfix.c"
+            source.write_text(changed)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/fibonacci-postfix-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            loop = next(node for node in nodes if node["kind"] == "for-statement")
+            increment = next(
+                node
+                for node in nodes
+                if node["parent"] == loop["id"]
+                and node["kind"] == "unary-expression"
+                and node.get("operation") == "++"
+            )
+            read = next(node for node in nodes if node["parent"] == increment["id"])
+            self.assertEqual(read["kind"], "declaration-reference-expression")
+            for label in ("decrement", "extra-suffix", "foreign-symbol"):
+                tampered = cast(
+                    dict[str, list[dict[str, object]]],
+                    json.loads(frontend.stdout),
+                )
+                node = tampered["nodes"][cast(int, increment["id"]) - 1]
+                if label == "decrement":
+                    node["operation"] = "--"
+                elif label == "extra-suffix":
+                    span = cast(dict[str, dict[str, int]], node["span"])
+                    span["end"]["byte"] += 1
+                    span["end"]["column"] += 1
+                else:
+                    tampered["nodes"][cast(int, read["id"]) - 1]["reference"] = (
+                        "unknown@0"
+                    )
+                guest = Path(scratch) / f"forged-{label}.malbolge"
+                attempt = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertNotEqual(attempt.returncode, 0, label)
+                self.assertIn(b"Unsupported", attempt.stderr, label)
+                self.assertFalse(guest.exists(), label)
+
     def test_six_bit_masked_fibonacci_full_c_guest_parity(self) -> None:
         """Twelve source-proven conditional bytes retain all six low bits."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

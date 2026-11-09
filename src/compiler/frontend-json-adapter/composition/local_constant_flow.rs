@@ -582,13 +582,32 @@ impl<'node> Flow<'node> {
         let increment = self.take(statement.id, "unary-expression")?;
         let increment_read =
             self.take(increment.id, "declaration-reference-expression")?;
+        // Both ++i and i++ update this induction variable by one, with
+        // the expression result discarded. A postfix form must end in
+        // exactly two source bytes beyond the referenced symbol.
+        let prefix_increment = increment.span.end == increment_read.span.end
+            && increment.span.begin.byte < increment_read.span.begin.byte;
+        let postfix_increment = increment.span.begin
+            == increment_read.span.begin
+            && increment.span.end.line == increment_read.span.end.line
+            && increment
+                .span
+                .end
+                .byte
+                .checked_sub(increment_read.span.end.byte)
+                == Some(2)
+            && increment
+                .span
+                .end
+                .column
+                .checked_sub(increment_read.span.end.column)
+                == Some(2);
         if !typed_operator(increment, "++")
             || !assigned_local_reference(increment_read, symbol)
             || !span_within(&statement.span, &increment.span)
             || !span_within(&increment.span, &increment_read.span)
             || !separated
-            || increment.span.end.byte != increment_read.span.end.byte
-            || increment.span.begin.byte >= increment_read.span.begin.byte
+            || !(prefix_increment || postfix_increment)
         {
             return None;
         }

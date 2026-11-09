@@ -98,6 +98,25 @@ new metamorphic matrix is two independent high-bit seeds, both stdin modes,
 exact whole-stream parity and explicit recognition that runtime C state and
 the unmasked byte-stream target remain unsupported.
 
+### Postfix `for` induction in a complete C recurrence (2026-11-09)
+
+The full 12-iteration five-bit masked Fibonacci C program was retried with
+`i++` instead of `++i` in its `for` step. The pinned frontend accepted the
+source, but the strict local-state projection initially refused its first
+`declaration-statement`, without publishing a guest. The adapter now admits
+the source-proven **postfix** unary increment alongside the established
+prefix form, only where the expression result is unused as a `for` induction
+step. The Clang operator, counter symbol, exact parentage and two-character
+postfix source extent must agree; decrement, compound assignment and forged
+increment metadata fail closed. The independent twelve-byte C oracle is
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`. The actual current-profile guest
+reproduces it in 47 VM steps. Both stdin modes and negative-source/AST
+mutations are replayed in `tests/test_compound_c_pipeline.py`.
+
+This is a new complete-source loop syntax admitted by compile-time static
+state projection, not a guest runtime increment or general C loop execution.
+The original unmasked Fibonacci stream remains unsupported at layout.
+
 ### First source-bound automatic-local output
 
 A separate pinned-Clang source now exercises a real automatic `unsigned`
