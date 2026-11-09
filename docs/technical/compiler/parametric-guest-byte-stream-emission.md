@@ -2579,3 +2579,28 @@ a third loop nesting level refuse without publication. These are closed
 compile-time C loops; the guest does not implement dynamic C induction,
 and the unmodified unmasked Fibonacci stream still lacks a guest layout.
 The generalized P0 remains open.
+
+### Source-proven lexical scopes in loop bodies
+
+A complete twelve-output masked Fibonacci C recurrence was first attempted
+with an explicit compound scope inside its `for` body. The scope declares an
+iteration-local `transfer` from `next`, then updates the enclosing `a` and
+`b`. The pinned Clang frontend admitted the C program, but the typed adapter
+refused the compound source node without publishing a guest artifact.
+
+The bounded loop-body projector now walks up to four nested lexical compound
+scopes with exact Clang parent and span evidence. It retains writes to
+outer locals and selected `putchar` effects, drops each scope-local declaration
+upon exit and reapplies that proof on every loop replay. The existing loop
+iteration, statement, local-count and source-identity bounds still apply;
+a fifth nested compound refuses. Skipped-loop shadow traversal also proves
+every nested source expression before discarding speculative state and output.
+
+The complete 12-effect C program has an independently calculated masked
+Fibonacci oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03`.
+`tests/test_compound_c_pipeline.py` exercises actual guest VM parity,
+zero-trip preservation of a following `0x41` output, undefined division
+inside skipped scopes, forged Clang parent/metadata and excessive nesting.
+The original unmasked Fibonacci trace still lacks a general guest layout.
+This is compile-time C state propagation, not runtime guest C block storage.
+P0 therefore remains open.

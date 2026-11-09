@@ -41,6 +41,7 @@ const MAX_LOCALS: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
 const MAX_NESTED_FOR_LOOPS: usize = 2;
+const MAX_NESTED_LOOP_BLOCKS: usize = 4;
 const MAX_NESTED_CONDITIONAL_DEPTH: u8 = 3;
 const MAX_EXPRESSION_DEPTH: usize = 8;
 // Bound the lexical prefix on an explicit source-proven `(int)` cast.
@@ -468,6 +469,12 @@ impl<'node> Flow<'node> {
     /// Replay a closed loop body with checked state and selected outputs.
     /// Each lexical inner declaration dies at the end of its iteration.
     fn loop_body(&mut self, body: &Node) -> Option<()> {
+        self.loop_body_depth(body, 0)
+    }
+
+    /// Nested C braces preserve writes to enclosing locals, but names
+    /// declared inside a brace cannot leak into the following statement.
+    fn loop_body_depth(&mut self, body: &Node, depth: usize) -> Option<()> {
         let mut last_end = body.span.begin.byte;
         let mut writes = 0;
         while let Some(node) = self.peek() {
@@ -483,6 +490,9 @@ impl<'node> Flow<'node> {
                 "binary-expression" => self.assignment(body, last_end)?.0,
                 "if-statement" => self.conditional(body, last_end, 0)?,
                 "for-statement" => self.static_for(body, last_end)?,
+                "compound-statement" => {
+                    self.scoped_loop_body(body, last_end, depth)?
+                },
                 "call-expression" => {
                     let output = checked_call(self, body, last_end)?;
                     let end = output.call.span.end.byte;
@@ -530,6 +540,30 @@ impl<'node> Flow<'node> {
             return None;
         }
         Some((local.byte, local.source))
+    }
+
+    /// Validate a lexical loop block before permitting its enclosing
+    /// state changes, and remove only the block-local declarations.
+    fn scoped_loop_body(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+        depth: usize,
+    ) -> Option<u32> {
+        let scope = self.take(body.id, "compound-statement")?;
+        if depth >= MAX_NESTED_LOOP_BLOCKS
+            || !clean(scope)
+            || !span_within(&body.span, &scope.span)
+            || previous_end > scope.span.begin.byte
+            || scope.span.begin.byte >= scope.span.end.byte
+            || scope.span.end.byte >= body.span.end.byte
+        {
+            return None;
+        }
+        let outer_len = self.locals.len();
+        self.loop_body_depth(scope, depth.checked_add(1)?)?;
+        self.locals.truncate(outer_len);
+        Some(scope.span.end.byte)
     }
 
     /// Prove a bounded unsigned `for` induction in either direction

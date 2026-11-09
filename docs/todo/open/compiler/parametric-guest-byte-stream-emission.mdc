@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 the complete masked Fibonacci recurrence with an inner C
+  lexical scope and a loop-local transfer first refused at the typed adapter
+  without publishing guest code. The adapter now proves up to four nested
+  compound blocks and drops block-local declarations while preserving the
+  enclosing Fibonacci state across twelve loop replays. A zero-trip version
+  emits only a later guest `0x41`; undefined division inside the skipped
+  scope, forged Clang parent/metadata, and fifth-level scopes refuse without
+  publication. The positive full-program acceptance checks all twelve
+  masked oracle bytes under empty/nonempty VM stdin. This remains closed
+  C-state folding, not dynamic guest scope/loop execution, and the original
+  unmasked guest layout is still unsupported; P0 remains pending.
 - On 2026-11-09 a complete 3-by-4 nested-`for` masked Fibonacci C
   recurrence initially refused at the typed adapter. Two-level source-proven
   induction now retains both protected counters and loop-carried C state;

@@ -74,6 +74,21 @@ def nested_masked_fibonacci_source() -> str:
     ).replace(end, "        b = next;\n        }\n    }\n}")
 
 
+def scoped_masked_fibonacci_source() -> str:
+    """Carry the recurrence through a loop-local lexical transfer scope."""
+    original = MASKED_FIBONACCI.read_text()
+    transfer = "        a = b;\n        b = next;"
+    assert original.count(transfer) == 1
+    return original.replace(
+        transfer,
+        "        {\n"
+        "            unsigned transfer = next;\n"
+        "            a = b;\n"
+        "            b = transfer;\n"
+        "        }",
+    )
+
+
 def reference_bytes() -> bytes:
     """Reference the bounded unsigned-C arithmetic, not compiler output."""
     previous, current = 1, 1
@@ -426,6 +441,194 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
+
+    def test_loop_scoped_transfer_emits_complete_masked_fibonacci(self) -> None:
+        """A block-local transfer dies each trip, not its enclosing writes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = scoped_masked_fibonacci_source()
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            expected.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-scope.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "fibonacci-scope.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/fibonacci-scope-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+
+    def test_loop_scoped_shadow_and_negative_admission(self) -> None:
+        """Skipped blocks prove source, and forged lexical identity refuses."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = scoped_masked_fibonacci_source()
+        self.assertEqual(original.count("i = 0U"), 1)
+        self.assertEqual(original.count("    }\n}\n"), 1)
+        zero_trip = original.replace("i = 0U", "i = 12U").replace(
+            "    }\n}\n", "    }\n    putchar((int)(a + 64U));\n}\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-scope-zero-trip.c"
+            source.write_text(zero_trip)
+            guest = Path(scratch) / "fibonacci-scope-zero-trip.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/fibonacci-scope-zero-trip-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=90
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                input=bytes((255, 0, 128)),
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"A")
+
+            bad = Path(scratch) / "fibonacci-scope-invalid.c"
+            bad.write_text(
+                zero_trip.replace(
+                    "unsigned transfer = next;", "unsigned transfer = next / 0U;"
+                )
+            )
+            rejected_guest = Path(scratch) / "fibonacci-scope-invalid.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(bad)],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
+
+            shallow = (
+                "        {\n"
+                "            unsigned transfer = next;\n"
+                "            a = b;\n"
+                "            b = transfer;\n"
+                "        }"
+            )
+            self.assertEqual(zero_trip.count(shallow), 1)
+            nested = "unsigned transfer = next;\na = b;\nb = transfer;"
+            for _ in range(5):
+                nested = "{\n" + nested + "\n}"
+            deep_source = Path(scratch) / "fibonacci-scope-too-deep.c"
+            deep_source.write_text(zero_trip.replace(shallow, nested))
+            deep_guest = Path(scratch) / "fibonacci-scope-too-deep.malbolge"
+            too_deep = subprocess.run(
+                [*command[:-2], str(deep_guest), str(deep_source)],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(too_deep.returncode, 0)
+            self.assertIn(b"Unsupported", too_deep.stderr)
+            self.assertFalse(deep_guest.exists())
+
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/fibonacci-scope-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]], json.loads(frontend.stdout)["nodes"])
+            scoped = next(
+                node
+                for node in nodes
+                if node["kind"] == "compound-statement"
+                and any(
+                    child["parent"] == node["id"]
+                    and child.get("kind") == "declaration-statement"
+                    and any(
+                        member["parent"] == child["id"]
+                        and member.get("name") == "transfer"
+                        for member in nodes
+                    )
+                    for child in nodes
+                )
+            )
+            for label, key, value in (
+                ("parent", "parent", 1),
+                ("metadata", "definition", "definition"),
+            ):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    forged["nodes"][cast(int, scoped["id"]) - 1][key] = value
+                    output = Path(scratch) / f"fibonacci-scope-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(output),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(output.exists(), label)
 
     def test_nested_for_induction_emits_complete_masked_fibonacci(self) -> None:
         """A 3-by-4 loop nest carries real C state across all twelve outputs."""
