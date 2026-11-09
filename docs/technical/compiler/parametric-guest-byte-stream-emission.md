@@ -2223,3 +2223,35 @@ empty and nonempty input VM parity, and forged-output rejection pass.
 
 This widens one bounded candidate grammar, not general synthesis or runtime C
 arithmetic. The original Fibonacci P0 acceptance is still pending.
+
+### Four-region arithmetic terminal seeds
+
+The original complete twelve-output Fibonacci C program still refuses at
+layout with no published guest. A source-independent 30-cell guest with
+four live relocations instead makes its final instruction before halt a
+real `p` or `*` data write. The unchanged nine output instructions emit
+`00 38 38 8a b5 b5 b1 88 b0` with the terminal `p`, or
+`00 41 41 8a b5 b5 8a c6 8a` with the terminal `*`. Those source cells
+also select a different loader-expanded data stream for earlier writes.
+
+Both 30-cell programs were independently admitted by the publisher and the
+normative VM. Earlier four-region proposals searched only terminal no-ops
+and outputs, so neither source could be recovered.
+
+A shorter 29-cell source-independent guest exposes the same gap in the
+original compact relocation geometry. Its terminal `*` changes the loader
+seed while the VM emits `00 42 42 03 c6 c6 a5 18 ff`. The independent
+publisher admitted the source before the expanded search; recovery failed
+without arithmetic terminal candidates in this shorter geometry.
+
+The four-region composer now makes a tightly bounded first pass over both
+`3 * N + 2` and `3 * N + 3` split geometries with 64 retained search steps
+for each arithmetic terminal. The established no-op/output searches retain
+their previous geometry order and 32,768-step budget. Red-first tests pin
+all three guest oracles, check four live `j` relocations, replay both input
+streams and reject forged outputs. Independent positional and source-disjoint
+write admission remains decisive.
+
+This adds bounded source-tail choices, not arbitrary byte-stream synthesis or
+runtime C arithmetic and loops. The original Fibonacci P0 acceptance
+remains open.

@@ -985,3 +985,21 @@ a compiler capability gap, not a reason to return to N+1.
   refusal. The complete twelve-output C Fibonacci source still safely refuses
   layout, so P0 remains pending on generalized guest synthesis and runtime
   C computation.
+
+- A separate 30-cell source-independent four-region guest executes a
+  final arithmetic `p` or `*` before halt, changing the loader seed rather
+  than emitting a byte. The normative VM emits
+  `00 38 38 8a b5 b5 b1 88 b0` for `p` and
+  `00 41 41 8a b5 b5 8a c6 8a` for `*`; the earlier four-region proposal
+  missed both because it searched only terminal no-ops and outputs.
+  Bounded arithmetic-tail probes recover both with positional source proof,
+  four live relocations, two-input VM parity and forged-byte refusal.
+
+- A shorter 29-cell source-independent four-region guest ends with `*`
+  and emits `00 42 42 03 c6 c6 a5 18 ff` in the normative VM. Its
+  independent publisher admitted the source, but the original compact
+  geometry lacked an arithmetic terminal search. A red-first recovery now
+  passes using a 64-step seed probe before the unchanged older fallback;
+  exact source-disjoint writes and forged-byte refusal remain mandatory.
+  The original twelve-byte Fibonacci C program still refuses at layout,
+  and generalized guest synthesis and runtime C state remain P0 work.

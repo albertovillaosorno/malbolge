@@ -1126,9 +1126,13 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
         .take_while(|&&byte| byte == 0)
         .count()
         .min(prefix);
-    for (length, offsets) in [
-        (N.checked_mul(3)?.checked_add(2)?, [1, 1, 0]),
-        (N.checked_mul(3)?.checked_add(3)?, [2, 2, 0]),
+    for (length, offsets, quick_seed) in [
+        // Terminal arithmetic changes the loader seed. Probe both known
+        // split geometries before the original, more expensive fallback.
+        (N.checked_mul(3)?.checked_add(2)?, [1, 1, 0], true),
+        (N.checked_mul(3)?.checked_add(3)?, [2, 2, 0], true),
+        (N.checked_mul(3)?.checked_add(2)?, [1, 1, 0], false),
+        (N.checked_mul(3)?.checked_add(3)?, [2, 2, 0], false),
     ] {
         if length > source_cells.len()
             || length
@@ -1153,7 +1157,15 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
         // The source cell before halt is a real instruction. A terminal
         // output both supplies the last byte effect and changes the loader
         // seed, so the entire source must be re-verified for that variant.
-        for terminal in [TerminalSuffix::Noop, TerminalSuffix::Output] {
+        let terminals: &[(TerminalSuffix, usize)] = if quick_seed {
+            &[(TerminalSuffix::Crazy, 64), (TerminalSuffix::Rotate, 64)]
+        } else {
+            &[
+                (TerminalSuffix::Noop, 32_768),
+                (TerminalSuffix::Output, 32_768),
+            ]
+        };
+        for &(terminal, step_budget) in terminals {
             let layout = (0..=leading_zeros).rev().find_map(|prefix_outputs| {
                 let geometry = SearchGeometry {
                     memory: &[],
@@ -1164,7 +1176,7 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
                 let spec = SplitSearchSpec {
                     additional_relocations: &positions,
                     geometry: &geometry,
-                    step_budget: 32_768,
+                    step_budget,
                     terminal,
                 };
                 let operations = proposed_split_geometry_with_budget(

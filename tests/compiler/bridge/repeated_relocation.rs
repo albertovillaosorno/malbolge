@@ -1626,3 +1626,150 @@ fn four_regions_recover_output_at_terminal_source_cell() -> Result<(), String> {
     );
     Ok(())
 }
+
+// Both independent source shapes must pass the same publisher and VM checks.
+fn verify_arithmetic_terminal_replay(
+    profile: &'static ProfileDescriptor,
+    layout: &LinearLayout,
+    expected: [u8; 9],
+    terminal: u8,
+) -> Result<(), String> {
+    let source_length = layout.source().len();
+    let decoded = layout
+        .source()
+        .iter()
+        .enumerate()
+        .map(|(index, &byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(index).unwrap_or(u32::MAX),
+            )
+        })
+        .collect::<Vec<_>>();
+    if decoded.iter().filter(|&&op| op == Some(b'j')).count() != 4
+        || decoded.get(source_length.saturating_sub(2)) != Some(&Some(terminal))
+    {
+        return Err(String::from(
+            "recovered four-region opcode identity drifted",
+        ));
+    }
+    if layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .any(|&address| {
+            !usize::try_from(address).is_ok_and(|index| index >= source_length)
+        })
+    {
+        return Err(String::from("recovered guest wrote into its source"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("recovered VM load: {error:?}"))?;
+        if !matches!(vm.run(source_length),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == source_length)
+            || vm.output() != expected
+            || vm.input_consumed() != 0
+        {
+            return Err(String::from(
+                "arithmetic-terminal guest replay drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn verify_arithmetic_terminal_source(
+    profile: &'static ProfileDescriptor,
+    operations: &[LinearOpcode],
+    cells: &[[u8; 6]],
+    witness: ([u8; 9], u8),
+) -> Result<(), String> {
+    let (expected, terminal) = witness;
+    let (observed, raw) = unbalanced_guest_oracle(profile, operations, cells)?;
+    if observed != expected
+        || proposed_output_stream(operations, cells) != Some(expected)
+    {
+        return Err(String::from("independent source oracle mismatch"));
+    }
+    if verified_output_stream_layout(profile, operations, expected, cells)
+        .is_none()
+    {
+        return Err(String::from("independent publisher rejected source"));
+    }
+    let recovered =
+        verified_four_split_relocation_output_layout(profile, expected, cells)
+            .ok_or("four-region arithmetic-terminal search missed source")?;
+    if recovered.source().len() != raw.len() {
+        return Err(String::from("recovered source length drifted"));
+    }
+    verify_arithmetic_terminal_replay(profile, &recovered, expected, terminal)?;
+    let mut forged = expected;
+    *forged.get_mut(3).ok_or("missing forged output")? ^= 1;
+    if verified_output_stream_layout(profile, operations, forged, cells)
+        .is_some()
+    {
+        return Err(String::from("forged output unexpectedly accepted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn four_regions_recover_arithmetic_terminal_seeds() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // Both terminal writes change the loader seed of the earlier guest data.
+    for (terminal, expected, decoded) in [
+        (
+            LinearOpcode::CrazyData,
+            [0x00, 0x38, 0x38, 0x8a, 0xb5, 0xb5, 0xb1, 0x88, 0xb0],
+            b'p',
+        ),
+        (
+            LinearOpcode::RotateData,
+            [0x00, 0x41, 0x41, 0x8a, 0xb5, 0xb5, 0x8a, 0xc6, 0x8a],
+            b'*',
+        ),
+    ] {
+        let mut operations = unbalanced_three_region_source();
+        operations.insert(19, LinearOpcode::RelocateDataPointer);
+        operations.insert(9, LinearOpcode::NoOperation);
+        if operations.len() != 30 {
+            return Err(String::from("unexpected shifted split geometry"));
+        }
+        *operations
+            .get_mut(28)
+            .ok_or("missing terminal source cell")? = terminal;
+        verify_arithmetic_terminal_source(
+            profile,
+            &operations,
+            &cells,
+            (expected, decoded),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn four_regions_recover_compact_arithmetic_terminal_seed() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // The compact split has no extra stride; a terminal rotate changes
+    // the expansion seed without changing the nine output instructions.
+    let mut operations = unbalanced_three_region_source();
+    operations.insert(19, LinearOpcode::RelocateDataPointer);
+    if operations.len() != 29 {
+        return Err(String::from("unexpected compact split geometry"));
+    }
+    *operations
+        .get_mut(27)
+        .ok_or("missing terminal source cell")? = LinearOpcode::RotateData;
+    verify_arithmetic_terminal_source(
+        profile,
+        &operations,
+        &cells,
+        ([0x00, 0x42, 0x42, 0x03, 0xc6, 0xc6, 0xa5, 0x18, 0xff], b'*'),
+    )
+}
