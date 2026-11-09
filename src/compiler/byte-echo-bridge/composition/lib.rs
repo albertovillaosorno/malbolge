@@ -2346,7 +2346,12 @@ pub fn encode_distinct_literal_pair(
             }
         }
     }
-    Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+    search_output_stream::verified_source_scratch_output_layout(
+        profile,
+        expected,
+        &source_cells,
+    )
+    .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
 /// Emits a nonzero `u8` one to thirty-three times using guest data operations.

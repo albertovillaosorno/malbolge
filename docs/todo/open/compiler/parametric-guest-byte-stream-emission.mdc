@@ -1012,3 +1012,13 @@ a compiler capability gap, not a reason to return to N+1.
   rejection. The production 10-to-12-byte search also admits the resulting
   byte stream (potentially with a different valid source). The original
   Fibonacci C target still refuses layout, so P0 remains pending.
+
+- The original Fibonacci source bounded to two iterations now emits `02 59`
+  from real `p`/`*` guest arithmetic following a forward `i` jump. The old
+  layout rejected writes to skipped graphical source cells despite no future
+  code overlap. An exact source-shadow write proof and bounded scratch
+  proposal now admit those safe past-code mutations; the publisher repeats
+  independent decode, write-geometry checks and two normative VM replays.
+  The pinned C pipeline produced an 85-step guest with two-input parity. The
+  full twelve-output Fibonacci source remains safely refused at layout; this
+  is compiler-time C state projection, not general guest runtime arithmetic.

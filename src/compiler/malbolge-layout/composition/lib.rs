@@ -35,8 +35,10 @@
 //! This module does **not** lower arbitrary ternary IR or allocate guest data.
 //! It proves an executable subset for which the code pointer advances by one
 //! position after every ordinary step, and stops inside the emitted source.
-//! Crazy/rotate may mutate memory only after a data-pointer relocation to
-//! an address beyond all emitted code. Forward code jumps are admitted only
+//! Crazy/rotate may also write source cells strictly behind the forward-only
+//! code pointer, after a jump separates code and data. Such writes cannot
+//! modify instructions that will execute later; full guest semantics still
+//! require normative VM validation. Forward code jumps are admitted only
 //! when the exact evolving data-pointer cells and skipped padding prove them.
 
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
@@ -199,7 +201,7 @@ pub enum LinearLayoutError {
     TooLong,
     /// Fewer than two cells cannot initialize the canonical profile loader.
     TooShort,
-    /// Data relocation is required before rotate/crazy or is misplaced.
+    /// Arithmetic may write only disjoint data or already-passed code cells.
     UnsafeDataPlacement,
 }
 
@@ -420,19 +422,9 @@ fn validate_shape(
     {
         return Err(LinearLayoutError::EarlyHalt { position });
     }
-    let relocation = operations
-        .iter()
-        .position(|op| *op == LinearOpcode::RelocateDataPointer);
-    // Relocations beyond the first require a fresh, unmodified data operand
-    // and disjoint future arithmetic. Derive and verify each one separately.
-    let unplaced_arithmetic =
-        operations.iter().enumerate().any(|(position, op)| {
-            matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData)
-                && relocation.is_none_or(|base| position <= base)
-        });
-    if unplaced_arithmetic {
-        return Err(LinearLayoutError::UnsafeDataPlacement);
-    }
+    // Geometry alone cannot decide arithmetic safety. After a forward jump,
+    // D may trail C and an arithmetic write can target a past source cell.
+    // The exact execution path below proves D < C for each such write.
     validate_jump_shape(operations)
 }
 
@@ -510,6 +502,7 @@ fn jump_successor(
 
 fn planned_data_write(
     operation: LinearOpcode,
+    code_address: u32,
     data_address: u32,
     source_length: usize,
 ) -> Result<Option<u32>, LinearLayoutError> {
@@ -520,7 +513,9 @@ fn planned_data_write(
         return Ok(None);
     }
     let code_end = u32::try_from(source_length).map_err(|_error| LinearLayoutError::TooLong)?;
-    if data_address < code_end {
+    if data_address < code_end && data_address >= code_address {
+        // Never overwrite the executing instruction or future source code.
+        // Forward-only control flow guarantees no return to a past cell.
         return Err(LinearLayoutError::UnsafeDataPlacement);
     }
     Ok(Some(data_address))
@@ -571,12 +566,14 @@ fn derive_execution_positions(
     let mut writes = Vec::new();
     // Jumps and the first relocation read exact source-memory cells.
     // Later j instructions may move D using unwritten expanded loader words.
-    // The checker preserves exact profile-memory wraparound and refuses
-    // arithmetic writes into source code after any relocation.
+    // The checker preserves exact profile-memory wraparound. Before data
+    // relocation, writes to source cells behind C are tracked in the shadow
+    // so later jumps/relocations read real evolving guest words.
     let mut code_cells: Vec<u32> =
         source.iter().copied().map(u32::from).collect();
     let mut data_pointer = 0usize;
     let mut position = 0usize;
+    let mut accumulator = Some(0u32);
     while let Some(operation) = operations.get(position) {
         let code = u32::try_from(position)
             .map_err(|_error| LinearLayoutError::TooLong)?;
@@ -586,11 +583,47 @@ fn derive_execution_positions(
         data.push(data_address);
         writes.push(planned_data_write(
             *operation,
+            code,
             data_address,
             source.len(),
         )?);
         if *operation == LinearOpcode::Halt {
             break;
+        }
+        // A source-scratch arithmetic instruction reads the last known
+        // version of D, not the original graphical byte. A changing input
+        // accumulator makes this proof incomplete, so reject that case rather
+        // than fabricating the word a later j may read.
+        match operation {
+            LinearOpcode::CrazyData | LinearOpcode::RotateData
+                if data_pointer < source.len() =>
+            {
+                let data_word = *code_cells
+                    .get(data_pointer)
+                    .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
+                let new_accumulator = match operation {
+                    LinearOpcode::CrazyData => malbolge::profile_crazy(
+                        data_word,
+                        accumulator
+                            .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
+                        profile.word_trits(),
+                    ),
+                    LinearOpcode::RotateData => malbolge::profile_rotate(
+                        data_word,
+                        profile.memory_words(),
+                    ),
+                    _ => unreachable!(),
+                };
+                *code_cells
+                    .get_mut(data_pointer)
+                    .ok_or(LinearLayoutError::UnsafeDataPlacement)? =
+                    new_accumulator;
+                accumulator = Some(new_accumulator);
+            },
+            LinearOpcode::CrazyData
+            | LinearOpcode::RotateData
+            | LinearOpcode::InputWord => accumulator = None,
+            _ => {},
         }
         let (encryption_address, next_position) = match operation {
             LinearOpcode::JumpForward { target } => {

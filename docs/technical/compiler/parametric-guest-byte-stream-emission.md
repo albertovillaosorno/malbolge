@@ -2283,3 +2283,28 @@ contract is observable byte parity, not exact source-byte identity. This
 adds one bounded relocation capability; it does not establish shortest-code
 optimality, arbitrary output synthesis, guest-side C state, or a witness for
 the original Fibonacci C stream. P0 remains open.
+
+### Source-scratch arithmetic after a forward code jump
+
+The complete twelve-iteration conditional Fibonacci C program was retried
+first and still refused guest publication at layout. A two-iteration variant
+of the same original source independently requires bytes `02 59`, but the
+previous guest grammar could not realize that pair. A forward `i` jump can
+leave graphical no-op source cells behind the code pointer; the actual VM
+may use those cells for `p` and `*` data writes without changing future code.
+The prior layout checker refused every in-source arithmetic write.
+
+The layout checker now permits only writes strictly behind the active code
+pointer, updates its shadow memory with exact arithmetic results, and still
+rejects current or future code overwrites. A bounded source-scratch proposal
+explores these skipped loader bytes without host-produced output. The final
+publisher independently decodes the forward jump, proves no pending code
+write and distinct data writes, re-admits the full source, and executes two
+normative VM replays with different stdin. The real pinned C pipeline now
+emits a capsule executing 85 guest steps and returning `02 59` on both inputs.
+A source-backed positive regression, red-first layout tests, mutated source
+rejection and the independent VM oracle cover this new semantic boundary.
+
+This is **not** runtime C loop or arithmetic lowering: the frontend still
+projects closed C state at compile time. The full twelve-byte Fibonacci
+stream remains unwitnessed by the bounded layout grammar, and P0 stays open.

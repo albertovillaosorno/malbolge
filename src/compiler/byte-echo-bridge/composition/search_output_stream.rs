@@ -1200,6 +1200,113 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
     None
 }
 
+/// Search an acyclic source-scratch geometry after one forward code jump.
+///
+/// The initial `i` jumps over graphical no-op source cells. Before D reaches
+/// the final skipped cell, every arithmetic instruction reads one untouched
+/// padding word strictly behind C. The positional inverse decoder fixes each
+/// operand, but the guest performs all crazy/rotate arithmetic itself. This
+/// remains a bounded proposal; independent layout and VM checks decide.
+pub(super) fn verified_source_scratch_output_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if N == 0 || N > 12 || profile.id() != malbolge::current_profile().id() {
+        return None;
+    }
+    let jump_cell = (33u8..=126).find(|&byte| {
+        malbolge::decode_profile_instruction(u32::from(byte), 0) == Some(b'i')
+    })?;
+    let target = usize::from(jump_cell).checked_add(1)?;
+    // Cell `target - 1` is encrypted by the initial jump. Keep all data
+    // reads strictly below it so the search's operand bytes stay immutable.
+    let body_limit = target.checked_sub(2)?;
+    if body_limit < N || target > source_cells.len() {
+        return None;
+    }
+    let mut states = BTreeMap::from([((0usize, 0u32), 0usize)]);
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    for index in 0..body_limit {
+        let address = index.checked_add(1)?;
+        let word = |offset: usize| {
+            source_cells
+                .get(address.checked_add(offset)?)
+                .map(|cell| u32::from(cell[0]))
+        };
+        states = append_successors(
+            &states,
+            &mut steps,
+            SearchWord {
+                remaining: body_limit.saturating_sub(index.saturating_add(1)),
+                target_emitted: N,
+                value: word(0)?,
+                next_value: word(1)?,
+                next_next_value: word(2)?,
+                next_next_next_value: word(3)?,
+            },
+            expected,
+        );
+        if let Some((_, &last)) = states.iter().find(|(key, _)| key.0 == N) {
+            let mut body = Vec::new();
+            let mut cursor = last;
+            while cursor != 0 {
+                let step = steps.get(cursor)?;
+                body.push(step.operation);
+                cursor = step.predecessor;
+            }
+            body.reverse();
+            let mut operations = vec![LinearOpcode::NoOperation; target];
+            *operations.first_mut()? = LinearOpcode::JumpForward {
+                target: u32::try_from(target).ok()?,
+            };
+            operations.extend(body);
+            operations.push(LinearOpcode::Halt);
+            let layout =
+                super::encode_linear_layout(profile, &operations).ok()?;
+            // Scratch writes must be strictly behind the active code cell.
+            for (code, write) in layout
+                .executed_code_positions()
+                .iter()
+                .zip(layout.data_write_positions())
+            {
+                if write.is_some_and(|address| {
+                    address >= *code || address >= layout.source().len() as u32
+                }) {
+                    return None;
+                }
+            }
+            for input in [Vec::new(), vec![255, 0, 128]] {
+                let mut vm = super::ProfileMachine::from_source(
+                    profile,
+                    layout.source(),
+                    input,
+                )
+                .ok()?;
+                if !matches!(vm.run(layout.executed_code_positions().len()),
+                    Ok(super::RunOutcome::Terminated { steps, .. })
+                        if steps == layout.executed_code_positions().len())
+                    || vm.input_consumed() != 0
+                    || vm.output() != expected
+                {
+                    return None;
+                }
+            }
+            return Some(layout);
+        }
+        if states.is_empty()
+            || states.len() > MAX_STATES_PER_POSITION
+            || steps.len() > MAX_STEPS_PER_GEOMETRY
+        {
+            return None;
+        }
+    }
+    None
+}
+
 /// Try short multi-effect guest traces without extending hostile-input cost.
 ///
 /// Unlike a fixed `p`/output ladder, this bounded beam admits repeated
@@ -1435,6 +1542,10 @@ fn verified_two_relocation_write_layout<const N: usize>(
     }
     None
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/source_scratch.rs"]
+mod source_scratch_tests;
 
 #[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/alternate_terminal.rs"]

@@ -2500,3 +2500,6 @@ fn distant_loader_operand_replays_exact_guest_state()
     }
     Ok(())
 }
+
+#[path = "compiler/layout/source_scratch.rs"]
+mod source_scratch_tests;

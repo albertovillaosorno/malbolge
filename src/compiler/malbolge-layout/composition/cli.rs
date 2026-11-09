@@ -3616,6 +3616,114 @@ fn verify_zero_then_literal(
     Ok(())
 }
 
+// A forward jump can leave its skipped graphical no-op source cells behind
+// the running code pointer. Independent linear admission proves that scratch
+// writes never overwrite pending instructions; this publisher then rechecks
+// the exact jump, byte effects, write addresses and two normative VM replays.
+fn verify_source_scratch_literal_pair(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    expected: [u8; 2],
+) -> Result<(), String> {
+    let decoded = artifact
+        .source
+        .iter()
+        .enumerate()
+        .map(|(position, &byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(position).ok()?,
+            )
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("source-scratch guest decode disagrees")?;
+    let target =
+        usize::from(*artifact.source.first().ok_or("empty scratch guest")?)
+            .checked_add(1)
+            .ok_or("scratch jump target overflow")?;
+    if decoded.first() != Some(&b'i')
+        || target >= decoded.len()
+        || decoded[1..target].iter().any(|&opcode| opcode != b'o')
+        || decoded.last() != Some(&b'v')
+        || decoded[target..decoded.len() - 1].iter().any(|&opcode| {
+            !matches!(opcode, b'o' | b'p' | b'*')
+                && opcode != profile.output_instruction()
+        })
+        || decoded
+            .iter()
+            .filter(|&&op| op == profile.output_instruction())
+            .count()
+            != 2
+    {
+        return Err(String::from("source-scratch guest shape disagrees"));
+    }
+    let operations = decoded
+        .iter()
+        .enumerate()
+        .map(|(position, &opcode)| match opcode {
+            b'i' if position == 0 => Some(LinearOpcode::JumpForward {
+                target: u32::try_from(target).ok()?,
+            }),
+            b'o' => Some(LinearOpcode::NoOperation),
+            b'p' => Some(LinearOpcode::CrazyData),
+            b'*' => Some(LinearOpcode::RotateData),
+            b'v' => Some(LinearOpcode::Halt),
+            output if output == profile.output_instruction() => {
+                Some(LinearOpcode::OutputByte)
+            },
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("source-scratch guest opcode disagrees")?;
+    let layout = admit_linear_layout(
+        profile,
+        &operations,
+        &artifact.source,
+        LinearProfileIdentity {
+            fingerprint: profile.fingerprint(),
+            id: profile.id(),
+        },
+    )
+    .map_err(|error| format!("source-scratch admission: {error:?}"))?;
+    let writes = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<Vec<_>>();
+    if writes.len()
+        < usize::from(expected[0] != 0)
+            + usize::from(expected[0] != expected[1])
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
+        || writes
+            .iter()
+            .any(|&address| address >= layout.source().len() as u32)
+        || layout
+            .executed_code_positions()
+            .iter()
+            .zip(layout.data_write_positions())
+            .any(|(&code, &write)| write.is_some_and(|address| address >= code))
+        || layout.executed_code_positions().len() != artifact.steps
+    {
+        return Err(String::from("source-scratch write geometry disagrees"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("source-scratch guest load: {error:?}")
+                })?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != expected
+        {
+            return Err(String::from("source-scratch guest output disagrees"));
+        }
+    }
+    Ok(())
+}
+
 // Independent publisher proof: outputs are real guest instructions, while
 // repeated values may reuse a live accumulator without a second data write.
 fn verify_distinct_literal_pair(
@@ -3628,7 +3736,11 @@ fn verify_distinct_literal_pair(
     // Unequal pairs require distinct guest writes. Equal pairs allow one or
     // two writes before adjacent output instructions with no host copying.
     if artifact.source.len() != artifact.steps {
-        return Err(String::from("distinct-literal guest geometry disagrees"));
+        return verify_source_scratch_literal_pair(
+            profile,
+            artifact,
+            [first, second],
+        );
     }
     let decoded = artifact
         .source
