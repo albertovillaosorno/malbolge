@@ -2524,3 +2524,31 @@ both empty and nonempty stdin, plus unsafe step, wraparound, loop-bound,
 source-symbol and forged Clang-AST mutations. These are **compile-time**
 closed-state loops; guest runtime C induction and the unmodified twelve-byte
 Fibonacci output remain unsupported.
+
+### Bounded not-equal induction with exact-endpoint guest parity
+
+The complete twelve-iteration masked Fibonacci C program was retried with
+`for (unsigned i = 0U; i != 12U; ++i)` rather than a relational bound.
+Pinned Clang accepted the whole C function, but the typed adapter rejected
+its declaration before any guest publication. A red-first end-to-end test
+confirmed the same refusal for descending `i != 0U; --i` and the positive
+stride `i != 25U; i += 2U` from one.
+
+The source-bounded projector now accepts `!=` with checked two-character
+comparison-token spacing, source-tied induction symbol, discarded prefix,
+postfix or bounded compound step, and an exact reachable endpoint. The step
+operator determines direction; crossing the bound, `u8` underflow or overflow,
+zero stride, wrong symbol, and more than twelve trips all refuse. Zero-trip
+bodies are still proved on shadow state without publishing skipped output.
+This is a finite **compile-time** projection of known C state, not a guest
+implementation of dynamic comparison or induction.
+
+`tests/test_compound_c_pipeline.py` verifies ascending, descending, and
+stride-two whole-program variants against the independent twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` using the actual Malbolge guest VM,
+with both empty and nonempty stdin. An ascending witness takes 47 VM steps.
+A separate zero-trip `!=` full C program preserves a later three-step
+`do-while` recurrence and emits only `0x41` on both guest inputs. Negative
+C source and forged AST tests refuse without a guest artifact. The original
+unmasked Fibonacci stream still has no admitted general guest layout; P0
+remains pending on its generalized byte-stream and runtime-control goals.

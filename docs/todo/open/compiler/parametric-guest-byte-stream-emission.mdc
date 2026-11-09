@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete masked Fibonacci C recurrence using
+  `i != 12U` was first refused by the pinned frontend-to-typed adapter.
+  Source-span-bounded `!=` induction now proves an exact reachable endpoint
+  with ascending, descending and two-step counters, at most twelve trips,
+  and checked nonwrapping updates. Three full C variants emit the same
+  independently calculated twelve bytes through the normative guest VM
+  under empty/nonempty stdin; an ascending witness takes 47 steps. A
+  zero-trip C `!=` loop retains a subsequent recurrence and emits `0x41`.
+  Unsafe source loops and forged AST evidence fail without publication.
+  This still folds closed C state at compile time and cannot realize the
+  original unmasked Fibonacci stream at the general guest layout stage.
 - On 2026-11-09 the full twelve-output masked Fibonacci C program
   exposed a missing inclusive `for` comparison proof. The pinned frontend
   accepted `i <= 11U` and `i >= 1U`, but the adapter refused both before

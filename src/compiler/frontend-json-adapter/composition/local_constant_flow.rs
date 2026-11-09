@@ -577,8 +577,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let descending =
-            matches!(comparison.operation.as_deref(), Some(">" | ">="));
+        let not_equal = comparison.operation.as_deref() == Some("!=");
         let inclusive =
             matches!(comparison.operation.as_deref(), Some("<=" | ">="));
         let separated = comparison.span.end.byte < self.peek()?.span.begin.byte;
@@ -590,6 +589,13 @@ impl<'node> Flow<'node> {
             return None;
         }
         let increment = self.take(statement.id, increment_kind)?;
+        // An equality endpoint has no intrinsic direction: the discarded
+        // increment expression must prove whether we count up or down.
+        let descending = if not_equal {
+            matches!(increment.operation.as_deref(), Some("--" | "-="))
+        } else {
+            matches!(comparison.operation.as_deref(), Some(">" | ">="))
+        };
         let increment_read =
             self.take(increment.id, "declaration-reference-expression")?;
         let stride = match increment_kind {
@@ -677,7 +683,9 @@ impl<'node> Flow<'node> {
         self.loop_counter = Some(symbol);
         let mut body_end = None;
         let continues = |value: u8| {
-            if descending {
+            if not_equal {
+                value != bound
+            } else if descending {
                 value > bound || (inclusive && value == bound)
             } else {
                 value < bound || (inclusive && value == bound)
@@ -696,7 +704,13 @@ impl<'node> Flow<'node> {
         let mut counter_value = start;
         let mut trips = 0;
         while continues(counter_value) {
-            if trips >= MAX_STATIC_LOOP_ITERATIONS {
+            if trips >= MAX_STATIC_LOOP_ITERATIONS
+                || (not_equal
+                    && ((descending && counter_value < bound)
+                        || (!descending && counter_value > bound)))
+            {
+                // `!=` must reach the bound without crossing it; a
+                // would-be unsigned wrap or nondivisible stride refuses.
                 return None;
             }
             self.position = body_start;
@@ -944,7 +958,7 @@ fn typed_bounded_loop_comparison(
     // same token geometry. Other whitespace spellings fail closed.
     let separator = match node.operation.as_deref() {
         Some("<" | ">") => 3,
-        Some("<=" | ">=") => 4,
+        Some("<=" | ">=" | "!=") => 4,
         _ => return false,
     };
     bound.span.begin.byte.checked_sub(counter.span.end.byte) == Some(separator)
