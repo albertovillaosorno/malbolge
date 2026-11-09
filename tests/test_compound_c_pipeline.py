@@ -144,6 +144,82 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", rejected.stderr)
             self.assertFalse(rejected_guest.exists())
 
+    def test_high_bit_xor_metameric_fibonacci_guest_parity(self) -> None:
+        """Different source expressions emit the same twelve actual guest bytes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        even = "putchar((int)(next & 31U));"
+        odd = "putchar((int)((next ^ 0x1AU) & 31U));"
+        self.assertEqual(original.count(even), 1)
+        self.assertEqual(original.count(odd), 1)
+        expected = bytearray()
+        previous, current = 1, 1
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            expected.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        # The two high-bit masks are deliberately distinct. For either
+        # branch, masking five low bits after XOR must remove the mutation.
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for seed in (0x20, 0x40):
+                with self.subTest(seed=seed):
+                    for value in (0, 1, 2, 31, 32, 63, 255):
+                        self.assertEqual(
+                            ((value ^ seed) & 31), value & 31
+                        )
+                    changed = original.replace(
+                        even,
+                        f"putchar((int)((next ^ 0x{seed:02X}U) & 31U));",
+                    ).replace(
+                        odd,
+                        "putchar((int)(((next ^ 0x1AU) ^ "
+                        f"0x{seed:02X}U) & 31U));",
+                    )
+                    source = Path(scratch) / f"fib-high-xor-{seed}.c"
+                    source.write_text(changed)
+                    guest = Path(scratch) / f"fib-high-xor-{seed}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/fibonacci-high-xor-{seed}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=150,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [
+                                str(VM),
+                                str(guest),
+                                "--input-stdin",
+                                "--report-steps",
+                            ],
+                            input=supplied,
+                            check=False,
+                            capture_output=True,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
     def test_six_bit_masked_fibonacci_full_c_guest_parity(self) -> None:
         """Twelve source-proven conditional bytes retain all six low bits."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

@@ -73,6 +73,31 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Source-expression metamorphic parity (2026-11-09)
+
+The complete 12-iteration five-bit masked Fibonacci C program has a bounded
+metamorphic matrix that inserts either `0x20` or `0x40` XOR into **both**
+conditional output arguments before the `& 31U` truncation. The independently
+checked C identity `(value ^ high_bit) & 31U == value & 31U` holds for each
+selected high bit, including input boundary values. Both entire changed C
+sources pass pinned Clang, the closed JSON adapter, typed lowering, and layout.
+The actual `malbolge-2026` VM emits the same `02 19 1f 08 17 0f 02 0d 03 10
+13 03` twelve-byte stream with empty and nonempty stdin; a tested witness
+executes 47 guest steps. `tests/test_compound_c_pipeline.py` owns the
+replayable two-seed acceptance test. This exercises new source expression
+ancestry and constant propagation without adding any emit-N fixture.
+
+The unmodified, unmasked Fibonacci C source still refuses with
+`Layout(UnsupportedEffectTrace)`. A bounded follow-up experiment could not
+produce its first `02 59 5f` three-byte prefix by increasing graphical
+source-scratch depth from five to twelve operations, nor by combining verified
+two-output source-scratch prefixes with a relocation to loader-expanded data.
+These were proposal-search failures, not a semantic impossibility proof; no
+unverified guest proposal was admitted or retained. The stop condition for the
+new metamorphic matrix is two independent high-bit seeds, both stdin modes,
+exact whole-stream parity and explicit recognition that runtime C state and
+the unmasked byte-stream target remain unsupported.
+
 ### First source-bound automatic-local output
 
 A separate pinned-Clang source now exercises a real automatic `unsigned`
