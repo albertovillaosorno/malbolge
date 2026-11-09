@@ -1003,3 +1003,12 @@ a compiler capability gap, not a reason to return to N+1.
   exact source-disjoint writes and forged-byte refusal remain mandatory.
   The original twelve-byte Fibonacci C program still refuses at layout,
   and generalized guest synthesis and runtime C state remain P0 work.
+
+- A five-relocation, 30-instruction source-independent guest now witnesses
+  twelve actual output effects and disjoint arithmetic data writes. The
+  previously bounded multi-region proposer rejected this independently
+  admitted program; its general relocation-count search now recovers the
+  full source, with guest VM parity under two inputs and forged-output
+  rejection. The production 10-to-12-byte search also admits the resulting
+  byte stream (potentially with a different valid source). The original
+  Fibonacci C target still refuses layout, so P0 remains pending.

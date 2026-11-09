@@ -1773,3 +1773,89 @@ fn four_regions_recover_compact_arithmetic_terminal_seed() -> Result<(), String>
         ([0x00, 0x42, 0x42, 0x03, 0xc6, 0xc6, 0xa5, 0x18, 0xff], b'*'),
     )
 }
+
+#[test]
+fn five_relocations_recover_twelve_guest_outputs() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source phases")?;
+    // Twelve genuine outputs span five data regions; this source is built
+    // from positional decoder cells, not from the proposed search grammar.
+    let mut operations = Vec::new();
+    for index in 0..12 {
+        if index < 5 {
+            operations.push(LinearOpcode::RelocateDataPointer);
+        }
+        operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing positional source byte")?;
+    let mut vm = ProfileMachine::from_source(profile, &raw, Vec::new())
+        .map_err(|error| format!("independent five-region load: {error:?}"))?;
+    assert!(matches!(vm.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+    assert_eq!(vm.input_consumed(), 0);
+    let expected: [u8; 12] = vm
+        .output()
+        .try_into()
+        .map_err(|error| format!("twelve guest outputs: {error:?}"))?;
+    assert_eq!(expected, [
+        0x41, 0x47, 0x5a, 0x25, 0x25, 0x4d, 0x32, 0x18, 0x5a, 0x25, 0x25, 0x4d
+    ]);
+    let original =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or("independent publisher refused twelve-byte guest")?;
+    assert_eq!(original.source(), raw);
+    assert_eq!(original.data_write_positions().iter().flatten().count(), 12);
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|&&operation| {
+                operation == LinearOpcode::RelocateDataPointer
+            })
+            .count(),
+        5
+    );
+    let recovered =
+        verified_relocated_write_layout(profile, expected, &cells, 5)
+            .ok_or("five-region proposer missed independent guest")?;
+    assert_eq!(recovered.source(), raw);
+    assert_eq!(
+        recovered.data_write_positions().iter().flatten().count(),
+        12
+    );
+    let published = verified_short_output_layout(profile, expected, &cells)
+        .ok_or("production twelve-byte bridge missed a verified guest")?;
+    // A different verified source can emit the same bytes; exact source
+    // identity is not part of the public byte-stream compiler contract.
+    assert!(published.data_write_positions().iter().flatten().count() > 0);
+    for supplied in [Vec::new(), vec![0, 255, 128]] {
+        let mut replay =
+            ProfileMachine::from_source(profile, recovered.source(), supplied)
+                .map_err(|error| {
+                    format!("recovered five-region load: {error:?}")
+                })?;
+        assert!(matches!(replay.run(raw.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+        assert_eq!(replay.output(), expected);
+        assert_eq!(replay.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[5] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells,)
+            .is_none()
+    );
+    Ok(())
+}

@@ -2255,3 +2255,31 @@ write admission remains decisive.
 This adds bounded source-tail choices, not arbitrary byte-stream synthesis or
 runtime C arithmetic and loops. The original Fibonacci P0 acceptance
 remains open.
+
+### Fifth live data relocation across twelve real output effects
+
+The complete, unchanged twelve-iteration Fibonacci C program was retried
+before this change and still refused at its positional guest-layout boundary.
+The typed C effects remain admitted; no guest artifact was published. The
+four-relocation writer had a separate, concrete ceiling: its proposal guard
+rejected a source-independent guest with five actual `j` relocations even
+though the independent layout checker could admit that guest.
+
+A 30-cell, positionally encoded source with five relocations, twelve distinct
+`p` writes, twelve real `<` instructions and a final halt emits
+`41 47 5a 25 25 4d 32 18 5a 25 25 4d` in the normative current-profile VM.
+The five relocations read untouched operands, and all twelve write addresses
+are disjoint and outside code. The red-first test verified that the source
+executed and its layout was independently admissible while the bounded
+proposal rejected the same guest. Extending the existing relocation-count
+parameter to five recovers its exact source. Empty and nonempty stdin replays,
+output order, write footprints and forged-output rejection pass.
+
+The general short-stream bridge now tries this additional paired-write search
+for streams of 10 to 12 bytes only, after its established smaller-region
+proposals. For this output stream the production bridge can independently
+admit a different 30-cell guest, which is equally valid because the compiler
+contract is observable byte parity, not exact source-byte identity. This
+adds one bounded relocation capability; it does not establish shortest-code
+optimality, arbitrary output synthesis, guest-side C state, or a witness for
+the original Fibonacci C stream. P0 remains open.
