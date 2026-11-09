@@ -40,6 +40,7 @@ use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 const MAX_LOCALS: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
+const MAX_NESTED_FOR_LOOPS: usize = 2;
 const MAX_NESTED_CONDITIONAL_DEPTH: u8 = 3;
 const MAX_EXPRESSION_DEPTH: usize = 8;
 // Bound the lexical prefix on an explicit source-proven `(int)` cast.
@@ -56,7 +57,7 @@ struct Local<'node> {
 
 struct Flow<'node> {
     locals: Vec<Local<'node>>,
-    loop_counter: Option<&'node str>,
+    loop_counters: Vec<&'node str>,
     nodes: &'node [Node],
     outputs: Vec<OutputCall<'node>>,
     position: usize,
@@ -89,7 +90,7 @@ impl<'node> Flow<'node> {
             .locals
             .iter()
             .position(|local| local.symbol == symbol)?;
-        if self.loop_counter == Some(symbol)
+        if self.loop_counters.contains(&symbol)
             || !assigned_local_reference(left, symbol)
             || !span_within(&assignment.span, &left.span)
             || assignment.span.begin.byte != left.span.begin.byte
@@ -481,6 +482,7 @@ impl<'node> Flow<'node> {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" => self.assignment(body, last_end)?.0,
                 "if-statement" => self.conditional(body, last_end, 0)?,
+                "for-statement" => self.static_for(body, last_end)?,
                 "call-expression" => {
                     let output = checked_call(self, body, last_end)?;
                     let end = output.call.span.end.byte;
@@ -546,7 +548,7 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || self.loop_counter.is_some()
+            || self.loop_counters.len() >= MAX_NESTED_FOR_LOOPS
         {
             return None;
         }
@@ -680,7 +682,7 @@ impl<'node> Flow<'node> {
             return None;
         }
         let body_start = self.position;
-        self.loop_counter = Some(symbol);
+        self.loop_counters.push(symbol);
         let mut body_end = None;
         let continues = |value: u8| {
             if not_equal {
@@ -738,8 +740,7 @@ impl<'node> Flow<'node> {
         }
         self.position = body_end?;
         self.locals.truncate(outer_len);
-        self.loop_counter = None;
-        Some(statement.span.end.byte)
+        (self.loop_counters.pop()? == symbol).then_some(statement.span.end.byte)
     }
 
     /// Replay a source-proven `while (predicate) { ... }` over known locals.
@@ -751,7 +752,7 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || self.loop_counter.is_some()
+            || !self.loop_counters.is_empty()
         {
             return None;
         }
@@ -810,7 +811,7 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || self.loop_counter.is_some()
+            || !self.loop_counters.is_empty()
         {
             return None;
         }
@@ -1190,7 +1191,7 @@ pub(super) fn canonical_multi_local_output(
     }
     let mut flow = Flow {
         locals: Vec::new(),
-        loop_counter: None,
+        loop_counters: Vec::new(),
         nodes: &input.nodes,
         outputs: Vec::new(),
         position: 2,

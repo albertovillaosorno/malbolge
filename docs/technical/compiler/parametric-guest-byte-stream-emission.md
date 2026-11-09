@@ -2552,3 +2552,30 @@ A separate zero-trip `!=` full C program preserves a later three-step
 C source and forged AST tests refuse without a guest artifact. The original
 unmasked Fibonacci stream still has no admitted general guest layout; P0
 remains pending on its generalized byte-stream and runtime-control goals.
+
+### Two-level source-proven bounded induction
+
+The complete twelve-output masked Fibonacci C program was first retried with
+three outer `row` iterations and four inner `col` iterations. The pinned Clang
+frontend accepted the nested `for` statements, but the JSON-to-typed adapter
+refused the first declaration because the previous closed-flow projector
+allowed only one active induction counter and no nested `for` body. No guest
+artifact was published in that red-first experiment.
+
+The bounded projector now permits exactly two lexical `for` levels, each with
+its own source-proven unsigned induction, bound, step and symbol. It protects
+**all** active counters from body assignments, preserves outer local state
+across the inner loop, drops inner lexical declarations at each iteration,
+and rechecks source/AST identity during every replay. Both loops retain the
+existing checked 12-iteration ceiling; a third nested `for` refuses.
+
+The complete 3-by-4 C recurrence now produces the independently calculated
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` through the actual normative VM on
+empty and supplied input. An inner zero-trip variant validates the skipped
+body on shadow state, discards its output effects and then emits only `0x41`
+from a later C call in the real guest. Mutations that assign either active
+counter, corrupt the skipped body, forge a Clang parent/step/symbol or add
+a third loop nesting level refuse without publication. These are closed
+compile-time C loops; the guest does not implement dynamic C induction,
+and the unmodified unmasked Fibonacci stream still lacks a guest layout.
+The generalized P0 remains open.

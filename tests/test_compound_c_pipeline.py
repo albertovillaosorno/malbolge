@@ -61,6 +61,19 @@ WIDE_STREAM = (
 )
 
 
+def nested_masked_fibonacci_source() -> str:
+    """Keep the same recurrence while splitting its induction into 3 by 4."""
+    original = MASKED_FIBONACCI.read_text()
+    loop = "for (unsigned i = 0U; i < 12U; ++i) {"
+    end = "        b = next;\n    }\n}"
+    assert original.count(loop) == original.count(end) == 1
+    return original.replace(
+        loop,
+        "for (unsigned row = 0U; row < 3U; ++row) {\n"
+        "        for (unsigned col = 0U; col < 4U; ++col) {",
+    ).replace(end, "        b = next;\n        }\n    }\n}")
+
+
 def reference_bytes() -> bytes:
     """Reference the bounded unsigned-C arithmetic, not compiler output."""
     previous, current = 1, 1
@@ -413,6 +426,252 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
+
+    def test_nested_for_induction_emits_complete_masked_fibonacci(self) -> None:
+        """A 3-by-4 loop nest carries real C state across all twelve outputs."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = nested_masked_fibonacci_source()
+        previous, current = 1, 1
+        expected = bytearray()
+        for _row in range(3):
+            for _col in range(4):
+                following = (previous + current) & 255
+                selected = following if following % 2 == 0 else following ^ 0x1A
+                expected.append(selected & 31)
+                previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-nested.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "fibonacci-nested.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/fibonacci-nested-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            for label, mutation in (
+                ("outer-write", "row = 0U;"),
+                ("inner-write", "col = 0U;"),
+            ):
+                bad_source = Path(scratch) / f"nested-{label}.c"
+                bad_source.write_text(
+                    source_text.replace(
+                        "        a = b;",
+                        f"        {mutation}\n        a = b;",
+                    )
+                )
+                bad_guest = Path(scratch) / f"nested-{label}.malbolge"
+                rejected = subprocess.run(
+                    [*command[:-2], str(bad_guest), str(bad_source)],
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertNotEqual(rejected.returncode, 0, label)
+                self.assertIn(b"Unsupported", rejected.stderr, label)
+                self.assertFalse(bad_guest.exists(), label)
+
+    def test_nested_zero_trip_discards_output_and_proves_shadow(self) -> None:
+        """Every skipped inner body remains checked without emitting effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = nested_masked_fibonacci_source()
+        self.assertEqual(original.count("col = 0U"), 1)
+        self.assertEqual(original.count("    }\n}\n"), 1)
+        zero_trip = original.replace("col = 0U", "col = 4U").replace(
+            "    }\n}\n",
+            "    }\n    putchar((int)(a + 64U));\n}\n",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "nested-zero-trip.c"
+            source.write_text(zero_trip)
+            guest = Path(scratch) / "nested-zero-trip.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/nested-zero-trip-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, b"A")
+                self.assertRegex(
+                    executed.stderr,
+                    rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                )
+            bad = Path(scratch) / "nested-shadow-invalid.c"
+            bad.write_text(zero_trip.replace("next ^ 0x1AU", "next / 0U"))
+            rejected_guest = Path(scratch) / "nested-shadow-invalid.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(bad)],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
+
+    def test_three_level_for_nesting_refuses_without_guest(self) -> None:
+        """Nested induction is explicitly bounded to two lexical levels."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = nested_masked_fibonacci_source()
+        third_level = original.replace(
+            "for (unsigned col = 0U; col < 4U; ++col) {",
+            "for (unsigned col = 0U; col < 4U; ++col) {\n"
+            "            for (unsigned deep = 0U; deep < 1U; ++deep) {",
+        ).replace(
+            "        b = next;\n        }\n    }",
+            "        b = next;\n            }\n        }\n    }",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "nested-three-level.c"
+            source.write_text(third_level)
+            guest = Path(scratch) / "nested-three-level.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/nested-three-level-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"Unsupported", compiled.stderr)
+            self.assertFalse(guest.exists())
+
+    def test_nested_for_induction_rejects_forged_ast(self) -> None:
+        """A forged nested parent or induction symbol never publishes guest code."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "nested-ast.c"
+            source.write_text(nested_masked_fibonacci_source())
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/nested-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            outer, inner = [n for n in nodes if n["kind"] == "for-statement"]
+            outer_symbol = next(
+                n["reference"]
+                for n in nodes
+                if n["kind"] == "variable-declaration" and n["name"] == "row"
+            )
+            inner_increment = next(
+                n
+                for n in nodes
+                if n["parent"] == inner["id"] and n.get("operation") == "++"
+            )
+            inner_read = next(n for n in nodes if n["parent"] == inner_increment["id"])
+            for label in ("parent", "outer-counter", "step"):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    changed_nodes = forged["nodes"]
+                    if label == "parent":
+                        changed_nodes[cast(int, inner["id"]) - 1]["parent"] = outer[
+                            "id"
+                        ]
+                    elif label == "outer-counter":
+                        changed_nodes[cast(int, inner_read["id"]) - 1]["reference"] = (
+                            outer_symbol
+                        )
+                    else:
+                        changed_nodes[cast(int, inner_increment["id"]) - 1][
+                            "operation"
+                        ] = "--"
+                    guest = Path(scratch) / f"nested-forged-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(guest.exists(), label)
 
     def test_not_equal_for_induction_emits_complete_masked_fibonacci(self) -> None:
         """A bounded != loop must reach its endpoint in real guest output."""

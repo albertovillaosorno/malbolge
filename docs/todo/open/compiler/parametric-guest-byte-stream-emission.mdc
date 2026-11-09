@@ -54,6 +54,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete 3-by-4 nested-`for` masked Fibonacci C
+  recurrence initially refused at the typed adapter. Two-level source-proven
+  induction now retains both protected counters and loop-carried C state;
+  the normative guest VM emits all twelve independent masked oracle bytes
+  under empty/nonempty stdin. A zero-trip inner loop still proves its shadow
+  body and emits only a later `0x41` effect. Counter assignments, forged AST,
+  skipped-body invalidity and a third nesting level refuse. This still folds
+  C state at compile time; the original unmasked byte stream and dynamic
+  guest C control flow remain unresolved, so P0 stays pending.
 - On 2026-11-09 a complete masked Fibonacci C recurrence using
   `i != 12U` was first refused by the pinned frontend-to-typed adapter.
   Source-span-bounded `!=` induction now proves an exact reachable endpoint
