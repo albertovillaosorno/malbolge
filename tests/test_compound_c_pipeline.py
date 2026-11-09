@@ -267,10 +267,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertEqual(executed.returncode, 0, executed.stderr)
                 self.assertEqual(executed.stdout, oracle)
                 self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
-            for label, variant in (
-                ("decrement", changed.replace("i++", "i--")),
-                ("compound-assignment", changed.replace("i++", "i += 1U")),
-            ):
+            for label, variant in (("decrement", changed.replace("i++", "i--")),):
                 rejected = Path(scratch) / f"rejected-{label}.c"
                 rejected.write_text(variant)
                 rejected_guest = Path(scratch) / f"rejected-{label}.malbolge"
@@ -283,6 +280,161 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertIn(b"Unsupported", attempt.stderr, label)
                 self.assertFalse(rejected_guest.exists(), label)
+
+    def test_compound_for_induction_emits_complete_masked_fibonacci(self) -> None:
+        """A proven i += 1U controls twelve real guest output effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        self.assertEqual(original.count("++i"), 1)
+        changed = original.replace("++i", "i += 1U")
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            oracle.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-compound.c"
+            source.write_text(changed)
+            guest = Path(scratch) / "fibonacci-compound.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/fibonacci-compound-induction-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            for label, variant in (
+                ("two-step", changed.replace("i += 1U", "i += 2U")),
+                ("subtraction", changed.replace("i += 1U", "i -= 1U")),
+                ("wrong-symbol", changed.replace("i += 1U", "b += 1U")),
+            ):
+                rejected_source = Path(scratch) / f"invalid-{label}.c"
+                rejected_source.write_text(variant)
+                refused = Path(scratch) / f"invalid-{label}.malbolge"
+                attempt = subprocess.run(
+                    [*command[:-2], str(refused), str(rejected_source)],
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertNotEqual(attempt.returncode, 0, label)
+                self.assertFalse(refused.exists(), label)
+
+    def test_compound_for_induction_rejects_forged_ast(self) -> None:
+        """A typed += operator alone cannot prove the correct loop step."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        changed = MASKED_FIBONACCI.read_text().replace("++i", "i += 1U")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-compound.c"
+            source.write_text(changed)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/fibonacci-compound-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            loop = next(node for node in nodes if node["kind"] == "for-statement")
+            increment = next(
+                node
+                for node in nodes
+                if node["parent"] == loop["id"]
+                and node["kind"] == "compound-assignment-expression"
+            )
+            self.assertEqual(increment["operation"], "+=")
+            children = [node for node in nodes if node["parent"] == increment["id"]]
+            self.assertEqual(
+                [node["kind"] for node in children],
+                ["declaration-reference-expression", "integer-literal"],
+            )
+            read, step = children
+            self.assertEqual(step["constant_integer"], "1")
+            for label in (
+                "operator",
+                "step",
+                "literal",
+                "symbol",
+                "increment-span",
+                "step-span",
+            ):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    modified = forged["nodes"]
+                    increment_copy = modified[cast(int, increment["id"]) - 1]
+                    step_copy = modified[cast(int, step["id"]) - 1]
+                    if label == "operator":
+                        increment_copy["operation"] = "-="
+                    elif label == "step":
+                        step_copy["constant_integer"] = "2"
+                        step_copy["literal"] = "2"
+                    elif label == "literal":
+                        step_copy["literal"] = "2"
+                    elif label == "symbol":
+                        modified[cast(int, read["id"]) - 1]["reference"] = "other@0"
+                    elif label == "increment-span":
+                        span = cast(dict[str, dict[str, int]], increment_copy["span"])
+                        span["begin"]["byte"] += 1
+                    else:
+                        span = cast(dict[str, dict[str, int]], step_copy["span"])
+                        span["end"]["byte"] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(guest.exists(), label)
 
     def test_postfix_induction_ast_shape_must_be_source_proven(self) -> None:
         """A forged increment span or symbol cannot publish guest output."""

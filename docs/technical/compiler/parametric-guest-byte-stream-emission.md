@@ -2426,3 +2426,28 @@ real VM guest reproducing those twelve bytes on empty and nonempty stdin;
 a source mutation introducing division by zero is rejected without an
 artifact. This is a semantic-width matrix case, not proof of arbitrary
 six-bit streams or of the unchanged unmasked `02 59 5f ...` program.
+
+### Source-proven compound induction in a full C recurrence
+
+A complete twelve-iteration masked Fibonacci C program with the conventional
+`for (...; i < 12U; i += 1U)` induction failed at the normalized JSON-to-typed
+boundary. The pinned Clang emitted a typed `compound-assignment-expression`
+for the loop's step, whereas the bounded source proof admitted only prefix
+and postfix `++`. The original attempt correctly returned `Unsupported`
+without publishing a guest artifact.
+
+The bounded loop projector now also proves an unsigned induction variable
+advanced by exactly the `+=` operator and a single `u32` literal `1`, with
+canonical counter identity, complete right-hand side, source ordering and
+checked span coverage. The complete pinned C source now produces a real
+guest capsule with twelve verified output bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`, matching the independent oracle
+under empty and nonempty stdin. Source mutations to a two-step increment,
+subtraction, and the wrong induction symbol reject without publication; six
+forged operator, literal, symbol and span metadata cases also refuse.
+
+Compound assignments in the loop body, variable-derived steps, other
+operators and steps other than one remain unsupported. The compiler still
+folds the closed C recurrence at compile time, not in guest-side C control
+flow. The unchanged unmasked twelve-byte Fibonacci target remains unsupported
+at guest layout; the P0 generalized guest-output language goal stays open.

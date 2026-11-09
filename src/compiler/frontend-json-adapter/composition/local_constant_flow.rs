@@ -579,35 +579,72 @@ impl<'node> Flow<'node> {
             return None;
         }
         let separated = comparison.span.end.byte < self.peek()?.span.begin.byte;
-        let increment = self.take(statement.id, "unary-expression")?;
+        let increment_kind = self.peek()?.kind.as_str();
+        if !matches!(
+            increment_kind,
+            "unary-expression" | "compound-assignment-expression"
+        ) {
+            return None;
+        }
+        let increment = self.take(statement.id, increment_kind)?;
         let increment_read =
             self.take(increment.id, "declaration-reference-expression")?;
-        // Both ++i and i++ update this induction variable by one, with
-        // the expression result discarded. A postfix form must end in
-        // exactly two source bytes beyond the referenced symbol.
-        let prefix_increment = increment.span.end == increment_read.span.end
-            && increment.span.begin.byte < increment_read.span.begin.byte;
-        let postfix_increment = increment.span.begin
-            == increment_read.span.begin
-            && increment.span.end.line == increment_read.span.end.line
-            && increment
-                .span
-                .end
-                .byte
-                .checked_sub(increment_read.span.end.byte)
-                == Some(2)
-            && increment
-                .span
-                .end
-                .column
-                .checked_sub(increment_read.span.end.column)
-                == Some(2);
-        if !typed_operator(increment, "++")
+        let supported_increment = match increment_kind {
+            "unary-expression" => {
+                // Discarded ++i and i++ both advance a closed induction
+                // variable by one; postfix syntax has an exact two-byte tail.
+                let prefix = increment.span.end == increment_read.span.end
+                    && increment.span.begin.byte
+                        < increment_read.span.begin.byte;
+                let postfix = increment.span.begin == increment_read.span.begin
+                    && increment.span.end.line == increment_read.span.end.line
+                    && increment
+                        .span
+                        .end
+                        .byte
+                        .checked_sub(increment_read.span.end.byte)
+                        == Some(2)
+                    && increment
+                        .span
+                        .end
+                        .column
+                        .checked_sub(increment_read.span.end.column)
+                        == Some(2);
+                typed_operator(increment, "++") && (prefix || postfix)
+            },
+            "compound-assignment-expression" => {
+                // The only admitted compound step is i += 1U: its full
+                // typed RHS and source order must be witnessed, not inferred
+                // from a lone operator or the target loop bound.
+                let step = self.take(increment.id, "integer-literal")?;
+                typed_operator(increment, "+=")
+                    && literal_byte(step) == Some(1)
+                    && increment.span.begin.byte
+                        == increment_read.span.begin.byte
+                    && increment.span.end == step.span.end
+                    && increment_read.span.end.line == step.span.end.line
+                    && step.span.begin.line == step.span.end.line
+                    && increment_read
+                        .span
+                        .end
+                        .byte
+                        .checked_add(2)
+                        .is_some_and(|minimum| minimum <= step.span.begin.byte)
+                    && step
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(increment_read.span.end.byte)
+                        .is_some_and(|gap| gap <= 16)
+                    && span_within(&increment.span, &step.span)
+            },
+            _ => false,
+        };
+        if !supported_increment
             || !assigned_local_reference(increment_read, symbol)
             || !span_within(&statement.span, &increment.span)
             || !span_within(&increment.span, &increment_read.span)
             || !separated
-            || !(prefix_increment || postfix_increment)
         {
             return None;
         }
