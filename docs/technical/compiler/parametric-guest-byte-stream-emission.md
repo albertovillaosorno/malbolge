@@ -3097,6 +3097,17 @@ compile-time C loops; the guest does not implement dynamic C induction,
 and the unmodified unmasked Fibonacci stream still lacks a guest layout.
 The generalized P0 remains open.
 
+A further whole-C experiment removed the outer braces from the same 3-by-4
+recurrence, so the outer `for` directly parents the inner `for`. Clang
+accepted that ordinary source but the adapter first refused without a guest.
+The bounded replay now accepts this **one** unbraced nested `for` body when
+its parent, source span and exact final-child end are proven. It does not
+invent a compound scope, admit arbitrary unbraced loop bodies, or relax the
+two-level induction limit. The unchanged twelve-byte oracle reaches the real
+guest VM in 47 steps under empty and binary stdin. A forbidden write to the
+outer counter and three forged AST parent/tail mutations refuse without
+publishing a guest. The unmasked Fibonacci layout remains unsupported.
+
 ### Source-proven lexical scopes in loop bodies
 
 A complete twelve-output masked Fibonacci C recurrence was first attempted

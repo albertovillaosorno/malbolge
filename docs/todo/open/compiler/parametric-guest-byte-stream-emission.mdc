@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the full 3-by-4 masked Fibonacci C recurrence was
+  retried with the outer `for` body unbraced, directly parenting its inner
+  `for`. Pinned Clang accepted it, but the adapter first rejected the
+  source without publishing a guest. The source-state projector now proves
+  an exact one-child nested `for` tail rather than inventing a brace scope.
+  The current-profile normative VM emitted the independent twelve-byte
+  oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under empty
+  and binary stdin. A forbidden outer-counter write and three forged AST
+  parent/tail variations fail closed. This is bounded compile-time C
+  induction, not generalized runtime guest loops; the original unmasked
+  P0 byte stream remains unsupported.
+
 - On 2026-11-10 a complete twelve-step masked Fibonacci C recurrence
   first refused when both branch `putchar` arms used ordinary unbraced C
   statements instead of compound blocks. The normalized Clang tree directly

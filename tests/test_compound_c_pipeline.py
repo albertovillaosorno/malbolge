@@ -131,6 +131,23 @@ def nested_masked_fibonacci_source() -> str:
     ).replace(end, "        b = next;\n        }\n    }\n}")
 
 
+def unbraced_nested_masked_fibonacci_source() -> str:
+    """Nest two finite C for loops without an invented outer brace scope."""
+    source = nested_masked_fibonacci_source()
+    outer = (
+        "for (unsigned row = 0U; row < 3U; ++row) {\n"
+        "        for (unsigned col = 0U; col < 4U; ++col) {"
+    )
+    unbraced = (
+        "for (unsigned row = 0U; row < 3U; ++row)\n"
+        "        for (unsigned col = 0U; col < 4U; ++col) {"
+    )
+    assert source.count(outer) == source.count("        }\n    }\n}") == 1
+    return source.replace(outer, unbraced).replace(
+        "        }\n    }\n}", "        }\n}"
+    )
+
+
 def scoped_masked_fibonacci_source() -> str:
     """Carry the recurrence through a loop-local lexical transfer scope."""
     original = MASKED_FIBONACCI.read_text()
@@ -4273,6 +4290,137 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0, label)
                     self.assertIn(b"Unsupported", result.stderr, label)
                     self.assertFalse(output.exists(), label)
+
+    def test_unbraced_nested_for_emits_complete_fibonacci_on_guest(self) -> None:
+        """An outer for may contain exactly one unbraced inner for body."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = unbraced_nested_masked_fibonacci_source()
+        a, b = 1, 1
+        expected = bytearray()
+        for _row in range(3):
+            for _col in range(4):
+                following = (a + b) & 255
+                selected = (
+                    following & 31 if following % 2 == 0 else (following ^ 0x1A) & 31
+                )
+                expected.append(selected)
+                a, b = b, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "unbraced-nested.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "unbraced-nested.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/unbraced-nested-for-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+            bad = Path(scratch) / "unbraced-nested-counter-write.c"
+            bad.write_text(
+                source_text.replace(
+                    "        a = b;", "        row = 0U;\n        a = b;"
+                )
+            )
+            refused_guest = Path(scratch) / "unbraced-nested-counter-write.malbolge"
+            refused = subprocess.run(
+                [*command[:-2], str(refused_guest), str(bad)],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(refused_guest.exists())
+
+    def test_unbraced_nested_for_forged_ast_refuses_guest(self) -> None:
+        """A direct child for must have true parentage and an exact tail span."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "unbraced-nested-ast.c"
+            source.write_text(unbraced_nested_masked_fibonacci_source())
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/unbraced-nested-for-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(
+                dict[str, list[dict[str, object]]], json.loads(frontend.stdout)
+            )
+            outer, inner = [
+                node for node in parsed["nodes"] if node["kind"] == "for-statement"
+            ]
+            self.assertEqual(inner["parent"], outer["id"])
+            for label in ("wrong-parent", "outer-tail", "inner-tail"):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    nodes = forged["nodes"]
+                    if label == "wrong-parent":
+                        nodes[cast(int, inner["id"]) - 1]["parent"] = 2
+                    else:
+                        targeted = outer if label == "outer-tail" else inner
+                        span = cast(
+                            dict[str, dict[str, int]],
+                            nodes[cast(int, targeted["id"]) - 1]["span"],
+                        )
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(guest.exists(), label)
 
     def test_nested_for_induction_emits_complete_masked_fibonacci(self) -> None:
         """A 3-by-4 loop nest carries real C state across all twelve outputs."""

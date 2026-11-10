@@ -847,6 +847,19 @@ this write path also refuse publication. This still folds source-proven
 state at compilation; unmasked Fibonacci guest layout and dynamic C
 control flow remain unsupported.
 
+### Unbraced nested `for` in the source-proven recurrence
+
+The twelve-byte 3-by-4 masked Fibonacci recurrence also admits an outer
+`for (unsigned row = 0U; row < 3U; ++row)` whose sole unbraced body is the
+inner `for` with its own compound body. The source-checked outer loop may
+directly parent exactly one inner `for` ending at the outer statement's end.
+Both induction symbols, finite bounds, source spans and nested effects are
+replayed as in the braced form; a forged parent, altered tail or write to
+an active counter refuses without guest publication. This ordinary C shape
+emits the independent twelve-byte oracle in 47 normative VM steps with
+empty and binary stdin. Arbitrary unbraced loops, runtime guest induction
+and the original unmasked Fibonacci stream remain unsupported.
+
 ### Function-body lexical scopes with shadowed unsigned locals
 
 The closed multi-local projection also replays an explicit compound block

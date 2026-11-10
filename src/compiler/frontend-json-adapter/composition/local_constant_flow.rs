@@ -854,7 +854,14 @@ impl<'node> Flow<'node> {
             };
             writes = writes.checked_add(1)?;
         }
-        (writes > 0 && last_end < body.span.end.byte).then_some(())
+        // An unbraced outer `for` can directly contain one nested `for`.
+        // Unlike a braced body, its final child ends exactly at the outer
+        // statement's end; never accept a missing or trailing statement.
+        if body.kind == "for-statement" {
+            (writes == 1 && last_end == body.span.end.byte).then_some(())
+        } else {
+            (writes > 0 && last_end < body.span.end.byte).then_some(())
+        }
     }
 
     /// A source-proven void return exits the whole function, not just the
@@ -1290,11 +1297,24 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let loop_body = self.take(statement.id, "compound-statement")?;
-        if !clean(loop_body)
+        // Clang parents an unbraced inner `for` directly to the outer
+        // `for`, without a synthetic compound scope. Reuse the real outer
+        // statement as the source-checked body container, but only if the
+        // single direct nested loop spans the entire remainder of it.
+        let unbraced_nested = self.peek()?.kind == "for-statement";
+        let loop_body = if unbraced_nested {
+            statement
+        } else {
+            self.take(statement.id, "compound-statement")?
+        };
+        if (!unbraced_nested && !clean(loop_body))
             || !span_within(&statement.span, &loop_body.span)
-            || increment.span.end.byte >= loop_body.span.begin.byte
-            || loop_body.span.end.byte != statement.span.end.byte
+            || increment.span.end.byte >= self.peek()?.span.begin.byte
+            || (!unbraced_nested
+                && loop_body.span.end.byte != statement.span.end.byte)
+            || (unbraced_nested
+                && (self.peek()?.parent != statement.id
+                    || self.peek()?.span.end.byte != statement.span.end.byte))
         {
             return None;
         }
