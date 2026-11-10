@@ -126,6 +126,71 @@ fn variable_source_scratch_emits_masked_twelve_fibonacci_bytes()
 }
 
 #[test]
+fn delayed_forward_jump_keeps_scratch_writes_behind_code() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    // An initial no-op advances C and D before the source-backed jump. The
+    // jump target depends on its actual decoder phase, not phase zero.
+    for jump_position in [1usize, 2, 3] {
+        let phase = u32::try_from(jump_position).map_err(|e| e.to_string())?;
+        let jump_cell = (33u8..=126)
+            .find(|&byte| {
+                malbolge::decode_profile_instruction(u32::from(byte), phase)
+                    == Some(b'i')
+            })
+            .ok_or("missing delayed jump encoding")?;
+        let target = usize::from(jump_cell) + 1;
+        let mut operations = vec![LinearOpcode::NoOperation; target];
+        operations[jump_position] = LinearOpcode::JumpForward {
+            target: u32::try_from(target).map_err(|e| e.to_string())?,
+        };
+        operations.extend([
+            LinearOpcode::CrazyData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let layout =
+            super::super::encode_linear_layout(profile, &operations)
+                .map_err(|error| format!("delayed jump layout: {error:?}"))?;
+        assert_eq!(layout.executed_code_positions()[jump_position], phase);
+        assert_eq!(
+            layout.executed_code_positions()[jump_position + 1],
+            target as u32
+        );
+        let writes: Vec<_> = layout
+            .executed_code_positions()
+            .iter()
+            .zip(layout.data_write_positions())
+            .filter_map(|(&code, write)| write.map(|address| (code, address)))
+            .collect();
+        assert_eq!(writes.len(), 2);
+        assert!(writes.iter().all(|&(code, address)| {
+            address < code && address < layout.source().len() as u32
+        }));
+        let mut oracle = None;
+        for input in [Vec::new(), vec![255, 0, 128]] {
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), input)
+                    .map_err(|error| format!("guest load: {error:?}"))?;
+            assert!(matches!(
+                vm.run(layout.executed_code_positions().len()),
+                Ok(RunOutcome::Terminated { .. })
+            ));
+            assert_eq!(vm.input_consumed(), 0);
+            assert_eq!(vm.output().len(), 2);
+            if let Some(bytes) = &oracle {
+                assert_eq!(vm.output(), bytes);
+            } else {
+                oracle = Some(vm.output().to_vec());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn skipped_jump_and_input_codes_are_inert_guest_data() -> Result<(), String> {
     let profile = malbolge::current_profile();
     let first_jump = (33u8..=126)
