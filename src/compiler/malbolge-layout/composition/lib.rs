@@ -295,10 +295,10 @@ impl ForwardPaddingBuilder<'_> {
         remaining: usize,
     ) -> Result<usize, LinearLayoutError> {
         // The address-sensitive decoder cycles over 94 graphical phases.
-        // Search only this bounded first cycle. After a forward jump, an
-        // already encoded source operand can instead point strictly behind
-        // the reached C. Repeated relocations may use only a known past
-        // operand: the planner has no final loader tail or full guest trace.
+        // Search only this bounded first cycle. After a forward jump, a
+        // known past source operand may select either past scratch or an
+        // expanded address beyond the minimum remaining source length.
+        // Final independent admission checks the complete source length.
         for _phase in 0..94usize {
             let position = self.operations.len();
             let planned_length = position
@@ -330,25 +330,22 @@ impl ForwardPaddingBuilder<'_> {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         if operation == LinearOpcode::RelocateDataPointer && self.relocated {
-            // No later j may depend on an unresolved source write or an
-            // unmaterialized loader-expanded word. Require its new D to
-            // remain strictly behind the already reached instruction.
+            // Later j must read a known past source operand. It may select
+            // past source scratch or an expanded address; the completed
+            // source checker will reject any alias with pending code.
             let position = self.operations.len();
-            let operand = self
+            let _proven_operand = self
                 .shadow
                 .get(self.data_pointer)
                 .filter(|_| {
                     !self.unproven_source_writes.contains(&self.data_pointer)
                 })
                 .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
-            if self.data_pointer >= position
-                || usize::try_from(*operand)
-                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-                    .saturating_add(1)
-                    >= position
-            {
+            if self.data_pointer >= position {
                 return Err(LinearLayoutError::UnsafeDataPlacement);
             }
+            // The operand may point beyond C if the final source ends
+            // before it. Independent admission must prove that geometry.
         }
         // Keep the operand shadow before appending and encrypting this cell.
         if matches!(
@@ -450,8 +447,7 @@ impl ForwardPaddingBuilder<'_> {
         };
         let operand_address = usize::try_from(word)
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-        let expanded_data =
-            !self.relocated && operand_address >= planned_length;
+        let expanded_data = operand_address >= planned_length;
         let past_source_scratch = self.data_pointer < position
             && operand_address.saturating_add(1) < position;
         Ok(expanded_data || past_source_scratch)

@@ -73,7 +73,14 @@ expanded-memory control values, not arbitrary guest-side C arithmetic.
 The automatic forward-padding planner remains stricter:
 it creates later `j` moves only from known graphical source operands
 strictly behind reached C, never from expanded-loader or unknown written
-words.
+words. A known past source operand may also select expanded D beyond the
+minimum remaining planned length, including on a second `j`. Independent
+full-length admission rejects any source alias introduced by later padding.
+A 98-cell red-first program jumps from 6 to 93, relocates via source cell 7
+to 62 and via source cell 62 (graphical word 100) to expanded address 101.
+Both normative VMs execute a real rotate, output its independently computed
+loader result on empty/binary input, and match the explicit layout; extending
+the source into the data-write address refuses.
 
 A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout

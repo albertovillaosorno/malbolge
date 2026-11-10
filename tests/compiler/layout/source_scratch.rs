@@ -1312,3 +1312,105 @@ fn automatic_third_relocation_reads_deterministically_rotated_scratch()
     }
     Ok(())
 }
+
+fn replay_expanded_second_relocation_guest(
+    profile: &'static malbolge::ProfileDescriptor,
+    independent: &LinearLayout,
+) -> Result<(), String> {
+    // Compute the target cell independently from the actual final tail,
+    // without reusing the layout checker's six-step loader shortcut.
+    let [.., before, last] = independent.source() else {
+        return Err(String::from("missing source tail"));
+    };
+    let mut previous = u32::from(*before);
+    let mut latest = u32::from(*last);
+    for _address in 98u32..=101u32 {
+        let next =
+            scalar_crazy_reference(previous, latest, profile.word_trits());
+        previous = latest;
+        latest = next;
+    }
+    let rotated = malbolge::profile_rotate(latest, profile.memory_words());
+    for input in [Vec::new(), vec![0x00, 0xff]] {
+        let mut vm = ProfileMachine::from_source(
+            profile,
+            independent.source(),
+            input,
+        )
+        .map_err(|error| format!("expanded second j guest: {error:?}"))?;
+        verify_execution_witness(&mut vm, independent)?;
+        let byte = u8::try_from(rotated & 255)
+            .map_err(|error| error.to_string())?;
+        if vm.output() != [byte]
+            || vm.memory_word(101) != Ok(rotated)
+            || vm.input_consumed() != 0
+        {
+            return Err(String::from("expanded second j VM differs"));
+        }
+    }
+    Ok(())
+}
+
+// A past graphical source operand can relocate D into expanded memory even
+// after an earlier j relocated D into source scratch. The complete future
+// source must still end before the second destination.
+#[test]
+fn auto_second_relocation_uses_proven_source_to_reach_expanded_memory()
+-> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 6];
+    logical.extend([
+        Jump,
+        AutoRelocate,
+        AutoRelocate,
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    let mut explicit = vec![LinearOpcode::NoOperation; 98];
+    for (index, operation) in [
+        (6, LinearOpcode::JumpForward { target: 93 }),
+        (93, LinearOpcode::RelocateDataPointer),
+        (94, LinearOpcode::RelocateDataPointer),
+        (95, LinearOpcode::RotateData),
+        (96, LinearOpcode::OutputByte),
+        (97, LinearOpcode::Halt),
+    ] {
+        replace_scratch_operation(&mut explicit, index, operation)?;
+    }
+    for profile in [current_profile(), historical_profile()] {
+        let independent =
+            encode_linear_layout(profile, &explicit).map_err(|error| {
+                format!("explicit expanded second j: {error:?}")
+            })?;
+        if independent.data_pointer_positions().get(7..)
+            != Some([7, 62, 101, 102, 103].as_slice())
+            || independent.data_write_positions().get(9) != Some(&Some(101))
+            || independent.source().get(62) != Some(&100)
+        {
+            return Err(String::from("incorrect expanded second j witness"));
+        }
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| {
+                format!("automatic expanded second j: {error:?}")
+            })?;
+        if artifact.layout() != &independent
+            || artifact.logical_code_positions().get(6..)
+                != Some([6, 93, 94, 95, 96, 97].as_slice())
+        {
+            return Err(String::from("explicit/automatic expanded j differs"));
+        }
+        verify_bidirectional_source_map(&artifact)?;
+        replay_expanded_second_relocation_guest(profile, &independent)?;
+        let mut source_overlap = explicit.clone();
+        let _inserted = source_overlap
+            .splice(97..97, [LinearOpcode::NoOperation; 4])
+            .collect::<Vec<_>>();
+        if encode_linear_layout(profile, &source_overlap)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from("source-overlapping second j admitted"));
+        }
+    }
+    Ok(())
+}

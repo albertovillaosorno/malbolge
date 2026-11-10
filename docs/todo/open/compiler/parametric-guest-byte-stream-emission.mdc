@@ -54,6 +54,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the original complete unmasked Fibonacci source remains a
+  `Layout(UnsupportedEffectTrace)` blocker. A red-first 98-cell guest exposed
+  the automatic planner's refusal to make a second `j` from proven past
+  source scratch into expanded memory, despite the independent encoder
+  accepting it. The planner now permits source-backed expanded relocation
+  with final-length re-admission. Both normative guest VMs match an independent
+  scalar loader/rotation oracle and explicit layout under empty/binary stdin;
+  enlarging the source into the write address refuses.
+
 - On 2026-11-10 the original complete twelve-step unmasked Fibonacci C
   source still refused at `Layout(UnsupportedEffectTrace)`, with no guest
   publication. A red-first independent 59-cell guest fixture identified the

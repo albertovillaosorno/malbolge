@@ -116,10 +116,10 @@ The library planner also accepts `PaddedForwardStep::AutoRelocate`. It inserts
 *reached* no-ops to find the earliest safe decoder phase within 94 positions
 for a `j` data-pointer relocation, taking the remaining logical suffix,
 current data pointer and previously encrypted jump operands into account.
-After an earlier forward jump, `AutoRelocate` now also accepts an
-*existing* graphical source operand if both its read address and the
-resulting D destination lie strictly behind reached code. It selects the
-first such safe phase or a sufficiently distant expanded-memory operand;
+After an earlier forward jump, `AutoRelocate` accepts an *existing*
+graphical source operand behind reached code, pointing either to safe past
+source scratch or beyond the minimum remaining emitted source length. It
+selects the first such safe phase or a sufficiently distant operand;
 it does not rewrite skipped padding to invent a better operand. The final
 independent admission still checks every real data-write address. A
 current/historical VM regression compares the automatically chosen source-
@@ -131,13 +131,23 @@ XLAT2 code encryption, and independently calculated output bytes.
 
 After a source-backed relocation, `AutoRelocate` can select a second
 `j` from a known past source operand by inserting reached no-ops until
-the new data destination lies strictly behind C. An explicit later `j`
-uses the same conservative proof. The planner cannot infer a control
-operand from input-written source scratch or expanded-loader memory;
+the new data destination lies strictly behind C or beyond the estimated
+final source length. An explicit later `j` uses the same known-source
+proof, subject to the full independent layout verifier. The planner cannot
+infer a control operand from input-written scratch or expanded-loader memory;
 those cases remain reserved for independent admission or later synthesis.
 The current/historical VMs replay both relocations, a real input-dependent
 `p` source write and binary output parity against the scalar oracle.
 An equivalent explicit-phase `j` plan emits the same admitted guest source.
+
+A separate 98-cell real guest first jumps from code 6 to 93, relocates D
+from skipped source cell 7 to 62, then reads the known graphical word 100
+at cell 62 to relocate into expanded address 101. Both canonical VMs
+execute a real loader-word rotate and emit the independent scalar oracle on
+empty and binary input. The automatically padded source is byte-identical
+to the explicit layout; extending the source to overlap the write rejects.
+Neither the planner nor these tests infer untouched expanded loader operands
+before the completed source tail exists.
 
 The symbolic planner can also reuse a **deterministically written** past source
 word as a later control operand. Its exact shadow tracks a known accumulator
