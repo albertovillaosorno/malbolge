@@ -972,6 +972,7 @@ impl<'node> Flow<'node> {
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
             || !self.loop_counters.is_empty()
+            || self.within_while_body
         {
             return None;
         }
@@ -986,6 +987,7 @@ impl<'node> Flow<'node> {
         let outer_len = self.locals.len();
         let mut body_end = None;
         let mut condition_end = None;
+        self.within_while_body = true;
         for _ in 0..MAX_STATIC_LOOP_ITERATIONS {
             self.position = body_start;
             self.loop_body(loop_body)?;
@@ -995,6 +997,9 @@ impl<'node> Flow<'node> {
             body_end = Some(self.position);
             // Braced declarations are not visible to the trailing test.
             self.locals.truncate(outer_len);
+            let selected_exit = self.loop_exit.take();
+            // The trailing condition is a complete source subtree even if
+            // `break` skips it at runtime. `continue` must check it.
             let (continue_loop, condition) = self.condition(statement)?;
             if !span_within(&statement.span, &condition.span)
                 || loop_body.span.end.byte >= condition.span.begin.byte
@@ -1009,7 +1014,8 @@ impl<'node> Flow<'node> {
                 return None;
             }
             condition_end = Some(self.position);
-            if !continue_loop {
+            if selected_exit == Some(LoopExit::Break) || !continue_loop {
+                self.within_while_body = false;
                 return Some(statement.span.end.byte);
             }
         }

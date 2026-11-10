@@ -107,8 +107,8 @@ and keeps the selected exit separate from the unselected conditional arm.
 `break` terminates replay without advancing the induction counter; `continue`
 advances the counter through the original checked step. An exit must be the
 last effect within its lexical block, or the whole source refuses rather than
-silently discarding an unchecked dead suffix. Exits in `do` loops and
-arbitrary post-exit C statements remain unsupported.
+silently discarding an unchecked dead suffix. Arbitrary post-exit C
+statements remain unsupported.
 
 For a break selected after iteration 6, the independent C oracle is the first
 seven bytes `02 19 1f 08 17 0f 02`; a `continue` at the same iteration
@@ -146,6 +146,30 @@ undefined divisor within that skipped body is rejected. Exact Clang keyword,
 parent and metadata mutations also refuse without publication. This remains
 bounded compile-time C-state replay, not runtime guest C control flow. The
 original unmasked stream and arbitrary seven-byte layout remain unsupported.
+
+### Selected `do…while` exits in a full C recurrence (2026-11-09)
+
+A complete twelve-output masked Fibonacci C program with a body-first
+`do { ... } while (i < 13U);` and source-selected `break` initially
+refused at the JSON-to-typed adapter, publishing no guest artifact. The
+finite projector now allows selected `break` and `continue` in the
+source-proven `do` body. As in C, an executed `break` terminates after
+preserving preceding body outputs, while `continue` reaches the trailing
+predicate. The remaining condition subtree is still required to be pure
+and source-proven even when the executed break skips its value; unsupported
+or undefined unexecuted conditions fail closed rather than being assumed
+safe. Source-checked lexical bounds, iteration-local lifetimes and the
+12-trip ceiling are retained.
+
+Both complete variants emit the independent twelve-byte masked Fibonacci
+oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` on the actual normative
+Malbolge VM with empty and nonempty stdin. A three-bound `do` with break
+after its second iteration emits only `Q.` instead of a third byte,
+proving genuine early exit even while its trailing predicate would remain
+true. Post-exit statements and forged Clang keyword, parent or metadata
+refuse without publication. This is bounded compile-time C selection, not
+runtime guest C control flow; the original unmasked twelve-byte stream
+and generalized guest layout remain unsupported.
 
 ### Source-expression metamorphic parity (2026-11-09)
 
@@ -1255,8 +1279,9 @@ node order and checks the whole loop body before the condition on each pass.
 It replays both from the same Clang subtree, re-evaluates pure checked
 predicates against updated state, and drops iteration-local declarations
 before evaluating the trailing predicate. It requires a source-proven false
-condition within twelve body executions; neither nested loops nor unbounded,
-impure, undefined or unsupported effects are admitted.
+condition or selected checked break within twelve body executions; neither
+nested loops nor unbounded, impure, undefined or unsupported effects are
+admitted.
 
 The independent three-iteration trace reaches `60, 160, 128`, takes the
 true/false/false branches and produces `127 ^ 62 = 65` (`0x41`). A distinct

@@ -54,6 +54,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a full masked Fibonacci C recurrence with a source-
+  selected `do…while` break initially refused at the typed adapter without
+  publishing guest code. Source-checked `do` exits now keep preceding byte
+  effects, stop on break, and recheck the trailing guard on continue. Both
+  full twelve-byte variants match the independent Fibonacci oracle through
+  the real guest VM on empty/nonempty stdin, while an early break emits
+  the `Q.` pair instead of a third byte. Post-exit effects and forged Clang
+  keyword, parent and metadata refuse without output. Skipped conditions
+  still require complete pure proofs. This is bounded compile-time folding,
+  not dynamic guest C execution; original unmasked output remains blocked.
 - On 2026-11-09 a full masked Fibonacci C recurrence with a bounded
   `while` body and selected `break` initially refused at the typed adapter.
   Active `while` exit proof now preserves closed replay state: a 13-bound

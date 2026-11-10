@@ -144,6 +144,28 @@ def exiting_masked_fibonacci_while_source(*, keyword: str) -> str:
     )
 
 
+def exiting_masked_fibonacci_do_source(*, keyword: str) -> str:
+    """Replay the entire C recurrence with a body-first checked loop exit."""
+    original = MASKED_FIBONACCI.read_text()
+    induction = "for (unsigned i = 0U; i < 12U; ++i) {"
+    transfer = "        b = next;"
+    assert keyword in ("break", "continue")
+    assert original.count(induction) == original.count(transfer) == 1
+    assert original.count("    }\n}") == 1
+    bound = 13 if keyword == "break" else 12
+    exit_at = 12 if keyword == "break" else 7
+    return original.replace(
+        induction, "unsigned i = 0U;\n    do {"
+    ).replace(
+        transfer,
+        f"{transfer}\n"
+        "        i = i + 1U;\n"
+        f"        if (i == {exit_at}U) {{\n"
+        f"            {keyword};\n"
+        "        }",
+    ).replace("    }\n}", f"    }} while (i < {bound}U);\n}}")
+
+
 def reference_bytes() -> bytes:
     """Reference the bounded unsigned-C arithmetic, not compiler output."""
     previous, current = 1, 1
@@ -1007,6 +1029,166 @@ class CompoundCPipelineTests(unittest.TestCase):
 
     def test_bounded_while_continue_preserves_twelve_guest_bytes(self) -> None:
         self._check_bounded_while_selected_exit("continue")
+
+    def _check_bounded_do_selected_exit(self, keyword: str) -> None:
+        """A complete C do-loop must follow C's body-first exit semantics."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        oracle = bytearray()
+        for iteration in range(12):
+            following = (previous + current) & 255
+            oracle.append(
+                (following if following % 2 == 0 else following ^ 0x1A) & 31
+            )
+            previous, current = current, following
+            if keyword == "break" and iteration + 1 == 12:
+                break
+        self.assertEqual(
+            bytes(oracle), bytes.fromhex("02191f08170f020d03101303")
+        )
+        text = exiting_masked_fibonacci_do_source(keyword=keyword)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / f"do-{keyword}-fib.c"
+            source.write_text(text)
+            guest = Path(scratch) / f"do-{keyword}-fib.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", f"tests/do-{keyword}-fib-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+            invalid = Path(scratch) / f"do-{keyword}-trailing.c"
+            invalid.write_text(text.replace(
+                f"            {keyword};",
+                f"            {keyword};\n"
+                "            putchar((int)(next & 31U));",
+            ))
+            rejected_guest = Path(scratch) / f"do-{keyword}-trailing.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(invalid)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
+
+    def test_bounded_do_selected_break_reaches_full_guest(self) -> None:
+        self._check_bounded_do_selected_exit("break")
+
+    def test_bounded_do_selected_continue_reaches_full_guest(self) -> None:
+        self._check_bounded_do_selected_exit("continue")
+
+    def test_bounded_do_early_break_keeps_pair_guest_output(self) -> None:
+        """A do body exits after two effects, before its third true guard."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        ).read_text()
+        induction = "for (unsigned i = 0U; i < 2U; ++i) {"
+        transfer = "        b = next;"
+        self.assertEqual(original.count(induction), 1)
+        self.assertEqual(original.count(transfer), 1)
+        source_text = original.replace(
+            induction, "unsigned i = 0U;\n    do {"
+        ).replace(
+            transfer,
+            f"{transfer}\n"
+            "        i = i + 1U;\n"
+            "        if (i == 2U) {\n"
+            "            break;\n"
+            "        }",
+        ).replace("    }\n}", "    } while (i < 3U);\n}")
+        a, b = 1, 1
+        oracle = bytearray()
+        for iteration in range(3):
+            following = (a + b) & 255
+            oracle.append(following ^ (83 if following % 2 == 0 else 45))
+            a, b = b, following
+            if iteration + 1 == 2:
+                break
+        self.assertEqual(bytes(oracle), b"Q.")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "do-early-pair.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "do-early-pair.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/do-early-pair-v1", "--capsule",
+                 "--output", str(guest), str(source)],
+                capture_output=True, check=False, timeout=120,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+
+    def test_bounded_do_exit_forged_ast_refuses_publication(self) -> None:
+        """A false Clang exit keyword, parent or metadata cannot publish."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "do-break-ast.c"
+            source.write_text(
+                exiting_masked_fibonacci_do_source(keyword="break")
+            )
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/do-exit-forged-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            original = json.loads(normalized.stdout)
+            exits = [
+                node for node in original["nodes"]
+                if node["kind"] == "break-statement"
+            ]
+            self.assertEqual(len(exits), 1)
+            for label, change in (
+                ("parent", {"parent": 1}),
+                ("keyword", {"kind": "continue-statement"}),
+                ("metadata", {"operation": "="}),
+            ):
+                with self.subTest(label=label):
+                    forged = json.loads(normalized.stdout)
+                    forged["nodes"][exits[0]["id"] - 1].update(change)
+                    guest = Path(scratch) / f"do-exit-forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0)
+                    self.assertIn(b"Unsupported", refused.stderr)
+                    self.assertFalse(guest.exists())
 
     def test_bounded_while_early_break_keeps_pair_guest_output(self) -> None:
         """A two-trip C break shortens a loop bounded for three iterations."""
