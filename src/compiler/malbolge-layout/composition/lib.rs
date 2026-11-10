@@ -289,7 +289,7 @@ struct ForwardPaddingBuilder<'profile> {
     relocated: bool,
     shadow: Vec<u32>,
     unproven_source_writes: Vec<usize>,
-    expanded_writes: Vec<usize>,
+    expanded_writes: Vec<ExpandedWordWrite>,
 }
 
 impl ForwardPaddingBuilder<'_> {
@@ -312,13 +312,14 @@ impl ForwardPaddingBuilder<'_> {
                 return Err(LinearLayoutError::TooLong);
             }
             let expanded_operand =
-                self.proven_expanded_loader_operand(position, remaining)?;
+                self.proven_expanded_relocation_operand(position, remaining)?;
             if expanded_operand.is_some()
                 || self.proven_relocation_operand(position, planned_length)?
             {
                 return self.instruction_with_expanded_operand(
                     LinearOpcode::RelocateDataPointer,
                     expanded_operand,
+                    remaining,
                 );
             }
             // Without an exact fixed suffix, no reached no-op can prove an
@@ -374,21 +375,32 @@ impl ForwardPaddingBuilder<'_> {
         &mut self,
         operation: LinearOpcode,
     ) -> Result<usize, LinearLayoutError> {
-        self.instruction_with_expanded_operand(operation, None)
+        self.instruction_with_expanded_operand(operation, None, &[])
     }
 
     fn instruction_with_expanded_operand(
         &mut self,
         operation: LinearOpcode,
         expanded_operand: Option<u32>,
+        remaining: &[PaddedForwardStep],
     ) -> Result<usize, LinearLayoutError> {
         if matches!(operation, LinearOpcode::JumpForward { .. }) {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
+        let expanded_operand = if operation == LinearOpcode::RelocateDataPointer
+            && self.relocated
+            && self.data_pointer >= self.operations.len()
+        {
+            expanded_operand.or(self.proven_expanded_relocation_operand(
+                self.operations.len(),
+                remaining,
+            )?)
+        } else {
+            expanded_operand
+        };
         if operation == LinearOpcode::RelocateDataPointer && self.relocated {
-            // Later j must read a known past source operand. It may select
-            // past source scratch or an expanded address; the completed
-            // source checker will reject any alias with pending code.
+            // Later j must read known past source or proven expanded data.
+            // Final admission checks whether the destination aliases code.
             let position = self.operations.len();
             if expanded_operand.is_none() {
                 let _proven_operand = self
@@ -412,7 +424,7 @@ impl ForwardPaddingBuilder<'_> {
             operation,
             LinearOpcode::CrazyData | LinearOpcode::RotateData
         ) {
-            self.record_arithmetic_result(operation);
+            self.record_arithmetic_result(operation, remaining)?;
         } else if operation == LinearOpcode::InputWord {
             self.accumulator = None;
         }
@@ -502,7 +514,7 @@ impl ForwardPaddingBuilder<'_> {
         remaining: &[PaddedForwardStep],
     ) -> Result<Option<usize>, LinearLayoutError> {
         if remaining.len() < 2
-            || self.expanded_writes.contains(&self.data_pointer)
+            || self.expanded_write_at_data_pointer().is_some()
             || !remaining
                 .iter()
                 .all(|step| matches!(step, PaddedForwardStep::Instruction(_)))
@@ -564,7 +576,15 @@ impl ForwardPaddingBuilder<'_> {
         Ok(expanded_data || past_source_scratch)
     }
 
-    fn proven_expanded_loader_operand(
+    fn expanded_write_at_data_pointer(&self) -> Option<Option<u32>> {
+        self.expanded_writes
+            .iter()
+            .rev()
+            .find(|(address, _)| *address == self.data_pointer)
+            .map(|(_, word)| *word)
+    }
+
+    fn proven_expanded_relocation_operand(
         &self,
         position: usize,
         remaining: &[PaddedForwardStep],
@@ -579,26 +599,20 @@ impl ForwardPaddingBuilder<'_> {
             return Err(LinearLayoutError::TooLong);
         };
         if !self.relocated
-            || remaining.len() < 2
             || self.data_pointer < length
             || self.data_pointer
                 >= usize::try_from(self.profile.memory_words())
                     .map_err(|_error| LinearLayoutError::TooLong)?
-            || self.expanded_writes.contains(&self.data_pointer)
         {
             return Ok(None);
         }
-        let Some(tail) = self.fixed_source_tail(length, remaining)? else {
+        let word = match self.expanded_write_at_data_pointer() {
+            Some(word) => word,
+            None => self.unwritten_expanded_operand(length, remaining)?,
+        };
+        let Some(word) = word else {
             return Ok(None);
         };
-        // A two-byte virtual tail has the same six-word loader recurrence
-        // phase as the full source at the actual D address.
-        let offset = self.data_pointer.saturating_sub(length).rem_euclid(6);
-        let word = unwritten_loader_word(
-            &tail,
-            2usize.saturating_add(offset),
-            self.profile,
-        )?;
         let destination = usize::try_from(word)
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
         if destination < length {
@@ -607,14 +621,53 @@ impl ForwardPaddingBuilder<'_> {
         Ok(Some(word))
     }
 
-    fn record_arithmetic_result(&mut self, operation: LinearOpcode) {
-        // Rotate reads D only; crazy also requires known A. An input makes
-        // A unresolved, and no incomplete loader value is guessed. Only a
-        // proven result may later serve as a relocation or jump operand.
-        let operand =
+    fn unwritten_expanded_operand(
+        &self,
+        length: usize,
+        remaining: &[PaddedForwardStep],
+    ) -> Result<Option<u32>, LinearLayoutError> {
+        if self.data_pointer < length || remaining.len() < 2 {
+            return Ok(None);
+        }
+        let Some(tail) = self.fixed_source_tail(length, remaining)? else {
+            return Ok(None);
+        };
+        // The two-cell virtual tail shares the exact six-phase recurrence.
+        let offset = self.data_pointer.saturating_sub(length).rem_euclid(6);
+        unwritten_loader_word(
+            &tail,
+            2usize.saturating_add(offset),
+            self.profile,
+        )
+        .map(Some)
+    }
+
+    fn record_arithmetic_result(
+        &mut self,
+        operation: LinearOpcode,
+        remaining: &[PaddedForwardStep],
+    ) -> Result<(), LinearLayoutError> {
+        // Only a known input to p/* can become a future control operand.
+        // Expanded initial words require a final fixed two-cell suffix;
+        // a prior write takes precedence, including an unknown write.
+        let operand = if self.data_pointer < self.shadow.len() {
             self.shadow.get(self.data_pointer).copied().filter(|_| {
                 !self.unproven_source_writes.contains(&self.data_pointer)
-            });
+            })
+        } else {
+            match self.expanded_write_at_data_pointer() {
+                Some(word) => word,
+                None => {
+                    let length = self
+                        .operations
+                        .len()
+                        .checked_add(1)
+                        .and_then(|size| size.checked_add(remaining.len()))
+                        .ok_or(LinearLayoutError::TooLong)?;
+                    self.unwritten_expanded_operand(length, remaining)?
+                },
+            }
+        };
         let result = proven_arithmetic_result(
             operation,
             operand,
@@ -622,9 +675,8 @@ impl ForwardPaddingBuilder<'_> {
             self.profile,
         );
         if self.data_pointer >= self.shadow.len() {
-            self.expanded_writes.push(self.data_pointer);
-        }
-        if let Some(cell) = self.shadow.get_mut(self.data_pointer) {
+            self.expanded_writes.push((self.data_pointer, result));
+        } else if let Some(cell) = self.shadow.get_mut(self.data_pointer) {
             if let Some(word) = result {
                 *cell = word;
             } else if !self.unproven_source_writes.contains(&self.data_pointer)
@@ -633,6 +685,7 @@ impl ForwardPaddingBuilder<'_> {
             }
         }
         self.accumulator = result;
+        Ok(())
     }
 }
 
@@ -1252,15 +1305,21 @@ pub fn encode_auto_padded_forward_layout(
             PaddedForwardStep::AutoRelocate => {
                 let remaining = &logical[logical_index + 1..];
                 builder.auto_relocate(remaining)?
-            }
+            },
             PaddedForwardStep::Jump => {
                 builder.jump(&logical[logical_index + 1..])?
             },
-            PaddedForwardStep::Instruction(operation) => builder.instruction(*operation)?,
+            PaddedForwardStep::Instruction(operation) => builder
+                .instruction_with_expanded_operand(
+                    *operation,
+                    None,
+                    &logical[logical_index + 1..],
+                )?,
         };
-        builder
-            .positions
-            .push(u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?);
+        builder.positions.push(
+            u32::try_from(position)
+                .map_err(|_error| LinearLayoutError::TooLong)?,
+        );
         builder.advance_data_pointer()?;
     }
     // The existing independent admission controls final source length,

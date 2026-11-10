@@ -178,10 +178,15 @@ memory. In a 59-cell guest, a real `*` or `p` updates address 127, a second
 `j` returns D to that address, and a third `j` reads the **updated** value
 rather than the original loader word. The current and historical VMs match
 an independent scalar recurrence and exact output under empty/binary input;
-an input-tainted `p` still refuses as a control operand. The symbolic planner
-still refuses previously written expanded-memory operands; its narrower
-read-only loader proof requires a fully fixed future source suffix. This is a
-verified machine layout, not general C lowering.
+an input-tainted `p` still refuses as a control operand. The symbolic
+planner now keeps value-aware expanded writes when their initial loader
+word is proven from a fixed final source suffix. With fixed subsequent
+instruction addresses, its two later `j` operations reproduce that same real
+59-cell guest byte-for-byte, including `*`/`p` output and source maps on both
+VM profiles. It refuses an input-derived `p` result and a later unknown write
+that invalidates a previously proven value. Unfixed tails and symbolic jumps
+still cannot assume the expanded loader seed. This is verified machine layout,
+not general C lowering.
 
 The independent linear encoder also admits a later forward `i` jump after
 a source-scratch `j`/`p` sequence if the jump reads a separate known

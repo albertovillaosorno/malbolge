@@ -607,6 +607,88 @@ fn deterministic_expanded_arithmetic_drives_later_relocation()
     Ok(())
 }
 
+// The independent encoder already proves a loader-expanded write and two
+// subsequent j operands. The symbolic plan must preserve that known write,
+// rather than re-reading the original loader value or refusing fixed code.
+#[test]
+fn fixed_tail_expanded_written_word_drives_symbolic_relocation()
+-> Result<(), String> {
+    use PaddedForwardStep::Instruction;
+    for arithmetic in [LinearOpcode::RotateData, LinearOpcode::CrazyData] {
+        let mut operations = vec![LinearOpcode::NoOperation; 59];
+        for (index, operation) in [
+            (9, LinearOpcode::RelocateDataPointer),
+            (11, arithmetic),
+            (12, LinearOpcode::RelocateDataPointer),
+            (13, LinearOpcode::RelocateDataPointer),
+            (14, LinearOpcode::OutputByte),
+            (58, LinearOpcode::Halt),
+        ] {
+            replace_scratch_operation(&mut operations, index, operation)?;
+        }
+        let logical: Vec<_> =
+            operations.iter().copied().map(Instruction).collect();
+        for profile in [current_profile(), historical_profile()] {
+            let independent = encode_linear_layout(profile, &operations)
+                .map_err(|error| {
+                    format!("known expanded independent: {error:?}")
+                })?;
+            let proposed = encode_auto_padded_forward_layout(profile, &logical)
+                .map_err(|error| {
+                    format!("known expanded proposal: {error:?}")
+                })?;
+            if proposed.layout() != &independent
+                || proposed.logical_code_positions()
+                    != (0..59u32).collect::<Vec<_>>()
+            {
+                return Err(String::from("written expanded proposal diverged"));
+            }
+            verify_bidirectional_source_map(&proposed)?;
+            let original =
+                scalar_expanded_word_127(independent.source(), profile)?;
+            let written = if arithmetic == LinearOpcode::RotateData {
+                malbolge::profile_rotate(original, profile.memory_words())
+            } else {
+                scalar_crazy_reference(original, 0, profile.word_trits())
+            };
+            replay_deterministic_expanded_guest(
+                profile,
+                proposed.layout(),
+                original,
+                written,
+            )?;
+            // An input-dependent p must invalidate the exact expanded word.
+            let mut tainted = logical.clone();
+            tainted[8] = Instruction(LinearOpcode::InputWord);
+            tainted[11] = Instruction(LinearOpcode::CrazyData);
+            if encode_auto_padded_forward_layout(profile, &tainted)
+                != Err(LinearLayoutError::UnsafeDataPlacement)
+            {
+                return Err(String::from("tainted expanded word admitted"));
+            }
+            // A later unknown write replaces a previously proven value.
+            let mut overwritten = operations.clone();
+            for (index, operation) in [
+                (13, LinearOpcode::InputWord),
+                (14, LinearOpcode::RelocateDataPointer),
+                (15, LinearOpcode::CrazyData),
+                (16, LinearOpcode::RelocateDataPointer),
+                (17, LinearOpcode::RelocateDataPointer),
+            ] {
+                replace_scratch_operation(&mut overwritten, index, operation)?;
+            }
+            let overwritten: Vec<_> =
+                overwritten.into_iter().map(Instruction).collect();
+            if encode_auto_padded_forward_layout(profile, &overwritten)
+                != Err(LinearLayoutError::UnsafeDataPlacement)
+            {
+                return Err(String::from("stale expanded word admitted"));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn tainted_relocation_operations(
     target: usize,
 ) -> Result<Vec<LinearOpcode>, String> {

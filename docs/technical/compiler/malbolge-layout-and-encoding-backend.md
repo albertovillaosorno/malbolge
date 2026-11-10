@@ -72,14 +72,27 @@ input-derived `p` refuses at the unproven control word. This proves bounded
 expanded-memory control values, not arbitrary guest-side C arithmetic.
 The automatic forward-padding planner remains stricter than the independent
 verifier. It creates later `j` moves from known graphical source operands
-strictly behind reached C, or from untouched expanded loader memory only when
+strictly behind reached C, or from untouched expanded loader memory when
 all remaining logical instructions have fixed positions and their last two
-encoded cells prove the final loader seed. It can also prove a symbolic `i`
-reading untouched expanded memory by searching bounded forward destinations:
+encoded cells prove the final loader seed. It now also retains proven `*`/`p`
+expanded-memory writes under that fixed-tail condition, so later explicit
+`j` operations can read the updated word instead of the original loader seed.
+Input-derived writes and overwritten proofs remain unknown. It can also
+prove a symbolic `i` reading untouched expanded memory by searching bounded
+forward destinations:
 for each candidate, the fixed suffix determines both the eventual source
 length and the exact two-byte loader seed, and that seed must yield the same
-jump target. Previously written expanded words, input-tainted operands and
-unknown further jump padding are never guessed.
+jump target. Unproven expanded writes, input-tainted operands and unknown
+further jump padding are never guessed.
+
+A red-first 59-cell fixed-instruction guest now has identical symbolic
+and independent encoding with two later `j` operations following a real
+expanded-memory `*` or `p` at address 127. Both current/historical VMs,
+empty/binary input, a separate scalar loader/arithmetic oracle, output and
+source maps agree. An initial input-tainted `p` and a later input-dependent
+overwrite both refuse without stale control values. This is not arbitrary
+expanded-memory or input-dependent control synthesis.
+
 A known past source operand may also select expanded D beyond the minimum
 remaining planned length. Independent full-length admission rejects any
 source alias introduced by later padding. A 98-cell red-first program jumps
