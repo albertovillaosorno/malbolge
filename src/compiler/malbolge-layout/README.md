@@ -8,8 +8,9 @@ chains of strictly forward `JumpForward` (`i`) code jumps. The jumps
 may precede the relocation when its dynamically read data word proves that
 subsequent writes target either expanded memory or past source cells strictly
 behind the executing instruction. Later forward jumps are also admitted if
-D reads a known graphical source word; unresolved or expanded jump operands
-still refuse. There is no conditional branch, backward jump, or helper.
+D reads a known graphical source word or untouched loader-expanded word;
+input-tainted and previously written operands still refuse. There is no
+conditional branch, backward jump, or helper.
 
 ### Canonical effect-free function
 
@@ -50,10 +51,11 @@ Data relocation is necessary before rotate/crazy: without it, code and
 data pointers advance together and mutate the currently executing cell.
 The single `j` may occur after no-op/raw byte I/O or forward jumps, but must
 precede rotate/crazy. A later forward jump must read an exact known past
-source word, and every skipped cell must remain graphical no-op padding. Its
-operand comes from the *actual current data-pointer memory word* at that
-step, not necessarily the `j` graphical code byte. For an earlier jump,
-`C` and `D` have diverged; the operand can reside in a skipped no-op cell
+source word or an untouched loader-expanded word, and skipped cells must
+remain graphical no-op padding. Its operand comes from the *actual
+current data-pointer memory word* at that step, not necessarily the `j`
+graphical code byte. After an earlier jump, `C` and `D` have diverged;
+the operand can reside in a skipped no-op cell
 whose value has already been XLAT2-encrypted. The source-memory shadow
 models those prior encryptions before checking `j`.
 
@@ -133,8 +135,15 @@ the jump reads a separate known source cell. A seven-step real VM fixture
 uses binary input to modify source address 67, then reads address 68 to
 jump forward, outputs the independently checked byte, and halts on both
 historical/current profiles. Forged targets and a later jump reading the
-input-tainted cell reject. Expanded-memory jump operands remain unsupported;
-this is not general guest control flow or a complete C compiler.
+input-tainted cell reject. A second real VM fixture verifies a forward jump
+whose D operand is an untouched expanded-loader word at address 127. Its
+value 38 determines code target 39 under both profiles. The 44-cell guest
+consumes and
+emits `0x00`/`0xff`, matching the scalar recurrence and traced C/D/XLAT2.
+A 59-cell guest independently writes expanded address 127 using input-
+dependent `p`, returns D to it using a known expanded relocation operand,
+and then refuses to treat the written word as a new jump target. This is
+not general guest control flow or a complete C compiler.
 
 The planner also returns an exact source-cell origin table alongside
 logical-to-physical code positions: each graphical cell is either an
@@ -746,9 +755,10 @@ The `--distinct-literal-fourteen` C path admits only the exact fourteen
 source-ordered bytes `59 45 2c 48 53 17 4c 4f 3d 40 5b 31 19 34` (hex).
 One reached no-op and a data-pointer relocation precede twelve disjoint
 guest `CrazyData` writes and two `RotateData` writes (the sixth and thirteenth
-arithmetic positions), each followed by guest output. The normative current-profile VM
-replays the fourteen binary bytes in 31 steps with no consumed input before
-raw or capsule publication. Any incomplete, reordered or forged effect trace
+arithmetic positions), each followed by guest output. The normative
+current-profile VM replays all fourteen binary bytes in 31 steps with no
+consumed input before raw or capsule publication. Any incomplete, reordered
+or forged effect trace
 rejects; this finite witness does not provide general C byte-stream lowering.
 
 

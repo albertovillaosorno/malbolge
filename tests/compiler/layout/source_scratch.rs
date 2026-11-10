@@ -271,6 +271,137 @@ fn post_relocation_jump_uses_unmodified_source_operand_after_guest_write()
     Ok(())
 }
 
+// A reached j at phase eight moves D to address 127, beyond the whole
+// 44-cell source. The canonical loader recurrence places word 38 there, so
+// the following i must jump to code 39 rather than guess from its own cell.
+fn expanded_loader_jump_operations() -> Vec<LinearOpcode> {
+    let mut operations = vec![LinearOpcode::NoOperation; 44];
+    operations[8] = LinearOpcode::RelocateDataPointer;
+    operations[9] = LinearOpcode::JumpForward { target: 39 };
+    operations[39] = LinearOpcode::InputWord;
+    operations[40] = LinearOpcode::OutputByte;
+    operations[43] = LinearOpcode::Halt;
+    operations
+}
+
+#[test]
+fn expanded_loader_jump_reads_unmodified_guest_memory() -> Result<(), String> {
+    let operations = expanded_loader_jump_operations();
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("expanded jump layout: {error:?}"))?;
+        if layout.source()[8] != 126
+            || layout.source()[42..] != [120, 38]
+            || layout.data_pointer_positions()[9] != 127
+            || layout.executed_code_positions()
+                != [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 39, 40, 41, 42, 43]
+        {
+            return Err(String::from("unexpected expanded jump geometry"));
+        }
+        // Independently replay the scalar trit recurrence from the exact
+        // two graphical tail cells, without using the encoder's shortcut.
+        let mut previous = u32::from(layout.source()[42]);
+        let mut latest = u32::from(layout.source()[43]);
+        for _address in 44..=127 {
+            let next =
+                scalar_crazy_reference(previous, latest, profile.word_trits());
+            previous = latest;
+            latest = next;
+        }
+        if latest != 38 {
+            return Err(String::from("scalar loader jump oracle differs"));
+        }
+        for input in [0u8, 255] {
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), vec![
+                    input,
+                ])
+                .map_err(|error| format!("expanded jump guest: {error:?}"))?;
+            if vm.memory_word(127) != Ok(latest) {
+                return Err(String::from(
+                    "loader jump word differs from oracle",
+                ));
+            }
+            verify_execution_witness(&mut vm, &layout)?;
+            if vm.input_consumed() != 1 || vm.output() != [input] {
+                return Err(String::from("expanded jump guest I/O differs"));
+            }
+        }
+        let mut wrong = operations.clone();
+        wrong[9] = LinearOpcode::JumpForward { target: 38 };
+        if encode_linear_layout(profile, &wrong)
+            != Err(LinearLayoutError::JumpTargetMismatch { position: 9 })
+        {
+            return Err(String::from("forged expanded target was admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn input_written_expanded_loader_word_cannot_drive_a_later_jump()
+-> Result<(), String> {
+    let mut operations = vec![LinearOpcode::NoOperation; 59];
+    for (index, operation) in [
+        (9, LinearOpcode::RelocateDataPointer),
+        (10, LinearOpcode::InputWord),
+        (11, LinearOpcode::CrazyData),
+        (12, LinearOpcode::RelocateDataPointer),
+        (14, LinearOpcode::OutputByte),
+        (58, LinearOpcode::Halt),
+    ] {
+        replace_scratch_operation(&mut operations, index, operation)?;
+    }
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("expanded scratch layout: {error:?}"))?;
+        if layout.source()[9] != 125
+            || layout.source()[57..] != [105, 117]
+            || layout.data_pointer_positions()[11..14] != [127, 128, 127]
+            || layout.data_write_positions()[11] != Some(127)
+        {
+            return Err(String::from("incorrect expanded scratch geometry"));
+        }
+        for input in [0u8, 255] {
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), vec![
+                    input,
+                ])
+                .map_err(|error| {
+                    format!("expanded scratch guest: {error:?}")
+                })?;
+            let before =
+                vm.memory_word(127).map_err(|error| error.to_string())?;
+            if vm.memory_word(128) != Ok(126) {
+                return Err(String::from(
+                    "expanded re-relocation word differs",
+                ));
+            }
+            let expected = scalar_crazy_reference(
+                before,
+                u32::from(input),
+                profile.word_trits(),
+            );
+            verify_execution_witness(&mut vm, &layout)?;
+            if vm.input_consumed() != 1
+                || vm.memory_word(127) != Ok(expected)
+                || vm.output() != [expected as u8]
+            {
+                return Err(String::from("expanded scratch guest differs"));
+            }
+        }
+        let mut tainted = operations.clone();
+        tainted[13] = LinearOpcode::JumpForward { target: 50 };
+        tainted[14] = LinearOpcode::NoOperation;
+        if encode_linear_layout(profile, &tainted)
+            != Err(LinearLayoutError::JumpPathUnsupported)
+        {
+            return Err(String::from("input-written expanded jump admitted"));
+        }
+    }
+    Ok(())
+}
+
 fn tainted_relocation_operations(
     target: usize,
 ) -> Result<Vec<LinearOpcode>, String> {

@@ -369,6 +369,17 @@ emission.
   Expanded-memory jump operands and symbolic post-relocation layout remain
   unsupported. The original unmasked Fibonacci whole-C layout and P0
   compiler objective remain open.
+- The independent layout checker now also admits a strictly forward `i`
+  after `j` when D reads an untouched loader-expanded memory word: a
+  44-cell fixture relocates D to address 127, proves its word 38 by
+  independent scalar crazy recurrence, and jumps to code 39. Both
+  historical/current normative VMs trace exact path/encryption and emit
+  binary `0x00`/`0xff` input unchanged. A forged target fails. A separate
+  59-cell guest consumes binary input, applies real `p` to expanded address
+  127 and relocates D back through separately proven loader word 126 at
+  address 128; its later `i` refuses the written, input-dependent operand.
+  The symbolic padding planner, generalized source-C arithmetic/flow and
+  original unmasked Fibonacci C guest remain unsupported.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

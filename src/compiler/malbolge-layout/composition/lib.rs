@@ -187,7 +187,7 @@ pub enum LinearLayoutError {
         /// Zero-based position of the first premature halt.
         position: usize,
     },
-    /// The jump shape would revisit code or skip non-padding operations.
+    /// The jump revisits code, skips effects or reads an unproven data word.
     JumpPathUnsupported,
     /// The jump's claimed target disagrees with the encoded source cell.
     JumpTargetMismatch {
@@ -452,7 +452,8 @@ fn validate_jump_shape(
         };
         // Independently prove each reached jump from the current D word.
         // After a j, that operand can still be a known past source cell;
-        // expanded or input-tainted jump operands fail closed downstream.
+        // expanded operands must be loader-proven, and input-tainted operands
+        // still fail closed in the checked execution path.
         let target_position = usize::try_from(*target)
             .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
         if target_position <= position || target_position >= operations.len() {
@@ -517,16 +518,10 @@ fn unique_graphical_cell(
 }
 
 fn jump_successor(
-    code_cells: &[Option<u32>],
-    data_pointer: usize,
+    data_cell: u32,
     position: usize,
     target: u32,
 ) -> Result<JumpSuccessor, LinearLayoutError> {
-    let data_cell = code_cells
-        .get(data_pointer)
-        .copied()
-        .flatten()
-        .ok_or(LinearLayoutError::JumpPathUnsupported)?;
     if data_cell.saturating_add(1) != target {
         return Err(LinearLayoutError::JumpTargetMismatch { position });
     }
@@ -561,7 +556,7 @@ fn planned_data_write(
     Ok(Some(data_address))
 }
 
-/// A later j reads an as-yet-unwritten loader-expanded word. The loader
+/// A later i or j reads an as-yet-unwritten loader-expanded word. The loader
 /// expands the original graphical source before any guest mutation; only its
 /// final two cells determine an untouched data word beyond the source.
 ///
@@ -595,6 +590,36 @@ pub(crate) fn unwritten_loader_word(
     Ok(latest)
 }
 
+// Both i and j read the *current* D word. Source memory is tracked through
+// XLAT2 and scratch writes; loader-expanded memory is known only if no guest
+// arithmetic has touched that address. Never infer a control operand from a
+// potentially input-dependent guest write.
+fn known_control_operand(
+    source: &[u8],
+    source_shadow: &[Option<u32>],
+    writes: &[Option<u32>],
+    data_pointer: usize,
+    profile: &ProfileDescriptor,
+    unproven: LinearLayoutError,
+) -> Result<u32, LinearLayoutError> {
+    if data_pointer < source.len() {
+        return source_shadow
+            .get(data_pointer)
+            .copied()
+            .flatten()
+            .ok_or(unproven);
+    }
+    if writes
+        .iter()
+        .flatten()
+        .any(|&address| usize::try_from(address).ok() == Some(data_pointer))
+    {
+        return Err(unproven);
+    }
+    unwritten_loader_word(source, data_pointer, profile)
+        .map_err(|_error| unproven)
+}
+
 // Only p and * call this helper. Unknown data and input-derived A values
 // remain unresolved rather than being copied into the control-flow shadow.
 fn source_scratch_result(
@@ -623,8 +648,8 @@ fn derive_execution_positions(
     let mut executed = Vec::new();
     let mut encrypted = Vec::new();
     let mut writes = Vec::new();
-    // Jumps and the first relocation read exact source-memory cells.
-    // Later j instructions may move D using unwritten expanded loader words.
+    // Jumps and relocations read the evolving exact source-memory shadow or
+    // untouched expanded loader words.
     // The checker preserves exact profile-memory wraparound. Source writes
     // behind C may depend on input, so unresolved words stay explicitly
     // unknown; no future jump or relocation can use them as operands.
@@ -686,12 +711,15 @@ fn derive_execution_positions(
         }
         let (encryption_address, next_position) = match operation {
             LinearOpcode::JumpForward { target } => {
-                let next = jump_successor(
+                let operand = known_control_operand(
+                    source,
                     &code_cells,
+                    &writes,
                     data_pointer,
-                    position,
-                    *target,
+                    profile,
+                    LinearLayoutError::JumpPathUnsupported,
                 )?;
+                let next = jump_successor(operand, position, *target)?;
                 (next.encryption, next.position)
             },
             LinearOpcode::CrazyData
@@ -711,63 +739,46 @@ fn derive_execution_positions(
         };
         let memory_words = usize::try_from(profile.memory_words())
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-        let next_data_pointer =
-            if *operation == LinearOpcode::RelocateDataPointer {
-                let expanded_operand = data_pointer >= source.len();
-                if expanded_operand
-                    && writes.iter().flatten().any(|&address| {
-                        usize::try_from(address).ok() == Some(data_pointer)
-                    })
-                {
-                    // The source-tail recurrence no longer describes this word
-                    // after a prior data write. Do not guess its runtime value.
-                    return Err(LinearLayoutError::UnsafeDataPlacement);
-                }
-                let data_word = if expanded_operand {
-                    usize::try_from(unwritten_loader_word(
-                        source,
-                        data_pointer,
-                        profile,
-                    )?)
-                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-                } else {
-                    usize::try_from(
-                        code_cells
-                            .get(data_pointer)
-                            .copied()
-                            .flatten()
-                            .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
-                    )
-                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-                };
-                let next = data_word.saturating_add(1) % memory_words;
-                // After a forward code jump, a j may move D into *past*
-                // graphical source cells. Both the operand and its target
-                // must then be strictly behind C; later arithmetic is still
-                // checked instruction-by-instruction against pending code.
-                // Ordinary first relocations retain the original requirement
-                // that their source operand points beyond the whole source.
-                let past_source_scratch = !expanded_operand
-                    && data_pointer < position
-                    && next < position;
-                if !expanded_operand
-                    && data_word < source.len()
-                    && !past_source_scratch
-                {
-                    return Err(LinearLayoutError::UnsafeDataPlacement);
-                }
-                // A final j cannot affect output. Otherwise a relocation
-                // within source is safe only behind the already executed C.
-                if position != operations.len().saturating_sub(2)
-                    && next < source.len()
-                    && !past_source_scratch
-                {
-                    return Err(LinearLayoutError::UnsafeDataPlacement);
-                }
-                next
-            } else {
-                data_pointer.saturating_add(1) % memory_words
-            };
+        let next_data_pointer = if *operation
+            == LinearOpcode::RelocateDataPointer
+        {
+            let expanded_operand = data_pointer >= source.len();
+            let data_word = usize::try_from(known_control_operand(
+                source,
+                &code_cells,
+                &writes,
+                data_pointer,
+                profile,
+                LinearLayoutError::UnsafeDataPlacement,
+            )?)
+            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
+            let next = data_word.saturating_add(1) % memory_words;
+            // After a forward code jump, a j may move D into *past*
+            // graphical source cells. Both the operand and its target
+            // must then be strictly behind C; later arithmetic is still
+            // checked instruction-by-instruction against pending code.
+            // Ordinary first relocations retain the original requirement
+            // that their source operand points beyond the whole source.
+            let past_source_scratch =
+                !expanded_operand && data_pointer < position && next < position;
+            if !expanded_operand
+                && data_word < source.len()
+                && !past_source_scratch
+            {
+                return Err(LinearLayoutError::UnsafeDataPlacement);
+            }
+            // A final j cannot affect output. Otherwise a relocation
+            // within source is safe only behind the already executed C.
+            if position != operations.len().saturating_sub(2)
+                && next < source.len()
+                && !past_source_scratch
+            {
+                return Err(LinearLayoutError::UnsafeDataPlacement);
+            }
+            next
+        } else {
+            data_pointer.saturating_add(1) % memory_words
+        };
         let code_cell = code_cells
             .get_mut(encryption_address)
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
@@ -833,7 +844,8 @@ pub fn admit_linear_layout(
 /// operation, and re-admits the entire graphical stream before publication.
 ///
 /// Forward jumps read their target from the exact dynamically evolving
-/// data-pointer cell, not necessarily the jump's code cell. A later `j` may
+/// data-pointer cell, including proven untouched expanded loader words, not
+/// necessarily the jump's code cell. A later `j` may
 /// move D into expanded memory or to past graphical source scratch strictly
 /// behind reached C after a forward jump. Every intervening skipped source
 /// position must be inert graphical padding.

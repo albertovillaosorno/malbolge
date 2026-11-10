@@ -42,8 +42,9 @@ the original encoded `j` source byte. The verifier replays prior XLAT2
 mutation of source-memory cells before checking that the resulting base is
 at least the complete emitted source length. This exact bound keeps all
 later rotate/crazy writes disjoint from source code. Source-scratch
-relocation also permits writes behind C; unknown/expanded jump operands,
-unsafe initial relocations and pending-code aliases reject. Each later `j`
+relocation also permits writes behind C; unknown, mutated-loader or
+input-tainted jump operands, unsafe initial relocations and pending-code
+aliases reject. Each later `j`
 reads the exact current D word: a tracked XLAT2 source-memory cell if D has
 wrapped into code, or an untouched expanded-loader cell otherwise. The
 checker derives expanded words from the original final source cells, not
@@ -57,9 +58,10 @@ Every new D pointer uses exact profile-memory wraparound. Subsequent
 arithmetic writes must remain in expanded memory or behind executing C.
 A penultimate `j` may point inside source, because only halt remains.
 Arbitrarily many source-bounded `j` operations may be admitted when these
-per-move checks pass. A later forward jump is safe only when its D operand
-is a known graphical source cell; expanded or input-tainted operands still
-reject. Every admitted
+per-move checks pass. A later forward jump is safe when its D operand is
+either a known graphical source cell or an untouched loader-expanded word
+proven by the profile's six-step recurrence. Previously written expanded
+words and input-tainted source operands still reject. Every admitted
 code/D/write/encryption position is independently replayed in traced VM
 regressions. The automatic forward-padding planner remains stricter and
 does not create later moves.
@@ -111,9 +113,17 @@ operand at address 68, skips ahead, outputs the independently calculated
 byte, and halts. Both canonical VMs match exact code/D/write/encryption
 witnesses and `0x00`/`0xff` output and memory effects. A forged target
 rejects, and moving D back to the input-tainted scratch word makes the
-following `i` fail closed. The symbolic padding planner still refuses
-post-relocation jumps; arbitrary expanded or runtime-dependent jump operands
-are unsupported, as is the original unmasked Fibonacci C source.
+following `i` fail closed. A separate 44-cell program first relocates D to
+expanded address 127, then proves the untouched loader word 38 and jumps
+forward to code 39. Independent scalar recurrence and both normative VMs
+confirm exact step pointers, XLAT2, input and output for `0x00`/`0xff`;
+a forged target refuses. A second 59-cell real-VM program reads binary
+input, writes expanded address 127 with `p`, then relocates D back to the
+written word. Its next `i` is refused as unknown, even though untouched
+loader operand 128 was independently proven to equal 126. The symbolic
+padding planner still refuses post-relocation jumps; arbitrary runtime-
+dependent jump operands are unsupported, as is the original unmasked
+Fibonacci C source.
 
 Another real VM regression demonstrates the distinct case where a
 later jump reads a code cell whose normal no-op execution already encrypted
