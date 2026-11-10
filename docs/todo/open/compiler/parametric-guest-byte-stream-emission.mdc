@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the original unmasked twelve-step Fibonacci C program
+  was retried and still refused at `Layout(UnsupportedEffectTrace)` with no
+  guest publication. A red-first full masked recurrence using `unsigned next;`
+  followed by `next = (a + b) & 255U;` exposed the adapter's inability to
+  represent an uninitialized unsigned local. The closed source-state proof
+  now tracks an absent value, admits a later plain write, and refuses reads,
+  compound assignments, increments and branch paths before initialization.
+  Direct and branch-assigned whole-source variants emitted the independent
+  twelve-byte masked oracle on the real normative guest in 47 steps each
+  (2,207-byte capsules).
+  This does not implement dynamic guest local storage or the original
+  unmasked byte stream; P0 remains pending.
+
 - On 2026-11-10 a red-first full masked Fibonacci C program stored a
   checked comparison into an `unsigned even` local before selecting two
   output arms. The adapter previously refused at the initial declaration.

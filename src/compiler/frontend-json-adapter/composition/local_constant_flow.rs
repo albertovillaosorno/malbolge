@@ -51,7 +51,7 @@ const MAX_EXPLICIT_CAST_PREFIX_BYTES: u32 = 16;
 struct Local<'node> {
     // C unsigned locals retain all 32 bits; only guest output and bounded
     // induction counters have narrower admission requirements.
-    value: u32,
+    value: Option<u32>,
     declaration: &'node Node,
     name: &'node str,
     source: &'node Node,
@@ -162,7 +162,7 @@ impl<'node> Flow<'node> {
             }
             checked_u32_binary(
                 operation,
-                self.locals.get(destination)?.value,
+                self.locals.get(destination)?.value?,
                 rhs,
             )?
         } else {
@@ -175,7 +175,7 @@ impl<'node> Flow<'node> {
             return None;
         }
         let local = self.locals.get_mut(destination)?;
-        local.value = value;
+        local.value = Some(value);
         local.source = value_source;
         Some((assignment.span.end.byte, value_source))
     }
@@ -548,21 +548,50 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let (value, initializer) = self.expression(variable.id, 0)?;
-        if !span_within(&variable.span, &initializer.span)
-            || initializer.span.end.byte != variable.span.end.byte
-            || initializer.span.begin.byte <= variable.span.begin.byte
+        // A source-backed bare `unsigned name;` has no child initializer.
+        // Keep it unreadable until a selected plain `=` write defines it;
+        // compound writes and unary steps cannot read indeterminate C state.
+        let (value, source) = if self
+            .peek()
+            .is_some_and(|node| node.parent == variable.id)
         {
-            return None;
-        }
+            let (value, initializer) = self.expression(variable.id, 0)?;
+            if !span_within(&variable.span, &initializer.span)
+                || initializer.span.end.byte != variable.span.end.byte
+                || initializer.span.begin.byte <= variable.span.begin.byte
+            {
+                return None;
+            }
+            (Some(value), initializer)
+        } else {
+            let (_, offset) = symbol.rsplit_once('@')?;
+            let name_start = offset.parse::<u32>().ok()?;
+            let name_width = u32::try_from(name.len()).ok()?;
+            if variable.span.begin.line != variable.span.end.line
+                || variable.span.begin.line != statement.span.end.line
+                || variable.span.begin.byte.checked_add(9) != Some(name_start)
+                || variable.span.begin.column.checked_add(9)
+                    != Some(variable.span.end.column.checked_sub(name_width)?)
+                || name_start.checked_add(name_width)
+                    != Some(variable.span.end.byte)
+                || variable.span.end.byte.checked_add(1)
+                    != Some(statement.span.end.byte)
+                || variable.span.end.column.checked_add(1)
+                    != Some(statement.span.end.column)
+                || statement.span.begin != variable.span.begin
+            {
+                return None;
+            }
+            (None, variable)
+        };
         self.locals.push(Local {
             value,
             declaration: variable,
             name,
-            source: initializer,
+            source,
             symbol,
         });
-        Some((statement.span.end.byte, initializer))
+        Some((statement.span.end.byte, source))
     }
 
     /// Evaluate checked `u32` temporaries; narrow only at local stores/output.
@@ -826,7 +855,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        Some((local.value, local.source))
+        Some((local.value?, local.source))
     }
 
     fn scoped_branch_effects(
@@ -927,14 +956,14 @@ impl<'node> Flow<'node> {
         if !prefix && !postfix {
             return None;
         }
-        let previous = self.locals.get(destination)?.value;
+        let previous = self.locals.get(destination)?.value?;
         let updated = if operation == "++" {
             previous.wrapping_add(1)
         } else {
             previous.wrapping_sub(1)
         };
         let local = self.locals.get_mut(destination)?;
-        local.value = updated;
+        local.value = Some(updated);
         local.source = step;
         Some(step.span.end.byte)
     }
@@ -964,7 +993,7 @@ impl<'node> Flow<'node> {
             self.declaration(statement, statement.span.begin.byte)?;
         let counter = self.locals.get(outer_len)?;
         // The finite induction proof still admits only byte-range counters.
-        let start = u8::try_from(counter.value).ok()?;
+        let start = u8::try_from(counter.value?).ok()?;
         let symbol = counter.symbol;
         let (counter_name, _) = symbol.rsplit_once('@')?;
         let comparison = self.take(statement.id, "binary-expression")?;
@@ -1198,7 +1227,7 @@ impl<'node> Flow<'node> {
             // Inner automatic locals must not remain visible after the brace.
             self.locals.truncate(outer_len.checked_add(1)?);
             let current_counter = self.locals.get_mut(outer_len)?;
-            if current_counter.value != u32::from(counter_value) {
+            if current_counter.value != Some(u32::from(counter_value)) {
                 return None;
             }
             match self.loop_exit {
@@ -1214,7 +1243,7 @@ impl<'node> Flow<'node> {
             } else {
                 counter_value.checked_add(stride)?
             };
-            current_counter.value = u32::from(counter_value);
+            current_counter.value = Some(u32::from(counter_value));
             current_counter.source = increment;
             trips = trips.checked_add(1)?;
         }

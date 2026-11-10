@@ -378,6 +378,130 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", rejected.stderr)
             self.assertFalse(rejected_guest.exists())
 
+    def test_uninitialized_unsigned_local_written_before_guest_use(self) -> None:
+        """A declared-then-assigned C local must reach the real guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        declaration = "unsigned next = (a + b) & 255U;"
+        self.assertEqual(original.count(declaration), 1)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for variant in ("direct", "branch"):
+                with self.subTest(variant=variant):
+                    assignment = "next = (a + b) & 255U;"
+                    if variant == "branch":
+                        assignment = (
+                            "if (a == 0U) {\n"
+                            "            next = (a + b) & 255U;\n"
+                            "        } else {\n"
+                            "            next = (a + b) & 255U;\n"
+                            "        }"
+                        )
+                    source = Path(scratch) / f"uninitialized-{variant}.c"
+                    source.write_text(original.replace(
+                        declaration, "unsigned next;\n        " + assignment,
+                    ))
+                    guest = source.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/uninitialized-{variant}-fibonacci-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=150,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    previous, current = 1, 1
+                    oracle = bytearray()
+                    for _ in range(12):
+                        following = (previous + current) & 255
+                        oracle.append(
+                            following & 31 if following % 2 == 0
+                            else (following ^ 0x1A) & 31
+                        )
+                        previous, current = current, following
+                    self.assertEqual(oracle.hex(), "02191f08170f020d03101303")
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"],
+                            input=supplied, capture_output=True,
+                            check=False, timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, oracle)
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_uninitialized_unsigned_local_rejects_reads_and_forgery(self) -> None:
+        """An uninitialized local is not an implicit zero or a valid read."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        declaration = "unsigned next = (a + b) & 255U;"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, replacement in {
+                "read": "unsigned next;\n        putchar((int)next);",
+                "compound": "unsigned next;\n        next += (a + b) & 255U;",
+                "increment": "unsigned next;\n        next++;",
+                "unwritten-branch": (
+                    "unsigned next;\n        if (a == 0U) {\n"
+                    "            next = (a + b) & 255U;\n        }"
+                ),
+            }.items():
+                source = Path(scratch) / f"uninitialized-invalid-{label}.c"
+                source.write_text(original.replace(declaration, replacement))
+                guest = source.with_suffix(".malbolge")
+                result = subprocess.run(
+                    [sys.executable, "-B", str(DRIVER),
+                     "--repository-tools", "--source-id",
+                     f"tests/uninitialized-invalid-{label}-v1",
+                     "--capsule", "--output", str(guest), str(source)],
+                    capture_output=True, check=False, timeout=45,
+                )
+                self.assertNotEqual(result.returncode, 0, label)
+                self.assertFalse(guest.exists(), label)
+            valid = Path(scratch) / "uninitialized-ast.c"
+            valid.write_text(original.replace(
+                declaration,
+                "unsigned next;\n        next = (a + b) & 255U;",
+            ))
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/uninitialized-ast-v1", str(valid)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = json.loads(normalized.stdout)
+            node = next(n for n in parsed["nodes"] if
+                        n["kind"] == "variable-declaration" and
+                        n.get("name") == "next")
+            for label, updates in {
+                "wrong-type": {"type": "i32"},
+                "extra-metadata": {"operation": "="},
+                "past-name-end": {"span": {
+                    **node["span"], "end": {
+                        **node["span"]["end"],
+                        "byte": node["span"]["end"]["byte"] + 1,
+                        "column": node["span"]["end"]["column"] + 1,
+                    },
+                }},
+            }.items():
+                forged = json.loads(normalized.stdout)
+                forged["nodes"][node["id"] - 1].update(updates)
+                guest = Path(scratch) / f"uninitialized-forged-{label}.malbolge"
+                result = subprocess.run(
+                    [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                     "--capsule", "--output", str(guest)],
+                    input=json.dumps(forged).encode(),
+                    capture_output=True, check=False, timeout=30,
+                )
+                self.assertNotEqual(result.returncode, 0, label)
+                self.assertFalse(guest.exists(), label)
+
     def test_else_if_chain_full_fibonacci_guest_parity(self) -> None:
         """All three C arms must be proven; the real VM emits all bytes."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

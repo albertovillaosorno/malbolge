@@ -742,6 +742,26 @@ independently recover same-width C operator characters from normalized
 JSON; the pinned frontend and source-digest boundary remain trusted.
 The unmasked original Fibonacci guest stream remains unimplemented.
 
+### Uninitialized automatic unsigned locals with proven later writes
+
+The closed bounded local-flow projection accepts `unsigned next;` followed
+by an ordinary source-checked `next = value;` before its first use. It
+records an absent initial value, checks the exact Clang name/semicolon span
+of the one-line declaration, and requires the active canonical local symbol
+on each subsequent write. The local becomes readable only after a selected
+plain assignment; `next++`, `next += value`, source reads, and unselected
+conditional writes cannot initialize indeterminate C state. For-loop
+induction variables remain required to have initial values. The source
+hash and pinned Clang frontend remain the authority for characters the
+normalized JSON does not expose.
+
+A full twelve-step masked Fibonacci recurrence with this declaration form
+emits the independent twelve-byte masked oracle on the actual normative
+guest in 47 steps for both direct and selected-branch writes. Invalid C and
+forged AST
+mutations reject without publication. This does not make guest local state
+dynamic or unlock the original unmasked Fibonacci output.
+
 ### Source-backed unsigned locals initialized from Boolean predicates
 
 A pure C comparison or logical negation produces `int`, which C implicitly

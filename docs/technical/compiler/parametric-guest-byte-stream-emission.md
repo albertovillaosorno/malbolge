@@ -73,6 +73,32 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Source-proven unsigned locals assigned after declaration (2026-11-10)
+
+The original unmasked twelve-step Fibonacci C program was rerun and still
+refused at `Layout(UnsupportedEffectTrace)`, without publishing a guest.
+An independent complete masked Fibonacci C variant declared `unsigned next;`
+inside its bounded loop and subsequently assigned `(a + b) & 255U` before
+the conditional `putchar` arms. The adapter previously refused this ordinary
+C declaration at the first local, before any target artifact was written.
+
+A local now carries `None` until a source-backed plain assignment proves
+its first value. The uninitialized declaration requires exact pinned-Clang
+name and semicolon geometry, automatic `u32` storage and no initializer
+children. A local read, compound assignment or prefix/postfix step before
+its first selected write rejects. Branches prove both arms on shadow state
+and commit only the selected state; an unselected write does not initialize
+a variable. The bounded `for` induction still requires its initialized
+counter. Normalized JSON cannot recover the literal token contents;
+source authenticity rests on the pinned frontend and source digest.
+
+Both direct and selected-branch assignment variants compiled into 2,207-byte
+Malbolge capsules. The normative guest emitted the independently computed
+oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps per replay.
+Negative uninitialized-use sources and forged AST metadata reject without
+guest publication. This remains compile-time state folding rather than
+runtime guest C variables; the unmasked P0 byte stream remains unsupported.
+
 ### Unsigned unary signs over full C locals (2026-11-10)
 
 The complete twelve-step masked Fibonacci recurrence was retried with a
