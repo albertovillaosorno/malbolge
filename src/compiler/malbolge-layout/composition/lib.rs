@@ -556,6 +556,14 @@ fn planned_data_write(
     Ok(Some(data_address))
 }
 
+#[derive(Clone, Copy)]
+struct ControlOperandMemory<'memory> {
+    profile: &'memory ProfileDescriptor,
+    source: &'memory [u8],
+    source_shadow: &'memory [Option<u32>],
+    writes: &'memory [Option<u32>],
+}
+
 /// A later i or j reads an as-yet-unwritten loader-expanded word. The loader
 /// expands the original graphical source before any guest mutation; only its
 /// final two cells determine an untouched data word beyond the source.
@@ -595,28 +603,25 @@ pub(crate) fn unwritten_loader_word(
 // arithmetic has touched that address. Never infer a control operand from a
 // potentially input-dependent guest write.
 fn known_control_operand(
-    source: &[u8],
-    source_shadow: &[Option<u32>],
-    writes: &[Option<u32>],
+    memory: ControlOperandMemory<'_>,
     data_pointer: usize,
-    profile: &ProfileDescriptor,
     unproven: LinearLayoutError,
 ) -> Result<u32, LinearLayoutError> {
-    if data_pointer < source.len() {
-        return source_shadow
+    if data_pointer < memory.source.len() {
+        return memory.source_shadow
             .get(data_pointer)
             .copied()
             .flatten()
             .ok_or(unproven);
     }
-    if writes
+    if memory.writes
         .iter()
         .flatten()
         .any(|&address| usize::try_from(address).ok() == Some(data_pointer))
     {
         return Err(unproven);
     }
-    unwritten_loader_word(source, data_pointer, profile)
+    unwritten_loader_word(memory.source, data_pointer, memory.profile)
         .map_err(|_error| unproven)
 }
 
@@ -712,11 +717,13 @@ fn derive_execution_positions(
         let (encryption_address, next_position) = match operation {
             LinearOpcode::JumpForward { target } => {
                 let operand = known_control_operand(
-                    source,
-                    &code_cells,
-                    &writes,
+                    ControlOperandMemory {
+                        source,
+                        source_shadow: &code_cells,
+                        writes: &writes,
+                        profile,
+                    },
                     data_pointer,
-                    profile,
                     LinearLayoutError::JumpPathUnsupported,
                 )?;
                 let next = jump_successor(operand, position, *target)?;
@@ -744,11 +751,13 @@ fn derive_execution_positions(
         {
             let expanded_operand = data_pointer >= source.len();
             let data_word = usize::try_from(known_control_operand(
-                source,
-                &code_cells,
-                &writes,
+                ControlOperandMemory {
+                    source,
+                    source_shadow: &code_cells,
+                    writes: &writes,
+                    profile,
+                },
                 data_pointer,
-                profile,
                 LinearLayoutError::UnsafeDataPlacement,
             )?)
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
