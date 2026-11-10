@@ -878,6 +878,25 @@ cases and nine forged AST mutations refuse without artifacts. This is a
 finite compile-time C-state projection, not dynamic guest C branches or
 loops; the unmasked Fibonacci byte stream still fails layout admission.
 
+### Direct `if/else` as the whole unbraced `do/while` body
+
+The bounded C-state projector also admits a single source-proven direct
+`if-statement` child of a `do-statement`, followed by its pure trailing
+condition. Unlike `for` and `while`, the conditional body ends **before**
+the enclosing `do` source span: the adapter checks direct Clang ancestry,
+ordered source tails, the predicate and final semicolon without inventing a
+compound scope. The body executes before each test, with selected writes and
+outputs carried into the next bounded iteration. Additional direct body
+effects, unknown side effects and forged AST parent/span/metadata refuse.
+
+A full twelve-step masked Fibonacci C program first refused this ordinary
+unbraced source form, then emitted the independently computed byte stream
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` on the normative guest VM in
+47 steps under empty and binary stdin. Three invalid source variants and
+five forged AST variants refuse without artifact publication. This extends
+source-backed compile-time replay, not runtime guest control flow or the
+still unsupported original unmasked Fibonacci guest layout.
+
 ### Function-body lexical scopes with shadowed unsigned locals
 
 The closed multi-local projection also replays an explicit compound block

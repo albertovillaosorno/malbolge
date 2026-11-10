@@ -819,7 +819,11 @@ impl<'node> Flow<'node> {
         let mut last_end = body.span.begin.byte;
         let mut writes = 0;
         while let Some(node) = self.peek() {
-            if node.span.begin.byte >= body.span.end.byte {
+            // A direct `if` is the whole unbraced `do` body. Its trailing
+            // condition is the next sibling, not a second body effect.
+            if node.span.begin.byte >= body.span.end.byte
+                || (body.kind == "do-statement" && writes != 0)
+            {
                 break;
             }
             let expected_parent = body.id;
@@ -859,6 +863,8 @@ impl<'node> Flow<'node> {
         // A braced scope instead ends after its final child.
         if matches!(body.kind.as_str(), "for-statement" | "while-statement") {
             (writes == 1 && last_end == body.span.end.byte).then_some(())
+        } else if body.kind == "do-statement" {
+            (writes == 1 && last_end < body.span.end.byte).then_some(())
         } else {
             (writes > 0 && last_end < body.span.end.byte).then_some(())
         }
@@ -1502,10 +1508,22 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let loop_body = self.take(statement.id, "compound-statement")?;
-        if !clean(loop_body)
+        // Clang parents an unbraced `if` directly to `do`, followed by
+        // the condition as a separate sibling. Never invent a brace scope.
+        let unbraced_if = self.peek()?.kind == "if-statement";
+        let first_body_byte = self.peek()?.span.begin.byte;
+        let direct_body_end = self.peek()?.span.end.byte;
+        let loop_body = if unbraced_if {
+            statement
+        } else {
+            self.take(statement.id, "compound-statement")?
+        };
+        if (!unbraced_if && !clean(loop_body))
             || !span_within(&statement.span, &loop_body.span)
-            || statement.span.begin.byte >= loop_body.span.begin.byte
+            || statement.span.begin.byte >= first_body_byte
+            || (unbraced_if
+                && (self.peek()?.parent != statement.id
+                    || direct_body_end >= statement.span.end.byte))
         {
             return None;
         }
@@ -1528,7 +1546,11 @@ impl<'node> Flow<'node> {
             // `break` skips it at runtime. `continue` must check it.
             let (continue_loop, condition) = self.condition(statement)?;
             if !span_within(&statement.span, &condition.span)
-                || loop_body.span.end.byte >= condition.span.begin.byte
+                || (if unbraced_if {
+                    direct_body_end
+                } else {
+                    loop_body.span.end.byte
+                }) >= condition.span.begin.byte
                 || statement
                     .span
                     .end

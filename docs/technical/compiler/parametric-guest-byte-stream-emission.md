@@ -3134,6 +3134,32 @@ condition side effect, a forbidden induction-counter write and unproved
 fail without publishing guest code. The original twelve-output unmasked
 Fibonacci C still lacks generalized guest layout; P0 remains pending.
 
+### Unbraced `do/while` with a conditional recurrence (2026-11-10)
+
+The full twelve-step masked Fibonacci C recurrence was retried with an
+ordinary `do` whose sole unbraced body is an `if/else`. Both branches declare
+an iteration-local `unsigned next`, emit the selected byte, transfer the
+recurrence state and increment the enclosing `i`. The trailing
+`while (i < 12U);` is tested after every body execution. Pinned Clang
+accepted the complete C program but the JSON adapter originally refused
+its first local declaration, publishing no guest artifact.
+
+The bounded replay now checks a single direct `if-statement` child of the
+`do-statement`, with no invented compound scope. The next direct Clang
+sibling must be its pure condition, after the complete conditional span;
+its source tail must leave exactly the final semicolon. Source-parent,
+span, metadata, local writes, branch effects and the twelve-trip bound
+remain checked. As in braced `do/while`, the predicate is evaluated against
+state updated by the selected branch, after the mandatory first body trip.
+
+The real normative guest VM emits the independently derived byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under both empty and
+binary stdin. Three invalid source variants (nonterminating induction,
+side-effecting predicate and an unproved nested loop) and five forged AST
+cases refuse without publishing guest artifacts. This remains finite
+compile-time C-state replay; the original unmasked Fibonacci stream and
+dynamic guest C loop execution still lack proof. P0 remains pending.
+
 ### Source-proven lexical scopes in loop bodies
 
 A complete twelve-output masked Fibonacci C recurrence was first attempted

@@ -182,6 +182,15 @@ def unbraced_conditional_while_fibonacci_source() -> str:
     ).replace(assignment, "            b = next;\n            ++i;\n")
 
 
+def unbraced_conditional_do_fibonacci_source() -> str:
+    """Run a full masked recurrence with a direct C if as the do body."""
+    source = unbraced_conditional_while_fibonacci_source()
+    assert source.count("    while (i < 12U)\n") == 1
+    assert source.endswith("        }\n}\n")
+    source = source.replace("    while (i < 12U)\n", "    do\n")
+    return source.removesuffix("        }\n}\n") + "        } while (i < 12U);\n}\n"
+
+
 def scoped_masked_fibonacci_source() -> str:
     """Carry the recurrence through a loop-local lexical transfer scope."""
     original = MASKED_FIBONACCI.read_text()
@@ -10859,6 +10868,146 @@ class CompoundCPipelineTests(unittest.TestCase):
                     )
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertFalse(guest.exists(), label)
+
+    def test_unbraced_do_conditional_fibonacci_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = unbraced_conditional_do_fibonacci_source()
+        a, b = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (a + b) & 255
+            byte = (following & 31) if following % 2 == 0 else ((following ^ 26) & 31)
+            expected.append(byte)
+            a, b = b, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / "unbraced-do-fib.c"
+            candidate.write_text(original)
+            guest = Path(scratch) / "unbraced-do-fib.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/unbraced-do-fib-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for guest_input in (b"", bytes((255, 0, 128))):
+                execution = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=guest_input,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(execution.returncode, 0, execution.stderr)
+                self.assertEqual(execution.stdout, bytes(expected))
+                self.assertEqual(execution.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_unbraced_do_conditional_fail_closed(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = unbraced_conditional_do_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed in {
+                "unbounded": original.replace("++i;", "i += 0U;"),
+                "side-effecting-condition": original.replace("i < 12U", "i++ < 12U"),
+                "nested-while": original.replace(
+                    "do\n", "do\n        while (i < 12U)\n"
+                ),
+            }.items():
+                candidate = Path(scratch) / f"invalid-unbraced-do-{label}.c"
+                candidate.write_text(changed)
+                guest = Path(scratch) / f"invalid-unbraced-do-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/unbraced-do-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=45,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertFalse(guest.exists(), label)
+            candidate = Path(scratch) / "unbraced-do-ast.c"
+            candidate.write_text(original)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/unbraced-do-ast-v1",
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            loop = next(n for n in nodes if n["kind"] == "do-statement")
+            branch = next(n for n in nodes if n["kind"] == "if-statement")
+            condition = next(
+                n
+                for n in nodes
+                if n["kind"] == "binary-expression" and n.get("operation") == "<"
+            )
+            self.assertEqual(branch["parent"], loop["id"])
+            self.assertEqual(condition["parent"], loop["id"])
+            for label, node, field, value in (
+                ("branch-parent", branch, "parent", 0),
+                ("branch-span", branch, "span", loop["span"]),
+                ("condition-parent", condition, "parent", 0),
+                ("condition-operation", condition, "operation", ">"),
+                ("do-metadata", loop, "operation", "++"),
+            ):
+                changed = cast(
+                    dict[str, list[dict[str, object]]], json.loads(frontend.stdout)
+                )
+                node_id = cast(int, node["id"])
+                changed["nodes"][node_id - 1][field] = value
+                guest = Path(scratch) / f"unbraced-do-forged-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                    ],
+                    input=json.dumps(changed).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertFalse(guest.exists(), label)
 
 
 if __name__ == "__main__":

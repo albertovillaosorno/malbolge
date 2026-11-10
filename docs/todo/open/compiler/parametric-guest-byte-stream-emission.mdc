@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete twelve-output masked Fibonacci C source
+  first refused when a `do/while` directly contained an unbraced `if/else`
+  with local declarations, selected output and state transfers. The bounded
+  projector now proves that single direct Clang child, its trailing pure
+  predicate, exact source order and final semicolon, replaying the mandatory
+  first body execution and each selected state transfer. The normative VM
+  emits independent oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in
+  47 steps under empty and binary stdin. Three unsupported C variants and
+  five forged AST mutations refuse before publication. This is finite C
+  state replay; the original unmasked guest layout and dynamic C execution
+  remain P0 work.
+
+
 - On 2026-11-10 two whole twelve-step masked Fibonacci C sources first
   failed when a bounded `for` or `while` directly contained an unbraced
   `if/else` with local declarations, selected output and state transfers.
