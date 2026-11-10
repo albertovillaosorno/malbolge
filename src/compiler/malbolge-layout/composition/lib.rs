@@ -522,13 +522,15 @@ fn unique_graphical_cell(
 }
 
 fn jump_successor(
-    code_cells: &[u32],
+    code_cells: &[Option<u32>],
     data_pointer: usize,
     position: usize,
     target: u32,
 ) -> Result<JumpSuccessor, LinearLayoutError> {
     let data_cell = code_cells
         .get(data_pointer)
+        .copied()
+        .flatten()
         .ok_or(LinearLayoutError::JumpPathUnsupported)?;
     if data_cell.saturating_add(1) != target {
         return Err(LinearLayoutError::JumpTargetMismatch { position });
@@ -598,6 +600,25 @@ pub(crate) fn unwritten_loader_word(
     Ok(latest)
 }
 
+// Only p and * call this helper. Unknown data and input-derived A values
+// remain unresolved rather than being copied into the control-flow shadow.
+fn source_scratch_result(
+    operation: LinearOpcode,
+    word: Option<u32>,
+    accumulator: Option<u32>,
+    profile: &ProfileDescriptor,
+) -> Option<u32> {
+    if operation == LinearOpcode::CrazyData {
+        word.zip(accumulator).map(|(operand, prior)| {
+            malbolge::profile_crazy(operand, prior, profile.word_trits())
+        })
+    } else {
+        word.map(|operand| {
+            malbolge::profile_rotate(operand, profile.memory_words())
+        })
+    }
+}
+
 fn derive_execution_positions(
     operations: &[LinearOpcode],
     source: &[u8],
@@ -609,11 +630,14 @@ fn derive_execution_positions(
     let mut writes = Vec::new();
     // Jumps and the first relocation read exact source-memory cells.
     // Later j instructions may move D using unwritten expanded loader words.
-    // The checker preserves exact profile-memory wraparound. Before data
-    // relocation, writes to source cells behind C are tracked in the shadow
-    // so later jumps/relocations read real evolving guest words.
-    let mut code_cells: Vec<u32> =
-        source.iter().copied().map(u32::from).collect();
+    // The checker preserves exact profile-memory wraparound. Source writes
+    // behind C may depend on input, so unresolved words stay explicitly
+    // unknown; no future jump or relocation can use them as operands.
+    let mut code_cells: Vec<Option<u32>> = source
+        .iter()
+        .copied()
+        .map(|byte| Some(u32::from(byte)))
+        .collect();
     let mut data_pointer = 0usize;
     let mut position = 0usize;
     let mut accumulator = Some(0u32);
@@ -633,10 +657,9 @@ fn derive_execution_positions(
         if *operation == LinearOpcode::Halt {
             break;
         }
-        // A source-scratch arithmetic instruction reads the last known
-        // version of D, not the original graphical byte. A changing input
-        // accumulator makes this proof incomplete, so reject that case rather
-        // than fabricating the word a later j may read.
+        // Arithmetic behind the code pointer is safe even when input makes
+        // the written word unknown. Preserve its uncertainty explicitly so
+        // any later control operand using that cell fails closed.
         match operation {
             LinearOpcode::CrazyData | LinearOpcode::RotateData
                 if data_pointer < source.len() =>
@@ -644,29 +667,27 @@ fn derive_execution_positions(
                 let data_word = *code_cells
                     .get(data_pointer)
                     .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
-                let new_accumulator = match operation {
-                    LinearOpcode::CrazyData => malbolge::profile_crazy(
-                        data_word,
-                        accumulator
-                            .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
-                        profile.word_trits(),
-                    ),
-                    LinearOpcode::RotateData => malbolge::profile_rotate(
-                        data_word,
-                        profile.memory_words(),
-                    ),
-                    _ => unreachable!(),
-                };
+                let new_accumulator = source_scratch_result(
+                    *operation,
+                    data_word,
+                    accumulator,
+                    profile,
+                );
                 *code_cells
                     .get_mut(data_pointer)
                     .ok_or(LinearLayoutError::UnsafeDataPlacement)? =
                     new_accumulator;
-                accumulator = Some(new_accumulator);
+                accumulator = new_accumulator;
             },
             LinearOpcode::CrazyData
             | LinearOpcode::RotateData
             | LinearOpcode::InputWord => accumulator = None,
-            _ => {},
+            LinearOpcode::Halt
+            | LinearOpcode::JumpForward { .. }
+            | LinearOpcode::NoOperation
+            | LinearOpcode::SkippedDataByte { .. }
+            | LinearOpcode::OutputByte
+            | LinearOpcode::RelocateDataPointer => {},
         }
         let (encryption_address, next_position) = match operation {
             LinearOpcode::JumpForward { target } => {
@@ -716,8 +737,10 @@ fn derive_execution_positions(
                     .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
                 } else {
                     usize::try_from(
-                        *code_cells
+                        code_cells
                             .get(data_pointer)
+                            .copied()
+                            .flatten()
                             .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
                     )
                     .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
@@ -753,8 +776,12 @@ fn derive_execution_positions(
         let code_cell = code_cells
             .get_mut(encryption_address)
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
-        *code_cell = malbolge::encrypt_profile_cell(*code_cell)
-            .ok_or(LinearLayoutError::JumpPathUnsupported)?;
+        *code_cell = Some(
+            malbolge::encrypt_profile_cell(
+                code_cell.ok_or(LinearLayoutError::JumpPathUnsupported)?,
+            )
+            .ok_or(LinearLayoutError::JumpPathUnsupported)?,
+        );
         encrypted.push(
             u32::try_from(encryption_address)
                 .map_err(|_error| LinearLayoutError::TooLong)?,

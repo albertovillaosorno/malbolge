@@ -351,6 +351,15 @@ emission.
   fragment-feed process confirms that an incomplete MCTI header cannot
   publish or terminate before EOF and that the complete, byte-fragmented
   stream publishes exactly the independently derived target source.
+- The independent linear layout checker now admits input-dependent
+  arithmetic writes into source scratch strictly behind forward-only code,
+  preserving an unknown-word marker instead of inventing the written value.
+  Real current and historical VMs input `0x00` and `0xff`, run a crazy write,
+  and emit independently derived bytes with exact traced memory changes.
+  A separate multi-relocation witness rejects using the unknown cell as a
+  later `j` operand while admitting the same known-value geometry on both
+  VMs. This unlocks a bounded machine-level input dependency, not source-C
+  input arithmetic, dynamic source control flow or complete P0 compilation.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

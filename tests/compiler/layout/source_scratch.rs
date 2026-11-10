@@ -98,6 +98,173 @@ fn forward_jump_allows_source_scratch_arithmetic_behind_code()
     Ok(())
 }
 
+fn replace_scratch_operation(
+    operations: &mut [LinearOpcode],
+    index: usize,
+    operation: LinearOpcode,
+) -> Result<(), String> {
+    *operations.get_mut(index).ok_or("missing scratch cell")? = operation;
+    Ok(())
+}
+
+#[test]
+fn input_dependent_source_scratch_runs_in_both_normative_vms()
+-> Result<(), String> {
+    let target =
+        usize::try_from(jump_target(0)?).map_err(|error| error.to_string())?;
+    let mut operations = vec![LinearOpcode::NoOperation; target + 4];
+    replace_scratch_operation(&mut operations, 0, LinearOpcode::JumpForward {
+        target: u32::try_from(target).map_err(|error| error.to_string())?,
+    })?;
+    replace_scratch_operation(
+        &mut operations,
+        target,
+        LinearOpcode::InputWord,
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target + 1,
+        LinearOpcode::CrazyData,
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target + 2,
+        LinearOpcode::OutputByte,
+    )?;
+    replace_scratch_operation(&mut operations, target + 3, LinearOpcode::Halt)?;
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("input scratch layout: {error:?}"))?;
+        if layout.data_write_positions() != [None, None, Some(2), None, None] {
+            return Err(String::from("wrong input scratch write address"));
+        }
+        let source_word =
+            u32::from(*layout.source().get(2).ok_or("scratch word")?);
+        let mut observed = Vec::new();
+        for input in [0u8, 255] {
+            let expected = scalar_crazy_reference(
+                source_word,
+                u32::from(input),
+                profile.word_trits(),
+            );
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), vec![
+                    input,
+                ])
+                .map_err(|error| format!("input scratch VM load: {error:?}"))?;
+            verify_execution_witness(&mut vm, &layout)?;
+            let expected_byte = u8::try_from(expected & 255)
+                .map_err(|error| error.to_string())?;
+            if vm.input_consumed() != 1
+                || vm.output() != [expected_byte]
+                || vm.memory_word(2) != Ok(expected)
+            {
+                return Err(String::from("input scratch VM effects differ"));
+            }
+            observed.push(expected);
+        }
+        if observed.first() == observed.get(1) {
+            return Err(String::from("different inputs had identical writes"));
+        }
+    }
+    Ok(())
+}
+
+fn tainted_relocation_operations(
+    target: usize,
+) -> Result<Vec<LinearOpcode>, String> {
+    let mut operations =
+        vec![
+            LinearOpcode::NoOperation;
+            target.checked_add(6).ok_or("source position overflow")?
+        ];
+    replace_scratch_operation(&mut operations, 0, LinearOpcode::JumpForward {
+        target: u32::try_from(target).map_err(|error| error.to_string())?,
+    })?;
+    // Both skipped graphical cells decode to valid loader instructions.
+    // The first j sends D to 67. The input-dependent p writes that cell;
+    // a second j returns D to 67, so a third j must not guess its value.
+    replace_scratch_operation(
+        &mut operations,
+        2,
+        LinearOpcode::SkippedDataByte { byte: 66 },
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        68,
+        LinearOpcode::SkippedDataByte { byte: 66 },
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target,
+        LinearOpcode::InputWord,
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target.checked_add(1).ok_or("source position overflow")?,
+        LinearOpcode::RelocateDataPointer,
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target.checked_add(2).ok_or("source position overflow")?,
+        LinearOpcode::CrazyData,
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target.checked_add(3).ok_or("source position overflow")?,
+        LinearOpcode::RelocateDataPointer,
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target.checked_add(4).ok_or("source position overflow")?,
+        LinearOpcode::RelocateDataPointer,
+    )?;
+    replace_scratch_operation(
+        &mut operations,
+        target.checked_add(5).ok_or("source position overflow")?,
+        LinearOpcode::Halt,
+    )?;
+    Ok(operations)
+}
+
+#[test]
+fn unresolved_input_written_scratch_cannot_be_a_later_relocation_operand()
+-> Result<(), String> {
+    let target =
+        usize::try_from(jump_target(0)?).map_err(|error| error.to_string())?;
+    let operations = tainted_relocation_operations(target)?;
+    for profile in [current_profile(), historical_profile()] {
+        if encode_linear_layout(profile, &operations)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from("unresolved j operand accepted"));
+        }
+        let mut known = operations.clone();
+        replace_scratch_operation(
+            &mut known,
+            target,
+            LinearOpcode::NoOperation,
+        )?;
+        let admitted = encode_linear_layout(profile, &known)
+            .map_err(|error| format!("known scratch operand: {error:?}"))?;
+        if admitted.data_write_positions().get(3) != Some(&Some(67)) {
+            return Err(String::from("known relocation writes elsewhere"));
+        }
+        let original =
+            u32::from(*admitted.source().get(67).ok_or("source operand")?);
+        let expected =
+            scalar_crazy_reference(original, 0, profile.word_trits());
+        let mut vm =
+            ProfileMachine::from_source(profile, admitted.source(), Vec::new())
+                .map_err(|error| format!("known scratch guest: {error:?}"))?;
+        verify_execution_witness(&mut vm, &admitted)?;
+        if vm.memory_word(67) != Ok(expected) {
+            return Err(String::from("known relocation VM differs"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn source_scratch_refuses_writes_at_pending_code() {
     let profile = current_profile();

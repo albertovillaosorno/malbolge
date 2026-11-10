@@ -148,6 +148,19 @@ from the independent transition trace. Actual data-write **values** depend
 on guest input and earlier arithmetic, so these layout witnesses do not
 claim to predict values or arbitrary guest semantic equivalence.
 
+Input-dependent guest arithmetic is now permitted on past source-scratch
+cells without claiming a known resulting word: the independent admission
+tracks unresolved source memory explicitly. Real `input` followed by a
+behind-code `p` write and `output` produces different VM bytes for `0x00`
+and `0xff` on both canonical profiles. The checker refuses any later `i`
+or `j` that would use an unresolved source word to change control flow or
+D placement.
+
+A paired real-VM fixture admits the same multi-relocation
+geometry when its input-dependent write is replaced with a known operation.
+This is machine-level input-dependent arithmetic, not lowering of C
+`getchar`, C arithmetic or a full stream program.
+
 The source has two to 4096 cells (with a stricter bound for relocated data),
 contains exactly one final halt, and carries the canonical selected profile
 identity. Real current and historical profile-VM tests prove byte I/O,
