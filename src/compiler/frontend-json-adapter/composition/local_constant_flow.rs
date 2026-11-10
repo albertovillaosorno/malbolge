@@ -428,6 +428,9 @@ impl<'node> Flow<'node> {
             "binary-expression" | "compound-assignment-expression" => {
                 Some(self.assignment(statement, previous_end)?.0)
             },
+            "break-statement" | "continue-statement" => {
+                self.loop_exit_statement(statement, previous_end)
+            },
             _ => None,
         }
     }

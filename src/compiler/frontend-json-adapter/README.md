@@ -988,3 +988,26 @@ normative Malbolge VM emits from the complete pinned compilation on both empty
 and nonempty input. Side-effecting, signed and undefined source mutations
 refuse without guest publication. This does not lower runtime C arithmetic,
 and the original twelve-byte Fibonacci stream remains layout-blocked.
+
+### Direct unbraced loop exits in source-proven conditional arms
+
+One source-checked `break` or `continue` can now be a direct unbraced
+`if` arm within a bounded C loop, with a separately proven `else` body.
+The selected keyword terminates the current lexical loop or advances to
+its C `for` increment; the other arm is still independently proven for
+well-defined source effects. The proof retains exact Clang parentage,
+keyword width, byte span and absence of extra control metadata. It does
+not discard any unproved statement after a selected exit.
+
+Two complete nested Fibonacci C programs exercise the semantics rather
+than a trailing no-op exit. A three-row, five-column `for` nest continues
+on column zero and emits on the remaining four columns per row; a separate
+six-column nest breaks at column four, skipping its unreachable final
+column. Both preserve the full twelve-output independent masked Fibonacci
+oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03`. Both capsules execute
+in 47 normative VM steps under empty and binary stdin. Source mutations
+with induction-counter side effects or unreachable suffixes and forged
+Clang control nodes refuse without a published artifact.
+This is bounded compile-time C control projection, not guest runtime
+`break`, `continue`, generalized C loops or arbitrary guest byte synthesis.
+The original unmasked twelve-byte Fibonacci layout remains unsupported.

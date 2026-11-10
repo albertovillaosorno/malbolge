@@ -148,6 +148,27 @@ def unbraced_nested_masked_fibonacci_source() -> str:
     )
 
 
+def unbraced_loop_exit_fibonacci_source(keyword: str) -> str:
+    """Skip or stop extra inner trips while preserving twelve C outputs."""
+    assert keyword in ("break", "continue")
+    source = nested_masked_fibonacci_source()
+    end = 4 if keyword == "break" else 0
+    limit = 6 if keyword == "break" else 5
+    source = source.replace("col < 4U", f"col < {limit}U")
+    source = source.replace(
+        "        unsigned next = (a + b) & 255U;",
+        f"        if (col == {end}U)\n"
+        f"            {keyword};\n"
+        "        else {\n"
+        "        unsigned next = (a + b) & 255U;",
+    )
+    source = source.replace(
+        "        b = next;\n        }\n    }\n}",
+        "        b = next;\n        }\n        }\n    }\n}",
+    )
+    return source
+
+
 def unbraced_conditional_for_fibonacci_source() -> str:
     """Select and update a full recurrence in one unbraced for-body if."""
     return (
@@ -11170,6 +11191,198 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(refused.returncode, 0, label)
                 self.assertFalse(guest.exists(), label)
+
+    def test_unbraced_loop_exits_preserve_complete_fibonacci_guest(self) -> None:
+        """Unbraced break/continue select four of five or six inner trips."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        a, b = 1, 1
+        expected = bytearray()
+        for _row in range(3):
+            for _col in range(4):
+                following = (a + b) & 255
+                expected.append(
+                    following & 31 if following % 2 == 0 else (following ^ 26) & 31
+                )
+                a, b = b, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for keyword in ("continue", "break"):
+                with self.subTest(keyword=keyword):
+                    source = Path(scratch) / f"direct-{keyword}.c"
+                    source.write_text(unbraced_loop_exit_fibonacci_source(keyword))
+                    guest = Path(scratch) / f"direct-{keyword}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/direct-{keyword}-fib-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for data in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, bytes(expected))
+                        self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_unbraced_loop_exits_refuse_unproved_source_and_ast(self) -> None:
+        """Only the source-anchored control keyword may exit its own loop."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for keyword in ("continue", "break"):
+                original = unbraced_loop_exit_fibonacci_source(keyword)
+                exit_at = 4 if keyword == "break" else 0
+                source_cases = {
+                    "counter-write": original.replace(
+                        f"if (col == {exit_at}U)",
+                        f"if ((col += 1U) == {exit_at}U)",
+                    ),
+                    "dead-suffix": original.replace(
+                        f"            {keyword};\n        else {{",
+                        "            {\n"
+                        f"                {keyword};\n"
+                        "                putchar(65);\n"
+                        "            }\n        else {",
+                    ),
+                }
+                for label, invalid in source_cases.items():
+                    with self.subTest(keyword=keyword, invalid=label):
+                        source = Path(scratch) / f"{keyword}-{label}.c"
+                        source.write_text(invalid)
+                        frontend = subprocess.run(
+                            [
+                                str(FRONTEND),
+                                "--guest-include",
+                                str(GUEST_INCLUDE),
+                                "--resource-dir",
+                                str(RESOURCE),
+                                "--source-id",
+                                f"tests/direct-{keyword}-{label}-source-v1",
+                                str(source),
+                            ],
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                        guest = Path(scratch) / f"{keyword}-{label}.malbolge"
+                        rejected = subprocess.run(
+                            [
+                                sys.executable,
+                                "-B",
+                                str(DRIVER),
+                                "--repository-tools",
+                                "--source-id",
+                                f"tests/direct-{keyword}-{label}-v1",
+                                "--capsule",
+                                "--output",
+                                str(guest),
+                                str(source),
+                            ],
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertNotEqual(rejected.returncode, 0, label)
+                        self.assertFalse(guest.exists(), label)
+
+                source = Path(scratch) / f"{keyword}-ast.c"
+                source.write_text(original)
+                frontend = subprocess.run(
+                    [
+                        str(FRONTEND),
+                        "--guest-include",
+                        str(GUEST_INCLUDE),
+                        "--resource-dir",
+                        str(RESOURCE),
+                        "--source-id",
+                        f"tests/direct-{keyword}-ast-v1",
+                        str(source),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                parsed = cast(dict[str, object], json.loads(frontend.stdout))
+                nodes = cast(list[dict[str, object]], parsed["nodes"])
+                selected = next(
+                    node for node in nodes if node["kind"] == f"{keyword}-statement"
+                )
+                self.assertEqual(
+                    next(n for n in nodes if n["id"] == selected["parent"])["kind"],
+                    "if-statement",
+                )
+                arm = next(
+                    node
+                    for node in nodes
+                    if node["kind"] == "compound-statement"
+                    and node["parent"] == selected["parent"]
+                )
+                for label in (
+                    "wrong-parent",
+                    "keyword",
+                    "span",
+                    "metadata",
+                    "else-parent",
+                ):
+                    with self.subTest(keyword=keyword, forged=label):
+                        forged = cast(dict[str, object], json.loads(frontend.stdout))
+                        changed = cast(list[dict[str, object]], forged["nodes"])
+                        control = changed[cast(int, selected["id"]) - 1]
+                        if label == "wrong-parent":
+                            control["parent"] = 2
+                        elif label == "keyword":
+                            control["kind"] = (
+                                "break-statement"
+                                if keyword == "continue"
+                                else "continue-statement"
+                            )
+                        elif label == "metadata":
+                            control["operation"] = "++"
+                        elif label == "else-parent":
+                            changed[cast(int, arm["id"]) - 1]["parent"] = 2
+                        else:
+                            span = cast(dict[str, dict[str, int]], control["span"])
+                            span["end"]["byte"] -= 1
+                            span["end"]["column"] -= 1
+                        guest = Path(scratch) / f"forged-{keyword}-{label}.malbolge"
+                        rejected = subprocess.run(
+                            [
+                                str(ADAPTER),
+                                "--layout-backend",
+                                str(LAYOUT),
+                                "--output",
+                                str(guest),
+                                "--capsule",
+                            ],
+                            input=json.dumps(forged).encode(),
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertNotEqual(rejected.returncode, 0, label)
+                        self.assertIn(b"Unsupported", rejected.stderr, label)
+                        self.assertFalse(guest.exists(), label)
 
 
 if __name__ == "__main__":

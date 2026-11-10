@@ -3198,3 +3198,26 @@ inside skipped scopes, forged Clang parent/metadata and excessive nesting.
 The original unmasked Fibonacci trace still lacks a general guest layout.
 This is compile-time C state propagation, not runtime guest C block storage.
 P0 therefore remains open.
+
+### Selected unbraced `break` and `continue` in complete C recurrences
+
+Two complete masked Fibonacci C programs extend the selected-control probe.
+The first has three outer `for` trips and five inner trips per row, using
+`if (col == 0U) continue; else { ... }`. The second admits six inner
+counter values, but `if (col == 4U) break; else { ... }` stops each row
+after four recurrence outputs. Both are ordinary, pinned-Clang C sources
+with twelve stateful conditional `putchar` effects and the independent
+expected byte sequence `02 19 1f 08 17 0f 02 0d 03 10 13 03`.
+
+The original complete sources refused at the JSON adapter. The repaired
+bounded projector allows source-proven unbraced `break`/`continue` as one
+conditional arm, using its existing exact keyword/Clang-span proof. An
+unselected control arm is replayed only on shadow state; the selected arm
+carries the exit to the nearest `for`, which consumes `break` or advances
+the induction step for `continue`. Other branch-local variables, state
+transfers and effects remain source-checked. Both real guest capsules
+emitted the independent twelve-byte oracle in 47 normative VM steps under
+empty and binary stdin. Four invalid source variants and ten forged AST
+keyword, parent, span and metadata cases refused artifact publication.
+This does not add dynamic guest C control flow or the original
+unmasked byte-stream witness; P0 remains open.
