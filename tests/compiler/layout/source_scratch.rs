@@ -296,20 +296,52 @@ fn source_data_relocation_refuses_pending_code_writes() -> Result<(), String> {
     Ok(())
 }
 
+fn verify_auto_source_scratch_guest(
+    profile: &'static malbolge::ProfileDescriptor,
+    layout: &LinearLayout,
+    scratch: u32,
+    expected_word: u32,
+) -> Result<(), String> {
+    let output_byte =
+        u8::try_from(expected_word & 255).map_err(|error| error.to_string())?;
+    for input in [Vec::new(), vec![0, 255, 42]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| {
+                    format!("auto scratch guest load: {error:?}")
+                })?;
+        if !matches!(
+            vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ) || vm.output() != [output_byte]
+            || vm
+                .memory_word(scratch)
+                .map_err(|error| format!("auto scratch memory: {error:?}"))?
+                != expected_word
+        {
+            return Err(String::from("auto scratch guest effects differ"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn auto_relocation_uses_source_scratch_after_a_forward_jump()
 -> Result<(), String> {
     use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
     let target =
         usize::try_from(jump_target(0)?).map_err(|error| error.to_string())?;
-    let mut operations = vec![LinearOpcode::NoOperation; target + 4];
     let target_word =
         u32::try_from(target).map_err(|error| error.to_string())?;
-    operations[0] = LinearOpcode::JumpForward { target: target_word };
-    operations[target] = LinearOpcode::RelocateDataPointer;
-    operations[target + 1] = LinearOpcode::CrazyData;
-    operations[target + 2] = LinearOpcode::OutputByte;
-    operations[target + 3] = LinearOpcode::Halt;
+    let mut operations = vec![LinearOpcode::NoOperation; target];
+    *operations.get_mut(0).ok_or("missing jump cell")? =
+        LinearOpcode::JumpForward { target: target_word };
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
     let logical = [
         Jump,
         AutoRelocate,
@@ -320,55 +352,36 @@ fn auto_relocation_uses_source_scratch_after_a_forward_jump()
     for profile in [current_profile(), historical_profile()] {
         let manual = encode_linear_layout(profile, &operations)
             .map_err(|error| format!("manual scratch layout: {error:?}"))?;
-        let scratch_address = usize::try_from(
-            *manual
-                .data_write_positions()
-                .iter()
-                .flatten()
-                .next()
-                .ok_or("no scratch write")?,
-        )
-        .map_err(|error| error.to_string())?;
-        assert!(scratch_address < target);
-        assert!(scratch_address < manual.source().len());
+        let scratch = *manual
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .next()
+            .ok_or("no scratch write")?;
+        let scratch_address =
+            usize::try_from(scratch).map_err(|error| error.to_string())?;
         let padded = encode_auto_padded_forward_layout(profile, &logical)
-            .map_err(|error| {
-                format!("source scratch auto layout: {error:?}")
-            })?;
-        assert_eq!(padded.logical_code_positions()[1], target_word);
-        assert_eq!(padded.layout(), &manual);
-        assert_eq!(
-            padded.source_cell_origins()[1],
-            PaddedCellOrigin::SkippedPadding
-        );
-        let expected_word = scalar_crazy_reference(
-            u32::from(manual.source()[scratch_address]),
-            0,
-            profile.word_trits(),
-        );
-        let expected = u8::try_from(expected_word % 256)
-            .map_err(|error| error.to_string())?;
-        for input in [Vec::new(), vec![0, 255, 42]] {
-            let mut vm = ProfileMachine::from_source(
-                profile,
-                padded.layout().source(),
-                input,
-            )
-            .map_err(|error| format!("scratch auto VM load: {error:?}"))?;
-            assert!(matches!(
-                vm.run(padded.layout().executed_code_positions().len()),
-                Ok(RunOutcome::Terminated { .. })
-            ));
-            assert_eq!(vm.output(), [expected]);
-            assert_eq!(
-                vm.memory_word(
-                    u32::try_from(scratch_address)
-                        .map_err(|error| error.to_string())?
-                )
-                .map_err(|error| format!("scratch auto memory: {error:?}"))?,
-                expected_word
-            );
+            .map_err(|error| format!("auto scratch layout: {error:?}"))?;
+        if scratch_address >= target
+            || padded.logical_code_positions().get(1) != Some(&target_word)
+            || padded.layout() != &manual
+            || padded.source_cell_origins().get(1)
+                != Some(&PaddedCellOrigin::SkippedPadding)
+        {
+            return Err(String::from("automatic source-scratch path differs"));
         }
+        let operand = *manual
+            .source()
+            .get(scratch_address)
+            .ok_or("scratch operand missing")?;
+        let expected_word =
+            scalar_crazy_reference(u32::from(operand), 0, profile.word_trits());
+        verify_auto_source_scratch_guest(
+            profile,
+            padded.layout(),
+            scratch,
+            expected_word,
+        )?;
     }
     Ok(())
 }
