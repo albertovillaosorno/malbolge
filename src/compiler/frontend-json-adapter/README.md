@@ -823,6 +823,32 @@ AST mutations refuse publication. This is bounded source-backed state
 projection: the guest does not calculate the predicate at runtime. The
 original unmasked twelve-byte output is still unsupported at layout.
 
+### Function-body lexical scopes with shadowed unsigned locals
+
+The closed multi-local projection also replays an explicit compound block
+within the function body, using the same bounded source-parent and span proof
+as nested loop blocks. An inner automatic `unsigned b` may shadow an earlier
+outer `b` while the enclosing `a` remains writable. Reads and writes must
+resolve to the innermost active Clang symbol; declarations inside the block
+are dropped at its closing brace, without dropping proven enclosing writes
+or guest output effects. Each block is bounded by the existing four-level
+nesting and sixteen-effect limits. Unsupported statements, malformed source
+geometry, uninitialized inner reads, extra effects and forged symbol links
+still refuse; this is compile-time scope evaluation, not guest stack storage.
+
+A complete twelve-iteration masked Fibonacci program with outer `b = 77U`,
+inner `b = 1U` and the full recurrence inside that function-body block
+initially refused at the JSON adapter without guest publication. After the
+source-state proof extension, it emits a real 2,207-byte Malbolge capsule:
+empty and binary stdin produce the independent twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative VM steps. Three
+invalid-source and six forged-AST cases refuse without an output artifact.
+A separate source program declares inner `b = 90U`, closes the block, then
+outputs the surviving outer `b = 65U`. The normative guest emits `41` in
+31 steps from a 1,295-byte capsule on both input patterns; forging the
+post-scope read to the expired inner symbol refuses without publication.
+The unmasked original still lacks generalized guest layout; P0 stays open.
+
 ### Branch-selected `putchar` effects inside a bounded `for`
 
 The source-proven loop evaluator now accepts one `putchar` in each arm of

@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a full masked Fibonacci recurrence first refused when a
+  function-body lexical block shadowed an outer `unsigned b = 77U` with an
+  inner `b = 1U`. The bounded source-backed scope proof now replays this
+  block and retains enclosing writes/output while dropping inner locals.
+  The independent twelve-byte oracle reaches the normative guest in 47
+  steps with empty and binary stdin (2,207-byte capsule); three invalid C
+  variants and six forged Clang trees refuse without publication. An
+  additional full source outputs `41` in 31 guest steps after an inner
+  shadow expires (1,295-byte capsule); one forged after-scope binding
+  refuses. This is compile-time C-state evaluation, not guest C stack
+  storage or original unmasked output layout. P0 remains open.
+
 - On 2026-11-10 a complete masked twelve-step Fibonacci C recurrence
   first refused at its combined `unsigned a = 1U, b = a;` declaration.
   A red-first bounded source-order proof now admits automatic unsigned

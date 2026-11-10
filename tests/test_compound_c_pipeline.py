@@ -61,6 +61,21 @@ WIDE_STREAM = (
 )
 
 
+def root_scoped_shadowed_fibonacci_source() -> str:
+    """Put the full recurrence in a scope shadowing an unrelated outer b."""
+    source = MASKED_FIBONACCI.read_text()
+    beginning = "    unsigned b = 1U;\n    for ("
+    ending = "        b = next;\n    }\n}"
+    assert source.count(beginning) == source.count(ending) == 1
+    return source.replace(
+        beginning,
+        "    unsigned b = 77U;\n"
+        "    {\n"
+        "    unsigned b = 1U;\n"
+        "    for (",
+    ).replace(ending, "        b = next;\n    }\n    }\n}")
+
+
 def nested_masked_fibonacci_source() -> str:
     """Keep the same recurrence while splitting its induction into 3 by 4."""
     original = MASKED_FIBONACCI.read_text()
@@ -318,6 +333,260 @@ class CompoundCPipelineTests(unittest.TestCase):
     def test_fibonacci_branch_oracle_is_independent_and_stable(self) -> None:
         self.assertEqual(reference_bytes(), EXPECTED)
         self.assertEqual(len(EXPECTED), 12)
+
+    def test_root_lexical_shadow_replays_complete_fibonacci_guest(self) -> None:
+        """A function-body block must resolve its own b through the loop."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        expected = bytearray()
+        a, b = 1, 1  # The outer b is 77; the loop reads the inner b.
+        for _ in range(12):
+            next_value = (a + b) & 255
+            expected.append(
+                (next_value & 31)
+                if next_value % 2 == 0
+                else ((next_value ^ 0x1A) & 31)
+            )
+            a, b = b, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "root-shadow.c"
+            source.write_text(root_scoped_shadowed_fibonacci_source())
+            guest = Path(scratch) / "root-shadow.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/root-scoped-shadow-fibonacci-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=150,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_root_lexical_shadow_restores_outer_binding_on_guest(self) -> None:
+        """After a C block, a b read must select the outer declaration."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = (
+            "#include <stdio.h>\n"
+            "void emit(void) {\n"
+            "    unsigned a = 1U;\n"
+            "    unsigned b = 65U;\n"
+            "    {\n"
+            "        unsigned b = 90U;\n"
+            "        a = a + 1U;\n"
+            "    }\n"
+            "    putchar((int)b);\n"
+            "}\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "scope-restoration.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "scope-restoration.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/root-shadow-restoration-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=120,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, b"A")
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/root-shadow-restoration-ast-v1",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, list[dict[str, object]]], json.loads(frontend.stdout))
+            nodes = parsed["nodes"]
+            outer_b, inner_b = [
+                n for n in nodes
+                if n["kind"] == "variable-declaration"
+                and n.get("name") == "b"
+            ]
+            # The final b read is after the inner block. Rebinding it to
+            # the expired inner symbol must refuse, not output 90.
+            post_scope_read = next(
+                n for n in nodes
+                if n["kind"] == "declaration-reference-expression"
+                and n.get("reference") == outer_b["reference"]
+            )
+            parsed["nodes"][int(post_scope_read["id"]) - 1]["reference"] = inner_b["reference"]
+            forged_guest = Path(scratch) / "forged-expired-binding.malbolge"
+            refused = subprocess.run(
+                [
+                    str(ADAPTER),
+                    "--layout-backend",
+                    str(LAYOUT),
+                    "--output",
+                    str(forged_guest),
+                    "--capsule",
+                ],
+                input=json.dumps(parsed).encode(),
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+            self.assertFalse(forged_guest.exists())
+
+    def test_root_lexical_shadow_rejects_bad_source_and_forged_ast(self) -> None:
+        """Reject uninitialized shadow reads and forged scope/symbol identity."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = root_scoped_shadowed_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, altered in (
+                ("uninitialized-inner", source.replace("unsigned b = 1U;", "unsigned b;")),
+                ("undefined-inner", source.replace("unsigned b = 1U;", "unsigned b = 1U / 0U;")),
+                ("unproven-effect", source.replace("    unsigned b = 1U;", '    unsigned b = 1U; puts("extra");')),
+            ):
+                with self.subTest(label=label):
+                    candidate = Path(scratch) / f"{label}.c"
+                    candidate.write_text(altered)
+                    guest = Path(scratch) / f"{label}.malbolge"
+                    rejected = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/root-shadow-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(candidate),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            candidate = Path(scratch) / "root-shadow-ast.c"
+            candidate.write_text(source)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/root-scoped-shadow-ast-v1",
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            root = next(node for node in nodes if node["id"] == 2)
+            scope = next(
+                node
+                for node in nodes
+                if node["kind"] == "compound-statement"
+                and node["parent"] == root["id"]
+            )
+            outer_b, inner_b = [
+                node for node in nodes
+                if node["kind"] == "variable-declaration" and node.get("name") == "b"
+            ]
+            inner_read = next(
+                node for node in nodes
+                if node["kind"] == "declaration-reference-expression"
+                and node.get("reference") == inner_b["reference"]
+            )
+            for label, node_id, field, value in (
+                ("scope-parent", scope["id"], "parent", 1),
+                ("scope-end", scope["id"], "span", root["span"]),
+                ("scope-operation", scope["id"], "operation", "+"),
+                ("shadow-alias", inner_b["id"], "reference", outer_b["reference"]),
+                ("shadow-parent", inner_b["id"], "parent", outer_b["parent"]),
+                ("shadow-read", inner_read["id"], "reference", outer_b["reference"]),
+            ):
+                with self.subTest(label=label):
+                    altered = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    assert isinstance(node_id, int)
+                    altered["nodes"][node_id - 1][field] = value
+                    guest = Path(scratch) / f"ast-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(altered).encode(),
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                    self.assertFalse(guest.exists(), label)
 
     def test_masked_twelve_iteration_fibonacci_reaches_real_guest(self) -> None:
         """An entire C recurrence selects twelve actual guest byte effects."""

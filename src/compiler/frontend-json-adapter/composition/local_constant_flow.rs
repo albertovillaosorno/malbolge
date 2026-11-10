@@ -810,7 +810,7 @@ impl<'node> Flow<'node> {
                 "if-statement" => self.conditional(body, last_end, 0)?,
                 "for-statement" => self.static_for(body, last_end)?,
                 "compound-statement" => {
-                    self.scoped_loop_body(body, last_end, depth)?
+                    self.scoped_lexical_body(body, last_end, depth)?
                 },
                 "call-expression" => {
                     let output = checked_call(self, body, last_end)?;
@@ -972,9 +972,9 @@ impl<'node> Flow<'node> {
         Some(scope.span.end.byte)
     }
 
-    /// Validate a lexical loop block before permitting its enclosing
-    /// state changes, and remove only the block-local declarations.
-    fn scoped_loop_body(
+    /// Replay one lexical C block, preserving enclosing writes while
+    /// discarding declarations whose lifetimes end at its closing brace.
+    fn scoped_lexical_body(
         &mut self,
         body: &Node,
         previous_end: u32,
@@ -1905,6 +1905,11 @@ pub(super) fn canonical_multi_local_output(
             "do-statement" => {
                 last_end = flow
                     .static_do_while(body, last_end)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+            },
+            "compound-statement" => {
+                last_end = flow
+                    .scoped_lexical_body(body, last_end, 0)
                     .ok_or(FrontendJsonError::Unsupported)?;
             },
             "if-statement" if remaining_writes >= 2 => {

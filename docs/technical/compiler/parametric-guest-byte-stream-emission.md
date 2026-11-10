@@ -73,6 +73,32 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Lexical function-body blocks and C shadowing (2026-11-10)
+
+A complete twelve-step masked Fibonacci recurrence was retried with an
+additional function-body scope: an initialized outer `unsigned b = 77U`
+is shadowed by an inner `unsigned b = 1U`, and the inner block contains the
+entire bounded loop, branch and source-selected byte outputs. Pinned Clang
+accepted the C source but the JSON adapter first rejected the block at the
+initial declaration; no guest program was published.
+
+The finite local-flow projector now reuses its source-checked lexical block
+replay at function-body depth. It preserves enclosing writes and accumulated
+output effects, resolves active same-name locals by their exact Clang symbol,
+and drops only the inner declarations at the closing scope. Depth, ordered
+source spans, parentage, automatic unsigned local types and effect limits
+remain bounded. The complete real guest capsule is 2,207 bytes, executes
+in 47 normative VM steps and emits the independent twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` under empty and binary stdin.
+Invalid inner initialization, unknown effects and forged source/scope/symbol
+metadata refuse with no guest artifact. A separate complete C source
+proves the post-block binding: an inner `b = 90U` expires before the final
+`putchar((int)b)` reads outer `b = 65U`. The normative VM emits `41` in
+31 steps from a 1,295-byte capsule under both inputs; forging that final
+read to the expired inner symbol refuses before publication. This extends
+compile-time C-state proof, not guest runtime local storage or the original
+unmasked Fibonacci layout. P0 remains open.
+
 ### Source-ordered unsigned declarator lists (2026-11-10)
 
 A complete twelve-iteration masked Fibonacci program was retried after
