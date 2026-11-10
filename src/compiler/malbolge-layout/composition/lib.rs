@@ -307,27 +307,8 @@ impl ForwardPaddingBuilder<'_> {
             if planned_length > MAX_LINEAR_CELLS {
                 return Err(LinearLayoutError::TooLong);
             }
-            let data_word = if self.data_pointer == position && !self.relocated
-            {
-                Some(u32::from(unique_graphical_cell(
-                    self.profile,
-                    LinearOpcode::RelocateDataPointer,
-                    position,
-                )?))
-            } else {
-                self.shadow.get(self.data_pointer).copied().filter(|_| {
-                    !self.source_writes.contains(&self.data_pointer)
-                })
-            };
-            if let Some(word) = data_word {
-                let word = usize::try_from(word)
-                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-                let expanded_data = !self.relocated && word >= planned_length;
-                let past_source_scratch = self.data_pointer < position
-                    && word.saturating_add(1) < position;
-                if expanded_data || past_source_scratch {
-                    return self.instruction(LinearOpcode::RelocateDataPointer);
-                }
+            if self.proven_relocation_operand(position, planned_length)? {
+                return self.instruction(LinearOpcode::RelocateDataPointer);
             }
             // A second relocation cannot become source-backed if D is
             // already at or ahead of C: reached no-ops advance both equally.
@@ -438,6 +419,33 @@ impl ForwardPaddingBuilder<'_> {
         }
         encrypt_padded_cell(&mut self.shadow, target.saturating_sub(1))?;
         Ok(code_position)
+    }
+    fn proven_relocation_operand(
+        &self,
+        position: usize,
+        planned_length: usize,
+    ) -> Result<bool, LinearLayoutError> {
+        if self.source_writes.contains(&self.data_pointer) {
+            return Ok(false);
+        }
+        let data_word = if self.data_pointer == position && !self.relocated {
+            Some(u32::from(unique_graphical_cell(
+                self.profile,
+                LinearOpcode::RelocateDataPointer,
+                position,
+            )?))
+        } else {
+            self.shadow.get(self.data_pointer).copied()
+        };
+        let Some(word) = data_word else {
+            return Ok(false);
+        };
+        let operand_address = usize::try_from(word)
+            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
+        let expanded_data = !self.relocated && operand_address >= planned_length;
+        let past_source_scratch = self.data_pointer < position
+            && operand_address.saturating_add(1) < position;
+        Ok(expanded_data || past_source_scratch)
     }
 }
 
