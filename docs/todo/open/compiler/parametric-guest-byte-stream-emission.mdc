@@ -54,6 +54,25 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete twelve-step masked Fibonacci C recurrence
+  first refused when both branch `putchar` arms used ordinary unbraced C
+  statements instead of compound blocks. The normalized Clang tree directly
+  parents each call to its `if`, which the previous replay did not admit.
+  The bounded branch proof now verifies either a compound arm or exactly one
+  direct `putchar` call against independent initial states and commits only
+  the selected output. The resulting guest capsule emits the independently
+  computed twelve-byte oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in
+  47 normative VM steps under empty and binary stdin. Two unsupported C
+  variants and six forged AST cases reject without guest publication.
+  A second complete masked Fibonacci variant first refused unbraced direct
+  writes to an initially uninitialized `unsigned selected` before a later
+  `putchar((int)selected)`. Source-checked branch writes now preserve only
+  the chosen assignment; its full guest VM replay emits the same twelve-byte
+  oracle in 47 steps under both inputs. Two invalid source cases and five
+  forged AST cases refuse publication. This extends source-backed finite
+  C-state replay, not dynamic guest branches, locals, or the unmasked
+  Fibonacci byte stream; P0 stays open.
+
 - On 2026-11-10 a full masked Fibonacci recurrence first refused when a
   function-body lexical block shadowed an outer `unsigned b = 77U` with an
   inner `b = 1U`. The bounded source-backed scope proof now replays this

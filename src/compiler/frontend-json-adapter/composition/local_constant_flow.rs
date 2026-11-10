@@ -394,6 +394,44 @@ impl<'node> Flow<'node> {
         Some((u8::try_from(value).ok()?, node))
     }
 
+    /// Admit a braced scope or one direct checked effect as a C branch arm.
+    /// Unbraced calls and unsigned assignments have no declaration scope;
+    /// both alternatives still receive independent state/output proof.
+    fn conditional_arm(
+        &mut self,
+        statement: &Node,
+        previous_end: u32,
+        depth: u8,
+    ) -> Option<u32> {
+        let arm = self.peek()?;
+        if arm.parent != statement.id
+            || !span_within(&statement.span, &arm.span)
+            || previous_end >= arm.span.begin.byte
+        {
+            return None;
+        }
+        match arm.kind.as_str() {
+            "compound-statement" => {
+                let scope = self.take(statement.id, "compound-statement")?;
+                if !clean(scope) {
+                    return None;
+                }
+                self.branch_effects(scope, depth)?;
+                Some(scope.span.end.byte)
+            },
+            "call-expression" => {
+                let output = checked_call(self, statement, previous_end)?;
+                let end = output.call.span.end.byte;
+                self.outputs.push(output);
+                Some(end)
+            },
+            "binary-expression" | "compound-assignment-expression" => {
+                Some(self.assignment(statement, previous_end)?.0)
+            },
+            _ => None,
+        }
+    }
+
     /// Prove ordered effects in both arms against the same incoming state.
     /// Commit only selected writes and guest output effects.
     fn conditional(
@@ -411,18 +449,12 @@ impl<'node> Flow<'node> {
             return None;
         }
         let (take_then, condition) = self.condition(statement)?;
-        let then_body = self.take(statement.id, "compound-statement")?;
-        if !clean(then_body)
-            || !span_within(&statement.span, &then_body.span)
-            || condition.span.end.byte >= then_body.span.begin.byte
-        {
-            return None;
-        }
         let starting = self.locals.clone();
         let starting_exit = self.loop_exit;
         let starting_return = self.return_node;
         let output_count = self.outputs.len();
-        self.branch_effects(then_body, depth)?;
+        let then_end =
+            self.conditional_arm(statement, condition.span.end.byte, depth)?;
         let then_state = self.locals.clone();
         let then_exit = self.loop_exit;
         let then_return = self.return_node;
@@ -431,12 +463,13 @@ impl<'node> Flow<'node> {
         self.loop_exit = starting_exit;
         self.return_node = starting_return;
         self.outputs.truncate(output_count);
-        // An if without else ends at its sole braced arm. Prove no
-        // further child is hidden inside the arm before selecting state.
-        if then_body.span.end.byte == statement.span.end.byte {
-            if self.peek().is_some_and(|node| {
-                node.span.begin.byte < then_body.span.end.byte
-            }) {
+        // Without an else, both braced bodies and direct calls end at the
+        // Clang if span. A following sibling cannot be swallowed into it.
+        if then_end == statement.span.end.byte {
+            if self
+                .peek()
+                .is_some_and(|node| node.span.begin.byte < then_end)
+            {
                 return None;
             }
             if take_then {
@@ -451,30 +484,29 @@ impl<'node> Flow<'node> {
         // to the preceding if, not as a synthetic compound else body.
         // Reprove the entire nested chain against the same incoming state
         // before choosing either arm; no speculative effects may escape.
-        match self.peek()?.kind.as_str() {
-            "compound-statement" => {
-                let else_body =
-                    self.take(statement.id, "compound-statement")?;
-                if !clean(else_body)
-                    || !span_within(&statement.span, &else_body.span)
-                    || then_body.span.end.byte > else_body.span.begin.byte
-                    || else_body.span.end.byte != statement.span.end.byte
-                {
+        let else_arm = self.peek()?;
+        if then_end >= else_arm.span.begin.byte {
+            return None;
+        }
+        match else_arm.kind.as_str() {
+            "compound-statement"
+            | "call-expression"
+            | "binary-expression"
+            | "compound-assignment-expression" => {
+                let end = self.conditional_arm(statement, then_end, depth)?;
+                if end != statement.span.end.byte {
                     return None;
                 }
-                self.branch_effects(else_body, depth)?;
             },
             "if-statement" => {
-                let else_if = self.peek()?;
-                if else_if.parent != statement.id
-                    || then_body.span.end.byte >= else_if.span.begin.byte
-                    || else_if.span.end.byte != statement.span.end.byte
+                if else_arm.parent != statement.id
+                    || else_arm.span.end.byte != statement.span.end.byte
                 {
                     return None;
                 }
                 let end = self.conditional(
                     statement,
-                    then_body.span.end.byte,
+                    then_end,
                     depth.checked_add(1)?,
                 )?;
                 if end != statement.span.end.byte {

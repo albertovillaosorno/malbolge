@@ -823,6 +823,30 @@ AST mutations refuse publication. This is bounded source-backed state
 projection: the guest does not calculate the predicate at runtime. The
 original unmasked twelve-byte output is still unsupported at layout.
 
+### Unbraced single-effect C branch arms
+
+The bounded unsigned-local projector now accepts ordinary unbraced
+single-statement `putchar` calls or checked unsigned local assignments as
+direct `if` or `else` children of the pinned Clang AST. Each arm may instead
+remain a compound block. Both arms are independently source-checked before
+committing the selected state and output. Direct calls require pure, proven
+arguments; direct plain and compound local writes reuse their existing
+unsigned binding, initialization, source-span and operator checks. Unbraced
+declarations, unknown effects, other calls and forged metadata still refuse.
+
+A complete twelve-step masked Fibonacci C recurrence with both output arms
+unbraced first failed at the adapter without a guest artifact. After this
+source-checked replay extension it emits the independent twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative guest VM steps
+under empty and binary stdin. Two unsupported C sources and six forged
+normalized Clang trees refuse publication. A second complete recurrence
+uses direct branch writes to an initially uninitialized `unsigned selected`
+followed by `putchar((int)selected)`; it emits the same oracle in 47 VM
+steps under both inputs. Two negative source and five forged-AST cases for
+this write path also refuse publication. This still folds source-proven
+state at compilation; unmasked Fibonacci guest layout and dynamic C
+control flow remain unsupported.
+
 ### Function-body lexical scopes with shadowed unsigned locals
 
 The closed multi-local projection also replays an explicit compound block

@@ -73,6 +73,36 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Unbraced C branch effects in complete recurrences (2026-11-10)
+
+The full twelve-step masked Fibonacci program was retried after replacing
+both braced `if`/`else` output arms with ordinary single-statement `putchar`
+arms. Pinned Clang accepted the whole C source, but the JSON adapter first
+refused its local-flow projection without publishing a guest. Its normalized
+AST directly parents each `call-expression` to the `if-statement`, rather
+than inserting implicit compound blocks.
+
+The bounded branch replay now accepts either a source-checked compound arm,
+one direct pure-argument `putchar` call, or one checked unsigned local write
+per arm. The selected state and output effects are committed only after both
+alternatives are proved against the same incoming state. Source order, direct
+parentage, complete spans, local bindings, pure expressions, nesting and
+effect limits remain checked; unsupported effects and forged AST ancestry or
+fields refuse without publishing a guest.
+
+The original masked recurrence with unbraced output calls emits the independent
+oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative guest VM
+steps under empty and binary stdin. Two invalid source variants and six forged
+Clang trees reject before guest publication. A second whole-source variant
+replaces both branch calls with direct assignments to an initially
+uninitialized `unsigned selected` and emits it with `putchar` after the
+`if`/`else`. It also produces the same independent twelve-byte oracle in 47
+normative guest VM steps with both inputs. Two uninitialized/incorrect-write
+source variants and five forged AST bindings or operations reject without
+guest publication. This is finite source-C state projection, not runtime
+guest branches or locals. The original unmasked Fibonacci output remains
+unsupported at layout; P0 is still pending.
+
 ### Lexical function-body blocks and C shadowing (2026-11-10)
 
 A complete twelve-step masked Fibonacci recurrence was retried with an
