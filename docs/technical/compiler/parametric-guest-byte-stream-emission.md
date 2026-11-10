@@ -73,6 +73,28 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Conditional branch-local lexical scopes (2026-11-09)
+
+The complete twelve-iteration masked Fibonacci C program was retried with a
+source-declared `unsigned selected` inside each conditional branch, and with
+an additional nested lexical brace around the even branch's temporary. The
+pinned Clang frontend accepted the whole C source, but the typed JSON adapter
+initially refused its first declaration statement without publishing guest
+output. The repaired source-backed projector now proves declarations in both
+branches, source order, nested brace ancestry and all expression effects. It
+drops branch-local names at the end of each arm while retaining enclosing
+Fibonacci writes and only selected guest outputs. The same local name in the
+disjoint branches is permitted only after the first arm's scope closes.
+
+The actual `malbolge-2026` VM emitted the twelve-byte independent oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` with both empty and nonempty stdin;
+an initial variant took 47 guest steps. A zero-trip variant emits only a later
+`0x41`, and a division by zero in its skipped nested conditional, excessive
+brace nesting, forged branch parentage and extraneous metadata all refuse
+without a guest artifact. The accepted projection is finite C-state folding;
+this does not implement runtime guest C scopes, branching or arithmetic. The
+original unmasked stream remains blocked at layout.
+
 ### Source-expression metamorphic parity (2026-11-09)
 
 The complete 12-iteration five-bit masked Fibonacci C program has a bounded

@@ -89,6 +89,25 @@ def scoped_masked_fibonacci_source() -> str:
     )
 
 
+def branch_local_masked_fibonacci_source() -> str:
+    """Use same-name branch locals, with one nested lexical C block."""
+    original = MASKED_FIBONACCI.read_text()
+    even = "            putchar((int)(next & 31U));"
+    odd = "            putchar((int)((next ^ 0x1AU) & 31U));"
+    assert original.count(even) == original.count(odd) == 1
+    return original.replace(
+        even,
+        "            {\n"
+        "                unsigned selected = next & 31U;\n"
+        "                putchar((int)selected);\n"
+        "            }",
+    ).replace(
+        odd,
+        "            unsigned selected = (next ^ 0x1AU) & 31U;\n"
+        "            putchar((int)selected);",
+    )
+
+
 def reference_bytes() -> bytes:
     """Reference the bounded unsigned-C arithmetic, not compiler output."""
     previous, current = 1, 1
@@ -441,6 +460,185 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
+
+    def test_branch_local_fibonacci_emits_real_guest_bytes(self) -> None:
+        """Scoped conditional temporaries preserve enclosing Fibonacci state."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            chosen = following if following % 2 == 0 else following ^ 0x1A
+            expected.append(chosen & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-branch-local.c"
+            source.write_text(branch_local_masked_fibonacci_source())
+            guest = Path(scratch) / "fibonacci-branch-local.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/fibonacci-branch-local-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+
+    def test_branch_local_shadow_and_ast_refusal(self) -> None:
+        """Skipped branches remain checked; forged scopes never publish."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = branch_local_masked_fibonacci_source()
+        self.assertEqual(original.count("i = 0U"), 1)
+        self.assertEqual(original.count("    }\n}\n"), 1)
+        zero_trip = original.replace("i = 0U", "i = 12U").replace(
+            "    }\n}\n", "    }\n    putchar((int)(a + 64U));\n}\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-branch-zero.c"
+            source.write_text(zero_trip)
+            guest = Path(scratch) / "fibonacci-branch-zero.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/fibonacci-branch-zero-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"A")
+            for label, mutant in (
+                (
+                    "unselected-undefined",
+                    zero_trip.replace("(next ^ 0x1AU) & 31U", "(next ^ 0x1AU) / 0U"),
+                ),
+                (
+                    "scope-over-depth",
+                    zero_trip.replace(
+                        "                unsigned selected = next & 31U;\n"
+                        "                putchar((int)selected);",
+                        "{\n" * 5
+                        + "unsigned selected = next & 31U;\n"
+                        + "putchar((int)selected);\n"
+                        + "}\n" * 5,
+                    ),
+                ),
+            ):
+                with self.subTest(label=label):
+                    invalid = Path(scratch) / f"invalid-{label}.c"
+                    invalid.write_text(mutant)
+                    refused = Path(scratch) / f"invalid-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [*command[:-2], str(refused), str(invalid)],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(refused.exists(), label)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/fibonacci-branch-forged-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            lexical = next(
+                node
+                for node in nodes
+                if node["kind"] == "compound-statement"
+                and any(
+                    child["parent"] == node["id"]
+                    and child["kind"] == "declaration-statement"
+                    and any(
+                        decl["parent"] == child["id"] and decl.get("name") == "selected"
+                        for decl in nodes
+                    )
+                    for child in nodes
+                )
+            )
+            for label, key, value in (
+                ("parent", "parent", 1),
+                ("metadata", "definition", "definition"),
+            ):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    forged["nodes"][cast(int, lexical["id"]) - 1][key] = value
+                    refused = Path(scratch) / f"forged-{label}.malbolge"
+                    attempt = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(refused),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(attempt.returncode, 0, label)
+                    self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(refused.exists(), label)
 
     def test_loop_scoped_transfer_emits_complete_masked_fibonacci(self) -> None:
         """A block-local transfer dies each trip, not its enclosing writes."""

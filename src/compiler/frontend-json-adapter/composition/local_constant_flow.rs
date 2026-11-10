@@ -134,10 +134,20 @@ impl<'node> Flow<'node> {
         Some((value, expression))
     }
 
-    /// Prove every ordered assignment and call in a braced C arm. Calls
-    /// append source-proven guest effects, never host-side output. This
-    /// traverses unselected arms too, so hidden effects cannot be discarded.
+    /// Prove ordered effects in either braced C arm, including its local
+    /// declarations. Branch-local names die at scope exit, while enclosing
+    /// writes and output effects survive only for the selected arm.
     fn branch_effects(&mut self, body: &Node, depth: u8) -> Option<()> {
+        self.branch_effects_depth(body, (depth, 0))
+    }
+
+    fn branch_effects_depth(
+        &mut self,
+        body: &Node,
+        depth: (u8, usize),
+    ) -> Option<()> {
+        let conditional_depth = depth.0;
+        let outer_len = self.locals.len();
         let mut last_end = body.span.begin.byte;
         let mut effects = 0;
         while let Some(node) = self.peek() {
@@ -149,9 +159,15 @@ impl<'node> Flow<'node> {
                 return None;
             }
             last_end = match node.kind.as_str() {
+                "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" => self.assignment(body, last_end)?.0,
-                "if-statement" => {
-                    self.conditional(body, last_end, depth.checked_add(1)?)?
+                "if-statement" => self.conditional(
+                    body,
+                    last_end,
+                    conditional_depth.checked_add(1)?,
+                )?,
+                "compound-statement" => {
+                    self.scoped_branch_effects(body, last_end, depth)?
                 },
                 "call-expression" => {
                     let output = checked_call(self, body, last_end)?;
@@ -162,7 +178,11 @@ impl<'node> Flow<'node> {
             };
             effects = effects.checked_add(1)?;
         }
-        (effects > 0 && last_end < body.span.end.byte).then_some(())
+        if effects == 0 || last_end >= body.span.end.byte {
+            return None;
+        }
+        self.locals.truncate(outer_len);
+        Some(())
     }
 
     /// Prove a pure unsigned `~` over an entire checked expression subtree.
@@ -540,6 +560,30 @@ impl<'node> Flow<'node> {
             return None;
         }
         Some((local.byte, local.source))
+    }
+
+    fn scoped_branch_effects(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+        depth: (u8, usize),
+    ) -> Option<u32> {
+        let (conditional_depth, scope_depth) = depth;
+        let scope = self.take(body.id, "compound-statement")?;
+        if scope_depth >= MAX_NESTED_LOOP_BLOCKS
+            || !clean(scope)
+            || !span_within(&body.span, &scope.span)
+            || previous_end > scope.span.begin.byte
+            || scope.span.begin.byte >= scope.span.end.byte
+            || scope.span.end.byte >= body.span.end.byte
+        {
+            return None;
+        }
+        self.branch_effects_depth(
+            scope,
+            (conditional_depth, scope_depth.checked_add(1)?),
+        )?;
+        Some(scope.span.end.byte)
     }
 
     /// Validate a lexical loop block before permitting its enclosing

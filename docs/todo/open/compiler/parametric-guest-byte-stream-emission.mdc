@@ -54,6 +54,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete twelve-iteration masked Fibonacci C source
+  with separately declared same-name locals in both `if` arms, and an extra
+  nested lexical block, initially failed at the typed adapter with no
+  guest output. Source-proven branch declarations and bounded inner scopes
+  now expire locals on arm exit while retaining outer state and selected
+  outputs. The real VM matches all twelve independent bytes on two input
+  streams (47 steps for the initial variant). Zero-trip shadow proof, undefined
+  skipped effects, excess nesting, forged ancestry and metadata refuse
+  without publication. It is closed compile-time C folding, not runtime
+  guest C control flow; the unmasked Fibonacci layout remains unsupported.
 - On 2026-11-09 the complete masked Fibonacci recurrence with an inner C
   lexical scope and a loop-local transfer first refused at the typed adapter
   without publishing guest code. The adapter now proves up to four nested
