@@ -73,6 +73,29 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Bounded C switch selection in a complete recurrence (2026-11-10)
+
+A full twelve-step masked Fibonacci source first refused at the normalized
+JSON adapter after replacing its `if/else` output with ordinary C
+`switch (next & 1U)`, `case 0U`, `default`, and explicit `break` statements.
+The pinned Clang tree places each case's one `putchar` directly under its
+label while parenting both `break` statements to the switch's compound
+body. A source-bound proof now checks this exact shape, both pure output
+arguments, the constant label, dispatch expression, ancestry, complete
+spans, fallthrough barriers and source order before choosing one effect.
+The switch-local `break` does not exit the surrounding bounded C loop.
+
+The full C program emits the independently computed masked oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative guest steps
+under empty and binary input. A second whole-program variant exchanges
+which parity reaches the explicit case versus `default`; it emits the
+same oracle. Three valid-but-unsupported C mutations (fallthrough,
+effectful dispatch and an additional case) and eight forged normalized AST
+variants reject without a guest artifact. This proves finite compile-time
+C control selection, **not** runtime guest switch or input-dependent C
+state. The original unmasked Fibonacci output remains unsupported at
+layout, so P0 stays pending.
+
 ### Unbraced C branch effects in complete recurrences (2026-11-10)
 
 The full twelve-step masked Fibonacci program was retried after replacing

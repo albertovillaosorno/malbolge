@@ -847,6 +847,7 @@ impl<'node> Flow<'node> {
                 },
                 "return-statement" => self.return_statement(body, last_end)?,
                 "if-statement" => self.conditional(body, last_end, 0)?,
+                "switch-statement" => self.static_switch(body, last_end)?,
                 "for-statement" => self.static_for(body, last_end)?,
                 "compound-statement" => {
                     self.scoped_lexical_body(body, last_end, depth)?
@@ -1580,6 +1581,144 @@ impl<'node> Flow<'node> {
         None
     }
 
+    /// Admit the exact two-arm, non-fallthrough C switch shape. Each label
+    /// directly owns one pure-argument putchar and is followed by a sibling
+    /// break. The switch's break exits only the switch, not the enclosing
+    /// bounded induction; neither unselected call is emitted to the guest.
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "closed Clang ancestry and both switch outputs"
+    )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "closed source-ordered non-fallthrough switch proof"
+    )]
+    fn static_switch(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
+        let statement = self.take(body.id, "switch-statement")?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+            || self.loop_exit.is_some()
+        {
+            return None;
+        }
+        let (selected, condition) = self.expression(statement.id, 0)?;
+        // Require ordinary `switch (` punctuation. A Clang AST supplied
+        // without source text cannot silently invent a different construct.
+        if condition.span.begin.line != statement.span.begin.line
+            || condition
+                .span
+                .begin
+                .byte
+                .checked_sub(statement.span.begin.byte)
+                != Some(8)
+            || condition
+                .span
+                .begin
+                .column
+                .checked_sub(statement.span.begin.column)
+                != Some(8)
+        {
+            return None;
+        }
+        let scope = self.take(statement.id, "compound-statement")?;
+        if !clean(scope)
+            || !span_within(&statement.span, &scope.span)
+            || scope.span.end != statement.span.end
+            || condition.span.end.byte >= scope.span.begin.byte
+        {
+            return None;
+        }
+        let case = self.take(scope.id, "case-statement")?;
+        if !clean(case)
+            || !span_within(&scope.span, &case.span)
+            || case.span.begin.byte <= scope.span.begin.byte
+        {
+            return None;
+        }
+        let constant = self.take(case.id, "constant-expression")?;
+        let label = self.take(constant.id, "integer-literal")?;
+        let case_value = literal_u32(label)?;
+        if constant.type_name.as_deref() != Some("u32")
+            || !bare_cast_metadata(constant)
+            || constant.operation.is_some()
+            || constant.constant_integer.as_deref()
+                != Some(case_value.to_string().as_str())
+            || !span_within(&case.span, &constant.span)
+            || constant.span != label.span
+            || constant.span.begin.byte.checked_sub(case.span.begin.byte)
+                != Some(5)
+            || constant
+                .span
+                .begin
+                .column
+                .checked_sub(case.span.begin.column)
+                != Some(5)
+            || constant.span.begin.line != case.span.begin.line
+        {
+            return None;
+        }
+        let case_output = checked_call(self, case, constant.span.end.byte)?;
+        if case_output.call.span.end != case.span.end {
+            return None;
+        }
+        let first_break = self.switch_break(scope, case.span.end.byte)?;
+        let default = self.take(scope.id, "default-statement")?;
+        if !clean(default)
+            || !span_within(&scope.span, &default.span)
+            || first_break >= default.span.begin.byte
+        {
+            return None;
+        }
+        let default_output =
+            checked_call(self, default, default.span.begin.byte)?;
+        if default_output.call.span.end != default.span.end
+            || default_output.call.span.begin.line <= default.span.begin.line
+        {
+            return None;
+        }
+        let last_break = self.switch_break(scope, default.span.end.byte)?;
+        if last_break >= scope.span.end.byte
+            || self
+                .peek()
+                .is_some_and(|node| node.span.begin.byte < scope.span.end.byte)
+        {
+            return None;
+        }
+        self.outputs.push(if selected == case_value {
+            case_output
+        } else {
+            default_output
+        });
+        Some(statement.span.end.byte)
+    }
+
+    /// Clang parents switch-local break statements to the switch's braces;
+    /// unlike a loop break, they must not alter the enclosing loop state.
+    fn switch_break(&mut self, scope: &Node, previous_end: u32) -> Option<u32> {
+        let statement = self.take(scope.id, "break-statement")?;
+        if !clean(statement)
+            || !span_within(&scope.span, &statement.span)
+            || previous_end >= statement.span.begin.byte
+            || statement.span.begin.line != statement.span.end.line
+            || statement
+                .span
+                .end
+                .byte
+                .checked_sub(statement.span.begin.byte)
+                != Some(5)
+            || statement
+                .span
+                .end
+                .column
+                .checked_sub(statement.span.begin.column)
+                != Some(5)
+        {
+            return None;
+        }
+        Some(statement.span.end.byte)
+    }
+
     fn take(&mut self, parent: u32, kind: &str) -> Option<&'node Node> {
         let node = self.peek()?;
         let id = u32::try_from(self.position).ok()?.checked_add(1)?;
@@ -1990,6 +2129,11 @@ pub(super) fn canonical_multi_local_output(
             "unary-expression" => {
                 last_end = flow
                     .standalone_step(body, last_end)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+            },
+            "switch-statement" => {
+                last_end = flow
+                    .static_switch(body, last_end)
                     .ok_or(FrontendJsonError::Unsupported)?;
             },
             "for-statement" => {

@@ -76,6 +76,36 @@ def root_scoped_shadowed_fibonacci_source() -> str:
     ).replace(ending, "        b = next;\n    }\n    }\n}")
 
 
+def switch_masked_fibonacci_source(*, case_value: int = 0) -> str:
+    """Select two source-checked recurrence arms through a C switch."""
+    assert case_value in (0, 1)
+    source = MASKED_FIBONACCI.read_text()
+    original = (
+        "        if ((next & 1U) == 0U) {\n"
+        "            putchar((int)(next & 31U));\n"
+        "        } else {\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "        }"
+    )
+    even_call = "putchar((int)(next & 31U));"
+    odd_call = "putchar((int)((next ^ 0x1AU) & 31U));"
+    case_call, default_call = (
+        (even_call, odd_call) if case_value == 0 else (odd_call, even_call)
+    )
+    replacement = (
+        "        switch (next & 1U) {\n"
+        f"        case {case_value}U:\n"
+        f"            {case_call}\n"
+        "            break;\n"
+        "        default:\n"
+        f"            {default_call}\n"
+        "            break;\n"
+        "        }"
+    )
+    assert source.count(original) == 1
+    return source.replace(original, replacement)
+
+
 def unbraced_masked_fibonacci_source() -> str:
     """Use ordinary unbraced if/else output arms in the full recurrence."""
     source = MASKED_FIBONACCI.read_text()
@@ -11383,6 +11413,215 @@ class CompoundCPipelineTests(unittest.TestCase):
                         self.assertNotEqual(rejected.returncode, 0, label)
                         self.assertIn(b"Unsupported", rejected.stderr, label)
                         self.assertFalse(guest.exists(), label)
+
+    def test_switch_selected_full_fibonacci_reaches_guest(self) -> None:
+        """A real C switch selects one guest byte each recurrence trip."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            expected.append(
+                (following & 31) if (following & 1) == 0 else ((following ^ 26) & 31)
+            )
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for case_value in (0, 1):
+                with self.subTest(case_value=case_value):
+                    source = Path(scratch) / f"switch-{case_value}-fibonacci.c"
+                    source.write_text(
+                        switch_masked_fibonacci_source(case_value=case_value)
+                    )
+                    guest = Path(scratch) / f"switch-{case_value}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/switch-{case_value}-fibonacci-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for data in (b"", bytes((255, 0, 128))):
+                        replay = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(replay.returncode, 0, replay.stderr)
+                        self.assertEqual(replay.stdout, bytes(expected))
+                        self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_switch_selected_fibonacci_refuses_unproved_effects(self) -> None:
+        """Fallthrough, effectful predicates and forged labels fail closed."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = switch_masked_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            bad_sources = {
+                "fallthrough": original.replace(
+                    "            break;\n        default:", "        default:"
+                ),
+                "effectful-dispatch": original.replace(
+                    "switch (next & 1U)", "switch ((next += 1U) & 1U)"
+                ),
+                "extra-case": original.replace(
+                    "        default:",
+                    "        case 1U: putchar(65); break;\n        default:",
+                ),
+            }
+            for label, contents in bad_sources.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"bad-{label}.c"
+                    source.write_text(contents)
+                    frontend = subprocess.run(
+                        [
+                            str(FRONTEND),
+                            "--guest-include",
+                            str(GUEST_INCLUDE),
+                            "--resource-dir",
+                            str(RESOURCE),
+                            "--source-id",
+                            f"tests/switch-invalid-{label}-v1",
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = Path(scratch) / f"bad-{label}.malbolge"
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/switch-invalid-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "switch-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/switch-proof-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            original_ast = cast(dict[str, object], json.loads(frontend.stdout))
+            original_nodes = cast(list[dict[str, object]], original_ast["nodes"])
+            by_kind = {
+                kind: next(n["id"] for n in original_nodes if n["kind"] == kind)
+                for kind in (
+                    "switch-statement",
+                    "case-statement",
+                    "default-statement",
+                    "constant-expression",
+                )
+            }
+            breaks = [n["id"] for n in original_nodes if n["kind"] == "break-statement"]
+            self.assertEqual(len(breaks), 2)
+            for label in (
+                "switch-metadata",
+                "case-parent",
+                "case-label-value",
+                "case-label-span",
+                "default-parent",
+                "break-width",
+                "break-parent",
+                "switch-condition-operation",
+            ):
+                with self.subTest(forged=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    nodes = cast(list[dict[str, object]], forged["nodes"])
+                    proof_nodes = {
+                        kind: nodes[cast(int, node_id) - 1]
+                        for kind, node_id in by_kind.items()
+                    }
+                    if label == "switch-metadata":
+                        proof_nodes["switch-statement"]["operation"] = "!"
+                    elif label == "case-parent":
+                        proof_nodes["case-statement"]["parent"] = 2
+                    elif label == "case-label-value":
+                        proof_nodes["constant-expression"]["constant_integer"] = "1"
+                    elif label == "case-label-span":
+                        span = cast(
+                            dict[str, dict[str, int]], proof_nodes["case-statement"]["span"]
+                        )
+                        span["begin"]["byte"] += 1
+                        span["begin"]["column"] += 1
+                    elif label == "default-parent":
+                        proof_nodes["default-statement"]["parent"] = 2
+                    elif label == "break-parent":
+                        nodes[cast(int, breaks[0]) - 1]["parent"] = 2
+                    elif label == "switch-condition-operation":
+                        switch_id = by_kind["switch-statement"]
+                        expr = next(
+                            n
+                            for n in nodes
+                            if n["parent"] == switch_id
+                            and n["kind"] == "binary-expression"
+                        )
+                        expr["operation"] = "||"
+                    else:
+                        span = cast(
+                            dict[str, dict[str, int]],
+                            nodes[cast(int, breaks[1]) - 1]["span"],
+                        )
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
 
 
 if __name__ == "__main__":

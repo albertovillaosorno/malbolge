@@ -823,6 +823,27 @@ AST mutations refuse publication. This is bounded source-backed state
 projection: the guest does not calculate the predicate at runtime. The
 original unmasked twelve-byte output is still unsupported at layout.
 
+### Source-checked `switch` with one case and default
+
+A complete twelve-step masked Fibonacci C source now admits a `switch`
+whose source-proven unsigned dispatch has exactly one constant `case` and
+one `default`. Each label directly owns one pure `putchar` expression,
+followed by an explicit switch-local `break` statement in its common
+compound body. Both labels and their output arguments must be proven;
+only the selected call is materialized in typed output IR. Switch breaks
+do not terminate the surrounding bounded induction. The proof checks
+pinned Clang parentage, constant label value, source spans, ordering,
+metadata, two break keywords and the absence of trailing body effects.
+Fallthrough, extra cases, mutations of the dispatch and effectful case
+bodies are unsupported and refuse without guest publication.
+
+Two complete twelve-iteration C programs, with case labels `0U` or `1U`
+and opposite `default` parity, emit the same independent masked twelve-byte
+oracle on the normative guest VM in 47 steps under empty/binary stdin.
+This is a finite compile-time projection, not dynamic guest switch
+execution, input-conditioned C state or general C fallthrough support.
+The original unmasked twelve-byte Fibonacci output remains unwitnessed.
+
 ### Unbraced single-effect C branch arms
 
 The bounded unsigned-local projector now accepts ordinary unbraced

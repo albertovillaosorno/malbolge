@@ -54,6 +54,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 two complete twelve-step masked Fibonacci C programs
+  first refused a source-backed `switch` with explicit `case`/`default`
+  outputs and switch-local `break` statements. The bounded Clang proof
+  now selects one checked source effect without exiting its enclosing loop.
+  Both case-label parities emit the independent twelve-byte masked oracle
+  in 47 normative VM steps under empty/binary stdin; three unsupported
+  source variants and eight forged AST variants fail closed. This remains
+  compile-time C-state projection, not runtime guest switching, and the
+  original unmasked stream still refuses at layout. P0 remains open.
+
 - On 2026-11-10 a pair of complete three-row masked Fibonacci C
   programs first refused when source-checked inner `for` induction used
   `if (col == 0U) continue; else { ... }` or
