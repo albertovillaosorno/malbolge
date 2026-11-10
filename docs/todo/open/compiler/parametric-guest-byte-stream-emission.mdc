@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete masked Fibonacci program using ordinary
+  `for` induction `i = i + 1U` first refused at the typed adapter without
+  publishing a guest. The bounded proof now admits source-contiguous
+  assignment steps `i = i + positive_literal` and `i = i - positive_literal`,
+  checking both identical induction references, nested AST ancestry and
+  types, exact token gaps, guard direction, and trip bounds. Two complete
+  ascending/descending twelve-output C programs reached the normative VM
+  under empty and nonempty binary stdin (163.855 seconds combined) and
+  matched the independent oracle. Eight invalid C sources and eight forged
+  AST variants refused without artifacts. This is finite compiler-time
+  C-state replay, not dynamic guest arithmetic; the original unmasked
+  Fibonacci layout and generalized P0 remain pending.
+
 - On 2026-11-09 a full masked Fibonacci C recurrence with `while` and
   standalone `++i;` first refused at the typed adapter without publication.
   Source-backed ordinary local prefix/postfix `++`/`--` now proves the

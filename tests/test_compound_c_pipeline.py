@@ -599,6 +599,194 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
 
+    def test_assignment_form_for_induction_full_fibonacci_guest_parity(self) -> None:
+        """Ordinary C assignment can advance a bounded, source-checked for."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        assert original.count("++i") == 1
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            oracle.append((following if following % 2 == 0 else following ^ 26) & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        ascending = original.replace("++i", "i = i + 1U")
+        descending = (
+            original.replace("i = 0U", "i = 24U")
+            .replace("i < 12U", "i > 0U")
+            .replace("++i", "i = i - 2U")
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source_text in (
+                ("ascending", ascending),
+                ("descending-stride", descending),
+            ):
+                with self.subTest(case=label):
+                    source = Path(scratch) / f"for-assign-{label}.c"
+                    source.write_text(source_text)
+                    guest = Path(scratch) / f"for-assign-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/for-assign-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, oracle)
+                        self.assertRegex(
+                            executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                        )
+
+    def test_assignment_form_for_induction_refuses_unproved_source(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        source_text = original.replace("++i", "i = i + 1U")
+        invalid = (
+            ("zero-stride", source_text.replace("i = i + 1U", "i = i + 0U")),
+            ("large-stride", source_text.replace("i = i + 1U", "i = i + 13U")),
+            ("backward", source_text.replace("i = i + 1U", "i = i - 1U")),
+            ("foreign-read", source_text.replace("i = i + 1U", "i = b + 1U")),
+            ("different-operator", source_text.replace("i = i + 1U", "i = i * 1U")),
+            ("nested-expression", source_text.replace("i = i + 1U", "i = i + (1U)")),
+            ("unproved-spacing", source_text.replace("i = i + 1U", "i=i+1U")),
+            ("extra-effect", source_text.replace("i = i + 1U", "i = i + 1U, b = 0U")),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, text in invalid:
+                with self.subTest(case=label):
+                    source = Path(scratch) / f"invalid-for-assign-{label}.c"
+                    source.write_text(text)
+                    guest = Path(scratch) / f"invalid-for-assign-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/invalid-for-assign-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=45,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_assignment_form_for_induction_refuses_forged_ast(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "for-assignment.c"
+            source.write_text(MASKED_FIBONACCI.read_text().replace("++i", "i = i + 1U"))
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/for-assignment-forgery-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            loop = next(n for n in nodes if n["kind"] == "for-statement")
+            assignment = next(
+                n
+                for n in nodes
+                if n["parent"] == loop["id"] and n.get("operation") == "="
+            )
+            left = next(
+                n
+                for n in nodes
+                if n["parent"] == assignment["id"]
+                and n["kind"] == "declaration-reference-expression"
+            )
+            add = next(
+                n
+                for n in nodes
+                if n["parent"] == assignment["id"] and n.get("operation") == "+"
+            )
+            cast_node = next(
+                n
+                for n in nodes
+                if n["parent"] == add["id"] and n["kind"] == "cast-expression"
+            )
+            right = next(n for n in nodes if n["parent"] == cast_node["id"])
+            literal = next(
+                n
+                for n in nodes
+                if n["parent"] == add["id"] and n["kind"] == "integer-literal"
+            )
+            for label, node_id, field, replacement in (
+                ("assignment-operator", assignment["id"], "operation", "+="),
+                ("rhs-operator", add["id"], "operation", "-"),
+                ("lhs-symbol", left["id"], "reference", "other@0"),
+                ("rhs-symbol", right["id"], "reference", "other@0"),
+                ("rhs-parent", add["id"], "parent", loop["id"]),
+                ("load-parent", cast_node["id"], "parent", assignment["id"]),
+                ("literal-value", literal["id"], "literal", "2"),
+                ("extra-metadata", add["id"], "reference", "i@0"),
+            ):
+                with self.subTest(case=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]], json.loads(frontend.stdout)
+                    )
+                    forged["nodes"][cast(int, node_id) - 1][field] = replacement
+                    guest = Path(scratch) / f"forged-for-assign-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                    self.assertFalse(guest.exists(), label)
+
     def test_standalone_local_steps_complete_while_fibonacci(self) -> None:
         """Source-local ++/-- actually advance twelve checked while trips."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

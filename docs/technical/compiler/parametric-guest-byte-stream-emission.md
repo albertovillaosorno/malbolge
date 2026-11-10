@@ -73,6 +73,29 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Assignment-form `for` induction in a complete C program (2026-11-09)
+
+The twelve-output five-bit masked Fibonacci recurrence was first retried with
+`for (...; i < 12U; i = i + 1U)`. The pinned frontend normalized the ordinary
+C assignment into an `=` node with a nested unsigned `+` read, but the typed
+adapter refused it at the first local declaration without guest publication.
+The bounded projector now checks the entire source-backed step tree: exact
+assignment and arithmetic tokens, both matching induction references, the
+Clang lvalue-to-rvalue cast, typed positive literal stride, and guard direction.
+A second complete recurrence uses `i = 24U; i > 0U; i = i - 2U`. Both forms
+are limited to at most twelve proven trips and preserve the existing checked
+byte-range state updates; they do not introduce guest-side loop execution.
+
+Both complete C sources compiled through the pinned compiler and emitted the
+independent twelve-byte oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+from the actual normative guest VM, each under empty and nonempty binary
+stdin (163.855 seconds for the combined replay). Eight source negatives
+(including zero/large stride, wrong direction or source symbol, different
+operator, nested expression, unproved spacing and an extra effect) and eight
+forged AST negatives all refused without guest output publication. The
+original unmasked Fibonacci guest layout remains unsupported; compile-time
+state replay is still bounded and does not satisfy the general P0 objective.
+
 ### Standalone unsigned local steps in bounded C loops (2026-11-09)
 
 The whole twelve-output masked Fibonacci C program was retried with a

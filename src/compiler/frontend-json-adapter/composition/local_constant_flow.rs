@@ -871,6 +871,7 @@ impl<'node> Flow<'node> {
         let counter = self.locals.get(outer_len)?;
         let start = counter.byte;
         let symbol = counter.symbol;
+        let (counter_name, _) = symbol.rsplit_once('@')?;
         let comparison = self.take(statement.id, "binary-expression")?;
         let load = self.take(comparison.id, "cast-expression")?;
         let read = self.take(load.id, "declaration-reference-expression")?;
@@ -899,21 +900,17 @@ impl<'node> Flow<'node> {
         let increment_kind = self.peek()?.kind.as_str();
         if !matches!(
             increment_kind,
-            "unary-expression" | "compound-assignment-expression"
+            "unary-expression"
+                | "compound-assignment-expression"
+                | "binary-expression"
         ) {
             return None;
         }
         let increment = self.take(statement.id, increment_kind)?;
-        // An equality endpoint has no intrinsic direction: the discarded
-        // increment expression must prove whether we count up or down.
-        let descending = if not_equal {
-            matches!(increment.operation.as_deref(), Some("--" | "-="))
-        } else {
-            matches!(comparison.operation.as_deref(), Some(">" | ">="))
-        };
+        let operation = increment.operation.as_deref()?;
         let increment_read =
             self.take(increment.id, "declaration-reference-expression")?;
-        let stride = match increment_kind {
+        let (stride, step_descending) = match increment_kind {
             "unary-expression" => {
                 // A discarded prefix/postfix increment or decrement has
                 // no observable result beyond the proven counter update.
@@ -934,29 +931,22 @@ impl<'node> Flow<'node> {
                         .column
                         .checked_sub(increment_read.span.end.column)
                         == Some(2);
-                (typed_operator(
-                    increment,
-                    if descending {
-                        "--"
-                    } else {
-                        "++"
-                    },
-                ) && (prefix || postfix))
-                    .then_some(1)?
+                (typed_operator(increment, operation)
+                    && matches!(operation, "++" | "--")
+                    && (prefix || postfix))
+                    .then_some((1, operation == "--"))?
             },
             "compound-assignment-expression" => {
                 // Prove a positive, bounded literal stride from the exact
                 // typed right operand and source span, not from the bound.
                 let step = self.take(increment.id, "integer-literal")?;
                 let stride = literal_byte(step)?;
-                (typed_operator(
-                    increment,
-                    if descending {
-                        "-="
-                    } else {
-                        "+="
-                    },
-                ) && (1..=MAX_STATIC_LOOP_ITERATIONS).contains(&stride)
+                (typed_operator(increment, increment.operation.as_deref()?)
+                    && matches!(
+                        increment.operation.as_deref(),
+                        Some("+=" | "-=")
+                    )
+                    && (1..=MAX_STATIC_LOOP_ITERATIONS).contains(&stride)
                     && increment.span.begin.byte
                         == increment_read.span.begin.byte
                     && increment.span.end == step.span.end
@@ -975,10 +965,81 @@ impl<'node> Flow<'node> {
                         .checked_sub(increment_read.span.end.byte)
                         .is_some_and(|gap| gap <= 16)
                     && span_within(&increment.span, &step.span))
-                .then_some(stride)?
+                .then_some((
+                    stride,
+                    increment.operation.as_deref() == Some("-="),
+                ))?
+            },
+            "binary-expression" => {
+                // A conventional `i = i + 1U` or `i = i - 2U` step
+                // reads the same induction variable exactly once. The
+                // two source operators each have one adjacent space;
+                // neither reassignment from another local nor a nested
+                // effect can masquerade as an induction update.
+                let rhs = self.take(increment.id, "binary-expression")?;
+                let step_operator = rhs.operation.as_deref()?;
+                let step_load = self.take(rhs.id, "cast-expression")?;
+                let rhs_read = self
+                    .take(step_load.id, "declaration-reference-expression")?;
+                let step = self.take(rhs.id, "integer-literal")?;
+                let stride = literal_byte(step)?;
+                let step_line = rhs.span.begin.line;
+                (typed_operator(increment, "=")
+                    && matches!(step_operator, "+" | "-")
+                    && typed_operator(rhs, step_operator)
+                    && typed_operator(step_load, "lvalue-to-rvalue")
+                    && assigned_local_reference(rhs_read, symbol)
+                    && source_name_span(rhs_read, counter_name)
+                    && (1..=MAX_STATIC_LOOP_ITERATIONS).contains(&stride)
+                    && increment.span.begin == increment_read.span.begin
+                    && increment.span.end == rhs.span.end
+                    && step_load.span == rhs_read.span
+                    && rhs.span.begin == step_load.span.begin
+                    && rhs.span.end == step.span.end
+                    && span_within(&increment.span, &rhs.span)
+                    && span_within(&rhs.span, &step.span)
+                    && increment_read.span.end.line == step_line
+                    && rhs.span.end.line == step_line
+                    && step.span.begin.line == step_line
+                    && step.span.end.line == step_line
+                    && rhs
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(increment_read.span.end.byte)
+                        == Some(3)
+                    && rhs
+                        .span
+                        .begin
+                        .column
+                        .checked_sub(increment_read.span.end.column)
+                        == Some(3)
+                    && step
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(step_load.span.end.byte)
+                        == Some(3)
+                    && step
+                        .span
+                        .begin
+                        .column
+                        .checked_sub(step_load.span.end.column)
+                        == Some(3))
+                .then_some((stride, step_operator == "-"))?
             },
             _ => return None,
         };
+        // `!=` determines direction from its proven step. For ordered
+        // comparisons the step must agree with the guard's direction.
+        let descending = if not_equal {
+            step_descending
+        } else {
+            matches!(comparison.operation.as_deref(), Some(">" | ">="))
+        };
+        if step_descending != descending {
+            return None;
+        }
         if !assigned_local_reference(increment_read, symbol)
             || !span_within(&statement.span, &increment.span)
             || !span_within(&increment.span, &increment_read.span)
