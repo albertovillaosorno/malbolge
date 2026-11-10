@@ -349,7 +349,7 @@ fn expanded_loader_jump_reads_unmodified_guest_memory() -> Result<(), String> {
 #[test]
 #[expect(
     clippy::too_many_lines,
-    reason = "binary guest effects and tainted expanded control refusal form one witness"
+    reason = "traced two-profile guest safety witness"
 )]
 fn input_written_expanded_loader_word_cannot_drive_a_later_jump()
 -> Result<(), String> {
