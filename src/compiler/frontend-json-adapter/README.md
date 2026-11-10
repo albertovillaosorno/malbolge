@@ -825,6 +825,19 @@ original unmasked twelve-byte output is still unsupported at layout.
 
 ### Source-checked `switch` with one case and default
 
+The source-backed `switch` selector also accepts more than one explicit
+case when each selected and unselected arm proves its own direct `putchar`
+and switch-local `break`. A red-first complete twelve-step masked Fibonacci
+program with `switch (next & 3U)`, cases 0U, 1U, 2U and a final default
+now reaches each of the four dispatch arms. The independent masked oracle
+is emitted by the normative guest VM in 47 steps under empty/binary stdin;
+four unsupported source variants and nine forged middle-case AST variants
+refuse before guest publication. The proof is capped at eight unique,
+ordered `u32` case labels and exactly one final default; fallthrough,
+multiple effects per arm, case-local declarations, and arbitrary guest
+runtime branching remain unsupported. Original unmasked Fibonacci guest
+layout still fails closed.
+
 A complete twelve-step masked Fibonacci C source now admits a `switch`
 whose source-proven unsigned dispatch has exactly one constant `case` and
 one `default`. Each label directly owns one pure `putchar` expression,

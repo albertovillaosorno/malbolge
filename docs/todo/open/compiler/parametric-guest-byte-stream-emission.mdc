@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete masked twelve-step Fibonacci C recurrence
+  first refused a four-way `switch (next & 3U)` at the JSON adapter. The
+  checked projector now proves up to eight source-ordered distinct case
+  labels, a final default, separate pure outputs and switch-local breaks.
+  All four dispatch paths occur in the original whole program; the guest
+  VM matches the independently calculated twelve-byte masked oracle in
+  47 steps under empty/binary stdin. Four unsupported source mutations
+  and nine forged normalized AST cases refuse before publication. This
+  does not implement runtime guest switching or the original unmasked
+  Fibonacci layout; P0 stays open.
+
 - On 2026-11-10 two complete twelve-step masked Fibonacci C programs
   first refused a source-backed `switch` with explicit `case`/`default`
   outputs and switch-local `break` statements. The bounded Clang proof

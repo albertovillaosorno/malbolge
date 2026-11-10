@@ -96,6 +96,28 @@ C control selection, **not** runtime guest switch or input-dependent C
 state. The original unmasked Fibonacci output remains unsupported at
 layout, so P0 stays pending.
 
+### Multiway C switch selection in the full recurrence (2026-11-10)
+
+A separate complete twelve-step masked Fibonacci C source replaced the
+`if/else` output with `switch (next & 3U)` containing three explicit
+`case` labels (0U, 1U and 2U), a final `default`, and one pure
+`putchar` and switch-local `break` per arm. Its first pinned Clang-to-
+JSON-to-guest attempt refused at the adapter with `Unsupported` and no
+artifact. The source-state projector now checks up to eight distinct,
+source-ordered unsigned case labels, each direct Clang output child and
+separate break, followed by exactly one final default. It rejects duplicate
+labels, fallthrough, hidden effects, forged case ancestry/value/geometry,
+missing or misplaced breaks and an out-of-order default.
+
+The full four-way program reaches all four arms over its twelve Fibonacci
+iterations. Its independently calculated output is
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`; the normative current-profile
+VM emits these exact bytes in 47 steps under empty and binary stdin.
+Four unsupported C variants and nine forged middle-case Clang trees
+refuse without publication. This widens only finite source-state switch
+selection, not runtime guest branching or arbitrary output-stream layout;
+the original unmasked Fibonacci program remains blocked at guest layout.
+
 ### Unbraced C branch effects in complete recurrences (2026-11-10)
 
 The full twelve-step masked Fibonacci program was retried after replacing

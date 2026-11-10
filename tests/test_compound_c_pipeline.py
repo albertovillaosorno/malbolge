@@ -106,6 +106,36 @@ def switch_masked_fibonacci_source(*, case_value: int = 0) -> str:
     return source.replace(original, replacement)
 
 
+def multiway_switch_fibonacci_source() -> str:
+    """Exercise all four C switch paths in a complete masked recurrence."""
+    source = MASKED_FIBONACCI.read_text()
+    original = (
+        "        if ((next & 1U) == 0U) {\n"
+        "            putchar((int)(next & 31U));\n"
+        "        } else {\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "        }"
+    )
+    replacement = (
+        "        switch (next & 3U) {\n"
+        "        case 0U:\n"
+        "            putchar((int)(next & 31U));\n"
+        "            break;\n"
+        "        case 1U:\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "            break;\n"
+        "        case 2U:\n"
+        "            putchar((int)(next & 31U));\n"
+        "            break;\n"
+        "        default:\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "            break;\n"
+        "        }"
+    )
+    assert source.count(original) == 1
+    return source.replace(original, replacement)
+
+
 def unbraced_masked_fibonacci_source() -> str:
     """Use ordinary unbraced if/else output arms in the full recurrence."""
     source = MASKED_FIBONACCI.read_text()
@@ -11413,6 +11443,247 @@ class CompoundCPipelineTests(unittest.TestCase):
                         self.assertNotEqual(rejected.returncode, 0, label)
                         self.assertIn(b"Unsupported", rejected.stderr, label)
                         self.assertFalse(guest.exists(), label)
+
+    def test_multiway_switch_complete_fibonacci_guest(self) -> None:
+        """A four-way Clang switch must select real guest effects in order."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        a, b = 1, 1
+        expected = bytearray()
+        cases = set()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            cases.add(next_value & 3)
+            expected.append(
+                next_value & 31 if next_value & 3 in (0, 2) else (next_value ^ 26) & 31
+            )
+            a, b = b, next_value
+        self.assertEqual(cases, {0, 1, 2, 3})
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "switch-multiway.c"
+            source.write_text(multiway_switch_fibonacci_source())
+            guest = Path(scratch) / "switch-multiway.malbolge"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/switch-multiway-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=180,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, bytes(expected))
+                self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_multiway_switch_refuses_unproved_cases(self) -> None:
+        """Unproved arms and forged middle-case evidence never publish guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = multiway_switch_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            bad_sources = {
+                "fallthrough-middle": original.replace(
+                    "            break;\n        case 2U:", "        case 2U:"
+                ),
+                "extra-middle-effect": original.replace(
+                    "        case 2U:\n",
+                    "        case 2U:\n            putchar(65);\n",
+                ),
+                "default-before-last-case": original.replace(
+                    "        case 2U:\n"
+                    "            putchar((int)(next & 31U));\n"
+                    "            break;\n"
+                    "        default:\n"
+                    "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+                    "            break;",
+                    "        default:\n"
+                    "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+                    "            break;\n"
+                    "        case 2U:\n"
+                    "            putchar((int)(next & 31U));\n"
+                    "            break;",
+                ),
+            }
+            extra_cases = "".join(
+                f"        case {value}U:\n"
+                "            putchar(65);\n"
+                "            break;\n"
+                for value in range(3, 9)
+            )
+            bad_sources["more-than-eight-cases"] = original.replace(
+                "        default:\n", extra_cases + "        default:\n"
+            ).replace("switch (next & 3U)", "switch (next & 15U)")
+            for label, contents in bad_sources.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(contents, original)
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(contents)
+                    result = subprocess.run(
+                        [
+                            str(FRONTEND),
+                            "--guest-include",
+                            str(GUEST_INCLUDE),
+                            "--resource-dir",
+                            str(RESOURCE),
+                            "--source-id",
+                            f"tests/multiway-invalid-{label}-v1",
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    guest = Path(scratch) / f"invalid-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/multiway-invalid-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "multiway-proof.c"
+            source.write_text(original)
+            result = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/multiway-proof-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            original_nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(result.stdout))["nodes"],
+            )
+            cases = [n for n in original_nodes if n["kind"] == "case-statement"]
+            breaks = [n for n in original_nodes if n["kind"] == "break-statement"]
+            self.assertEqual(len(cases), 3)
+            self.assertEqual(len(breaks), 4)
+            middle_id = cast(int, cases[1]["id"])
+            middle_label_id = cast(
+                int,
+                next(
+                    n["id"]
+                    for n in original_nodes
+                    if n["parent"] == middle_id and n["kind"] == "constant-expression"
+                ),
+            )
+            for label in (
+                "middle-case-parent",
+                "middle-case-span",
+                "middle-label-type",
+                "middle-label-value",
+                "duplicate-label",
+                "middle-break-parent",
+                "middle-break-span",
+                "middle-output-parent",
+                "default-parent",
+            ):
+                with self.subTest(forged=label):
+                    forged = cast(dict[str, object], json.loads(result.stdout))
+                    nodes = cast(list[dict[str, object]], forged["nodes"])
+                    middle = nodes[middle_id - 1]
+                    constant = nodes[middle_label_id - 1]
+                    if label == "middle-case-parent":
+                        middle["parent"] = 2
+                    elif label == "middle-case-span":
+                        span = cast(dict[str, dict[str, int]], middle["span"])
+                        span["begin"]["byte"] += 1
+                        span["begin"]["column"] += 1
+                    elif label == "middle-label-type":
+                        constant["type_name"] = "i32"
+                    elif label == "middle-label-value":
+                        constant["constant_integer"] = "2"
+                    elif label == "duplicate-label":
+                        constant["constant_integer"] = "2"
+                        literal = next(
+                            n for n in nodes
+                            if n["parent"] == middle_label_id
+                            and n["kind"] == "integer-literal"
+                        )
+                        literal["constant_integer"] = "2"
+                        literal["literal"] = "2"
+                    elif label == "middle-break-parent":
+                        nodes[cast(int, breaks[1]["id"]) - 1]["parent"] = 2
+                    elif label == "middle-break-span":
+                        span = cast(
+                            dict[str, dict[str, int]],
+                            nodes[cast(int, breaks[1]["id"]) - 1]["span"],
+                        )
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    elif label == "middle-output-parent":
+                        call = next(
+                            n
+                            for n in nodes
+                            if n["parent"] == middle_id
+                            and n["kind"] == "call-expression"
+                        )
+                        call["parent"] = 2
+                    else:
+                        default = next(
+                            n for n in nodes if n["kind"] == "default-statement"
+                        )
+                        default["parent"] = 2
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                    self.assertFalse(guest.exists(), label)
 
     def test_switch_selected_full_fibonacci_reaches_guest(self) -> None:
         """A real C switch selects one guest byte each recurrence trip."""

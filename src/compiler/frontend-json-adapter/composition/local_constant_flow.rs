@@ -1581,13 +1581,12 @@ impl<'node> Flow<'node> {
         None
     }
 
-    /// Admit the exact two-arm, non-fallthrough C switch shape. Each label
-    /// directly owns one pure-argument putchar and is followed by a sibling
-    /// break. The switch's break exits only the switch, not the enclosing
-    /// bounded induction; neither unselected call is emitted to the guest.
+    /// Admit up to eight distinct source-ordered case labels and one final
+    /// default. All arms must prove a pure output and their own switch-local
+    /// break; only the selected effect escapes into the enclosing C loop.
     #[expect(
         clippy::cognitive_complexity,
-        reason = "closed Clang ancestry and both switch outputs"
+        reason = "closed Clang ancestry and source-ordered switch outputs"
     )]
     #[expect(
         clippy::too_many_lines,
@@ -1629,44 +1628,60 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let case = self.take(scope.id, "case-statement")?;
-        if !clean(case)
-            || !span_within(&scope.span, &case.span)
-            || case.span.begin.byte <= scope.span.begin.byte
-        {
+        let mut previous_arm_end = scope.span.begin.byte;
+        let mut case_values = Vec::new();
+        let mut selected_output = None;
+        while self.peek()?.kind == "case-statement" {
+            if case_values.len() >= 8 {
+                return None;
+            }
+            let case = self.take(scope.id, "case-statement")?;
+            if !clean(case)
+                || !span_within(&scope.span, &case.span)
+                || previous_arm_end >= case.span.begin.byte
+            {
+                return None;
+            }
+            let constant = self.take(case.id, "constant-expression")?;
+            let label = self.take(constant.id, "integer-literal")?;
+            let case_value = literal_u32(label)?;
+            if constant.type_name.as_deref() != Some("u32")
+                || !bare_cast_metadata(constant)
+                || constant.operation.is_some()
+                || constant.constant_integer.as_deref()
+                    != Some(case_value.to_string().as_str())
+                || !span_within(&case.span, &constant.span)
+                || constant.span != label.span
+                || constant.span.begin.byte.checked_sub(case.span.begin.byte)
+                    != Some(5)
+                || constant
+                    .span
+                    .begin
+                    .column
+                    .checked_sub(case.span.begin.column)
+                    != Some(5)
+                || constant.span.begin.line != case.span.begin.line
+                || case_values.contains(&case_value)
+            {
+                return None;
+            }
+            case_values.push(case_value);
+            let output = checked_call(self, case, constant.span.end.byte)?;
+            if output.call.span.end != case.span.end {
+                return None;
+            }
+            previous_arm_end = self.switch_break(scope, case.span.end.byte)?;
+            if selected == case_value {
+                selected_output = Some(output);
+            }
+        }
+        if case_values.is_empty() {
             return None;
         }
-        let constant = self.take(case.id, "constant-expression")?;
-        let label = self.take(constant.id, "integer-literal")?;
-        let case_value = literal_u32(label)?;
-        if constant.type_name.as_deref() != Some("u32")
-            || !bare_cast_metadata(constant)
-            || constant.operation.is_some()
-            || constant.constant_integer.as_deref()
-                != Some(case_value.to_string().as_str())
-            || !span_within(&case.span, &constant.span)
-            || constant.span != label.span
-            || constant.span.begin.byte.checked_sub(case.span.begin.byte)
-                != Some(5)
-            || constant
-                .span
-                .begin
-                .column
-                .checked_sub(case.span.begin.column)
-                != Some(5)
-            || constant.span.begin.line != case.span.begin.line
-        {
-            return None;
-        }
-        let case_output = checked_call(self, case, constant.span.end.byte)?;
-        if case_output.call.span.end != case.span.end {
-            return None;
-        }
-        let first_break = self.switch_break(scope, case.span.end.byte)?;
         let default = self.take(scope.id, "default-statement")?;
         if !clean(default)
             || !span_within(&scope.span, &default.span)
-            || first_break >= default.span.begin.byte
+            || previous_arm_end >= default.span.begin.byte
         {
             return None;
         }
@@ -1685,11 +1700,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        self.outputs.push(if selected == case_value {
-            case_output
-        } else {
-            default_output
-        });
+        self.outputs.push(selected_output.unwrap_or(default_output));
         Some(statement.span.end.byte)
     }
 
