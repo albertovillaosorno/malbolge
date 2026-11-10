@@ -742,6 +742,28 @@ independently recover same-width C operator characters from normalized
 JSON; the pinned frontend and source-digest boundary remain trusted.
 The unmasked original Fibonacci guest stream remains unimplemented.
 
+### Ordinary C `int` constants converted to unsigned locals
+
+The bounded automatic-local evaluator now accepts the exact pinned-Clang
+implicit `integral-cast` from a nonnegative `i32` integer literal into `u32`
+when the cast and its child share a source span and independently agree on
+the canonical integer value. This admits ordinary C spellings such as
+`unsigned a = 1;`, `unsigned i = 0;`, `i < 12`, and `next & 255`, alongside
+the previously supported explicitly suffixed `1U` and `255U`. Finite `for`
+bounds and positive strides remain byte-range and require a source-proven
+literal, not an arbitrary folded expression or variable. Signed arithmetic,
+negative literals, large signed widths, explicit casts and unrelated
+conversion shapes are not silently admitted.
+
+A complete twelve-step masked Fibonacci recurrence initially rejected its
+first unsuffixed initializer; after this narrow proof, the same C program
+emits the independent twelve-byte oracle from the actual normative guest
+in 47 steps on empty and binary stdin. Source negatives and forged cast,
+leaf, and loop-bound metadata reject before publication. This remains
+compile-time C-state folding; it does not provide arbitrary signed C
+expressions, dynamic guest unsigned state or general output synthesis.
+The original unmasked Fibonacci stream is still blocked at guest layout.
+
 ### Uninitialized automatic unsigned locals with proven later writes
 
 The closed bounded local-flow projection accepts `unsigned next;` followed

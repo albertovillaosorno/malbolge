@@ -139,6 +139,14 @@ def wide_unsigned_masked_fibonacci_source(expression: str) -> str:
     return source.replace(original, f"unsigned next = {expression};")
 
 
+def ordinary_int_masked_fibonacci_source() -> str:
+    """Use C's ordinary signed-int literals in a full unsigned recurrence."""
+    source = MASKED_FIBONACCI.read_text()
+    for token in ("0x1AU", "255U", "31U", "12U", "1U", "0U"):
+        source = source.replace(token, token[:-1])
+    return source
+
+
 def unary_unsigned_masked_fibonacci_source() -> str:
     """Exercise full-width unary unsigned signs in the complete C loop."""
     source = MASKED_FIBONACCI.read_text()
@@ -378,6 +386,232 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", rejected.stderr)
             self.assertFalse(rejected_guest.exists())
 
+    def test_ordinary_int_literals_convert_to_unsigned_fibonacci_guest(self) -> None:
+        """Implicit C int->unsigned constants survive the full guest pipeline."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ordinary_int_masked_fibonacci_source()
+        self.assertIn("unsigned a = 1;", source)
+        self.assertIn("unsigned i = 0; i < 12;", source)
+        self.assertIn("(next ^ 0x1A) & 31", source)
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            expected.append(
+                (following if following % 2 == 0 else following ^ 0x1A) & 31
+            )
+            previous, current = current, following
+        self.assertEqual(expected.hex(), "02191f08170f020d03101303")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / "int-literals-fibonacci.c"
+            candidate.write_text(source)
+            guest = candidate.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/int-literals-fibonacci-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=150,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def _check_unsuffixed_for_step(self, label: str, step: str) -> None:
+        """A full C recurrence uses one source-checked induction form."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ordinary_int_masked_fibonacci_source()
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            expected.append(
+                (following if following % 2 == 0 else following ^ 0x1A) & 31
+            )
+            previous, current = current, following
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / f"int-step-{label}.c"
+            candidate.write_text(source.replace("++i)", f"{step})"))
+            guest = candidate.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    f"tests/int-step-{label}-fibonacci-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=150,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_unsuffixed_compound_for_step_preserves_guest(self) -> None:
+        self._check_unsuffixed_for_step("compound", "i += 1")
+
+    def test_unsuffixed_assignment_for_step_preserves_guest(self) -> None:
+        self._check_unsuffixed_for_step("assignment", "i = i + 1")
+
+    def test_int_to_unsigned_literal_rejects_unproved_source_and_ast(self) -> None:
+        """Never trust an implicit C conversion without its exact i32 leaf."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ordinary_int_masked_fibonacci_source()
+        variants = {
+            "signed-local": source.replace("unsigned a = 1;", "int a = 1;"),
+            "negative-int": source.replace("unsigned a = 1;", "unsigned a = -1;"),
+            "long-int": source.replace("unsigned a = 1;", "unsigned a = 2147483648;"),
+            "explicit-cast": source.replace(
+                "unsigned a = 1;", "unsigned a = (unsigned)1;"
+            ),
+            "effectful-mask": source.replace("(a + b) & 255", "(a + b) & (b++)"),
+            "wide-loop-bound": source.replace("i < 12;", "i < 256;"),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, text in variants.items():
+                with self.subTest(source=label):
+                    candidate = Path(scratch) / f"unproved-{label}.c"
+                    candidate.write_text(text)
+                    guest = candidate.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/int-unsigned-unproved-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(candidate),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=45,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            candidate = Path(scratch) / "int-unsigned-ast.c"
+            candidate.write_text(source)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/int-unsigned-ast-v1",
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            declaration = next(
+                node
+                for node in nodes
+                if node["kind"] == "variable-declaration" and node.get("name") == "a"
+            )
+            converted = next(
+                node
+                for node in nodes
+                if node["kind"] == "cast-expression"
+                and node["parent"] == declaration["id"]
+            )
+            leaf = next(
+                node
+                for node in nodes
+                if node["kind"] == "integer-literal"
+                and node["parent"] == converted["id"]
+            )
+            bound = next(
+                node
+                for node in nodes
+                if node["kind"] == "cast-expression"
+                and node.get("constant_integer") == "12"
+            )
+            alterations = (
+                ("cast-value", converted, "constant_integer", "2"),
+                ("cast-type", converted, "type", "i32"),
+                ("cast-operation", converted, "operation", "lvalue-to-rvalue"),
+                ("cast-reference", converted, "reference", "forged@0"),
+                ("leaf-type", leaf, "type", "u32"),
+                ("leaf-value", leaf, "literal", "2"),
+                ("leaf-parent", leaf, "parent", declaration["id"]),
+                ("bound-value", bound, "constant_integer", "11"),
+            )
+            for label, node, field, value in alterations:
+                with self.subTest(ast=label):
+                    altered = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    index = cast(int, node["id"]) - 1
+                    altered["nodes"][index][field] = value
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(altered).encode(),
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_uninitialized_unsigned_local_written_before_guest_use(self) -> None:
         """A declared-then-assigned C local must reach the real guest."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -398,9 +632,12 @@ class CompoundCPipelineTests(unittest.TestCase):
                             "        }"
                         )
                     source = Path(scratch) / f"uninitialized-{variant}.c"
-                    source.write_text(original.replace(
-                        declaration, "unsigned next;\n        " + assignment,
-                    ))
+                    source.write_text(
+                        original.replace(
+                            declaration,
+                            "unsigned next;\n        " + assignment,
+                        )
+                    )
                     guest = source.with_suffix(".malbolge")
                     compiled = subprocess.run(
                         [sys.executable, "-B", str(DRIVER),

@@ -73,6 +73,34 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Ordinary `int` literals in full unsigned C recurrence (2026-11-10)
+
+The full twelve-step masked Fibonacci C program was attempted with the
+conventional unsuffixed integer constants `unsigned a = 1;`,
+`for (unsigned i = 0; i < 12; ++i)`, `& 255`, and the ordinary literals in
+both output branches. Pinned Clang accepted this complete source, but the
+JSON adapter first rejected its initial unsigned declaration and published
+no guest. Clang's source-normalized tree represents these constants as
+`i32` integer leaves wrapped in implicit `integral-cast` nodes carrying
+their evaluated unsigned result.
+
+The closed local-flow proof now accepts the bounded **nonnegative** `i32`
+leaf only when its value agrees exactly with the enclosing `u32` cast,
+its source span is identical and neither node carries hidden metadata.
+The same proof retains byte limits for finite `for` bounds and strides,
+while all other local arithmetic remains checked `u32`. The complete
+program emits `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps from
+the actual current-profile Malbolge VM with both empty and nonempty binary
+stdin, exactly matching an independently evaluated unsigned-C recurrence.
+Six unsupported C-source variants and eight forged Clang-node mutations
+refuse without publishing guest code. Explicit casts, negative signed
+constants and signed arithmetic remain outside this proven topology.
+
+This repairs an everyday C-source conversion boundary; it does **not**
+execute dynamic C locals in Malbolge. The original unmasked twelve-byte
+Fibonacci source still requires generalized guest layout and arithmetic;
+P0 remains pending.
+
 ### Source-proven unsigned locals assigned after declaration (2026-11-10)
 
 The original unmasked twelve-step Fibonacci C program was rerun and still

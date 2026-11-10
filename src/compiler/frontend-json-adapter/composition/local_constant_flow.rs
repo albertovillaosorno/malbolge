@@ -33,7 +33,7 @@
 
 use super::local_initialized_output::{
     assigned_local_reference, clean, correct_node, emit_verified_local_bytes,
-    literal_byte, literal_u32, span_within, typed_operator,
+    literal_u32, span_within, typed_operator,
 };
 use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 
@@ -375,6 +375,25 @@ impl<'node> Flow<'node> {
         self.unsigned_comparison(comparison)
     }
 
+    /// A bounded for-loop admits only a literal unsigned bound/stride, or
+    /// an exact implicit conversion of a nonnegative int literal.
+    fn loop_literal(&mut self, parent: u32) -> Option<(u8, &'node Node)> {
+        if !matches!(
+            self.peek()?.kind.as_str(),
+            "integer-literal" | "cast-expression"
+        ) {
+            return None;
+        }
+        let (value, node) = self.expression(parent, 0)?;
+        if node.kind == "cast-expression"
+            && (node.operation.as_deref() != Some("integral-cast")
+                || node.constant_integer.is_none())
+        {
+            return None;
+        }
+        Some((u8::try_from(value).ok()?, node))
+    }
+
     /// Prove ordered effects in both arms against the same incoming state.
     /// Commit only selected writes and guest output effects.
     fn conditional(
@@ -627,6 +646,34 @@ impl<'node> Flow<'node> {
             "cast-expression" => {
                 let cast = self.take(parent, "cast-expression")?;
                 if cast.operation.as_deref() == Some("integral-cast") {
+                    // Pinned Clang attaches the evaluated unsigned value to
+                    // an implicit cast from an unsuffixed, nonnegative int
+                    // literal. Prove both the i32 leaf and its exact shared
+                    // source span; no signed arithmetic or explicit cast is
+                    // admitted by this narrow conversion.
+                    if self.peek()?.kind == "integer-literal" {
+                        let leaf = self.take(cast.id, "integer-literal")?;
+                        let signed = leaf
+                            .constant_integer
+                            .as_deref()?
+                            .parse::<i32>()
+                            .ok()?;
+                        let value = u32::try_from(signed).ok()?;
+                        if leaf.type_name.as_deref() != Some("i32")
+                            || leaf.literal.as_deref()
+                                != leaf.constant_integer.as_deref()
+                            || !bare_literal_metadata(leaf)
+                            || cast.type_name.as_deref() != Some("u32")
+                            || cast.constant_integer.as_deref()
+                                != leaf.constant_integer.as_deref()
+                            || !bare_cast_metadata(cast)
+                            || cast.span != leaf.span
+                            || !span_within(&cast.span, &leaf.span)
+                        {
+                            return None;
+                        }
+                        return Some((value, cast));
+                    }
                     // Clang's implicit int -> unsigned conversion for a C
                     // comparison stores exactly 0U or 1U. Require an i32
                     // Boolean subtree and identical source spans: an
@@ -999,8 +1046,7 @@ impl<'node> Flow<'node> {
         let comparison = self.take(statement.id, "binary-expression")?;
         let load = self.take(comparison.id, "cast-expression")?;
         let read = self.take(load.id, "declaration-reference-expression")?;
-        let bound_node = self.take(comparison.id, "integer-literal")?;
-        let bound = literal_byte(bound_node)?;
+        let (bound, bound_node) = self.loop_literal(comparison.id)?;
         if !typed_bounded_loop_comparison(comparison, load, bound_node)
             || (comparison.operation.as_deref() == Some("<")
                 && start > MAX_STATIC_LOOP_ITERATIONS)
@@ -1063,8 +1109,7 @@ impl<'node> Flow<'node> {
             "compound-assignment-expression" => {
                 // Prove a positive, bounded literal stride from the exact
                 // typed right operand and source span, not from the bound.
-                let step = self.take(increment.id, "integer-literal")?;
-                let stride = literal_byte(step)?;
+                let (stride, step) = self.loop_literal(increment.id)?;
                 (typed_operator(increment, increment.operation.as_deref()?)
                     && matches!(
                         increment.operation.as_deref(),
@@ -1105,8 +1150,7 @@ impl<'node> Flow<'node> {
                 let step_load = self.take(rhs.id, "cast-expression")?;
                 let rhs_read = self
                     .take(step_load.id, "declaration-reference-expression")?;
-                let step = self.take(rhs.id, "integer-literal")?;
-                let stride = literal_byte(step)?;
+                let (stride, step) = self.loop_literal(rhs.id)?;
                 let step_line = rhs.span.begin.line;
                 (typed_operator(increment, "=")
                     && matches!(step_operator, "+" | "-")
@@ -1469,6 +1513,31 @@ fn checked_u32_binary(operator: &str, left: u32, right: u32) -> Option<u32> {
         "|" => Some(left | right),
         _ => None,
     }
+}
+
+/// An implicit C integral conversion must not hide side effects or unrelated
+/// Clang fields. Its evaluated value is checked separately against the leaf.
+const fn bare_cast_metadata(node: &Node) -> bool {
+    node.name.is_none()
+        && node.reference.is_none()
+        && node.literal.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+}
+
+/// The i32 leaf is solely a normalized integer literal, not a symbol or cast.
+const fn bare_literal_metadata(node: &Node) -> bool {
+    node.name.is_none()
+        && node.reference.is_none()
+        && node.operation.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
 }
 
 /// No expression metadata beyond a single exact integer result category.

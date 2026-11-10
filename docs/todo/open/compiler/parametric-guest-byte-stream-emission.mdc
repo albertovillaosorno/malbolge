@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a full masked twelve-step Fibonacci C recurrence with
+  ordinary unsuffixed `int` constants first failed at the JSON adapter's
+  first `unsigned a = 1;` declaration. Source-matched, nonnegative `i32`
+  literal leaves and their implicit unsigned casts now admit the complete
+  program and its bounded `for` constants, preserving full `u32` arithmetic.
+  The normative guest emits the independent twelve-byte masked oracle in
+  47 steps under empty and binary stdin. Six unsupported source variants
+  and eight forged AST mutations reject without artifact publication.
+  This is source-C compatibility via compile-time folding, not guest-side
+  dynamic arithmetic. Original unmasked Fibonacci layout remains P0 work.
+
 - On 2026-11-10 the original unmasked twelve-step Fibonacci C program
   was retried and still refused at `Layout(UnsupportedEffectTrace)` with no
   guest publication. A red-first full masked recurrence using `unsigned next;`
