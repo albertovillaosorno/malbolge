@@ -120,7 +120,10 @@ it does not rewrite skipped padding to invent a better operand. The final
 independent admission still checks every real data-write address. A
 current/historical VM regression compares the automatically chosen source-
 scratch layout with a separately encoded manual plan and verifies actual
-scratch mutation and byte output with empty and nonempty stdin.
+scratch mutation and byte output with empty and nonempty stdin. A separate
+current/historical step-traced VM replay checks two consecutive `p`/`*`
+operations on past source scratch: exact code/data pointers, data mutations,
+XLAT2 code encryption, and independently calculated output bytes.
 
 The planner also returns an exact source-cell origin table alongside
 logical-to-physical code positions: each graphical cell is either an

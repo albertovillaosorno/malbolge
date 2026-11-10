@@ -62,32 +62,44 @@ fn verify_data_write_witness(
         }
         return Ok(());
     };
-    let source_end =
-        u32::try_from(layout.source().len()).map_err(|error| format!("source length: {error}"))?;
-    if address < source_end {
-        return Err(String::from("arithmetic data write aliases source"));
+    let source_end = u32::try_from(layout.source().len())
+        .map_err(|error| format!("source length: {error}"))?;
+    // Source scratch is safe only strictly behind the executing code cell.
+    // Expanded-memory writes remain valid independently of source geometry.
+    let code = *layout
+        .executed_code_positions()
+        .get(step)
+        .ok_or("missing executed code witness")?;
+    if address < source_end && address >= code {
+        return Err(String::from("arithmetic write aliases pending code"));
     }
     let read = trace
         .memory_reads
         .data
         .ok_or("missing arithmetic data read")?;
     if read.address != address {
-        return Err(String::from("runtime data read address differs from proof"));
+        return Err(String::from(
+            "runtime data read address differs from proof",
+        ));
     }
-    if trace
-        .memory_delta
-        .data
-        .is_some_and(|write| write.address != address || write.before != read.value)
-    {
+    if trace.memory_delta.data.is_some_and(|write| {
+        write.address != address || write.before != read.value
+    }) {
         return Err(String::from("runtime data mutation differs from proof"));
     }
-    if trace.memory_delta.data.is_none()
-        && machine
-            .memory_word(address)
-            .map_err(|error| format!("unchanged data word: {error:?}"))?
-            != read.value
-    {
-        return Err(String::from("undisclosed runtime data mutation"));
+    let observed = machine
+        .memory_word(address)
+        .map_err(|error| format!("after data operation: {error:?}"))?;
+    match trace.memory_delta.data {
+        Some(write) if observed != write.after => {
+            return Err(String::from(
+                "runtime data write value differs from trace",
+            ));
+        },
+        None if observed != read.value => {
+            return Err(String::from("undisclosed runtime data mutation"));
+        },
+        Some(_) | None => {},
     }
     Ok(())
 }
@@ -184,6 +196,80 @@ fn verify_execution_witness(
     }
     if machine.termination().is_none() {
         return Err(String::from("layout path failed to terminate"));
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent guest step and scalar output checks"
+)]
+#[expect(
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    reason = "base-three division and remainder independently prove rotate"
+)]
+fn traced_source_scratch_writes_match_both_normative_vms() -> Result<(), String>
+{
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let logical = [
+        Jump,
+        AutoRelocate,
+        Instruction(LinearOpcode::CrazyData),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ];
+    for profile in [current_profile(), historical_profile()] {
+        let padded = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("scratch trace layout: {error:?}"))?;
+        let layout = padded.layout();
+        let [first_address, second_address]: [u32; 2] = layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_writes| "expected two guest writes")?;
+        let first = usize::try_from(first_address)
+            .map_err(|error| error.to_string())?;
+        let second = usize::try_from(second_address)
+            .map_err(|error| error.to_string())?;
+        if first >= layout.source().len() || second >= layout.source().len() {
+            return Err(String::from("expected in-source guest writes"));
+        }
+        let first_word = scalar_crazy_reference(
+            u32::from(*layout.source().get(first).ok_or("first source byte")?),
+            0,
+            profile.word_trits(),
+        );
+        let second_data = u32::from(
+            *layout.source().get(second).ok_or("second source byte")?,
+        );
+        let high_trit =
+            3u32.pow(u32::from(profile.word_trits()).saturating_sub(1));
+        let second_word = second_data / 3 + (second_data % 3) * high_trit;
+        let expected = [
+            u8::try_from(first_word & 255)
+                .map_err(|error| error.to_string())?,
+            u8::try_from(second_word & 255)
+                .map_err(|error| error.to_string())?,
+        ];
+        for input in [Vec::new(), vec![255, 0, 128]] {
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), input)
+                    .map_err(|error| {
+                        format!("scratch trace guest load: {error:?}")
+                    })?;
+            verify_execution_witness(&mut vm, layout)?;
+            assert_eq!(vm.output(), expected);
+            assert_eq!(vm.input_consumed(), 0);
+            assert_eq!(vm.memory_word(first_address), Ok(first_word));
+            assert_eq!(vm.memory_word(second_address), Ok(second_word));
+        }
     }
     Ok(())
 }
