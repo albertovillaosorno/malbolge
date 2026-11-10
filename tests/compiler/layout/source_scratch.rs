@@ -1666,3 +1666,105 @@ fn auto_relocation_reads_untouched_expanded_loader_operand()
     }
     Ok(())
 }
+
+// An untouched expanded loader word can relocate D back into skipped
+// graphical source scratch behind the executing C. Its origin need not be
+// another source cell: the independent VM still proves the same write.
+#[test]
+fn auto_expanded_relocation_into_past_source_scratch() -> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 6];
+    logical.extend([
+        Jump,
+        AutoRelocate,
+        AutoRelocate,
+        AutoRelocate,
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::NoOperation),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    let mut explicit = vec![LinearOpcode::NoOperation; 100];
+    for (position, operation) in [
+        (6, LinearOpcode::JumpForward { target: 93 }),
+        (93, LinearOpcode::RelocateDataPointer),
+        (94, LinearOpcode::RelocateDataPointer),
+        (95, LinearOpcode::RelocateDataPointer),
+        (96, LinearOpcode::RotateData),
+        (97, LinearOpcode::OutputByte),
+        (99, LinearOpcode::Halt),
+    ] {
+        replace_scratch_operation(&mut explicit, position, operation)?;
+    }
+    for profile in [current_profile(), historical_profile()] {
+        let independent =
+            encode_linear_layout(profile, &explicit).map_err(|error| {
+                format!("expanded-to-source encoder: {error:?}")
+            })?;
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| {
+                format!("expanded-to-source planner: {error:?}")
+            })?;
+        if artifact.layout() != &independent
+            || artifact.logical_code_positions().get(6..)
+                != Some([6, 93, 94, 95, 96, 97, 98, 99].as_slice())
+            || independent.data_pointer_positions().get(7..11)
+                != Some([7, 62, 101, 68].as_slice())
+            || independent.data_write_positions().get(10) != Some(&Some(68))
+        {
+            return Err(String::from(
+                "expanded source-scratch geometry differs",
+            ));
+        }
+        verify_bidirectional_source_map(&artifact)?;
+        // Enlarging the source makes the second j's address 101 into
+        // future source code instead of verified expanded loader memory.
+        let mut aliased_source = explicit.clone();
+        replace_scratch_operation(
+            &mut aliased_source,
+            99,
+            LinearOpcode::NoOperation,
+        )?;
+        aliased_source.extend(vec![LinearOpcode::NoOperation; 39]);
+        aliased_source.push(LinearOpcode::Halt);
+        if encode_linear_layout(profile, &aliased_source)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from("future source operand was admitted"));
+        }
+        let source = independent.source();
+        let mut older = u32::from(*source.get(98).ok_or("tail older")?);
+        let mut latest = u32::from(*source.get(99).ok_or("tail newest")?);
+        for _address in 100..=101 {
+            let next =
+                scalar_crazy_reference(older, latest, profile.word_trits());
+            older = latest;
+            latest = next;
+        }
+        if latest != 67 {
+            return Err(String::from("expanded source-scratch loader differs"));
+        }
+        let original_word = u32::from(*source.get(68).ok_or("source word")?);
+        let rotated =
+            malbolge::profile_rotate(original_word, profile.memory_words());
+        for input in [Vec::new(), vec![0, 255]] {
+            let mut vm = ProfileMachine::from_source(profile, source, input)
+                .map_err(|error| {
+                    format!("expanded source-scratch VM: {error:?}")
+                })?;
+            if vm.memory_word(101) != Ok(latest) {
+                return Err(String::from("initial expanded operand differs"));
+            }
+            verify_execution_witness(&mut vm, &independent)?;
+            if vm.input_consumed() != 0
+                || vm.memory_word(68) != Ok(rotated)
+                || vm.output() != [rotated as u8]
+            {
+                return Err(String::from(
+                    "expanded source-scratch guest differs",
+                ));
+            }
+        }
+    }
+    Ok(())
+}

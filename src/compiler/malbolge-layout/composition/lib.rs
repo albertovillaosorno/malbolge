@@ -613,7 +613,10 @@ impl ForwardPaddingBuilder<'_> {
         };
         let destination = usize::try_from(word)
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-        if destination < length {
+        // An expanded operand may also select already-passed graphical
+        // source scratch. Its provenance is loader memory, but only its
+        // destination must be strictly behind the reached code pointer.
+        if destination < length && destination.saturating_add(1) >= position {
             return Ok(None);
         }
         Ok(Some(word))
@@ -1069,14 +1072,12 @@ fn derive_execution_positions(
             )?)
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
             let next = data_word.saturating_add(1) % memory_words;
-            // After a forward code jump, a j may move D into *past*
-            // graphical source cells. Both the operand and its target
-            // must then be strictly behind C; later arithmetic is still
-            // checked instruction-by-instruction against pending code.
-            // Ordinary first relocations retain the original requirement
-            // that their source operand points beyond the whole source.
-            let past_source_scratch =
-                !expanded_operand && data_pointer < position && next < position;
+            // A proven expanded control operand can also select graphical
+            // scratch behind C: only a source-backed operand must itself
+            // lie behind C. Later arithmetic is checked against pending
+            // source code separately, regardless of the operand's origin.
+            let past_source_scratch = next < position
+                && (expanded_operand || data_pointer < position);
             if !expanded_operand
                 && data_word < source.len()
                 && !past_source_scratch

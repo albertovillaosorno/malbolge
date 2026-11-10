@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete twelve-output unmasked Fibonacci C source
+  still refuses at `Layout(UnsupportedEffectTrace)` without publication.
+  A red-first 100-cell independent guest exposed the verifier's rejection
+  of a safe `j` from loader-expanded address 101 into already-passed source
+  scratch address 68. The independent encoder and automatic planner now
+  prove that destination from the fixed graphical suffix, replay a real
+  `*` write and byte output, and match the independent scalar oracle and
+  both normative VMs with empty/binary stdin. Enlarging the source into
+  address 101 refuses. This is bounded memory relocation, not generalized
+  guest-stream synthesis or dynamic C state; P0 remains pending.
+
 - On 2026-11-10 the original twelve-byte unmasked Fibonacci C source
   remains outside the proven positional guest stream layout. A red-first
   59-cell counterexample showed that the symbolic planner refused two later

@@ -85,6 +85,21 @@ length and the exact two-byte loader seed, and that seed must yield the same
 jump target. Unproven expanded writes, input-tainted operands and unknown
 further jump padding are never guessed.
 
+A separate red-first 100-cell guest extends this proof from expanded
+loader memory **back into already-passed graphical source scratch**. After
+a forward `i` and two source-backed `j` operations, the third `j` reads
+untouched expanded address 101. The exact final graphical suffix yields
+word 67, so D moves to skipped source address 68, strictly behind the
+executing code address 95. A subsequent real `*` writes scratch address
+68 and `<` outputs the rotated word. The independent encoder and automatic
+`AutoRelocate` planner now admit this read-only expanded-to-source move;
+source length and the loader-derived operand remain independently checked.
+Both current/historical normative VMs match a scalar loader/rotation oracle,
+full execution trace, memory mutation and output under empty/binary input.
+Extending source into address 101 still rejects as an unsafe alias. No
+unknown operand or pending-code write is accepted. The original complete
+unmasked Fibonacci C program remains outside the proven guest grammar.
+
 A red-first 59-cell fixed-instruction guest now has identical symbolic
 and independent encoding with two later `j` operations following a real
 expanded-memory `*` or `p` at address 127. Both current/historical VMs,
