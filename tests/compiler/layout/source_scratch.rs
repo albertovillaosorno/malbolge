@@ -1414,3 +1414,110 @@ fn auto_second_relocation_uses_proven_source_to_reach_expanded_memory()
     }
     Ok(())
 }
+
+#[test]
+fn auto_relocation_reads_untouched_expanded_loader_operand()
+-> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    // Two source-backed relocations place D in expanded loader memory.
+    // A third j reads the untouched expanded word. The final static suffix
+    // gives the planner the exact loader seed without guessing guest input.
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 6];
+    logical.extend([
+        Jump,
+        AutoRelocate,
+        AutoRelocate,
+        AutoRelocate,
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    let mut explicit = vec![LinearOpcode::NoOperation; 99];
+    for (index, operation) in [
+        (6, LinearOpcode::JumpForward { target: 93 }),
+        (93, LinearOpcode::RelocateDataPointer),
+        (94, LinearOpcode::RelocateDataPointer),
+        (95, LinearOpcode::RelocateDataPointer),
+        (96, LinearOpcode::RotateData),
+        (97, LinearOpcode::OutputByte),
+        (98, LinearOpcode::Halt),
+    ] {
+        replace_scratch_operation(&mut explicit, index, operation)?;
+    }
+    for profile in [current_profile(), historical_profile()] {
+        let independent = encode_linear_layout(profile, &explicit)
+            .map_err(|error| format!("explicit expanded third j: {error:?}"))?;
+        if independent.data_pointer_positions().get(7..10)
+            != Some([7, 62, 101].as_slice())
+        {
+            return Err(String::from("unexpected expanded third-j setup"));
+        }
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("expanded third auto j: {error:?}"))?;
+        if artifact.layout() != &independent
+            || artifact.logical_code_positions().get(6..)
+                != Some([6, 93, 94, 95, 96, 97, 98].as_slice())
+        {
+            return Err(String::from(
+                "explicit and expanded-auto layout differ",
+            ));
+        }
+        verify_bidirectional_source_map(&artifact)?;
+        // Independently expand the final two original source words to find
+        // the control operand, then the fourth region's rotated data word.
+        let source = independent.source();
+        let scalar_loader = |address: usize| -> Result<u32, String> {
+            if address < source.len() {
+                return Err(String::from("scalar expanded address in source"));
+            }
+            let mut previous = u32::from(source[source.len() - 2]);
+            let mut latest = u32::from(source[source.len() - 1]);
+            for _ in 0..=((address - source.len()) % 6) {
+                let next = scalar_crazy_reference(
+                    previous,
+                    latest,
+                    profile.word_trits(),
+                );
+                previous = latest;
+                latest = next;
+            }
+            Ok(latest)
+        };
+        let third_operand = scalar_loader(101)?;
+        let rotated_address = (third_operand + 1) % profile.memory_words();
+        let expected_word = malbolge::profile_rotate(
+            scalar_loader(rotated_address as usize)?,
+            profile.memory_words(),
+        );
+        if independent.data_pointer_positions().get(10)
+            != Some(&rotated_address)
+            || independent.data_write_positions().get(10)
+                != Some(&Some(rotated_address))
+        {
+            return Err(String::from("expanded j did not read scalar control"));
+        }
+        for input in [Vec::new(), vec![0, 255]] {
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                independent.source(),
+                input,
+            )
+            .map_err(|error| format!("expanded third-j VM load: {error:?}"))?;
+            verify_execution_witness(&mut vm, &independent)?;
+            if vm.input_consumed() != 0
+                || vm.output() != [expected_word as u8]
+                || vm.memory_word(rotated_address) != Ok(expected_word)
+            {
+                return Err(String::from("expanded third-j VM parity differs"));
+            }
+        }
+        let mut unknown_tail = logical.clone();
+        *unknown_tail.get_mut(11).ok_or("missing suffix opcode")? = Jump;
+        if encode_auto_padded_forward_layout(profile, &unknown_tail)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from("unresolved future loader tail admitted"));
+        }
+    }
+    Ok(())
+}

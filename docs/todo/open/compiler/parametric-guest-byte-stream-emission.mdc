@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete unmasked twelve-step Fibonacci C program
+  remains a safe `Layout(UnsupportedEffectTrace)` refusal. A red-first
+  independent 99-cell guest exposed `AutoRelocate` rejecting a third `j`
+  whose operand is untouched loader-expanded data at address 101. The
+  planner now proves such operands only from a fully fixed final graphical
+  suffix with no earlier write to that address; the independent encoder,
+  scalar loader/rotation oracle and both normative VMs agree under empty
+  and binary stdin. Future symbolic jumps still refuse because their source
+  tail is unknown. This advances bounded machine layout, not general guest
+  synthesis or C runtime state, so P0 remains pending.
+
 - On 2026-11-10 the original complete unmasked Fibonacci source remains a
   `Layout(UnsupportedEffectTrace)` blocker. A red-first 98-cell guest exposed
   the automatic planner's refusal to make a second `j` from proven past

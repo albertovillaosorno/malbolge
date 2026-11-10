@@ -133,9 +133,9 @@ After a source-backed relocation, `AutoRelocate` can select a second
 `j` from a known past source operand by inserting reached no-ops until
 the new data destination lies strictly behind C or beyond the estimated
 final source length. An explicit later `j` uses the same known-source
-proof, subject to the full independent layout verifier. The planner cannot
-infer a control operand from input-written scratch or expanded-loader memory;
-those cases remain reserved for independent admission or later synthesis.
+proof, subject to the full independent layout verifier. The planner refuses
+input-written scratch and expanded words whose final loader seed or write
+history cannot be proven. A fixed logical suffix permits a narrower case.
 The current/historical VMs replay both relocations, a real input-dependent
 `p` source write and binary output parity against the scalar oracle.
 An equivalent explicit-phase `j` plan emits the same admitted guest source.
@@ -146,8 +146,19 @@ at cell 62 to relocate into expanded address 101. Both canonical VMs
 execute a real loader-word rotate and emit the independent scalar oracle on
 empty and binary input. The automatically padded source is byte-identical
 to the explicit layout; extending the source to overlap the write rejects.
-Neither the planner nor these tests infer untouched expanded loader operands
-before the completed source tail exists.
+The planner never guesses untouched expanded loader operands before it can
+prove the final source tail.
+
+A red-first 99-cell guest now adds a third `AutoRelocate` after two
+source-backed `j` moves. Its D operand is the untouched expanded loader word
+at address 101. The planner derives that word only when every remaining
+logical step is a fixed instruction and the last two encoded graphical cells
+uniquely determine the final source seed. It excludes previously written
+expanded addresses and refuses a future symbolic jump, whose padding would
+change the seed. The independent encoder reproduces the identical source;
+current and historical VMs match scalar loader rotation, source/write traces
+and binary-input independence. This bounded proof does not infer unknown
+expanded writes, dynamic control or runtime C arithmetic.
 
 The symbolic planner can also reuse a **deterministically written** past source
 word as a later control operand. Its exact shadow tracks a known accumulator
@@ -168,8 +179,9 @@ memory. In a 59-cell guest, a real `*` or `p` updates address 127, a second
 rather than the original loader word. The current and historical VMs match
 an independent scalar recurrence and exact output under empty/binary input;
 an input-tainted `p` still refuses as a control operand. The symbolic planner
-continues to refuse expanded-memory operands because it cannot yet know the
-final source tail. This is a verified machine layout, not general C lowering.
+still refuses previously written expanded-memory operands; its narrower
+read-only loader proof requires a fully fixed future source suffix. This is a
+verified machine layout, not general C lowering.
 
 The independent linear encoder also admits a later forward `i` jump after
 a source-scratch `j`/`p` sequence if the jump reads a separate known
@@ -190,9 +202,9 @@ its operand is past source memory whose current value is proven.
 Real VM witnesses compute the next code address from an untouched skipped
 no-op, a no-op already XLAT2-encrypted during execution, and a different
 untouched cell after an input-dependent scratch write. All retain binary
-I/O parity. Automatic synthesis of expanded-memory controls and input-dependent
-control operands remains unsupported. This is not general
-guest control flow or a complete C compiler.
+I/O parity. Automatic `Jump` from expanded memory and input-dependent
+control operands remain unsupported. This is not general guest control flow
+or a complete C compiler.
 
 The planner also returns an exact source-cell origin table alongside
 logical-to-physical code positions: each graphical cell is either an
