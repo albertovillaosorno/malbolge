@@ -375,6 +375,32 @@ The original unmasked twelve-byte Fibonacci C stream still fails at layout;
 this is bounded compile-time unsigned-C evaluation, not dynamic guest C state
 or generalized arbitrary guest output. P0 remains open.
 
+### Stored unsigned Boolean predicates in a full recurrence (2026-11-10)
+
+A new complete twelve-iteration Fibonacci C experiment replaces the direct
+`if ((next & 1U) == 0U)` branch with an automatic `unsigned even` initialized
+by the same comparison and `if (even)`. The first pinned compiler attempt
+refused at the JSON-to-typed adapter, without emitting a guest. A second and
+third variant use `!((next & 1U) != 0U)` and `(next & 1U) < 1U` respectively.
+All three retain source-defined loop state, arithmetic, both output arms,
+and twelve distinct ordered byte effects.
+
+The closed evaluator now admits the pinned Clang implicit `int` to `unsigned`
+conversion only when its `u32` `integral-cast` node has the exact span of a
+complete checked `i32` Boolean subtree. Existing pure source-backed
+comparisons, logical operators and negation prove a result of zero or one.
+Signed casts, side effects, undefined division, calls, and seven separately
+forged AST changes reject without publication. In particular a claimed
+`i32` result cannot be treated as an arbitrary unsigned value.
+
+All three full programs compile to genuine guest capsules, then emit the
+independent masked Fibonacci oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+on the normative VM under empty and binary input. The full positive
+regression took 223 seconds on the local host. This is *compile-time* C
+predicate evaluation and verified guest output, not live guest Boolean
+state. The unmasked original `02 59 5f ...` stream still lacks a layout
+witness; P0 remains pending.
+
 ### Source-proven lexical shadowing in a complete recurrence (2026-11-09)
 
 A full twelve-iteration masked Fibonacci C source introduced a nested loop

@@ -596,18 +596,34 @@ impl<'node> Flow<'node> {
                 Some((value, grouped))
             },
             "cast-expression" => {
-                let load = self.take(parent, "cast-expression")?;
-                if !typed_operator(load, "lvalue-to-rvalue") {
+                let cast = self.take(parent, "cast-expression")?;
+                if cast.operation.as_deref() == Some("integral-cast") {
+                    // Clang's implicit int -> unsigned conversion for a C
+                    // comparison stores exactly 0U or 1U. Require an i32
+                    // Boolean subtree and identical source spans: an
+                    // explicit cast or unrelated signed conversion must
+                    // not acquire this proof by being truthy.
+                    if !typed_operator(cast, "integral-cast")
+                        || self.peek()?.type_name.as_deref() != Some("i32")
+                    {
+                        return None;
+                    }
+                    let (selected, predicate) = self
+                        .condition_expression(cast.id, depth.checked_add(1)?)?;
+                    return (cast.span == predicate.span)
+                        .then_some((u32::from(selected), cast));
+                }
+                if !typed_operator(cast, "lvalue-to-rvalue") {
                     return None;
                 }
                 let read =
-                    self.take(load.id, "declaration-reference-expression")?;
-                if !span_within(&load.span, &read.span)
-                    || load.span != read.span
+                    self.take(cast.id, "declaration-reference-expression")?;
+                if !span_within(&cast.span, &read.span)
+                    || cast.span != read.span
                 {
                     return None;
                 }
-                Some((self.referenced(read)?.0, load))
+                Some((self.referenced(read)?.0, cast))
             },
             "conditional-expression" => {
                 self.conditional_expression(parent, depth)

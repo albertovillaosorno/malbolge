@@ -1388,6 +1388,151 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertIn(b"Unsupported", refused.stderr, label)
                     self.assertFalse(guest.exists(), label)
 
+    def test_unsigned_boolean_local_drives_full_fibonacci_guest(self) -> None:
+        """A stored unsigned comparison must select real C branch effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        condition = "if ((next & 1U) == 0U) {"
+        self.assertEqual(original.count(condition), 1)
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following & 1 == 0 else following ^ 0x1A
+            oracle.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(oracle.hex(), "02191f08170f020d03101303")
+        expressions = {
+            "comparison": "((next & 1U) == 0U)",
+            "negated": "!((next & 1U) != 0U)",
+            "ordered": "((next & 1U) < 1U)",
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, expression in expressions.items():
+                with self.subTest(case=label):
+                    source = Path(scratch) / f"boolean-{label}.c"
+                    source.write_text(original.replace(
+                        condition,
+                        f"unsigned even = {expression};\n        if (even) {{",
+                    ))
+                    guest = source.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/boolean-{label}-fibonacci-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=120,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, oracle)
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+            for label, expression in {
+                "side-effect": "((next++ & 1U) == 0U)",
+                "undefined-division": "((next / 0U) == 0U)",
+                "signed-cast": "(((int)next & 1) == 0)",
+                "impure-call": "((putchar(70) & 1) == 0)",
+            }.items():
+                source = Path(scratch) / f"invalid-boolean-{label}.c"
+                source.write_text(original.replace(
+                    condition,
+                    f"unsigned even = {expression};\n        if (even) {{",
+                ))
+                guest = source.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [sys.executable, "-B", str(DRIVER),
+                     "--repository-tools", "--source-id",
+                     f"tests/invalid-boolean-{label}-v1", "--capsule",
+                     "--output", str(guest), str(source)],
+                    capture_output=True, check=False, timeout=45,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr, label)
+                self.assertFalse(guest.exists(), label)
+
+    def test_unsigned_boolean_local_forged_ast_refuses(self) -> None:
+        """Do not mistake a forged signed result for a proven C Boolean."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        source_text = original.replace(
+            "if ((next & 1U) == 0U) {",
+            "unsigned even = ((next & 1U) == 0U);\n        if (even) {",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "boolean-ast.c"
+            source.write_text(source_text)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/boolean-forged-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = json.loads(normalized.stdout)
+            nodes = parsed["nodes"]
+            boolean = next(
+                node for node in nodes
+                if node["kind"] == "variable-declaration"
+                and node.get("name") == "even"
+            )
+            cast = next(
+                node for node in nodes
+                if node["parent"] == boolean["id"]
+                and node["kind"] == "cast-expression"
+            )
+            group = next(
+                node for node in nodes
+                if node["parent"] == cast["id"]
+                and node["kind"] == "parenthesized-expression"
+            )
+            comparison = next(
+                node for node in nodes
+                if node["parent"] == group["id"]
+                and node["kind"] == "binary-expression"
+            )
+            cases = (
+                ("explicit-operation", cast, {"operation": "lvalue-to-rvalue"}),
+                ("wrong-type", cast, {"type": "i32"}),
+                ("nonboolean-operand", group, {"type": "u32"}),
+                ("unsupported-predicate", comparison, {"operation": "&"}),
+                ("wrong-parent", comparison, {"parent": boolean["id"]}),
+                ("extra-metadata", cast, {"name": "forged"}),
+                ("cast-span", cast, {"span": {
+                    **cast["span"],
+                    "end": {
+                        **cast["span"]["end"],
+                        "byte": cast["span"]["end"]["byte"] + 1,
+                        "column": cast["span"]["end"]["column"] + 1,
+                    },
+                }}),
+            )
+            for label, target, update in cases:
+                with self.subTest(case=label):
+                    changed = json.loads(normalized.stdout)
+                    changed["nodes"][target["id"] - 1].update(update)
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(changed).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_compound_assignment_fibonacci_guest_parity(self) -> None:
         """Compound C transfers retain the full twelve-byte guest oracle."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

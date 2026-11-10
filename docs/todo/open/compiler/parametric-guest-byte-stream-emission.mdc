@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a red-first full masked Fibonacci C program stored a
+  checked comparison into an `unsigned even` local before selecting two
+  output arms. The adapter previously refused at the initial declaration.
+  Implicit `i32` Boolean-to-`u32` conversion is now checked against exact
+  source spans and pure predicate ancestry. Equality, negated inequality
+  and ordered comparison variants each emit the twelve-byte independent
+  oracle on the normative guest VM under empty/binary stdin. Four invalid
+  sources and seven forged AST variants refuse guest publication. This
+  still folds bounded source state at compilation; original unmasked
+  Fibonacci and dynamic guest C predicates remain unsupported.
+
 - On 2026-11-10 two red-first complete masked Fibonacci C variants exposed
   missing unsigned compound local writes in the JSON-to-typed adapter.
   Source-backed `&=`, `|=`, `*=`, `/=`, `%=`, `<<=` and `>>=` now evaluate

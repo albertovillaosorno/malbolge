@@ -742,6 +742,25 @@ independently recover same-width C operator characters from normalized
 JSON; the pinned frontend and source-digest boundary remain trusted.
 The unmasked original Fibonacci guest stream remains unimplemented.
 
+### Source-backed unsigned locals initialized from Boolean predicates
+
+A pure C comparison or logical negation produces `int`, which C implicitly
+converts to `unsigned` on local initialization or assignment. The bounded
+source-state evaluator now checks an exact `integral-cast` from a complete
+`i32` predicate to `u32` with identical source spans. Only a fully proven
+unsigned comparison, parenthesized Boolean, or pure `!`/`&&`/`||` predicate
+can produce the stored zero or one. An explicit cast, signed arithmetic,
+side effect, division by zero, detached child or malformed AST refuses.
+
+Three complete twelve-iteration masked Fibonacci variants store equality,
+negation or ordered comparison results in a loop-local `unsigned even`, then
+select both real C branches using `if (even)`. Each emits the independent
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` oracle on the normative VM with
+empty and binary input. Four invalid C variants and seven forged normalized
+AST mutations refuse publication. This is bounded source-backed state
+projection: the guest does not calculate the predicate at runtime. The
+original unmasked twelve-byte output is still unsupported at layout.
+
 ### Branch-selected `putchar` effects inside a bounded `for`
 
 The source-proven loop evaluator now accepts one `putchar` in each arm of
