@@ -108,6 +108,33 @@ def branch_local_masked_fibonacci_source() -> str:
     )
 
 
+
+def shadowed_masked_fibonacci_source() -> str:
+    """Reuse the outer `b` name inside one explicit nested loop block."""
+    source = MASKED_FIBONACCI.read_text()
+    original = (
+        "        if ((next & 1U) == 0U) {\n"
+        "            putchar((int)(next & 31U));\n"
+        "        } else {\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "        }\n"
+        "        a = b;"
+    )
+    shadowed = (
+        "        {\n"
+        "            unsigned b = (next ^ 0x1AU) & 31U;\n"
+        "            if ((next & 1U) == 0U) {\n"
+        "                putchar((int)(next & 31U));\n"
+        "            } else {\n"
+        "                putchar((int)b);\n"
+        "            }\n"
+        "        }\n"
+        "        a = b;"
+    )
+    assert source.count(original) == 1
+    return source.replace(original, shadowed)
+
+
 def exiting_masked_fibonacci_source(*, keyword: str, iteration: int) -> str:
     """Exit a source-proven bounded for body after its recurrence transfer."""
     original = MASKED_FIBONACCI.read_text()
@@ -571,6 +598,154 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
+
+    def test_shadowed_loop_local_preserves_outer_fibonacci_state(self) -> None:
+        """A nested `b` is distinct from the recurrence's enclosing `b`."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            shadow = (following ^ 0x1A) & 31
+            expected.append((following & 31) if following % 2 == 0 else shadow)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        source_text = shadowed_masked_fibonacci_source()
+        updated = source_text.replace(
+            "            unsigned b = (next ^ 0x1AU) & 31U;",
+            "            unsigned b = next & 31U;\n"
+            "            b = b ^ 0x1AU;",
+        )
+        self.assertNotEqual(updated, source_text)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, variant in (("declaration", source_text), ("write", updated)):
+                with self.subTest(label=label):
+                    source = Path(scratch) / f"shadowed-{label}.c"
+                    source.write_text(variant)
+                    guest = Path(scratch) / f"shadowed-{label}.malbolge"
+                    command = [
+                        sys.executable, "-B", str(DRIVER), "--repository-tools",
+                        "--source-id", f"tests/shadowed-{label}-v1", "--capsule",
+                        "--output", str(guest), str(source),
+                    ]
+                    compiled = subprocess.run(
+                        command, capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertRegex(
+                            executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                        )
+
+    def test_shadowed_local_rejects_forged_binding_and_bad_source(self) -> None:
+        """Retargeting an inner `b` read to the outer `b` cannot pass."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        text = shadowed_masked_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "shadowed-fibonacci.c"
+            source.write_text(text)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/shadowed-fibonacci-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = json.loads(normalized.stdout)
+            declarations = [
+                node for node in parsed["nodes"]
+                if node["kind"] == "variable-declaration" and node.get("name") == "b"
+            ]
+            self.assertEqual(len(declarations), 2)
+            outer, inner = declarations
+            self.assertNotEqual(outer["reference"], inner["reference"])
+            reads = [
+                node for node in parsed["nodes"]
+                if node["kind"] == "declaration-reference-expression"
+                and node.get("reference") == inner["reference"]
+            ]
+            self.assertEqual(len(reads), 1)
+            for label, original, update in (
+                ("retarget-inner-read", reads[0], {"reference": outer["reference"]}),
+                ("retarget-inner-declaration", inner, {"reference": outer["reference"]}),
+                ("forged-parent", inner, {"parent": outer["parent"]}),
+                ("forged-metadata", inner, {"operation": "="}),
+            ):
+                with self.subTest(label=label):
+                    altered = json.loads(normalized.stdout)
+                    altered["nodes"][original["id"] - 1].update(update)
+                    guest = Path(scratch) / f"{label}.malbolge"
+                    result = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(altered).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertIn(b"Unsupported", result.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+            updated_text = text.replace(
+                "            unsigned b = (next ^ 0x1AU) & 31U;",
+                "            unsigned b = next & 31U;\n"
+                "            b = b ^ 0x1AU;",
+            )
+            rewritten = Path(scratch) / "shadowed-write.c"
+            rewritten.write_text(updated_text)
+            write_frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/shadowed-write-ast-v1", str(rewritten)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(write_frontend.returncode, 0, write_frontend.stderr)
+            write_nodes = json.loads(write_frontend.stdout)["nodes"]
+            assignments = [
+                node for node in write_nodes
+                if node["kind"] == "binary-expression"
+                and node.get("operation") == "="
+                and node["span"]["begin"]["line"]
+                == updated_text[:updated_text.index("b = b ^ 0x1AU;")].count("\n") + 1
+            ]
+            self.assertEqual(len(assignments), 1)
+            written = next(
+                node for node in write_nodes
+                if node["parent"] == assignments[0]["id"]
+                and node["kind"] == "declaration-reference-expression"
+            )
+            self.assertNotEqual(written["reference"], outer["reference"])
+            forged = json.loads(write_frontend.stdout)
+            forged["nodes"][written["id"] - 1]["reference"] = outer["reference"]
+            refused = Path(scratch) / "retarget-shadow-write.malbolge"
+            attempt = subprocess.run(
+                [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                 "--output", str(refused), "--capsule"],
+                input=json.dumps(forged).encode(),
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertNotEqual(attempt.returncode, 0)
+            self.assertIn(b"Unsupported", attempt.stderr)
+            self.assertFalse(refused.exists())
+            invalid = Path(scratch) / "shadow-undefined.c"
+            invalid.write_text(text.replace("(next ^ 0x1AU) & 31U", "next / 0U"))
+            guest = Path(scratch) / "undefined.malbolge"
+            failed = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/shadow-undefined-v1", "--capsule",
+                 "--output", str(guest), str(invalid)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertFalse(guest.exists())
 
     def test_branch_local_fibonacci_emits_real_guest_bytes(self) -> None:
         """Scoped conditional temporaries preserve enclosing Fibonacci state."""

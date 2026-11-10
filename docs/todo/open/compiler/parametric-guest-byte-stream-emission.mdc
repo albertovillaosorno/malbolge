@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete twelve-output masked Fibonacci C recurrence
+  with a nested local shadowing the enclosing recurrence variable `b`
+  first refused at the typed adapter without guest publication. Source-
+  proven lexical scope now admits the inner `b` only as a distinct active
+  binding, with reads and writes resolving to the innermost visible symbol.
+  Two full C variants (direct shadow initialization and an inner write)
+  emit all twelve independent Fibonacci oracle bytes through the normative
+  guest under empty/nonempty stdin. Forged inner reads, writes, declaration
+  identity, ancestry, metadata and undefined arithmetic refuse without
+  output. This is bounded compile-time scope folding, not runtime C storage;
+  the original unmasked stream and generalized layout are still unsupported.
+
 - On 2026-11-09 the complete masked Fibonacci C recurrence with a
   source-selected conditional `return;` after twelve iterations initially
   refused at the typed adapter without guest publication. A closed void-return

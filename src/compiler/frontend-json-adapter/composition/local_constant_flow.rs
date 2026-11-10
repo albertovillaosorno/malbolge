@@ -97,10 +97,14 @@ impl<'node> Flow<'node> {
         let left =
             self.take(assignment.id, "declaration-reference-expression")?;
         let symbol = left.reference.as_deref()?;
-        let destination = self
-            .locals
-            .iter()
-            .position(|local| local.symbol == symbol)?;
+        // Only the innermost active declaration of this source name can
+        // receive a C write. A forged Clang symbol cannot bypass shadowing.
+        let (name, _) = symbol.rsplit_once('@')?;
+        let destination =
+            self.locals.iter().rposition(|local| local.name == name)?;
+        if self.locals.get(destination)?.symbol != symbol {
+            return None;
+        }
         if self.loop_counters.contains(&symbol)
             || !assigned_local_reference(left, symbol)
             || !span_within(&assignment.span, &left.span)
@@ -398,10 +402,11 @@ impl<'node> Flow<'node> {
         let name = variable.name.as_deref()?;
         let symbol = variable.reference.as_deref()?;
         if self.locals.len() >= MAX_LOCALS
-            || self
-                .locals
-                .iter()
-                .any(|local| local.symbol == symbol || local.name == name)
+            || self.locals.iter().any(|local| {
+                local.symbol == symbol
+                    || (local.name == name
+                        && span_within(&body.span, &local.declaration.span))
+            })
             || !clean(statement)
             || variable.type_name.as_deref() != Some("u32")
             || variable.definition.as_deref() != Some("definition")
@@ -665,7 +670,14 @@ impl<'node> Flow<'node> {
 
     fn referenced(&self, read: &Node) -> Option<(u8, &'node Node)> {
         let symbol = read.reference.as_deref()?;
-        let local = self.locals.iter().find(|local| local.symbol == symbol)?;
+        // Symbol identity alone is insufficient: the AST could falsely
+        // bind an inner-source read to an active outer declaration.
+        let (name, _) = symbol.rsplit_once('@')?;
+        let local =
+            self.locals.iter().rev().find(|local| local.name == name)?;
+        if local.symbol != symbol {
+            return None;
+        }
         if !assigned_local_reference(read, symbol)
             || !symbol_location(local.declaration, local.name, symbol)
             || read.span.begin.byte < local.declaration.span.end.byte

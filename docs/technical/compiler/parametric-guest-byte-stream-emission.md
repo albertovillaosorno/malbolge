@@ -171,6 +171,31 @@ refuse without publication. This is bounded compile-time C selection, not
 runtime guest C control flow; the original unmasked twelve-byte stream
 and generalized guest layout remain unsupported.
 
+### Source-proven lexical shadowing in a complete recurrence (2026-11-09)
+
+A full twelve-iteration masked Fibonacci C source introduced a nested loop
+block declaring a new `unsigned b`, while its enclosing recurrence already
+had a distinct `b`. The inner `b` supplies selected `putchar` arguments,
+but the next recurrence transfer must read and update the enclosing `b`.
+The pinned Clang stage accepted the complete C program, but the bounded
+typed adapter initially refused at its first declaration statement without
+publishing guest output. The projector now admits distinct same-name locals
+only across source-proven lexical scopes, selecting the innermost visible
+symbol for both reads and writes. Same-scope aliases remain unsupported.
+
+Two complete C variants independently reach the normative `malbolge-2026`
+VM: the shadowed local is initialized to its output value directly, or is
+initialized differently and then explicitly reassigned before output.
+Both emit the twelve oracle bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+under empty and nonempty stdin, while the enclosing recurrence state stays
+unchanged by the shadowed writes. Forging a Clang inner read or assignment
+target to refer to the still-active outer symbol now refuses, as do forged
+declaration parentage, metadata and invalid source arithmetic; no failed
+case publishes a guest artifact. These are finite source-proven C state
+projections, not dynamic C lexical environments or runtime C variable
+storage in the guest. Original unmasked Fibonacci still lacks a guest
+layout witness.
+
 ### Conditional void return in bounded whole-program C (2026-11-09)
 
 A complete twelve-output masked Fibonacci program with a `for` bound of
