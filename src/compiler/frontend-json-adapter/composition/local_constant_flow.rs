@@ -251,24 +251,52 @@ impl<'node> Flow<'node> {
         Some(())
     }
 
-    /// Prove a pure unsigned `~` over an entire checked expression subtree.
-    /// C complements all 32 unsigned bits; any later `& 255U` narrows it.
-    fn complement_expression(
+    /// Prove unsigned unary operators over one complete expression subtree.
+    /// C negation wraps modulo 2^32, just as unsigned binary subtraction.
+    /// The newly admitted `+` and `-` require an adjacent parenthesized
+    /// operand; unparenthesized `~next` cannot be forged into a new sign.
+    /// This is a deliberately bounded source topology, not C token parsing.
+    fn complement_or_sign_expression(
         &mut self,
         parent: u32,
         depth: usize,
     ) -> Option<(u32, &'node Node)> {
-        let complement = self.take(parent, "unary-expression")?;
+        let unary = self.take(parent, "unary-expression")?;
+        let operation = unary.operation.as_deref()?;
         let (value, operand) =
-            self.expression(complement.id, depth.checked_add(1)?)?;
-        if !typed_operator(complement, "~")
-            || !span_within(&complement.span, &operand.span)
-            || complement.span.begin.byte >= operand.span.begin.byte
-            || complement.span.end.byte != operand.span.end.byte
+            self.expression(unary.id, depth.checked_add(1)?)?;
+        if !matches!(operation, "~" | "+" | "-")
+            || !typed_operator(unary, operation)
+            || !span_within(&unary.span, &operand.span)
+            || unary.span.begin.byte >= operand.span.begin.byte
+            || unary.span.end.byte != operand.span.end.byte
+            || (operation != "~"
+                && (operand.kind != "parenthesized-expression"
+                    || unary.span.begin.line != operand.span.begin.line
+                    || operand
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(unary.span.begin.byte)
+                        != Some(1)
+                    || operand
+                        .span
+                        .begin
+                        .column
+                        .checked_sub(unary.span.begin.column)
+                        != Some(1)))
         {
             return None;
         }
-        Some((!value, complement))
+        Some((
+            match operation {
+                "~" => !value,
+                "+" => value,
+                "-" => value.wrapping_neg(),
+                _ => return None,
+            },
+            unary,
+        ))
     }
 
     /// Prove a pure C Boolean tree, including negated comparisons.
@@ -572,7 +600,9 @@ impl<'node> Flow<'node> {
             "conditional-expression" => {
                 self.conditional_expression(parent, depth)
             },
-            "unary-expression" => self.complement_expression(parent, depth),
+            "unary-expression" => {
+                self.complement_or_sign_expression(parent, depth)
+            },
             "binary-expression" => self.binary_expression(parent, depth),
             _ => None,
         }

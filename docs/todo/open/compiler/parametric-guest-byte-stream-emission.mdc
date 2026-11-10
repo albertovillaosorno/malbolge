@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete twelve-iteration masked Fibonacci C program
+  first rejected unary unsigned `-`/`+` on wide intermediate state. The bounded
+  local-flow proof now admits unsigned negation modulo 2^32 and unary plus
+  only with an adjacent parenthesized operand. This preserves the earlier
+  rejection of a forged complement AST operator. The full source emits the
+  independent twelve-byte masked oracle on the normative guest VM under
+  empty and binary stdin (47 guest steps each). Five invalid C sources and
+  six malformed AST variants reject without artifact publication. This remains
+  compile-time folding; the original unmasked Fibonacci layout and general
+  guest-side C arithmetic remain P0 gaps.
+
 - On 2026-11-10 the complete masked Fibonacci recurrence with an additional
   `unsigned wide = a + b + 65536U;` local first refused at the adapter without
   publishing a guest. Its closed state projector now preserves full u32

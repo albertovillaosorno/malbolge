@@ -139,6 +139,17 @@ def wide_unsigned_masked_fibonacci_source(expression: str) -> str:
     return source.replace(original, f"unsigned next = {expression};")
 
 
+def unary_unsigned_masked_fibonacci_source() -> str:
+    """Exercise full-width unary unsigned signs in the complete C loop."""
+    source = MASKED_FIBONACCI.read_text()
+    original = "unsigned next = (a + b) & 255U;"
+    assert source.count(original) == 1
+    return source.replace(
+        original,
+        "unsigned wide = -(a + b);\n        unsigned next = (+(0U - wide)) & 255U;",
+    )
+
+
 def stored_unsigned_masked_fibonacci_source(statements: str) -> str:
     """Carry a full u32 value through a separately named automatic local."""
     source = MASKED_FIBONACCI.read_text()
@@ -6141,6 +6152,163 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(refused.returncode, 0, label)
                 self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_unsigned_unary_signs_preserve_complete_c_guest_oracle(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = unary_unsigned_masked_fibonacci_source()
+        # An independent unsigned-C oracle: both signs wrap modulo 2**32.
+        a, b = 1, 1
+        reference = bytearray()
+        saw_wrapping_negative = False
+        for _ in range(12):
+            wide = (-(a + b)) & 0xFFFF_FFFF
+            saw_wrapping_negative = saw_wrapping_negative or wide > 255
+            following = (-wide) & 0xFFFF_FFFF
+            following &= 255
+            reference.append(
+                (following & 31) if (following & 1) == 0 else ((following ^ 0x1A) & 31)
+            )
+            a, b = b, following
+        self.assertTrue(saw_wrapping_negative)
+        self.assertEqual(bytes(reference), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / "unsigned-unary-complete.c"
+            candidate.write_text(original)
+            guest = candidate.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/unsigned-unary-complete-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=100,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for guest_input in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=guest_input,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(reference))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+            for label, changed in {
+                "unparenthesized": original.replace("-(a + b)", "-a"),
+                "spaced-sign": original.replace("-(a + b)", "- (a + b)"),
+                "postincrement": original.replace("-(a + b)", "-(a + b++)"),
+                "undefined": original.replace("0U - wide", "0U - (wide / 0U)"),
+                "signed-cast": original.replace("0U - wide", "0U - (int)wide"),
+            }.items():
+                refused_source = Path(scratch) / f"invalid-unary-{label}.c"
+                refused_source.write_text(changed)
+                refused_guest = refused_source.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/invalid-unary-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(refused_guest),
+                        str(refused_source),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(refused_guest.exists(), label)
+
+    def test_unsigned_unary_signs_reject_forged_ast(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / "unsigned-unary-ast.c"
+            candidate.write_text(unary_unsigned_masked_fibonacci_source())
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/unsigned-unary-ast-v1",
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            unary = [
+                node
+                for node in nodes
+                if node["kind"] == "unary-expression"
+                and node.get("operation") in ("+", "-")
+            ]
+            self.assertEqual(len(unary), 2)
+            outer = next(node for node in unary if node["operation"] == "+")
+            first = next(node for node in unary if node["operation"] == "-")
+            first_id = cast(int, first["id"])
+            first_operand = next(node for node in nodes if node["parent"] == first_id)
+            self.assertEqual(first_operand["kind"], "parenthesized-expression")
+            changes = (
+                ("operator", first_id, "operation", "*"),
+                ("type", first_id, "type", "i32"),
+                ("parent", first_id, "parent", 0),
+                ("metadata", first_id, "literal", "0"),
+                (
+                    "operand-kind",
+                    cast(int, first_operand["id"]),
+                    "kind",
+                    "cast-expression",
+                ),
+                ("plus-type", cast(int, outer["id"]), "type", "i32"),
+            )
+            for label, node_id, field, value in changes:
+                forged = cast(dict[str, object], json.loads(frontend.stdout))
+                forged_nodes = cast(list[dict[str, object]], forged["nodes"])
+                forged_nodes[node_id - 1][field] = value
+                guest = Path(scratch) / f"forged-unsigned-unary-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(forged).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
                 self.assertFalse(guest.exists(), label)
 
     def test_unsigned_complement_recurrence_reaches_real_guest(self) -> None:

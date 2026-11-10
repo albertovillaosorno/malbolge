@@ -73,6 +73,29 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Unsigned unary signs over full C locals (2026-11-10)
+
+The complete twelve-step masked Fibonacci recurrence was retried with a
+full-width intermediate `unsigned wide = -(a + b);` and a subsequent
+`unsigned next = (+(0U - wide)) & 255U;`. The typed adapter first refused
+both ordinary C unary signs, even though subtraction and unsigned wraparound
+were already proven for binary expressions. The closed local-state projector
+now admits unary `-` as wrapping 32-bit negation and unary `+` as identity,
+only for adjacent parenthesized expression operands. The previously supported
+`~next` complement remains accepted, but changing its normalized operator
+to a sign without matching operand topology now refuses before guest layout.
+
+The pinned frontend and typed/backend compiler emit a 2,207-byte current-profile
+Malbolge capsule. Both empty and binary stdin replays of the normative VM
+produce the independent masked Fibonacci oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps each. Five invalid source
+variants cover unparenthesized or spaced signs, hidden state mutation,
+undefined division, and a signed cast; six AST mutations cover operator,
+type, parent, unrecognized metadata and operand topology. All refuse before
+guest publication. Normalized AST metadata is still a bounded proof input,
+not a complete raw-source token attestation. Dynamic C state and the original
+unmasked twelve-byte output remain unsupported at guest layout; P0 stays open.
+
 ### Full unsigned C locals across the complete recurrence (2026-11-10)
 
 Replaying the entire twelve-output masked Fibonacci C program with
