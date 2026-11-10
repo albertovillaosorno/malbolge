@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete twelve-output masked Fibonacci C program
+  with three `if`/`else if`/`else` output arms initially refused at the
+  typed adapter without publishing a guest. Source-proven nested Clang
+  `if-statement` parentage and bounds now preserve independent arm effects
+  and selected loop-carried state. Every arm is exercised by the full C
+  recurrence; the normative VM emits the independent twelve-byte oracle
+  under empty and nonempty stdin. Four invalid source variants and four
+  forged AST variants reject without publication, including undefined
+  arithmetic in a statically skipped arm. The projector still folds C
+  state on the host; the original unmasked Fibonacci layout and P0 remain
+  unsupported.
+
 - On 2026-11-09 a complete masked Fibonacci program using ordinary
   `for` induction `i = i + 1U` first refused at the typed adapter without
   publishing a guest. The bounded proof now admits source-contiguous

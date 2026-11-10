@@ -378,15 +378,42 @@ impl<'node> Flow<'node> {
             }
             return Some(statement.span.end.byte);
         }
-        let else_body = self.take(statement.id, "compound-statement")?;
-        if !clean(else_body)
-            || !span_within(&statement.span, &else_body.span)
-            || then_body.span.end.byte > else_body.span.begin.byte
-            || else_body.span.end.byte != statement.span.end.byte
-        {
-            return None;
+        // Clang represents `else if` as an if-statement directly parented
+        // to the preceding if, not as a synthetic compound else body.
+        // Reprove the entire nested chain against the same incoming state
+        // before choosing either arm; no speculative effects may escape.
+        match self.peek()?.kind.as_str() {
+            "compound-statement" => {
+                let else_body =
+                    self.take(statement.id, "compound-statement")?;
+                if !clean(else_body)
+                    || !span_within(&statement.span, &else_body.span)
+                    || then_body.span.end.byte > else_body.span.begin.byte
+                    || else_body.span.end.byte != statement.span.end.byte
+                {
+                    return None;
+                }
+                self.branch_effects(else_body, depth)?;
+            },
+            "if-statement" => {
+                let else_if = self.peek()?;
+                if else_if.parent != statement.id
+                    || then_body.span.end.byte >= else_if.span.begin.byte
+                    || else_if.span.end.byte != statement.span.end.byte
+                {
+                    return None;
+                }
+                let end = self.conditional(
+                    statement,
+                    then_body.span.end.byte,
+                    depth.checked_add(1)?,
+                )?;
+                if end != statement.span.end.byte {
+                    return None;
+                }
+            },
+            _ => return None,
         }
-        self.branch_effects(else_body, depth)?;
         if take_then {
             self.locals = then_state;
             self.loop_exit = then_exit;

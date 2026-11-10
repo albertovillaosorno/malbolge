@@ -108,6 +108,28 @@ def branch_local_masked_fibonacci_source() -> str:
     )
 
 
+def else_if_masked_fibonacci_source() -> str:
+    """Select three real C branches across a full Fibonacci recurrence.
+
+    Returns:
+        A source-backed three-way Fibonacci C program.
+    """
+    source = MASKED_FIBONACCI.read_text()
+    previous = (
+        "        } else {\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "        }"
+    )
+    chain = (
+        "        } else if ((next & 2U) != 0U) {\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "        } else {\n"
+        "            putchar((int)((next & 31U) ^ 0x1AU));\n"
+        "        }"
+    )
+    assert source.count(previous) == 1
+    return source.replace(previous, chain)
+
 
 def shadowed_masked_fibonacci_source() -> str:
     """Reuse the outer `b` name inside one explicit nested loop block."""
@@ -328,6 +350,146 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn(b"Unsupported", rejected.stderr)
             self.assertFalse(rejected_guest.exists())
+
+    def test_else_if_chain_full_fibonacci_guest_parity(self) -> None:
+        """All three C arms must be proven; the real VM emits all bytes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        expected = bytes.fromhex("02191f08170f020d03101303")
+        previous, current = 1, 1
+        hits = [0, 0, 0]
+        outputs = bytearray()
+        for _ in range(12):
+            next_value = (previous + current) & 255
+            if (next_value & 1) == 0:
+                hits[0] += 1
+                outputs.append(next_value & 31)
+            elif (next_value & 2) != 0:
+                hits[1] += 1
+                outputs.append((next_value ^ 0x1A) & 31)
+            else:
+                hits[2] += 1
+                outputs.append((next_value & 31) ^ 0x1A)
+            previous, current = current, next_value
+        self.assertTrue(all(hits), hits)
+        self.assertEqual(bytes(outputs), expected)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-else-if.c"
+            _written = source.write_text(else_if_masked_fibonacci_source())
+            guest = Path(scratch) / "fibonacci-else-if.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/fibonacci-else-if-v1", "--capsule",
+                "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                )
+
+    def test_else_if_chain_refuses_unproved_source_and_forged_ast(self) -> None:
+        """Even unselected C arms and nested Clang ancestry remain checked."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = else_if_masked_fibonacci_source()
+        odd_expression = "((next ^ 0x1AU) & 31U)"
+        final_expression = "((next & 31U) ^ 0x1AU)"
+        self.assertIn(odd_expression, source_text)
+        self.assertIn(final_expression, source_text)
+        cases = {
+            "undefined-third-arm": source_text.replace(
+                final_expression, "((next & 31U) / 0U)"
+            ),
+            "undefined-skipped-else-if": source_text.replace(
+                "((next & 1U) == 0U)", "((next & 1U) <= 1U)"
+            ).replace(odd_expression, "((next ^ 0x1AU) / 0U)"),
+            "unbraced-else-if": source_text.replace(
+                "} else if ((next & 2U) != 0U) {\n"
+                + "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+                + "        } else {",
+                "} else if ((next & 2U) != 0U)\n"
+                + "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+                + "        else {",
+            ),
+            "excessive-chain-depth": source_text.replace(
+                "} else {\n"
+                + "            putchar((int)((next & 31U) ^ 0x1AU));",
+                ("} else if ((next & 4U) != 0U) {\n"
+                 + "            putchar((int)((next ^ 0x1AU) & 31U));\n") * 4
+                + "        } else {\n"
+                + "            putchar((int)((next & 31U) ^ 0x1AU));",
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, variant in cases.items():
+                with self.subTest(label=label):
+                    source = Path(scratch) / f"{label}.c"
+                    _written = source.write_text(variant)
+                    guest = Path(scratch) / f"{label}.malbolge"
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/else-if-{label}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"normalized frontend rejected: Unsupported", rejected.stderr)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "else-if-ast.c"
+            _written = source.write_text(source_text)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/else-if-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = cast(dict[str, object], json.loads(normalized.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            chain = [node for node in nodes if node["kind"] == "if-statement"]
+            self.assertEqual(len(chain), 2)
+            outer, nested = chain
+            self.assertEqual(nested["parent"], outer["id"])
+            nested_span = cast(dict[str, dict[str, int]], nested["span"])
+            altered_end = nested_span["end"]["byte"] - 1
+            for label, mutation in (
+                ("wrong-parent", {"parent": outer["parent"]}),
+                ("unexpected-metadata", {"operation": "="}),
+                ("wrong-kind", {"kind": "while-statement"}),
+                ("truncated-else-if", {"span": {
+                    **nested_span, "end": {
+                        **nested_span["end"], "byte": altered_end,
+                    },
+                }}),
+            ):
+                with self.subTest(label=label):
+                    altered = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(normalized.stdout),
+                    )
+                    altered["nodes"][cast(int, nested["id"]) - 1].update(mutation)
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    result = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(altered).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
 
     def test_high_bit_xor_metameric_fibonacci_guest_parity(self) -> None:
         """Different source expressions emit the same twelve actual guest bytes."""

@@ -73,6 +73,30 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Source-proven `else if` chains in full C control flow (2026-11-09)
+
+The complete twelve-iteration masked Fibonacci C recurrence was retried with
+three source-level output arms, using an ordinary `else if` condition between
+the original even and odd cases. The pinned Clang frontend represented the
+second condition as an `if-statement` directly parented to the first; the
+typed adapter initially refused the program at its first declaration and
+published no guest artifact.
+
+The closed C-state projector now proves a nested `else if` as a source-ordered
+Clang child of its enclosing `if`, with bounded conditional depth and exact
+parent and end-span agreement. Each arm is replayed against the same incoming
+local state; only the selected branch commits its writes, exit and byte
+effects. Unselected arms and conditions must still be pure and defined.
+
+All three output arms are selected by the complete recurrence. The resulting
+Malbolge guest emits the independent twelve-byte masked Fibonacci oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` under both empty and nonempty
+binary stdin. Four negative whole-C cases (undefined arithmetic in a third
+arm or provably skipped `else if`, an unbraced arm, and excess chain depth)
+and four forged normalized-AST cases refuse without guest publication. The
+compiler still folds finite local state at compile time, not in the guest;
+the unchanged unmasked Fibonacci output remains unsupported at guest layout.
+
 ### Assignment-form `for` induction in a complete C program (2026-11-09)
 
 The twelve-output five-bit masked Fibonacci recurrence was first retried with
