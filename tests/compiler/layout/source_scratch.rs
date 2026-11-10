@@ -346,6 +346,59 @@ fn expanded_loader_jump_reads_unmodified_guest_memory() -> Result<(), String> {
     Ok(())
 }
 
+// A symbolic forward jump can be proven from untouched expanded loader
+// memory if its as-yet-unknown gap can be solved against the final fixed
+// graphical source tail. This must produce the same guest as the independent
+// concrete target, including its binary input and every executed address.
+#[test]
+fn auto_padding_jump_uses_proven_expanded_loader_word() -> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 8];
+    logical.extend([
+        AutoRelocate,
+        Jump,
+        Instruction(LinearOpcode::InputWord),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::NoOperation),
+        Instruction(LinearOpcode::NoOperation),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    let operations = expanded_loader_jump_operations()?;
+    for profile in [current_profile(), historical_profile()] {
+        let independent = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("concrete loader jump: {error:?}"))?;
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("automatic loader jump: {error:?}"))?;
+        if artifact.layout() != &independent
+            || artifact.logical_code_positions().get(8..)
+                != Some([8, 9, 39, 40, 41, 42, 43].as_slice())
+        {
+            return Err(String::from("automatic loader jump differs"));
+        }
+        verify_bidirectional_source_map(&artifact)?;
+        for byte in [0u8, 255] {
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                independent.source(),
+                vec![byte],
+            )
+            .map_err(|error| format!("automatic loader guest: {error:?}"))?;
+            verify_execution_witness(&mut vm, &independent)?;
+            if vm.input_consumed() != 1 || vm.output() != [byte] {
+                return Err(String::from("automatic loader guest I/O differs"));
+            }
+        }
+        let mut unfixed_tail = logical.clone();
+        *unfixed_tail.get_mut(12).ok_or("missing fixed suffix")? = Jump;
+        if encode_auto_padded_forward_layout(profile, &unfixed_tail)
+            != Err(LinearLayoutError::JumpPathUnsupported)
+        {
+            return Err(String::from("unproven future jump gap admitted"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 #[expect(
     clippy::too_many_lines,

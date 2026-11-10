@@ -278,6 +278,8 @@ impl PaddedForwardLayout {
     }
 }
 
+type FixedGraphicalTail = [u8; 2];
+
 struct ForwardPaddingBuilder<'profile> {
     accumulator: Option<u32>,
     data_pointer: usize,
@@ -333,8 +335,39 @@ impl ForwardPaddingBuilder<'_> {
     fn advance_data_pointer(&mut self) -> Result<(), LinearLayoutError> {
         let memory_words = usize::try_from(self.profile.memory_words())
             .map_err(|_error| LinearLayoutError::TooLong)?;
-        self.data_pointer = (self.data_pointer + 1) % memory_words;
+        self.data_pointer =
+            self.data_pointer.saturating_add(1).rem_euclid(memory_words);
         Ok(())
+    }
+
+    fn fixed_source_tail(
+        &self,
+        length: usize,
+        remaining: &[PaddedForwardStep],
+    ) -> Result<Option<FixedGraphicalTail>, LinearLayoutError> {
+        if remaining.len() < 2
+            || !remaining
+                .iter()
+                .all(|step| matches!(step, PaddedForwardStep::Instruction(_)))
+        {
+            return Ok(None);
+        }
+        let mut tail = [0u8; 2];
+        for (index, cell) in tail.iter_mut().enumerate() {
+            let suffix_index =
+                remaining.len().saturating_sub(2).saturating_add(index);
+            let Some(PaddedForwardStep::Instruction(operation)) =
+                remaining.get(suffix_index)
+            else {
+                return Ok(None);
+            };
+            *cell = unique_graphical_cell(
+                self.profile,
+                *operation,
+                length.saturating_sub(2).saturating_add(index),
+            )?;
+        }
+        Ok(Some(tail))
     }
 
     fn instruction(
@@ -403,13 +436,23 @@ impl ForwardPaddingBuilder<'_> {
         Ok(position)
     }
 
-    fn jump(&mut self) -> Result<usize, LinearLayoutError> {
-        // After relocation the planner knows only past source operands,
-        // including deterministic writes. Loader-expanded values need the
-        // final source tail; input-tainted scratch remains unresolved.
+    fn jump(
+        &mut self,
+        remaining: &[PaddedForwardStep],
+    ) -> Result<usize, LinearLayoutError> {
+        // A source operand is known from the current shadow. An untouched
+        // expanded operand can also be proved by solving the unknown jump
+        // gap against its final, fixed graphical suffix.
+        let expanded_target =
+            if self.relocated && self.data_pointer >= self.operations.len() {
+                self.proven_expanded_loader_jump_target(remaining)?
+            } else {
+                None
+            };
         if self.relocated
-            && (self.data_pointer >= self.operations.len()
-                || self.unproven_source_writes.contains(&self.data_pointer))
+            && (self.unproven_source_writes.contains(&self.data_pointer)
+                || (self.data_pointer >= self.operations.len()
+                    && expanded_target.is_none()))
         {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
@@ -419,12 +462,16 @@ impl ForwardPaddingBuilder<'_> {
             &mut self.shadow,
             LinearOpcode::JumpForward { target: 0 },
         )?;
-        let operand = self
-            .shadow
-            .get(self.data_pointer)
-            .ok_or(LinearLayoutError::JumpPathUnsupported)?;
-        let target = usize::try_from(operand.saturating_add(1))
-            .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+        let target = if let Some(target) = expanded_target {
+            target
+        } else {
+            let operand = self
+                .shadow
+                .get(self.data_pointer)
+                .ok_or(LinearLayoutError::JumpPathUnsupported)?;
+            usize::try_from(operand.saturating_add(1))
+                .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?
+        };
         if target <= code_position.saturating_add(1)
             || target >= MAX_LINEAR_CELLS
         {
@@ -448,6 +495,45 @@ impl ForwardPaddingBuilder<'_> {
         }
         encrypt_padded_cell(&mut self.shadow, target.saturating_sub(1))?;
         Ok(code_position)
+    }
+
+    fn proven_expanded_loader_jump_target(
+        &self,
+        remaining: &[PaddedForwardStep],
+    ) -> Result<Option<usize>, LinearLayoutError> {
+        if remaining.len() < 2
+            || self.expanded_writes.contains(&self.data_pointer)
+            || !remaining
+                .iter()
+                .all(|step| matches!(step, PaddedForwardStep::Instruction(_)))
+        {
+            return Ok(None);
+        }
+        let position = self.operations.len();
+        let min_target = position.saturating_add(2);
+        let max_target = MAX_LINEAR_CELLS
+            .min(self.data_pointer)
+            .saturating_sub(remaining.len());
+        for target in min_target..=max_target {
+            let length = target.saturating_add(remaining.len());
+            let Some(tail) = self.fixed_source_tail(length, remaining)? else {
+                return Ok(None);
+            };
+            let offset = self.data_pointer.saturating_sub(length).rem_euclid(6);
+            let operand = unwritten_loader_word(
+                &tail,
+                2usize.saturating_add(offset),
+                self.profile,
+            )?;
+            if usize::try_from(operand)
+                .ok()
+                .and_then(|word| word.checked_add(1))
+                == Some(target)
+            {
+                return Ok(Some(target));
+            }
+        }
+        Ok(None)
     }
 
     fn proven_relocation_operand(
@@ -486,7 +572,10 @@ impl ForwardPaddingBuilder<'_> {
         // An untouched expanded word depends on the *final* two graphical
         // source cells. Derive them only when all remaining logical steps
         // are fixed instructions requiring no future jump or padding.
-        let Some(length) = position.checked_add(remaining.len() + 1) else {
+        let Some(length) = position
+            .checked_add(remaining.len())
+            .and_then(|size| size.checked_add(1))
+        else {
             return Err(LinearLayoutError::TooLong);
         };
         if !self.relocated
@@ -499,30 +588,17 @@ impl ForwardPaddingBuilder<'_> {
         {
             return Ok(None);
         }
-        if !remaining
-            .iter()
-            .all(|step| matches!(step, PaddedForwardStep::Instruction(_)))
-        {
+        let Some(tail) = self.fixed_source_tail(length, remaining)? else {
             return Ok(None);
-        }
-        let mut tail = [0u8; 2];
-        for (index, cell) in tail.iter_mut().enumerate() {
-            let suffix_index = remaining.len() - 2 + index;
-            let Some(PaddedForwardStep::Instruction(operation)) =
-                remaining.get(suffix_index)
-            else {
-                return Ok(None);
-            };
-            *cell = unique_graphical_cell(
-                self.profile,
-                *operation,
-                length - 2 + index,
-            )?;
-        }
+        };
         // A two-byte virtual tail has the same six-word loader recurrence
         // phase as the full source at the actual D address.
-        let offset = (self.data_pointer - length) % 6;
-        let word = unwritten_loader_word(&tail, 2 + offset, self.profile)?;
+        let offset = self.data_pointer.saturating_sub(length).rem_euclid(6);
+        let word = unwritten_loader_word(
+            &tail,
+            2usize.saturating_add(offset),
+            self.profile,
+        )?;
         let destination = usize::try_from(word)
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
         if destination < length {
@@ -1135,9 +1211,9 @@ fn proven_source_origins(
 /// Before relocation `D <= C`. When a jump is encountered its operand
 /// is either the newly encoded `i` cell (`D == C`) or an already encoded
 /// source cell (`D < C`) whose prior XLAT2 mutations are modeled by `shadow`.
-/// After relocation, symbolic jumps require a known past source operand,
-/// including a proven deterministic guest write. Loader-expanded values
-/// still need the completed source tail.
+/// After relocation, symbolic jumps require either known past source
+/// operands or untouched expanded loader words with a proven fixed tail.
+/// Input-derived operands and unknown future padding remain unsupported.
 /// The planner inserts only graphical no-ops to fill unreachable source
 /// addresses and encrypts `target - 1` exactly as the VM
 /// does. A subsequent `j` may also point to already-passed source scratch
@@ -1177,7 +1253,9 @@ pub fn encode_auto_padded_forward_layout(
                 let remaining = &logical[logical_index + 1..];
                 builder.auto_relocate(remaining)?
             }
-            PaddedForwardStep::Jump => builder.jump()?,
+            PaddedForwardStep::Jump => {
+                builder.jump(&logical[logical_index + 1..])?
+            },
             PaddedForwardStep::Instruction(operation) => builder.instruction(*operation)?,
         };
         builder

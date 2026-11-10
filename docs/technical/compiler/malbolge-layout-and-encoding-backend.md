@@ -74,8 +74,12 @@ The automatic forward-padding planner remains stricter than the independent
 verifier. It creates later `j` moves from known graphical source operands
 strictly behind reached C, or from untouched expanded loader memory only when
 all remaining logical instructions have fixed positions and their last two
-encoded cells prove the final loader seed. Previously written expanded words,
-input-tainted operands and unknown future jump padding are never guessed.
+encoded cells prove the final loader seed. It can also prove a symbolic `i`
+reading untouched expanded memory by searching bounded forward destinations:
+for each candidate, the fixed suffix determines both the eventual source
+length and the exact two-byte loader seed, and that seed must yield the same
+jump target. Previously written expanded words, input-tainted operands and
+unknown further jump padding are never guessed.
 A known past source operand may also select expanded D beyond the minimum
 remaining planned length. Independent full-length admission rejects any
 source alias introduced by later padding. A 98-cell red-first program jumps
@@ -87,9 +91,13 @@ the data-write address refuses. A further 99-cell red-first guest adds a
 third `j` that reads the untouched loader word at expanded address 101. The
 same explicit source, the automatic layout, independent scalar loader/rotate
 oracle and two canonical VMs agree under empty/binary input. Replacing a
-future fixed operation with symbolic `Jump` refuses the unproven final seed.
-This does not prove general expanded-control synthesis or the original C
-Fibonacci program.
+future fixed operation with symbolic `Jump` refuses the unproven final seed
+for that relocation. A distinct 44-cell binary-I/O guest demonstrates the
+newly admitted single symbolic expanded `i`, whose independent operand 38
+from expanded address 127 selects code 39. Both canonical VMs match the
+concrete source, exact trace and input-output parity for 0x00/0xff; a second
+future symbolic jump remains unsupported. This does not prove general
+expanded-control synthesis or the original C Fibonacci program.
 
 A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout
@@ -100,7 +108,8 @@ rotate/crazy opcode between positions 1 and 93 for both canonical profiles,
 including the exact output phase and the execution/encryption witness sizes.
 
 Forward code jumps (`i`) can occur after relocation and real source-scratch
-arithmetic only when the checked D word is a known source cell. The first
+arithmetic when the current D word is proven source, expanded loader data,
+or a deterministic guest write. The first
 jump normally reads its own code cell through `D == C`; after it jumps,
 `D` and `C` diverge. Every later jump reads
 through the evolving data pointer instead, so its target **cannot** be

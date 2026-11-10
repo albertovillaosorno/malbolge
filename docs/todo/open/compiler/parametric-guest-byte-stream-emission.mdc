@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the original complete unmasked twelve-step Fibonacci C
+  program was retried and remains blocked by positional guest layout. A
+  red-first 44-cell independent guest exposed the automatic planner's
+  refusal to solve an `i` whose D operand is untouched expanded loader
+  memory. The bounded planner now searches self-consistent jump gaps using
+  the exact fixed graphical suffix: word 38 at address 127 selects code 39.
+  Automatic and explicit sources, exact traces, and current/historical real
+  VM binary-input output parity agree; an unknown future symbolic jump
+  refuses. The complete unmasked C program still needs guest runtime
+  arithmetic and generalized emission, so P0 remains pending.
+
 - On 2026-11-10 the complete unmasked twelve-step Fibonacci C program
   remains a safe `Layout(UnsupportedEffectTrace)` refusal. A red-first
   independent 99-cell guest exposed `AutoRelocate` rejecting a third `j`

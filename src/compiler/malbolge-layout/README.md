@@ -202,9 +202,15 @@ its operand is past source memory whose current value is proven.
 Real VM witnesses compute the next code address from an untouched skipped
 no-op, a no-op already XLAT2-encrypted during execution, and a different
 untouched cell after an input-dependent scratch write. All retain binary
-I/O parity. Automatic `Jump` from expanded memory and input-dependent
-control operands remain unsupported. This is not general guest control flow
-or a complete C compiler.
+I/O parity. Automatic `Jump` from untouched expanded memory is now admitted
+only when a finite candidate-gap search proves the actual loader operand
+from the final two fixed graphical source cells. A distinct 44-cell source
+with `j` at code 8, `i` at 9 and a loader word of 38 at address 127
+is reproduced byte-for-byte from symbolic steps. Current/historical VM
+traces and both binary input values agree with the independent source.
+Additional future symbolic padding, previously written expanded operands
+and unknown input-dependent control values still refuse. This is not
+unbounded branching, runtime state or a complete C compiler.
 
 The planner also returns an exact source-cell origin table alongside
 logical-to-physical code positions: each graphical cell is either an
