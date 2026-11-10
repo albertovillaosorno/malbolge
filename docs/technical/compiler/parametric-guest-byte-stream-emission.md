@@ -171,6 +171,30 @@ refuse without publication. This is bounded compile-time C selection, not
 runtime guest C control flow; the original unmasked twelve-byte stream
 and generalized guest layout remain unsupported.
 
+### Conditional void return in bounded whole-program C (2026-11-09)
+
+A complete twelve-output masked Fibonacci program with a `for` bound of
+thirteen and a source-selected `return;` after iteration twelve initially
+refused at the typed adapter, with no guest artifact. The closed projector now
+proves an exact six-character Clang void-return statement and propagates a
+selected function exit through bounded loop replay, distinct from an inner
+`break`. Both conditional arms remain source-checked, and an unselected
+return is discarded along with its speculative state. A selected return is
+accepted only when no subsequent statement or unproved effect remains, even
+outside the enclosing loop; malformed return parentage, keyword, metadata and
+source extent refuse without publishing an artifact.
+
+The full C source reaches the actual normative guest VM and emits the twelve
+independently computed bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` on both
+empty and nonempty stdin. The thirteenth would have been executed without the
+source-selected return. A second complete C recurrence emits the independent
+`Q.` pair on an early selected `for`, `while` or `do…while` return, as well as
+when the `for` return arm is never selected. All four forms are checked through
+the actual VM on both stdin modes. These are checked, finite C-state
+projections, not runtime guest stack unwinding or general C function-call
+support. The original unmasked Fibonacci output remains blocked by guest
+layout.
+
 ### Source-expression metamorphic parity (2026-11-09)
 
 The complete 12-iteration five-bit masked Fibonacci C program has a bounded

@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 the complete masked Fibonacci C recurrence with a
+  source-selected conditional `return;` after twelve iterations initially
+  refused at the typed adapter without guest publication. A closed void-return
+  proof now preserves all twelve selected byte effects and stops the whole C
+  function, rather than merely terminating the loop. The real normative guest
+  matches the independent twelve-byte oracle with empty/nonempty stdin.
+  Four additional real-guest pair variants prove selected `for`, `while`,
+  `do…while` and unselected `for` returns on both stdin streams. Both
+  speculative branch selection and malformed return ancestry, span, keyword,
+  metadata and unreachable post-return effects fail closed. This is bounded
+  compile-time C control flow, not a general guest runtime; the unmasked
+  original remains unsupported at layout and P0 remains pending.
+
 - On 2026-11-09 a full masked Fibonacci C recurrence with a source-
   selected `do…while` break initially refused at the typed adapter without
   publishing guest code. Source-checked `do` exits now keep preceding byte

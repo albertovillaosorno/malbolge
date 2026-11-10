@@ -166,6 +166,59 @@ def exiting_masked_fibonacci_do_source(*, keyword: str) -> str:
     ).replace("    }\n}", f"    }} while (i < {bound}U);\n}}")
 
 
+def returning_masked_fibonacci_source(*, exit_at: int = 11) -> str:
+    """Stop a full bounded C recurrence through a conditional void return."""
+    original = MASKED_FIBONACCI.read_text()
+    assert original.count("i < 12U;") == 1
+    assert original.count("        b = next;") == 1
+    return original.replace("i < 12U;", "i < 13U;").replace(
+        "        b = next;",
+        "        b = next;\n"
+        f"        if (i == {exit_at}U) {{\n"
+        "            return;\n"
+        "        }",
+    )
+
+
+def returning_pair_source(*, loop_kind: str, selected: bool = True) -> str:
+    """Retain the independent Q. recurrence under three C loop forms."""
+    original = (
+        ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+    ).read_text()
+    header = "for (unsigned i = 0U; i < 2U; ++i) {"
+    transfer = "        b = next;"
+    assert original.count(header) == original.count(transfer) == 1
+    if loop_kind == "for":
+        bound = 3 if selected else 2
+        original = original.replace(header, header.replace("2U", f"{bound}U"))
+        increment = ""
+        suffix = ""
+        exit_at = 1 if selected else 7
+    elif loop_kind in ("while", "do"):
+        assert selected
+        original = original.replace(
+            header,
+            "unsigned i = 0U;\n    "
+            + ("while (i < 3U) {" if loop_kind == "while" else "do {"),
+        )
+        increment = "        i = i + 1U;\n"
+        suffix = " while (i < 3U);" if loop_kind == "do" else ""
+        exit_at = 2
+    else:
+        raise ValueError(loop_kind)
+    original = original.replace(
+        transfer,
+        f"{transfer}\n"
+        f"{increment}"
+        f"        if (i == {exit_at}U) {{\n"
+        "            return;\n"
+        "        }",
+    )
+    if suffix:
+        original = original.replace("    }\n}", f"    }}{suffix}\n}}")
+    return original
+
+
 def reference_bytes() -> bytes:
     """Reference the bounded unsigned-C arithmetic, not compiler output."""
     previous, current = 1, 1
@@ -885,6 +938,161 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(attempt.returncode, 0, label)
                     self.assertIn(b"Unsupported", attempt.stderr, label)
                     self.assertFalse(output.exists(), label)
+
+    def test_conditional_void_return_ends_complete_c_guest_recurrence(self) -> None:
+        """An actual function return stops C before a thirteenth output."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for index in range(13):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            expected.append(selected & 31)
+            previous, current = current, following
+            if index == 11:
+                break
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-return.c"
+            source.write_text(returning_masked_fibonacci_source())
+            guest = Path(scratch) / "fibonacci-return.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/fibonacci-conditional-return-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+
+    def test_conditional_return_preserves_early_pair_across_loop_forms(self) -> None:
+        """Early C function return differs from an exhausted loop bound."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        a, b = 1, 1
+        expected = bytearray()
+        for index in range(3):
+            following = (a + b) & 255
+            expected.append(following ^ (83 if following % 2 == 0 else 45))
+            a, b = b, following
+            if index == 1:
+                break
+        self.assertEqual(expected, b"Q.")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for loop_kind, selected in (
+                ("for", True), ("for", False),
+                ("while", True), ("do", True),
+            ):
+                with self.subTest(loop=loop_kind, selected=selected):
+                    label = f"{loop_kind}-{selected}"
+                    source = Path(scratch) / f"return-pair-{label}.c"
+                    source.write_text(returning_pair_source(
+                        loop_kind=loop_kind, selected=selected,
+                    ))
+                    guest = Path(scratch) / f"return-pair-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                         "--source-id", f"tests/return-pair-{label}-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=120,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied, capture_output=True,
+                            check=False, timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_conditional_void_return_rejects_unproved_suffix_and_ast(self) -> None:
+        """Returned control cannot silently drop later C effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        text = returning_masked_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "conditional-return.c"
+            source.write_text(text)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/conditional-return-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            original = json.loads(normalized.stdout)
+            returns = [
+                node for node in original["nodes"]
+                if node["kind"] == "return-statement"
+            ]
+            self.assertEqual(len(returns), 1)
+            for label, update in (
+                ("parent", {"parent": 1}),
+                ("kind", {"kind": "break-statement"}),
+                ("metadata", {"operation": "="}),
+                ("span", {"span": {
+                    **returns[0]["span"],
+                    "end": {**returns[0]["span"]["end"],
+                            "byte": returns[0]["span"]["end"]["byte"] + 1},
+                }}),
+            ):
+                with self.subTest(label=label):
+                    forged = json.loads(normalized.stdout)
+                    forged["nodes"][returns[0]["id"] - 1].update(update)
+                    guest = Path(scratch) / f"return-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+            for label, invalid in (
+                ("return-tail", text.replace(
+                    "            return;",
+                    "            return;\n"
+                    "            putchar((int)(next & 31U));",
+                )),
+                ("after-loop", text.replace(
+                    "    }\n}", "    }\n    putchar((int)(a & 31U));\n}",
+                )),
+            ):
+                with self.subTest(label=label):
+                    invalid_source = Path(scratch) / f"return-{label}.c"
+                    invalid_source.write_text(invalid)
+                    guest = Path(scratch) / f"return-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/return-{label}-v1", "--capsule",
+                         "--output", str(guest), str(invalid_source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(guest.exists(), label)
 
     def test_bounded_for_selected_break_and_continue_guest_parity(self) -> None:
         """An early exit is selected by C state, not guessed by the guest."""

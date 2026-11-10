@@ -60,6 +60,7 @@ struct Local<'node> {
 enum LoopExit {
     Break,
     Continue,
+    Return,
 }
 
 struct Flow<'node> {
@@ -67,6 +68,7 @@ struct Flow<'node> {
     loop_counters: Vec<&'node str>,
     within_while_body: bool,
     loop_exit: Option<LoopExit>,
+    return_node: Option<&'node Node>,
     nodes: &'node [Node],
     outputs: Vec<OutputCall<'node>>,
     position: usize,
@@ -175,6 +177,7 @@ impl<'node> Flow<'node> {
                 "break-statement" | "continue-statement" => {
                     self.loop_exit_statement(body, last_end)?
                 },
+                "return-statement" => self.return_statement(body, last_end)?,
                 "if-statement" => self.conditional(
                     body,
                     last_end,
@@ -300,13 +303,16 @@ impl<'node> Flow<'node> {
         }
         let starting = self.locals.clone();
         let starting_exit = self.loop_exit;
+        let starting_return = self.return_node;
         let output_count = self.outputs.len();
         self.branch_effects(then_body, depth)?;
         let then_state = self.locals.clone();
         let then_exit = self.loop_exit;
+        let then_return = self.return_node;
         let then_outputs = self.outputs.get(output_count..)?.to_vec();
         self.locals = starting;
         self.loop_exit = starting_exit;
+        self.return_node = starting_return;
         self.outputs.truncate(output_count);
         // An if without else ends at its sole braced arm. Prove no
         // further child is hidden inside the arm before selecting state.
@@ -319,6 +325,7 @@ impl<'node> Flow<'node> {
             if take_then {
                 self.locals = then_state;
                 self.loop_exit = then_exit;
+                self.return_node = then_return;
                 self.outputs.extend(then_outputs);
             }
             return Some(statement.span.end.byte);
@@ -335,6 +342,7 @@ impl<'node> Flow<'node> {
         if take_then {
             self.locals = then_state;
             self.loop_exit = then_exit;
+            self.return_node = then_return;
             self.outputs.truncate(output_count);
             self.outputs.extend(then_outputs);
         }
@@ -533,6 +541,7 @@ impl<'node> Flow<'node> {
                 "break-statement" | "continue-statement" => {
                     self.loop_exit_statement(body, last_end)?
                 },
+                "return-statement" => self.return_statement(body, last_end)?,
                 "if-statement" => self.conditional(body, last_end, 0)?,
                 "for-statement" => self.static_for(body, last_end)?,
                 "compound-statement" => {
@@ -549,6 +558,41 @@ impl<'node> Flow<'node> {
             writes = writes.checked_add(1)?;
         }
         (writes > 0 && last_end < body.span.end.byte).then_some(())
+    }
+
+    /// A source-proven void return exits the whole function, not just the
+    /// innermost loop. Its selected effect is carried through every replay.
+    fn return_statement(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+    ) -> Option<u32> {
+        if self.loop_exit.is_some() || self.return_node.is_some() {
+            return None;
+        }
+        let statement = self.take(body.id, "return-statement")?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+            || statement.span.begin.line != statement.span.end.line
+            || statement
+                .span
+                .end
+                .byte
+                .checked_sub(statement.span.begin.byte)
+                != Some(6)
+            || statement
+                .span
+                .end
+                .column
+                .checked_sub(statement.span.begin.column)
+                != Some(6)
+        {
+            return None;
+        }
+        self.return_node = Some(statement);
+        self.loop_exit = Some(LoopExit::Return);
+        Some(statement.span.end.byte)
     }
 
     /// Only an exact Clang keyword span may terminate a bounded loop body.
@@ -845,10 +889,12 @@ impl<'node> Flow<'node> {
             // source subtree. No speculative state or output may escape.
             let starting_locals = self.locals.clone();
             let starting_outputs = self.outputs.len();
+            let starting_return = self.return_node;
             self.loop_body(loop_body)?;
             body_end = Some(self.position);
             self.locals = starting_locals;
             self.loop_exit = None;
+            self.return_node = starting_return;
             self.outputs.truncate(starting_outputs);
         }
         let mut counter_value = start;
@@ -877,8 +923,13 @@ impl<'node> Flow<'node> {
             if current_counter.byte != counter_value {
                 return None;
             }
-            if self.loop_exit.take() == Some(LoopExit::Break) {
-                break;
+            match self.loop_exit {
+                Some(LoopExit::Break) => {
+                    self.loop_exit = None;
+                    break;
+                },
+                Some(LoopExit::Return) => break,
+                _ => self.loop_exit = None,
             }
             counter_value = if descending {
                 counter_value.checked_sub(stride)?
@@ -932,10 +983,12 @@ impl<'node> Flow<'node> {
                     // speculative local write and guest output effect.
                     let starting_locals = self.locals.clone();
                     let starting_outputs = self.outputs.len();
+                    let starting_return = self.return_node;
                     self.loop_body(loop_body)?;
                     self.locals = starting_locals;
                     self.outputs.truncate(starting_outputs);
                     self.loop_exit = None;
+                    self.return_node = starting_return;
                 }
                 self.within_while_body = false;
                 return Some(statement.span.end.byte);
@@ -950,10 +1003,17 @@ impl<'node> Flow<'node> {
             body_end = Some(self.position);
             // Locals declared in the braces never escape an iteration.
             self.locals.truncate(outer_len);
-            if self.loop_exit.take() == Some(LoopExit::Break) {
+            if matches!(
+                self.loop_exit,
+                Some(LoopExit::Break | LoopExit::Return)
+            ) {
+                if self.loop_exit == Some(LoopExit::Break) {
+                    self.loop_exit = None;
+                }
                 self.within_while_body = false;
                 return Some(statement.span.end.byte);
             }
+            self.loop_exit = None;
             // A source-proven `continue` goes to the next predicate check.
         }
         None
@@ -1014,7 +1074,11 @@ impl<'node> Flow<'node> {
                 return None;
             }
             condition_end = Some(self.position);
-            if selected_exit == Some(LoopExit::Break) || !continue_loop {
+            if matches!(selected_exit, Some(LoopExit::Break | LoopExit::Return))
+                || !continue_loop
+            {
+                self.loop_exit = (selected_exit == Some(LoopExit::Return))
+                    .then_some(LoopExit::Return);
                 self.within_while_body = false;
                 return Some(statement.span.end.byte);
             }
@@ -1360,6 +1424,7 @@ pub(super) fn canonical_multi_local_output(
         loop_counters: Vec::new(),
         within_while_body: false,
         loop_exit: None,
+        return_node: None,
         nodes: &input.nodes,
         outputs: Vec::new(),
         position: 2,
@@ -1411,6 +1476,9 @@ pub(super) fn canonical_multi_local_output(
         remaining_writes = remaining_writes
             .checked_sub(1)
             .ok_or(FrontendJsonError::Unsupported)?;
+        if flow.loop_exit == Some(LoopExit::Return) {
+            break;
+        }
     }
     if flow.locals.len() < 2 {
         return Err(FrontendJsonError::Unsupported);
@@ -1425,7 +1493,12 @@ pub(super) fn canonical_multi_local_output(
         last_end = output.call.span.end.byte;
         flow.outputs.push(output);
     }
-    let returned = if flow.peek().is_some() {
+    let returned = if flow.loop_exit == Some(LoopExit::Return) {
+        if flow.peek().is_some() {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        flow.return_node
+    } else if flow.peek().is_some() {
         let node = flow
             .take(body.id, "return-statement")
             .ok_or(FrontendJsonError::Unsupported)?;
