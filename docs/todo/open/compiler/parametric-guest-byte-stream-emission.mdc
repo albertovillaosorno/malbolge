@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete masked twelve-step Fibonacci C recurrence
+  first refused at its combined `unsigned a = 1U, b = a;` declaration.
+  A red-first bounded source-order proof now admits automatic unsigned
+  declarator lists with exact comma/column geometry, initialized-symbol
+  dependency and fail-closed uninitialized use. Two complete programs,
+  including a three-name group with a later first write, emit the same
+  independent twelve-byte oracle in 47 normative guest steps under empty
+  and binary stdin; three invalid C sources and eight forged Clang trees
+  refuse without publication. This is compile-time C-state evaluation;
+  original unmasked guest output and dynamic C state remain P0 work.
+
 - On 2026-11-10 a full masked twelve-step Fibonacci C recurrence with
   ordinary unsuffixed `int` constants first failed at the JSON adapter's
   first `unsigned a = 1;` declaration. Source-matched, nonnegative `i32`

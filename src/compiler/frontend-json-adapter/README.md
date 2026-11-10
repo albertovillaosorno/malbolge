@@ -599,6 +599,26 @@ analysis and **does not** implement runtime guest arithmetic, general
 `putchar` expressions, loops or mutable guest storage.
 
 
+### Source-backed comma-separated unsigned declarations
+
+The bounded multi-local C flow also admits an ordinary same-line
+`unsigned a = 1U, b = a;` declaration. Pinned Clang represents it as
+one declaration statement with two ordered `variable-declaration` children,
+not as two statements. Each initializer is proven against the previously
+established automatic `u32` locals; no forward or indeterminate read,
+side-effectful initializer, duplicate symbol or hidden node is discarded.
+The group requires the canonical shared `unsigned ` prefix, exact two-byte
+comma/space separation, consistent source byte/column spans, and its
+single closing semicolon. The eight-local budget still applies.
+
+Two complete twelve-iteration masked Fibonacci C variants (two initialized
+names, or three names with one delayed first assignment) reach the
+normative guest VM and emit `02 19 1f 08 17 0f 02 0d 03 10 13 03` in
+47 steps under empty and binary stdin. Forged group structure, invalid
+reads and hidden source effects reject without publishing an artifact.
+This is compile-time source-state projection, not dynamic guest storage
+or generalized byte-stream synthesis.
+
 ### Fibonacci masked-sum arithmetic boundary
 
 The source-bound `local_masked_sum_output.c` now evaluates

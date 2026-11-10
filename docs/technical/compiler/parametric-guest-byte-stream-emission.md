@@ -73,6 +73,35 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Source-ordered unsigned declarator lists (2026-11-10)
+
+A complete twelve-iteration masked Fibonacci program was retried after
+combining its first two locals as `unsigned a = 1U, b = a;`. Pinned Clang
+accepted the source, but the JSON adapter rejected its first
+`declaration-statement` before guest publication. A red-first regression
+now passes: the closed local-state proof consumes consecutive Clang
+`variable-declaration` children in source order, carrying each proven
+initializer into the next declarator. Bare declarators remain unreadable
+until a selected later plain assignment proves their values.
+
+A second complete source also proves a three-declarator group,
+`unsigned a = 1U, b = a, later;`, followed by `later = b;` before the
+loop. Its first use of `later` is a source-checked write, not a fabricated
+zero initializer.
+
+The bounded proof admits only automatic `u32` declarators, up to the
+existing eight-local limit. For multi-declarations it checks the shared
+`unsigned ` prefix, exact comma-and-space source offsets, source span and
+column agreement, canonical symbols, a single final semicolon, and no
+hidden initializer effects. In the full pipeline, the normative guest VM
+emits the independently calculated twelve-byte masked oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under empty and
+binary stdin for both two- and three-declarator whole-source variants.
+Three invalid C variants and eight forged normalized AST variants reject
+without publishing a guest artifact. This does not add
+runtime guest locals, arbitrary C declarations, or original unmasked
+Fibonacci layout; P0 stays open.
+
 ### Ordinary `int` literals in full unsigned C recurrence (2026-11-10)
 
 The full twelve-step masked Fibonacci C program was attempted with the

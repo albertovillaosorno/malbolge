@@ -386,6 +386,211 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", rejected.stderr)
             self.assertFalse(rejected_guest.exists())
 
+    def test_multi_declarator_unsigned_fibonacci_preserves_guest_oracle(self) -> None:
+        """A single C declaration creates two ordered unsigned local states."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = MASKED_FIBONACCI.read_text()
+        original = "unsigned a = 1U;\n    unsigned b = 1U;"
+        self.assertEqual(source.count(original), 1)
+        source = source.replace(original, "unsigned a = 1U, b = a;")
+        previous, current = 1, 1
+        independent = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            independent.append(
+                (following if following % 2 == 0 else following ^ 0x1A) & 31
+            )
+            previous, current = current, following
+        self.assertEqual(bytes(independent), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / "multi-declarator-fibonacci.c"
+            candidate.write_text(source)
+            guest = candidate.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/multi-declarator-fibonacci-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=150,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, independent)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_three_declarators_with_deferred_write_reach_guest(self) -> None:
+        """Third unsigned name stays unreadable until a later C assignment."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        declaration = "unsigned a = 1U;\n    unsigned b = 1U;"
+        self.assertEqual(original.count(declaration), 1)
+        source = original.replace(
+            declaration,
+            "unsigned a = 1U, b = a, later;\n    later = b;",
+        )
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            expected.append(
+                (following if following % 2 == 0 else following ^ 0x1A) & 31
+            )
+            previous, current = current, following
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / "three-declarators.c"
+            candidate.write_text(source)
+            guest = candidate.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/three-declarators-deferred-write-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=150,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.exists())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_multi_declarator_unsigned_refuses_unproved_sources_and_ast(self) -> None:
+        """No deferred reads, hidden writes or forged declarator topology."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        initial = "unsigned a = 1U;\n    unsigned b = 1U;"
+        self.assertEqual(original.count(initial), 1)
+        source = original.replace(initial, "unsigned a = 1U, b = a;")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            candidate = Path(scratch) / "multi-declarator-ast.c"
+            candidate.write_text(source)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/multi-declarator-ast-v1",
+                    str(candidate),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            statement = next(
+                node for node in nodes if node["kind"] == "declaration-statement"
+            )
+            variables = [
+                node
+                for node in nodes
+                if node["parent"] == statement["id"]
+                and node["kind"] == "variable-declaration"
+            ]
+            self.assertEqual([node["name"] for node in variables], ["a", "b"])
+            for label, changed in {
+                "uninitialized-source": source.replace("a = 1U, b = a", "a, b = a"),
+                "self-read": source.replace("a = 1U, b = a", "a = 1U, b = b"),
+                "hidden-effect": source.replace("a = 1U, b = a", "a = 1U, b = a++"),
+            }.items():
+                invalid = Path(scratch) / f"invalid-multi-{label}.c"
+                invalid.write_text(changed)
+                guest = invalid.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/multi-declarator-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(invalid),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=45,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertFalse(guest.exists(), label)
+            for label, node_id, field, value in (
+                ("second-parent", variables[1]["id"], "parent", 0),
+                ("second-type", variables[1]["id"], "type", "i32"),
+                ("second-reference", variables[1]["id"], "reference", "a@0"),
+                ("first-metadata", variables[0]["id"], "operation", "="),
+                ("first-end", variables[0]["id"], "span", variables[1]["span"]),
+                ("second-offset", variables[1]["id"], "reference", "b@0"),
+                ("second-start", variables[1]["id"], "span", variables[0]["span"]),
+                ("statement-end", statement["id"], "span", variables[1]["span"]),
+            ):
+                self.assertIsInstance(node_id, int)
+                forged = cast(dict[str, object], json.loads(frontend.stdout))
+                forged_nodes = cast(list[dict[str, object]], forged["nodes"])
+                forged_nodes[cast(int, node_id) - 1][field] = value
+                guest = Path(scratch) / f"forged-multi-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(forged).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
     def test_ordinary_int_literals_convert_to_unsigned_fibonacci_guest(self) -> None:
         """Implicit C int->unsigned constants survive the full guest pipeline."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

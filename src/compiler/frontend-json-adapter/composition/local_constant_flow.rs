@@ -532,85 +532,128 @@ impl<'node> Flow<'node> {
         ))
     }
 
+    /// Prove one source-ordered declaration list; later initializers may read
+    /// earlier initialized names but not later or uninitialized names.
     fn declaration(
         &mut self,
         body: &Node,
         previous_end: u32,
     ) -> Option<(u32, &'node Node)> {
         let statement = self.take(body.id, "declaration-statement")?;
-        let variable = self.take(statement.id, "variable-declaration")?;
-        let name = variable.name.as_deref()?;
-        let symbol = variable.reference.as_deref()?;
-        if self.locals.len() >= MAX_LOCALS
-            || self.locals.iter().any(|local| {
-                local.symbol == symbol
-                    || (local.name == name
-                        && span_within(&body.span, &local.declaration.span))
-            })
-            || !clean(statement)
-            || variable.type_name.as_deref() != Some("u32")
-            || variable.definition.as_deref() != Some("definition")
-            || variable.linkage.as_deref() != Some("none")
-            || variable.storage_class.as_deref() != Some("none")
-            || !matches!(
-                variable.storage_duration,
-                Some(StorageDuration::Automatic)
-            )
-            || variable.inline_specified.is_some()
-            || variable.operation.is_some()
-            || variable.literal.is_some()
-            || variable.constant_integer.is_some()
-            || !symbol_location(variable, name, symbol)
+        if !clean(statement)
             || !span_within(&body.span, &statement.span)
-            || !span_within(&statement.span, &variable.span)
             || previous_end > statement.span.begin.byte
         {
             return None;
         }
-        // A source-backed bare `unsigned name;` has no child initializer.
-        // Keep it unreadable until a selected plain `=` write defines it;
-        // compound writes and unary steps cannot read indeterminate C state.
-        let (value, source) = if self
-            .peek()
-            .is_some_and(|node| node.parent == variable.id)
-        {
-            let (value, initializer) = self.expression(variable.id, 0)?;
-            if !span_within(&variable.span, &initializer.span)
-                || initializer.span.end.byte != variable.span.end.byte
-                || initializer.span.begin.byte <= variable.span.begin.byte
-            {
-                return None;
-            }
-            (Some(value), initializer)
-        } else {
+        let mut previous_variable: Option<&Node> = None;
+        let mut first_name_start = None;
+        let mut multiple_declarators = false;
+        let mut last_source;
+        loop {
+            let variable = self.take(statement.id, "variable-declaration")?;
+            let name = variable.name.as_deref()?;
+            let symbol = variable.reference.as_deref()?;
             let (_, offset) = symbol.rsplit_once('@')?;
             let name_start = offset.parse::<u32>().ok()?;
             let name_width = u32::try_from(name.len()).ok()?;
-            if variable.span.begin.line != variable.span.end.line
-                || variable.span.begin.line != statement.span.end.line
-                || variable.span.begin.byte.checked_add(9) != Some(name_start)
-                || variable.span.begin.column.checked_add(9)
-                    != Some(variable.span.end.column.checked_sub(name_width)?)
-                || name_start.checked_add(name_width)
-                    != Some(variable.span.end.byte)
-                || variable.span.end.byte.checked_add(1)
-                    != Some(statement.span.end.byte)
-                || variable.span.end.column.checked_add(1)
-                    != Some(statement.span.end.column)
+            let name_end = name_start.checked_add(name_width)?;
+            if self.locals.len() >= MAX_LOCALS
+                || self.locals.iter().any(|local| {
+                    local.symbol == symbol
+                        || (local.name == name
+                            && span_within(&body.span, &local.declaration.span))
+                })
+                || variable.type_name.as_deref() != Some("u32")
+                || variable.definition.as_deref() != Some("definition")
+                || variable.linkage.as_deref() != Some("none")
+                || variable.storage_class.as_deref() != Some("none")
+                || !matches!(
+                    variable.storage_duration,
+                    Some(StorageDuration::Automatic)
+                )
+                || variable.inline_specified.is_some()
+                || variable.operation.is_some()
+                || variable.literal.is_some()
+                || variable.constant_integer.is_some()
+                || !symbol_location(variable, name, symbol)
+                || !span_within(&statement.span, &variable.span)
                 || statement.span.begin != variable.span.begin
             {
                 return None;
             }
-            (None, variable)
-        };
-        self.locals.push(Local {
-            value,
-            declaration: variable,
-            name,
-            source,
-            symbol,
-        });
-        Some((statement.span.end.byte, source))
+            // Pinned Clang shares the declaration's `unsigned ` prefix
+            // across every declarator. Comma-separated names begin exactly
+            // two source bytes after the previous declarator's end.
+            if let Some(previous) = previous_variable {
+                multiple_declarators = true;
+                if previous.span.end.line != variable.span.end.line
+                    || previous.span.end.line != statement.span.begin.line
+                    || previous.span.end.byte.checked_add(2) != Some(name_start)
+                    || previous.span.end.column.checked_add(2)
+                        != name_start
+                            .checked_sub(statement.span.begin.byte)?
+                            .checked_add(statement.span.begin.column)
+                {
+                    return None;
+                }
+            } else {
+                first_name_start = Some(name_start);
+            }
+            // A bare unsigned local stays indeterminate until its first
+            // selected plain write. An initializer is proven in C order.
+            let (value, source) =
+                if self.peek().is_some_and(|node| node.parent == variable.id) {
+                    let (value, initializer) =
+                        self.expression(variable.id, 0)?;
+                    if !span_within(&variable.span, &initializer.span)
+                        || initializer.span.end.byte != variable.span.end.byte
+                        || initializer.span.begin.byte <= name_start
+                    {
+                        return None;
+                    }
+                    (Some(value), initializer)
+                } else {
+                    if variable.span.begin.line != variable.span.end.line
+                        || name_end != variable.span.end.byte
+                        || name_width
+                            != variable.span.end.column.checked_sub(
+                                name_start
+                                    .checked_sub(statement.span.begin.byte)?
+                                    .checked_add(statement.span.begin.column)?,
+                            )?
+                    {
+                        return None;
+                    }
+                    (None, variable)
+                };
+            self.locals.push(Local {
+                value,
+                declaration: variable,
+                name,
+                source,
+                symbol,
+            });
+            previous_variable = Some(variable);
+            last_source = source;
+            if self.peek().is_none_or(|node| node.parent != statement.id) {
+                break;
+            }
+        }
+        let last = previous_variable?;
+        // A valid C declaration closes with exactly one semicolon. For
+        // multi-declarations also pin the shared first `unsigned ` prefix.
+        if (multiple_declarators || last_source.kind == "variable-declaration")
+            && (last.span.end.byte.checked_add(1)
+                != Some(statement.span.end.byte)
+                || last.span.end.column.checked_add(1)
+                    != Some(statement.span.end.column)
+                || last.span.end.line != statement.span.end.line
+                || first_name_start != statement.span.begin.byte.checked_add(9))
+        {
+            return None;
+        }
+        Some((statement.span.end.byte, last_source))
     }
 
     /// Evaluate checked `u32` temporaries; narrow only at local stores/output.
