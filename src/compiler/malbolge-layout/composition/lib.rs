@@ -1285,11 +1285,11 @@ fn prove_single_fixed_tail_jump(
     let Some(jump_at) = jump_at else {
         return Ok(None);
     };
-    // A guest input before this jump can taint its arithmetic/control words.
-    // Leave that case to the normal planner; do not speculate over input.
+    // Input may precede the jump: a later rotate can reset the accumulator
+    // to a proven value. The independent full-source checker tracks tainted
+    // accumulator/memory and must reject input-dependent control operands.
     let prefix = &fixed[..jump_at];
     if logical.len() > MAX_FIXED_TAIL_SEARCH_CELLS
-        || prefix.contains(&LinearOpcode::InputWord)
         || !prefix.iter().any(|operation| {
             matches!(
                 operation,

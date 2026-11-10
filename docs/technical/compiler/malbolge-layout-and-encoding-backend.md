@@ -107,14 +107,21 @@ the deterministic value 37 at address 127. A later symbolic `i` reads that
 *written* word and jumps to code 38, but the initial arithmetic could not be
 proved until the final jump gap fixed the full graphical suffix. An optional
 single-jump planner fallback now tries at most 256 final source cells and
-requires a fully fixed remaining instruction tail, no preceding guest input,
-and at least one preceding relocation and arithmetic effect. Every proposed
-full source is independently encoded and admitted; the fallback never guesses
-input-dependent values. Both current and historical normative VMs agree on
+requires a fully fixed remaining instruction tail and at least one
+preceding relocation and arithmetic effect. Input before the jump is allowed
+only when the independent full-source checker proves the control value is
+input-independent. Every proposed source is independently encoded and
+admitted; the fallback never guesses input-dependent values. Both current
+and historical normative VMs agree on
 exact data/code/encryption witnesses, the written word and output byte 37 under
 empty/binary input. A forged target, input-tainted arithmetic and an extended
-source alias fail closed. Multiple unresolved jumps, speculative input and
-unbounded layout search remain unsupported; this is not dynamic C arithmetic.
+source alias fail closed. A second red-first 59-cell program reads a byte
+before the expanded `*` and `p`, which restore a deterministic accumulator;
+its symbolic jump still selects 38 and outputs 37 with EOF, 0x00 and 0xff.
+The independent encoder, both normative VMs, exact guest memory and input
+consumption agree; replacing the initial `*` with input-tainted `p` rejects.
+Multiple unresolved jumps, input-dependent control, and unbounded layout
+search remain unsupported; this is not dynamic C arithmetic.
 
 A red-first 59-cell fixed-instruction guest now has identical symbolic
 and independent encoding with two later `j` operations following a real

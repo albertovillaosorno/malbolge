@@ -1885,3 +1885,119 @@ fn symbolic_jump_uses_written_expanded_word_with_fixed_final_tail()
     }
     Ok(())
 }
+
+// Both normative VMs must agree with an independently derived loader and
+// arithmetic oracle even when stdin varies or is exhausted.
+fn verify_input_independent_expanded_guest(
+    profile: &'static malbolge::ProfileDescriptor,
+    layout: &LinearLayout,
+) -> Result<(), String> {
+    let original = scalar_expanded_word_127(layout.source(), profile)?;
+    let rotated = malbolge::profile_rotate(original, profile.memory_words());
+    let written =
+        scalar_crazy_reference(rotated, rotated, profile.word_trits());
+    if written != 37 {
+        return Err(String::from("input-first scalar oracle differs"));
+    }
+    for (input, consumed) in
+        [(Vec::new(), 0usize), (vec![0], 1), (vec![255, 42], 1)]
+    {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("input-first VM load: {error:?}"))?;
+        verify_execution_witness(&mut vm, layout)?;
+        if vm.output() != [37]
+            || vm.memory_word(127) != Ok(written)
+            || vm.input_consumed() != consumed
+        {
+            return Err(String::from("input-first VM parity differs"));
+        }
+    }
+    Ok(())
+}
+
+// A proposed input-dependent write cannot borrow a previously proven
+// accumulator or loader word for a later control operand.
+fn refuse_input_dependent_expanded_jump(
+    profile: &'static malbolge::ProfileDescriptor,
+    logical: &[PaddedForwardStep],
+    explicit: &[LinearOpcode],
+) -> Result<(), String> {
+    use PaddedForwardStep::Instruction;
+    let mut tainted = logical.to_vec();
+    *tainted.get_mut(11).ok_or("missing tainted step")? =
+        Instruction(LinearOpcode::CrazyData);
+    if encode_auto_padded_forward_layout(profile, &tainted).is_ok() {
+        return Err(String::from("input-dependent jump admitted"));
+    }
+    let mut tainted_explicit = explicit.to_vec();
+    replace_scratch_operation(
+        &mut tainted_explicit,
+        11,
+        LinearOpcode::CrazyData,
+    )?;
+    if encode_linear_layout(profile, &tainted_explicit)
+        != Err(LinearLayoutError::JumpPathUnsupported)
+    {
+        return Err(String::from("independent tainted jump admitted"));
+    }
+    Ok(())
+}
+
+// Input may be consumed before an expanded write, but a later real `*`
+// replaces A with a loader-derived, input-independent word. The final `p`
+// and symbolic `i` then depend only on the proven source and memory state.
+#[test]
+fn symbolic_expanded_jump_after_input_independent_arithmetic()
+-> Result<(), String> {
+    use PaddedForwardStep::{Instruction, Jump};
+    let mut explicit = vec![LinearOpcode::NoOperation; 59];
+    for (position, operation) in [
+        (8, LinearOpcode::InputWord),
+        (9, LinearOpcode::RelocateDataPointer),
+        (11, LinearOpcode::RotateData),
+        (12, LinearOpcode::RelocateDataPointer),
+        (13, LinearOpcode::CrazyData),
+        (14, LinearOpcode::RelocateDataPointer),
+        (15, LinearOpcode::JumpForward { target: 38 }),
+        (38, LinearOpcode::OutputByte),
+        (58, LinearOpcode::Halt),
+    ] {
+        replace_scratch_operation(&mut explicit, position, operation)?;
+    }
+    let mut logical: Vec<_> = explicit
+        .get(..15)
+        .ok_or("missing initial logical operations")?
+        .iter()
+        .copied()
+        .map(Instruction)
+        .collect();
+    logical.push(Jump);
+    logical.extend(
+        explicit
+            .get(38..)
+            .ok_or("missing fixed logical suffix")?
+            .iter()
+            .copied()
+            .map(Instruction),
+    );
+    for profile in [current_profile(), historical_profile()] {
+        let independent =
+            encode_linear_layout(profile, &explicit).map_err(|error| {
+                format!("input-first independent guest: {error:?}")
+            })?;
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| {
+                format!("input-first symbolic guest: {error:?}")
+            })?;
+        if artifact.layout() != &independent
+            || artifact.logical_code_positions().get(16) != Some(&38)
+        {
+            return Err(String::from("input-first symbolic layout differs"));
+        }
+        verify_bidirectional_source_map(&artifact)?;
+        verify_input_independent_expanded_guest(profile, artifact.layout())?;
+        refuse_input_dependent_expanded_jump(profile, &logical, &explicit)?;
+    }
+    Ok(())
+}

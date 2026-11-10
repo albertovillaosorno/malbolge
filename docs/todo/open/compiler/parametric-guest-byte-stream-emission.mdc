@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the original twelve-output unmasked Fibonacci source was
+  retried and still refused at `Layout(UnsupportedEffectTrace)` without
+  publishing a guest. A red-first 59-cell machine program exposed the
+  bounded final-tail jump planner refusing an input read even when a later
+  expanded-memory `*` restored a proven accumulator before `p` and `i`.
+  The independently admitted explicit source, automatic layout and both
+  normative VMs now agree on guest output 37, memory write 127, exact step
+  witnesses and input consumption under EOF, 0x00 and 0xff. Replacing `*`
+  with input-dependent `p` still refuses. This is deterministic guest I/O
+  plus layout, not general C arithmetic or P0 completion.
+
 - On 2026-11-10 the previously documented unmasked Fibonacci C stream
   remains outside verified generalized guest layout. A
   red-first 59-cell guest exposes a single symbolic forward `i` blocked by
