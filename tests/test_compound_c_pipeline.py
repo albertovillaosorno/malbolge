@@ -139,6 +139,14 @@ def wide_unsigned_masked_fibonacci_source(expression: str) -> str:
     return source.replace(original, f"unsigned next = {expression};")
 
 
+def stored_unsigned_masked_fibonacci_source(statements: str) -> str:
+    """Carry a full u32 value through a separately named automatic local."""
+    source = MASKED_FIBONACCI.read_text()
+    original = "unsigned next = (a + b) & 255U;"
+    assert source.count(original) == 1
+    return source.replace(original, statements)
+
+
 def shadowed_masked_fibonacci_source() -> str:
     """Reuse the outer `b` name inside one explicit nested loop block."""
     source = MASKED_FIBONACCI.read_text()
@@ -500,7 +508,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertFalse(guest.exists(), label)
 
     def test_wide_unsigned_c_literals_reach_real_fibonacci_guest(self) -> None:
-        """C u32 intermediates narrow only at the local store and guest output."""
+        """C u32 expression leaves retain their full intermediate value."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         previous, current = 1, 1
@@ -545,8 +553,138 @@ class CompoundCPipelineTests(unittest.TestCase):
                             executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
                         )
 
+    def test_stored_unsigned_c_values_reach_real_fibonacci_guest(self) -> None:
+        """Full C u32 locals survive reads, writes, wrap and guest byte output."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) % 256
+            selected = following if following % 2 == 0 else following ^ 26
+            expected.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        cases = {
+            "wide-read": (
+                "unsigned wide = a + b + 65536U;\n"
+                "        unsigned next = wide % 256U;"
+            ),
+            "wide-compound-write": (
+                "unsigned wide = a + b + 65536U;\n"
+                "        wide -= 65536U;\n"
+                "        unsigned next = wide % 256U;"
+            ),
+            "wide-wrapping-write": (
+                "unsigned wide = a + b + 65536U;\n"
+                "        wide += 4294901760U;\n"
+                "        unsigned next = wide % 256U;"
+            ),
+            "wide-standalone-step": (
+                "unsigned wide = a + b + 65535U;\n"
+                "        ++wide;\n"
+                "        unsigned next = wide % 256U;"
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, statements in cases.items():
+                with self.subTest(case=label):
+                    source = Path(scratch) / f"stored-{label}.c"
+                    _written = source.write_text(
+                        stored_unsigned_masked_fibonacci_source(statements)
+                    )
+                    guest = Path(scratch) / f"stored-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/stored-{label}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, bytes(expected))
+                        self.assertRegex(
+                            executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_stored_unsigned_c_values_refuse_invalid_source_and_ast(self) -> None:
+        """Unproved source types, arithmetic and output ranges remain closed."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = stored_unsigned_masked_fibonacci_source(
+            "unsigned wide = a + b + 65536U;\n"
+            "        unsigned next = wide % 256U;"
+        )
+        cases = {
+            "unproved-u64-local": original.replace("65536U", "4294967296UL"),
+            "undefined-wide-divisor": original.replace("wide % 256U", "wide % 0U"),
+            "out-of-range-guest-output": original.replace(
+                "putchar((int)(next & 31U));", "putchar((int)wide);"
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, variant in cases.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-stored-{label}.c"
+                    _written = source.write_text(variant)
+                    guest = Path(scratch) / f"invalid-stored-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/invalid-stored-{label}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, rejected.stderr)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "stored-ast.c"
+            _written = source.write_text(original)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/stored-wide-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = cast(dict[str, object], json.loads(normalized.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            wide = next(
+                node for node in nodes
+                if node["kind"] == "integer-literal"
+                and node.get("literal") == "65536"
+            )
+            for label, change in (
+                ("mismatched-literal", {"constant_integer": "65535"}),
+                ("wrong-type", {"type": "u64"}),
+                ("wrong-parent", {"parent": cast(int, wide["parent"]) + 1}),
+                ("unexpected-reference", {"reference": "wide@0"}),
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(normalized.stdout),
+                    )
+                    forged["nodes"][cast(int, wide["id"]) - 1].update(change)
+                    guest = Path(scratch) / f"forged-stored-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_wide_unsigned_c_literals_refuse_invalid_source_and_ast(self) -> None:
-        """Unproved widths, malformed Clang leaves and byte stores fail closed."""
+        """Unproved widths, malformed leaves and guest outputs fail closed."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
             self.skipTest("pinned C compiler binaries are not built")
         original = wide_unsigned_masked_fibonacci_source(
@@ -554,9 +692,9 @@ class CompoundCPipelineTests(unittest.TestCase):
         )
         source_cases = {
             "too-wide-type": original.replace("65536U", "4294967296U"),
-            "out-of-byte-store": original.replace(
+            "out-of-range-output": original.replace(
                 "((a + b) + 65536U) % 256U", "256U"
-            ),
+            ).replace("putchar((int)(next & 31U));", "putchar((int)next);"),
             "zero-divisor": original.replace("% 256U", "% 0U"),
         }
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:

@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Emulate dynamic guest state or discard unrecognized C side effects.
 // - Allows:
-//   - Inputs: byte-range unsigned writes and closed source-proven branches.
+//   - Inputs: checked u32 unsigned writes and closed source-proven branches.
 //   - Outputs: one source-derived typed byte and a normative guest output.
 //   - Side effects: none during compilation.
 // - Split-When:
@@ -49,7 +49,9 @@ const MAX_EXPLICIT_CAST_PREFIX_BYTES: u32 = 16;
 
 #[derive(Clone)]
 struct Local<'node> {
-    byte: u8,
+    // C unsigned locals retain all 32 bits; only guest output and bounded
+    // induction counters have narrower admission requirements.
+    value: u32,
     declaration: &'node Node,
     name: &'node str,
     source: &'node Node,
@@ -148,13 +150,12 @@ impl<'node> Flow<'node> {
             }
             checked_u32_binary(
                 operation,
-                u32::from(self.locals.get(destination)?.byte),
+                self.locals.get(destination)?.value,
                 rhs,
             )?
         } else {
             rhs
         };
-        let byte = u8::try_from(value).ok()?;
         if !span_within(&assignment.span, &value_source.span)
             || left.span.end.byte >= value_source.span.begin.byte
             || value_source.span.end.byte != assignment.span.end.byte
@@ -162,7 +163,7 @@ impl<'node> Flow<'node> {
             return None;
         }
         let local = self.locals.get_mut(destination)?;
-        local.byte = byte;
+        local.value = value;
         local.source = value_source;
         Some((assignment.span.end.byte, value_source))
     }
@@ -304,8 +305,17 @@ impl<'node> Flow<'node> {
         }
         let comparison = self.take(parent, "binary-expression")?;
         if matches!(comparison.operation.as_deref(), Some("&&" | "||")) {
+            // Restrict logical trees to int-valued Boolean subexpressions.
+            // A forged equal-width `==` -> `&&` must not reinterpret two
+            // unsigned operands as a different source predicate.
+            if self.peek()?.type_name.as_deref() != Some("i32") {
+                return None;
+            }
             let (left_value, left) = self
                 .condition_expression(comparison.id, depth.checked_add(1)?)?;
+            if self.peek()?.type_name.as_deref() != Some("i32") {
+                return None;
+            }
             let (right_value, right) = self
                 .condition_expression(comparison.id, depth.checked_add(1)?)?;
             if !clean_i32_operator(comparison)
@@ -499,7 +509,6 @@ impl<'node> Flow<'node> {
             return None;
         }
         let (value, initializer) = self.expression(variable.id, 0)?;
-        let byte = u8::try_from(value).ok()?;
         if !span_within(&variable.span, &initializer.span)
             || initializer.span.end.byte != variable.span.end.byte
             || initializer.span.begin.byte <= variable.span.begin.byte
@@ -507,7 +516,7 @@ impl<'node> Flow<'node> {
             return None;
         }
         self.locals.push(Local {
-            byte,
+            value,
             declaration: variable,
             name,
             source: initializer,
@@ -558,7 +567,7 @@ impl<'node> Flow<'node> {
                 {
                     return None;
                 }
-                Some((u32::from(self.referenced(read)?.0), load))
+                Some((self.referenced(read)?.0, load))
             },
             "conditional-expression" => {
                 self.conditional_expression(parent, depth)
@@ -742,7 +751,7 @@ impl<'node> Flow<'node> {
         self.nodes.get(self.position)
     }
 
-    fn referenced(&self, read: &Node) -> Option<(u8, &'node Node)> {
+    fn referenced(&self, read: &Node) -> Option<(u32, &'node Node)> {
         let symbol = read.reference.as_deref()?;
         // Symbol identity alone is insufficient: the AST could falsely
         // bind an inner-source read to an active outer declaration.
@@ -759,7 +768,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        Some((local.byte, local.source))
+        Some((local.value, local.source))
     }
 
     fn scoped_branch_effects(
@@ -860,14 +869,14 @@ impl<'node> Flow<'node> {
         if !prefix && !postfix {
             return None;
         }
-        let previous = u32::from(self.locals.get(destination)?.byte);
+        let previous = self.locals.get(destination)?.value;
         let updated = if operation == "++" {
             previous.wrapping_add(1)
         } else {
             previous.wrapping_sub(1)
         };
         let local = self.locals.get_mut(destination)?;
-        local.byte = u8::try_from(updated).ok()?;
+        local.value = updated;
         local.source = step;
         Some(step.span.end.byte)
     }
@@ -896,7 +905,8 @@ impl<'node> Flow<'node> {
         let (declaration_end, _) =
             self.declaration(statement, statement.span.begin.byte)?;
         let counter = self.locals.get(outer_len)?;
-        let start = counter.byte;
+        // The finite induction proof still admits only byte-range counters.
+        let start = u8::try_from(counter.value).ok()?;
         let symbol = counter.symbol;
         let (counter_name, _) = symbol.rsplit_once('@')?;
         let comparison = self.take(statement.id, "binary-expression")?;
@@ -1130,7 +1140,7 @@ impl<'node> Flow<'node> {
             // Inner automatic locals must not remain visible after the brace.
             self.locals.truncate(outer_len.checked_add(1)?);
             let current_counter = self.locals.get_mut(outer_len)?;
-            if current_counter.byte != counter_value {
+            if current_counter.value != u32::from(counter_value) {
                 return None;
             }
             match self.loop_exit {
@@ -1146,7 +1156,7 @@ impl<'node> Flow<'node> {
             } else {
                 counter_value.checked_add(stride)?
             };
-            current_counter.byte = counter_value;
+            current_counter.value = u32::from(counter_value);
             current_counter.source = increment;
             trips = trips.checked_add(1)?;
         }
@@ -1516,7 +1526,8 @@ fn checked_argument<'node>(
             {
                 return None;
             }
-            flow.referenced(read)
+            let (value, source) = flow.referenced(read)?;
+            Some((u8::try_from(value).ok()?, source))
         },
         "parenthesized-expression" => {
             let grouped =

@@ -73,6 +73,36 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Full unsigned C locals across the complete recurrence (2026-11-10)
+
+Replaying the entire twelve-output masked Fibonacci C program with
+`unsigned wide = a + b + 65536U; unsigned next = wide % 256U;` first
+refused at the typed JSON adapter and published no guest: its bounded
+constant-flow projector still narrowed **every automatic `unsigned` local**
+to a byte, although the previous change already supported full unsigned
+expression intermediates. Local declarations, references, ordinary and
+compound assignments, and standalone `++`/`--` now retain the complete
+source-checked `u32` value (including C unsigned wraparound). The separate
+bounded `for` induction proof still requires byte-range counters, and
+a direct `putchar((int)local)` still requires an exactly representable
+byte; the original simple one-local projector is not broadened.
+
+The full twelve-iteration C recurrence with an intervening wide local now
+reaches a real current-profile Malbolge capsule. On empty stdin the normative
+VM emits `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps, matching
+the independent unsigned-C recurrence oracle. Full-program regression
+variants also exercise a compound wide local write, wrapping at 2^32, and
+standalone wide-local increment under empty and binary stdin. Invalid C
+width, undefined remainder, out-of-byte guest output, and forged Clang
+literal metadata are explicitly rejected without guest publication.
+
+This remains **closed compile-time C-state evaluation**: neither C local
+state nor its arithmetic executes dynamically inside the guest. The
+original unmasked Fibonacci byte stream `02 59 5f ...` still fails at
+layout; a bounded forward-jump scratch search cannot synthesize its early
+`5f` under its current operand/geometry limits. No general byte-stream
+synthesis or dynamic C control-flow capability is claimed; P0 stays open.
+
 ### Full unsigned-C intermediates in a bounded recurrence (2026-11-10)
 
 A complete twelve-step masked Fibonacci C program was rerun with a normal
@@ -82,7 +112,7 @@ typed adapter before publishing a guest because its source-backed local
 projector accepted only `0..255` integer leaves. The shared Clang-literal
 proof now retains the entire normalized `u32` value for closed expression
 arithmetic, including unsigned C wraparound, while the original simpler
-byte-only projector and every local store/output still require a byte.
+byte-only projector and (at the time of this experiment) every local store/output required a byte.
 
 A third whole-source variant using
 `((a + b) + 4294967295U + 1U) % 256U` also proves C `u32` wraparound

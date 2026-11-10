@@ -54,6 +54,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete masked Fibonacci recurrence with an additional
+  `unsigned wide = a + b + 65536U;` local first refused at the adapter without
+  publishing a guest. Its closed state projector now preserves full u32
+  declarations, assignments, references and ordinary/compound local updates;
+  bounded induction counters and actual byte outputs retain explicit
+  narrow admission. The entire twelve-step program emits the independent
+  masked Fibonacci byte oracle in the normative guest VM (47 steps for the
+  initial variant), and variants exercise u32 wraparound and increment under
+  empty/nonempty stdin. Undefined arithmetic, foreign type metadata and
+  direct out-of-byte guest output reject without publication. The original
+  unmasked twelve-byte trace still refuses at layout; runtime C state and
+  general guest output synthesis remain missing, so P0 is still pending.
+
+
 - On 2026-11-10 the complete twelve-output masked Fibonacci C recurrence
   initially rejected ordinary `% 256U` and a `+ 65536U` intermediate without
   guest publication. A shared source-proven `u32` literal check now preserves
@@ -62,7 +76,7 @@ a compiler capability gap, not a reason to return to N+1.
   emit the independent twelve-byte oracle on the normative VM under empty
   and binary stdin (47 steps each). A third full variant with
   `4294967295U + 1U` verifies unsigned 32-bit wraparound on both inputs;
-  invalid source widths, byte stores,
+  invalid source widths, then-byte-only stores,
   undefined arithmetic, and forged Clang leaves refuse without publication.
   This is bounded compile-time C folding, not guest-side arithmetic; the
   unmasked original still cannot pass the general layout and P0 stays open.
