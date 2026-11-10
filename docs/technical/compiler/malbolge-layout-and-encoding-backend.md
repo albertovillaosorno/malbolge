@@ -63,8 +63,10 @@ either a known graphical source cell or an untouched loader-expanded word
 proven by the profile's six-step recurrence. Previously written expanded
 words and input-tainted source operands still reject. Every admitted
 code/D/write/encryption position is independently replayed in traced VM
-regressions. The automatic forward-padding planner remains stricter and
-does not create later moves.
+regressions. The automatic forward-padding planner remains stricter:
+it creates later `j` moves only from known graphical source operands
+strictly behind reached C, never from expanded-loader or unknown written
+words.
 
 A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout
@@ -338,9 +340,14 @@ among at most 94 reached source phases. It inserts reached no-ops while
 checking dynamic `D` state, future source length and previous XLAT2
 mutations, then delegates data nonalias proof to independent admission.
 Current/historical VMs cover long suffixes and a two-hop jump followed by
-relocated rotate/crazy; impossible placements, duplicate relocation and
-unknown control operands reject. This helper is available only through the
-opt-in symbolic CLI grammar, not the default concrete-token mode.
+relocated rotate/crazy. A second symbolic relocation uses only a known,
+never-written past source operand and must again point behind reached code;
+its earliest admitted phase matches a separately supplied explicit `j`.
+Two real VMs replay both moves with binary input, a source-scratch `p`
+write and scalar-oracle output. Impossible placements, unknown control
+operands and unsupported duplicate relocations still reject. This helper
+is available only through the opt-in symbolic CLI grammar, not the default
+concrete-token mode.
 
 A subsequent symbolic `Jump` now reads an exact already-encoded, never-
 written source operand strictly behind C, including prior XLAT2 mutation.

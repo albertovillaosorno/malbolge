@@ -129,6 +129,16 @@ current/historical step-traced VM replay checks two consecutive `p`/`*`
 operations on past source scratch: exact code/data pointers, data mutations,
 XLAT2 code encryption, and independently calculated output bytes.
 
+After a source-backed relocation, `AutoRelocate` can select a second
+`j` from a known past source operand by inserting reached no-ops until
+the new data destination lies strictly behind C. An explicit later `j`
+uses the same conservative proof. The planner cannot infer a control
+operand from input-written source scratch or expanded-loader memory;
+those cases remain reserved for independent admission or later synthesis.
+The current/historical VMs replay both relocations, a real input-dependent
+`p` source write and binary output parity against the scalar oracle.
+An equivalent explicit-phase `j` plan emits the same admitted guest source.
+
 The independent linear encoder also admits a later forward `i` jump after
 a source-scratch `j`/`p` sequence if the jump reads a separate known
 cell. A seven-step real VM fixture uses binary input to modify source
@@ -159,8 +169,8 @@ jump padding. The table is constructed only after independently admitted
 VM path evidence; this is a bounded machine-step map, not a C source map.
 The resulting source and data-write witness undergo the normal independent
 layout check. Current/historical VM tests cover a long suffix and a two-jump
-chain followed by safe rotate/crazy writes; duplicate relocations, unsafe
-post-relocation jumps and impossible source-length bounds reject. The CLI does
+chain followed by safe rotate/crazy writes; unsafe repeated relocations,
+post-relocation jumps and impossible source-length bounds reject. The CLI
 accepts a symbolic relocation token only after `--auto-layout`.
 
 Every admitted layout returns deterministic, step-indexed witnesses for

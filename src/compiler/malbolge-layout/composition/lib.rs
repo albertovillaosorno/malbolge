@@ -293,13 +293,11 @@ impl ForwardPaddingBuilder<'_> {
         &mut self,
         remaining: usize,
     ) -> Result<usize, LinearLayoutError> {
-        if self.relocated {
-            return Err(LinearLayoutError::UnsafeDataPlacement);
-        }
         // The address-sensitive decoder cycles over 94 graphical phases.
         // Search only this bounded first cycle. After a forward jump, an
         // already encoded source operand can instead point strictly behind
-        // the reached C; independent admission checks all resulting writes.
+        // the reached C. Repeated relocations may use only a known past
+        // operand: the planner has no final loader tail or arithmetic trace.
         for _phase in 0..94usize {
             let position = self.operations.len();
             let planned_length = position
@@ -309,25 +307,32 @@ impl ForwardPaddingBuilder<'_> {
             if planned_length > MAX_LINEAR_CELLS {
                 return Err(LinearLayoutError::TooLong);
             }
-            let data_word = if self.data_pointer == position {
-                u32::from(unique_graphical_cell(
+            let data_word = if self.data_pointer == position && !self.relocated
+            {
+                Some(u32::from(unique_graphical_cell(
                     self.profile,
                     LinearOpcode::RelocateDataPointer,
                     position,
-                )?)
+                )?))
             } else {
-                *self
-                    .shadow
-                    .get(self.data_pointer)
-                    .ok_or(LinearLayoutError::UnsafeDataPlacement)?
+                self.shadow.get(self.data_pointer).copied().filter(|_| {
+                    !self.source_writes.contains(&self.data_pointer)
+                })
             };
-            let word = usize::try_from(data_word)
-                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-            let expanded_data = word >= planned_length;
-            let past_source_scratch = self.data_pointer < position
-                && word.saturating_add(1) < position;
-            if expanded_data || past_source_scratch {
-                return self.instruction(LinearOpcode::RelocateDataPointer);
+            if let Some(word) = data_word {
+                let word = usize::try_from(word)
+                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
+                let expanded_data = !self.relocated && word >= planned_length;
+                let past_source_scratch = self.data_pointer < position
+                    && word.saturating_add(1) < position;
+                if expanded_data || past_source_scratch {
+                    return self.instruction(LinearOpcode::RelocateDataPointer);
+                }
+            }
+            // A second relocation cannot become source-backed if D is
+            // already at or ahead of C: reached no-ops advance both equally.
+            if self.relocated && self.data_pointer >= position {
+                return Err(LinearLayoutError::UnsafeDataPlacement);
             }
             let _filler = self.instruction(LinearOpcode::NoOperation)?;
             self.data_pointer = self.data_pointer.saturating_add(1);
@@ -335,12 +340,31 @@ impl ForwardPaddingBuilder<'_> {
         Err(LinearLayoutError::UnsafeDataPlacement)
     }
 
-    fn instruction(&mut self, operation: LinearOpcode) -> Result<usize, LinearLayoutError> {
+    fn instruction(
+        &mut self,
+        operation: LinearOpcode,
+    ) -> Result<usize, LinearLayoutError> {
         if matches!(operation, LinearOpcode::JumpForward { .. }) {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         if operation == LinearOpcode::RelocateDataPointer && self.relocated {
-            return Err(LinearLayoutError::UnsafeDataPlacement);
+            // No second j may depend on an unknown source write or an
+            // unmaterialized loader-expanded word. Require its new D to
+            // remain strictly behind the already reached instruction.
+            let position = self.operations.len();
+            let operand = self
+                .shadow
+                .get(self.data_pointer)
+                .filter(|_| !self.source_writes.contains(&self.data_pointer))
+                .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
+            if self.data_pointer >= position
+                || usize::try_from(*operand)
+                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
+                    .saturating_add(1)
+                    >= position
+            {
+                return Err(LinearLayoutError::UnsafeDataPlacement);
+            }
         }
         // The planner cannot recover a value written by guest arithmetic.
         // Keep a future control operand conservative even when admission

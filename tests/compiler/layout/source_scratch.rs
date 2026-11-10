@@ -962,3 +962,117 @@ fn auto_padding_jump_skips_past_input_written_scratch()
     }
     Ok(())
 }
+
+#[test]
+fn auto_padding_relocates_twice_using_known_source_after_input_scratch()
+-> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 6];
+    logical.extend([
+        Jump,
+        AutoRelocate,
+        Instruction(LinearOpcode::InputWord),
+        Instruction(LinearOpcode::CrazyData),
+        AutoRelocate,
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        // Without the two reached filler phases, the second j would point
+        // D into code that has not been executed and must be refused.
+        let mut premature = logical.clone();
+        *premature.get_mut(10).ok_or("missing second relocation")? =
+            Instruction(LinearOpcode::RelocateDataPointer);
+        if encode_auto_padded_forward_layout(profile, &premature)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from("unsafe early second j was admitted"));
+        }
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("second source relocation: {error:?}"))?;
+        verify_bidirectional_source_map(&artifact)?;
+        let relocation_positions: Vec<_> = artifact
+            .layout()
+            .executed_code_positions()
+            .iter()
+            .copied()
+            .filter(|&address| {
+                artifact
+                    .operations()
+                    .get(usize::try_from(address).unwrap_or_default())
+                    == Some(&LinearOpcode::RelocateDataPointer)
+            })
+            .collect();
+        if relocation_positions.len() != 2 {
+            return Err(String::from("expected two reached data relocations"));
+        }
+        // The selected second j also has an explicit address-sensitive plan.
+        // Only reached no-ops are inserted, so both must encode identically.
+        let mut explicit = vec![Instruction(LinearOpcode::NoOperation); 6];
+        explicit.extend([
+            Jump,
+            AutoRelocate,
+            Instruction(LinearOpcode::InputWord),
+            Instruction(LinearOpcode::CrazyData),
+            Instruction(LinearOpcode::NoOperation),
+            Instruction(LinearOpcode::NoOperation),
+            Instruction(LinearOpcode::RelocateDataPointer),
+            Instruction(LinearOpcode::OutputByte),
+            Instruction(LinearOpcode::Halt),
+        ]);
+        let explicit = encode_auto_padded_forward_layout(profile, &explicit)
+            .map_err(|error| {
+                format!("explicit second relocation: {error:?}")
+            })?;
+        if explicit.layout() != artifact.layout()
+            || artifact.logical_code_positions().get(10) != Some(&98)
+        {
+            return Err(String::from("symbolic and explicit second j differ"));
+        }
+        let write_address = artifact
+            .layout()
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .copied()
+            .next()
+            .ok_or("missing source scratch write")?;
+        let operand = u32::from(
+            *artifact
+                .layout()
+                .source()
+                .get(
+                    usize::try_from(write_address)
+                        .map_err(|error| error.to_string())?,
+                )
+                .ok_or("missing source scratch operand")?,
+        );
+        for input in [0x00u8, 0xff] {
+            let expected = scalar_crazy_reference(
+                operand,
+                u32::from(input),
+                profile.word_trits(),
+            );
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                artifact.layout().source(),
+                vec![input],
+            )
+            .map_err(|error| {
+                format!("repeated relocation VM load: {error:?}")
+            })?;
+            verify_execution_witness(&mut vm, artifact.layout())?;
+            if vm.input_consumed() != 1
+                || vm.output()
+                    != [u8::try_from(expected & 255)
+                        .map_err(|error| error.to_string())?]
+                || vm.memory_word(write_address) != Ok(expected)
+            {
+                return Err(String::from(
+                    "repeated relocation guest parity differs",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
