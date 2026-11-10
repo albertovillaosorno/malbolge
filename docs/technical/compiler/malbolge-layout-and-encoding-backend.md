@@ -121,9 +121,9 @@ a forged target refuses. A second 59-cell real-VM program reads binary
 input, writes expanded address 127 with `p`, then relocates D back to the
 written word. Its next `i` is refused as unknown, even though untouched
 loader operand 128 was independently proven to equal 126. The symbolic
-padding planner still refuses post-relocation jumps; arbitrary runtime-
-dependent jump operands are unsupported, as is the original unmasked
-Fibonacci C source.
+padding planner now accepts a post-relocation jump only from a known past
+source cell; arbitrary runtime-dependent jump operands are unsupported,
+as is the original unmasked Fibonacci C source.
 
 Another real VM regression demonstrates the distinct case where a
 later jump reads a code cell whose normal no-op execution already encrypted
@@ -324,25 +324,32 @@ cell with its original logical index, generated reached relocation no-op,
 or skipped forward-jump no-op. This provenance is computed from an admitted
 VM execution witness rather than assumed reachable positions; it does not
 represent source-C line mapping.
-The planner fails closed on nonforward targets, post-relocation jumps or
-layout overflow. Real VMs exercise one-, two- and three-hop witnesses and
-jump-then-data-relocation; the first-jump phase matrix covers all 94
-address-sensitive decoder phases under both canonical profiles. The current
-source CLI continues accepting explicit concrete `jump:TARGET` tokens by
-default. An opt-in `--auto-layout` mode now accepts symbolic `jump` and
-`auto-relocate` tokens, with the existing library planner as its untrusted
-candidate producer. This is not conditional branch lowering or a general
-guest code-state solver.
+The planner fails closed on nonforward targets, unproven post-relocation
+operands or layout overflow. Real VMs exercise one-, two- and three-hop
+witnesses and jump-then-data-relocation; the first-jump phase matrix covers
+all 94 address-sensitive decoder phases under both canonical profiles. The
+current source CLI continues accepting concrete `jump:TARGET` tokens by
+default. Opt-in `--auto-layout` accepts symbolic `jump` and `auto-relocate`
+tokens, using the library planner as an untrusted candidate producer. This
+is not conditional branch lowering or a general guest code-state solver.
 
-`PaddedForwardStep::AutoRelocate` additionally chooses the earliest safe
-`j` placement among at most 94 reached source phases. It inserts reached
-no-ops while checking dynamic `D` state, future source length and previous
-XLAT2 encryptions, then delegates data nonalias proof to independent layout
-admission. Tests execute actual current/historical VMs for long suffixes
-and a two-hop jump plus relocation with rotate/crazy; impossible placements,
-duplicate relocation and post-relocation jump attempts reject. This library
-helper is available only in the opt-in symbolic CLI grammar, not the
-default concrete-token mode.
+`PaddedForwardStep::AutoRelocate` chooses the earliest safe `j` placement
+among at most 94 reached source phases. It inserts reached no-ops while
+checking dynamic `D` state, future source length and previous XLAT2
+mutations, then delegates data nonalias proof to independent admission.
+Current/historical VMs cover long suffixes and a two-hop jump followed by
+relocated rotate/crazy; impossible placements, duplicate relocation and
+unknown control operands reject. This helper is available only through the
+opt-in symbolic CLI grammar, not the default concrete-token mode.
+
+A subsequent symbolic `Jump` now reads an exact already-encoded, never-
+written source operand strictly behind C, including prior XLAT2 mutation.
+Three current/historical VM fixtures prove untouched skipped and previously
+executed encrypted operands, plus jumping past a separate input-written
+scratch cell. All consume binary `0x00`/`0xff` and emit independently
+checked output. A forged target refuses. Loader-expanded and guest-written
+operands remain unavailable to the planner; the independent linear encoder
+continues checking its separately proved broader subset.
 
 ### Opt-in symbolic layout artifact publisher
 

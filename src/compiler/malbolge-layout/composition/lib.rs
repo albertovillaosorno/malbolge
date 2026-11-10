@@ -285,6 +285,7 @@ struct ForwardPaddingBuilder<'profile> {
     profile: &'profile ProfileDescriptor,
     relocated: bool,
     shadow: Vec<u32>,
+    source_writes: Vec<usize>,
 }
 
 impl ForwardPaddingBuilder<'_> {
@@ -341,6 +342,16 @@ impl ForwardPaddingBuilder<'_> {
         if operation == LinearOpcode::RelocateDataPointer && self.relocated {
             return Err(LinearLayoutError::UnsafeDataPlacement);
         }
+        // The planner cannot recover a value written by guest arithmetic.
+        // Keep a future control operand conservative even when admission
+        // could prove a deterministic result from the completed source.
+        if matches!(
+            operation,
+            LinearOpcode::CrazyData | LinearOpcode::RotateData
+        ) && self.data_pointer < self.operations.len()
+        {
+            self.source_writes.push(self.data_pointer);
+        }
         let position = push_padded_cell(
             self.profile,
             &mut self.operations,
@@ -363,7 +374,13 @@ impl ForwardPaddingBuilder<'_> {
         Ok(position)
     }
     fn jump(&mut self) -> Result<usize, LinearLayoutError> {
-        if self.relocated {
+        // After relocation the planner only knows past graphical source
+        // operands. Loader-expanded values need the complete final source
+        // tail and guest-written scratch values are not statically known.
+        if self.relocated
+            && (self.data_pointer >= self.operations.len()
+                || self.source_writes.contains(&self.data_pointer))
+        {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         let code_position = push_padded_cell(
@@ -949,11 +966,13 @@ fn proven_source_origins(
 /// Expands reachable instructions into a bounded graphical source by solving
 /// each *unconditional forward* `i` jump's real memory-derived destination.
 ///
-/// Before relocation `D <= C`. Therefore, when a jump is encountered its
-/// operand is either the newly encoded `i` cell (`D == C`) or an already
-/// encoded source cell (`D < C`) whose prior XLAT2 mutations are modeled by
-/// `shadow`. The planner inserts only graphical no-ops to fill the intervening
-/// unreachable source addresses and encrypts `target - 1` exactly as the VM
+/// Before relocation `D <= C`. When a jump is encountered its operand
+/// is either the newly encoded `i` cell (`D == C`) or an already encoded
+/// source cell (`D < C`) whose prior XLAT2 mutations are modeled by `shadow`.
+/// After relocation, symbolic jumps require a past, never-written source
+/// operand; future loader-expanded values need the completed source tail.
+/// The planner inserts only graphical no-ops to fill unreachable source
+/// addresses and encrypts `target - 1` exactly as the VM
 /// does. A subsequent `j` may also point to already-passed source scratch
 /// when both its operand and destination are behind C; the final independent
 /// checker still proves every write is safe. The planner does not search for
@@ -962,8 +981,8 @@ fn proven_source_origins(
 /// # Errors
 ///
 /// Rejects a jump with no skipped forward cell, malformed/oversized plans,
-/// unplaceable safe relocation, post-relocation jumps, explicit targets, or any fully
-/// expanded source rejected by the independent `encode_linear_layout` check.
+/// unplaceable safe relocation, unproven post-relocation jump operands,
+/// explicit targets, or any expanded source refused by independent admission.
 pub fn encode_auto_padded_forward_layout(
     profile: &'static ProfileDescriptor,
     logical: &[PaddedForwardStep],
@@ -981,6 +1000,7 @@ pub fn encode_auto_padded_forward_layout(
         profile,
         relocated: false,
         shadow: Vec::with_capacity(logical.len()),
+        source_writes: Vec::new(),
     };
     for (logical_index, step) in logical.iter().enumerate() {
         let position = match step {

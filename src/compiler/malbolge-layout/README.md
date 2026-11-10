@@ -108,7 +108,7 @@ both the verified linear layout and the mapping of logical operations to
 physical source positions. Each target is derived from the evolving
 `D`-pointer memory word, including earlier XLAT2 encryption; no caller-supplied
 jump destination is trusted. The planner rejects backward/short targets,
-post-relocation jumps, oversized code and unsupported logical plans. The
+unproven post-relocation operands, oversized code and unsupported plans. The
 original machine-op CLI still requires concrete `jump:TARGET` tokens;
 the opt-in `--auto-layout` mode uses this solver explicitly.
 
@@ -129,21 +129,28 @@ current/historical step-traced VM replay checks two consecutive `p`/`*`
 operations on past source scratch: exact code/data pointers, data mutations,
 XLAT2 code encryption, and independently calculated output bytes.
 
-The independent linear encoder (not the symbolic padding planner) also
-admits a later forward `i` jump after a source-scratch `j`/`p` sequence if
-the jump reads a separate known source cell. A seven-step real VM fixture
-uses binary input to modify source address 67, then reads address 68 to
-jump forward, outputs the independently checked byte, and halts on both
-historical/current profiles. Forged targets and a later jump reading the
-input-tainted cell reject. A second real VM fixture verifies a forward jump
+The independent linear encoder also admits a later forward `i` jump after
+a source-scratch `j`/`p` sequence if the jump reads a separate known
+cell. A seven-step real VM fixture uses binary input to modify source
+address 67, then reads address 68 to jump forward, outputs the
+independently checked byte, and halts on both historical/current
+profiles. Forged targets and a later jump reading the input-tainted cell
+reject. A second real VM fixture verifies a forward jump
 whose D operand is an untouched expanded-loader word at address 127. Its
 value 38 determines code target 39 under both profiles. The 44-cell guest
 consumes and
 emits `0x00`/`0xff`, matching the scalar recurrence and traced C/D/XLAT2.
 A 59-cell guest independently writes expanded address 127 using input-
 dependent `p`, returns D to it using a known expanded relocation operand,
-and then refuses to treat the written word as a new jump target. This is
-not general guest control flow or a complete C compiler.
+and then refuses to treat the written word as a new jump target. The
+symbolic padding planner now accepts a post-relocation `Jump` only when
+its operand is previously encoded, never-written source memory behind C.
+Real VM witnesses compute the next code address from an untouched skipped
+no-op, a no-op already XLAT2-encrypted during execution, and a different
+untouched cell after an input-dependent scratch write. All retain binary
+I/O parity. Expanded-memory and guest-written operands still
+require separate synthesis or remain unsupported. This is not general
+guest control flow or a complete C compiler.
 
 The planner also returns an exact source-cell origin table alongside
 logical-to-physical code positions: each graphical cell is either an
@@ -152,8 +159,8 @@ jump padding. The table is constructed only after independently admitted
 VM path evidence; this is a bounded machine-step map, not a C source map.
 The resulting source and data-write witness undergo the normal independent
 layout check. Current/historical VM tests cover a long suffix and a two-jump
-chain followed by safe rotate/crazy writes; duplicate relocations, a jump
-after relocation and impossible source-length bounds reject. The CLI does
+chain followed by safe rotate/crazy writes; duplicate relocations, unsafe
+post-relocation jumps and impossible source-length bounds reject. The CLI does
 accepts a symbolic relocation token only after `--auto-layout`.
 
 Every admitted layout returns deterministic, step-indexed witnesses for

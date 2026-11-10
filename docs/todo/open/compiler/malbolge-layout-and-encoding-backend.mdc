@@ -366,7 +366,7 @@ emission.
   historical normative VMs trace the seven executed C/D/encryption steps,
   guest `p` write, `0x00`/`0xff` input and exact scalar-oracle output.
   Forged targets and jumping through input-tainted scratch refuse.
-  Expanded-memory jump operands and symbolic post-relocation layout remain
+  Expanded-memory symbolic jump operands and unknown scratch writes remain
   unsupported. The original unmasked Fibonacci whole-C layout and P0
   compiler objective remain open.
 - The independent layout checker now also admits a strictly forward `i`
@@ -378,8 +378,13 @@ emission.
   59-cell guest consumes binary input, applies real `p` to expanded address
   127 and relocates D back through separately proven loader word 126 at
   address 128; its later `i` refuses the written, input-dependent operand.
-  The symbolic padding planner, generalized source-C arithmetic/flow and
-  original unmasked Fibonacci C guest remain unsupported.
+  The symbolic padding planner now accepts known post-relocation source
+  operands, including a no-op earlier encrypted by normal execution. Three
+  current/historical normative VM fixtures prove skipped and encrypted
+  source operands, plus a real input-dependent write to separate scratch.
+  All three preserve exact paths and binary I/O parity; forged targets
+  refuse. Symbolic expanded-memory operands, generalized source-C runtime
+  arithmetic/flow and original unmasked Fibonacci C guest remain unsupported.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

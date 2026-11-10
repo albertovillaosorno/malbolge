@@ -803,3 +803,162 @@ fn auto_relocation_uses_source_scratch_after_a_forward_jump()
     }
     Ok(())
 }
+
+#[test]
+fn auto_padding_jumps_after_source_scratch_relocation()
+-> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 4];
+    logical.extend([
+        Jump,
+        AutoRelocate,
+        Jump,
+        Instruction(LinearOpcode::InputWord),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let expanded = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("post-relocation auto jump: {error:?}"))?;
+        if expanded.logical_code_positions()
+            != [0, 1, 2, 3, 4, 95, 96, 99, 100, 101]
+            || expanded.layout().data_pointer_positions()
+                != [0, 1, 2, 3, 4, 5, 64, 65, 66, 67]
+            || expanded.layout().source().get(64) != Some(&98)
+        {
+            return Err(String::from("post-relocation auto jump geometry differs"));
+        }
+        verify_bidirectional_source_map(&expanded)?;
+        let independent = encode_linear_layout(profile, expanded.operations())
+            .map_err(|error| format!("independent post-relocation layout: {error:?}"))?;
+        if expanded.layout() != &independent {
+            return Err(String::from("post-relocation independent proof differs"));
+        }
+        for byte in [0x00, 0xff] {
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                independent.source(),
+                vec![byte],
+            )
+            .map_err(|error| format!("post-relocation guest load: {error:?}"))?;
+            verify_execution_witness(&mut vm, &independent)?;
+            if vm.input_consumed() != 1 || vm.output() != [byte] {
+                return Err(String::from("post-relocation guest byte parity differs"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn auto_padding_jump_reads_previously_encrypted_source_after_relocation()
+-> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 90];
+    logical.extend([
+        Jump,
+        AutoRelocate,
+        Jump,
+        Instruction(LinearOpcode::InputWord),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("encrypted auto jump: {error:?}"))?;
+        verify_bidirectional_source_map(&artifact)?;
+        let positions = artifact.logical_code_positions();
+        let tail = positions
+            .get(90..)
+            .ok_or("missing post-relocation logical steps")?;
+        if tail != [90, 103, 104, 125, 126, 127]
+            || artifact.layout().data_pointer_positions().get(92)
+                != Some(&72)
+            || artifact.layout().source().get(72).and_then(|source_byte| {
+                encrypt_profile_cell(u32::from(*source_byte))
+            }) != Some(124)
+        {
+            return Err(String::from("encrypted auto operand geometry differs"));
+        }
+        let mut wrong_target = artifact.operations().to_vec();
+        replace_scratch_operation(
+            &mut wrong_target,
+            104,
+            LinearOpcode::JumpForward { target: 124 },
+        )?;
+        if encode_linear_layout(profile, &wrong_target)
+            != Err(LinearLayoutError::JumpTargetMismatch { position: 104 })
+        {
+            return Err(String::from("forged encrypted jump target admitted"));
+        }
+        for input in [0x00, 0xff] {
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                artifact.layout().source(),
+                vec![input],
+            )
+            .map_err(|error| format!("encrypted auto jump VM: {error:?}"))?;
+            verify_execution_witness(&mut vm, artifact.layout())?;
+            if vm.input_consumed() != 1 || vm.output() != [input] {
+                return Err(String::from("encrypted auto jump byte parity differs"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn auto_padding_jump_skips_past_input_written_scratch()
+-> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::NoOperation); 6];
+    logical.extend([
+        Jump,
+        AutoRelocate,
+        Instruction(LinearOpcode::InputWord),
+        Instruction(LinearOpcode::CrazyData),
+        Jump,
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("source-write auto jump: {error:?}"))?;
+        verify_bidirectional_source_map(&artifact)?;
+        if artifact.logical_code_positions().get(6..)
+            != Some(&[6, 93, 94, 95, 96, 99, 100][..])
+            || artifact.layout().data_write_positions().get(9)
+                != Some(&Some(63))
+        {
+            return Err(String::from("source-write auto jump path differs"));
+        }
+        let original = *artifact
+            .layout()
+            .source()
+            .get(63)
+            .ok_or("missing source-write operand")?;
+        for input in [0x00, 0xff] {
+            let expected = scalar_crazy_reference(
+                u32::from(original),
+                u32::from(input),
+                profile.word_trits(),
+            );
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                artifact.layout().source(),
+                vec![input],
+            )
+            .map_err(|error| format!("source-write auto jump VM: {error:?}"))?;
+            verify_execution_witness(&mut vm, artifact.layout())?;
+            let expected_byte = u8::try_from(expected & 255)
+                .map_err(|error| error.to_string())?;
+            if vm.input_consumed() != 1
+                || vm.output() != [expected_byte]
+                || vm.memory_word(63) != Ok(expected)
+            {
+                return Err(String::from("source-write auto jump VM parity differs"));
+            }
+        }
+    }
+    Ok(())
+}
