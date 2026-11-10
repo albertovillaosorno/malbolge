@@ -421,6 +421,139 @@ fn input_written_expanded_loader_word_cannot_drive_a_later_jump()
     Ok(())
 }
 
+fn replay_deterministic_expanded_guest(
+    profile: &'static malbolge::ProfileDescriptor,
+    admitted: &LinearLayout,
+    original: u32,
+    result: u32,
+) -> Result<(), String> {
+    for input in [Vec::new(), vec![0, 255, 42]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, admitted.source(), input)
+                .map_err(|error| format!("expanded write guest: {error:?}"))?;
+        if vm.memory_word(127) != Ok(original) {
+            return Err(String::from("original expanded word differs"));
+        }
+        verify_execution_witness(&mut vm, admitted)?;
+        if vm.output()
+            != [u8::try_from(result & 255)
+                .map_err(|error| error.to_string())?]
+            || vm.memory_word(127) != Ok(result)
+            || vm.input_consumed() != 0
+        {
+            return Err(String::from("expanded control VM differs"));
+        }
+    }
+    Ok(())
+}
+
+// The most recent write wins: input-dependent p invalidates a value already
+// proven by a preceding expanded-memory arithmetic instruction.
+fn refuse_overwritten_expanded_control(
+    profile: &'static malbolge::ProfileDescriptor,
+    operations: &[LinearOpcode],
+) -> Result<(), String> {
+    let mut overwritten = operations.to_vec();
+    for (index, operation) in [
+        (13, LinearOpcode::InputWord),
+        (14, LinearOpcode::RelocateDataPointer),
+        (15, LinearOpcode::CrazyData),
+        (16, LinearOpcode::RelocateDataPointer),
+        (17, LinearOpcode::RelocateDataPointer),
+    ] {
+        replace_scratch_operation(&mut overwritten, index, operation)?;
+    }
+    let mut safe_prefix = overwritten.clone();
+    replace_scratch_operation(&mut safe_prefix, 17, LinearOpcode::NoOperation)?;
+    let proven_prefix = encode_linear_layout(profile, &safe_prefix)
+        .map_err(|error| format!("expanded overwrite prefix: {error:?}"))?;
+    if proven_prefix.data_write_positions().get(15) != Some(&Some(127))
+        || proven_prefix.data_pointer_positions().get(17) != Some(&127)
+        || encode_linear_layout(profile, &overwritten)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+    {
+        return Err(String::from("stale expanded write used for j"));
+    }
+    Ok(())
+}
+
+fn scalar_expanded_word_127(
+    source: &[u8],
+    profile: &malbolge::ProfileDescriptor,
+) -> Result<u32, String> {
+    let [.., before, last] = source else {
+        return Err(String::from("missing final source tail"));
+    };
+    let mut previous = u32::from(*before);
+    let mut latest = u32::from(*last);
+    for _address in 59u32..=127 {
+        let next =
+            scalar_crazy_reference(previous, latest, profile.word_trits());
+        previous = latest;
+        latest = next;
+    }
+    Ok(latest)
+}
+
+// Deterministic guest arithmetic changes loader-expanded memory. A later j
+// must read the updated word, not the original expansion or a guessed value.
+#[test]
+fn deterministic_expanded_arithmetic_drives_later_relocation()
+-> Result<(), String> {
+    for arithmetic in [LinearOpcode::RotateData, LinearOpcode::CrazyData] {
+        let mut operations = vec![LinearOpcode::NoOperation; 59];
+        for (index, operation) in [
+            (9, LinearOpcode::RelocateDataPointer),
+            (11, arithmetic),
+            (12, LinearOpcode::RelocateDataPointer),
+            (13, LinearOpcode::RelocateDataPointer),
+            (14, LinearOpcode::OutputByte),
+            (58, LinearOpcode::Halt),
+        ] {
+            replace_scratch_operation(&mut operations, index, operation)?;
+        }
+        for profile in [current_profile(), historical_profile()] {
+            let admitted = encode_linear_layout(profile, &operations).map_err(
+                |error| format!("expanded written control: {error:?}"),
+            )?;
+            // Independent scalar loader expansion from the final source tail.
+            let latest = scalar_expanded_word_127(admitted.source(), profile)?;
+            let result = if arithmetic == LinearOpcode::RotateData {
+                malbolge::profile_rotate(latest, profile.memory_words())
+            } else {
+                scalar_crazy_reference(latest, 0, profile.word_trits())
+            };
+            if admitted.data_write_positions().get(11) != Some(&Some(127))
+                || admitted.data_pointer_positions().get(11..15)
+                    != Some([127, 128, 127, result + 1].as_slice())
+            {
+                return Err(String::from("wrong known expanded relocation"));
+            }
+            replay_deterministic_expanded_guest(
+                profile, &admitted, latest, result,
+            )?;
+            let mut tainted = operations.clone();
+            replace_scratch_operation(
+                &mut tainted,
+                8,
+                LinearOpcode::InputWord,
+            )?;
+            replace_scratch_operation(
+                &mut tainted,
+                11,
+                LinearOpcode::CrazyData,
+            )?;
+            if encode_linear_layout(profile, &tainted)
+                != Err(LinearLayoutError::UnsafeDataPlacement)
+            {
+                return Err(String::from("input-tainted expanded j admitted"));
+            }
+            refuse_overwritten_expanded_control(profile, &operations)?;
+        }
+    }
+    Ok(())
+}
+
 fn tainted_relocation_operations(
     target: usize,
 ) -> Result<Vec<LinearOpcode>, String> {

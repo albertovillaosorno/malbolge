@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the original complete twelve-step unmasked Fibonacci C
+  source still refused at `Layout(UnsupportedEffectTrace)`, with no guest
+  publication. A red-first independent 59-cell guest fixture identified the
+  encoder's inability to reuse deterministic writes to loader-expanded
+  memory as later `j` operands. The control shadow now tracks exact known
+  `*`/`p` writes separately from input-tainted values. The historical and
+  current normative VMs match independent scalar loader/arithmetic oracles
+  and actual output under empty/binary stdin; tainted `p` control refuses.
+  This repairs a bounded P2 layout capability, not the original C stream or
+  general guest arithmetic, so P0 remains pending.
+
 - On 2026-11-10 the complete original twelve-iteration Fibonacci C program
   was retried and still refused at the positional guest layout boundary,
   without publishing a false guest. A red-first machine-level continuation

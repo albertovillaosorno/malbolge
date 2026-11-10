@@ -42,13 +42,12 @@ the original encoded `j` source byte. The verifier replays prior XLAT2
 mutation of source-memory cells before checking that the resulting base is
 at least the complete emitted source length. This exact bound keeps all
 later rotate/crazy writes disjoint from source code. Source-scratch
-relocation also permits writes behind C; unknown, mutated-loader or
-input-tainted jump operands, unsafe initial relocations and pending-code
-aliases reject. Each later `j`
+relocation also permits writes behind C; unknown control operands,
+unsafe initial relocations and pending-code aliases reject. Each later `j`
 reads the exact current D word: a tracked XLAT2 source-memory cell if D has
-wrapped into code, or an untouched expanded-loader cell otherwise. The
-checker derives expanded words from the original final source cells, not
-encrypted source memory, and rejects operands modified by data writes. The
+wrapped into code, or an expanded-memory cell otherwise. The checker derives
+untouched expanded words from the original final source cells, not encrypted
+source memory; it separately tracks known and unknown guest data writes. The
 nine single-trit crazy-recurrence seeds all repeat every six words starting
 with the first expanded cell, so an untouched loader word at any address
 requires at most six recurrence steps instead of long-prefix checkpoints.
@@ -60,10 +59,18 @@ A penultimate `j` may point inside source, because only halt remains.
 Arbitrarily many source-bounded `j` operations may be admitted when these
 per-move checks pass. A later forward jump is safe when its D operand is
 either a known graphical source cell or an untouched loader-expanded word
-proven by the profile's six-step recurrence. Previously written expanded
-words and input-tainted source operands still reject. Every admitted
+proven by the profile's six-step recurrence, or a deterministically
+computed guest write. Input-tainted source or expanded operands still reject.
+Every admitted
 code/D/write/encryption position is independently replayed in traced VM
-regressions. The automatic forward-padding planner remains stricter:
+regressions. A red-first 59-cell machine fixture now writes expanded
+address 127 with real `*` or `p`, repositions D using a separate untouched
+loader operand, and reads the deterministic written word for a third `j`.
+Both historical/current guest VMs agree with independently calculated loader
+and arithmetic values under empty and nonempty binary stdin. Substituting an
+input-derived `p` refuses at the unproven control word. This proves bounded
+expanded-memory control values, not arbitrary guest-side C arithmetic.
+The automatic forward-padding planner remains stricter:
 it creates later `j` moves only from known graphical source operands
 strictly behind reached C, never from expanded-loader or unknown written
 words.

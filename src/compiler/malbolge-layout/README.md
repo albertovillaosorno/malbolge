@@ -152,6 +152,15 @@ input-tainted `p` refuses in both independent and automatic admission. This
 is deterministic machine-state proof, not C runtime state or arbitrary
 self-modifying control flow.
 
+The independent encoder also proves deterministic writes to loader-expanded
+memory. In a 59-cell guest, a real `*` or `p` updates address 127, a second
+`j` returns D to that address, and a third `j` reads the **updated** value
+rather than the original loader word. The current and historical VMs match
+an independent scalar recurrence and exact output under empty/binary input;
+an input-tainted `p` still refuses as a control operand. The symbolic planner
+continues to refuse expanded-memory operands because it cannot yet know the
+final source tail. This is a verified machine layout, not general C lowering.
+
 The independent linear encoder also admits a later forward `i` jump after
 a source-scratch `j`/`p` sequence if the jump reads a separate known
 cell. A seven-step real VM fixture uses binary input to modify source
@@ -171,8 +180,8 @@ its operand is past source memory whose current value is proven.
 Real VM witnesses compute the next code address from an untouched skipped
 no-op, a no-op already XLAT2-encrypted during execution, and a different
 untouched cell after an input-dependent scratch write. All retain binary
-I/O parity. Expanded-memory and input-dependent guest-written operands
-still require separate synthesis or remain unsupported. This is not general
+I/O parity. Automatic synthesis of expanded-memory controls and input-dependent
+control operands remains unsupported. This is not general
 guest control flow or a complete C compiler.
 
 The planner also returns an exact source-cell origin table alongside

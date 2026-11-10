@@ -465,7 +465,7 @@ impl ForwardPaddingBuilder<'_> {
             self.shadow.get(self.data_pointer).copied().filter(|_| {
                 !self.unproven_source_writes.contains(&self.data_pointer)
             });
-        let result = source_scratch_result(
+        let result = proven_arithmetic_result(
             operation,
             operand,
             self.accumulator,
@@ -639,12 +639,14 @@ fn planned_data_write(
     Ok(Some(data_address))
 }
 
+type ExpandedWordWrite = (usize, Option<u32>);
+
 #[derive(Clone, Copy)]
 struct ControlOperandMemory<'memory> {
     profile: &'memory ProfileDescriptor,
     source: &'memory [u8],
     source_shadow: &'memory [Option<u32>],
-    writes: &'memory [Option<u32>],
+    expanded_shadow: &'memory [ExpandedWordWrite],
 }
 
 /// A later i or j reads an as-yet-unwritten loader-expanded word. The loader
@@ -681,28 +683,29 @@ pub(crate) fn unwritten_loader_word(
     Ok(latest)
 }
 
-// Both i and j read the *current* D word. Source memory is tracked through
-// XLAT2 and scratch writes; loader-expanded memory is known only if no guest
-// arithmetic has touched that address. Never infer a control operand from a
-// potentially input-dependent guest write.
+// Both i and j read the *current* D word. Source memory tracks XLAT2 and
+// scratch writes; expanded memory tracks known and unknown guest writes.
+// Only untouched expanded cells use their original loader-derived value.
 fn known_control_operand(
     memory: ControlOperandMemory<'_>,
     data_pointer: usize,
     unproven: LinearLayoutError,
 ) -> Result<u32, LinearLayoutError> {
     if data_pointer < memory.source.len() {
-        return memory.source_shadow
+        return memory
+            .source_shadow
             .get(data_pointer)
             .copied()
             .flatten()
             .ok_or(unproven);
     }
-    if memory.writes
+    if let Some((_, value)) = memory
+        .expanded_shadow
         .iter()
-        .flatten()
-        .any(|&address| usize::try_from(address).ok() == Some(data_pointer))
+        .rev()
+        .find(|(address, _)| *address == data_pointer)
     {
-        return Err(unproven);
+        return value.ok_or(unproven);
     }
     unwritten_loader_word(memory.source, data_pointer, memory.profile)
         .map_err(|_error| unproven)
@@ -710,7 +713,7 @@ fn known_control_operand(
 
 // Only p and * call this helper. Unknown data and input-derived A values
 // remain unresolved rather than being copied into the control-flow shadow.
-fn source_scratch_result(
+fn proven_arithmetic_result(
     operation: LinearOpcode,
     word: Option<u32>,
     accumulator: Option<u32>,
@@ -736,16 +739,18 @@ fn derive_execution_positions(
     let mut executed = Vec::new();
     let mut encrypted = Vec::new();
     let mut writes = Vec::new();
-    // Jumps and relocations read the evolving exact source-memory shadow or
-    // untouched expanded loader words.
-    // The checker preserves exact profile-memory wraparound. Source writes
-    // behind C may depend on input, so unresolved words stay explicitly
-    // unknown; no future jump or relocation can use them as operands.
+    // Control reads use exact source/expanded memory shadows. Arithmetic
+    // writes may depend on input, so unresolved values remain unknown and
+    // cannot later supply a guessed jump or relocation operand.
     let mut code_cells: Vec<Option<u32>> = source
         .iter()
         .copied()
         .map(|byte| Some(u32::from(byte)))
         .collect();
+    // The full source tail determines untouched loader cells; retain every
+    // expanded write separately so proven arithmetic can later drive i/j.
+    // Unknown input-dependent writes never fall back to the loader value.
+    let mut expanded_shadow: Vec<ExpandedWordWrite> = Vec::new();
     let mut data_pointer = 0usize;
     let mut position = 0usize;
     let mut accumulator = Some(0u32);
@@ -765,9 +770,8 @@ fn derive_execution_positions(
         if *operation == LinearOpcode::Halt {
             break;
         }
-        // Arithmetic behind the code pointer is safe even when input makes
-        // the written word unknown. Preserve its uncertainty explicitly so
-        // any later control operand using that cell fails closed.
+        // Every source/expanded write preserves exact values when proven;
+        // input-derived values remain unresolved for later control reads.
         match operation {
             LinearOpcode::CrazyData | LinearOpcode::RotateData
                 if data_pointer < source.len() =>
@@ -775,7 +779,7 @@ fn derive_execution_positions(
                 let data_word = *code_cells
                     .get(data_pointer)
                     .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
-                let new_accumulator = source_scratch_result(
+                let new_accumulator = proven_arithmetic_result(
                     *operation,
                     data_word,
                     accumulator,
@@ -787,9 +791,28 @@ fn derive_execution_positions(
                     new_accumulator;
                 accumulator = new_accumulator;
             },
-            LinearOpcode::CrazyData
-            | LinearOpcode::RotateData
-            | LinearOpcode::InputWord => accumulator = None,
+            LinearOpcode::CrazyData | LinearOpcode::RotateData => {
+                let operand = known_control_operand(
+                    ControlOperandMemory {
+                        profile,
+                        source,
+                        source_shadow: &code_cells,
+                        expanded_shadow: &expanded_shadow,
+                    },
+                    data_pointer,
+                    LinearLayoutError::UnsafeDataPlacement,
+                )
+                .ok();
+                let result = proven_arithmetic_result(
+                    *operation,
+                    operand,
+                    accumulator,
+                    profile,
+                );
+                expanded_shadow.push((data_pointer, result));
+                accumulator = result;
+            },
+            LinearOpcode::InputWord => accumulator = None,
             LinearOpcode::Halt
             | LinearOpcode::JumpForward { .. }
             | LinearOpcode::NoOperation
@@ -801,10 +824,10 @@ fn derive_execution_positions(
             LinearOpcode::JumpForward { target } => {
                 let operand = known_control_operand(
                     ControlOperandMemory {
+                        profile,
                         source,
                         source_shadow: &code_cells,
-                        writes: &writes,
-                        profile,
+                        expanded_shadow: &expanded_shadow,
                     },
                     data_pointer,
                     LinearLayoutError::JumpPathUnsupported,
@@ -835,10 +858,10 @@ fn derive_execution_positions(
             let expanded_operand = data_pointer >= source.len();
             let data_word = usize::try_from(known_control_operand(
                 ControlOperandMemory {
+                    profile,
                     source,
                     source_shadow: &code_cells,
-                    writes: &writes,
-                    profile,
+                    expanded_shadow: &expanded_shadow,
                 },
                 data_pointer,
                 LinearLayoutError::UnsafeDataPlacement,
