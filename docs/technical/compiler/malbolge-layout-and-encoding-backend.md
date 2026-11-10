@@ -100,6 +100,22 @@ Extending source into address 101 still rejects as an unsafe alias. No
 unknown operand or pending-code write is accepted. The original complete
 unmasked Fibonacci C program remains outside the proven guest grammar.
 
+A distinct red-first 59-cell guest demonstrates the limit of prefix-only
+expanded-memory proofs. Source-addressed `j` first reaches expanded word 127;
+a real `*` and `p`, separated by relocations through loader word 128, write
+the deterministic value 37 at address 127. A later symbolic `i` reads that
+*written* word and jumps to code 38, but the initial arithmetic could not be
+proved until the final jump gap fixed the full graphical suffix. An optional
+single-jump planner fallback now tries at most 256 final source cells and
+requires a fully fixed remaining instruction tail, no preceding guest input,
+and at least one preceding relocation and arithmetic effect. Every proposed
+full source is independently encoded and admitted; the fallback never guesses
+input-dependent values. Both current and historical normative VMs agree on
+exact data/code/encryption witnesses, the written word and output byte 37 under
+empty/binary input. A forged target, input-tainted arithmetic and an extended
+source alias fail closed. Multiple unresolved jumps, speculative input and
+unbounded layout search remain unsupported; this is not dynamic C arithmetic.
+
 A red-first 59-cell fixed-instruction guest now has identical symbolic
 and independent encoding with two later `j` operations following a real
 expanded-memory `*` or `p` at address 127. Both current/historical VMs,

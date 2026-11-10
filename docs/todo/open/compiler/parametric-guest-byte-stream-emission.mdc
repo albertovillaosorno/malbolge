@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the previously documented unmasked Fibonacci C stream
+  remains outside verified generalized guest layout. A
+  red-first 59-cell guest exposes a single symbolic forward `i` blocked by
+  expanded-memory `*`/`p` effects whose loader seed depends on the final jump
+  padding. A bounded 256-cell final-source candidate search now requires
+  independently admitted source, fixed suffix, pre-jump arithmetic/relocation
+  and no preceding input. Both normative VMs emit independent byte 37 at
+  code target 38, with exact memory write 127 and binary/empty input parity;
+  forged, tainted and source-overlap paths reject. This remains machine-level
+  layout progress, not general C output synthesis; P0 remains pending.
+
 - On 2026-11-10 the complete twelve-output unmasked Fibonacci C source
   still refuses at `Layout(UnsupportedEffectTrace)` without publication.
   A red-first 100-cell independent guest exposed the verifier's rejection

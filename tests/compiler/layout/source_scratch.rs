@@ -1768,3 +1768,120 @@ fn auto_expanded_relocation_into_past_source_scratch() -> Result<(), String> {
     }
     Ok(())
 }
+
+// A deterministic expanded word can be transformed by * and p, then reused
+// as a later i operand after j restores D. The eventual jump gap fixes the
+// loader tail; a partial prefix alone cannot prove the write or relocation.
+#[test]
+fn symbolic_jump_uses_written_expanded_word_with_fixed_final_tail()
+-> Result<(), String> {
+    use PaddedForwardStep::{Instruction, Jump};
+    let mut explicit = vec![LinearOpcode::NoOperation; 59];
+    for (position, operation) in [
+        (9, LinearOpcode::RelocateDataPointer),
+        (11, LinearOpcode::RotateData),
+        (12, LinearOpcode::RelocateDataPointer),
+        (13, LinearOpcode::CrazyData),
+        (14, LinearOpcode::RelocateDataPointer),
+        (15, LinearOpcode::JumpForward { target: 38 }),
+        (38, LinearOpcode::OutputByte),
+        (58, LinearOpcode::Halt),
+    ] {
+        replace_scratch_operation(&mut explicit, position, operation)?;
+    }
+    let mut logical: Vec<_> =
+        explicit[..15].iter().copied().map(Instruction).collect();
+    logical.push(Jump);
+    logical.extend(explicit[38..].iter().copied().map(Instruction));
+    for profile in [current_profile(), historical_profile()] {
+        let independent = encode_linear_layout(profile, &explicit)
+            .map_err(|error| format!("independent expanded i: {error:?}"))?;
+        if independent.data_pointer_positions().get(11..17)
+            != Some([127, 128, 127, 128, 127, 128].as_slice())
+            || independent.executed_code_positions().get(16) != Some(&38)
+        {
+            return Err(String::from("incorrect expanded i witness"));
+        }
+        let mut wrong_target = explicit.clone();
+        replace_scratch_operation(
+            &mut wrong_target,
+            15,
+            LinearOpcode::JumpForward { target: 39 },
+        )?;
+        if encode_linear_layout(profile, &wrong_target)
+            != Err(LinearLayoutError::JumpPathUnsupported)
+        {
+            return Err(String::from("forged written control jump admitted"));
+        }
+        let mut tainted = explicit.clone();
+        replace_scratch_operation(&mut tainted, 11, LinearOpcode::InputWord)?;
+        if encode_linear_layout(profile, &tainted)
+            != Err(LinearLayoutError::JumpPathUnsupported)
+        {
+            return Err(String::from("input-derived expanded jump admitted"));
+        }
+        let mut tainted_logical = logical.clone();
+        *tainted_logical.get_mut(11).ok_or("missing taint slot")? =
+            Instruction(LinearOpcode::InputWord);
+        if encode_auto_padded_forward_layout(profile, &tainted_logical)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from(
+                "unproven expanded jump proposal admitted",
+            ));
+        }
+        let mut overlapping = explicit.clone();
+        replace_scratch_operation(
+            &mut overlapping,
+            58,
+            LinearOpcode::NoOperation,
+        )?;
+        overlapping.extend([LinearOpcode::NoOperation; 70]);
+        overlapping.push(LinearOpcode::Halt);
+        if encode_linear_layout(profile, &overlapping)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from(
+                "expanded write overlaps extended source",
+            ));
+        }
+        let automatic = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("symbolic expanded i: {error:?}"))?;
+        if automatic.layout() != &independent
+            || automatic.logical_code_positions().get(15) != Some(&15)
+            || automatic.logical_code_positions().get(16) != Some(&38)
+        {
+            return Err(String::from("symbolic expanded i layout differs"));
+        }
+        verify_bidirectional_source_map(&automatic)?;
+        let original = scalar_expanded_word_127(independent.source(), profile)?;
+        let rotated =
+            malbolge::profile_rotate(original, profile.memory_words());
+        let written =
+            scalar_crazy_reference(rotated, rotated, profile.word_trits());
+        if written != 37 {
+            return Err(String::from("independent expanded scalar differs"));
+        }
+        for input in [Vec::new(), vec![0, 255]] {
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                automatic.layout().source(),
+                input,
+            )
+            .map_err(|error| format!("expanded i VM load: {error:?}"))?;
+            if vm.memory_word(128) != Ok(126)
+                || vm.memory_word(127) != Ok(original)
+            {
+                return Err(String::from("expanded i loader differs"));
+            }
+            verify_execution_witness(&mut vm, automatic.layout())?;
+            if vm.output() != [37]
+                || vm.memory_word(127) != Ok(37)
+                || vm.input_consumed() != 0
+            {
+                return Err(String::from("expanded i guest effects differ"));
+            }
+        }
+    }
+    Ok(())
+}

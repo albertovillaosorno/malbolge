@@ -1254,14 +1254,103 @@ fn proven_source_origins(
     Ok(origins)
 }
 
+// This optional finite search handles a single future `Jump` when earlier
+// expanded-memory arithmetic cannot be proven until its final source length
+// is known. Every tentative gap is separately encoded and independently
+// admitted with the *complete* final loader image. Unknown input effects,
+// pending-code aliases and mismatched control words still fail closed.
+// Keep this expensive fallback bounded; the ordinary online planner handles
+// larger plans and multiple jumps without speculative whole-source checks.
+const MAX_FIXED_TAIL_SEARCH_CELLS: usize = 256;
+
+fn prove_single_fixed_tail_jump(
+    profile: &'static ProfileDescriptor,
+    logical: &[PaddedForwardStep],
+) -> Result<Option<PaddedForwardLayout>, LinearLayoutError> {
+    let mut jump_at = None;
+    let mut fixed = Vec::with_capacity(logical.len());
+    for (index, step) in logical.iter().enumerate() {
+        match step {
+            PaddedForwardStep::Instruction(operation)
+                if !matches!(operation, LinearOpcode::JumpForward { .. }) =>
+            {
+                fixed.push(*operation);
+            },
+            PaddedForwardStep::Jump if jump_at.is_none() => {
+                jump_at = Some(index);
+            },
+            _ => return Ok(None),
+        }
+    }
+    let Some(jump_at) = jump_at else {
+        return Ok(None);
+    };
+    // A guest input before this jump can taint its arithmetic/control words.
+    // Leave that case to the normal planner; do not speculate over input.
+    let prefix = &fixed[..jump_at];
+    if logical.len() > MAX_FIXED_TAIL_SEARCH_CELLS
+        || prefix.contains(&LinearOpcode::InputWord)
+        || !prefix.iter().any(|operation| {
+            matches!(
+                operation,
+                LinearOpcode::CrazyData | LinearOpcode::RotateData
+            )
+        })
+        || !prefix.contains(&LinearOpcode::RelocateDataPointer)
+    {
+        return Ok(None);
+    }
+    let suffix = &fixed[jump_at..];
+    let first_target = jump_at.saturating_add(2);
+    let final_target = MAX_FIXED_TAIL_SEARCH_CELLS
+        .min(MAX_LINEAR_CELLS)
+        .saturating_sub(suffix.len());
+    for target in first_target..=final_target {
+        let mut operations = fixed[..jump_at].to_vec();
+        operations.push(LinearOpcode::JumpForward {
+            target: u32::try_from(target)
+                .map_err(|_error| LinearLayoutError::TooLong)?,
+        });
+        operations.resize(target, LinearOpcode::NoOperation);
+        operations.extend_from_slice(suffix);
+        let Ok(layout) = encode_linear_layout(profile, &operations) else {
+            continue;
+        };
+        let mut positions: Vec<u32> = (0..=jump_at)
+            .map(|index| {
+                u32::try_from(index)
+                    .map_err(|_error| LinearLayoutError::TooLong)
+            })
+            .collect::<Result<_, _>>()?;
+        positions.extend(
+            (target..target.saturating_add(suffix.len()))
+                .map(|index| {
+                    u32::try_from(index)
+                        .map_err(|_error| LinearLayoutError::TooLong)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+        let origins = proven_source_origins(&layout, &positions, &operations)?;
+        return Ok(Some(PaddedForwardLayout {
+            layout,
+            logical_code_positions: positions,
+            operations,
+            source_cell_origins: origins,
+        }));
+    }
+    Ok(None)
+}
+
 /// Expands reachable instructions into a bounded graphical source by solving
 /// each *unconditional forward* `i` jump's real memory-derived destination.
 ///
 /// Before relocation `D <= C`. When a jump is encountered its operand
 /// is either the newly encoded `i` cell (`D == C`) or an already encoded
 /// source cell (`D < C`) whose prior XLAT2 mutations are modeled by `shadow`.
-/// After relocation, symbolic jumps require either known past source
-/// operands or untouched expanded loader words with a proven fixed tail.
+/// After relocation, symbolic jumps require proven control words. A single
+/// jump with a fully fixed suffix also permits a bounded independently
+/// verified whole-source search when earlier expanded arithmetic depends on
+/// the final source length.
 /// Input-derived operands and unknown future padding remain unsupported.
 /// The planner inserts only graphical no-ops to fill unreachable source
 /// addresses and encrypts `target - 1` exactly as the VM
@@ -1300,17 +1389,28 @@ pub fn encode_auto_padded_forward_layout(
         let position = match step {
             PaddedForwardStep::AutoRelocate => {
                 let remaining = &logical[logical_index + 1..];
-                builder.auto_relocate(remaining)?
+                builder.auto_relocate(remaining)
             },
             PaddedForwardStep::Jump => {
-                builder.jump(&logical[logical_index + 1..])?
+                builder.jump(&logical[logical_index + 1..])
             },
             PaddedForwardStep::Instruction(operation) => builder
                 .instruction_with_expanded_operand(
                     *operation,
                     None,
                     &logical[logical_index + 1..],
-                )?,
+                ),
+        };
+        let position = match position {
+            Ok(position) => position,
+            Err(
+                error @ (LinearLayoutError::UnsafeDataPlacement
+                | LinearLayoutError::JumpPathUnsupported),
+            ) => {
+                return prove_single_fixed_tail_jump(profile, logical)?
+                    .ok_or(error);
+            },
+            Err(error) => return Err(error),
         };
         builder.positions.push(
             u32::try_from(position)
