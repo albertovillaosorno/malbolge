@@ -1446,6 +1446,211 @@ class CompoundCPipelineTests(unittest.TestCase):
                             rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
                         )
 
+    def test_bitwise_compound_fibonacci_guest_and_rejections(self) -> None:
+        """Real C bitwise updates preserve a complete conditional recurrence."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        self.assertEqual(original.count("b = next;"), 1)
+        source_text = original.replace(
+            "b = next;", "b |= next;\n        b &= next;"
+        )
+        # For each iteration, (old_b | next) & next == next for unsigned C.
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            oracle.append((following if following % 2 == 0 else
+                           following ^ 0x1A) & 31)
+            previous, current = current, (current | following) & following
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-bitwise-compound.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "fibonacci-bitwise-compound.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER), "--repository-tools",
+                    "--source-id", "tests/bitwise-compound-fibonacci-v1",
+                    "--capsule", "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+            for label, altered in (
+                ("split-token", source_text.replace("b |= next;", "b | = next;")),
+                ("zero-divisor", source_text.replace(
+                    "b &= next;", "b &= (next / 0U);"
+                )),
+                ("signed-cast", source_text.replace(
+                    "b &= next;", "b &= (int)next;"
+                )),
+            ):
+                invalid = Path(scratch) / f"{label}.c"
+                invalid.write_text(altered)
+                rejected = Path(scratch) / f"{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable, "-B", str(DRIVER), "--repository-tools",
+                        "--source-id", f"tests/bitwise-{label}-invalid-v1",
+                        "--capsule", "--output", str(rejected), str(invalid),
+                    ],
+                    capture_output=True, check=False, timeout=45,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertFalse(rejected.exists(), label)
+
+            normalized = subprocess.run(
+                [
+                    str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                    "--resource-dir", str(RESOURCE), "--source-id",
+                    "tests/bitwise-ast-v1", str(source),
+                ],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = json.loads(normalized.stdout)
+            target = next(
+                node for node in parsed["nodes"]
+                if node["kind"] == "compound-assignment-expression"
+                and node.get("operation") == "&="
+            )
+            for label, update in (
+                ("forged-operator", {"operation": "<<="}),
+                ("forged-parent", {"parent": 2}),
+                ("forged-metadata", {"name": "wrong"}),
+            ):
+                changed = json.loads(normalized.stdout)
+                changed["nodes"][target["id"] - 1].update(update)
+                rejected = Path(scratch) / f"{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER), "--layout-backend", str(LAYOUT),
+                        "--output", str(rejected), "--capsule",
+                    ],
+                    input=json.dumps(changed).encode(),
+                    capture_output=True, check=False, timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr, label)
+                self.assertFalse(rejected.exists(), label)
+
+    def test_wide_compound_fibonacci_guest_and_rejections(self) -> None:
+        """Unsigned compound arithmetic preserves full u32 state and source."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        self.assertEqual(original.count("b = next;"), 1)
+        transfer = (
+            "unsigned wide = next + 65536U;\n"
+            "        wide %= 256U;\n"
+            "        wide <<= 1U;\n"
+            "        wide >>= 1U;\n"
+            "        b *= 0U;\n"
+            "        b += wide;\n"
+            "        b /= 1U;"
+        )
+        source_text = original.replace("b = next;", transfer)
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            oracle.append((following if following % 2 == 0 else
+                           following ^ 0x1A) & 31)
+            wide = (following + 65536) % 256
+            wide = (wide << 1) & 0xFFFFFFFF
+            wide >>= 1
+            previous, current = current, ((current * 0) + wide) // 1
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-wide-compound.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "fibonacci-wide-compound.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER), "--repository-tools",
+                    "--source-id", "tests/wide-compound-fibonacci-v1",
+                    "--capsule", "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+            for label, altered in (
+                ("shift32", source_text.replace("wide <<= 1U;", "wide <<= 32U;")),
+                ("divzero", source_text.replace("b /= 1U;", "b /= 0U;")),
+                ("modzero", source_text.replace("wide %= 256U;", "wide %= 0U;")),
+                ("split-shift", source_text.replace("wide <<= 1U;", "wide << = 1U;")),
+            ):
+                invalid = Path(scratch) / f"{label}.c"
+                invalid.write_text(altered)
+                rejected = Path(scratch) / f"{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable, "-B", str(DRIVER), "--repository-tools",
+                        "--source-id", f"tests/wide-{label}-invalid-v1",
+                        "--capsule", "--output", str(rejected), str(invalid),
+                    ],
+                    capture_output=True, check=False, timeout=45,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertFalse(rejected.exists(), label)
+
+            normalized = subprocess.run(
+                [
+                    str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                    "--resource-dir", str(RESOURCE), "--source-id",
+                    "tests/wide-compound-ast-v1", str(source),
+                ],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = json.loads(normalized.stdout)
+            shift = next(
+                node for node in parsed["nodes"]
+                if node["kind"] == "compound-assignment-expression"
+                and node.get("operation") == "<<="
+            )
+            for label, update in (
+                ("wrong-token-width", {"operation": "&="}),
+                ("wrong-parent", {"parent": 2}),
+                ("unexpected-metadata", {"name": "forged"}),
+            ):
+                changed = json.loads(normalized.stdout)
+                changed["nodes"][shift["id"] - 1].update(update)
+                rejected = Path(scratch) / f"{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER), "--layout-backend", str(LAYOUT),
+                        "--output", str(rejected), "--capsule",
+                    ],
+                    input=json.dumps(changed).encode(),
+                    capture_output=True, check=False, timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr, label)
+                self.assertFalse(rejected.exists(), label)
+
     def test_compound_assignment_refuses_unproved_source_and_ast(self) -> None:
         """Wrong operators, destination symbols and AST geometry fail closed."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):

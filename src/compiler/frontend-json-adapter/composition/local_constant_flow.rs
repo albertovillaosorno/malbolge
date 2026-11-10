@@ -103,6 +103,13 @@ impl<'node> Flow<'node> {
             ("compound-assignment-expression", "+=") => Some("+"),
             ("compound-assignment-expression", "-=") => Some("-"),
             ("compound-assignment-expression", "^=") => Some("^"),
+            ("compound-assignment-expression", "&=") => Some("&"),
+            ("compound-assignment-expression", "|=") => Some("|"),
+            ("compound-assignment-expression", "*=") => Some("*"),
+            ("compound-assignment-expression", "/=") => Some("/"),
+            ("compound-assignment-expression", "%=") => Some("%"),
+            ("compound-assignment-expression", "<<=") => Some("<<"),
+            ("compound-assignment-expression", ">>=") => Some(">>"),
             _ => return None,
         };
         if !typed_operator(assignment, operator)
@@ -134,17 +141,22 @@ impl<'node> Flow<'node> {
         let value = if let Some(operation) = compound_operation {
             // The C compound assignment reads the old unsigned value and
             // stores the checked result exactly once. Only canonical
-            // same-line two-character tokens with one space on either
-            // side are admitted by this finite source-backed proof.
+            // same-line two- or three-character tokens with one space on
+            // either side are admitted by this finite source-backed proof.
+            let token_gap = if matches!(operator, "<<=" | ">>=") {
+                5
+            } else {
+                4
+            };
             if left.span.end.line != value_source.span.begin.line
                 || value_source.span.begin.byte.checked_sub(left.span.end.byte)
-                    != Some(4)
+                    != Some(token_gap)
                 || value_source
                     .span
                     .begin
                     .column
                     .checked_sub(left.span.end.column)
-                    != Some(4)
+                    != Some(token_gap)
             {
                 return None;
             }

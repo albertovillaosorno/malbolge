@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 two red-first complete masked Fibonacci C variants exposed
+  missing unsigned compound local writes in the JSON-to-typed adapter.
+  Source-backed `&=`, `|=`, `*=`, `/=`, `%=`, `<<=` and `>>=` now evaluate
+  checked 32-bit unsigned state and exact two-/three-character operator
+  geometry. Both complete C programs compile into 2,207-byte real guest
+  capsules, emit the twelve-byte independent masked oracle in 47 normative
+  VM steps under empty/binary input, and reject seven malformed C sources
+  and six forged AST variants without publication. The unchanged original
+  unmasked twelve-byte Fibonacci C stream still fails safe at layout;
+  compile-time C folding is not runtime guest state or general synthesis.
+  P0 remains pending.
+
 - On 2026-11-10 the original unmasked Fibonacci C still needs a
   non-graphical or relocated guest operand to produce its third byte.
   Independent scalar reachability over every loader-valid graphical skipped

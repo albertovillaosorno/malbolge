@@ -135,7 +135,8 @@ typed adapter before publishing a guest because its source-backed local
 projector accepted only `0..255` integer leaves. The shared Clang-literal
 proof now retains the entire normalized `u32` value for closed expression
 arithmetic, including unsigned C wraparound, while the original simpler
-byte-only projector and (at the time of this experiment) every local store/output required a byte.
+byte-only projector and (at the time of this experiment) every local
+store/output required a byte.
 
 A third whole-source variant using
 `((a + b) + 4294967295U + 1U) % 256U` also proves C `u32` wraparound
@@ -327,8 +328,8 @@ first declaration because it could not prove the later compound assignment.
 The bounded projector now proves the old local value, the complete pure
 right-hand expression, the canonical two-character operator geometry, and
 the unsigned `u32` operation before updating one active local. The result
-must still fit a byte. `+=`, `-=`, and `^=` are the only admitted compound
-local writes; loop induction retains its separate stricter contract.
+was initially byte-bounded; `+=`, `-=`, and `^=` were the first admitted
+compound local writes. Loop induction retains its separate strict contract.
 
 All three full variants emitted the independent twelve masked Fibonacci
 bytes through the normative guest VM under empty and nonempty stdin in a
@@ -341,6 +342,38 @@ source authenticity remains part of the pinned frontend trust boundary.
 This is finite C-state folding, not guest runtime state or general C
 compound-assignment support. The original unmasked
 Fibonacci stream still refuses at guest layout.
+
+### Full-width unsigned compound local writes (2026-11-10)
+
+Two more complete twelve-iteration, branch-selecting masked Fibonacci C
+sources were attempted before changing the typed adapter. Both initially
+failed at the first unlowered declaration, without guest publication. The
+first replaces the recurrence transfer with `b |= next; b &= next;`;
+unsigned bitwise OR then AND must write `next`, not leave the prior value.
+The second uses `unsigned wide = next + 65536U;`, then `wide %= 256U;`,
+`wide <<= 1U;`, `wide >>= 1U;`, `b *= 0U;`, `b += wide;`, and `b /= 1U;`.
+This exercises actual wide-state narrowing, both shift widths, zeroing and
+restoration of C recurrence state. Independently computed scalar oracles
+confirm twelve expected masked Fibonacci bytes.
+
+The closed local-flow proof now admits ordinary unsigned `&=`, `|=`,
+`*=`, `/=`, `%=`, `<<=` and `>>=` along with the earlier `+=`, `-=` and
+`^=`. Each reads its prior local value and evaluates a source-proven pure
+right-hand expression under exact unsigned 32-bit semantics. A contiguous
+same-line token gap must match the two- or three-character operator; zero
+division/remainder and shift counts above 31 refuse. C loop induction and
+unsupported effects remain outside this wider local-store contract.
+
+Both complete programs compile to real 2,207-byte modern Malbolge capsules.
+The normative VM emits `02 19 1f 08 17 0f 02 0d 03 10 13 03` after
+47 steps under both empty and binary stdin. Seven invalid source variants
+and six forged AST variants reject without publication, including undefined
+arithmetic, broken operator geometry, inconsistent parentage and extra
+metadata. Normalized JSON does not authenticate same-width operator spelling
+independently of the pinned frontend and driver's source-digest proof.
+The original unmasked twelve-byte Fibonacci C stream still fails at layout;
+this is bounded compile-time unsigned-C evaluation, not dynamic guest C state
+or generalized arbitrary guest output. P0 remains open.
 
 ### Source-proven lexical shadowing in a complete recurrence (2026-11-09)
 

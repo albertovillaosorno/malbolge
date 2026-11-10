@@ -718,6 +718,30 @@ This evaluates C expressions at compile time and emits a proved constant
 byte; it does not implement runtime guest OR or arbitrary C state. The
 original twelve-byte Fibonacci program is still blocked at guest layout.
 
+### Checked unsigned compound local assignments
+
+The bounded local-state evaluator now admits exact `+=`, `-=`, `^=`,
+`&=`, `|=`, `*=`, `/=`, `%=`, `<<=` and `>>=` on automatic unsigned
+32-bit locals, including full-width intermediates. It checks the direct
+Clang compound-assignment node, active lexical symbol, source ancestry and
+single-line token gap (four bytes for two-character and five for
+three-character operators, including adjacent spaces). Every operation
+uses the prior local value and a completely proven right-hand expression,
+with wrapping unsigned arithmetic, checked division/remainder and shift
+counts below 32. The bounded `for` induction proof remains separately
+restricted. No arbitrary C-side effects or runtime guest local storage
+are introduced.
+
+Two complete twelve-iteration masked Fibonacci C programs exercise
+`|=`/`&=` and wide `%=`, `<<=`, `>>=`, `*=`, `/=` combined with `+=`.
+Both match the independent twelve-byte oracle through the real normative VM
+on empty and binary input, in 47 steps each. Division by zero, invalid
+shifts, split operator tokens, signed casts and forged normalized AST
+parentage/metadata refuse without guest publication. The adapter cannot
+independently recover same-width C operator characters from normalized
+JSON; the pinned frontend and source-digest boundary remain trusted.
+The unmasked original Fibonacci guest stream remains unimplemented.
+
 ### Branch-selected `putchar` effects inside a bounded `for`
 
 The source-proven loop evaluator now accepts one `putchar` in each arm of
