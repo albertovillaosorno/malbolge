@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete original twelve-iteration Fibonacci C program
+  was retried and still refused at the positional guest layout boundary,
+  without publishing a false guest. A red-first machine-level continuation
+  exposed the automatic planner rejecting a third `j` whose operand is a
+  source cell deterministically rotated from 111 to 37. The independent
+  encoder already admitted this geometry. The repaired planner now preserves
+  known scratch effects, matches the independent graphical source, and
+  emits byte 37 on both canonical VMs under EOF and nonempty input. An
+  input-tainted `p` in place of the rotate still refuses in both checkers.
+  This advances repeated guest relocation, not general C control flow or
+  the complete unmasked Fibonacci stream; P0 remains pending.
+
 - On 2026-11-10 a complete twelve-iteration masked Fibonacci C program
   first rejected unary unsigned `-`/`+` on wide intermediate state. The bounded
   local-flow proof now admits unsigned negation modulo 2^32 and unary plus

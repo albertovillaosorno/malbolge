@@ -279,13 +279,14 @@ impl PaddedForwardLayout {
 }
 
 struct ForwardPaddingBuilder<'profile> {
+    accumulator: Option<u32>,
     data_pointer: usize,
     operations: Vec<LinearOpcode>,
     positions: Vec<u32>,
     profile: &'profile ProfileDescriptor,
     relocated: bool,
     shadow: Vec<u32>,
-    source_writes: Vec<usize>,
+    unproven_source_writes: Vec<usize>,
 }
 
 impl ForwardPaddingBuilder<'_> {
@@ -297,7 +298,7 @@ impl ForwardPaddingBuilder<'_> {
         // Search only this bounded first cycle. After a forward jump, an
         // already encoded source operand can instead point strictly behind
         // the reached C. Repeated relocations may use only a known past
-        // operand: the planner has no final loader tail or arithmetic trace.
+        // operand: the planner has no final loader tail or full guest trace.
         for _phase in 0..94usize {
             let position = self.operations.len();
             let planned_length = position
@@ -329,14 +330,16 @@ impl ForwardPaddingBuilder<'_> {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         if operation == LinearOpcode::RelocateDataPointer && self.relocated {
-            // No second j may depend on an unknown source write or an
+            // No later j may depend on an unresolved source write or an
             // unmaterialized loader-expanded word. Require its new D to
             // remain strictly behind the already reached instruction.
             let position = self.operations.len();
             let operand = self
                 .shadow
                 .get(self.data_pointer)
-                .filter(|_| !self.source_writes.contains(&self.data_pointer))
+                .filter(|_| {
+                    !self.unproven_source_writes.contains(&self.data_pointer)
+                })
                 .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
             if self.data_pointer >= position
                 || usize::try_from(*operand)
@@ -347,15 +350,14 @@ impl ForwardPaddingBuilder<'_> {
                 return Err(LinearLayoutError::UnsafeDataPlacement);
             }
         }
-        // The planner cannot recover a value written by guest arithmetic.
-        // Keep a future control operand conservative even when admission
-        // could prove a deterministic result from the completed source.
+        // Keep the operand shadow before appending and encrypting this cell.
         if matches!(
             operation,
             LinearOpcode::CrazyData | LinearOpcode::RotateData
-        ) && self.data_pointer < self.operations.len()
-        {
-            self.source_writes.push(self.data_pointer);
+        ) {
+            self.record_arithmetic_result(operation);
+        } else if operation == LinearOpcode::InputWord {
+            self.accumulator = None;
         }
         let position = push_padded_cell(
             self.profile,
@@ -378,13 +380,14 @@ impl ForwardPaddingBuilder<'_> {
         }
         Ok(position)
     }
+
     fn jump(&mut self) -> Result<usize, LinearLayoutError> {
-        // After relocation the planner only knows past graphical source
-        // operands. Loader-expanded values need the complete final source
-        // tail and guest-written scratch values are not statically known.
+        // After relocation the planner knows only past source operands,
+        // including deterministic writes. Loader-expanded values need the
+        // final source tail; input-tainted scratch remains unresolved.
         if self.relocated
             && (self.data_pointer >= self.operations.len()
-                || self.source_writes.contains(&self.data_pointer))
+                || self.unproven_source_writes.contains(&self.data_pointer))
         {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
@@ -400,15 +403,19 @@ impl ForwardPaddingBuilder<'_> {
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
         let target = usize::try_from(operand.saturating_add(1))
             .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
-        if target <= code_position.saturating_add(1) || target >= MAX_LINEAR_CELLS {
+        if target <= code_position.saturating_add(1)
+            || target >= MAX_LINEAR_CELLS
+        {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         *self
             .operations
             .get_mut(code_position)
-            .ok_or(LinearLayoutError::JumpPathUnsupported)? = LinearOpcode::JumpForward {
-            target: u32::try_from(target).map_err(|_error| LinearLayoutError::TooLong)?,
-        };
+            .ok_or(LinearLayoutError::JumpPathUnsupported)? =
+            LinearOpcode::JumpForward {
+                target: u32::try_from(target)
+                    .map_err(|_error| LinearLayoutError::TooLong)?,
+            };
         while self.operations.len() < target {
             let _padding = push_padded_cell(
                 self.profile,
@@ -420,12 +427,13 @@ impl ForwardPaddingBuilder<'_> {
         encrypt_padded_cell(&mut self.shadow, target.saturating_sub(1))?;
         Ok(code_position)
     }
+
     fn proven_relocation_operand(
         &self,
         position: usize,
         planned_length: usize,
     ) -> Result<bool, LinearLayoutError> {
-        if self.source_writes.contains(&self.data_pointer) {
+        if self.unproven_source_writes.contains(&self.data_pointer) {
             return Ok(false);
         }
         let data_word = if self.data_pointer == position && !self.relocated {
@@ -442,10 +450,36 @@ impl ForwardPaddingBuilder<'_> {
         };
         let operand_address = usize::try_from(word)
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-        let expanded_data = !self.relocated && operand_address >= planned_length;
+        let expanded_data =
+            !self.relocated && operand_address >= planned_length;
         let past_source_scratch = self.data_pointer < position
             && operand_address.saturating_add(1) < position;
         Ok(expanded_data || past_source_scratch)
+    }
+
+    fn record_arithmetic_result(&mut self, operation: LinearOpcode) {
+        // Rotate reads D only; crazy also requires known A. An input makes
+        // A unresolved, and no incomplete loader value is guessed. Only a
+        // proven result may later serve as a relocation or jump operand.
+        let operand =
+            self.shadow.get(self.data_pointer).copied().filter(|_| {
+                !self.unproven_source_writes.contains(&self.data_pointer)
+            });
+        let result = source_scratch_result(
+            operation,
+            operand,
+            self.accumulator,
+            self.profile,
+        );
+        if let Some(cell) = self.shadow.get_mut(self.data_pointer) {
+            if let Some(word) = result {
+                *cell = word;
+            } else if !self.unproven_source_writes.contains(&self.data_pointer)
+            {
+                self.unproven_source_writes.push(self.data_pointer);
+            }
+        }
+        self.accumulator = result;
     }
 }
 
@@ -1001,8 +1035,9 @@ fn proven_source_origins(
 /// Before relocation `D <= C`. When a jump is encountered its operand
 /// is either the newly encoded `i` cell (`D == C`) or an already encoded
 /// source cell (`D < C`) whose prior XLAT2 mutations are modeled by `shadow`.
-/// After relocation, symbolic jumps require a past, never-written source
-/// operand; future loader-expanded values need the completed source tail.
+/// After relocation, symbolic jumps require a known past source operand,
+/// including a proven deterministic guest write. Loader-expanded values
+/// still need the completed source tail.
 /// The planner inserts only graphical no-ops to fill unreachable source
 /// addresses and encrypts `target - 1` exactly as the VM
 /// does. A subsequent `j` may also point to already-passed source scratch
@@ -1026,13 +1061,14 @@ pub fn encode_auto_padded_forward_layout(
         return Err(LinearLayoutError::TooLong);
     }
     let mut builder = ForwardPaddingBuilder {
+        accumulator: Some(0),
         data_pointer: 0,
         operations: Vec::with_capacity(logical.len()),
         positions: Vec::with_capacity(logical.len()),
         profile,
         relocated: false,
         shadow: Vec::with_capacity(logical.len()),
-        source_writes: Vec::new(),
+        unproven_source_writes: Vec::new(),
     };
     for (logical_index, step) in logical.iter().enumerate() {
         let position = match step {

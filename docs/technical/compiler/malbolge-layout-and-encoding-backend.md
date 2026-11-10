@@ -340,8 +340,9 @@ among at most 94 reached source phases. It inserts reached no-ops while
 checking dynamic `D` state, future source length and previous XLAT2
 mutations, then delegates data nonalias proof to independent admission.
 Current/historical VMs cover long suffixes and a two-hop jump followed by
-relocated rotate/crazy. A second symbolic relocation uses only a known,
-never-written past source operand and must again point behind reached code;
+relocated rotate/crazy. A second symbolic relocation uses only a past
+source operand whose current value is proven and must again point behind
+reached code;
 its earliest admitted phase matches a separately supplied explicit `j`.
 Two real VMs replay both moves with binary input, a source-scratch `p`
 write and scalar-oracle output. Impossible placements, unknown control
@@ -349,13 +350,29 @@ operands and unsupported duplicate relocations still reject. This helper
 is available only through the opt-in symbolic CLI grammar, not the default
 concrete-token mode.
 
-A subsequent symbolic `Jump` now reads an exact already-encoded, never-
-written source operand strictly behind C, including prior XLAT2 mutation.
+The symbolic planner now preserves known source-scratch writes from `*` and
+`p` when their necessary input words are proven. It carries a known/unknown
+accumulator and the exact altered source cell across later `j`/`i` operand
+proofs; a guest input makes A unresolved, but rotation of a known D word
+remains deterministic. In a red-first fixture, a first forward jump leaves
+source cell 81 behind, `*` rotates its graphical value 111 to 37, and a
+second relocation returns D to cell 81. An independent exact-layout proof
+accepts a third `j` reading that value and moving D to cell 38. The original
+symbolic planner rejected the same executable geometry; the updated planner
+reproduces the independently encoded source. Both canonical VMs confirm
+byte 37 output, input consumption, and exact source write under EOF and
+binary input. Replacing `*` with input-tainted `p` rejects in both
+checkers. Expanded-loader values and unresolved guest-written values still
+cannot be used as symbolic control operands; the original complete C
+Fibonacci target remains unsupported.
+
+A subsequent symbolic `Jump` reads an exact past source operand strictly
+behind C, including prior XLAT2 mutation and deterministic scratch writes.
 Three current/historical VM fixtures prove untouched skipped and previously
 executed encrypted operands, plus jumping past a separate input-written
 scratch cell. All consume binary `0x00`/`0xff` and emit independently
-checked output. A forged target refuses. Loader-expanded and guest-written
-operands remain unavailable to the planner; the independent linear encoder
+checked output. A forged target refuses. Loader-expanded and unresolved
+written operands remain unavailable to the planner; the independent encoder
 continues checking its separately proved broader subset.
 
 ### Opt-in symbolic layout artifact publisher

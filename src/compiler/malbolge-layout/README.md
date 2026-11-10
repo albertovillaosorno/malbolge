@@ -9,7 +9,7 @@ may precede the relocation when its dynamically read data word proves that
 subsequent writes target either expanded memory or past source cells strictly
 behind the executing instruction. Later forward jumps are also admitted if
 D reads a known graphical source word or untouched loader-expanded word;
-input-tainted and previously written operands still refuse. There is no
+input-tainted and unproven-written operands still refuse. There is no
 conditional branch, backward jump, or helper.
 
 ### Canonical effect-free function
@@ -139,6 +139,19 @@ The current/historical VMs replay both relocations, a real input-dependent
 `p` source write and binary output parity against the scalar oracle.
 An equivalent explicit-phase `j` plan emits the same admitted guest source.
 
+The symbolic planner can also reuse a **deterministically written** past source
+word as a later control operand. Its exact shadow tracks a known accumulator
+and the effects of source-backed `*`/`p`; unreadable loader words and
+input-dependent `p` results remain unknown. A three-relocation guest first
+jumps past its own graphical source cell at address 81, rotates that word
+from 111 to 37, returns D to the modified cell and uses a third `j` to
+relocate D to 38. The separately encoded plan and automatic planner agree;
+both normative VMs emit byte 37 under EOF and nonempty binary input, with
+exact source-write and control witnesses. Replacing the rotate with an
+input-tainted `p` refuses in both independent and automatic admission. This
+is deterministic machine-state proof, not C runtime state or arbitrary
+self-modifying control flow.
+
 The independent linear encoder also admits a later forward `i` jump after
 a source-scratch `j`/`p` sequence if the jump reads a separate known
 cell. A seven-step real VM fixture uses binary input to modify source
@@ -154,12 +167,12 @@ A 59-cell guest independently writes expanded address 127 using input-
 dependent `p`, returns D to it using a known expanded relocation operand,
 and then refuses to treat the written word as a new jump target. The
 symbolic padding planner now accepts a post-relocation `Jump` only when
-its operand is previously encoded, never-written source memory behind C.
+its operand is past source memory whose current value is proven.
 Real VM witnesses compute the next code address from an untouched skipped
 no-op, a no-op already XLAT2-encrypted during execution, and a different
 untouched cell after an input-dependent scratch write. All retain binary
-I/O parity. Expanded-memory and guest-written operands still
-require separate synthesis or remain unsupported. This is not general
+I/O parity. Expanded-memory and input-dependent guest-written operands
+still require separate synthesis or remain unsupported. This is not general
 guest control flow or a complete C compiler.
 
 The planner also returns an exact source-cell origin table alongside

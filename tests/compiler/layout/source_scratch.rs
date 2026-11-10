@@ -1076,3 +1076,106 @@ fn auto_padding_relocates_twice_using_known_source_after_input_scratch()
     }
     Ok(())
 }
+#[test]
+fn automatic_third_relocation_reads_deterministically_rotated_scratch()
+-> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    // The initial forward jump leaves its own source cell (81) behind C.
+    // A first j returns D to that cell, * rotates it from 111 to 37, and
+    // a second j returns D to 81. The third j must read the rotated word,
+    // not the original graphical source or an assumed unknown operand.
+    let mut prefix = vec![Instruction(LinearOpcode::NoOperation); 81];
+    *prefix.get_mut(0).ok_or("missing initial input")? =
+        Instruction(LinearOpcode::InputWord);
+    prefix.extend([
+        Jump,
+        AutoRelocate,
+        Instruction(LinearOpcode::RotateData),
+        AutoRelocate,
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let baseline = encode_auto_padded_forward_layout(profile, &prefix)
+            .map_err(|error| format!("known rotation baseline: {error:?}"))?;
+        if baseline.layout().source().get(81) != Some(&111)
+            || baseline
+                .layout()
+                .data_write_positions()
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>()
+                != [81]
+            || baseline.layout().data_pointer_positions().last() != Some(&82)
+        {
+            return Err(String::from(
+                "unexpected deterministic rotation geometry",
+            ));
+        }
+        let mut manual = baseline.operations().to_vec();
+        *manual.get_mut(115).ok_or("missing manual third j")? =
+            LinearOpcode::RelocateDataPointer;
+        *manual.get_mut(116).ok_or("missing manual output")? =
+            LinearOpcode::OutputByte;
+        manual.push(LinearOpcode::Halt);
+        let independent = encode_linear_layout(profile, &manual)
+            .map_err(|error| format!("third j independent proof: {error:?}"))?;
+        if independent.data_pointer_positions().get(85..)
+            != Some([81, 38, 39].as_slice())
+        {
+            return Err(String::from(
+                "third j did not read rotated source word",
+            ));
+        }
+        let mut logical = prefix.clone();
+        logical.insert(
+            logical.len() - 2,
+            Instruction(LinearOpcode::RelocateDataPointer),
+        );
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("third j auto proof: {error:?}"))?;
+        if artifact.layout() != &independent {
+            return Err(String::from("auto and independent third j differ"));
+        }
+        verify_bidirectional_source_map(&artifact)?;
+        // A preceding real input makes A unknown, but * depends only on D.
+        // A p at the same point would remain input-tainted and its value
+        // must not be used by this third relocation.
+        let mut unresolved = logical.clone();
+        *unresolved.get_mut(83).ok_or("missing unresolved p")? =
+            Instruction(LinearOpcode::CrazyData);
+        if encode_auto_padded_forward_layout(profile, &unresolved)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from("input-tainted third j was admitted"));
+        }
+        let mut tainted_manual = manual.clone();
+        *tainted_manual.get_mut(113).ok_or("missing manual p")? =
+            LinearOpcode::CrazyData;
+        if encode_linear_layout(profile, &tainted_manual)
+            != Err(LinearLayoutError::UnsafeDataPlacement)
+        {
+            return Err(String::from("independent tainted third j admitted"));
+        }
+        for input in [Vec::new(), vec![0xff, 0x00]] {
+            let consumed = usize::from(!input.is_empty());
+            let mut vm = ProfileMachine::from_source(
+                profile,
+                independent.source(),
+                input,
+            )
+            .map_err(|error| format!("third j guest load: {error:?}"))?;
+            verify_execution_witness(&mut vm, &independent)?;
+            if vm.output() != [37]
+                || vm.memory_word(81) != Ok(37)
+                || vm.input_consumed() != consumed
+            {
+                return Err(String::from(
+                    "third j guest output or scratch differs",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
