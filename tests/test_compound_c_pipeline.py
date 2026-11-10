@@ -599,6 +599,173 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(attempt.returncode, 0, label)
                 self.assertFalse(refused.exists(), label)
 
+    def test_standalone_local_steps_complete_while_fibonacci(self) -> None:
+        """Source-local ++/-- actually advance twelve checked while trips."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        induction = "for (unsigned i = 0U; i < 12U; ++i) {"
+        assert original.count(induction) == 1
+        assert original.count("        b = next;") == 1
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following if following % 2 == 0 else following ^ 0x1A
+            expected.append(selected & 31)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, start, guard, step in (
+                ("prefix-up", 0, "<", "++i"),
+                ("postfix-up", 0, "<", "i++"),
+                ("prefix-down", 12, ">", "--i"),
+                ("postfix-down", 12, ">", "i--"),
+            ):
+                with self.subTest(case=label):
+                    text = original.replace(
+                        induction,
+                        f"unsigned i = {start}U;\n    while (i {guard} "
+                        f"{12 if guard == '<' else 0}U) {{",
+                    ).replace(
+                        "        b = next;", f"        b = next;\n        {step};"
+                    )
+                    source = Path(scratch) / f"while-step-{label}.c"
+                    source.write_text(text)
+                    guest = Path(scratch) / f"while-step-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/while-step-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((0, 255, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_standalone_local_steps_refuse_source_and_ast_forgery(self) -> None:
+        """Unbounded, hidden or forged unary writes cannot publish a guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = MASKED_FIBONACCI.read_text()
+        source_text = original.replace(
+            "for (unsigned i = 0U; i < 12U; ++i) {",
+            "unsigned i = 0U;\n    while (i < 12U) {",
+        ).replace("        b = next;", "        b = next;\n        ++i;")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "while-step-ast.c"
+            source.write_text(source_text)
+            normalized = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/while-step-forgery-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = json.loads(normalized.stdout)
+            step = next(
+                node
+                for node in parsed["nodes"]
+                if node["kind"] == "unary-expression" and node.get("operation") == "++"
+            )
+            read = next(
+                node for node in parsed["nodes"] if node["parent"] == step["id"]
+            )
+            foreign = next(
+                node
+                for node in parsed["nodes"]
+                if node["kind"] == "variable-declaration" and node.get("name") == "next"
+            )
+            for label, target, mutation in (
+                ("wrong-parent", step, {"parent": 2}),
+                ("wrong-operator", step, {"operation": "~"}),
+                ("extra-metadata", step, {"name": "not-a-write"}),
+                ("wrong-destination", read, {"reference": foreign["reference"]}),
+                ("forged-prefix", read, {"span": step["span"]}),
+            ):
+                with self.subTest(case=label):
+                    changed = json.loads(normalized.stdout)
+                    changed["nodes"][target["id"] - 1].update(mutation)
+                    guest = Path(scratch) / f"while-step-forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(changed).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+            for label, invalid in (
+                ("underflow", source_text.replace("++i;", "--i;")),
+                ("noncontiguous", source_text.replace("++i;", "++ i;")),
+            ):
+                with self.subTest(case=label):
+                    invalid_source = Path(scratch) / f"while-step-{label}.c"
+                    invalid_source.write_text(invalid)
+                    guest = Path(scratch) / f"while-step-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/while-step-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(invalid_source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_compound_assignment_fibonacci_guest_parity(self) -> None:
         """Compound C transfers retain the full twelve-byte guest oracle."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

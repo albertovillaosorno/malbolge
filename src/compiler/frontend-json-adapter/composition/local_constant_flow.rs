@@ -221,6 +221,7 @@ impl<'node> Flow<'node> {
                 "binary-expression" | "compound-assignment-expression" => {
                     self.assignment(body, last_end)?.0
                 },
+                "unary-expression" => self.standalone_step(body, last_end)?,
                 "break-statement" | "continue-statement" => {
                     self.loop_exit_statement(body, last_end)?
                 },
@@ -588,6 +589,7 @@ impl<'node> Flow<'node> {
                 "binary-expression" | "compound-assignment-expression" => {
                     self.assignment(body, last_end)?.0
                 },
+                "unary-expression" => self.standalone_step(body, last_end)?,
                 "break-statement" | "continue-statement" => {
                     self.loop_exit_statement(body, last_end)?
                 },
@@ -779,6 +781,68 @@ impl<'node> Flow<'node> {
         self.loop_body_depth(scope, depth.checked_add(1)?)?;
         self.locals.truncate(outer_len);
         Some(scope.span.end.byte)
+    }
+
+    /// Admit discarded prefix/postfix unsigned steps on an active local.
+    /// The whole unary expression must be one contiguous source token:
+    /// `++name`, `name++`, `--name` or `name--`, with no hidden operand.
+    fn standalone_step(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+    ) -> Option<u32> {
+        let step = self.take(body.id, "unary-expression")?;
+        let operation = step.operation.as_deref()?;
+        if !matches!(operation, "++" | "--")
+            || !typed_operator(step, operation)
+            || !span_within(&body.span, &step.span)
+            || previous_end > step.span.begin.byte
+        {
+            return None;
+        }
+        let read = self.take(step.id, "declaration-reference-expression")?;
+        let symbol = read.reference.as_deref()?;
+        let (name, _) = symbol.rsplit_once('@')?;
+        let destination =
+            self.locals.iter().rposition(|local| local.name == name)?;
+        if self.locals.get(destination)?.symbol != symbol
+            || self.loop_counters.contains(&symbol)
+            || !assigned_local_reference(read, symbol)
+            || !source_name_span(read, name)
+            || !symbol_location(
+                self.locals.get(destination)?.declaration,
+                name,
+                symbol,
+            )
+            || !span_within(&step.span, &read.span)
+            || step.span.begin.line != step.span.end.line
+            || read.span.begin.line != read.span.end.line
+            || step.span.begin.line != read.span.begin.line
+        {
+            return None;
+        }
+        let prefix = read.span.begin.byte.checked_sub(step.span.begin.byte)
+            == Some(2)
+            && read.span.begin.column.checked_sub(step.span.begin.column)
+                == Some(2)
+            && read.span.end == step.span.end;
+        let postfix = step.span.begin == read.span.begin
+            && step.span.end.byte.checked_sub(read.span.end.byte) == Some(2)
+            && step.span.end.column.checked_sub(read.span.end.column)
+                == Some(2);
+        if !prefix && !postfix {
+            return None;
+        }
+        let previous = u32::from(self.locals.get(destination)?.byte);
+        let updated = if operation == "++" {
+            previous.wrapping_add(1)
+        } else {
+            previous.wrapping_sub(1)
+        };
+        let local = self.locals.get_mut(destination)?;
+        local.byte = u8::try_from(updated).ok()?;
+        local.source = step;
+        Some(step.span.end.byte)
     }
 
     /// Prove a bounded unsigned `for` induction in either direction
@@ -1524,6 +1588,11 @@ pub(super) fn canonical_multi_local_output(
                     .assignment(body, last_end)
                     .ok_or(FrontendJsonError::Unsupported)?;
                 last_end = end;
+            },
+            "unary-expression" => {
+                last_end = flow
+                    .standalone_step(body, last_end)
+                    .ok_or(FrontendJsonError::Unsupported)?;
             },
             "for-statement" => {
                 last_end = flow

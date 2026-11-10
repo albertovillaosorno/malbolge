@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a full masked Fibonacci C recurrence with `while` and
+  standalone `++i;` first refused at the typed adapter without publication.
+  Source-backed ordinary local prefix/postfix `++`/`--` now proves the
+  active symbol and exact token span, narrows each updated byte and protects
+  the separate `for` induction counter. Four full ascending/descending
+  `while` sources reached the normative guest VM and emitted the twelve-byte
+  independent oracle on empty and nonempty stdin. Underflow, separated
+  tokens and forged unary AST metadata/parentage/referral fail closed. This
+  is bounded compile-time state replay, not dynamic guest control flow; the
+  unmasked original still fails at general guest layout.
+
 - On 2026-11-09 a complete masked Fibonacci recurrence with
   `b ^= b ^ next;`, `b += next - b;` and `b -= b - next;` first refused at
   the typed adapter with no guest output. The bounded projector now proves

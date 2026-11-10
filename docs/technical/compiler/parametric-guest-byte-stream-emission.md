@@ -73,6 +73,29 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Standalone unsigned local steps in bounded C loops (2026-11-09)
+
+The whole twelve-output masked Fibonacci C program was retried with a
+`while` loop and a standalone `++i;` replacing its earlier `for` induction.
+The pinned Clang frontend accepted the source, but the typed adapter refused
+at the first local declaration, without guest publication. The repaired
+bounded projector now admits discarded source-contiguous `++i;`, `i++;`,
+`--i;` and `i--;` writes to the active automatic unsigned local. It proves
+Clang ancestry, exact identifier width, prefix/postfix two-character token
+position, no extra metadata, and a byte-representable result before each
+store. The protected `for` induction variable cannot be mutated this way.
+
+All four complete ascending or descending `while` variants compiled to
+actual Malbolge. The normative VM emitted the independent twelve-byte
+Fibonacci oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` under empty and
+nonempty stdin. A source underflow, separated prefix token, forged AST
+parent, operator, target, extent or metadata refused without guest
+publication. The JSON-only proof cannot authenticate equal-width source
+spellings or `++` versus `--` independently of the pinned frontend and the
+driver's source digest. This remains compile-time C-state replay with a
+12-trip ceiling, not dynamic guest `while` execution; the original unmasked
+Fibonacci output still lacks a general layout witness.
+
 ### Conditional branch-local lexical scopes (2026-11-09)
 
 The complete twelve-iteration masked Fibonacci C program was retried with a
