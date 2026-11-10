@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the original unmasked Fibonacci C still needs a
+  non-graphical or relocated guest operand to produce its third byte.
+  Independent scalar reachability over every loader-valid graphical skipped
+  word (all eight decoder opcodes), up to twelve `o`/`p`/`*` steps per
+  output, preserves exact accumulator and D offset after `02 59`.
+  It reaches 205 distinct possible third low bytes, but not `0x5f`.
+  A dedicated regression now verifies this finite grammar bound separately
+  from existing two-byte normative-VM success. Enlarging that same grammar
+  or adding another pristine graphical relocation does not establish the
+  missing C output. This is a scoped search limitation, not a proof that
+  Malbolge cannot emit `0x5f` or that P0 is complete.
+
 - On 2026-11-10 the original twelve-output unmasked Fibonacci source was
   retried and still refused at `Layout(UnsupportedEffectTrace)` without
   publishing a guest. A red-first 59-cell machine program exposed the

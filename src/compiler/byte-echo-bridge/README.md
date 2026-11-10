@@ -920,6 +920,18 @@ and nonempty input. Division-by-zero mutation refuses publication. The
 unmasked original C stream still refuses at layout; finite source-scratch
 search is neither a complete C runtime nor arbitrary output synthesis.
 
+A separate deterministic scalar regression enumerates the current
+source-scratch grammar after the original unmasked Fibonacci prefix
+`02 59`. It considers all eight loader-valid graphical skipped words and
+up to twelve no-op/crazy/rotate choices per byte, without collapsing full
+accumulator words to their low byte. Exactly 205 distinct third-byte values
+are reachable in that grammar; `0x5f` is not one of them. The earlier
+source-scratch two-byte witness still runs on the actual normative VM.
+This bounds one positional graphical-operand grammar only: guest-written
+non-graphical operands, more general data relocation and full C runtime
+lowering remain separate work. No new source or arbitrary guest byte stream
+is admitted on the strength of the scalar reachability test alone.
+
 ### Bounded search beyond the one-byte witness tables
 
 When the existing positional one-byte witness selector has no entry, the

@@ -26,6 +26,9 @@
 use super::super::{ProfileMachine, RunOutcome, pair_source_cells};
 use super::*;
 
+type GraphicalScratchStates = BTreeSet<(usize, u32)>;
+type GraphicalScratchResult = (GraphicalScratchStates, BTreeSet<u8>);
+
 #[test]
 fn fibonacci_prefix_uses_source_scratch_not_host_output() -> Result<(), String>
 {
@@ -122,6 +125,134 @@ fn variable_source_scratch_emits_masked_twelve_fibonacci_bytes()
         ));
         assert_eq!(vm.output(), expected);
     }
+    Ok(())
+}
+
+// Independent scalar state enumeration for one finite guest grammar, not
+// arbitrary byte synthesis: pristine graphical operands behind one jump.
+fn advance_graphical_scratch_states(
+    frontier: &GraphicalScratchStates,
+    operand_words: &[Vec<u32>],
+    scratch_limit: usize,
+) -> GraphicalScratchStates {
+    let mut next = BTreeSet::new();
+    for &(length, accumulator) in frontier {
+        if length.saturating_add(2) > scratch_limit {
+            continue;
+        }
+        let address = length.saturating_add(1);
+        _ = next.insert((address, accumulator));
+        let Some(words) = operand_words.get(address) else {
+            continue;
+        };
+        for &word in words {
+            let crazy = malbolge::profile_crazy(word, accumulator, 15);
+            let rotated = malbolge::profile_rotate(
+                word,
+                malbolge::current_profile().memory_words(),
+            );
+            _ = next.insert((address, crazy));
+            _ = next.insert((address, rotated));
+        }
+    }
+    next
+}
+
+fn bounded_graphical_scratch_reachability(
+    initial: GraphicalScratchStates,
+    operand_words: &[Vec<u32>],
+    scratch_limit: usize,
+    target: Option<u8>,
+) -> GraphicalScratchResult {
+    let mut frontier = initial;
+    let mut output_states = BTreeSet::new();
+    let mut reachable_bytes = BTreeSet::new();
+    for depth in 0usize..=12usize {
+        for &(length, accumulator) in &frontier {
+            if length >= scratch_limit {
+                continue;
+            }
+            let Some(low_byte) = u8::try_from(accumulator & 255).ok() else {
+                continue;
+            };
+            _ = reachable_bytes.insert(low_byte);
+            if target == Some(low_byte) {
+                _ = output_states
+                    .insert((length.saturating_add(1), accumulator));
+            }
+        }
+        if depth == 12usize {
+            break;
+        }
+        frontier = advance_graphical_scratch_states(
+            &frontier,
+            operand_words,
+            scratch_limit,
+        );
+    }
+    (output_states, reachable_bytes)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "assert exact scalar reachability bounds for original C oracle"
+)]
+fn original_fibonacci_third_byte_exceeds_graphical_scratch_grammar()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let first = (33u8..=126)
+        .find(|&word| {
+            malbolge::decode_profile_instruction(u32::from(word), 0)
+                == Some(b'i')
+        })
+        .ok_or("no first jump")?;
+    let target = usize::from(first) + 1;
+    let scratch_limit = target.checked_sub(2).ok_or("short scratch")?;
+    let operand_words = (0..target)
+        .map(|address| {
+            (33u8..=126)
+                .filter(|&word| {
+                    matches!(
+                        u32::try_from(address).ok().and_then(|phase| {
+                            malbolge::decode_profile_instruction(
+                                u32::from(word), phase,
+                            )
+                        }),
+                        Some(opcode) if [
+                            b'o', b'j', b'p', b'*', b'i', b'v',
+                            profile.input_instruction(),
+                            profile.output_instruction(),
+                        ].contains(&opcode)
+                    )
+                })
+                .map(u32::from)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let mut states = BTreeSet::from([(0, 0u32)]);
+    for byte in [0x02, 0x59] {
+        let (completed, _) = bounded_graphical_scratch_reachability(
+            states,
+            &operand_words,
+            scratch_limit,
+            Some(byte),
+        );
+        if completed.is_empty() {
+            return Err(format!("source-scratch prefix stopped at {byte:02x}"));
+        }
+        states = completed;
+    }
+    let (_, third_bytes) = bounded_graphical_scratch_reachability(
+        states,
+        &operand_words,
+        scratch_limit,
+        None,
+    );
+    assert_eq!(third_bytes.len(), 205);
+    assert!(!third_bytes.contains(&0x5f));
+    assert!(third_bytes.contains(&0x5d));
+    assert!(third_bytes.contains(&0x79));
     Ok(())
 }
 
