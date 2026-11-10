@@ -860,6 +860,24 @@ emits the independent twelve-byte oracle in 47 normative VM steps with
 empty and binary stdin. Arbitrary unbraced loops, runtime guest induction
 and the original unmasked Fibonacci stream remain unsupported.
 
+### Unbraced `for`/`while` with one complete conditional body
+
+The bounded source-backed flow also accepts an ordinary `for` or `while`
+whose sole unbraced statement is an `if/else`. The conditional is a direct
+Clang child, consumes the exact loop tail, and replays both checked branches
+without inventing a compound scope. The selected branch may declare its
+own `unsigned next`, emit a byte, and update enclosing recurrence state;
+for `while`, a source-proven counter update inside both arms advances the
+next predicate check. Unexpected siblings, counter tampering, forged
+ancestry and unknown effects refuse before guest publication.
+
+Two red-first complete twelve-iteration masked Fibonacci variants emit the
+independent `02 19 1f 08 17 0f 02 0d 03 10 13 03` byte oracle on the
+normative VM in 47 steps under empty and binary input. Five invalid source
+cases and nine forged AST mutations refuse without artifacts. This is a
+finite compile-time C-state projection, not dynamic guest C branches or
+loops; the unmasked Fibonacci byte stream still fails layout admission.
+
 ### Function-body lexical scopes with shadowed unsigned locals
 
 The closed multi-local projection also replays an explicit compound block

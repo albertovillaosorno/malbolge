@@ -854,10 +854,10 @@ impl<'node> Flow<'node> {
             };
             writes = writes.checked_add(1)?;
         }
-        // An unbraced outer `for` can directly contain one nested `for`.
-        // Unlike a braced body, its final child ends exactly at the outer
-        // statement's end; never accept a missing or trailing statement.
-        if body.kind == "for-statement" {
+        // An unbraced `for` or `while` directly parents exactly one
+        // proven control effect; its tail must fill the loop statement.
+        // A braced scope instead ends after its final child.
+        if matches!(body.kind.as_str(), "for-statement" | "while-statement") {
             (writes == 1 && last_end == body.span.end.byte).then_some(())
         } else {
             (writes > 0 && last_end < body.span.end.byte).then_some(())
@@ -1297,22 +1297,24 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        // Clang parents an unbraced inner `for` directly to the outer
-        // `for`, without a synthetic compound scope. Reuse the real outer
-        // statement as the source-checked body container, but only if the
-        // single direct nested loop spans the entire remainder of it.
-        let unbraced_nested = self.peek()?.kind == "for-statement";
-        let loop_body = if unbraced_nested {
+        // Clang directly parents an unbraced nested `for` or `if` to
+        // its outer `for`, without an invented compound scope. The single
+        // child must fill the entire remainder of the outer statement.
+        let unbraced_control = matches!(
+            self.peek()?.kind.as_str(),
+            "for-statement" | "if-statement"
+        );
+        let loop_body = if unbraced_control {
             statement
         } else {
             self.take(statement.id, "compound-statement")?
         };
-        if (!unbraced_nested && !clean(loop_body))
+        if (!unbraced_control && !clean(loop_body))
             || !span_within(&statement.span, &loop_body.span)
             || increment.span.end.byte >= self.peek()?.span.begin.byte
-            || (!unbraced_nested
+            || (!unbraced_control
                 && loop_body.span.end.byte != statement.span.end.byte)
-            || (unbraced_nested
+            || (unbraced_control
                 && (self.peek()?.parent != statement.id
                     || self.peek()?.span.end.byte != statement.span.end.byte))
         {
@@ -1412,11 +1414,29 @@ impl<'node> Flow<'node> {
         for iteration in 0..=MAX_STATIC_LOOP_ITERATIONS {
             self.position = condition_start;
             let (continue_loop, condition) = self.condition(statement)?;
-            let loop_body = self.take(statement.id, "compound-statement")?;
-            if !clean(loop_body)
+            // For an unbraced `while`, Clang parents its sole `if`
+            // directly to the loop. There is no synthetic brace scope.
+            let unbraced_if = self.peek()?.kind == "if-statement";
+            let first_body_byte = self.peek()?.span.begin.byte;
+            let loop_body = if unbraced_if {
+                statement
+            } else {
+                self.take(statement.id, "compound-statement")?
+            };
+            if (!unbraced_if && !clean(loop_body))
                 || !span_within(&statement.span, &loop_body.span)
-                || condition.span.end.byte >= loop_body.span.begin.byte
-                || loop_body.span.end.byte != statement.span.end.byte
+                || condition.span.end.byte
+                    >= if unbraced_if {
+                        first_body_byte
+                    } else {
+                        loop_body.span.begin.byte
+                    }
+                || (!unbraced_if
+                    && loop_body.span.end.byte != statement.span.end.byte)
+                || (unbraced_if
+                    && (self.peek()?.parent != statement.id
+                        || self.peek()?.span.end.byte
+                            != statement.span.end.byte))
             {
                 return None;
             }

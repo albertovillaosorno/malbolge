@@ -3108,6 +3108,32 @@ guest VM in 47 steps under empty and binary stdin. A forbidden write to the
 outer counter and three forged AST parent/tail mutations refuse without
 publishing a guest. The unmasked Fibonacci layout remains unsupported.
 
+### Direct unbraced conditionals as bounded loop bodies (2026-11-10)
+
+Two full twelve-step masked Fibonacci C programs moved all state transfers,
+branch-local `unsigned next` declarations and `putchar` outputs into the
+selected arms of an `if/else` directly under a `for` or `while`. Both valid
+programs were first rejected at the JSON adapter, before guest publication.
+The `while` source increments its loop guard in either arm and rechecks the
+predicate against updated state for each of the twelve iterations.
+
+The bounded replay now accepts **one** source-checked direct `if` as the
+entire unbraced body of either loop. The pinned Clang parent must be the
+actual loop statement, and the conditional's source tail must end exactly
+where the loop ends. Both branches are proven against the same incoming
+state; only the selected branch's local writes and output are committed.
+No brace scope is synthesized and no second direct sibling is admitted.
+This extends the existing bounded compile-time state proof, not Malbolge
+runtime branches, C storage or dynamic induction.
+
+Both complete programs emit the independently derived masked Fibonacci bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` from the normative guest VM in
+47 steps under empty and binary input. Five invalid C-source cases (a
+condition side effect, a forbidden induction-counter write and unproved
+`switch` effects) and nine forged AST ancestry, metadata and tail cases
+fail without publishing guest code. The original twelve-output unmasked
+Fibonacci C still lacks generalized guest layout; P0 remains pending.
+
 ### Source-proven lexical scopes in loop bodies
 
 A complete twelve-output masked Fibonacci C recurrence was first attempted

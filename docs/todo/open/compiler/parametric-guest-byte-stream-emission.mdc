@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 two whole twelve-step masked Fibonacci C sources first
+  failed when a bounded `for` or `while` directly contained an unbraced
+  `if/else` with local declarations, selected output and state transfers.
+  The source-backed replay now proves one direct conditional child ending
+  exactly at the loop tail, without inventing a compound scope. Both complete
+  programs emit the independent twelve-byte masked oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` on the real normative guest in
+  47 steps under empty and binary stdin. Five invalid-source variants and
+  nine forged Clang AST mutations refuse guest publication. The original
+  unmasked Fibonacci stream and dynamic guest C loops remain unsupported;
+  P0 stays open.
+
 - On 2026-11-10 the full 3-by-4 masked Fibonacci C recurrence was
   retried with the outer `for` body unbraced, directly parenting its inner
   `for`. Pinned Clang accepted it, but the adapter first rejected the

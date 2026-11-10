@@ -148,6 +148,40 @@ def unbraced_nested_masked_fibonacci_source() -> str:
     )
 
 
+def unbraced_conditional_for_fibonacci_source() -> str:
+    """Select and update a full recurrence in one unbraced for-body if."""
+    return (
+        "#include <stdio.h>\n"
+        "void emit(void) {\n"
+        "    unsigned a = 1U;\n"
+        "    unsigned b = 1U;\n"
+        "    for (unsigned i = 0U; i < 12U; ++i)\n"
+        "        if (((a + b) & 1U) == 0U) {\n"
+        "            unsigned next = (a + b) & 255U;\n"
+        "            putchar((int)(next & 31U));\n"
+        "            a = b;\n"
+        "            b = next;\n"
+        "        } else {\n"
+        "            unsigned next = (a + b) & 255U;\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "            a = b;\n"
+        "            b = next;\n"
+        "        }\n"
+        "}\n"
+    )
+
+
+def unbraced_conditional_while_fibonacci_source() -> str:
+    """Prove state progression through one direct if inside a C while."""
+    source = unbraced_conditional_for_fibonacci_source()
+    header = "    for (unsigned i = 0U; i < 12U; ++i)\n"
+    assignment = "            b = next;\n"
+    assert source.count(header) == 1 and source.count(assignment) == 2
+    return source.replace(
+        header, "    unsigned i = 0U;\n    while (i < 12U)\n"
+    ).replace(assignment, "            b = next;\n            ++i;\n")
+
+
 def scoped_masked_fibonacci_source() -> str:
     """Carry the recurrence through a loop-local lexical transfer scope."""
     original = MASKED_FIBONACCI.read_text()
@@ -4290,6 +4324,319 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0, label)
                     self.assertIn(b"Unsupported", result.stderr, label)
                     self.assertFalse(output.exists(), label)
+
+    def test_unbraced_for_conditional_emits_complete_fibonacci_guest(self) -> None:
+        """An unbraced for may directly parent one source-checked if/else."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = unbraced_conditional_for_fibonacci_source()
+        a, b = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            expected.append(
+                (next_value & 31) if next_value % 2 == 0 else ((next_value ^ 0x1A) & 31)
+            )
+            a, b = b, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "unbraced-for-if.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "unbraced-for-if.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/unbraced-for-if-fibonacci-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", b"\xff\x00\x80"):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+            for label, altered_source in (
+                (
+                    "conditional-side-effect",
+                    source_text.replace("((a + b) & 1U)", "((a++ + b) & 1U)"),
+                ),
+                (
+                    "counter-write",
+                    source_text.replace(
+                        "            a = b;", "            i = 0U;\n            a = b;"
+                    ),
+                ),
+                (
+                    "unsupported-switch-effect",
+                    source_text.replace(
+                        "            b = next;\n        }\n}",
+                        "            switch (next) { default: b = next; }\n"
+                        "        }\n}",
+                    ),
+                ),
+            ):
+                with self.subTest(label=label):
+                    bad = Path(scratch) / f"unbraced-for-if-{label}.c"
+                    bad.write_text(altered_source)
+                    rejected_guest = Path(scratch) / f"{label}.malbolge"
+                    rejected = subprocess.run(
+                        [*command[:-2], str(rejected_guest), str(bad)],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(rejected_guest.exists(), label)
+
+    def test_unbraced_for_conditional_forged_ast_refuses_guest(self) -> None:
+        """No fabricated braces, control parent, or ending may be supplied."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "unbraced-for-if-ast.c"
+            source.write_text(unbraced_conditional_for_fibonacci_source())
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/unbraced-for-if-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            original = cast(
+                dict[str, list[dict[str, object]]], json.loads(frontend.stdout)
+            )
+            outer = next(n for n in original["nodes"] if n["kind"] == "for-statement")
+            conditional = next(
+                n for n in original["nodes"] if n["kind"] == "if-statement"
+            )
+            self.assertEqual(conditional["parent"], outer["id"])
+            for label in (
+                "wrong-parent",
+                "outer-tail",
+                "if-tail",
+                "unexpected-operation",
+                "wrong-arm-parent",
+            ):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    nodes = forged["nodes"]
+                    candidate = nodes[cast(int, conditional["id"]) - 1]
+                    if label == "wrong-parent":
+                        candidate["parent"] = 2
+                    elif label in ("outer-tail", "if-tail"):
+                        targeted = (
+                            nodes[cast(int, outer["id"]) - 1]
+                            if label == "outer-tail"
+                            else candidate
+                        )
+                        span = cast(dict[str, dict[str, int]], targeted["span"])
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    elif label == "unexpected-operation":
+                        candidate["operation"] = "="
+                    else:
+                        arm = next(
+                            n
+                            for n in nodes
+                            if n["kind"] == "compound-statement"
+                            and n["parent"] == conditional["id"]
+                        )
+                        nodes[cast(int, arm["id"]) - 1]["parent"] = outer["id"]
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_unbraced_while_conditional_emits_full_fibonacci_guest(self) -> None:
+        """A bounded while's sole direct if keeps real C state and output."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = unbraced_conditional_while_fibonacci_source()
+        expected = bytearray()
+        a, b, i = 1, 1, 0
+        while i < 12:
+            following = (a + b) & 255
+            expected.append(
+                (following & 31) if following % 2 == 0 else (following ^ 0x1A) & 31
+            )
+            a, b, i = b, following, i + 1
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "unbraced-while-if.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "unbraced-while-if.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/unbraced-while-if-fibonacci-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", b"\xff\x00\x80"):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+            for label, bad_source in (
+                (
+                    "condition-side-effect",
+                    source_text.replace("while (i < 12U)", "while (i++ < 12U)"),
+                ),
+                (
+                    "unproved-switch-effect",
+                    source_text.replace(
+                        "            ++i;\n        }\n}",
+                        "            switch (next) { default: ++i; }\n        }\n}",
+                    ),
+                ),
+            ):
+                with self.subTest(label=label):
+                    rejected_guest = Path(scratch) / f"{label}.malbolge"
+                    bad = Path(scratch) / f"{label}.c"
+                    bad.write_text(bad_source)
+                    rejected = subprocess.run(
+                        [*command[:-2], str(rejected_guest), str(bad)],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(rejected_guest.exists(), label)
+
+    def test_unbraced_while_conditional_forged_ast_refuses_guest(self) -> None:
+        """The while's direct if must preserve its genuine Clang ancestry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "unbraced-while-if-ast.c"
+            source.write_text(unbraced_conditional_while_fibonacci_source())
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/unbraced-while-if-ast-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            normalized = cast(
+                dict[str, list[dict[str, object]]], json.loads(frontend.stdout)
+            )
+            enclosing = next(
+                node
+                for node in normalized["nodes"]
+                if node["kind"] == "while-statement"
+            )
+            conditional = next(
+                node for node in normalized["nodes"] if node["kind"] == "if-statement"
+            )
+            self.assertEqual(conditional["parent"], enclosing["id"])
+            for label in ("wrong-parent", "while-tail", "if-tail", "if-operator"):
+                with self.subTest(label=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    nodes = forged["nodes"]
+                    chosen = nodes[cast(int, conditional["id"]) - 1]
+                    if label == "wrong-parent":
+                        chosen["parent"] = 2
+                    elif label == "if-operator":
+                        chosen["operation"] = "="
+                    else:
+                        target = (
+                            nodes[cast(int, enclosing["id"]) - 1]
+                            if label == "while-tail"
+                            else chosen
+                        )
+                        span = cast(dict[str, dict[str, int]], target["span"])
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertIn(b"Unsupported", rejected.stderr, label)
+                    self.assertFalse(guest.exists(), label)
 
     def test_unbraced_nested_for_emits_complete_fibonacci_on_guest(self) -> None:
         """An outer for may contain exactly one unbraced inner for body."""
