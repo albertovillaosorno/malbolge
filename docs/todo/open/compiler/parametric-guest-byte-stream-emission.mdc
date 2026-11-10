@@ -54,6 +54,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete masked Fibonacci C recurrence with a
+  source-proven `break` after iteration 6 initially refused at the typed
+  adapter. Bounded `for` replay now tracks a selected exit separately from
+  an unselected branch and preserves checked induction on `continue`. The
+  seven-byte early-break and twelve-byte mid-loop-continue variants are checked
+  against an independent C oracle through the actual guest VM under both
+  empty and nonempty stdin; unsupported post-exit effects and forged Clang
+  parentage, kind and metadata refuse without publication. No runtime C
+  control flow or original unmasked-byte layout is claimed; P0 stays open.
 - On 2026-11-09 a complete twelve-iteration masked Fibonacci C source
   with separately declared same-name locals in both `if` arms, and an extra
   nested lexical block, initially failed at the typed adapter with no

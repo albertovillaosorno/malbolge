@@ -95,6 +95,30 @@ without a guest artifact. The accepted projection is finite C-state folding;
 this does not implement runtime guest C scopes, branching or arithmetic. The
 original unmasked stream remains blocked at layout.
 
+### Bounded C `for` exit statements (2026-11-09)
+
+The full twelve-iteration masked Fibonacci C source was retried with an
+explicit `if (i == 6U) { break; }` after the recurrence transfer. The pinned
+Clang frontend accepted the whole source but the typed adapter initially
+refused the first declaration and published no guest output. A bounded
+source-backed exit proof now admits `break` and `continue` only within a
+canonical `for` loop, checks Clang parentage, metadata and exact keyword span,
+and keeps the selected exit separate from the unselected conditional arm.
+`break` terminates replay without advancing the induction counter; `continue`
+advances the counter through the original checked step. An exit must be the
+last effect within its lexical block, or the whole source refuses rather than
+silently discarding an unchecked dead suffix. Exits in `while`/`do` and
+arbitrary post-exit C statements remain unsupported.
+
+For a break selected after iteration 6, the independent C oracle is the first
+seven bytes `02 19 1f 08 17 0f 02`; a `continue` at the same iteration
+preserves all twelve masked Fibonacci bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`.
+The focused whole-source test checks both artifacts under empty and nonempty
+VM stdin, rejects unreachable effects after the selected exit, and exercises
+forged break ancestry, keyword identity and metadata. This is closed bounded
+C-state replay with actual Malbolge byte output, not runtime C branching or
+loop control; the original unmasked guest-layout blocker remains.
+
 ### Source-expression metamorphic parity (2026-11-09)
 
 The complete 12-iteration five-bit masked Fibonacci C program has a bounded

@@ -56,9 +56,16 @@ struct Local<'node> {
     symbol: &'node str,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoopExit {
+    Break,
+    Continue,
+}
+
 struct Flow<'node> {
     locals: Vec<Local<'node>>,
     loop_counters: Vec<&'node str>,
+    loop_exit: Option<LoopExit>,
     nodes: &'node [Node],
     outputs: Vec<OutputCall<'node>>,
     position: usize,
@@ -155,12 +162,18 @@ impl<'node> Flow<'node> {
                 break;
             }
             let expected_parent = body.id;
-            if node.parent != expected_parent || effects >= MAX_WRITES {
+            if node.parent != expected_parent
+                || effects >= MAX_WRITES
+                || self.loop_exit.is_some()
+            {
                 return None;
             }
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" => self.assignment(body, last_end)?.0,
+                "break-statement" | "continue-statement" => {
+                    self.loop_exit_statement(body, last_end)?
+                },
                 "if-statement" => self.conditional(
                     body,
                     last_end,
@@ -285,11 +298,14 @@ impl<'node> Flow<'node> {
             return None;
         }
         let starting = self.locals.clone();
+        let starting_exit = self.loop_exit;
         let output_count = self.outputs.len();
         self.branch_effects(then_body, depth)?;
         let then_state = self.locals.clone();
+        let then_exit = self.loop_exit;
         let then_outputs = self.outputs.get(output_count..)?.to_vec();
         self.locals = starting;
+        self.loop_exit = starting_exit;
         self.outputs.truncate(output_count);
         // An if without else ends at its sole braced arm. Prove no
         // further child is hidden inside the arm before selecting state.
@@ -301,6 +317,7 @@ impl<'node> Flow<'node> {
             }
             if take_then {
                 self.locals = then_state;
+                self.loop_exit = then_exit;
                 self.outputs.extend(then_outputs);
             }
             return Some(statement.span.end.byte);
@@ -316,6 +333,7 @@ impl<'node> Flow<'node> {
         self.branch_effects(else_body, depth)?;
         if take_then {
             self.locals = then_state;
+            self.loop_exit = then_exit;
             self.outputs.truncate(output_count);
             self.outputs.extend(then_outputs);
         }
@@ -502,12 +520,18 @@ impl<'node> Flow<'node> {
                 break;
             }
             let expected_parent = body.id;
-            if node.parent != expected_parent || writes >= MAX_WRITES {
+            if node.parent != expected_parent
+                || writes >= MAX_WRITES
+                || self.loop_exit.is_some()
+            {
                 return None;
             }
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" => self.assignment(body, last_end)?.0,
+                "break-statement" | "continue-statement" => {
+                    self.loop_exit_statement(body, last_end)?
+                },
                 "if-statement" => self.conditional(body, last_end, 0)?,
                 "for-statement" => self.static_for(body, last_end)?,
                 "compound-statement" => {
@@ -524,6 +548,48 @@ impl<'node> Flow<'node> {
             writes = writes.checked_add(1)?;
         }
         (writes > 0 && last_end < body.span.end.byte).then_some(())
+    }
+
+    /// Only an exact Clang keyword span may terminate a bounded `for` body.
+    /// A selected exit must be the last effect in its lexical block; dead
+    /// suffixes are not silently discarded without a separate source proof.
+    fn loop_exit_statement(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+    ) -> Option<u32> {
+        let (kind, exit, width) = match self.peek()?.kind.as_str() {
+            "break-statement" => ("break-statement", LoopExit::Break, 5),
+            "continue-statement" => {
+                ("continue-statement", LoopExit::Continue, 8)
+            },
+            _ => return None,
+        };
+        if self.loop_counters.is_empty() || self.loop_exit.is_some() {
+            return None;
+        }
+        let statement = self.take(body.id, kind)?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+            || statement.span.begin.line != statement.span.end.line
+            || statement
+                .span
+                .end
+                .byte
+                .checked_sub(statement.span.begin.byte)
+                != Some(width)
+            || statement
+                .span
+                .end
+                .column
+                .checked_sub(statement.span.begin.column)
+                != Some(width)
+        {
+            return None;
+        }
+        self.loop_exit = Some(exit);
+        Some(statement.span.end.byte)
     }
 
     /// Prove one pure `!` operand against its complete source-backed subtree.
@@ -779,6 +845,7 @@ impl<'node> Flow<'node> {
             self.loop_body(loop_body)?;
             body_end = Some(self.position);
             self.locals = starting_locals;
+            self.loop_exit = None;
             self.outputs.truncate(starting_outputs);
         }
         let mut counter_value = start;
@@ -806,6 +873,9 @@ impl<'node> Flow<'node> {
             let current_counter = self.locals.get_mut(outer_len)?;
             if current_counter.byte != counter_value {
                 return None;
+            }
+            if self.loop_exit.take() == Some(LoopExit::Break) {
+                break;
             }
             counter_value = if descending {
                 counter_value.checked_sub(stride)?
@@ -1270,6 +1340,7 @@ pub(super) fn canonical_multi_local_output(
     let mut flow = Flow {
         locals: Vec::new(),
         loop_counters: Vec::new(),
+        loop_exit: None,
         nodes: &input.nodes,
         outputs: Vec::new(),
         position: 2,

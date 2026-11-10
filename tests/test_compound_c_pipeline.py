@@ -108,6 +108,21 @@ def branch_local_masked_fibonacci_source() -> str:
     )
 
 
+def exiting_masked_fibonacci_source(*, keyword: str, iteration: int) -> str:
+    """Exit a source-proven bounded for body after its recurrence transfer."""
+    original = MASKED_FIBONACCI.read_text()
+    transfer = "        b = next;"
+    assert keyword in ("break", "continue")
+    assert original.count(transfer) == 1
+    return original.replace(
+        transfer,
+        f"{transfer}\n"
+        f"        if (i == {iteration}U) {{\n"
+        f"            {keyword};\n"
+        "        }",
+    )
+
+
 def reference_bytes() -> bytes:
     """Reference the bounded unsigned-C arithmetic, not compiler output."""
     previous, current = 1, 1
@@ -826,6 +841,139 @@ class CompoundCPipelineTests(unittest.TestCase):
                     )
                     self.assertNotEqual(attempt.returncode, 0, label)
                     self.assertIn(b"Unsupported", attempt.stderr, label)
+                    self.assertFalse(output.exists(), label)
+
+    def test_bounded_for_selected_break_and_continue_guest_parity(self) -> None:
+        """An early exit is selected by C state, not guessed by the guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for keyword, exit_at in (("break", 6), ("continue", 6)):
+                with self.subTest(keyword=keyword):
+                    source_text = exiting_masked_fibonacci_source(
+                        keyword=keyword, iteration=exit_at
+                    )
+                    previous, current = 1, 1
+                    expected = bytearray()
+                    for index in range(12):
+                        following = (previous + current) & 255
+                        chosen = following if following % 2 == 0 else following ^ 0x1A
+                        expected.append(chosen & 31)
+                        previous, current = current, following
+                        if index == exit_at and keyword == "break":
+                            break
+                    self.assertEqual(len(expected), 7 if keyword == "break" else 12)
+                    source = Path(scratch) / f"fibonacci-{keyword}.c"
+                    source.write_text(source_text)
+                    guest = Path(scratch) / f"fibonacci-{keyword}.malbolge"
+                    command = [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/fibonacci-{keyword}-exit-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(source),
+                    ]
+                    compiled = subprocess.run(
+                        command, capture_output=True, check=False, timeout=180
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertRegex(
+                            executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                        )
+
+                    # An effect after the selected exit is not silently dropped.
+                    trailing = source_text.replace(
+                        f"            {keyword};",
+                        f"            {keyword};\n"
+                        "            putchar((int)(next & 31U));",
+                    )
+                    invalid_source = Path(scratch) / f"fibonacci-{keyword}-trailing.c"
+                    invalid_source.write_text(trailing)
+                    rejected_guest = (
+                        Path(scratch) / f"fibonacci-{keyword}-trailing.malbolge"
+                    )
+                    rejected = subprocess.run(
+                        [*command[:-2], str(rejected_guest), str(invalid_source)],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn(b"Unsupported", rejected.stderr)
+                    self.assertFalse(rejected_guest.exists())
+
+    def test_bounded_for_exit_forged_ast_refuses(self) -> None:
+        """Only exact Clang exit ancestry and keyword spans are admissible."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-break-ast.c"
+            source.write_text(
+                exiting_masked_fibonacci_source(keyword="break", iteration=6)
+            )
+            normalized = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/fibonacci-break-ast-v1",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            original = json.loads(normalized.stdout)
+            exits = [
+                node for node in original["nodes"] if node["kind"] == "break-statement"
+            ]
+            self.assertEqual(len(exits), 1)
+            target = exits[0]
+            for label, mutation in (
+                ("wrong-parent", {"parent": 1}),
+                ("wrong-keyword", {"kind": "continue-statement"}),
+                ("unexpected-op", {"operation": "="}),
+            ):
+                with self.subTest(label=label):
+                    forged = json.loads(normalized.stdout)
+                    forged["nodes"][target["id"] - 1].update(mutation)
+                    output = Path(scratch) / f"forged-{label}.malbolge"
+                    result = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(output),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertIn(b"Unsupported", result.stderr, label)
                     self.assertFalse(output.exists(), label)
 
     def test_nested_for_induction_emits_complete_masked_fibonacci(self) -> None:
