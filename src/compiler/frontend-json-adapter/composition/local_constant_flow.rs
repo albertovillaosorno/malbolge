@@ -87,8 +87,23 @@ impl<'node> Flow<'node> {
         body: &Node,
         previous_end: u32,
     ) -> Option<(u32, &'node Node)> {
-        let assignment = self.take(body.id, "binary-expression")?;
-        if !typed_operator(assignment, "=")
+        let kind = self.peek()?.kind.as_str();
+        if !matches!(
+            kind,
+            "binary-expression" | "compound-assignment-expression"
+        ) {
+            return None;
+        }
+        let assignment = self.take(body.id, kind)?;
+        let operator = assignment.operation.as_deref()?;
+        let compound_operation = match (kind, operator) {
+            ("binary-expression", "=") => None,
+            ("compound-assignment-expression", "+=") => Some("+"),
+            ("compound-assignment-expression", "-=") => Some("-"),
+            ("compound-assignment-expression", "^=") => Some("^"),
+            _ => return None,
+        };
+        if !typed_operator(assignment, operator)
             || !span_within(&body.span, &assignment.span)
             || previous_end > assignment.span.begin.byte
         {
@@ -106,13 +121,39 @@ impl<'node> Flow<'node> {
             return None;
         }
         if self.loop_counters.contains(&symbol)
+            || !source_name_span(left, name)
             || !assigned_local_reference(left, symbol)
             || !span_within(&assignment.span, &left.span)
             || assignment.span.begin.byte != left.span.begin.byte
         {
             return None;
         }
-        let (value, value_source) = self.expression(assignment.id, 0)?;
+        let (rhs, value_source) = self.expression(assignment.id, 0)?;
+        let value = if let Some(operation) = compound_operation {
+            // The C compound assignment reads the old unsigned value and
+            // stores the checked result exactly once. Only canonical
+            // same-line two-character tokens with one space on either
+            // side are admitted by this finite source-backed proof.
+            if left.span.end.line != value_source.span.begin.line
+                || value_source.span.begin.byte.checked_sub(left.span.end.byte)
+                    != Some(4)
+                || value_source
+                    .span
+                    .begin
+                    .column
+                    .checked_sub(left.span.end.column)
+                    != Some(4)
+            {
+                return None;
+            }
+            checked_u32_binary(
+                operation,
+                u32::from(self.locals.get(destination)?.byte),
+                rhs,
+            )?
+        } else {
+            rhs
+        };
         let byte = u8::try_from(value).ok()?;
         if !span_within(&assignment.span, &value_source.span)
             || left.span.end.byte >= value_source.span.begin.byte
@@ -177,7 +218,9 @@ impl<'node> Flow<'node> {
             }
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
-                "binary-expression" => self.assignment(body, last_end)?.0,
+                "binary-expression" | "compound-assignment-expression" => {
+                    self.assignment(body, last_end)?.0
+                },
                 "break-statement" | "continue-statement" => {
                     self.loop_exit_statement(body, last_end)?
                 },
@@ -542,7 +585,9 @@ impl<'node> Flow<'node> {
             }
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
-                "binary-expression" => self.assignment(body, last_end)?.0,
+                "binary-expression" | "compound-assignment-expression" => {
+                    self.assignment(body, last_end)?.0
+                },
                 "break-statement" | "continue-statement" => {
                     self.loop_exit_statement(body, last_end)?
                 },
@@ -679,6 +724,7 @@ impl<'node> Flow<'node> {
             return None;
         }
         if !assigned_local_reference(read, symbol)
+            || !source_name_span(read, local.name)
             || !symbol_location(local.declaration, local.name, symbol)
             || read.span.begin.byte < local.declaration.span.end.byte
         {
@@ -1257,6 +1303,25 @@ fn checked_condition_comparison(
     })
 }
 
+/// A plain Clang local read/write occupies exactly its source identifier
+/// width. This is necessary but cannot recover the spelling from a JSON-only
+/// artifact; same-width forged names need upstream source-digest validation.
+fn source_name_span(reference: &Node, name: &str) -> bool {
+    reference.span.begin.line == reference.span.end.line
+        && reference
+            .span
+            .end
+            .byte
+            .checked_sub(reference.span.begin.byte)
+            == u32::try_from(name.len()).ok()
+        && reference
+            .span
+            .end
+            .column
+            .checked_sub(reference.span.begin.column)
+            == u32::try_from(name.len()).ok()
+}
+
 fn symbol_location(declaration: &Node, name: &str, symbol: &str) -> bool {
     let Some((reference_name, offset_text)) = symbol.rsplit_once('@') else {
         return false;
@@ -1454,7 +1519,7 @@ pub(super) fn canonical_multi_local_output(
                     .ok_or(FrontendJsonError::Unsupported)?;
                 last_end = end;
             },
-            "binary-expression" => {
+            "binary-expression" | "compound-assignment-expression" => {
                 let (end, _source) = flow
                     .assignment(body, last_end)
                     .ok_or(FrontendJsonError::Unsupported)?;

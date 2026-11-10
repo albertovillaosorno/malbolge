@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a complete masked Fibonacci recurrence with
+  `b ^= b ^ next;`, `b += next - b;` and `b -= b - next;` first refused at
+  the typed adapter with no guest output. The bounded projector now proves
+  source-shaped, two-character unsigned compound writes against the active
+  old local value before storing a checked byte. All three complete sources
+  emitted the independent twelve-byte oracle on the actual guest VM with
+  empty/nonempty stdin (260.944-second replay). Unrecognized operators,
+  division by zero, incompatible-width destinations, forged parentage or
+  metadata, and malformed spans refuse without publication. This is host
+  compile-time C-state replay, not runtime guest storage; the original
+  unmasked Fibonacci layout remains unsupported.
+
 - On 2026-11-09 a complete twelve-output masked Fibonacci C recurrence
   with a nested local shadowing the enclosing recurrence variable `b`
   first refused at the typed adapter without guest publication. Source-

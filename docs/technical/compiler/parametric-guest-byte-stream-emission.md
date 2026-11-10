@@ -171,6 +171,31 @@ refuse without publication. This is bounded compile-time C selection, not
 runtime guest C control flow; the original unmasked twelve-byte stream
 and generalized guest layout remain unsupported.
 
+### Checked compound C assignments in a full recurrence (2026-11-09)
+
+The entire twelve-iteration masked Fibonacci source was rerun with its
+`b = next;` state transfer replaced by each of `b ^= b ^ next;`,
+`b += next - b;`, and `b -= b - next;`. The pinned Clang frontend accepted
+these complete C programs; before the fix, the typed adapter rejected the
+first declaration because it could not prove the later compound assignment.
+The bounded projector now proves the old local value, the complete pure
+right-hand expression, the canonical two-character operator geometry, and
+the unsigned `u32` operation before updating one active local. The result
+must still fit a byte. `+=`, `-=`, and `^=` are the only admitted compound
+local writes; loop induction retains its separate stricter contract.
+
+All three full variants emitted the independent twelve masked Fibonacci
+bytes through the normative guest VM under empty and nonempty stdin in a
+260.944-second complete replay. Unrecognized compound operators, undefined
+arithmetic, incompatible-width destination symbols, forged ancestry or
+metadata, and broken source span geometry refuse without publishing a guest
+artifact. The JSON-only adapter does not independently recover the original
+operator characters or distinguish forged same-width identifier spellings;
+source authenticity remains part of the pinned frontend trust boundary.
+This is finite C-state folding, not guest runtime state or general C
+compound-assignment support. The original unmasked
+Fibonacci stream still refuses at guest layout.
+
 ### Source-proven lexical shadowing in a complete recurrence (2026-11-09)
 
 A full twelve-iteration masked Fibonacci C source introduced a nested loop
