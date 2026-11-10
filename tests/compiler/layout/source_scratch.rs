@@ -184,3 +184,114 @@ fn skipped_graphical_data_requires_valid_loader_opcode_and_unreachable_cell()
     );
     Ok(())
 }
+
+#[test]
+fn forward_jump_then_data_relocation_reuses_only_past_source_scratch()
+-> Result<(), String> {
+    let target =
+        usize::try_from(jump_target(0)?).map_err(|error| error.to_string())?;
+    let operand = (33u8..=126)
+        .find(|&byte| {
+            decode_profile_instruction(u32::from(byte), 1) == Some(b'o')
+                && usize::from(byte).saturating_add(1) < target
+        })
+        .ok_or("no backwards graphical scratch operand")?;
+    let scratch_address = usize::from(operand) + 1;
+    let mut operations = vec![LinearOpcode::NoOperation; target + 4];
+    operations[0] = LinearOpcode::JumpForward {
+        target: u32::try_from(target).map_err(|error| error.to_string())?,
+    };
+    operations[1] = LinearOpcode::SkippedDataByte { byte: u32::from(operand) };
+    operations[target] = LinearOpcode::RelocateDataPointer;
+    operations[target + 1] = LinearOpcode::CrazyData;
+    operations[target + 2] = LinearOpcode::OutputByte;
+    operations[target + 3] = LinearOpcode::Halt;
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("past-source relocation: {error:?}"))?;
+        assert_eq!(layout.executed_code_positions(), [
+            0,
+            target as u32,
+            target as u32 + 1,
+            target as u32 + 2,
+            target as u32 + 3
+        ],);
+        assert_eq!(layout.data_write_positions(), [
+            None,
+            None,
+            Some(scratch_address as u32),
+            None,
+            None
+        ],);
+        assert!(scratch_address < target);
+        let expected_word = malbolge::profile_crazy(
+            u32::from(layout.source()[scratch_address]),
+            0,
+            profile.word_trits(),
+        );
+        for input in [Vec::new(), vec![255, 0, 128]] {
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), input)
+                    .map_err(|error| {
+                        format!("past-source VM load: {error:?}")
+                    })?;
+            assert!(matches!(
+                vm.run(5),
+                Ok(RunOutcome::Terminated { steps: 5, .. })
+            ));
+            assert_eq!(vm.output(), [expected_word as u8]);
+            assert_eq!(vm.input_consumed(), 0);
+            assert_eq!(
+                vm.memory_word(scratch_address as u32)
+                    .map_err(|error| format!("scratch memory: {error:?}"))?,
+                expected_word,
+            );
+        }
+        let mut forged = layout.source().to_vec();
+        forged[1] ^= 1;
+        assert!(matches!(
+            admit_linear_layout(
+                profile,
+                &operations,
+                &forged,
+                LinearProfileIdentity {
+                    id: profile.id(),
+                    fingerprint: profile.fingerprint(),
+                },
+            ),
+            Err(LinearLayoutError::DecodeMismatch { position: 1 })
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn source_data_relocation_refuses_pending_code_writes() -> Result<(), String> {
+    let target =
+        usize::try_from(jump_target(0)?).map_err(|error| error.to_string())?;
+    let operand = (33u8..=126)
+        .filter(|&byte| {
+            decode_profile_instruction(u32::from(byte), 1).is_some_and(|op| {
+                matches!(
+                    op,
+                    b'o' | b'j' | b'i' | b'*' | b'p' | b'v' | b'<' | b'/'
+                )
+            }) && usize::from(byte) + 1 >= target
+        })
+        .max()
+        .ok_or("no forward-looking graphical operand")?;
+    let length = usize::from(operand) + 6;
+    let mut operations = vec![LinearOpcode::NoOperation; length];
+    operations[0] = LinearOpcode::JumpForward {
+        target: u32::try_from(target).map_err(|error| error.to_string())?,
+    };
+    operations[1] = LinearOpcode::SkippedDataByte { byte: u32::from(operand) };
+    operations[target] = LinearOpcode::RelocateDataPointer;
+    operations[target + 1] = LinearOpcode::CrazyData;
+    operations[length - 1] = LinearOpcode::Halt;
+    assert_eq!(
+        encode_linear_layout(current_profile(), &operations),
+        Err(LinearLayoutError::UnsafeDataPlacement)
+    );
+    Ok(())
+}

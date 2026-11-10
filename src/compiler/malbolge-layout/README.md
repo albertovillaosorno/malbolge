@@ -5,10 +5,10 @@ machine operations: `NoOperation`, profile `InputWord`/`OutputByte`, and final
 `Halt`. It can also emit either a single `RelocateDataPointer` (`j`) prologue
 followed by real `RotateData` (`*`) and `CrazyData` (`p`) operations, and
 bounded chains of strictly forward `JumpForward` (`i`) code jumps. The jumps
-may precede the single relocation when its dynamically read data word proves
-that all later data writes remain outside source. Jumps after relocation are
-not admitted. There is no conditional branch, backward jump, or executable
-external guest helper.
+may precede the relocation when its dynamically read data word proves that
+subsequent writes target either expanded memory or past source cells strictly
+behind the executing instruction. Jumps after relocation are not admitted.
+There is no conditional branch, backward jump, or executable external helper.
 
 ### Canonical effect-free function
 
@@ -55,14 +55,20 @@ step, not necessarily the `j` graphical code byte. For an earlier jump,
 whose value has already been XLAT2-encrypted. The source-memory shadow
 models those prior encryptions before checking `j`.
 
-The verifier requires the current `j` operand to be **at least the entire
-source length**, so D becomes the operand plus one and all subsequent data
-writes remain outside emitted code. If its base would overlap source, it
-fails closed even when the `j` code character itself looks safe. Source-
-length extension past an encrypted operand also fails before publication.
+For an ordinary initial relocation, the verifier requires the current `j`
+operand to be **at least the entire source length**, so D moves into
+loader-expanded memory. After a forward `i` jump, the verifier additionally
+accepts `j` reading an original or already-modified graphical source word
+strictly behind the reached C and moving D to another source cell strictly
+behind that same C. Subsequent data writes must remain behind their reached
+code positions; any write into pending instructions fails closed. Both the
+source operand and destination are independently derived from the exact
+shadowed memory, not a declared destination or guessed byte. Source-length
+extension past an encrypted operand still fails before publication.
 Earlier jump/no-op source positions remain fully graphical and uniquely
-encoded. Missing, duplicate, premature arithmetic and potentially aliasing
-relocation are rejected.
+encoded. Missing, premature arithmetic and potentially aliasing relocation
+are rejected. This narrow source-scratch placement does not make dynamic
+jumps, repeated data writes, or general guest byte streams universally safe.
 A separate exhaustive decoder-phase test enumerates all safely addressable
 rotate/crazy placements at positions 1 through 93, under both declared
 profiles, and independently checks the encoded instruction and execution
@@ -121,8 +127,9 @@ Every admitted layout returns deterministic, step-indexed witnesses for
 **four** facts: reachable code pointer, data pointer at the start of each
 step, code cell encrypted after each nonhalt step, and the *planned guest
 data-write address* for each rotate/crazy step (none otherwise, including
-halt). The data-write address must be outside the entire emitted source.
-Current/historical normative VM tests compare all four against actual
+halt). Every data write must be either beyond source or strictly behind the
+executing code pointer on a proven forward-only path. Current/historical
+normative VM tests compare all four against actual
 per-step control state, XLAT2 memory changes, and data-cell reads/writes
 from the independent transition trace. Actual data-write **values** depend
 on guest input and earlier arithmetic, so these layout witnesses do not
@@ -132,7 +139,12 @@ The source has two to 4096 cells (with a stricter bound for relocated data),
 contains exactly one final halt, and carries the canonical selected profile
 identity. Real current and historical profile-VM tests prove byte I/O,
 rotate/crazy execution, forward skip-to-target semantics, halting, and
-invalid placement rejection.
+invalid placement rejection. A focused current/historical guest test also
+proves a forward `i` jump followed by a source-backed `j`, one real `p`
+source-scratch write, exact output on empty and nonempty stdin, and
+rejection of a relocation into pending code or a forged source byte. This
+expands placement verification, not the bounded byte-stream synthesizer;
+the original unmasked twelve-byte Fibonacci output remains unsupported.
 
 This is **not** a C-to-Malbolge compiler. Arbitrary ternary-IR operations,
 general control-flow jumps, data/global layout, calls, runtime linkage,

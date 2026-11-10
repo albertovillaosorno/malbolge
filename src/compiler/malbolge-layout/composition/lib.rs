@@ -716,17 +716,27 @@ fn derive_execution_positions(
                     )
                     .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
                 };
-                // First relocations must use a graphical source word that
-                // already points beyond the entire source, not merely a
-                // post-increment address that happens to be out of bounds.
-                if !expanded_operand && data_word < source.len() {
+                let next = data_word.saturating_add(1) % memory_words;
+                // After a forward code jump, a j may move D into *past*
+                // graphical source cells. Both the operand and its target
+                // must then be strictly behind C; later arithmetic is still
+                // checked instruction-by-instruction against pending code.
+                // Ordinary first relocations retain the original requirement
+                // that their source operand points beyond the whole source.
+                let past_source_scratch = !expanded_operand
+                    && data_pointer < position
+                    && next < position;
+                if !expanded_operand
+                    && data_word < source.len()
+                    && !past_source_scratch
+                {
                     return Err(LinearLayoutError::UnsafeDataPlacement);
                 }
-                let next = data_word.saturating_add(1) % memory_words;
-                // The final j is output-neutral; otherwise even a source-only
-                // post-move pointer must remain outside executable source code.
+                // A final j cannot affect output. Otherwise a relocation
+                // within source is safe only behind the already executed C.
                 if position != operations.len().saturating_sub(2)
                     && next < source.len()
+                    && !past_source_scratch
                 {
                     return Err(LinearLayoutError::UnsafeDataPlacement);
                 }
@@ -796,8 +806,9 @@ pub fn admit_linear_layout(
 ///
 /// Forward jumps read their target from the exact dynamically evolving
 /// data-pointer cell, not necessarily the jump's code cell. A later `j` may
-/// move data beyond source if the proven current D word admits that boundary. Every intervening
-/// skipped source position must be inert graphical padding.
+/// move D into expanded memory or to past graphical source scratch strictly
+/// behind reached C after a forward jump. Every intervening skipped source
+/// position must be inert graphical padding.
 ///
 /// # Errors
 ///
