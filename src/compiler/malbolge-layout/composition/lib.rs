@@ -288,13 +288,17 @@ struct ForwardPaddingBuilder<'profile> {
 }
 
 impl ForwardPaddingBuilder<'_> {
-    fn auto_relocate(&mut self, remaining: usize) -> Result<usize, LinearLayoutError> {
+    fn auto_relocate(
+        &mut self,
+        remaining: usize,
+    ) -> Result<usize, LinearLayoutError> {
         if self.relocated {
             return Err(LinearLayoutError::UnsafeDataPlacement);
         }
         // The address-sensitive decoder cycles over 94 graphical phases.
-        // Search only this bounded first cycle and never invent a source-
-        // overlapping data base just to make a layout admissible.
+        // Search only this bounded first cycle. After a forward jump, an
+        // already encoded source operand can instead point strictly behind
+        // the reached C; independent admission checks all resulting writes.
         for _phase in 0..94usize {
             let position = self.operations.len();
             let planned_length = position
@@ -316,10 +320,12 @@ impl ForwardPaddingBuilder<'_> {
                     .get(self.data_pointer)
                     .ok_or(LinearLayoutError::UnsafeDataPlacement)?
             };
-            if usize::try_from(data_word)
-                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-                >= planned_length
-            {
+            let word = usize::try_from(data_word)
+                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
+            let expanded_data = word >= planned_length;
+            let past_source_scratch = self.data_pointer < position
+                && word.saturating_add(1) < position;
+            if expanded_data || past_source_scratch {
                 return self.instruction(LinearOpcode::RelocateDataPointer);
             }
             let _filler = self.instruction(LinearOpcode::NoOperation)?;
@@ -905,8 +911,9 @@ fn proven_source_origins(
 /// encoded source cell (`D < C`) whose prior XLAT2 mutations are modeled by
 /// `shadow`. The planner inserts only graphical no-ops to fill the intervening
 /// unreachable source addresses and encrypts `target - 1` exactly as the VM
-/// does. A subsequent `j` is admitted only if the final independent checker
-/// proves complete source/data separation. The planner does not search for
+/// does. A subsequent `j` may also point to already-passed source scratch
+/// when both its operand and destination are behind C; the final independent
+/// checker still proves every write is safe. The planner does not search for
 /// alternative byte encodings, invent backward edges, or execute guest work.
 ///
 /// # Errors

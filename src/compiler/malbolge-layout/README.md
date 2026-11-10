@@ -112,6 +112,16 @@ The library planner also accepts `PaddedForwardStep::AutoRelocate`. It inserts
 *reached* no-ops to find the earliest safe decoder phase within 94 positions
 for a `j` data-pointer relocation, taking the remaining logical suffix,
 current data pointer and previously encrypted jump operands into account.
+After an earlier forward jump, `AutoRelocate` now also accepts an
+*existing* graphical source operand if both its read address and the
+resulting D destination lie strictly behind reached code. It selects the
+first such safe phase or a sufficiently distant expanded-memory operand;
+it does not rewrite skipped padding to invent a better operand. The final
+independent admission still checks every real data-write address. A
+current/historical VM regression compares the automatically chosen source-
+scratch layout with a separately encoded manual plan and verifies actual
+scratch mutation and byte output with empty and nonempty stdin.
+
 The planner also returns an exact source-cell origin table alongside
 logical-to-physical code positions: each graphical cell is either an
 original logical step, inserted *reached* relocation padding, or skipped
