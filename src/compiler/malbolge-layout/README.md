@@ -2,13 +2,14 @@
 
 The initial executable target encoder admits only bounded straight-line
 machine operations: `NoOperation`, profile `InputWord`/`OutputByte`, and final
-`Halt`. It can also emit either a single `RelocateDataPointer` (`j`) prologue
-followed by real `RotateData` (`*`) and `CrazyData` (`p`) operations, and
-bounded chains of strictly forward `JumpForward` (`i`) code jumps. The jumps
+`Halt`. It also emits verified `RelocateDataPointer` (`j`) operations,
+real `RotateData` (`*`) and `CrazyData` (`p`) operations, and bounded
+chains of strictly forward `JumpForward` (`i`) code jumps. The jumps
 may precede the relocation when its dynamically read data word proves that
 subsequent writes target either expanded memory or past source cells strictly
-behind the executing instruction. Jumps after relocation are not admitted.
-There is no conditional branch, backward jump, or executable external helper.
+behind the executing instruction. Later forward jumps are also admitted if
+D reads a known graphical source word; unresolved or expanded jump operands
+still refuse. There is no conditional branch, backward jump, or helper.
 
 ### Canonical effect-free function
 
@@ -48,7 +49,8 @@ exact positions, length, and terminal halt. No translation table is copied.
 Data relocation is necessary before rotate/crazy: without it, code and
 data pointers advance together and mutate the currently executing cell.
 The single `j` may occur after no-op/raw byte I/O or forward jumps, but must
-precede rotate/crazy and **all** following code must be jump-free. Its
+precede rotate/crazy. A later forward jump must read an exact known past
+source word, and every skipped cell must remain graphical no-op padding. Its
 operand comes from the *actual current data-pointer memory word* at that
 step, not necessarily the `j` graphical code byte. For an earlier jump,
 `C` and `D` have diverged; the operand can reside in a skipped no-op cell
@@ -86,8 +88,8 @@ word plus one, be strictly forward, and stay inside emitted source.
 
 Every gap between a jumped-from and jumped-to source address must contain only
 canonical graphical no-op padding. A skipped jump, skipped I/O, backward edge,
-forged target, a jump after relocation, or inconsistent modified operands
-reject before publication. No reachable source instruction is
+forged target, an unknown post-relocation operand, or inconsistent modified
+operands reject before publication. No reachable source instruction is
 revisited; full mutable code-state or conditional branching remains open.
 The original one-jump 94-phase checks remain, and tests now execute real
 2- and 3-jump chains under both canonical VMs, including an encrypted operand
@@ -124,6 +126,15 @@ scratch mutation and byte output with empty and nonempty stdin. A separate
 current/historical step-traced VM replay checks two consecutive `p`/`*`
 operations on past source scratch: exact code/data pointers, data mutations,
 XLAT2 code encryption, and independently calculated output bytes.
+
+The independent linear encoder (not the symbolic padding planner) also
+admits a later forward `i` jump after a source-scratch `j`/`p` sequence if
+the jump reads a separate known source cell. A seven-step real VM fixture
+uses binary input to modify source address 67, then reads address 68 to
+jump forward, outputs the independently checked byte, and halts on both
+historical/current profiles. Forged targets and a later jump reading the
+input-tainted cell reject. Expanded-memory jump operands remain unsupported;
+this is not general guest control flow or a complete C compiler.
 
 The planner also returns an exact source-cell origin table alongside
 logical-to-physical code positions: each graphical cell is either an

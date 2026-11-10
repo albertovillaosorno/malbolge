@@ -170,6 +170,107 @@ fn input_dependent_source_scratch_runs_in_both_normative_vms()
     Ok(())
 }
 
+// A forward jump after relocation is safe when its operand remains a known
+// source cell behind C, even after an input-derived p writes a different cell.
+fn post_relocation_jump_operations() -> Result<Vec<LinearOpcode>, String> {
+    let target = jump_target(0)?;
+    if target != 99 {
+        return Err(String::from("unexpected first jump decoder phase"));
+    }
+    let mut operations = vec![LinearOpcode::NoOperation; 127];
+    for (index, operation) in [
+        (0, LinearOpcode::JumpForward { target }),
+        (2, LinearOpcode::SkippedDataByte { byte: 66 }),
+        (68, LinearOpcode::SkippedDataByte { byte: 124 }),
+        (99, LinearOpcode::InputWord),
+        (100, LinearOpcode::RelocateDataPointer),
+        (101, LinearOpcode::CrazyData),
+        (102, LinearOpcode::JumpForward { target: 125 }),
+        (125, LinearOpcode::OutputByte),
+        (126, LinearOpcode::Halt),
+    ] {
+        replace_scratch_operation(&mut operations, index, operation)?;
+    }
+    Ok(operations)
+}
+
+fn refuse_unproven_post_relocation_jumps(
+    profile: &'static malbolge::ProfileDescriptor,
+    operations: &[LinearOpcode],
+) -> Result<(), String> {
+    // Returning D to input-written scratch makes the jump target unknown.
+    let mut tainted_jump = operations.to_vec();
+    for (index, operation) in [
+        (68, LinearOpcode::SkippedDataByte { byte: 66 }),
+        (102, LinearOpcode::RelocateDataPointer),
+        (103, LinearOpcode::JumpForward { target: 125 }),
+    ] {
+        replace_scratch_operation(&mut tainted_jump, index, operation)?;
+    }
+    if encode_linear_layout(profile, &tainted_jump)
+        != Err(LinearLayoutError::JumpPathUnsupported)
+    {
+        return Err(String::from("tainted post-relocation jump admitted"));
+    }
+    let mut incorrect_target = operations.to_vec();
+    replace_scratch_operation(
+        &mut incorrect_target,
+        102,
+        LinearOpcode::JumpForward { target: 124 },
+    )?;
+    if encode_linear_layout(profile, &incorrect_target)
+        != Err(LinearLayoutError::JumpTargetMismatch { position: 102 })
+    {
+        return Err(String::from("forged post-relocation jump admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn post_relocation_jump_uses_unmodified_source_operand_after_guest_write()
+-> Result<(), String> {
+    let operations = post_relocation_jump_operations()?;
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("post-relocation jump: {error:?}"))?;
+        if layout.executed_code_positions() != [0, 99, 100, 101, 102, 125, 126]
+            || layout.data_write_positions()
+                != [None, None, None, Some(67), None, None, None]
+        {
+            return Err(String::from("incorrect post-relocation witness"));
+        }
+        let original = u32::from(
+            *layout.source().get(67).ok_or("missing scratch operand")?,
+        );
+        for input in [0u8, 255] {
+            let expected = scalar_crazy_reference(
+                original,
+                u32::from(input),
+                profile.word_trits(),
+            );
+            let mut vm =
+                ProfileMachine::from_source(profile, layout.source(), vec![
+                    input,
+                ])
+                .map_err(|error| format!("post-relocation VM: {error:?}"))?;
+            verify_execution_witness(&mut vm, &layout)?;
+            let expected_byte = u8::try_from(expected & 255)
+                .map_err(|error| error.to_string())?;
+            if vm.input_consumed() != 1
+                || vm.output() != [expected_byte]
+                || vm.memory_word(67) != Ok(expected)
+                || vm.memory_word(68) != Ok(124)
+            {
+                return Err(String::from(
+                    "post-relocation guest effects differ",
+                ));
+            }
+        }
+        refuse_unproven_post_relocation_jumps(profile, &operations)?;
+    }
+    Ok(())
+}
+
 fn tainted_relocation_operations(
     target: usize,
 ) -> Result<Vec<LinearOpcode>, String> {

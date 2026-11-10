@@ -360,6 +360,15 @@ emission.
   later `j` operand while admitting the same known-value geometry on both
   VMs. This unlocks a bounded machine-level input dependency, not source-C
   input arithmetic, dynamic source control flow or complete P0 compilation.
+- The independent linear encoder now proves a known post-relocation
+  forward jump from untouched past source data even when an earlier `p`
+  writes a separate source word depending on binary input. Current and
+  historical normative VMs trace the seven executed C/D/encryption steps,
+  guest `p` write, `0x00`/`0xff` input and exact scalar-oracle output.
+  Forged targets and jumping through input-tainted scratch refuse.
+  Expanded-memory jump operands and symbolic post-relocation layout remain
+  unsupported. The original unmasked Fibonacci whole-C layout and P0
+  compiler objective remain open.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

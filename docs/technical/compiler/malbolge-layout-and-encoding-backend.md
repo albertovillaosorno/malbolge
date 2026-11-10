@@ -41,8 +41,9 @@ relocation base is read from the **current data-pointer memory cell**, not
 the original encoded `j` source byte. The verifier replays prior XLAT2
 mutation of source-memory cells before checking that the resulting base is
 at least the complete emitted source length. This exact bound keeps all
-later rotate/crazy writes disjoint from source code. Later jumps,
-unsafe initial relocations and source/data aliases reject. Each later `j`
+later rotate/crazy writes disjoint from source code. Source-scratch
+relocation also permits writes behind C; unknown/expanded jump operands,
+unsafe initial relocations and pending-code aliases reject. Each later `j`
 reads the exact current D word: a tracked XLAT2 source-memory cell if D has
 wrapped into code, or an untouched expanded-loader cell otherwise. The
 checker derives expanded words from the original final source cells, not
@@ -52,13 +53,16 @@ with the first expanded cell, so an untouched loader word at any address
 requires at most six recurrence steps instead of long-prefix checkpoints.
 The rule applies componentwise to both 10- and 15-trit profiles; direct
 normative VM comparisons cover near, middle and final memory addresses.
-Every new D pointer uses exact profile-memory wraparound, and subsequent arithmetic
-writes must stay outside graphical code. A penultimate `j` may point inside
-source, because only halt remains. Arbitrarily many source-bounded `j`
-operations may be admitted when these per-move checks pass; post-relocation
-jumps remain unsupported. Every admitted code/D/write/encryption position
-is independently replayed in traced VM regressions. The automatic
-forward-padding planner remains stricter and does not create later moves.
+Every new D pointer uses exact profile-memory wraparound. Subsequent
+arithmetic writes must remain in expanded memory or behind executing C.
+A penultimate `j` may point inside source, because only halt remains.
+Arbitrarily many source-bounded `j` operations may be admitted when these
+per-move checks pass. A later forward jump is safe only when its D operand
+is a known graphical source cell; expanded or input-tainted operands still
+reject. Every admitted
+code/D/write/encryption position is independently replayed in traced VM
+regressions. The automatic forward-padding planner remains stricter and
+does not create later moves.
 
 A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout
@@ -68,9 +72,10 @@ An exhaustive phase matrix independently rechecks every safely placeable
 rotate/crazy opcode between positions 1 and 93 for both canonical profiles,
 including the exact output phase and the execution/encryption witness sizes.
 
-Forward code jumps (`i`) are admitted only **before** any data-pointer
-relocation or rotate/crazy operation. The first jump reads its own code cell
-through `D == C`; after it jumps, `D` and `C` diverge. Every later jump reads
+Forward code jumps (`i`) can occur after relocation and real source-scratch
+arithmetic only when the checked D word is a known source cell. The first
+jump normally reads its own code cell through `D == C`; after it jumps,
+`D` and `C` diverge. Every later jump reads
 through the evolving data pointer instead, so its target **cannot** be
 inferred from the jump's own graphical code cell. The independent validator
 tracks an exact bounded source-memory shadow, applying canonical XLAT2 after
@@ -83,7 +88,7 @@ future instruction is silently lost, and executed code is never revisited.
 The admitted artifact retains four aligned deterministic execution witnesses:
 code-pointer positions, data-pointer positions, post-step code encryption
 addresses and optional rotate/crazy guest data-write addresses. The static
-checker rejects each data-write address inside the emitted source region.
+checker rejects source-cell data writes at or ahead of executing C.
 Normative traced VM steps independently check the write address against its
 actual semantic data read and any changed-cell delta, including when a
 write commits an unchanged value, as well as code XLAT2 encryption. This
@@ -98,6 +103,17 @@ the earlier jump's **encrypted** target-minus-one cell. Independent source
 extension beyond that dynamic operand rejects as unsafe. The actual CLI
 emits both raw and versioned capsule files, reopened and run under both
 canonical VMs to confirm byte I/O and guest memory mutation.
+
+A new seven-step source-backed witness first jumps past skipped padding,
+reads one input byte, relocates D into source scratch and executes a real
+`p` data write at address 67. A later `i` reads the untouched graphical
+operand at address 68, skips ahead, outputs the independently calculated
+byte, and halts. Both canonical VMs match exact code/D/write/encryption
+witnesses and `0x00`/`0xff` output and memory effects. A forged target
+rejects, and moving D back to the input-tainted scratch word makes the
+following `i` fail closed. The symbolic padding planner still refuses
+post-relocation jumps; arbitrary expanded or runtime-dependent jump operands
+are unsupported, as is the original unmasked Fibonacci C source.
 
 Another real VM regression demonstrates the distinct case where a
 later jump reads a code cell whose normal no-op execution already encrypted

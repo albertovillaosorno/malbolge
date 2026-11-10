@@ -942,7 +942,7 @@ fn forward_jump_cannot_mix_with_data_relocation() -> Result<(), String> {
     *ops.last_mut().ok_or("missing final halt")? = LinearOpcode::Halt;
     assert_eq!(
         encode_linear_layout(current_profile(), &ops),
-        Err(LinearLayoutError::JumpPathUnsupported),
+        Err(LinearLayoutError::UnsafeDataPlacement),
     );
     Ok(())
 }

@@ -445,19 +445,14 @@ fn validate_shape(
 fn validate_jump_shape(
     operations: &[LinearOpcode],
 ) -> Result<(), LinearLayoutError> {
-    let relocation = operations
-        .iter()
-        .position(|operation| *operation == LinearOpcode::RelocateDataPointer);
     let mut skipped_data = vec![false; operations.len()];
     for (position, operation) in operations.iter().enumerate() {
         let LinearOpcode::JumpForward { target } = operation else {
             continue;
         };
-        // Once j relocates D beyond graphical source, later i operands are
-        // synthesized loader data and not yet covered by this small proof.
-        if relocation.is_some_and(|relocate_at| position > relocate_at) {
-            return Err(LinearLayoutError::JumpPathUnsupported);
-        }
+        // Independently prove each reached jump from the current D word.
+        // After a j, that operand can still be a known past source cell;
+        // expanded or input-tainted jump operands fail closed downstream.
         let target_position = usize::try_from(*target)
             .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
         if target_position <= position || target_position >= operations.len() {
