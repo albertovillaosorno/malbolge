@@ -878,7 +878,7 @@ cases and nine forged AST mutations refuse without artifacts. This is a
 finite compile-time C-state projection, not dynamic guest C branches or
 loops; the unmasked Fibonacci byte stream still fails layout admission.
 
-### Direct `if/else` as the whole unbraced `do/while` body
+### Direct `if/else` or `for` as an unbraced `do/while` body
 
 The bounded C-state projector also admits a single source-proven direct
 `if-statement` child of a `do-statement`, followed by its pure trailing
@@ -896,6 +896,16 @@ unbraced source form, then emitted the independently computed byte stream
 five forged AST variants refuse without artifact publication. This extends
 source-backed compile-time replay, not runtime guest control flow or the
 still unsupported original unmasked Fibonacci guest layout.
+
+A second full source-C recurrence places a bounded four-trip `for`
+directly inside a three-trip `do`, incrementing a checked outer local on
+every inner trip. The same direct-parent and trailing-condition proof
+also admits this unbraced `for` child, retaining its own protected induction
+symbol and all twelve selected output effects. The normative guest VM emits
+the independent masked Fibonacci oracle in 47 steps with empty and binary
+stdin. Three nonterminating or impure C variants and five forged AST cases
+refuse without guest publication. This is bounded compile-time control
+projection, not dynamic guest nested loops or the original unmasked layout.
 
 ### Function-body lexical scopes with shadowed unsigned locals
 

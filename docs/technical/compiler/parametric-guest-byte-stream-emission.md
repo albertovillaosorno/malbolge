@@ -3134,7 +3134,7 @@ condition side effect, a forbidden induction-counter write and unproved
 fail without publishing guest code. The original twelve-output unmasked
 Fibonacci C still lacks generalized guest layout; P0 remains pending.
 
-### Unbraced `do/while` with a conditional recurrence (2026-11-10)
+### Unbraced `do/while` with conditional and nested `for` (2026-11-10)
 
 The full twelve-step masked Fibonacci C recurrence was retried with an
 ordinary `do` whose sole unbraced body is an `if/else`. Both branches declare
@@ -3159,6 +3159,20 @@ side-effecting predicate and an unproved nested loop) and five forged AST
 cases refuse without publishing guest artifacts. This remains finite
 compile-time C-state replay; the original unmasked Fibonacci stream and
 dynamic guest C loop execution still lack proof. P0 remains pending.
+
+The same source proof now admits one direct bounded `for` as the entire
+unbraced `do` body. A separate complete C Fibonacci program uses three
+outer `do` trips, each executing four inner `for` trips. The inner loop's
+source-checked `++outer` advances the trailing pure `outer < 12U` guard,
+while each inner trip performs the real conditional output and recurrence
+state transfer. Pinned Clang parents the inner `for` directly to `do`;
+the parser does not synthesize any missing braces. The complete program
+initially refused at the JSON adapter; after the repair, it emits the same
+independent twelve-byte masked Fibonacci oracle from the normative guest
+VM in 47 steps under empty and binary stdin. Three nonterminating or
+impure C-source variants and five forged AST mutations reject before
+publication. This proves finite source-C replay, not general nested guest
+induction or unmasked byte-stream layout. P0 remains pending.
 
 ### Source-proven lexical scopes in loop bodies
 

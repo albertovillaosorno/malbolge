@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a second complete masked Fibonacci source first
+  refused at the JSON adapter when an unbraced `do` directly contained a
+  four-trip `for` with source-checked recurrence state, conditional output
+  and outer-loop progress. The bounded replay now proves the direct Clang
+  `for` ancestry and its trailing pure `do` condition; three outer trips
+  emit the independent twelve-byte masked oracle in 47 normative VM steps
+  under empty and binary stdin. Three unsupported C variants and five
+  forged AST cases fail closed. Dynamic guest nesting and the original
+  unmasked guest stream remain unsupported, so P0 stays open.
+
+
 - On 2026-11-10 the complete twelve-output masked Fibonacci C source
   first refused when a `do/while` directly contained an unbraced `if/else`
   with local declarations, selected output and state transfers. The bounded

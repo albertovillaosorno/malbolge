@@ -819,8 +819,8 @@ impl<'node> Flow<'node> {
         let mut last_end = body.span.begin.byte;
         let mut writes = 0;
         while let Some(node) = self.peek() {
-            // A direct `if` is the whole unbraced `do` body. Its trailing
-            // condition is the next sibling, not a second body effect.
+            // One direct `if` or `for` is the whole unbraced `do` body.
+            // The trailing condition is not another body effect.
             if node.span.begin.byte >= body.span.end.byte
                 || (body.kind == "do-statement" && writes != 0)
             {
@@ -1508,20 +1508,23 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        // Clang parents an unbraced `if` directly to `do`, followed by
-        // the condition as a separate sibling. Never invent a brace scope.
-        let unbraced_if = self.peek()?.kind == "if-statement";
+        // Clang parents an unbraced `if` or `for` directly to `do`,
+        // followed by its condition. Never invent a compound scope.
+        let unbraced_control = matches!(
+            self.peek()?.kind.as_str(),
+            "if-statement" | "for-statement"
+        );
         let first_body_byte = self.peek()?.span.begin.byte;
         let direct_body_end = self.peek()?.span.end.byte;
-        let loop_body = if unbraced_if {
+        let loop_body = if unbraced_control {
             statement
         } else {
             self.take(statement.id, "compound-statement")?
         };
-        if (!unbraced_if && !clean(loop_body))
+        if (!unbraced_control && !clean(loop_body))
             || !span_within(&statement.span, &loop_body.span)
             || statement.span.begin.byte >= first_body_byte
-            || (unbraced_if
+            || (unbraced_control
                 && (self.peek()?.parent != statement.id
                     || direct_body_end >= statement.span.end.byte))
         {
@@ -1546,7 +1549,7 @@ impl<'node> Flow<'node> {
             // `break` skips it at runtime. `continue` must check it.
             let (continue_loop, condition) = self.condition(statement)?;
             if !span_within(&statement.span, &condition.span)
-                || (if unbraced_if {
+                || (if unbraced_control {
                     direct_body_end
                 } else {
                     loop_body.span.end.byte
