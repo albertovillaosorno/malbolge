@@ -131,6 +131,14 @@ def else_if_masked_fibonacci_source() -> str:
     return source.replace(previous, chain)
 
 
+def wide_unsigned_masked_fibonacci_source(expression: str) -> str:
+    """Use standard unsigned-C wide temporaries in the full recurrence."""
+    source = MASKED_FIBONACCI.read_text()
+    original = "unsigned next = (a + b) & 255U;"
+    assert source.count(original) == 1
+    return source.replace(original, f"unsigned next = {expression};")
+
+
 def shadowed_masked_fibonacci_source() -> str:
     """Reuse the outer `b` name inside one explicit nested loop block."""
     source = MASKED_FIBONACCI.read_text()
@@ -489,6 +497,121 @@ class CompoundCPipelineTests(unittest.TestCase):
                         capture_output=True, check=False, timeout=30,
                     )
                     self.assertNotEqual(result.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_wide_unsigned_c_literals_reach_real_fibonacci_guest(self) -> None:
+        """C u32 intermediates narrow only at the local store and guest output."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        oracle = bytearray()
+        for _ in range(12):
+            following = (previous + current) % 256
+            oracle.append((following if following % 2 == 0 else following ^ 26) & 31)
+            previous, current = current, following
+        expected = bytes(oracle)
+        self.assertEqual(expected, bytes.fromhex("02191f08170f020d03101303"))
+        variants = {
+            "modulo-256": "(a + b) % 256U",
+            "large-intermediate": "((a + b) + 65536U) % 256U",
+            "wrapping-u32": "((a + b) + 4294967295U + 1U) % 256U",
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for name, expression in variants.items():
+                with self.subTest(variant=name):
+                    source = Path(scratch) / f"wide-{name}.c"
+                    _written = source.write_text(
+                        wide_unsigned_masked_fibonacci_source(expression)
+                    )
+                    guest = Path(scratch) / f"wide-{name}.malbolge"
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/fibonacci-{name}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertRegex(
+                            executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_wide_unsigned_c_literals_refuse_invalid_source_and_ast(self) -> None:
+        """Unproved widths, malformed Clang leaves and byte stores fail closed."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = wide_unsigned_masked_fibonacci_source(
+            "((a + b) + 65536U) % 256U"
+        )
+        source_cases = {
+            "too-wide-type": original.replace("65536U", "4294967296U"),
+            "out-of-byte-store": original.replace(
+                "((a + b) + 65536U) % 256U", "256U"
+            ),
+            "zero-divisor": original.replace("% 256U", "% 0U"),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for name, variant in source_cases.items():
+                with self.subTest(source=name):
+                    source = Path(scratch) / f"invalid-{name}.c"
+                    _written = source.write_text(variant)
+                    guest = Path(scratch) / f"invalid-{name}.malbolge"
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/invalid-wide-{name}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, rejected.stderr)
+                    self.assertFalse(guest.exists())
+            source = Path(scratch) / "wide-ast.c"
+            _written = source.write_text(original)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/wide-unsigned-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            parsed = cast(dict[str, object], json.loads(normalized.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            wide = next(
+                node for node in nodes
+                if node["kind"] == "integer-literal"
+                and node.get("literal") == "65536"
+            )
+            for label, change in (
+                ("mismatched-value", {"constant_integer": "65537"}),
+                ("out-of-range", {"literal": "4294967296",
+                                  "constant_integer": "4294967296"}),
+                ("wrong-width", {"type": "u64"}),
+                ("wrong-parent", {"parent": cast(int, wide["parent"]) + 1}),
+                ("unexpected-effect", {"operation": "+"}),
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(normalized.stdout),
+                    )
+                    forged["nodes"][cast(int, wide["id"]) - 1].update(change)
+                    guest = Path(scratch) / f"forged-wide-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
                     self.assertFalse(guest.exists(), label)
 
     def test_high_bit_xor_metameric_fibonacci_guest_parity(self) -> None:

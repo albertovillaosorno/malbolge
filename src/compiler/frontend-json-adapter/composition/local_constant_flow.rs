@@ -33,7 +33,7 @@
 
 use super::local_initialized_output::{
     assigned_local_reference, clean, correct_node, emit_verified_local_bytes,
-    literal_byte, span_within, typed_operator,
+    literal_byte, literal_u32, span_within, typed_operator,
 };
 use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 
@@ -530,7 +530,7 @@ impl<'node> Flow<'node> {
         match node.kind.as_str() {
             "integer-literal" => {
                 let leaf = self.take(parent, "integer-literal")?;
-                Some((u32::from(literal_byte(leaf)?), leaf))
+                Some((literal_u32(leaf)?, leaf))
             },
             "parenthesized-expression" => {
                 let grouped = self.take(parent, "parenthesized-expression")?;

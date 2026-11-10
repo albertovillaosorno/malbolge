@@ -134,12 +134,14 @@ fn named_local_reference(
             .is_some_and(|end| end <= literal.span.begin.byte)
 }
 
-/// Admit only the exact source-backed Clang `u32` integer leaf.
+/// Admit an exact normalized Clang `unsigned` integer leaf. The bounded
+/// flow projector can use the full C u32 value in intermediate arithmetic;
+/// byte-only projectors and local writes still narrow at their own boundary.
 #[expect(
     clippy::redundant_pub_crate,
     reason = "shared closed local projection"
 )]
-pub(super) fn literal_byte(node: &Node) -> Option<u8> {
+pub(super) fn literal_u32(node: &Node) -> Option<u32> {
     if node.kind != "integer-literal"
         || node.type_name.as_deref() != Some("u32")
         || node.literal.as_deref() != node.constant_integer.as_deref()
@@ -154,7 +156,16 @@ pub(super) fn literal_byte(node: &Node) -> Option<u8> {
     {
         return None;
     }
-    node.constant_integer.as_deref()?.parse::<u8>().ok()
+    node.constant_integer.as_deref()?.parse::<u32>().ok()
+}
+
+/// Keep the narrower 0..255 proof for the original single-local adapter.
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) fn literal_byte(node: &Node) -> Option<u8> {
+    u8::try_from(literal_u32(node)?).ok()
 }
 
 #[expect(

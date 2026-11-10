@@ -73,6 +73,29 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Full unsigned-C intermediates in a bounded recurrence (2026-11-10)
+
+A complete twelve-step masked Fibonacci C program was rerun with a normal
+`% 256U` recurrence instead of the previous `& 255U` mask, and again with
+`((a + b) + 65536U) % 256U`. Both whole programs initially refused at the
+typed adapter before publishing a guest because its source-backed local
+projector accepted only `0..255` integer leaves. The shared Clang-literal
+proof now retains the entire normalized `u32` value for closed expression
+arithmetic, including unsigned C wraparound, while the original simpler
+byte-only projector and every local store/output still require a byte.
+
+A third whole-source variant using
+`((a + b) + 4294967295U + 1U) % 256U` also proves C `u32` wraparound
+and reaches the same real guest output. All three complete programs emit
+the independent twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` on the actual normative guest
+VM under empty and nonempty binary stdin, in 47 steps per execution.
+Malformed Clang literal metadata, out-of-range intermediate types,
+undefined division, and attempts to store a non-byte still reject without
+guest publication. This improves genuine C expression coverage, not dynamic
+guest arithmetic. The original unmasked Fibonacci layout remains unsupported
+and P0 is still pending.
+
 ### Source-proven `else if` chains in full C control flow (2026-11-09)
 
 The complete twelve-iteration masked Fibonacci C recurrence was retried with
