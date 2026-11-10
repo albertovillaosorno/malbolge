@@ -607,6 +607,42 @@ fn deterministic_expanded_arithmetic_drives_later_relocation()
     Ok(())
 }
 
+fn refuse_tainted_expanded_symbolic_control(
+    profile: &'static malbolge::ProfileDescriptor,
+    logical: &[PaddedForwardStep],
+    operations: &[LinearOpcode],
+) -> Result<(), String> {
+    use PaddedForwardStep::Instruction;
+    let mut tainted = logical.to_vec();
+    *tainted.get_mut(8).ok_or("missing input slot")? =
+        Instruction(LinearOpcode::InputWord);
+    *tainted.get_mut(11).ok_or("missing p slot")? =
+        Instruction(LinearOpcode::CrazyData);
+    if encode_auto_padded_forward_layout(profile, &tainted)
+        != Err(LinearLayoutError::UnsafeDataPlacement)
+    {
+        return Err(String::from("tainted expanded word admitted"));
+    }
+    let mut overwritten = operations.to_vec();
+    for (index, operation) in [
+        (13, LinearOpcode::InputWord),
+        (14, LinearOpcode::RelocateDataPointer),
+        (15, LinearOpcode::CrazyData),
+        (16, LinearOpcode::RelocateDataPointer),
+        (17, LinearOpcode::RelocateDataPointer),
+    ] {
+        replace_scratch_operation(&mut overwritten, index, operation)?;
+    }
+    let overwritten_logical: Vec<_> =
+        overwritten.into_iter().map(Instruction).collect();
+    if encode_auto_padded_forward_layout(profile, &overwritten_logical)
+        != Err(LinearLayoutError::UnsafeDataPlacement)
+    {
+        return Err(String::from("stale expanded word admitted"));
+    }
+    Ok(())
+}
+
 // The independent encoder already proves a loader-expanded write and two
 // subsequent j operands. The symbolic plan must preserve that known write,
 // rather than re-reading the original loader value or refusing fixed code.
@@ -657,33 +693,7 @@ fn fixed_tail_expanded_written_word_drives_symbolic_relocation()
                 original,
                 written,
             )?;
-            // An input-dependent p must invalidate the exact expanded word.
-            let mut tainted = logical.clone();
-            tainted[8] = Instruction(LinearOpcode::InputWord);
-            tainted[11] = Instruction(LinearOpcode::CrazyData);
-            if encode_auto_padded_forward_layout(profile, &tainted)
-                != Err(LinearLayoutError::UnsafeDataPlacement)
-            {
-                return Err(String::from("tainted expanded word admitted"));
-            }
-            // A later unknown write replaces a previously proven value.
-            let mut overwritten = operations.clone();
-            for (index, operation) in [
-                (13, LinearOpcode::InputWord),
-                (14, LinearOpcode::RelocateDataPointer),
-                (15, LinearOpcode::CrazyData),
-                (16, LinearOpcode::RelocateDataPointer),
-                (17, LinearOpcode::RelocateDataPointer),
-            ] {
-                replace_scratch_operation(&mut overwritten, index, operation)?;
-            }
-            let overwritten: Vec<_> =
-                overwritten.into_iter().map(Instruction).collect();
-            if encode_auto_padded_forward_layout(profile, &overwritten)
-                != Err(LinearLayoutError::UnsafeDataPlacement)
-            {
-                return Err(String::from("stale expanded word admitted"));
-            }
+            refuse_tainted_expanded_symbolic_control(profile, &logical, &operations)?;
         }
     }
     Ok(())

@@ -288,8 +288,8 @@ struct ForwardPaddingBuilder<'profile> {
     profile: &'profile ProfileDescriptor,
     relocated: bool,
     shadow: Vec<u32>,
-    unproven_source_writes: Vec<usize>,
     expanded_writes: Vec<ExpandedWordWrite>,
+    unproven_source_writes: Vec<usize>,
 }
 
 impl ForwardPaddingBuilder<'_> {
@@ -381,7 +381,7 @@ impl ForwardPaddingBuilder<'_> {
     fn instruction_with_expanded_operand(
         &mut self,
         operation: LinearOpcode,
-        expanded_operand: Option<u32>,
+        preset_expanded_operand: Option<u32>,
         remaining: &[PaddedForwardStep],
     ) -> Result<usize, LinearLayoutError> {
         if matches!(operation, LinearOpcode::JumpForward { .. }) {
@@ -391,33 +391,19 @@ impl ForwardPaddingBuilder<'_> {
             && self.relocated
             && self.data_pointer >= self.operations.len()
         {
-            expanded_operand.or(self.proven_expanded_relocation_operand(
+            preset_expanded_operand.or(self.proven_expanded_relocation_operand(
                 self.operations.len(),
                 remaining,
             )?)
         } else {
-            expanded_operand
+            preset_expanded_operand
         };
-        if operation == LinearOpcode::RelocateDataPointer && self.relocated {
-            // Later j must read known past source or proven expanded data.
-            // Final admission checks whether the destination aliases code.
-            let position = self.operations.len();
-            if expanded_operand.is_none() {
-                let _proven_operand = self
-                    .shadow
-                    .get(self.data_pointer)
-                    .filter(|_| {
-                        !self
-                            .unproven_source_writes
-                            .contains(&self.data_pointer)
-                    })
-                    .ok_or(LinearLayoutError::UnsafeDataPlacement)?;
-                if self.data_pointer >= position {
-                    return Err(LinearLayoutError::UnsafeDataPlacement);
-                }
-            }
-            // The operand may point beyond C if the final source ends
-            // before it. Independent admission must prove that geometry.
+        if operation == LinearOpcode::RelocateDataPointer
+            && self.relocated
+            && expanded_operand.is_none()
+        {
+            // A known past source operand is the only other safe candidate.
+            self.prove_past_source_operand()?;
         }
         // Keep the operand shadow before appending and encrypting this cell.
         if matches!(
@@ -576,12 +562,21 @@ impl ForwardPaddingBuilder<'_> {
         Ok(expanded_data || past_source_scratch)
     }
 
-    fn expanded_write_at_data_pointer(&self) -> Option<Option<u32>> {
+    fn prove_past_source_operand(&self) -> Result<(), LinearLayoutError> {
+        if self.data_pointer >= self.operations.len()
+            || self.unproven_source_writes.contains(&self.data_pointer)
+            || self.shadow.get(self.data_pointer).is_none()
+        {
+            return Err(LinearLayoutError::UnsafeDataPlacement);
+        }
+        Ok(())
+    }
+
+    fn expanded_write_at_data_pointer(&self) -> Option<&ExpandedWordWrite> {
         self.expanded_writes
             .iter()
             .rev()
             .find(|(address, _)| *address == self.data_pointer)
-            .map(|(_, word)| *word)
     }
 
     fn proven_expanded_relocation_operand(
@@ -606,11 +601,14 @@ impl ForwardPaddingBuilder<'_> {
         {
             return Ok(None);
         }
-        let word = match self.expanded_write_at_data_pointer() {
-            Some(word) => word,
-            None => self.unwritten_expanded_operand(length, remaining)?,
+        let maybe_operand = if let Some((_, value)) =
+            self.expanded_write_at_data_pointer()
+        {
+            *value
+        } else {
+            self.unwritten_expanded_operand(length, remaining)?
         };
-        let Some(word) = word else {
+        let Some(word) = maybe_operand else {
             return Ok(None);
         };
         let destination = usize::try_from(word)
@@ -654,19 +652,16 @@ impl ForwardPaddingBuilder<'_> {
             self.shadow.get(self.data_pointer).copied().filter(|_| {
                 !self.unproven_source_writes.contains(&self.data_pointer)
             })
+        } else if let Some((_, value)) = self.expanded_write_at_data_pointer() {
+            *value
         } else {
-            match self.expanded_write_at_data_pointer() {
-                Some(word) => word,
-                None => {
-                    let length = self
-                        .operations
-                        .len()
-                        .checked_add(1)
-                        .and_then(|size| size.checked_add(remaining.len()))
-                        .ok_or(LinearLayoutError::TooLong)?;
-                    self.unwritten_expanded_operand(length, remaining)?
-                },
-            }
+            let length = self
+                .operations
+                .len()
+                .checked_add(1)
+                .and_then(|size| size.checked_add(remaining.len()))
+                .ok_or(LinearLayoutError::TooLong)?;
+            self.unwritten_expanded_operand(length, remaining)?
         };
         let result = proven_arithmetic_result(
             operation,
@@ -1297,8 +1292,8 @@ pub fn encode_auto_padded_forward_layout(
         profile,
         relocated: false,
         shadow: Vec::with_capacity(logical.len()),
-        unproven_source_writes: Vec::new(),
         expanded_writes: Vec::new(),
+        unproven_source_writes: Vec::new(),
     };
     for (logical_index, step) in logical.iter().enumerate() {
         let position = match step {
