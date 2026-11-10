@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-09 a full masked Fibonacci C recurrence with a bounded
+  `while` body and selected `break` initially refused at the typed adapter.
+  Active `while` exit proof now preserves closed replay state: a 13-bound
+  break after twelve iterations reaches the real guest and matches twelve
+  independent masked output bytes on both stdin modes, while a three-bound
+  early break emits the independent `Q.` pair after two iterations. A
+  selected continue preserves twelve outputs, and zero-trip shadow break
+  validation discards speculative effects but rejects undefined arithmetic.
+  Exact Clang metadata/parentage mutations also refuse without publication.
+  This is compile-time selection, not runtime guest C control flow; the
+  original unmasked stream and generic seven-byte layout remain unsupported.
 - On 2026-11-09 a complete masked Fibonacci C recurrence with a
   source-proven `break` after iteration 6 initially refused at the typed
   adapter. Bounded `for` replay now tracks a selected exit separately from

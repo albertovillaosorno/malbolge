@@ -65,6 +65,7 @@ enum LoopExit {
 struct Flow<'node> {
     locals: Vec<Local<'node>>,
     loop_counters: Vec<&'node str>,
+    within_while_body: bool,
     loop_exit: Option<LoopExit>,
     nodes: &'node [Node],
     outputs: Vec<OutputCall<'node>>,
@@ -550,7 +551,7 @@ impl<'node> Flow<'node> {
         (writes > 0 && last_end < body.span.end.byte).then_some(())
     }
 
-    /// Only an exact Clang keyword span may terminate a bounded `for` body.
+    /// Only an exact Clang keyword span may terminate a bounded loop body.
     /// A selected exit must be the last effect in its lexical block; dead
     /// suffixes are not silently discarded without a separate source proof.
     fn loop_exit_statement(
@@ -565,7 +566,9 @@ impl<'node> Flow<'node> {
             },
             _ => return None,
         };
-        if self.loop_counters.is_empty() || self.loop_exit.is_some() {
+        if (self.loop_counters.is_empty() && !self.within_while_body)
+            || self.loop_exit.is_some()
+        {
             return None;
         }
         let statement = self.take(body.id, kind)?;
@@ -901,12 +904,14 @@ impl<'node> Flow<'node> {
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
             || !self.loop_counters.is_empty()
+            || self.within_while_body
         {
             return None;
         }
         let condition_start = self.position;
         let outer_len = self.locals.len();
         let mut body_end = None;
+        self.within_while_body = true;
         for iteration in 0..=MAX_STATIC_LOOP_ITERATIONS {
             self.position = condition_start;
             let (continue_loop, condition) = self.condition(statement)?;
@@ -930,7 +935,9 @@ impl<'node> Flow<'node> {
                     self.loop_body(loop_body)?;
                     self.locals = starting_locals;
                     self.outputs.truncate(starting_outputs);
+                    self.loop_exit = None;
                 }
+                self.within_while_body = false;
                 return Some(statement.span.end.byte);
             }
             if iteration == MAX_STATIC_LOOP_ITERATIONS {
@@ -943,6 +950,11 @@ impl<'node> Flow<'node> {
             body_end = Some(self.position);
             // Locals declared in the braces never escape an iteration.
             self.locals.truncate(outer_len);
+            if self.loop_exit.take() == Some(LoopExit::Break) {
+                self.within_while_body = false;
+                return Some(statement.span.end.byte);
+            }
+            // A source-proven `continue` goes to the next predicate check.
         }
         None
     }
@@ -1340,6 +1352,7 @@ pub(super) fn canonical_multi_local_output(
     let mut flow = Flow {
         locals: Vec::new(),
         loop_counters: Vec::new(),
+        within_while_body: false,
         loop_exit: None,
         nodes: &input.nodes,
         outputs: Vec::new(),

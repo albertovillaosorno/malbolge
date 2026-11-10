@@ -123,6 +123,27 @@ def exiting_masked_fibonacci_source(*, keyword: str, iteration: int) -> str:
     )
 
 
+def exiting_masked_fibonacci_while_source(*, keyword: str) -> str:
+    """Exit a complete C recurrence from an updated bounded while state."""
+    source = MASKED_FIBONACCI.read_text()
+    induction = "for (unsigned i = 0U; i < 12U; ++i) {"
+    transfer = "        b = next;"
+    assert keyword in ("break", "continue")
+    assert source.count(induction) == source.count(transfer) == 1
+    bound = 13 if keyword == "break" else 12
+    exit_at = 12 if keyword == "break" else 7
+    return source.replace(
+        induction, f"unsigned i = 0U;\n    while (i < {bound}U) {{"
+    ).replace(
+        transfer,
+        f"{transfer}\n"
+        "        i = i + 1U;\n"
+        f"        if (i == {exit_at}U) {{\n"
+        f"            {keyword};\n"
+        "        }",
+    )
+
+
 def reference_bytes() -> bytes:
     """Reference the bounded unsigned-C arithmetic, not compiler output."""
     previous, current = 1, 1
@@ -917,6 +938,217 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(rejected.returncode, 0)
                     self.assertIn(b"Unsupported", rejected.stderr)
                     self.assertFalse(rejected_guest.exists())
+
+    def _check_bounded_while_selected_exit(self, keyword: str) -> None:
+        """Replay one complete twelve-byte C while exit through the guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with (
+            tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch,
+            self.subTest(keyword=keyword),
+        ):
+            source_text = exiting_masked_fibonacci_while_source(
+                keyword=keyword
+            )
+            previous, current = 1, 1
+            expected = bytearray()
+            for iteration in range(12):
+                following = (previous + current) & 255
+                selected = (
+                    following if following % 2 == 0 else following ^ 0x1A
+                )
+                expected.append(selected & 31)
+                previous, current = current, following
+                if keyword == "break" and iteration + 1 == 12:
+                    break
+            self.assertEqual(len(expected), 12)
+            source = Path(scratch) / f"while-{keyword}.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / f"while-{keyword}.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", f"tests/while-{keyword}-exit-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+
+            invalid = Path(scratch) / f"while-{keyword}-trailing.c"
+            invalid.write_text(source_text.replace(
+                f"            {keyword};",
+                f"            {keyword};\n"
+                "            putchar((int)(next & 31U));",
+            ))
+            rejected_guest = Path(scratch) / f"while-{keyword}-trailing.malbolge"
+            rejected = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(invalid)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"Unsupported", rejected.stderr)
+            self.assertFalse(rejected_guest.exists())
+
+    def test_bounded_while_break_preserves_twelve_guest_bytes(self) -> None:
+        self._check_bounded_while_selected_exit("break")
+
+    def test_bounded_while_continue_preserves_twelve_guest_bytes(self) -> None:
+        self._check_bounded_while_selected_exit("continue")
+
+    def test_bounded_while_early_break_keeps_pair_guest_output(self) -> None:
+        """A two-trip C break shortens a loop bounded for three iterations."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        ).read_text()
+        induction = "for (unsigned i = 0U; i < 2U; ++i) {"
+        transfer = "        b = next;"
+        self.assertEqual(original.count(induction), 1)
+        self.assertEqual(original.count(transfer), 1)
+        source_text = original.replace(
+            induction, "unsigned i = 0U;\n    while (i < 3U) {"
+        ).replace(
+            transfer,
+            f"{transfer}\n"
+            "        i = i + 1U;\n"
+            "        if (i == 2U) {\n"
+            "            break;\n"
+            "        }",
+        )
+        a, b = 1, 1
+        oracle = bytearray()
+        for iteration in range(3):
+            following = (a + b) & 255
+            oracle.append(following ^ (83 if following % 2 == 0 else 45))
+            a, b = b, following
+            if iteration + 1 == 2:
+                break
+        self.assertEqual(bytes(oracle), b"Q.")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "while-early-pair.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / "while-early-pair.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER), "--repository-tools",
+                    "--source-id", "tests/while-early-pair-v1",
+                    "--capsule", "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=100,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+
+    def test_bounded_while_zero_trip_exit_shadow_discards_effects(self) -> None:
+        """A skipped loop must prove its break, but publish no shadow effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = exiting_masked_fibonacci_while_source(keyword="break")
+        self.assertEqual(original.count("while (i < 13U)"), 1)
+        self.assertEqual(original.count("if (i == 12U)"), 1)
+        self.assertEqual(original.count("    }\n}"), 1)
+        skipped = (
+            original.replace("while (i < 13U)", "while (i < 0U)")
+            .replace("if (i == 12U)", "if (i == 1U)")
+            .replace("    }\n}", "    }\n    putchar((int)(a ^ 64U));\n}")
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "while-skipped-break.c"
+            source.write_text(skipped)
+            guest = Path(scratch) / "while-skipped-break.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/while-skipped-break-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=85
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            executed = subprocess.run(
+                [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                input=bytes((255, 0, 128)), capture_output=True,
+                check=False, timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"A")
+            self.assertRegex(
+                executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+            )
+            invalid = Path(scratch) / "while-skipped-invalid.c"
+            invalid.write_text(skipped.replace("b = next;", "b = next / 0U;"))
+            rejected_guest = Path(scratch) / "while-skipped-invalid.malbolge"
+            refused = subprocess.run(
+                [*command[:-2], str(rejected_guest), str(invalid)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(rejected_guest.exists())
+
+    def test_bounded_while_exit_forged_ast_refuses(self) -> None:
+        """Clang while exit keyword, provenance and parent must all agree."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "while-break-forged.c"
+            source.write_text(exiting_masked_fibonacci_while_source(keyword="break"))
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/while-exit-forged-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            original = json.loads(normalized.stdout)
+            exits = [
+                node for node in original["nodes"] if node["kind"] == "break-statement"
+            ]
+            self.assertEqual(len(exits), 1)
+            for label, change in (
+                ("parent", {"parent": 1}),
+                ("keyword", {"kind": "continue-statement"}),
+                ("operation", {"operation": "="}),
+            ):
+                with self.subTest(label=label):
+                    forged = json.loads(normalized.stdout)
+                    forged["nodes"][exits[0]["id"] - 1].update(change)
+                    guest = Path(scratch) / f"while-forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn(b"Unsupported", rejected.stderr)
+                    self.assertFalse(guest.exists())
 
     def test_bounded_for_exit_forged_ast_refuses(self) -> None:
         """Only exact Clang exit ancestry and keyword spans are admissible."""

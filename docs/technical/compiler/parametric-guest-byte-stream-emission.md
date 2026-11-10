@@ -107,17 +107,45 @@ and keeps the selected exit separate from the unselected conditional arm.
 `break` terminates replay without advancing the induction counter; `continue`
 advances the counter through the original checked step. An exit must be the
 last effect within its lexical block, or the whole source refuses rather than
-silently discarding an unchecked dead suffix. Exits in `while`/`do` and
+silently discarding an unchecked dead suffix. Exits in `do` loops and
 arbitrary post-exit C statements remain unsupported.
 
 For a break selected after iteration 6, the independent C oracle is the first
 seven bytes `02 19 1f 08 17 0f 02`; a `continue` at the same iteration
-preserves all twelve masked Fibonacci bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`.
+preserves all twelve masked Fibonacci bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`.
 The focused whole-source test checks both artifacts under empty and nonempty
 VM stdin, rejects unreachable effects after the selected exit, and exercises
 forged break ancestry, keyword identity and metadata. This is closed bounded
 C-state replay with actual Malbolge byte output, not runtime C branching or
 loop control; the original unmasked guest-layout blocker remains.
+
+### Bounded C `while` loop exits (2026-11-09)
+
+A complete five-bit masked Fibonacci C recurrence was retried with a
+source-declared unsigned counter, a pure `while` comparison and an `if`
+selecting `break` or `continue` after the counter update. The pinned Clang
+frontend accepted the whole source, but the typed adapter originally refused
+its first declaration without publishing guest code. The closed projector
+now binds exit keywords to the active `while` body as well as the existing
+bounded `for` body. A selected `break` preserves earlier byte effects and
+ends replay before rechecking the guard; a selected `continue` rechecks the
+original source-proven guard. An exit may not hide later effects in its
+lexical block, and malformed keyword parentage or metadata still refuses.
+
+A 13-bound `while` with a selected break after its twelfth iteration emits
+the independently calculated twelve masked Fibonacci bytes through the
+normative guest VM under empty and nonempty stdin. Separately, a three-bound
+`while` exits after its second iteration and the guest emits the
+independently verified `Q.` pair, proving a genuine early break rather than
+just a final iteration limit. A bound-12 `while` with selected `continue`
+emits all
+twelve oracle bytes. A zero-trip while proves a selected break in shadow state,
+discards speculative effects and emits only a later source-derived `A`; an
+undefined divisor within that skipped body is rejected. Exact Clang keyword,
+parent and metadata mutations also refuse without publication. This remains
+bounded compile-time C-state replay, not runtime guest C control flow. The
+original unmasked stream and arbitrary seven-byte layout remain unsupported.
 
 ### Source-expression metamorphic parity (2026-11-09)
 
