@@ -73,6 +73,23 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Sequenced unsigned local writes in C comma expressions (2026-11-10)
+
+The full twelve-iteration masked Fibonacci C source now uses
+`a = b, b = next;` to update the recurrence in one C expression statement.
+Pinned Clang accepts it, but the JSON adapter originally refused before
+publishing guest code. A closed projector now replays each assignment in
+C's required left-to-right order, checking the complete Clang subtree,
+unsigned types, local symbols, source spans, and the exact same-line comma
+separator. Nested comma groups are bounded to at most four assignments;
+call effects, read-only operands and unproved shapes remain unsupported.
+The entire C program reaches the independently derived masked twelve-byte
+oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative guest steps
+under empty and binary stdin. Nested three- and four-write replay remains
+a separate timeboxed validation; five writes are outside the bounded proof.
+Five invalid sources and five forged ASTs refuse without publication. This is finite source-state replay, not dynamic
+guest sequencing or a solution to the unmasked Fibonacci layout blocker.
+
 ### Bounded long switch fallthrough chain (2026-11-10)
 
 The complete twelve-step masked Fibonacci C source now carries unsigned

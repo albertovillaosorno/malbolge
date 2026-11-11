@@ -689,6 +689,129 @@ class CompoundCPipelineTests(unittest.TestCase):
         self.assertEqual(reference_bytes(), EXPECTED)
         self.assertEqual(len(EXPECTED), 12)
 
+    def test_comma_sequenced_fibonacci_reaches_real_guest(self) -> None:
+        """The C comma operator sequences two dependent unsigned writes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            expected.append(
+                following & 31 if following % 2 == 0
+                else (following ^ 26) & 31
+            )
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "comma-fibonacci.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/comma-fibonacci-v1", "--capsule",
+                 "--output", str(guest),
+                 str(ROOT / "tests/compiler/c-frontend/accepted/"
+                     "local_comma_fibonacci_stream.c")],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_comma_sequencing_rejects_unproved_side_effects(self) -> None:
+        """A comma operand must be a complete, source-backed local write."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_comma_fibonacci_stream.c").read_text()
+        token = "        a = b, b = next;"
+        self.assertEqual(original.count(token), 1)
+        variants = {
+            "hidden-output": "        a = b, putchar(65);",
+            "hidden-input": "        a = b, b = (unsigned)getchar();",
+            "read-only-rhs": "        a = b, next;",
+            "output-after-writes": "        a = b, b = next, putchar(65);",
+            "fifth-write": (
+                "        a = b, b = next, b ^= 0U, a ^= 0U, a ^= 0U;"
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, replacement in variants.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"comma-invalid-{label}.c"
+                    source.write_text(original.replace(token, replacement))
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/comma-invalid-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)], input=frontend.stdout,
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "comma-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/comma-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]],
+                         json.loads(frontend.stdout)["nodes"])
+            comma = next(node for node in nodes
+                         if node["kind"] == "binary-expression"
+                         and node.get("operation") == ",")
+            children = [node for node in nodes
+                        if node["parent"] == comma["id"]]
+            self.assertEqual(len(children), 2)
+            for label in ("comma-type", "comma-span", "right-parent",
+                          "right-operator", "right-reference"):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object],
+                                  json.loads(frontend.stdout))
+                    altered = cast(list[dict[str, object]], forged["nodes"])
+                    target = altered[cast(int, comma["id"]) - 1]
+                    if label == "comma-type":
+                        target["type"] = "i32"
+                    elif label == "comma-span":
+                        cast(dict[str, dict[str, int]],
+                             target["span"])["end"]["byte"] += 1
+                    else:
+                        target = altered[cast(int, children[1]["id"]) - 1]
+                        if label == "right-parent":
+                            target["parent"] = children[0]["id"]
+                        elif label == "right-operator":
+                            target["operation"] = "*="
+                        else:
+                            read = next(n for n in altered
+                                        if n["parent"] == target["id"]
+                                        and n["kind"] ==
+                                        "declaration-reference-expression")
+                            read["reference"] = "unknown@999999"
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_root_lexical_shadow_replays_complete_fibonacci_guest(self) -> None:
         """A function-body block must resolve its own b through the loop."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

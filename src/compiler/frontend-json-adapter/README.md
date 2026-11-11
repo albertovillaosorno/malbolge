@@ -613,6 +613,23 @@ analysis and **does not** implement runtime guest arithmetic, general
 `putchar` expressions, loops or mutable guest storage.
 
 
+### C comma-expression assignment sequencing in a full recurrence
+
+A complete twelve-step masked Fibonacci source now performs its state
+transfer through `a = b, b = next;` rather than two expression statements.
+The checked projector replays two to four source-ordered unsigned local
+assignments within a single C comma expression, using the exact Clang
+parent-child preorder, unsigned types, per-write references, nonoverlapping
+same-line source spans and a comma-space separator. The left write commits
+before evaluating the right write. Parenthesized or effectful operands,
+arbitrary comma expressions and general runtime C execution are not
+admitted by this bounded proof. The real current-profile guest emits twelve
+independently calculated masked Fibonacci bytes in 47 steps under EOF and
+binary stdin. Longer nested variants remain separately timeboxed; a
+fifth assignment refuses. Five unsupported C variants and five forged ASTs
+reject before guest publication; the original unmasked stream still
+fails at layout.
+
 ### Source-backed comma-separated unsigned declarations
 
 The bounded multi-local C flow also admits an ordinary same-line

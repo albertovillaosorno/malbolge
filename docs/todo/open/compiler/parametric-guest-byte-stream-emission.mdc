@@ -54,6 +54,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete twelve-step masked Fibonacci source was
+  retried with `a = b, b = next;` as one ordinary C comma expression in
+  place of two statements. Pinned Clang accepted both assignments, but the
+  JSON adapter initially refused the loop. A bounded left-to-right replay
+  now checks each unsigned local write, Clang ancestry, source span and
+  canonical comma-space separator without reordering dependent effects.
+  A five-write expression refuses at the stated bound. The normative
+  guest emits independent oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under empty and
+  binary stdin. Five source mutations with unproved input, output or
+  read-only comma operands or excessive writes, plus five forged ASTs,
+  reject before guest publication. This is compile-time source-state projection, not
+  runtime guest sequencing; unmasked Fibonacci remains blocked at layout.
+
 - On 2026-11-10 a complete masked twelve-step Fibonacci C source
   initially refused three consecutive nonempty switch fallthrough edges
   into default. The bounded source-backed projector now replays every

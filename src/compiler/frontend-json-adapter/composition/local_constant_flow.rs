@@ -191,6 +191,47 @@ impl<'node> Flow<'node> {
         Some((assignment.span.end.byte, value_source))
     }
 
+    /// Replay a bounded C comma expression in its required left-to-right
+    /// sequence order. Each child must itself be a checked unsigned write;
+    /// a call, read-only expression or other side effect cannot disappear.
+    fn sequenced_writes(
+        &mut self,
+        parent: &Node,
+        previous_end: u32,
+        depth: usize,
+    ) -> Option<(u32, &'node Node)> {
+        if self.peek()?.operation.as_deref() != Some(",") {
+            let assignment = self.peek()?;
+            let (end, _) = self.assignment(parent, previous_end)?;
+            return Some((end, assignment));
+        }
+        if depth >= 3 {
+            return None;
+        }
+        let comma = self.take(parent.id, "binary-expression")?;
+        if !typed_operator(comma, ",")
+            || !span_within(&parent.span, &comma.span)
+            || previous_end > comma.span.begin.byte
+        {
+            return None;
+        }
+        let (_, left) =
+            self.sequenced_writes(comma, previous_end, depth + 1)?;
+        let (_, right) =
+            self.sequenced_writes(comma, left.span.end.byte, depth + 1)?;
+        // Only the canonical same-line `, ` separator is in this proof.
+        // Clang's complete, ordered children must cover the parent span.
+        if !ordered_binary_spans(comma, left, right)
+            || left.span.end.line != right.span.begin.line
+            || right.span.begin.byte.checked_sub(left.span.end.byte) != Some(2)
+            || right.span.begin.column.checked_sub(left.span.end.column)
+                != Some(2)
+        {
+            return None;
+        }
+        Some((comma.span.end.byte, comma))
+    }
+
     /// Prove both operands of a pure, checked `u32` binary operator.
     fn binary_expression(
         &mut self,
@@ -243,7 +284,7 @@ impl<'node> Flow<'node> {
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" | "compound-assignment-expression" => {
-                    self.assignment(body, last_end)?.0
+                    self.sequenced_writes(body, last_end, 0)?.0
                 },
                 "unary-expression" => self.standalone_step(body, last_end)?,
                 "break-statement" | "continue-statement" => {
@@ -850,7 +891,7 @@ impl<'node> Flow<'node> {
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" | "compound-assignment-expression" => {
-                    self.assignment(body, last_end)?.0
+                    self.sequenced_writes(body, last_end, 0)?.0
                 },
                 "unary-expression" => self.standalone_step(body, last_end)?,
                 "break-statement" | "continue-statement" => {
