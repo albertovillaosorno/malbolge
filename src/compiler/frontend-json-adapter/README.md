@@ -132,6 +132,23 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Paired guest outputs inside a switch-local conditional
+
+A second complete unsigned Fibonacci source wraps each innermost
+switch case's two outputs in a braced source-checked `if/else` pair.
+The condition's selected compensation must cancel a bit that the
+opposite branch would preserve; a wrong conditional decision changes
+the guest bytes. Both outputs are captured only after the selected
+branch and its alternative pass bounded source replay. All four
+switch paths and both condition values occur.
+
+The normative Malbolge VM matches the independent unsigned C oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and
+binary stdin. Three unsupported complete C mutations and 24 forged
+Clang conditional nodes refuse without publishing a guest. Third
+selected output, dynamic guest conditionals, and arbitrary unmasked
+streams remain unsupported.
+
 ### Two ordered guest outputs in a nested C switch arm
 
 A complete six-trip unsigned Fibonacci C program now calculates two

@@ -17818,5 +17818,146 @@ class CompoundCPipelineTests(unittest.TestCase):
                         self.assertFalse(guest.exists(), label)
 
 
+    def test_conditional_paired_nested_switch_reaches_guest(self) -> None:
+        """Two outputs from one selected C if inside each nested switch."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_conditional_dual_nested_switch_fibonacci.c"
+        )
+        a = b = 1
+        expected = bytearray()
+        selectors: set[tuple[int, int]] = set()
+        conditions: set[bool] = set()
+        for i in range(6):
+            first = (a + b) & 255
+            x = ((first ^ 26) if first & 1 else first) & 31
+            a, b = b, first
+            second = (a + b) & 255
+            y = ((second ^ 26) if second & 1 else second) & 31
+            a, b = b, second
+            selectors.add((i & 1, second & 1))
+            high = bool(second & 2)
+            conditions.add(high)
+            compensation = ((second & 2) ^ 2) if high else (second & 2)
+            expected.extend((x ^ compensation, y ^ compensation))
+        self.assertEqual(selectors, {(0, 0), (0, 1), (1, 0), (1, 1)})
+        self.assertEqual(conditions, {False, True})
+        self.assertEqual(expected, bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "paired-conditional.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER), "--repository-tools",
+                    "--source-id", "tests/paired-conditional-switch-v1",
+                    "--capsule", "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_conditional_paired_nested_switch_refuses_forgery(self) -> None:
+        """Unselected effects and forged C if spans cannot reach guest code."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_conditional_dual_nested_switch_fibonacci.c"
+        )
+        contents = source.read_text()
+        selected = "putchar((int)((x ^ (i & 1U)) ^ (second & 2U)));"
+        self.assertEqual(contents.count(selected), 2)
+        mutants = {
+            "unselected-getchar": contents.replace(
+                selected, "putchar((int)getchar());", 1
+            ),
+            "third-output": contents.replace(
+                selected, selected + "\n                    putchar((int)x);", 1
+            ),
+            "effectful-condition": contents.replace(
+                "if ((second & 2U) != 0U)",
+                "if ((second++ & 2U) != 0U)", 1
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed in mutants.items():
+                with self.subTest(source=label):
+                    path = Path(scratch) / f"{label}.c"
+                    path.write_text(changed)
+                    normalized = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/paired-conditional-invalid-{label}-v1",
+                            str(path),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest), "--capsule",
+                        ],
+                        input=normalized.stdout, capture_output=True,
+                        check=False, timeout=20,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+            normalized = subprocess.run(
+                [
+                    str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                    "--resource-dir", str(RESOURCE), "--source-id",
+                    "tests/paired-conditional-forgery-v1", str(source),
+                ],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            nodes = json.loads(normalized.stdout)["nodes"]
+            conditions = [n for n in nodes if n["kind"] == "if-statement"]
+            self.assertEqual(len(conditions), 4)
+            for condition in conditions:
+                for label in ("parent", "begin-byte", "begin-column",
+                              "end-byte", "end-column", "operation"):
+                    with self.subTest(condition=condition["id"], ast=label):
+                        forged = json.loads(normalized.stdout)
+                        item = forged["nodes"][condition["id"] - 1]
+                        if label == "parent":
+                            item["parent"] = 2
+                        elif label == "operation":
+                            item["operation"] = "!"
+                        else:
+                            endpoint, field = label.split("-")
+                            item["span"][endpoint][field] += (
+                                1 if endpoint == "begin" else -1
+                            )
+                        guest = Path(scratch) / (
+                            f"{condition['id']}-{label}.malbolge"
+                        )
+                        refused = subprocess.run(
+                            [
+                                str(ADAPTER), "--layout-backend", str(LAYOUT),
+                                "--output", str(guest), "--capsule",
+                            ],
+                            input=json.dumps(forged).encode(),
+                            capture_output=True, check=False, timeout=20,
+                        )
+                        self.assertNotEqual(refused.returncode, 0, label)
+                        self.assertIn(b"Unsupported", refused.stderr, label)
+                        self.assertFalse(guest.exists(), label)
+
+
 if __name__ == "__main__":
     _ = unittest.main()

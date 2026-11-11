@@ -1,0 +1,90 @@
+// Copyright:
+//   - Copyright © 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - LicenseRef-Proprietary
+// Confidential:
+//   - true
+// License-File:
+//   - LICENSE
+//
+// Boundary-Contract:
+// - Owns:
+//   - Paired outputs inside switch-local selected C conditional branches.
+// - Must-Not:
+//   - Publish speculative outputs from unselected source switch cases.
+// - Allows:
+//   - Inputs: source-proven six-trip unsigned Fibonacci recurrence.
+//   - Outputs: twelve independently calculated masked Fibonacci bytes.
+//   - Side effects: real guest putchar effects under bounded selection.
+// - Split-When:
+//   - General dynamic guest C switching proves the same behavior.
+// - Merge-When:
+//   - Dynamic guest control-flow translation replaces finite proof replay.
+// - Summary:
+//   - Each selected if arm emits two source-ordered guest bytes.
+//
+#include <stdio.h>
+void emit(void) {
+    unsigned a = 1U;
+    unsigned b = 1U;
+    unsigned first = 0U;
+    unsigned second = 0U;
+    unsigned x = 0U;
+    unsigned y = 0U;
+    for (unsigned i = 0U; i < 6U; ++i) {
+        first = (a + b) & 255U;
+        x = (first & 1U) != 0U ? (first ^ 26U) & 31U : first & 31U;
+        a = b;
+        b = first;
+        second = (a + b) & 255U;
+        y = (second & 1U) != 0U ? (second ^ 26U) & 31U : second & 31U;
+        a = b;
+        b = second;
+        switch (i & 1U) {
+        case 0U:
+            switch (second & 1U) {
+            case 0U:
+                if ((second & 2U) != 0U) {
+                    putchar((int)((x ^ (i & 1U)) ^ ((second & 2U) ^ 2U)));
+                    putchar((int)((y ^ (second & 1U)) ^ ((second & 2U) ^ 2U)));
+                } else {
+                    putchar((int)((x ^ (i & 1U)) ^ (second & 2U)));
+                    putchar((int)((y ^ (second & 1U)) ^ (second & 2U)));
+                }
+                break;
+            default:
+                if ((second & 2U) != 0U) {
+                    putchar((int)((x ^ (i & 1U)) ^ ((second & 2U) ^ 2U)));
+                    putchar((int)((y ^ ((second & 1U) ^ 1U)) ^ ((second & 2U) ^ 2U)));
+                } else {
+                    putchar((int)((x ^ (i & 1U)) ^ (second & 2U)));
+                    putchar((int)((y ^ ((second & 1U) ^ 1U)) ^ (second & 2U)));
+                }
+                break;
+            }
+            break;
+        default:
+            switch (second & 1U) {
+            case 0U:
+                if ((second & 2U) != 0U) {
+                    putchar((int)((x ^ ((i & 1U) ^ 1U)) ^ ((second & 2U) ^ 2U)));
+                    putchar((int)((y ^ (second & 1U)) ^ ((second & 2U) ^ 2U)));
+                } else {
+                    putchar((int)((x ^ ((i & 1U) ^ 1U)) ^ (second & 2U)));
+                    putchar((int)((y ^ (second & 1U)) ^ (second & 2U)));
+                }
+                break;
+            default:
+                if ((second & 2U) != 0U) {
+                    putchar((int)((x ^ ((i & 1U) ^ 1U)) ^ ((second & 2U) ^ 2U)));
+                    putchar((int)((y ^ ((second & 1U) ^ 1U)) ^ ((second & 2U) ^ 2U)));
+                } else {
+                    putchar((int)((x ^ ((i & 1U) ^ 1U)) ^ (second & 2U)));
+                    putchar((int)((y ^ ((second & 1U) ^ 1U)) ^ (second & 2U)));
+                }
+                break;
+            }
+            break;
+        }
+    }
+}

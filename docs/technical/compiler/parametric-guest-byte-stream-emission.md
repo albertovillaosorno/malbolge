@@ -25,6 +25,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Paired effects in switch-local C conditionals (2026-11-11)
+
+The complete `local_conditional_dual_nested_switch_fibonacci.c`
+source places two real guest `putchar` calls in each selected branch
+of four conditional statements nested within two-level switch arms.
+Each C branch computes different compensation; incorrect selection
+changes observable bytes. The pinned frontend, bounded JSON state
+replay, typed lowering and verified guest layout admit the source.
+The independent unsigned recurrence oracle and normative Malbolge VM
+match twelve masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+in 47 steps, both with EOF and binary stdin. Three complete-C
+unproved-effect mutations and 24 forged Clang `if` nodes fail closed,
+without guest publication. Guest dynamic switching and unmasked
+Fibonacci layout remain unresolved under the P0.
+
 ### Two source-ordered outputs per nested switch arm (2026-11-11)
 
 The complete `local_dual_nested_switch_fibonacci.c` C program runs

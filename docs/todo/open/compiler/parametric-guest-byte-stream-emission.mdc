@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 an additional complete Fibonacci C program enclosed
+  both nested-switch case outputs inside braced `if/else` alternatives
+  with branch-dependent compensation. All four switch selections and
+  both condition results occur; wrong condition selection changes the
+  output bytes. Pinned source C compiles to a real guest emitting
+  independently computed twelve masked Fibonacci bytes
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 VM steps under
+  EOF and binary stdin. Three unsupported complete-C source changes
+  and 24 forged conditional AST variants refuse publication. This
+  is bounded source replay, not dynamic guest branching; unmasked
+  Fibonacci and arbitrary C-to-Malbolge remain unsupported.
+
 - On 2026-11-11 a complete six-trip unsigned C Fibonacci program
   computes two terms per trip and selects all four combinations of
   two-level nested `switch` arms. Each selected case contains two
