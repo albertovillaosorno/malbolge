@@ -73,6 +73,30 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Source-ordered middle `default` C switch (2026-11-10)
+
+The complete twelve-trip masked Fibonacci program
+`tests/compiler/c-frontend/accepted/local_mid_switch_default_fibonacci.c`
+places `default` between `case 0U` and later `case 2U`/`case 1U`. All four
+selector values occur. An independent source-level recurrence computes the
+same oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` as the existing masked
+program, but each arm now writes a shared local before the sole post-switch
+output. The pinned Clang frontend accepts it; the JSON adapter initially
+refused the complete program without publishing a guest.
+
+The closed source-flow projector now admits one direct-child middle default,
+provided it follows an earlier case, has a checked unsigned write or pure
+output, ends at a source-checked switch-local `break`, and is followed by
+at least one ordinary `case`. Later cases must also prove the exact final
+break and compound closure. No effectful fallthrough into or out of this
+middle default is admitted. Every arm replays from independent pre-switch
+local state, and the chosen case takes precedence over default regardless
+of the labels' textual order. The real normative VM emits the twelve-byte
+oracle in 47 steps under EOF and binary stdin. Six invalid C mutations and
+eight forged Clang nodes refuse without publishing a guest artifact.
+This remains bounded source-state projection: unmasked Fibonacci still
+refuses at guest layout, and runtime guest C switching is not implemented.
+
 ### Source-proven switch fallthrough into default (2026-11-10)
 
 The complete masked Fibonacci source

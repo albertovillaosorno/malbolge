@@ -132,6 +132,20 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Source-checked middle `default` in a complete C switch
+
+A full twelve-iteration masked Fibonacci source now places `default`
+between checked `case` labels, with its own source-verified switch-local
+`break`. Unlike a terminal default, this must retain its independent
+pre-switch local state while later cases still override dispatch selection.
+The checked projector requires at least one prior and one later case,
+closed Clang ancestry, exact statement spans and a final switch break.
+It rejects fallthrough into or out of the middle default, extra output
+or input effects, and unsupported AST changes. The real guest VM emits
+independent oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps
+under EOF and binary stdin. This is finite source replay, not runtime
+C switching or generalized unmasked Fibonacci byte-stream layout.
+
 ## Executable handoff
 
 `c2malbolge_json` accepts normalized JSON on **stdin**, an explicit trusted

@@ -11757,6 +11757,245 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertEqual(replay.stdout, bytes(oracle))
                 self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
 
+    def test_middle_switch_default_complete_fibonacci_guest(self) -> None:
+        """A nonterminal default and later cases preserve direct C dispatch."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        first, second = 1, 1
+        expected = bytearray()
+        dispatched = set()
+        for _ in range(12):
+            following = (first + second) & 255
+            selector = following & 3
+            dispatched.add(selector)
+            selected = following & 31
+            if selector in (1, 3):
+                selected ^= 26
+            expected.append(selected)
+            first, second = second, following
+        self.assertEqual(dispatched, {0, 1, 2, 3})
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "middle-default.malbolge"
+            source = (
+                ROOT
+                / "tests/compiler/c-frontend/accepted/"
+                / ("local_mid_switch_default_fibonacci.c")
+            )
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/mid-switch-default-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_middle_switch_default_refuses_unproved_edges(self) -> None:
+        """Require a direct middle default, exact break and closed AST spans."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_mid_switch_default_fibonacci.c"
+        ).read_text()
+        invalid = {
+            "case-to-default-fallthrough": original.replace(
+                "            selected ^= 0U;\n            break;\n        default:",
+                "            selected ^= 0U;\n        default:",
+                1,
+            ),
+            "default-to-case-fallthrough": original.replace(
+                "            selected ^= 26U;\n            break;\n        case 2U:",
+                "            selected ^= 26U;\n        case 2U:",
+                1,
+            ),
+            "default-first": original.replace(
+                "        case 0U:\n            selected ^= 0U;\n"
+                "            break;\n        default:",
+                "        default:",
+                1,
+            ).replace(
+                "        case 2U:\n",
+                "        case 0U:\n"
+                "            selected ^= 0U;\n            break;\n"
+                "        case 2U:\n",
+                1,
+            ),
+            "default-input": original.replace(
+                "        default:\n            selected ^= 26U;",
+                "        default:\n            selected = (unsigned)getchar();",
+                1,
+            ),
+            "too-many-default-effects": original.replace(
+                "        default:\n            selected ^= 26U;",
+                "        default:\n            selected ^= 26U;\n"
+                + "            selected ^= 0U;\n" * 4,
+                1,
+            ),
+            "no-last-break": original.replace(
+                "        case 1U:\n            selected ^= 26U;\n"
+                "            break;\n        }",
+                "        case 1U:\n            selected ^= 26U;\n        }",
+                1,
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in invalid.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(contents, original)
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(contents)
+                    guest = source.with_suffix(".malbolge")
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/mid-default-invalid-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=40,
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "mid-default-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/mid-default-proof-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            original_nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(frontend.stdout))["nodes"],
+            )
+            default = next(
+                n for n in original_nodes if n["kind"] == "default-statement"
+            )
+            case_after = next(
+                n
+                for n in original_nodes
+                if n["kind"] == "case-statement"
+                and cast(dict[str, dict[str, int]], n["span"])["begin"]["line"]
+                > cast(dict[str, dict[str, int]], default["span"])["begin"]["line"]
+            )
+            switch = next(n for n in original_nodes if n["kind"] == "switch-statement")
+            scope = next(
+                n
+                for n in original_nodes
+                if n["kind"] == "compound-statement" and n["parent"] == switch["id"]
+            )
+            default_effect = next(
+                n
+                for n in original_nodes
+                if n["kind"] == "compound-assignment-expression"
+                and n["parent"] == default["id"]
+            )
+            breaks = [
+                n
+                for n in original_nodes
+                if n["kind"] == "break-statement" and n["parent"] == scope["id"]
+            ]
+            self.assertEqual(len(breaks), 4)
+            for label in (
+                "default-parent",
+                "default-span",
+                "default-effect-parent",
+                "default-break-parent",
+                "case-after-parent",
+                "case-after-span",
+                "last-break-span",
+                "default-effect-operation",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    nodes = cast(list[dict[str, object]], forged["nodes"])
+                    middle = nodes[cast(int, default["id"]) - 1]
+                    after = nodes[cast(int, case_after["id"]) - 1]
+                    if label == "default-parent":
+                        middle["parent"] = switch["id"]
+                    elif label == "default-span":
+                        span = cast(dict[str, dict[str, int]], middle["span"])
+                        span["end"]["byte"] += 1
+                    elif label == "default-effect-parent":
+                        nodes[cast(int, default_effect["id"]) - 1]["parent"] = scope[
+                            "id"
+                        ]
+                    elif label == "default-break-parent":
+                        nodes[cast(int, breaks[1]["id"]) - 1]["parent"] = default["id"]
+                    elif label == "case-after-parent":
+                        after["parent"] = default["id"]
+                    elif label == "case-after-span":
+                        span = cast(dict[str, dict[str, int]], after["span"])
+                        span["begin"]["byte"] -= 1
+                    elif label == "last-break-span":
+                        span = cast(
+                            dict[str, dict[str, int]],
+                            nodes[cast(int, breaks[-1]["id"]) - 1]["span"],
+                        )
+                        span["end"]["byte"] -= 1
+                    else:
+                        nodes[cast(int, default_effect["id"]) - 1]["operation"] = "?="
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    result = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_switch_default_fallthrough_full_fibonacci_guest(self) -> None:
         """Default direct entry and carried case state reach the real VM."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -12965,7 +13204,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                     "        case 2U:\n",
                     "        case 2U:\n            putchar(65);\n",
                 ),
-                "default-before-last-case": original.replace(
+                "default-before-case-with-fallthrough": original.replace(
                     "        case 2U:\n"
                     "            putchar((int)(next & 31U));\n"
                     "            break;\n"
@@ -12974,7 +13213,6 @@ class CompoundCPipelineTests(unittest.TestCase):
                     "            break;",
                     "        default:\n"
                     "            putchar((int)((next ^ 0x1AU) & 31U));\n"
-                    "            break;\n"
                     "        case 2U:\n"
                     "            putchar((int)(next & 31U));\n"
                     "            break;",

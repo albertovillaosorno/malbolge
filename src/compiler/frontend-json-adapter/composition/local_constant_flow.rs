@@ -1727,7 +1727,55 @@ impl<'node> Flow<'node> {
         // At most two consecutive fallthrough edges are source-proven.
         let mut pending_fallthrough: Vec<(SwitchArmEffect<'node>, bool)> =
             Vec::new();
-        while self.peek()?.kind == "case-statement" {
+        let mut middle_default_effect = None;
+        loop {
+            // A source-ordered `default` may precede later ordinary cases.
+            // Admit it only with its own break: no implicit edge into or
+            // out of this label is claimed by the bounded proof.
+            let has_later_case = self.peek().is_some_and(|next| {
+                next.kind == "default-statement"
+                    && self.nodes.iter().any(|later| {
+                        later.kind == "case-statement"
+                            && later.parent == scope.id
+                            && later.span.begin.byte > next.span.begin.byte
+                            && later.span.begin.byte < scope.span.end.byte
+                    })
+            });
+            if has_later_case
+                && middle_default_effect.is_none()
+                && !case_values.is_empty()
+            {
+                if grouped_default_effect.is_some()
+                    || !pending_fallthrough.is_empty()
+                {
+                    return None;
+                }
+                let default = self.take(scope.id, "default-statement")?;
+                if !clean(default)
+                    || !span_within(&scope.span, &default.span)
+                    || previous_arm_end >= default.span.begin.byte
+                {
+                    return None;
+                }
+                self.locals.clone_from(&starting_locals);
+                let effect =
+                    self.switch_arm_effect(default, default.span.begin.byte)?;
+                if effect.end != default.span.end.byte
+                    || effect.begin_line <= default.span.begin.line
+                {
+                    return None;
+                }
+                let (effect, end) = self.switch_arm_tail(scope, effect)?;
+                if self.peek()?.kind != "case-statement" {
+                    return None;
+                }
+                middle_default_effect = Some(effect);
+                previous_arm_end = end;
+                continue;
+            }
+            if self.peek()?.kind != "case-statement" {
+                break;
+            }
             // A default nested below a case is the final switch label.
             if grouped_default_effect.is_some() {
                 return None;
@@ -1799,7 +1847,10 @@ impl<'node> Flow<'node> {
             let has_grouped_default = self.peek().is_some_and(|node| {
                 node.kind == "default-statement" && node.parent == case.id
             });
-            if has_grouped_default && !pending_fallthrough.is_empty() {
+            if has_grouped_default
+                && (middle_default_effect.is_some()
+                    || !pending_fallthrough.is_empty())
+            {
                 return None;
             }
             let arm_body_position = self.position;
@@ -1867,9 +1918,15 @@ impl<'node> Flow<'node> {
         if case_values.is_empty() {
             return None;
         }
+        let has_middle_default = middle_default_effect.is_some();
         let (default_effect, last_break) = if let Some(effect) =
             grouped_default_effect
         {
+            (Some(effect), previous_arm_end)
+        } else if let Some(effect) = middle_default_effect {
+            if !pending_fallthrough.is_empty() {
+                return None;
+            }
             (Some(effect), previous_arm_end)
         } else if self
             .peek()
@@ -1921,23 +1978,13 @@ impl<'node> Flow<'node> {
                 return None;
             }
             // A switch without `default` does nothing if no case matches.
-            // The last break must directly precede the closing brace;
-            // otherwise an omitted Clang subtree could hide an effect.
-            let final_break = self.nodes.get(self.position.checked_sub(1)?)?;
-            if final_break.kind != "break-statement"
-                || final_break.parent != scope.id
-                || final_break.span.end.byte != previous_arm_end
-                || final_break.span.end.line.checked_add(1)?
-                    != scope.span.end.line
-                || scope.span.end.byte.checked_sub(previous_arm_end)?
-                    != statement.span.begin.column.checked_add(2)?
-                || scope.span.end.column
-                    != statement.span.begin.column.checked_add(1)?
-            {
-                return None;
-            }
+            // An omitted last break cannot hide unproven source effects.
+            self.switch_final_break(scope, statement, previous_arm_end)?;
             (None, previous_arm_end)
         };
+        if has_middle_default {
+            self.switch_final_break(scope, statement, previous_arm_end)?;
+        }
         if last_break >= scope.span.end.byte
             || self
                 .peek()
@@ -1954,6 +2001,26 @@ impl<'node> Flow<'node> {
             self.locals = starting_locals;
         }
         Some(statement.span.end.byte)
+    }
+
+    /// Require the final switch-local break exactly before the closing brace.
+    /// A non-final default does not weaken this case/no-default closure.
+    fn switch_final_break(
+        &self,
+        scope: &Node,
+        statement: &Node,
+        previous_arm_end: u32,
+    ) -> Option<()> {
+        let final_break = self.nodes.get(self.position.checked_sub(1)?)?;
+        (final_break.kind == "break-statement"
+            && final_break.parent == scope.id
+            && final_break.span.end.byte == previous_arm_end
+            && final_break.span.end.line.checked_add(1)? == scope.span.end.line
+            && scope.span.end.byte.checked_sub(previous_arm_end)?
+                == statement.span.begin.column.checked_add(2)?
+            && scope.span.end.column
+                == statement.span.begin.column.checked_add(1)?)
+        .then_some(())
     }
 
     /// Clang parents switch-local break statements to the switch's braces;

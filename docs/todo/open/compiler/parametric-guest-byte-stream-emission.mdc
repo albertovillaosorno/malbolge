@@ -54,6 +54,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 full masked twelve-step Fibonacci C with a `default`
+  between ordinary case labels initially refused at the JSON adapter.
+  A bounded exact-Clang proof now checks that middle default's own
+  switch-local break, later direct case dispatch, final switch closure and
+  independent pre-switch local states. Real normative guest output matches
+  twelve independently calculated bytes in 47 steps under empty and
+  binary stdin. Six invalid sources and eight forged AST variations refuse
+  without publication. The original unmasked layout and dynamic guest
+  branching remain unsupported; P0 stays open.
+
 - On 2026-11-10 a complete masked twelve-iteration Fibonacci C switch
   first refused a nonempty `case 2U` falling through to `default`, which
   also receives direct dispatch from values 1 and 3. Bounded source-flow
