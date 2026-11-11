@@ -39,6 +39,7 @@ use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 
 const MAX_LOCALS: usize = 8;
 const MAX_STATIC_SWITCH_CASES: usize = 8;
+const MAX_STATIC_SWITCH_DEPTH: u8 = 2;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
 const MAX_STATIC_WHILE_DO_DEPTH: u8 = 3;
@@ -73,6 +74,7 @@ struct Flow<'node> {
     loop_counters: Vec<&'node str>,
     while_depth: u8,
     do_depth: u8,
+    switch_depth: u8,
     loop_exit: Option<LoopExit>,
     return_node: Option<&'node Node>,
     nodes: &'node [Node],
@@ -1820,12 +1822,22 @@ impl<'node> Flow<'node> {
     ) -> Option<SwitchArmEffect<'node>> {
         let begin_line = self.peek()?.span.begin.line;
         let (end, output) = match self.peek()?.kind.as_str() {
-            "call-expression" => {
+            "call-expression"
+                if self.switch_depth < MAX_STATIC_SWITCH_DEPTH =>
+            {
                 let output = checked_call(self, body, previous_end)?;
                 (output.call.span.end.byte, Some(output))
             },
             "binary-expression" | "compound-assignment-expression" => {
                 (self.assignment(body, previous_end)?.0, None)
+            },
+            "switch-statement" => {
+                // A nested dispatch may update checked locals. Its case
+                // outputs are not yet independently replayed by the outer
+                // switch, so refuse all such nested I/O for now.
+                let output_count = self.outputs.len();
+                let end = self.static_switch(body, previous_end)?;
+                (self.outputs.len() == output_count).then_some((end, None))?
             },
             _ => return None,
         };
@@ -1901,6 +1913,10 @@ impl<'node> Flow<'node> {
         reason = "closed source-ordered grouped switch proof"
     )]
     fn static_switch(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
+        if self.switch_depth >= MAX_STATIC_SWITCH_DEPTH {
+            return None;
+        }
+        self.switch_depth = self.switch_depth.checked_add(1)?;
         let statement = self.take(body.id, "switch-statement")?;
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
@@ -2221,6 +2237,7 @@ impl<'node> Flow<'node> {
         } else {
             self.locals = starting_locals;
         }
+        self.switch_depth = self.switch_depth.checked_sub(1)?;
         Some(statement.span.end.byte)
     }
 
@@ -2653,6 +2670,7 @@ pub(super) fn canonical_multi_local_output(
         loop_counters: Vec::new(),
         while_depth: 0,
         do_depth: 0,
+        switch_depth: 0,
         loop_exit: None,
         return_node: None,
         nodes: &input.nodes,

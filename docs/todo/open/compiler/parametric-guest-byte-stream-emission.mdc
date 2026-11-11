@@ -54,6 +54,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete Fibonacci C program nested a `switch`
+  inside the cases of another source-proven `switch` under a bounded `for`.
+  The pinned Clang frontend accepted the full source, but the adapter
+  initially refused nested dispatch. A two-level source-state replay now
+  carries the selected arm's distinct local mask (`0`, `32`, `26`, `58`),
+  checks Clang ancestry
+  and complete source spans, and preserves switch-local breaks separately
+  from the enclosing loop. The independent unsigned-C oracle and normative
+  VM agree on twelve masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+  in 47 guest steps under EOF and binary stdin. Eight unsupported C changes
+  and 22 forged ASTs refuse without publication; nested byte I/O (even on
+  unselected arms), three switch levels, dynamic C control and the original
+  unmasked Fibonacci layout remain unsupported. P0 stays open.
+
 - On 2026-11-11 three complete Fibonacci C programs put a `switch`
   directly under a bounded `for`, `while`, or `do/while`, without inventing
   a compound scope. The pinned Clang frontend accepted the sources but the

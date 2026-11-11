@@ -132,6 +132,24 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Source-proven two-level C switch dispatch
+
+A complete twelve-output Fibonacci C program places one `switch` within each
+case/default arm of an enclosing `switch` under a bounded `for`. Both selectors
+vary with source-local recurrence state. The nested selected arm sets a local
+mask, with four distinct unsigned mask states (`0`, `32`, `26`, `58`)
+that differ in higher bits but preserve the masked byte output. Both switch-
+local `break` statements return only from their own switch; a later `putchar`
+emits each computed byte. The adapter replays at most
+two active switch levels, preserves verified Clang parentage and exact source
+spans, and does not let unselected writes escape into the outer case.
+The independent unsigned-C oracle and normative guest VM agree on twelve
+bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and
+binary input. Eight invalid C sources and 22 forged ASTs refuse publication,
+including nested I/O on an unselected arm. Third-level nested switches,
+outputs inside nested switch arms, dynamic guest switches and unmasked
+Fibonacci byte-stream layout remain outside the admitted subset.
+
 ### Unbraced switch as a bounded loop body
 
 A complete twelve-step Fibonacci C program puts a `switch` directly under a

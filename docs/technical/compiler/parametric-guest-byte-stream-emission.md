@@ -25,6 +25,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested `switch` state selection within a bounded C loop (2026-11-11)
+
+A full unsigned-local Fibonacci C recurrence nests one `switch` in each
+selected arm of an enclosing `switch` inside twelve bounded `for` trips. A
+nested switch chooses one of four distinct unsigned masks (`0`, `32`,
+`26`, `58`); the two switch-local `break` statements do not exit the for.
+Pinned Clang admitted the program, but the normalized C adapter first
+rejected nested source-state selection. The finite projector now checks at most two active switch levels,
+source-ordered and span-checked Clang children, and carries the selected inner
+branch's local state into the outer switch without leaking another case.
+
+A separate unsigned-C oracle covers all four selector combinations. The
+normative Malbolge VM emits the twelve masked bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps on both EOF and binary
+stdin. Eight C mutations and 22 independently forged Clang ASTs refuse
+before guest publication, including output effects on selected or unselected
+inner switch arms. The bounded projection excludes three nested switches,
+nested byte I/O, unbounded guest switches and the original unmasked Fibonacci
+layout. The general P0 output-stream milestone remains open.
+
 ### Unbraced C `do…while` directly inside `for` (2026-11-11)
 
 The full Fibonacci recurrence also uses

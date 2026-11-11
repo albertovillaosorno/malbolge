@@ -17039,5 +17039,215 @@ class CompoundCPipelineTests(unittest.TestCase):
 
 
 
+    def test_nested_switch_complete_fibonacci_guest(self) -> None:
+        """Two switch levels select changing C locals before genuine guest I/O."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_nested_switch_fibonacci.c"
+        )
+        a = b = 1
+        oracle = bytearray()
+        observed_cases: set[int] = set()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            observed_cases.add(next_value & 3)
+            # Independent unsigned C oracle for the two switch selectors.
+            mask = (26 if next_value & 1 else 0) + (
+                32 if next_value & 2 else 0
+            )
+            oracle.append((next_value ^ mask) & 31)
+            a, b = b, next_value
+        self.assertEqual(observed_cases, {0, 1, 2, 3})
+        self.assertEqual(b, 121)
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "nested-switch.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER),
+                    "--repository-tools", "--source-id",
+                    "tests/nested-switch-fibonacci-v1", "--capsule",
+                    "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertEqual(
+                    executed.stderr, b"malbolge-steps-v1:47\n"
+                )
+
+    def test_nested_switch_refuses_unproved_source(self) -> None:
+        """Source mutations cannot invent switch effects or publish a guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_nested_switch_fibonacci.c"
+        ).read_text()
+        cases = {
+            "protected-induction": source.replace(
+                "                mask = 0U;", "                i = i + 1U;", 1
+            ),
+            "nested-input": source.replace(
+                "                mask = 0U;", "                mask = (unsigned)getchar();", 1
+            ),
+            "nested-selected-output": source.replace(
+                "                mask = 0U;", "                putchar(0);", 1
+            ),
+            "nested-unselected-output": source.replace(
+                "            case 0U:\n                mask = 0U;",
+                "            case 4U:\n                putchar(0);",
+                1,
+            ),
+            "effectful-selector": source.replace(
+                "switch (next & 2U)", "switch (next++ & 2U)", 1
+            ),
+            "unbounded-loop": source.replace("i < 12U", "i < 255U", 1),
+            "inner-continue": source.replace(
+                "                break;\n            default:",
+                "                continue;\n            default:", 1,
+            ),
+            "third-switch-depth": source.replace(
+                "                mask = 0U;",
+                "                switch (next & 4U) {\n"
+                "                case 0U:\n"
+                "                    mask = 0U;\n"
+                "                    break;\n"
+                "                default:\n"
+                "                    mask = 0U;\n"
+                "                    break;\n"
+                "                }", 1,
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in cases.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(contents, source)
+                    path = Path(scratch) / f"{label}.c"
+                    path.write_text(contents)
+                    normalized = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/nested-switch-invalid-{label}-v1", str(path),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest), "--capsule",
+                        ],
+                        input=normalized.stdout, capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_nested_switch_refuses_forged_clang_ancestry(self) -> None:
+        """Every nested switch node retains its pinned Clang ancestry/span."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_nested_switch_fibonacci.c"
+        )
+        normalized = subprocess.run(
+            [
+                str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                "--resource-dir", str(RESOURCE), "--source-id",
+                "tests/nested-switch-forgery-v1", str(source),
+            ],
+            capture_output=True, check=False, timeout=30,
+        )
+        self.assertEqual(normalized.returncode, 0, normalized.stderr)
+        original = json.loads(normalized.stdout)
+        nodes = original["nodes"]
+        switches = [n for n in nodes if n["kind"] == "switch-statement"]
+        self.assertEqual(len(switches), 3)
+        outer = switches[0]
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for nested in switches[1:]:
+                nested_id = nested["id"]
+                scope = next(
+                    n for n in nodes
+                    if n["kind"] == "compound-statement"
+                    and n["parent"] == nested_id
+                )
+                case = next(
+                    n for n in nodes
+                    if n["kind"] == "case-statement"
+                    and n["parent"] == scope["id"]
+                )
+                inner_break = next(
+                    n for n in nodes
+                    if n["kind"] == "break-statement"
+                    and n["parent"] == scope["id"]
+                )
+                default = next(
+                    n for n in nodes
+                    if n["kind"] == "default-statement"
+                    and n["parent"] == scope["id"]
+                )
+                for label in (
+                    "parent", "end-byte", "end-column", "begin-column",
+                    "scope-parent", "case-parent", "break-parent",
+                    "default-parent", "selector-operation",
+                    "outer-end-byte", "outer-end-column",
+                ):
+                    with self.subTest(nested=nested_id, ast=label):
+                        forged = json.loads(normalized.stdout)
+                        clone = forged["nodes"]
+                        node = clone[nested_id - 1]
+                        if label == "parent":
+                            node["parent"] = outer["id"]
+                        elif label == "end-byte":
+                            node["span"]["end"]["byte"] -= 1
+                        elif label == "end-column":
+                            node["span"]["end"]["column"] -= 1
+                        elif label == "begin-column":
+                            node["span"]["begin"]["column"] += 1
+                        elif label == "scope-parent":
+                            clone[scope["id"] - 1]["parent"] = outer["id"]
+                        elif label == "case-parent":
+                            clone[case["id"] - 1]["parent"] = outer["id"]
+                        elif label == "break-parent":
+                            clone[inner_break["id"] - 1]["parent"] = outer["id"]
+                        elif label == "default-parent":
+                            clone[default["id"] - 1]["parent"] = outer["id"]
+                        elif label == "selector-operation":
+                            node["operation"] = "!"
+                        elif label == "outer-end-byte":
+                            clone[outer["id"] - 1]["span"]["end"]["byte"] -= 1
+                        else:
+                            clone[outer["id"] - 1]["span"]["end"]["column"] -= 1
+                        guest = Path(scratch) / f"{nested_id}-{label}.malbolge"
+                        refused = subprocess.run(
+                            [
+                                str(ADAPTER), "--layout-backend", str(LAYOUT),
+                                "--output", str(guest), "--capsule",
+                            ],
+                            input=json.dumps(forged).encode(),
+                            capture_output=True, check=False, timeout=30,
+                        )
+                        self.assertNotEqual(refused.returncode, 0, label)
+                        self.assertIn(b"Unsupported", refused.stderr, label)
+                        self.assertFalse(guest.exists(), label)
+
+
 if __name__ == "__main__":
     _ = unittest.main()
