@@ -25,6 +25,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Bounded C `while` nested in a stateful `for` (2026-11-11)
+
+A complete twelve-iteration Fibonacci C source now computes each recurrence
+term in a two-trip `while` nested directly in its enclosing `for`. The first
+inner trip assigns the sum of the current unsigned locals; the second masks
+it to a defined byte before a source-checked outer branch selects guest
+`putchar` output. Pinned Clang accepted the entire program, but the JSON
+adapter originally rejected the inner `while` before publishing a guest.
+
+The finite replay now admits one source-proven `while` inside a bounded `for`,
+without permitting recursively nested `while` or `do/while` bodies. Inner
+`break` exits only the inner loop: a second complete C variant proves an
+explicit break on trip two does not cut short the enclosing twelve-trip
+`for`. The proof re-evaluates the inner condition and source-local effects
+on each trip and retains the already enforced limits on loop depth, source
+spans and induction mutations. An independently computed unsigned-C oracle
+and the normative guest VM both emit twelve bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and binary
+stdin for both C variants. Five invalid sources and eight forged Clang ASTs
+refuse publication, including a hidden input effect, induction mutation and
+wrong inner-loop ancestry. This remains bounded compile-time C replay, not
+runtime guest loop control. The original unmasked Fibonacci guest layout
+remains blocked and P0 stays open.
+
 ### Source-local disjunctive `for` guard (2026-11-11)
 
 A complete Fibonacci C recurrence uses `limit > i || b < 20U` with a

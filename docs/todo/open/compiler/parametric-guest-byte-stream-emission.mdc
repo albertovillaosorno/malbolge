@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete twelve-step Fibonacci C source computed each
+  next term inside a two-trip `while` nested in its source-proven `for`.
+  The JSON adapter first rejected the nested loop before guest publication.
+  Closed local-state replay now admits one inner `while`, preserving each
+  C condition check and exact Clang ancestry without allowing nested
+  `while` or `do/while`. A second whole C source uses `break` at the end
+  of the second inner trip; the outer `for` still executes all twelve
+  iterations. Both variants reach independent masked Fibonacci oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 real VM steps under EOF
+  and binary stdin. Five invalid C sources and eight forged AST cases fail
+  closed. Dynamic guest loops and unmasked twelve-byte output layout remain
+  unsupported, so P0 stays open.
+
 - On 2026-11-11 a full changing-stride Fibonacci C program used
   `limit > i || b < 20U`, with an unsigned induction bound of two.
   Pinned Clang accepted it, but the normalized adapter initially rejected

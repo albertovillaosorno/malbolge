@@ -888,6 +888,7 @@ impl<'node> Flow<'node> {
                 "if-statement" => self.conditional(body, last_end, 0)?,
                 "switch-statement" => self.static_switch(body, last_end)?,
                 "for-statement" => self.static_for(body, last_end)?,
+                "while-statement" => self.static_while(body, last_end)?,
                 "compound-statement" => {
                     self.scoped_lexical_body(body, last_end, depth)?
                 },
@@ -1594,6 +1595,8 @@ impl<'node> Flow<'node> {
     }
 
     /// Replay a source-proven `while (predicate) { ... }` over known locals.
+    /// A while body may be nested inside a bounded for, but not another
+    /// while or do-while; an inner break is consumed at this loop boundary.
     /// Recheck each condition after a body execution, or validate a skipped
     /// body on shadow state without publishing its writes or output effects.
     /// Unsupported bodies and unbounded loops refuse.
@@ -1602,7 +1605,6 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || !self.loop_counters.is_empty()
             || self.within_while_body
         {
             return None;

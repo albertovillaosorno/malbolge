@@ -1223,6 +1223,21 @@ and structural typed/ternary admission but is rejected by the closed
 `Layout(UnsupportedEffectTrace)`: its exact nonzero sequence is not
 witnessed. This is neither a general stream backend nor runtime C state.
 
+### Source-checked `while` inside a complete `for` recurrence
+
+`local_nested_for_while_fibonacci.c` calculates each next Fibonacci value
+using a two-trip source-local `while` inside a twelve-trip `for`. Its outer
+branch observes the inner loop's writes before emitting a masked byte. A
+second complete C variant breaks out of the inner `while` after its second
+trip, leaving the outer `for` to emit its remaining bytes. The separate
+source-C oracle and real normative VM agree on all twelve output bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with empty and
+binary stdin for both programs. The adapter still rejects nested `while`
+inside another `while` or `do/while`, unbounded inner loops, unproved
+source effects, mutations of a protected induction counter, and forged AST
+ancestry. These are finite compile-time source-state projections, not
+dynamic guest loops or general twelve-byte output synthesis.
+
 ### Source-proven pure logical predicates
 
 The bounded automatic-local/`for` constant-flow projection now admits
