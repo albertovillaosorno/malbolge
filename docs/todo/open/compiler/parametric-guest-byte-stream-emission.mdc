@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete twelve-byte Fibonacci C source used an
+  unbraced stateful `while (phase < i)` as the entire body of a six-trip
+  `for` with changing `i` and two inner outputs per outer iteration.
+  Pinned Clang accepted it, but the JSON adapter initially rejected the
+  directly nested while. Source-state replay now checks the exact child
+  ancestry/endpoints without inventing braces. Natural exit, inner `break`
+  and inner `continue` all emit the independent masked recurrence oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 real VM steps under
+  EOF and binary stdin. Six invalid C variants and eight forged AST trees
+  reject without artifact publication. Dynamic guest C loops and the
+  original unmasked twelve-byte stream remain unsupported; P0 stays open.
+
 - On 2026-11-11 an additional full Fibonacci C program used an unbraced
   `do/while` directly inside a six-trip source-proven `for`, producing two
   masked outputs per outer trip. Pinned Clang accepted the source, but the

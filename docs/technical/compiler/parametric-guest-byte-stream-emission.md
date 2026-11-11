@@ -42,6 +42,29 @@ steps, under EOF and binary stdin. Four invalid C programs and three
 forged ASTs reject without publishing a guest. Dynamic guest loops and
 general unmasked output layouts are not supported; P0 remains open.
 
+### Unbraced C `while` directly inside `for` (2026-11-11)
+
+The complete `local_unbraced_while_for_fibonacci.c` source uses a six-trip
+`for (unsigned i = 2U; i <= 12U; i += 2U)` whose entire unbraced body is
+`while (phase < i) { ... }`. The inner loop increments `phase` toward the
+changing outer induction limit, computes Fibonacci state, branches on the
+next term, and emits two masked bytes per outer iteration. The pinned C
+frontend accepted the full source; the JSON adapter initially refused the
+direct `while` child before any guest artifact was published.
+
+Finite replay now authenticates direct Clang ancestry and matching full
+endpoints for outer `for` and inner `while`, retains the protected induction
+symbol, rechecks the inner condition after every C state update and respects
+nearest-loop `break`/`continue` exits. The complete natural-exit, explicit
+inner-break and inner-continue programs each match the independent unsigned-C
+oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in exactly 47 normative
+VM steps with EOF and binary stdin. Six unsupported source mutations and
+eight forged normalized ASTs reject without guest publication.
+
+This is source-proven bounded compile-time C replay, not guest runtime loop
+execution. Unmasked twelve-byte Fibonacci output still fails the verified
+layout search as `Layout(UnsupportedEffectTrace)`; general P0 remains open.
+
 ### Unbraced C `do…while` directly inside `while` (2026-11-11)
 
 The complete Fibonacci source `local_unbraced_do_while_fibonacci.c` uses

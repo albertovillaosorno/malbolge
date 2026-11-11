@@ -16673,5 +16673,179 @@ class CompoundCPipelineTests(unittest.TestCase):
 
 
 
+    def test_unbraced_for_while_complete_fibonacci_guest(self) -> None:
+        """A direct while rechecks changing for induction after every trip."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_unbraced_while_for_fibonacci.c"
+        )
+        a, b, phase = 1, 1, 0
+        expected = bytearray()
+        for limit in range(2, 13, 2):
+            while phase < limit:
+                following = (a + b) & 255
+                selected = following if following % 2 == 0 else following ^ 26
+                expected.append(selected & 31)
+                a, b = b, following
+                phase += 1
+        self.assertEqual(phase, 12)
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        original = source.read_text()
+        advance = "            ++phase;\n"
+        self.assertEqual(original.count(advance), 1)
+        variants = {
+            "natural": original,
+            "inner-break": original.replace(
+                advance,
+                advance + "            if (phase == i) {\n"
+                "                break;\n            }\n",
+            ),
+            "inner-continue": original.replace(
+                advance,
+                advance + "            if (phase < i) {\n"
+                "                continue;\n            }\n",
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in variants.items():
+                with self.subTest(variant=label):
+                    path = Path(scratch) / f"unbraced-for-while-{label}.c"
+                    path.write_text(contents)
+                    guest = path.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [
+                            sys.executable, "-B", str(DRIVER),
+                            "--repository-tools", "--source-id",
+                            f"tests/unbraced-for-while-fibonacci-{label}-v1",
+                            "--capsule", "--output", str(guest), str(path),
+                        ],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((0, 255, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"],
+                            input=supplied, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertEqual(
+                            executed.stderr, b"malbolge-steps-v1:47\n"
+                        )
+
+    def test_unbraced_for_while_rejects_source_and_ast_forgery(self) -> None:
+        """A direct while cannot mutate its outer counter or forge ancestry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_unbraced_while_for_fibonacci.c"
+        )
+        original = source.read_text()
+        changes = {
+            "outer-counter-mutation": original.replace("++phase;", "++i;"),
+            "nonterminating-inner": original.replace("phase < i", "phase >= 0U"),
+            "effectful-inner-condition": original.replace("phase < i", "phase++ < i"),
+            "guest-input-in-body": original.replace(
+                "next = (a + b) & 255U;", "next = (unsigned)getchar();"
+            ),
+            "missing-progress": original.replace("++phase;", "++b;"),
+            "overlong-outer-induction": original.replace("i <= 12U", "i <= 255U"),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in changes.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(contents, original)
+                    path = Path(scratch) / f"invalid-{label}.c"
+                    path.write_text(contents)
+                    normalized = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/for-while-rejected-{label}-v1", str(path)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=normalized.stdout, capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/for-while-forgery-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            nodes = cast(
+                list[dict[str, object]], json.loads(normalized.stdout)["nodes"]
+            )
+            outer = next(n for n in nodes if n["kind"] == "for-statement")
+            inner = next(n for n in nodes if n["kind"] == "while-statement")
+            self.assertEqual(inner["parent"], outer["id"])
+            for label in (
+                "parent", "inner-end-byte", "inner-end-column",
+                "outer-end-byte", "outer-end-column",
+                "body-parent", "condition-parent", "condition-operator",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(normalized.stdout),
+                    )
+                    target = forged["nodes"][cast(int, inner["id"]) - 1]
+                    if label == "parent":
+                        target["parent"] = 2
+                    elif label.startswith("inner-end-"):
+                        endpoint = cast(
+                            dict[str, dict[str, int]], target["span"]
+                        )["end"]
+                        endpoint[label.removeprefix("inner-end-")] -= 1
+                    elif label.startswith("outer-end-"):
+                        target = forged["nodes"][cast(int, outer["id"]) - 1]
+                        endpoint = cast(
+                            dict[str, dict[str, int]], target["span"]
+                        )["end"]
+                        endpoint[label.removeprefix("outer-end-")] -= 1
+                    elif label == "body-parent":
+                        target = next(
+                            n for n in forged["nodes"]
+                            if n["kind"] == "compound-statement"
+                            and n["parent"] == inner["id"]
+                        )
+                        target["parent"] = outer["id"]
+                    else:
+                        target = next(
+                            n for n in forged["nodes"]
+                            if n["kind"] == "binary-expression"
+                            and n["parent"] == inner["id"]
+                        )
+                        if label == "condition-parent":
+                            target["parent"] = outer["id"]
+                        else:
+                            target["operation"] = ">"
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(), capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+
+
 if __name__ == "__main__":
     _ = unittest.main()

@@ -1418,3 +1418,18 @@ The independent twelve-byte oracle matches the actual guest VM
 under empty/binary stdin in 47 steps. Six invalid C sources and eight
 forged ASTs reject without guest publication. This is bounded static
 C replay, not dynamic guest loops or unmasked output synthesis.
+
+### Unbraced C `while` nested directly in a bounded `for` (2026-11-11)
+
+The full `local_unbraced_while_for_fibonacci.c` recurrence uses a direct
+`while (phase < i)` body in a six-trip source-proven `for`, without braces
+around the enclosing body. The inner condition observes the advancing outer
+counter and produces two branch-selected masked outputs on each outer trip.
+Clang admitted this complete C source, but the JSON adapter initially refused
+the unbraced child. It now verifies the full direct child ancestry and source
+endpoints, protects induction against inner writes and preserves inner-loop
+`break` and `continue` semantics. All three complete C variants match the
+independent twelve-byte Fibonacci oracle in 47 actual Malbolge VM steps on
+both empty and binary input. Six unsupported source variants and eight forged
+ASTs reject without guest artifacts. Runtime C loops and the original
+unmasked Fibonacci output layout remain unsupported.
