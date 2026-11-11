@@ -202,6 +202,26 @@ def assigning_switch_fibonacci_source(*, compound: bool, grouped: bool) -> str:
     )
 
 
+def multi_effect_switch_fibonacci_source(
+    *, grouped: bool = False, output_in_arm: bool = False,
+) -> str:
+    """A complete recurrence with dependent C switch-local state transfers."""
+    source = assigning_switch_fibonacci_source(compound=False, grouped=grouped)
+    source = source.replace(
+        "        unsigned selected;",
+        "        unsigned selected;\n        unsigned transferred;",
+    )
+    source = source.replace(
+        "            break;",
+        "            transferred = selected ^ 0U;\n"
+        + ("            putchar((int)transferred);\n" if output_in_arm else "")
+        + "            break;",
+    )
+    if output_in_arm:
+        return source.replace("        putchar((int)selected);\n", "")
+    return source.replace("putchar((int)selected);", "putchar((int)transferred);")
+
+
 def unbraced_masked_fibonacci_source() -> str:
     """Use ordinary unbraced if/else output arms in the full recurrence."""
     source = MASKED_FIBONACCI.read_text()
@@ -11565,6 +11585,199 @@ class CompoundCPipelineTests(unittest.TestCase):
         """Two grouped label paths share one selected C assignment."""
         self.check_switch_local_assignment_guest(compound=True, grouped=True)
 
+    def check_switch_multi_effect_guest(
+        self, *, grouped: bool, output_in_arm: bool,
+    ) -> None:
+        """Real C switch arms transfer two dependent locals before output."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        a, b = 1, 1
+        expected = bytearray()
+        seen = set()
+        for _ in range(12):
+            following = (a + b) & 255
+            seen.add(following & 3)
+            first = (following & 31) if following % 2 == 0 else (
+                (following ^ 26) & 31
+            )
+            transferred = first ^ 0
+            expected.append(transferred)
+            a, b = b, following
+        self.assertEqual(seen, {0, 1, 2, 3})
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / f"multi-{grouped}-{output_in_arm}.c"
+            source.write_text(multi_effect_switch_fibonacci_source(
+                grouped=grouped, output_in_arm=output_in_arm,
+            ))
+            guest = source.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", f"tests/switch-multi-{grouped}-{output_in_arm}-v1",
+                 "--capsule", "--output", str(guest), str(source)],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_switch_multi_effect_guest(self) -> None:
+        """Each case carries two dependent local writes before shared output."""
+        self.check_switch_multi_effect_guest(grouped=False, output_in_arm=False)
+
+    def test_switch_multi_effect_grouped_guest(self) -> None:
+        """Grouped case/default arms still commit both selected local writes."""
+        self.check_switch_multi_effect_guest(grouped=True, output_in_arm=False)
+
+    def test_switch_multi_effect_final_output_guest(self) -> None:
+        """A final arm-local putchar sees the selected prior assignments."""
+        self.check_switch_multi_effect_guest(grouped=False, output_in_arm=True)
+
+    def test_switch_multi_effect_rejects_unproved_source_and_ast(self) -> None:
+        """Switch sibling writes must retain source order and Clang ancestry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = multi_effect_switch_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            bad_sources = {
+                "too-many-effects": original.replace(
+                    "            transferred = selected ^ 0U;\n            break;",
+                    "            transferred = selected ^ 0U;\n"
+                    + "            transferred ^= 0U;\n" * 3
+                    + "            break;", 1,
+                ),
+                "uninitialized-read": original.replace(
+                    "transferred = selected ^ 0U;",
+                    "transferred = transferred ^ 0U;", 1,
+                ),
+                "input-side-effect": original.replace(
+                    "transferred = selected ^ 0U;",
+                    "transferred = (unsigned)getchar();", 1,
+                ),
+                "fallthrough": original.replace(
+                    "            break;\n        case 1U:", "        case 1U:", 1,
+                ),
+                "output-then-write": multi_effect_switch_fibonacci_source(
+                    output_in_arm=True,
+                ).replace(
+                    "            putchar((int)transferred);\n            break;",
+                    "            putchar((int)transferred);\n"
+                    "            transferred ^= 0U;\n            break;", 1,
+                ),
+                "second-output": multi_effect_switch_fibonacci_source(
+                    output_in_arm=True,
+                ).replace(
+                    "            putchar((int)transferred);\n            break;",
+                    "            putchar((int)transferred);\n"
+                    "            putchar((int)transferred);\n            break;", 1,
+                ),
+            }
+            for label, text in bad_sources.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(text)
+                    normalized = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/switch-multi-bad-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    if label == "uninitialized-read":
+                        # Pinned Clang correctly rejects undefined C here.
+                        self.assertNotEqual(normalized.returncode, 0)
+                    else:
+                        self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                         "--source-id", f"tests/switch-multi-bad-{label}-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "multi-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/switch-multi-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            ast = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], ast["nodes"])
+            scope = next(n for n in nodes if n["kind"] == "switch-statement")
+            switch_body = next(
+                n for n in nodes
+                if n["kind"] == "compound-statement" and n["parent"] == scope["id"]
+            )
+            first_case = next(n for n in nodes if n["kind"] == "case-statement")
+            first_write = next(
+                n for n in nodes
+                if n["kind"] == "binary-expression" and n["parent"] == first_case["id"]
+            )
+            second_write = next(
+                n for n in nodes
+                if n["kind"] == "binary-expression" and n["parent"] == switch_body["id"]
+            )
+            second_left = next(
+                n for n in nodes
+                if n["kind"] == "declaration-reference-expression"
+                and n["parent"] == second_write["id"]
+            )
+            for label in (
+                "sibling-parent", "sibling-operation", "sibling-start",
+                "sibling-overlap", "sibling-destination", "first-extent",
+                "break-parent",
+            ):
+                with self.subTest(forged=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    changed = cast(list[dict[str, object]], forged["nodes"])
+                    sibling = changed[cast(int, second_write["id"]) - 1]
+                    if label == "sibling-parent":
+                        sibling["parent"] = first_case["id"]
+                    elif label == "sibling-operation":
+                        sibling["operation"] = "+="
+                    elif label in ("sibling-start", "sibling-overlap"):
+                        span = cast(dict[str, dict[str, int]], sibling["span"])
+                        span["begin"]["byte"] = (
+                            cast(dict[str, dict[str, int]], first_write["span"])
+                            ["end"]["byte"]
+                            if label == "sibling-overlap" else 0
+                        )
+                    elif label == "sibling-destination":
+                        changed[cast(int, second_left["id"]) - 1]["reference"] = (
+                            next(cast(str, n["reference"]) for n in nodes
+                                 if n["kind"] == "declaration-reference-expression"
+                                 and cast(str, n["reference"]).startswith("next@"))
+                        )
+                    elif label == "first-extent":
+                        span = cast(dict[str, dict[str, int]],
+                                    changed[cast(int, first_write["id"]) - 1]["span"])
+                        span["end"]["byte"] -= 1
+                    else:
+                        brk = next(n for n in changed if n["kind"] == "break-statement")
+                        brk["parent"] = first_case["id"]
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertRegex(rejected.stderr, rb"Unsupported|Malformed")
+                    self.assertFalse(guest.exists(), label)
+
     def test_switch_local_assignments_refuse_unproved_effects(self) -> None:
         """Wrong C effects or forged case ancestry cannot publish guest code."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
@@ -11583,10 +11796,11 @@ class CompoundCPipelineTests(unittest.TestCase):
                     "            selected = next & 31U;\n            break;",
                     "            selected = next & 31U;", 1,
                 ),
-                "double-write": original.replace(
+                "excess-arm-effects": original.replace(
                     "            selected = next & 31U;\n            break;",
                     "            selected = next & 31U;\n"
-                    "            selected = 65U;\n            break;", 1,
+                    + "            selected ^= 0U;\n" * 4
+                    + "            break;", 1,
                 ),
                 "input-side-effect": original.replace(
                     "            selected = next & 31U;",

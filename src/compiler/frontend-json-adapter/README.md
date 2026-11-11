@@ -823,6 +823,25 @@ AST mutations refuse publication. This is bounded source-backed state
 projection: the guest does not calculate the predicate at runtime. The
 original unmasked twelve-byte output is still unsupported at layout.
 
+### Source-checked ordered switch-arm effects
+
+An entire four-way twelve-trip masked Fibonacci C recurrence now proves
+per-arm dependent local writes: `selected = ...; transferred = selected ^ 0U;`
+and one post-switch `putchar((int)transferred)`. Clang parents the first
+statement below its case/default label and later statements below the switch
+compound. The adapter checks the exact ancestry, source extent, order,
+initialized reads and pure unsigned operations: at most four effects per
+arm, with at most one terminal pure output and an explicit arm-local break.
+Every candidate arm starts from the same pre-switch locals; only the selected
+writes and its optional output survive. Unproved side effects, fallthrough,
+extra outputs, output-followed-by-write, and additional effects refuse.
+The original unmasked complete Fibonacci remains unsupported at guest layout;
+this finite C-state projection does not implement runtime C switching.
+The three full-source variants (un-grouped state transfer, grouped case/default
+state transfer and an arm-local terminal output) each emit the independently
+computed twelve-byte masked Fibonacci oracle in 47 normative guest steps under
+empty and binary stdin. Six invalid C and seven forged AST cases refuse.
+
 ### Source-checked switch-local assignments
 
 A complete twelve-step masked Fibonacci C source now selects one unsigned
@@ -839,9 +858,9 @@ compound XOR assignment, and grouped compound assignment each emit the
 independent twelve-byte masked oracle on the normative current-profile VM:
 `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and
 binary stdin. Four unsupported C sources and six forged AST variants
-refuse before publication. Switch-local declarations, multiple effects
-per arm, fallthrough, dynamic guest switch execution and the original
-unmasked Fibonacci layout remain unsupported.
+refuse before publication. Switch-local declarations, effectful fallthrough,
+dynamic guest switch execution and the original unmasked Fibonacci layout
+remain unsupported.
 
 ### Source-checked `switch` with one case and default
 

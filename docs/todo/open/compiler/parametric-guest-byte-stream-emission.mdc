@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the original complete unmasked Fibonacci C still
+  refused `Layout(UnsupportedEffectTrace)` without publishing guest code.
+  A separate full four-way masked recurrence with two dependent
+  assignments per switch arm initially refused at the JSON adapter.
+  Source-backed sequential arm replay now checks Clang's case child
+  followed by switch-compound siblings, committing only the selected
+  state or output before the arm-local break. This is bounded C
+  projection, not general guest byte layout or dynamic switching.
+  Three whole-source variants emit the same independent twelve-byte oracle
+  in 47 normative guest steps each under EOF/binary stdin. Six invalid C
+  variants and seven forged ASTs reject without publication. P0 stays open.
+
 - On 2026-11-10 complete masked twelve-step Fibonacci C first
   refused switch-local `selected = ...; break;` arms followed by a
   single post-switch `putchar((int)selected)` at the JSON adapter.

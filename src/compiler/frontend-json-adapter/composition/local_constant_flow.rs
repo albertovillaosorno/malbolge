@@ -1617,10 +1617,39 @@ impl<'node> Flow<'node> {
         })
     }
 
+    /// Clang parents only the first statement below a case/default label;
+    /// subsequent statements are direct children of the switch compound.
+    /// Admit at most three additional checked local writes or one final output.
+    /// An output is terminal: later effects require an explicit new proof.
+    fn switch_arm_tail(
+        &mut self,
+        scope: &Node,
+        mut effect: SwitchArmEffect<'node>,
+    ) -> Option<(SwitchArmEffect<'node>, u32)> {
+        for _ in 0..3 {
+            let next = self.peek()?;
+            if next.kind == "break-statement" {
+                break;
+            }
+            if next.parent != scope.id
+                || next.span.begin.byte <= effect.end
+                || effect.output.is_some()
+            {
+                return None;
+            }
+            let additional = self.switch_arm_effect(scope, effect.end)?;
+            effect.end = additional.end;
+            effect.output = additional.output;
+            effect.locals = additional.locals;
+        }
+        let end = self.switch_break(scope, effect.end)?;
+        Some((effect, end))
+    }
+
     /// Admit up to eight distinct source-ordered case labels, including
-    /// nested empty-label groups and a grouped final default. Each group must
-    /// prove one pure output or local write and its own switch-local break;
-    /// only the selected effect escapes into the enclosing C loop.
+    /// nested empty-label groups and a grouped final default. Each arm must
+    /// prove one to four ordered effects and its own switch-local break;
+    /// only the selected arm's state and output escape into the enclosing loop.
     #[expect(
         clippy::cognitive_complexity,
         reason = "closed Clang ancestry and source-ordered switch outputs"
@@ -1739,9 +1768,10 @@ impl<'node> Flow<'node> {
             // case label. Both dispatch destinations share the same effect.
             // Every arm observes exactly the state before switch dispatch.
             self.locals.clone_from(&starting_locals);
-            let effect = if self.peek().is_some_and(|node| {
+            let has_grouped_default = self.peek().is_some_and(|node| {
                 node.kind == "default-statement" && node.parent == case.id
-            }) {
+            });
+            let effect = if has_grouped_default {
                 let default = self.take(case.id, "default-statement")?;
                 if !clean(default)
                     || !span_within(&case.span, &default.span)
@@ -1757,7 +1787,6 @@ impl<'node> Flow<'node> {
                 {
                     return None;
                 }
-                grouped_default_effect = Some(effect.clone());
                 effect
             } else {
                 self.switch_arm_effect(case, previous_label_end)?
@@ -1765,9 +1794,13 @@ impl<'node> Flow<'node> {
             if effect.end != outer_case_end.byte {
                 return None;
             }
-            previous_arm_end = self.switch_break(scope, outer_case_end.byte)?;
+            let (effect, break_end) = self.switch_arm_tail(scope, effect)?;
+            previous_arm_end = break_end;
             if group_selected {
-                selected_effect = Some(effect);
+                selected_effect = Some(effect.clone());
+            }
+            if has_grouped_default {
+                grouped_default_effect = Some(effect);
             }
         }
         if case_values.is_empty() {
@@ -1792,7 +1825,7 @@ impl<'node> Flow<'node> {
                 {
                     return None;
                 }
-                (effect, self.switch_break(scope, default.span.end.byte)?)
+                self.switch_arm_tail(scope, effect)?
             };
         if last_break >= scope.span.end.byte
             || self

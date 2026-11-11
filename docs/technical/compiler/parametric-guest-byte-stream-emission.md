@@ -73,6 +73,31 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Ordered switch-arm C local transfers (2026-11-10)
+
+The unmasked twelve-trip Fibonacci program was reattempted in full and still
+fails at the independent guest layout with `Layout(UnsupportedEffectTrace)`;
+no guest is published. A second complete four-way masked recurrence then
+used two dependent local writes in every ordinary C `case`/`default` arm:
+`selected = ...; transferred = selected ^ 0U; break;` followed by one
+post-switch `putchar((int)transferred)`. Pinned Clang accepts the C but
+originally the JSON adapter refused the switch's extra direct child.
+
+Clang parents only the first statement to its case/default label; later
+statements are siblings under the enclosing switch compound. The checked
+projector now admits up to three extra ordered, source-bound unsigned writes
+or one terminal pure output after that first effect, all before the required
+switch-local break. Every arm is checked from the same pre-switch locals;
+only the selected arm's final state and at most one output survive. Extra
+calls, writes after output, uninitialized reads, fallthrough, effectful input,
+more than four arm effects and forged ancestry/spans remain unsupported.
+All three full-source variants (separate arms with shared output, grouped
+case/default arms and a terminal arm-local `putchar`) emit the independent
+masked oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in exactly 47
+normative VM steps under empty and binary stdin. Six unsupported C source
+mutations and seven forged Clang ASTs fail without a guest artifact.
+This extends finite source-level C-state replay, not runtime guest switching.
+
 ### Switch-selected C local state in a complete recurrence (2026-11-10)
 
 The complete masked Fibonacci source first refused when a four-way C switch
