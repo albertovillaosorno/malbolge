@@ -1823,7 +1823,7 @@ impl<'node> Flow<'node> {
         let begin_line = self.peek()?.span.begin.line;
         let (end, output) = match self.peek()?.kind.as_str() {
             "call-expression"
-                if self.switch_depth < MAX_STATIC_SWITCH_DEPTH =>
+                if self.switch_depth <= MAX_STATIC_SWITCH_DEPTH =>
             {
                 let output = checked_call(self, body, previous_end)?;
                 (output.call.span.end.byte, Some(output))
@@ -1832,12 +1832,19 @@ impl<'node> Flow<'node> {
                 (self.assignment(body, previous_end)?.0, None)
             },
             "switch-statement" => {
-                // A nested dispatch may update checked locals. Its case
-                // outputs are not yet independently replayed by the outer
-                // switch, so refuse all such nested I/O for now.
+                // A nested dispatch may emit one source-checked byte.
+                // Capture rather than publishing that effect: the enclosing
+                // switch replays selected and unselected arms independently,
+                // and only its final selected path may publish guest I/O.
                 let output_count = self.outputs.len();
                 let end = self.static_switch(body, previous_end)?;
-                (self.outputs.len() == output_count).then_some((end, None))?
+                let output =
+                    match self.outputs.len().checked_sub(output_count)? {
+                        0 => None,
+                        1 => self.outputs.pop(),
+                        _ => return None,
+                    };
+                (end, output)
             },
             _ => return None,
         };
@@ -2580,6 +2587,19 @@ fn checked_call<'node>(
         || !span_within(&call.span, &cast.span)
         || !span_within(&cast.span, &callee.span)
         || !span_within(&call.span, &conversion.span)
+        || call.span.begin.line != cast.span.begin.line
+        || call.span.begin.column != cast.span.begin.column
+        || call.span.end.line != conversion.span.end.line
+        || call.span.end.byte.checked_sub(conversion.span.end.byte)
+            != call.span.end.column.checked_sub(conversion.span.end.column)
+        || call
+            .span
+            .end
+            .byte
+            .checked_sub(conversion.span.end.byte)
+            .is_none_or(|width| {
+                width == 0 || width > MAX_EXPLICIT_CAST_PREFIX_BYTES
+            })
         || last_end > call.span.begin.byte
     {
         return None;

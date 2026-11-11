@@ -25,6 +25,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested source-proven switch output effects (2026-11-11)
+
+The original two-level switch Fibonacci source now has a second complete
+C variant where each inner case/default both sets the local mask and
+emits its own `putchar`; there is no output after the enclosing switch.
+Pinned Clang accepts the whole source, but the pre-repair JSON projector
+refused nested guest output effects. The bounded projector now captures
+the inner switch's one selected output before replaying the outer switch's
+other case/default paths, preventing unselected effects from leaking.
+All four selector combinations occur. Source-bound Clang call spans must
+also match closing byte and column geometry; an initially admitted forged
+column exposed that separate validation gap.
+
+The independently computed unsigned-C oracle matches the real Malbolge
+VM on twelve bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps
+under EOF and binary input. Seven unsupported C mutations and 24 forged
+output-call AST variants refuse guest publication. A third active switch,
+multiple I/O effects along a nested path, unbounded runtime C switching
+and the unmasked twelve-byte Fibonacci byte stream remain unsupported.
+The P0 is not complete; this is bounded source-state replay.
+
 ### Nested `switch` state selection within a bounded C loop (2026-11-11)
 
 A full unsigned-local Fibonacci C recurrence nests one `switch` in each

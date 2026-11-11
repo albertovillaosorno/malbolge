@@ -132,6 +132,29 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Nested source-proven `switch` byte effects
+
+A full twelve-output Fibonacci C program now places the only `putchar`
+effect inside each inner case/default of two nested, source-checked
+`switch` statements. Each innermost arm first assigns a distinct unsigned
+mask (`0`, `32`, `26`, or `58`) and then emits the masked recurrence byte.
+The selector values visit all four combinations across twelve bounded
+`for` trips. The adapter captures at most one nested effect per selected
+path, keeps it out of the outer switch's unselected arm replays, and
+publishes only the outermost selected output. A source-checked nested call
+is admitted at the existing two-switch depth ceiling. Call closing-byte
+and closing-column offsets must agree with the converted argument span;
+forged output spans cannot be sent to guest layout.
+
+A separately evaluated unsigned-C oracle and the normative guest VM agree
+on `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 guest steps under
+EOF and binary stdin. Seven invalid full C sources and 24 forged nested
+output-call ASTs reject without publication. The previously admitted
+nested-switch state-only program remains a separate regression. A third
+switch level, multiple effects along one inner path, dynamic guest
+switches, and unmasked Fibonacci guest synthesis are not implemented.
+This is bounded compile-time C state replay, not runtime C execution.
+
 ### Source-proven two-level C switch dispatch
 
 A complete twelve-output Fibonacci C program places one `switch` within each
