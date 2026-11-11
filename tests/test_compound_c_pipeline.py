@@ -12077,21 +12077,162 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, bytes(expected))
                 self.assertEqual(result.stderr, b"malbolge-steps-v1:47\n")
-            unsupported = Path(scratch) / "third-edge.c"
-            unsupported.write_text(original.replace(
-                "        default:\n            selected ^= carry;",
-                "        case 1U:\n            selected ^= 0U;\n"
-                "        default:\n            selected ^= carry;", 1,
-            ))
-            rejected_guest = Path(scratch) / "third-edge.malbolge"
-            refused = subprocess.run(
-                [sys.executable, "-B", str(DRIVER), "--repository-tools",
-                 "--source-id", "tests/third-default-edge-v1", "--capsule",
-                 "--output", str(rejected_guest), str(unsupported)],
-                capture_output=True, check=False, timeout=40,
+
+    def test_switch_long_case_chain_reaches_real_guest(self) -> None:
+        """Up to eight distinct cases replay each independent entry state."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        oracle = bytearray()
+        seen = set()
+        for _ in range(12):
+            following = (previous + current) & 255
+            dispatch = following & 3
+            seen.add(dispatch)
+            oracle.append(
+                following & 31 if dispatch % 2 == 0
+                else (following ^ 26) & 31
             )
-            self.assertNotEqual(refused.returncode, 0)
-            self.assertFalse(rejected_guest.exists())
+            previous, current = current, following
+        self.assertEqual(seen, {0, 1, 2, 3})
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        source_text = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_three_edge_default_fibonacci.c"
+        ).read_text()
+        insertion = "        default:\n            selected ^= carry;"
+        self.assertEqual(source_text.count(insertion), 1)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for total_cases in (3, 8):
+                with self.subTest(case_count=total_cases):
+                    extras = "".join(
+                        f"        case {value}U:\n"
+                        "            selected ^= 0U;\n"
+                        for value in range(3, total_cases)
+                    )
+                    candidate = source_text.replace(
+                        insertion, extras + insertion, 1
+                    )
+                    source = Path(scratch) / f"chain-{total_cases}.c"
+                    source.write_text(candidate)
+                    guest = source.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/chain-{total_cases}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for data in (b"", bytes((0, 255, 128))):
+                        execution = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"],
+                            input=data, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(execution.returncode, 0, execution.stderr)
+                        self.assertEqual(execution.stdout, bytes(oracle))
+                        self.assertEqual(execution.stderr,
+                                         b"malbolge-steps-v1:47\n")
+
+    def test_switch_long_case_chain_refuses_unproved_paths(self) -> None:
+        """The eight-label proof does not admit a ninth or forged ancestry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_three_edge_default_fibonacci.c"
+        ).read_text()
+        insertion = "        default:\n            selected ^= carry;"
+        extras = "".join(
+            f"        case {value}U:\n            selected ^= 0U;\n"
+            for value in range(3, 8)
+        )
+        eight = original.replace(insertion, extras + insertion, 1)
+        nine = original.replace(
+            insertion,
+            extras + "        case 8U:\n            selected ^= 0U;\n" + insertion,
+            1,
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, candidate in {
+                "ninth-case": nine,
+                "output-before-carried-label": eight.replace(
+                    "        case 7U:\n            selected ^= 0U;",
+                    "        case 7U:\n            putchar(65);", 1,
+                ),
+                "input-in-last-case": eight.replace(
+                    "        case 7U:\n            selected ^= 0U;",
+                    "        case 7U:\n            selected = (unsigned)getchar();", 1,
+                ),
+            }.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(candidate)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/chain-invalid-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/chain-invalid-{label}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "eight-case-proof.c"
+            source.write_text(eight)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/chain-eight-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            original_tree = cast(dict[str, object], json.loads(frontend.stdout))
+            source_nodes = cast(list[dict[str, object]], original_tree["nodes"])
+            cases = [node for node in source_nodes
+                     if node["kind"] == "case-statement"]
+            self.assertEqual(len(cases), 8)
+            last = cases[-1]
+            first = cases[0]
+            child = next(node for node in source_nodes
+                         if node["parent"] == last["id"]
+                         and node["kind"] == "compound-assignment-expression")
+            for label in ("last-parent", "last-span", "late-effect-parent",
+                          "late-effect-operation"):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    nodes = cast(list[dict[str, object]], forged["nodes"])
+                    target = nodes[cast(int, last["id"]) - 1]
+                    if label == "last-parent":
+                        target["parent"] = first["id"]
+                    elif label == "last-span":
+                        span = cast(dict[str, dict[str, int]], target["span"])
+                        span["end"]["byte"] += 1
+                    else:
+                        target = nodes[cast(int, child["id"]) - 1]
+                        if label == "late-effect-parent":
+                            target["parent"] = first["id"]
+                        else:
+                            target["operation"] = "?="
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--capsule", "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
 
     def test_switch_default_fallthrough_rejects_unproved_paths(self) -> None:
         """Require checked AST ancestry and effect-free fallthrough to default."""
@@ -12252,11 +12393,9 @@ class CompoundCPipelineTests(unittest.TestCase):
         original = (ROOT / "tests/compiler/c-frontend/accepted/"
                     "local_chained_switch_fibonacci.c").read_text()
         invalid = {
-            "third-fallthrough": original.replace(
+            "output-before-default": original.replace(
                 "            selected ^= 0U;\n            break;\n        default:",
-                "            selected ^= 0U;\n"
-                "        case 3U:\n            selected ^= 0U;\n"
-                "            break;\n        default:", 1,
+                "            putchar(65);\n        default:", 1,
             ),
             "output-before-middle": original.replace(
                 "            carry ^= 7U;", "            putchar(65);", 1,
@@ -12268,10 +12407,6 @@ class CompoundCPipelineTests(unittest.TestCase):
             "effectful-final": original.replace(
                 "            selected ^= carry;",
                 "            selected = (unsigned)getchar();", 1,
-            ),
-            "fallthrough-to-default": original.replace(
-                "            selected ^= 0U;\n            break;\n        default:",
-                "            selected ^= 0U;\n        default:", 1,
             ),
         }
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
@@ -12367,13 +12502,13 @@ class CompoundCPipelineTests(unittest.TestCase):
             "output-before-label": original.replace(
                 "            carry ^= 7U;", "            putchar(65);", 1,
             ),
-            "chained-case-fallthrough": original.replace(
+            "output-before-next-case": original.replace(
                 "            selected ^= 0U;\n            break;",
-                "            selected ^= carry;", 1,
+                "            putchar(65);", 1,
             ),
-            "fallthrough-to-default": original.replace(
+            "input-before-default": original.replace(
                 "            selected ^= 26U;\n            break;\n        default:",
-                "            selected ^= 26U;\n        default:", 1,
+                "            selected = (unsigned)getchar();\n        default:", 1,
             ),
             "side-effectful-carry": original.replace(
                 "            carry ^= 7U;",

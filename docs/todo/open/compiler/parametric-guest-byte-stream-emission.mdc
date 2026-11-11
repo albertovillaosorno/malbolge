@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete masked twelve-step Fibonacci C source
+  initially refused three consecutive nonempty switch fallthrough edges
+  into default. The bounded source-backed projector now replays every
+  independent case entry and carried local state against identical Clang
+  node boundaries, up to eight distinct case labels. Three-case and
+  eight-case complete sources both emit the independent twelve-byte oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 real normative guest steps
+  under empty and binary stdin. A ninth case, output-before-fallthrough,
+  effectful input and four forged late-case AST variants reject without
+  publishing a guest. The original unmasked stream and runtime guest
+  branching remain unsupported; P0 stays open.
+
 - On 2026-11-10 full masked twelve-step Fibonacci C with a `default`
   between ordinary case labels initially refused at the JSON adapter.
   A bounded exact-Clang proof now checks that middle default's own

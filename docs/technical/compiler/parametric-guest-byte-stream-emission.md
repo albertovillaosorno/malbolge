@@ -73,6 +73,24 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Bounded long switch fallthrough chain (2026-11-10)
+
+The complete twelve-step masked Fibonacci C source now carries unsigned
+locals through `case 0U`, `case 2U`, `case 1U` and a final `default`.
+The original source failed at JSON admission without a guest artifact:
+its three consecutive source-ordered fallthrough edges exceeded the previous
+two-edge proof. An exact pinned-Clang replay now maintains the independent
+entry state for each preceding case, checks every consumed node and break
+against the direct-entry path, and caps replay at eight distinct case labels.
+A source expansion exercises eight cases followed by default, including paths
+with eight consecutive edges. The normative Malbolge VM emits the independent
+12-byte oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in exactly 47 steps
+under both empty and binary stdin, with no host output substitution.
+A ninth case, output-before-fallthrough, effectful input, and forged later
+case ancestry/spans/operators refuse without publishing guest code. The
+original unmasked twelve-byte output still fails at guest layout, and
+runtime guest C switching remains unsupported; generalized P0 is open.
+
 ### Source-ordered middle `default` C switch (2026-11-10)
 
 The complete twelve-trip masked Fibonacci program

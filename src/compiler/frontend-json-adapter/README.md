@@ -859,20 +859,24 @@ executes twelve independently calculated Fibonacci output bytes in 47 steps
 under empty and binary stdin. A separate complete source also traverses
 `case 0U` to `case 2U` to `default`, proving two consecutive edges and
 separate direct entries at the receiving labels. Five invalid source
-variants, seven forged ASTs and a third-edge C variant fail closed.
-Output-before-fallthrough, effectful input, a third
-consecutive edge, dynamic guest switching, and the original unmasked byte
-stream remain unsupported.
+variants and seven forged ASTs refused before the longer-chain rule.
 
 A second full recurrence proves two consecutive nonempty fallthrough edges
 (`case 0U:` to `case 2U:` to `case 1U:`), with separate direct entry into
 all three cases. The projector independently replays the exact pinned-Clang
 subtree from each candidate entry state and requires identical source-node
-boundaries. At most two consecutive edges are admitted; three, any output
-before a fallthrough, fallthrough to default, effectful input, and more than
-four effects per arm refuse. This 12-output chained program reaches the same
-47-step independent guest oracle on empty and binary stdin. The original
-unmasked program and guest runtime switching remain unsupported.
+boundaries. A further complete twelve-trip C recurrence extends that chain
+through a third nonempty edge into `default`, proving the direct default
+entry separately from all three carried C local states. Source-ordered
+additional cases extend it to the eight-distinct-case limit. The new bound
+is on checked case labels, not an arbitrary two-edge chain length: every
+carried state is replayed over each remaining real Clang subtree and the
+same final switch-local break. The real normative guest emits the independent
+masked twelve-byte oracle in 47 steps under both empty and binary stdin.
+A ninth distinct case, output before fallthrough, effectful input, an arm
+with more than four effects, or forged ancestry/spans/operators still refuses
+before guest publication. This proves finite compile-time C-state replay,
+not dynamic guest switching or the original unmasked byte stream.
 
 ### Source-checked ordered switch-arm effects
 

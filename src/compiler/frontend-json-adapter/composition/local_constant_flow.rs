@@ -38,6 +38,7 @@ use super::local_initialized_output::{
 use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 
 const MAX_LOCALS: usize = 8;
+const MAX_STATIC_SWITCH_CASES: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
 const MAX_NESTED_FOR_LOOPS: usize = 2;
@@ -1724,7 +1725,8 @@ impl<'node> Flow<'node> {
         // Replay each entry into a bounded chain independently: selecting
         // a preceding case carries its actual local state through every
         // subsequent label, while direct dispatch starts at switch entry.
-        // At most two consecutive fallthrough edges are source-proven.
+        // Bound source-state replay by the total admitted distinct labels.
+        // Each carried entry keeps its own local state and selected flag.
         let mut pending_fallthrough: Vec<(SwitchArmEffect<'node>, bool)> =
             Vec::new();
         let mut middle_default_effect = None;
@@ -1785,7 +1787,7 @@ impl<'node> Flow<'node> {
             let mut previous_label_end = previous_arm_end;
             let mut group_selected = false;
             loop {
-                if case_values.len() >= 8
+                if case_values.len() >= MAX_STATIC_SWITCH_CASES
                     || !clean(case)
                     || !span_within(&scope.span, &case.span)
                     || previous_label_end >= case.span.begin.byte
@@ -1905,7 +1907,7 @@ impl<'node> Flow<'node> {
                 selected_effect = Some(effect.clone());
             }
             if break_end.is_none() {
-                if next_fallthrough.len() >= 2 {
+                if next_fallthrough.len() >= MAX_STATIC_SWITCH_CASES {
                     return None;
                 }
                 next_fallthrough.push((effect.clone(), group_selected));
