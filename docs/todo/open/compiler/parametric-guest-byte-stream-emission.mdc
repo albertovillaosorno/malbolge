@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete C Fibonacci recurrence emitted two bytes
+  per selected two-level switch case, with an unsigned `y ^= 1U` state
+  update *between* the two outputs. Pinned Clang accepted the full source;
+  the normalized adapter initially refused its first declaration. The
+  repaired finite replay preserves that update before the second output
+  while discarding unselected effects. Complete assignment byte/column
+  endpoint checks reject a previously overlooked forged AST geometry.
+  An independent unsigned-C oracle and normative guest VM agree on twelve
+  masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under
+  EOF/binary stdin. Five unsupported C variants and 24 forged AST nodes
+  reject without publication. Dynamic guest state and the unmasked source
+  stream remain unsupported; P0 stays open.
+
 - On 2026-11-11 an additional complete Fibonacci C program enclosed
   both nested-switch case outputs inside braced `if/else` alternatives
   with branch-dependent compensation. All four switch selections and

@@ -31,6 +31,17 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+A bounded whole-C source-state replay also permits a checked unsigned
+assignment **between** two real `putchar` effects in a nested switch arm.
+Both outputs retain their source order and the second sees the updated local.
+Each unselected arm is proved independently and discarded. The complete
+`local_interleaved_switch_fibonacci.c` program reaches the normative guest
+VM with twelve independently computed recurrence bytes in 47 steps under
+both EOF and binary input. Five unsupported C changes and 24 forged
+assignment nodes reject before publication; full byte/column endpoint
+identity is mandatory. This is finite source-state evaluation, not runtime
+Malbolge locals or dynamic control flow.
+
 A separate **exact** pinned-Clang source shape is also executable:
 
 ```c

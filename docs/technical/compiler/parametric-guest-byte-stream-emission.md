@@ -25,6 +25,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Ordered C state writes between selected switch outputs (2026-11-11)
+
+The complete `local_interleaved_switch_fibonacci.c` program performs six
+bounded recurrence trips. Two levels of `switch` select four distinct arms;
+each chosen arm emits one source-proven `putchar`, changes the unsigned local
+`y` using `y ^= 1U`, then emits a second `putchar` from the changed value.
+That second expression cancels the local bit change, so ignoring the write
+would alter the emitted byte. The pinned Clang frontend accepted the whole
+source, but the JSON adapter initially refused the first declaration and
+published no guest because it forbade a local write after an output.
+
+The bounded switch replay now admits precisely checked unsigned assignments
+between ordered selected outputs, while retaining the two-output ceiling,
+source ancestry, case-local `break` and separation of unselected effects.
+Whole-assignment Clang spans must equal their left and right endpoint spans
+in both byte and column coordinates; independently forged assignment columns
+were previously accepted by the narrower geometry check. The independently
+computed unsigned-C oracle and normative Malbolge VM match all twelve bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and binary
+stdin. Five unsupported source mutations and 24 forged assignment ASTs
+refuse guest publication. General C runtime control, arbitrary guest state
+and the original unmasked Fibonacci byte stream remain unsupported.
+
 ### Paired effects in switch-local C conditionals (2026-11-11)
 
 The complete `local_conditional_dual_nested_switch_fibonacci.c`

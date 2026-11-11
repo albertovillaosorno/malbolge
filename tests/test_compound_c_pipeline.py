@@ -17959,5 +17959,174 @@ class CompoundCPipelineTests(unittest.TestCase):
                         self.assertFalse(guest.exists(), label)
 
 
+    def test_interleaved_switch_state_writes_reach_real_guest(self) -> None:
+        """Every selected nested C arm emits, updates state, and emits."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_interleaved_switch_fibonacci.c"
+        )
+        a = b = 1
+        expected = bytearray()
+        selected: set[tuple[int, int]] = set()
+        for i in range(6):
+            first = (a + b) & 255
+            x = ((first ^ 26) if first & 1 else first) & 31
+            a, b = b, first
+            second = (a + b) & 255
+            y = ((second ^ 26) if second & 1 else second) & 31
+            a, b = b, second
+            outer = i & 1
+            inner = second & 1
+            selected.add((outer, inner))
+            # Each chosen case compensates for both selectors. Its first
+            # putchar precedes the real C y ^= 1U write; the second uses
+            # that updated state and cancels the write before guest output.
+            first_output = x ^ (outer ^ outer)
+            y ^= 1
+            second_output = (y ^ 1) ^ (inner ^ inner)
+            expected.extend((first_output, second_output))
+        self.assertEqual(selected, {(0, 0), (0, 1), (1, 0), (1, 1)})
+        self.assertEqual(bytes(expected), bytes.fromhex(
+            "02191f08170f020d03101303"
+        ))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "interleaved-switch.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER), "--repository-tools",
+                    "--source-id", "tests/interleaved-switch-v1", "--capsule",
+                    "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_interleaved_switch_rejects_unproved_source_effects(self) -> None:
+        """Selected and unselected writes after I/O remain fail-closed."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_interleaved_switch_fibonacci.c"
+        ).read_text()
+        write = "                y ^= 1U;"
+        self.assertEqual(source.count(write), 4)
+        mutants = {
+            "selected-input": source.replace(
+                write, "                y ^= (unsigned)getchar();", 1
+            ),
+            "unselected-input": source[::-1].replace(
+                write[::-1], "                y ^= (unsigned)getchar();"[::-1], 1
+            )[::-1],
+            "protected-induction": source.replace(
+                write, "                i ^= 1U;", 1
+            ),
+            "undefined-divisor": source.replace(
+                write, "                y /= 0U;", 1
+            ),
+            "third-output": source.replace(
+                write, write + "\n                putchar((int)y);", 1
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, content in mutants.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(content, source)
+                    path = Path(scratch) / f"{label}.c"
+                    path.write_text(content)
+                    normalized = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/interleaved-invalid-{label}-v1", str(path),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest), "--capsule",
+                        ],
+                        input=normalized.stdout, capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_interleaved_switch_rejects_forged_assignment_nodes(self) -> None:
+        """Every post-output state update retains exact Clang ancestry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_interleaved_switch_fibonacci.c"
+        )
+        normalized = subprocess.run(
+            [
+                str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                "--resource-dir", str(RESOURCE), "--source-id",
+                "tests/interleaved-forgery-v1", str(source),
+            ],
+            capture_output=True, check=False, timeout=30,
+        )
+        self.assertEqual(normalized.returncode, 0, normalized.stderr)
+        original = json.loads(normalized.stdout)
+        updates = [
+            node for node in original["nodes"]
+            if node["kind"] == "compound-assignment-expression"
+            and node["operation"] == "^="
+        ]
+        self.assertEqual(len(updates), 4)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for update in updates:
+                for label in (
+                    "parent", "begin-byte", "begin-column", "end-byte",
+                    "end-column", "operator",
+                ):
+                    with self.subTest(update=update["id"], ast=label):
+                        forged = json.loads(normalized.stdout)
+                        node = forged["nodes"][update["id"] - 1]
+                        if label == "parent":
+                            node["parent"] = 2
+                        elif label == "operator":
+                            node["operation"] = "&&="
+                        else:
+                            endpoint, field = label.split("-")
+                            node["span"][endpoint][field] += (
+                                1 if endpoint == "begin" else -1
+                            )
+                        guest = Path(scratch) / (
+                            f"{update['id']}-{label}.malbolge"
+                        )
+                        refused = subprocess.run(
+                            [
+                                str(ADAPTER), "--layout-backend", str(LAYOUT),
+                                "--output", str(guest), "--capsule",
+                            ],
+                            input=json.dumps(forged).encode(),
+                            capture_output=True, check=False, timeout=30,
+                        )
+                        self.assertNotEqual(refused.returncode, 0, label)
+                        self.assertIn(b"Unsupported", refused.stderr, label)
+                        self.assertFalse(guest.exists(), label)
+
+
+
+
 if __name__ == "__main__":
     _ = unittest.main()

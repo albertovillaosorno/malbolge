@@ -150,7 +150,7 @@ impl<'node> Flow<'node> {
             || !source_name_span(left, name)
             || !assigned_local_reference(left, symbol)
             || !span_within(&assignment.span, &left.span)
-            || assignment.span.begin.byte != left.span.begin.byte
+            || assignment.span.begin != left.span.begin
         {
             return None;
         }
@@ -187,7 +187,7 @@ impl<'node> Flow<'node> {
         };
         if !span_within(&assignment.span, &value_source.span)
             || left.span.end.byte >= value_source.span.begin.byte
-            || value_source.span.end.byte != assignment.span.end.byte
+            || value_source.span.end != assignment.span.end
         {
             return None;
         }
@@ -1907,7 +1907,8 @@ impl<'node> Flow<'node> {
     /// Clang parents only the first statement below a case/default label;
     /// subsequent statements are direct children of the switch compound.
     /// Admit at most three additional effects, with at most two outputs.
-    /// Once output starts, only further checked output calls may follow.
+    /// After an output, allow a checked unsigned assignment before the
+    /// next output without discarding either effect or its source order.
     fn switch_arm_tail(
         &mut self,
         scope: &Node,
@@ -1943,8 +1944,15 @@ impl<'node> Flow<'node> {
             }
             if next.parent != scope.id
                 || next.span.begin.byte <= effect.end
-                || (effect.outputs.len() > 0 && next.kind != "call-expression")
-                || effect.outputs.len() >= MAX_SWITCH_ARM_OUTPUTS
+                || (!effect.outputs.is_empty()
+                    && !matches!(
+                        next.kind.as_str(),
+                        "call-expression"
+                            | "binary-expression"
+                            | "compound-assignment-expression"
+                    ))
+                || (effect.outputs.len() >= MAX_SWITCH_ARM_OUTPUTS
+                    && next.kind == "call-expression")
             {
                 return None;
             }
