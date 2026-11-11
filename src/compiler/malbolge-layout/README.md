@@ -59,9 +59,12 @@ the operand can reside in a skipped no-op cell
 whose value has already been XLAT2-encrypted. The source-memory shadow
 models those prior encryptions before checking `j`.
 
-For an ordinary initial relocation, the verifier requires the current `j`
-operand to be **at least the entire source length**, so D moves into
-loader-expanded memory. After a forward `i` jump, the verifier additionally
+For an ordinary initial relocation, the verifier requires D **after `j`
+increments it** to reach at least the entire source length. A source-backed
+`j` operand one less than that length is safe: its next D points to the
+first loader-expanded word. A smaller destination still refuses unless
+protected graphical scratch is strictly behind reached code. After a
+forward `i` jump, the verifier additionally
 accepts `j` reading an original or already-modified graphical source word
 strictly behind the reached C and moving D to another source cell strictly
 behind that same C. Subsequent data writes must remain behind their reached

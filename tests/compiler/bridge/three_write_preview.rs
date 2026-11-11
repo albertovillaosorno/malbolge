@@ -96,3 +96,28 @@ fn three_write_preview_matches_full_source_model() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn three_write_preview_admits_first_expanded_data_word() -> Result<(), String> {
+    let cells = pair_source_cells(current_profile())
+        .ok_or_else(|| String::from("missing current-profile encodings"))?;
+    let padding = 7;
+    let geometry = [padding, 2, 5, 14];
+    let operations = [LinearOpcode::CrazyData; 3];
+    let source_length = padding + 6 + 2 + 5 + 14;
+    assert_eq!(usize::from(cells[padding][1]) + 1, source_length);
+    compare_three_write_candidate(
+        &cells,
+        &mut BTreeMap::new(),
+        geometry,
+        operations,
+    )?;
+    let preview = preview_three_write_suffix(
+        &cells,
+        &mut BTreeMap::new(),
+        geometry,
+        operations,
+    );
+    assert!(preview.is_some(), "first expanded data word was pruned");
+    Ok(())
+}

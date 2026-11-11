@@ -1055,3 +1055,22 @@ This negative result covers only fresh source operands: backward or
 written-word revisits, alternate jump phases and expanded loader memory may
 still enable the original byte stream. The experiment is a test-time design
 constraint, not an accepted general-purpose synthesis algorithm.
+
+
+### First loader-expanded relocation word (2026-11-11)
+
+The three-write, four-write triple and four-write quad preview filters now
+compare the *post-`j`* D pointer with the complete source length. An operand
+of 33 increments to D=34, the first loader-expanded word of a 34-cell guest.
+Previously the previews rejected this safe boundary because the raw operand
+was smaller than 34; the independent linear-layout admission had the same
+overly strict guard and now checks the actual post-increment destination.
+
+A 34-cell four-write guest emits `3f 2c 12` under empty and binary stdin
+in the current-profile normative VM. The independent layout re-admits all
+source cells and four distinct expanded-memory writes at 36, 40, 47, 57.
+Both current and historical VMs check the boundary against a separate scalar
+loader-recurrence oracle. Growing the same source so relocation points into
+pending code still rejects. This work corrects a safe guest layout boundary;
+it does not compile the original unmasked twelve-byte C Fibonacci program
+or implement dynamic guest control.

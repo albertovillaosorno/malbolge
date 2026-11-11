@@ -1078,12 +1078,11 @@ fn derive_execution_positions(
             // source code separately, regardless of the operand's origin.
             let past_source_scratch = next < position
                 && (expanded_operand || data_pointer < position);
-            if !expanded_operand
-                && data_word < source.len()
-                && !past_source_scratch
-            {
-                return Err(LinearLayoutError::UnsafeDataPlacement);
-            }
+            // A j reads the operand and then increments D. The pointer
+            // *after* that increment, not the raw operand, must avoid
+            // pending source code (unless scratch is already behind C).
+            // In particular, operand == source.len() - 1 safely selects
+            // the first loader-expanded word at D == source.len().
             // A final j cannot affect output. Otherwise a relocation
             // within source is safe only behind the already executed C.
             if position != operations.len().saturating_sub(2)

@@ -246,3 +246,62 @@ fn state_space_admits_five_written_outputs() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn four_write_preview_admits_first_expanded_data_word() -> Result<(), String> {
+    let profile = current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing current-profile encodings"))?;
+    let padding = 7;
+    let relocated = usize::from(cells[padding][1]) + 1;
+    let writes = [LinearOpcode::CrazyData; 4];
+    let geometry = [padding, 2, 3, 5, 8];
+    let operations = four_write_triple_operations(geometry, writes, 0);
+    assert_eq!(
+        relocated,
+        operations.len(),
+        "first data word is post-source"
+    );
+    let expected = proposed_output_stream::<3>(&operations, &cells)
+        .ok_or_else(|| {
+            String::from("first expanded word refused by full model")
+        })?;
+    assert_eq!(expected, [63, 44, 18]);
+    assert_eq!(
+        preview_four_write_triple(
+            &cells,
+            &mut BTreeMap::new(),
+            geometry,
+            writes,
+            0,
+            expected,
+        ),
+        Some(expected),
+        "a relocation to the first expanded word is admissible",
+    );
+    assert!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .is_some(),
+        "first-expanded-word candidate requires independent VM proof",
+    );
+
+    let quad_geometry = [padding, 2, 3, 5, 7];
+    let quad_operations = four_write_quad_operations(quad_geometry, writes);
+    assert_eq!(relocated, quad_operations.len());
+    let quad_expected =
+        proposed_output_stream::<4>(&quad_operations, &cells)
+            .ok_or_else(|| String::from("first expanded quad word refused"))?;
+    assert_eq!(
+        preview_four_write_quad(
+            &cells,
+            &mut BTreeMap::new(),
+            FourWriteQuadProposal {
+                geometry: quad_geometry,
+                writes,
+                expected: quad_expected,
+            },
+        ),
+        Some(quad_expected),
+    );
+    Ok(())
+}

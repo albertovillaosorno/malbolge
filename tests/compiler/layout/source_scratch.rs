@@ -1256,16 +1256,30 @@ fn auto_padding_relocates_twice_using_known_source_after_input_scratch()
         Instruction(LinearOpcode::Halt),
     ]);
     for profile in [current_profile(), historical_profile()] {
-        // Without the two reached filler phases, the second j would point
-        // D into code that has not been executed and must be refused.
-        let mut premature = logical.clone();
-        *premature.get_mut(10).ok_or("missing second relocation")? =
+        // The earlier explicit second j reads source operand 98 and moves
+        // D to 99, exactly the first expanded word of the 99-cell guest.
+        // Requiring the raw operand to exceed source length incorrectly
+        // rejected this safe case. One extra source cell creates a genuine
+        // pending-code alias and must still be refused.
+        let mut boundary = logical.clone();
+        *boundary.get_mut(10).ok_or("missing second relocation")? =
             Instruction(LinearOpcode::RelocateDataPointer);
-        if encode_auto_padded_forward_layout(profile, &premature)
-            != Err(LinearLayoutError::UnsafeDataPlacement)
-        {
-            return Err(String::from("unsafe early second j was admitted"));
-        }
+        let just_safe = encode_auto_padded_forward_layout(profile, &boundary)
+            .map_err(|error| format!("boundary second j: {error:?}"))?;
+        assert_eq!(just_safe.operations().len(), 99);
+        assert_eq!(
+            just_safe.layout().data_pointer_positions().get(11),
+            Some(&99),
+        );
+        let mut invalid = boundary.clone();
+        invalid.insert(
+            invalid.len() - 1,
+            Instruction(LinearOpcode::NoOperation),
+        );
+        assert_eq!(
+            encode_auto_padded_forward_layout(profile, &invalid),
+            Err(LinearLayoutError::UnsafeDataPlacement),
+        );
         let artifact = encode_auto_padded_forward_layout(profile, &logical)
             .map_err(|error| format!("second source relocation: {error:?}"))?;
         verify_bidirectional_source_map(&artifact)?;
@@ -1998,6 +2012,101 @@ fn symbolic_expanded_jump_after_input_independent_arithmetic()
         verify_bidirectional_source_map(&artifact)?;
         verify_input_independent_expanded_guest(profile, artifact.layout())?;
         refuse_input_dependent_expanded_jump(profile, &logical, &explicit)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn relocation_to_first_expanded_word_preserves_guest_control()
+-> Result<(), String> {
+    // j at code position seven reads 33, then increments D to 34. This is
+    // exactly the first loader-expanded word of the 34-cell source.
+    let mut operations = vec![LinearOpcode::NoOperation; 7];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    operations.extend([LinearOpcode::NoOperation; 2]);
+    operations.push(LinearOpcode::CrazyData);
+    operations.extend([LinearOpcode::NoOperation; 3]);
+    operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    operations.extend([LinearOpcode::NoOperation; 5]);
+    operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    operations.extend([LinearOpcode::NoOperation; 8]);
+    operations.extend([
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    assert_eq!(operations.len(), 34);
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("first expanded layout: {error:?}"))?;
+        let source = layout.source();
+        assert_eq!(usize::from(source[7]) + 1, source.len());
+        let writes: Vec<usize> = layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .map(|&address| address as usize)
+            .collect();
+        assert_eq!(writes, [36, 40, 47, 57]);
+        // Separate scalar oracle: expand the full, immutable source tail
+        // and evaluate each of the four real crazy operations in order.
+        let mut memory: Vec<u32> =
+            source.iter().map(|&byte| u32::from(byte)).collect();
+        for index in memory.len()..=57 {
+            let next = malbolge::profile_crazy(
+                memory[index - 2],
+                memory[index - 1],
+                profile.word_trits(),
+            );
+            memory.push(next);
+        }
+        let mut accumulator = 0;
+        let mut expected = Vec::new();
+        for (index, &address) in writes.iter().enumerate() {
+            accumulator = malbolge::profile_crazy(
+                memory[address],
+                accumulator,
+                profile.word_trits(),
+            );
+            if index > 0 {
+                expected.push(accumulator as u8);
+            }
+        }
+        if profile.id() == current_profile().id() {
+            assert_eq!(expected, [63, 44, 18]);
+        }
+        for input in [Vec::new(), vec![255, 0, 128]] {
+            let mut vm = ProfileMachine::from_source(profile, source, input)
+                .map_err(|error| format!("expanded VM load: {error:?}"))?;
+            let finished = match vm.run(operations.len()) {
+                Ok(RunOutcome::Terminated { steps, .. }) => steps == 34,
+                _ => false,
+            };
+            assert!(finished);
+            assert_eq!(vm.output(), expected);
+            assert_eq!(vm.input_consumed(), 0);
+        }
+        let readmitted = admit_linear_layout(
+            profile,
+            &operations,
+            source,
+            LinearProfileIdentity {
+                id: profile.id(),
+                fingerprint: profile.fingerprint(),
+            },
+        )
+        .map_err(|error| format!("first expanded readmission: {error:?}"))?;
+        assert_eq!(readmitted, layout);
+
+        let mut overlap = operations.clone();
+        let halt = overlap.pop().ok_or("missing terminal halt")?;
+        overlap.extend([LinearOpcode::NoOperation; 3]);
+        overlap.push(halt);
+        // The same j then points inside pending source, before a real write.
+        assert_eq!(
+            encode_linear_layout(profile, &overlap),
+            Err(LinearLayoutError::UnsafeDataPlacement),
+        );
     }
     Ok(())
 }

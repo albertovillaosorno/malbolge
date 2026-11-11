@@ -1744,7 +1744,7 @@ fn preview_three_write_suffix(
         .get(source_length.checked_sub(1)?)?
         .get(5)?;
     let relocated = usize::from(*source_cells.get(padding)?.get(1)?);
-    if relocated < source_length
+    if relocated.saturating_add(1) < source_length
         || relocated.saturating_add(source_length) >= 4096
     {
         return None;
@@ -1907,7 +1907,7 @@ fn preview_four_write_triple(
         usize::saturating_add,
     );
     let relocated = usize::from(*source_cells.get(padding)?.get(1)?);
-    if relocated < source_length
+    if relocated.saturating_add(1) < source_length
         || relocated.saturating_add(source_length) >= 4096
         || deferred_output >= 3
     {
@@ -2067,7 +2067,7 @@ fn preview_four_write_quad(
         .copied()
         .fold(padding.saturating_add(10), usize::saturating_add);
     let relocated = usize::from(*source_cells.get(padding)?.get(1)?);
-    if relocated < source_length
+    if relocated.saturating_add(1) < source_length
         || relocated.saturating_add(source_length) >= 4096
     {
         return None;
