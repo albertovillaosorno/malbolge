@@ -96,6 +96,25 @@ C control selection, **not** runtime guest switch or input-dependent C
 state. The original unmasked Fibonacci output remains unsupported at
 layout, so P0 stays pending.
 
+### Shared C case/default output in full Fibonacci (2026-11-10)
+
+The entire twelve-step masked recurrence was rerun with two C switch label
+groups: `case 0U: case 2U:` sharing one output and `case 1U: default:`
+sharing the other. Pinned Clang nests `default` below its preceding
+case label; before the repair, the JSON adapter rejected the valid whole
+C source and published no guest. The closed projector now checks this
+final nested default's direct parent, complete shared extent, source
+order, effect-free label body, single pure output and switch-local break.
+The default must remain the last label. An earlier effect, earlier break,
+trailing case, or forged normalized tree still refuses. No general
+fallthrough or runtime guest switch is implied.
+
+All four switch destinations occur in the independent twelve-trip oracle.
+The normative VM emits `02 19 1f 08 17 0f 02 0d 03 10 13 03` in
+47 steps under empty and binary stdin. Three unsupported C mutations and
+six forged Clang AST variants refuse without publication. The original
+unmasked stream still fails at guest layout; P0 remains open.
+
 ### Grouped C switch labels in the complete recurrence (2026-11-10)
 
 The full twelve-step masked Fibonacci source was retried with ordinary

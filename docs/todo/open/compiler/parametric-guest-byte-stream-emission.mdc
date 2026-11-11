@@ -54,6 +54,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete masked twelve-step Fibonacci C switch
+  first refused when `case 1U: default:` shared one output body. Pinned
+  Clang nested the default under its case label. The checked projector
+  now proves one final nested default, the common output and break, and
+  the complete label ancestry and span. All four dispatch paths reach
+  the 47-step real guest oracle under empty/binary stdin. Three invalid
+  C sources and six forged Clang trees refuse; the original unmasked
+  byte stream and runtime guest branches remain unsupported. P0 stays
+  open.
+
 - On 2026-11-10 a complete masked Fibonacci C switch with adjacent
   `case 0U: case 2U:` labels first refused at normalized JSON admission.
   A closed source-ordered proof now handles Clang's nested empty case

@@ -161,6 +161,19 @@ def grouped_switch_fibonacci_source() -> str:
     return source
 
 
+def grouped_default_switch_fibonacci_source() -> str:
+    """Share the final C output body across case 1U and default."""
+    source = grouped_switch_fibonacci_source()
+    old = (
+        "        case 1U:\n"
+        "            putchar((int)((next ^ 0x1AU) & 31U));\n"
+        "            break;\n"
+        "        default:"
+    )
+    assert source.count(old) == 1
+    return source.replace(old, "        case 1U:\n        default:")
+
+
 def unbraced_masked_fibonacci_source() -> str:
     """Use ordinary unbraced if/else output arms in the full recurrence."""
     source = MASKED_FIBONACCI.read_text()
@@ -11611,6 +11624,150 @@ class CompoundCPipelineTests(unittest.TestCase):
                          "--output", str(guest), "--capsule"],
                         input=json.dumps(forged).encode(),
                         capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                    self.assertFalse(guest.exists(), label)
+
+    def test_grouped_switch_default_reaches_complete_fibonacci_guest(self) -> None:
+        """C case/default label sharing compiles to real guest effect parity."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        a, b = 1, 1
+        seen = set()
+        expected = bytearray()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            dispatch = next_value & 3
+            seen.add(dispatch)
+            expected.append(
+                next_value & 31 if dispatch in (0, 2)
+                else (next_value ^ 26) & 31
+            )
+            a, b = b, next_value
+        self.assertEqual(seen, {0, 1, 2, 3})
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "grouped-default.c"
+            source.write_text(grouped_default_switch_fibonacci_source())
+            guest = Path(scratch) / "grouped-default.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/grouped-default-v1", "--capsule",
+                 "--output", str(guest), str(source)],
+                check=False, capture_output=True, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data, check=False, capture_output=True, timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, bytes(expected))
+                self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_grouped_switch_default_rejects_unproved_fallthrough(self) -> None:
+        """A nested default must be an empty-label group, not lost effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = grouped_default_switch_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            bad_sources = {
+                "effect-before-default": original.replace(
+                    "        case 1U:\n        default:",
+                    "        case 1U:\n            putchar(65);\n        default:",
+                ),
+                "break-before-default": original.replace(
+                    "        case 1U:\n        default:",
+                    "        case 1U:\n            break;\n        default:",
+                ),
+                "trailing-case": original.replace(
+                    "            break;\n        }",
+                    "            break;\n        case 3U:\n"
+                    "            putchar(65);\n            break;\n        }",
+                ),
+            }
+            for label, body in bad_sources.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(body, original)
+                    source = Path(scratch) / f"bad-{label}.c"
+                    source.write_text(body)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/grouped-default-bad-{label}-v1", str(source)],
+                        check=False, capture_output=True, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = Path(scratch) / f"bad-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                         "--source-id", f"tests/grouped-default-bad-{label}-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        check=False, capture_output=True, timeout=30,
+                    )
+                    self.assertNotEqual(compiled.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "grouped-default-proof.c"
+            source.write_text(original)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/grouped-default-proof-v1", str(source)],
+                check=False, capture_output=True, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(normalized.stdout))["nodes"],
+            )
+            default = next(n for n in nodes if n["kind"] == "default-statement")
+            last_case = next(
+                n for n in nodes
+                if n["kind"] == "case-statement" and n["id"] == default["parent"]
+            )
+            self.assertEqual(default["parent"], last_case["id"])
+            for label in (
+                "default-parent", "default-extent", "default-metadata",
+                "default-call-parent", "last-case-extent", "last-break-parent",
+            ):
+                with self.subTest(forged=label):
+                    forged = cast(dict[str, object], json.loads(normalized.stdout))
+                    forged_nodes = cast(list[dict[str, object]], forged["nodes"])
+                    changed_default = forged_nodes[cast(int, default["id"]) - 1]
+                    changed_case = forged_nodes[cast(int, last_case["id"]) - 1]
+                    if label == "default-parent":
+                        changed_default["parent"] = changed_case["parent"]
+                    elif label == "default-extent":
+                        span = cast(dict[str, dict[str, int]], changed_default["span"])
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    elif label == "default-metadata":
+                        changed_default["operation"] = "++"
+                    elif label == "last-case-extent":
+                        span = cast(dict[str, dict[str, int]], changed_case["span"])
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    elif label == "default-call-parent":
+                        call = next(
+                            n for n in forged_nodes
+                            if n["kind"] == "call-expression"
+                            and n["parent"] == default["id"]
+                        )
+                        call["parent"] = last_case["id"]
+                    else:
+                        final_break = [
+                            n for n in forged_nodes if n["kind"] == "break-statement"
+                        ][-1]
+                        final_break["parent"] = last_case["id"]
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        check=False, capture_output=True, timeout=30,
                     )
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertRegex(refused.stderr, rb"Unsupported|Malformed")

@@ -1582,7 +1582,7 @@ impl<'node> Flow<'node> {
     }
 
     /// Admit up to eight distinct source-ordered case labels, including
-    /// nested empty-label groups, and one final default. Each group must
+    /// nested empty-label groups and a grouped final default. Each group must
     /// prove one pure output and its own switch-local break; only the
     /// selected effect escapes into the enclosing C loop.
     #[expect(
@@ -1632,7 +1632,12 @@ impl<'node> Flow<'node> {
         let mut previous_arm_end = scope.span.begin.byte;
         let mut case_values = Vec::new();
         let mut selected_output = None;
+        let mut grouped_default_output = None;
         while self.peek()?.kind == "case-statement" {
+            // A default nested below a case is the final switch label.
+            if grouped_default_output.is_some() {
+                return None;
+            }
             let mut case = self.take(scope.id, "case-statement")?;
             let outer_case_end = &case.span.end;
             let mut previous_label_end = previous_arm_end;
@@ -1656,7 +1661,11 @@ impl<'node> Flow<'node> {
                         != Some(case_value.to_string().as_str())
                     || !span_within(&case.span, &constant.span)
                     || constant.span != label.span
-                    || constant.span.begin.byte.checked_sub(case.span.begin.byte)
+                    || constant
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(case.span.begin.byte)
                         != Some(5)
                     || constant
                         .span
@@ -1689,7 +1698,31 @@ impl<'node> Flow<'node> {
                 }
                 case = nested;
             }
-            let output = checked_call(self, case, previous_label_end)?;
+            // Clang also nests a final `default` below a preceding empty
+            // case label. Both dispatch destinations share the same call.
+            let output = if self.peek().is_some_and(|node| {
+                node.kind == "default-statement" && node.parent == case.id
+            }) {
+                let default = self.take(case.id, "default-statement")?;
+                if !clean(default)
+                    || !span_within(&case.span, &default.span)
+                    || default.span.end != *outer_case_end
+                    || previous_label_end >= default.span.begin.byte
+                {
+                    return None;
+                }
+                let output =
+                    checked_call(self, default, default.span.begin.byte)?;
+                if output.call.span.end != default.span.end
+                    || output.call.span.begin.line <= default.span.begin.line
+                {
+                    return None;
+                }
+                grouped_default_output = Some(output);
+                output
+            } else {
+                checked_call(self, case, previous_label_end)?
+            };
             if output.call.span.end != *outer_case_end {
                 return None;
             }
@@ -1701,21 +1734,26 @@ impl<'node> Flow<'node> {
         if case_values.is_empty() {
             return None;
         }
-        let default = self.take(scope.id, "default-statement")?;
-        if !clean(default)
-            || !span_within(&scope.span, &default.span)
-            || previous_arm_end >= default.span.begin.byte
+        let (default_output, last_break) = if let Some(output) =
+            grouped_default_output
         {
-            return None;
-        }
-        let default_output =
-            checked_call(self, default, default.span.begin.byte)?;
-        if default_output.call.span.end != default.span.end
-            || default_output.call.span.begin.line <= default.span.begin.line
-        {
-            return None;
-        }
-        let last_break = self.switch_break(scope, default.span.end.byte)?;
+            (output, previous_arm_end)
+        } else {
+            let default = self.take(scope.id, "default-statement")?;
+            if !clean(default)
+                || !span_within(&scope.span, &default.span)
+                || previous_arm_end >= default.span.begin.byte
+            {
+                return None;
+            }
+            let output = checked_call(self, default, default.span.begin.byte)?;
+            if output.call.span.end != default.span.end
+                || output.call.span.begin.line <= default.span.begin.line
+            {
+                return None;
+            }
+            (output, self.switch_break(scope, default.span.end.byte)?)
+        };
         if last_break >= scope.span.end.byte
             || self
                 .peek()

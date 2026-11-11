@@ -825,6 +825,18 @@ original unmasked twelve-byte output is still unsupported at layout.
 
 ### Source-checked `switch` with one case and default
 
+The complete masked twelve-step Fibonacci C source additionally admits
+`case 1U: default:` as the final empty-label group, sharing one source-
+proved pure output and switch-local break. Pinned Clang nests `default`
+under its preceding case, and the proof requires its exact parent, source
+extent, ordering and trailing break. Together with `case 0U: case 2U:`,
+the full source exercises all four dispatch destinations and emits the
+independent twelve-byte oracle in 47 normative guest steps under EOF
+and binary stdin. Three valid but unsupported effectful/misordered C
+mutations and six forged AST variants refuse without guest publication.
+This does not admit general fallthrough or dynamic guest switching; the
+original unmasked byte stream remains unsupported at layout.
+
 A complete masked twelve-step Fibonacci C source also shares a single
 output arm between consecutive `case 0U: case 2U:` labels. Pinned Clang
 nests the label nodes, which now admit a checked common call and switch-local
