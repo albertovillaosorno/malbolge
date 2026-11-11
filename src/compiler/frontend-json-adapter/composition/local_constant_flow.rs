@@ -863,7 +863,7 @@ impl<'node> Flow<'node> {
         let mut last_end = body.span.begin.byte;
         let mut writes = 0;
         while let Some(node) = self.peek() {
-            // One direct `if` or `for` is the whole unbraced `do` body.
+            // A direct control effect is the whole unbraced `do` body.
             // The trailing condition is not another body effect.
             if node.span.begin.byte >= body.span.end.byte
                 || (body.kind == "do-statement" && writes != 0)
@@ -1453,8 +1453,8 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        // Clang directly parents an unbraced nested control statement
-        // to its outer `for`, without inventing a compound scope. The
+        // Clang directly parents an unbraced nested control or switch
+        // statement to its outer `for`, without inventing a scope. The
         // child must fill the entire remainder of the outer statement.
         let unbraced_control = matches!(
             self.peek()?.kind.as_str(),
@@ -1462,6 +1462,7 @@ impl<'node> Flow<'node> {
                 | "while-statement"
                 | "do-statement"
                 | "if-statement"
+                | "switch-statement"
         );
         let loop_body = if unbraced_control {
             statement
@@ -1625,13 +1626,14 @@ impl<'node> Flow<'node> {
         for iteration in 0..=MAX_STATIC_LOOP_ITERATIONS {
             self.position = condition_start;
             let (continue_loop, condition) = self.condition(statement)?;
-            // Clang parents an unbraced control arm, nested for/do loop
+            // Clang parents an unbraced control arm, switch, nested loop
             // or unary step directly to while, without a synthetic scope.
             let unbraced_effect = matches!(
                 self.peek()?.kind.as_str(),
                 "if-statement"
                     | "for-statement"
                     | "do-statement"
+                    | "switch-statement"
                     | "unary-expression"
             );
             let first_body_byte = self.peek()?.span.begin.byte;
@@ -1719,11 +1721,11 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        // Clang parents an unbraced `if` or `for` directly to `do`,
-        // followed by its condition. Never invent a compound scope.
+        // Clang parents an unbraced `if`, `for` or `switch` directly to
+        // `do`, followed by its condition. Never invent a compound scope.
         let unbraced_control = matches!(
             self.peek()?.kind.as_str(),
-            "if-statement" | "for-statement"
+            "if-statement" | "for-statement" | "switch-statement"
         );
         let first_body_byte = self.peek()?.span.begin.byte;
         let direct_body_end = self.peek()?.span.end.byte;

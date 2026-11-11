@@ -16847,5 +16847,197 @@ class CompoundCPipelineTests(unittest.TestCase):
 
 
 
+    def test_unbraced_switch_loops_complete_fibonacci_guest(self) -> None:
+        """Direct for/while/do switch bodies execute proven C effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        a = b = 1
+        oracle = bytearray()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            oracle.append((next_value ^ ((next_value & 1) * 26)) & 31)
+            a, b = b, next_value
+        self.assertEqual(b, 121)
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for kind in ("for", "while", "do"):
+                with self.subTest(loop=kind):
+                    source = (
+                        ROOT / "tests/compiler/c-frontend/accepted/"
+                        f"local_unbraced_{kind}_switch_fibonacci.c"
+                    )
+                    guest = Path(scratch) / f"{kind}-switch.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable, "-B", str(DRIVER),
+                            "--repository-tools", "--source-id",
+                            f"tests/unbraced-{kind}-switch-fibonacci-v1",
+                            "--capsule", "--output", str(guest), str(source),
+                        ],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((0, 255, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"],
+                            input=supplied, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, oracle)
+                        self.assertEqual(
+                            executed.stderr, b"malbolge-steps-v1:47\n"
+                        )
+
+    def test_unbraced_switch_loop_rejects_unproved_source(self) -> None:
+        """Unsupported source mutations cannot publish a guest artifact."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_dir = ROOT / "tests/compiler/c-frontend/accepted"
+        original = (
+            source_dir / "local_unbraced_for_switch_fibonacci.c"
+        ).read_text()
+        cases = {
+            "counter-write": original.replace(
+                "            a = b;", "            i = i + 1U;", 1
+            ),
+            "input": original.replace(
+                "next = (a + b) & 255U;",
+                "next = (unsigned)getchar();", 1,
+            ),
+            "effectful-selector": original.replace(
+                "switch (i & 1U)", "switch (i++ & 1U)", 1
+            ),
+            "unbounded": original.replace("i < 12U", "i < 255U", 1),
+            "output-then-write": original.replace(
+                "            break;",
+                "            next ^= 1U;\n            break;", 1,
+            ),
+            "missing-case-break": original.replace(
+                "            break;", "", 1
+            ),
+        }
+        do_source = (
+            source_dir / "local_unbraced_do_switch_fibonacci.c"
+        ).read_text()
+        cases["nonterminating-do"] = do_source.replace(
+            "while (b != 121U);", "while (b != 254U);", 1
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in cases.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(contents, original)
+                    path = Path(scratch) / f"invalid-{label}.c"
+                    path.write_text(contents)
+                    normalized = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/unbraced-switch-invalid-{label}-v1", str(path),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest), "--capsule",
+                        ],
+                        input=normalized.stdout, capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_unbraced_switch_loop_rejects_forged_ast(self) -> None:
+        """Do not invent an implicit block or alter source-bound switch spans."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_dir = ROOT / "tests/compiler/c-frontend/accepted"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for kind in ("for", "do"):
+                with self.subTest(loop=kind):
+                    source = (
+                        source_dir / f"local_unbraced_{kind}_switch_fibonacci.c"
+                    )
+                    normalized = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/unbraced-switch-forgery-{kind}-v1",
+                            str(source),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    original = json.loads(normalized.stdout)
+                    nodes = original["nodes"]
+                    outer = next(n for n in nodes if n["kind"] == f"{kind}-statement")
+                    switch = next(n for n in nodes if n["kind"] == "switch-statement")
+                    self.assertEqual(switch["parent"], outer["id"])
+                    for label in (
+                        "switch-parent", "switch-end-byte", "switch-end-column",
+                        "outer-end-byte", "outer-end-column", "scope-parent",
+                        "case-parent", "break-parent", "switch-operation",
+                    ):
+                        with self.subTest(ast=label):
+                            forged = json.loads(normalized.stdout)
+                            cloned = forged["nodes"]
+                            switch_node = cloned[switch["id"] - 1]
+                            outer_node = cloned[outer["id"] - 1]
+                            if label == "switch-parent":
+                                switch_node["parent"] = 2
+                            elif label.startswith("switch-end-"):
+                                property_name = label.removeprefix("switch-end-")
+                                switch_node["span"]["end"][property_name] -= 1
+                            elif label.startswith("outer-end-"):
+                                property_name = label.removeprefix("outer-end-")
+                                outer_node["span"]["end"][property_name] -= 1
+                            elif label == "scope-parent":
+                                scope = next(
+                                    n for n in cloned
+                                    if n["kind"] == "compound-statement"
+                                    and n["parent"] == switch["id"]
+                                )
+                                scope["parent"] = outer["id"]
+                            elif label == "case-parent":
+                                case = next(
+                                    n for n in cloned
+                                    if n["kind"] == "case-statement"
+                                )
+                                case["parent"] = outer["id"]
+                            elif label == "break-parent":
+                                switch_scope = next(
+                                    n for n in cloned
+                                    if n["kind"] == "compound-statement"
+                                    and n["parent"] == switch["id"]
+                                )
+                                item = next(
+                                    n for n in cloned
+                                    if n["kind"] == "break-statement"
+                                    and n["parent"] == switch_scope["id"]
+                                )
+                                item["parent"] = outer["id"]
+                            else:
+                                switch_node["operation"] = "!"
+                            guest = Path(scratch) / f"{kind}-{label}.malbolge"
+                            refused = subprocess.run(
+                                [
+                                    str(ADAPTER), "--layout-backend", str(LAYOUT),
+                                    "--output", str(guest), "--capsule",
+                                ],
+                                input=json.dumps(forged).encode(),
+                                capture_output=True, check=False, timeout=30,
+                            )
+                            self.assertNotEqual(refused.returncode, 0, label)
+                            self.assertIn(b"Unsupported", refused.stderr, label)
+                            self.assertFalse(guest.exists(), label)
+
+
+
 if __name__ == "__main__":
     _ = unittest.main()

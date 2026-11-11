@@ -132,6 +132,21 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Unbraced switch as a bounded loop body
+
+A complete twelve-step Fibonacci C program puts a `switch` directly under a
+source-proven `for` without adding synthetic braces. Separate complete programs
+use that same source-ordered switch as the sole body of a `while` or `do/while`.
+Each case writes a computed byte and advances unsigned C recurrence state;
+`break` exits only the switch, not the surrounding loop. The adapter
+checks Clang's direct parent/child relationship, exact endpoints, and every
+selected switch arm before rechecking the surrounding loop condition.
+An independent unsigned-C oracle yields the twelve masked bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`; the normative guest emits them in
+47 steps under EOF or binary stdin. Unsupported source mutations and forged
+Clang ancestry/endpoints refuse without publishing a guest. No runtime C loop,
+general switch nesting or unmasked byte-stream synthesis is claimed.
+
 ### Direct unbraced `do` inside a source-proven `for`
 
 An unbraced do body of a six-trip bounded for emits two branch-selected

@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 three complete Fibonacci C programs put a `switch`
+  directly under a bounded `for`, `while`, or `do/while`, without inventing
+  a compound scope. The pinned Clang frontend accepted the sources but the
+  JSON projector first refused the direct switch child. The corrected
+  source-state replay checks parentage, exact endpoints, every selected
+  arm and switch-local `break`, retaining the enclosing loop state. An
+  independent unsigned-C oracle and normative guest VM agree on twelve
+  masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps
+  under EOF/binary stdin. Seven unsupported source changes and eighteen
+  AST ancestry/span forgeries refuse without publishing guest code.
+  This is compile-time bounded replay; original unmasked guest layout,
+  general runtime C loops and nested switch control remain unsupported.
+
 - On 2026-11-11 a complete twelve-byte Fibonacci C source used an
   unbraced stateful `while (phase < i)` as the entire body of a six-trip
   `for` with changing `i` and two inner outputs per outer iteration.
