@@ -54,6 +54,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete twelve-trip masked Fibonacci C source first
+  refused a `for` bound read from a previously initialized unsigned local.
+  The source-proven induction projector now rechecks the same pure bound
+  subtree after each loop body and increment. A second complete source
+  increases its bound from 3 to 6 on the first three trips, demonstrating
+  real C condition re-evaluation rather than one frozen compile-time limit.
+  The real normative guest emits twelve independent masked Fibonacci bytes
+  in 47 steps for the constant local and six bytes in 97 steps for the
+  changing local, under both EOF and binary stdin. Five invalid source
+  variants and six forged ASTs refuse without artifact publication. This
+  remains bounded C-state replay, not general runtime C loops or unmasked
+  byte-stream layout; P0 stays open.
+## Evidence
+
 - On 2026-11-10 a complete masked Fibonacci C program used
   `a = 1U, b = a;` as one dependent comma statement in the function body.
   Pinned Clang accepted it, but the JSON adapter initially refused it.

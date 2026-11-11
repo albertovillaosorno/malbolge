@@ -73,6 +73,27 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Re-evaluated source-local `for` bound (2026-11-11)
+
+The first complete masked Fibonacci C source used `unsigned limit = 12U;`
+and `for (unsigned i = 0U; i < limit; ++i)`. It initially refused at
+normalized JSON admission, without publishing guest code, because the
+closed induction projector required a literal bound. The repaired proof
+accepts a pure unsigned expression bound, preserving the exact pinned-Clang
+comparison, source token geometry and bound subtree. It re-evaluates that
+subtree after every body and induction update, so writes to source-local
+bounds change the next condition as required by C. Unprovable effects,
+overwide bounds, and executions exceeding twelve trips still fail closed.
+
+The full source emits an independently calculated twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 real normative VM steps.
+A second full C source starts `limit` at 3 and increments it for the first
+three trips; the independent six-byte oracle `02 19 1f 08 17 0f` reaches
+the actual Malbolge VM in 97 steps. Both accept EOF and binary stdin.
+Five unsupported C variants and six forged AST mutations refuse without
+a guest artifact. The original unmasked output stream is still blocked
+by the layout backend and dynamic guest loops remain unsupported.
+
 ### Dependent comma initialization in a function body (2026-11-10)
 
 The complete masked Fibonacci source now initializes two zeroed locals with

@@ -1195,7 +1195,14 @@ impl<'node> Flow<'node> {
         let comparison = self.take(statement.id, "binary-expression")?;
         let load = self.take(comparison.id, "cast-expression")?;
         let read = self.take(load.id, "declaration-reference-expression")?;
-        let (bound, bound_node) = self.loop_literal(comparison.id)?;
+        // The bound may be a source-proven pure unsigned expression, not
+        // only a literal. Its value is re-read after every body/update: C
+        // evaluates a `for` condition on every trip, including when its
+        // bound is another local modified by the body.
+        let bound_start = self.position;
+        let (initial_bound, bound_node) = self.expression(comparison.id, 0)?;
+        let mut bound = u8::try_from(initial_bound).ok()?;
+        let bound_end = self.position;
         if !typed_bounded_loop_comparison(comparison, load, bound_node)
             || (comparison.operation.as_deref() == Some("<")
                 && start > MAX_STATIC_LOOP_ITERATIONS)
@@ -1390,16 +1397,16 @@ impl<'node> Flow<'node> {
         let body_start = self.position;
         self.loop_counters.push(symbol);
         let mut body_end = None;
-        let continues = |value: u8| {
+        let continues = |value: u8, limit: u8| {
             if not_equal {
-                value != bound
+                value != limit
             } else if descending {
-                value > bound || (inclusive && value == bound)
+                value > limit || (inclusive && value == limit)
             } else {
-                value < bound || (inclusive && value == bound)
+                value < limit || (inclusive && value == limit)
             }
         };
-        if !continues(start) {
+        if !continues(start, bound) {
             // Even a nonexecuted for body must be a complete, admissible
             // source subtree. No speculative state or output may escape.
             let starting_locals = self.locals.clone();
@@ -1414,7 +1421,7 @@ impl<'node> Flow<'node> {
         }
         let mut counter_value = start;
         let mut trips = 0;
-        while continues(counter_value) {
+        while continues(counter_value, bound) {
             if trips >= MAX_STATIC_LOOP_ITERATIONS
                 || (not_equal
                     && ((descending && counter_value < bound)
@@ -1454,6 +1461,15 @@ impl<'node> Flow<'node> {
             current_counter.value = Some(u32::from(counter_value));
             current_counter.source = increment;
             trips = trips.checked_add(1)?;
+            // Recheck the *same* complete Clang bound subtree with the
+            // updated local environment, refusing changed ancestry or an
+            // unrepresentable bound before the next comparison.
+            self.position = bound_start;
+            let (next_bound, next_node) = self.expression(comparison.id, 0)?;
+            if self.position != bound_end || next_node.span != bound_node.span {
+                return None;
+            }
+            bound = u8::try_from(next_bound).ok()?;
         }
         self.position = body_end?;
         self.locals.truncate(outer_len);

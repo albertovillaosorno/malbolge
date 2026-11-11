@@ -132,6 +132,23 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Rechecked unsigned-local `for` limits in complete C programs
+
+A complete masked twelve-step Fibonacci source first refused a `for` whose
+upper bound was stored in an unsigned local instead of an inline literal.
+The checked induction projector now evaluates a pure source-backed bound
+expression through the normal typed unsigned expression proof and **replays
+that same Clang subtree after each body and induction update**, because C
+re-evaluates the condition each trip. A second whole C source grows `limit`
+from 3 to 6 across the first three iterations; freezing it at entry would
+emit only three bytes. The normative guest instead emits the six-byte prefix
+`02 19 1f 08 17 0f` in 97 steps, while the unchanged twelve-trip local
+bound emits the independent twelve-byte oracle in 47 steps. Both sources
+were verified under EOF and binary stdin. Effectful bounds, out-of-range
+bounds, unbounded growth, forged references/types/spans and incomplete ASTs
+refuse before guest publication. This is compile-time bounded C-state
+projection, not dynamic Malbolge control flow or arbitrary guest I/O.
+
 ### Source-checked middle `default` in a complete C switch
 
 A full twelve-iteration masked Fibonacci source now places `default`

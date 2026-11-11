@@ -56,6 +56,9 @@ MASKED_FIBONACCI = (
     ROOT / "tests/compiler/c-frontend/accepted/"
     "local_masked_fibonacci_branch_stream.c"
 )
+LOCAL_BOUND_FIBONACCI = (
+    ROOT / "tests/compiler/c-frontend/accepted/local_bound_fibonacci.c"
+)
 WIDE_STREAM = (
     ROOT / "tests/compiler/c-frontend/accepted/local_loop_wide_branch_stream.c"
 )
@@ -1099,6 +1102,168 @@ class CompoundCPipelineTests(unittest.TestCase):
                     )
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_source_local_for_bound_rechecks_complete_guest(self) -> None:
+        """A checked for bound reflects source-local writes each trip."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = LOCAL_BOUND_FIBONACCI.read_text()
+        self.assertEqual(original.count("unsigned limit = 12U;"), 1)
+        self.assertEqual(original.count("        a = b;"), 1)
+        moving = original.replace(
+            "unsigned limit = 12U;", "unsigned limit = 3U;"
+        ).replace(
+            "        a = b;",
+            "        if (i < 3U) {\n"
+            "            limit += 1U;\n"
+            "        }\n"
+            "        a = b;",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            for label, source_text, moving_bound in (
+                ("local", original, False),
+                ("moving", moving, True),
+            ):
+                with self.subTest(program=label):
+                    source = Path(scratch) / f"{label}-bound.c"
+                    source.write_text(source_text)
+                    guest = Path(scratch) / f"{label}-bound.malbolge"
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--capsule", "--source-id",
+                         f"tests/{label}-bound-fibonacci-v1", "--output",
+                         str(guest), str(source)],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    # Independent unsigned-C recurrence and mutable bound.
+                    a, b, i = 1, 1, 0
+                    limit = 3 if moving_bound else 12
+                    expected = bytearray()
+                    while i < limit:
+                        following = (a + b) & 255
+                        expected.append(
+                            following & 31 if following % 2 == 0
+                            else (following ^ 26) & 31
+                        )
+                        if moving_bound and i < 3:
+                            limit += 1
+                        a, b = b, following
+                        i += 1
+                        self.assertLessEqual(i, 12)
+                    self.assertEqual(len(expected), 6 if moving_bound else 12)
+                    for supplied in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"], input=supplied,
+                            capture_output=True, check=False, timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0,
+                                         executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertEqual(
+                            executed.stderr,
+                            b"malbolge-steps-v1:97\n" if moving_bound
+                            else b"malbolge-steps-v1:47\n",
+                        )
+
+    def test_source_local_for_bound_rejects_unproved_effects(self) -> None:
+        """Effectful or forged local bounds cannot publish a guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = LOCAL_BOUND_FIBONACCI.read_text()
+        guard = "i < limit; ++i"
+        self.assertEqual(original.count(guard), 1)
+        mutations = {
+            "postfix-bound": original.replace(guard, "i < limit++; ++i"),
+            "assignment-bound": original.replace(
+                guard, "i < (limit = 12U); ++i"
+            ),
+            "input-bound": original.replace(
+                guard, "i < (unsigned)getchar(); ++i"
+            ),
+            "too-wide-bound": original.replace(
+                "unsigned limit = 12U;", "unsigned limit = 300U;"
+            ),
+            "nonterminating-bound": original.replace(
+                "unsigned limit = 12U;", "unsigned limit = 3U;"
+            ).replace("        a = b;", "        limit += 1U;\n        a = b;"),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            for label, text in mutations.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-bound-{label}.c"
+                    source.write_text(text)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/invalid-bound-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0,
+                                     frontend.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)], input=frontend.stdout,
+                        capture_output=True, check=False, timeout=50,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "local-bound-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/local-bound-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]],
+                         json.loads(frontend.stdout)["nodes"])
+            references = [n for n in nodes
+                          if n["kind"] == "declaration-reference-expression"
+                          and str(n.get("reference", "")).startswith("limit@")]
+            self.assertEqual(len(references), 1)
+            read_id = cast(int, references[0]["id"])
+            cast_id = cast(int, references[0]["parent"])
+            for label in (
+                "bound-reference", "bound-parent", "cast-type",
+                "cast-operation", "bound-end-column", "cast-end-column",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object],
+                                  json.loads(frontend.stdout))
+                    altered = cast(list[dict[str, object]], forged["nodes"])
+                    read = altered[read_id - 1]
+                    conversion = altered[cast_id - 1]
+                    if label == "bound-reference":
+                        read["reference"] = "other@99999"
+                    elif label == "bound-parent":
+                        read["parent"] = 2
+                    elif label == "cast-type":
+                        conversion["type"] = "i32"
+                    elif label == "cast-operation":
+                        conversion["operation"] = "integral-cast"
+                    elif label == "bound-end-column":
+                        cast(dict[str, dict[str, int]],
+                             read["span"])["end"]["column"] += 1
+                    else:
+                        cast(dict[str, dict[str, int]],
+                             conversion["span"])["end"]["column"] += 1
+                    guest = Path(scratch) / f"forged-bound-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
                     self.assertFalse(guest.exists(), label)
 
     def test_root_lexical_shadow_replays_complete_fibonacci_guest(self) -> None:
