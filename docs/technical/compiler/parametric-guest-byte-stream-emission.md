@@ -25,6 +25,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Bounded C `do/while` nested in a stateful `for` (2026-11-11)
+
+A complete twelve-iteration Fibonacci C source now computes its next
+unsigned term in a two-trip, mandatory-first `do/while` directly inside
+an enclosing bounded `for`. The pinned Clang frontend accepted the full
+program, but the JSON adapter originally rejected the inner loop before
+guest publication. The bounded source-state replay now admits this inner
+form while preserving the protected outer induction counter, source order,
+lexical local lifetimes and the do-loop's post-body predicate.
+
+Independent source variants select `continue` during the first inner trip
+and `break` on the second trip. The first still evaluates the trailing
+condition; the second exits only the inner loop. All three complete
+compiled C programs emit `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47
+real normative VM steps under EOF and binary stdin, matching a separately
+computed unsigned-C oracle. Five unsupported C variants and eight forged
+Clang trees refuse before publication; a regression additionally requires
+the closing brace's same-line byte and column offsets to agree.
+
+This is finite compile-time source-state projection, not dynamic guest
+C control flow. Nested do/while inside another while/do remains refused.
+The original unmasked twelve-byte Fibonacci stream still fails layout;
+general synthesis and runtime C state remain P0 work.
+
 ### Bounded C `while` nested in a stateful `for` (2026-11-11)
 
 A complete twelve-iteration Fibonacci C source now computes each recurrence

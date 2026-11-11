@@ -1224,6 +1224,22 @@ and structural typed/ternary admission but is rejected by the closed
 witnessed. This is neither a general stream backend nor runtime C state.
 
 ### Source-checked `while` inside a complete `for` recurrence
+### Source-checked `do/while` inside a complete `for` recurrence
+
+`local_nested_for_do_while_fibonacci.c` computes each next Fibonacci value
+using a mandatory-first-trip, two-trip `do/while` nested in a bounded `for`.
+The inner body updates unsigned locals and its trailing pure condition is
+checked after each trip. Complete source variants use an inner `continue`
+that still checks the trailing predicate, or an inner `break` that terminates
+only the `do/while`, not the enclosing `for`. All three compiled guests
+emit independent masked Fibonacci oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative VM steps under
+EOF and binary stdin. Source mutations and forged AST ancestry refuse
+without publication, including an inconsistent closing brace byte/column.
+Nested `do/while` remains disallowed inside another `while` or `do/while`;
+loops are finite compile-time source-state replay, not guest runtime control.
+The original unmasked twelve-byte stream still lacks a guest layout.
+
 
 `local_nested_for_while_fibonacci.c` calculates each next Fibonacci value
 using a two-trip source-local `while` inside a twelve-trip `for`. Its outer

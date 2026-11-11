@@ -15252,5 +15252,208 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertFalse(guest.exists(), label)
 
+
+    def test_nested_for_do_while_reaches_real_guest(self) -> None:
+        """A source-backed inner do checks its predicate after each trip."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_nested_for_do_while_fibonacci.c"
+        ).read_text()
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            phase, next_value = 0, 0
+            while True:
+                next_value = previous + current if phase == 0 else next_value & 255
+                phase += 1
+                if phase >= 2:
+                    break
+            expected.append(
+                (next_value ^ 26) & 31 if next_value & 1 else next_value & 31
+            )
+            previous, current = current, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        closing = "            ++phase;\n        } while (phase < 2U);"
+        self.assertEqual(original.count(closing), 1)
+        continued = original.replace(
+            closing,
+            "            ++phase;\n"
+            "            if (phase == 1U) {\n"
+            "                continue;\n"
+            "            }\n"
+            "        } while (phase < 2U);",
+        )
+        broken = original.replace(
+            closing,
+            "            ++phase;\n"
+            "            if (phase == 2U) {\n"
+            "                break;\n"
+            "            }\n"
+            "        } while (phase < 3U);",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in (
+                ("condition-exit", original),
+                ("inner-continue", continued),
+                ("inner-break", broken),
+            ):
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"nested-do-{label}.c"
+                    source.write_text(contents)
+                    guest = source.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [
+                            sys.executable, "-B", str(DRIVER),
+                            "--repository-tools", "--source-id",
+                            f"tests/nested-for-do-{label}-v1",
+                            "--capsule", "--output", str(guest), str(source),
+                        ],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for stdin in (b"", bytes((0, 255, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=stdin, capture_output=True, check=False, timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, bytes(expected))
+                        self.assertEqual(
+                            executed.stderr, b"malbolge-steps-v1:47\n"
+                        )
+
+    def test_nested_for_do_while_refuses_source_and_ast_forgery(self) -> None:
+        """A nested do cannot erase C effects or forge Clang ancestry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_nested_for_do_while_fibonacci.c"
+        ).read_text()
+        mutations = {
+            "unbounded": original.replace(
+                "while (phase < 2U);", "while (phase < 13U);"
+            ),
+            "effectful-guard": original.replace(
+                "while (phase < 2U);", "while ((phase += 1U) < 2U);"
+            ),
+            "input": original.replace(
+                "next = a + b;", "next = (unsigned)getchar();"
+            ),
+            "outer-induction-write": original.replace("++phase;", "++i;"),
+            "nested-do": original.replace(
+                "            ++phase;",
+                "            do { ++phase; } while (phase < 1U);\n"
+                "            ++phase;",
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in mutations.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"bad-{label}.c"
+                    source.write_text(contents)
+                    parsed = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE),
+                            "--source-id", f"tests/nested-do-bad-{label}-v1",
+                            str(source),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(parsed.returncode, 0, parsed.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest),
+                        ],
+                        input=parsed.stdout, capture_output=True,
+                        check=False, timeout=45,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                    "--resource-dir", str(RESOURCE),
+                    "--source-id", "tests/nested-do-proof-v1", str(source),
+                ],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]], json.loads(frontend.stdout)["nodes"])
+            inner = next(n for n in nodes if n["kind"] == "do-statement")
+            inner_body = next(
+                n for n in nodes
+                if n["kind"] == "compound-statement" and n["parent"] == inner["id"]
+            )
+            guard = next(
+                n for n in nodes
+                if n["kind"] == "binary-expression" and n["parent"] == inner["id"]
+            )
+            for label in (
+                "do-parent", "do-metadata", "body-parent", "body-span",
+                "guard-type", "guard-parent", "guard-symbol", "step-parent",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    altered = cast(list[dict[str, object]], forged["nodes"])
+                    target = altered[cast(int, inner["id"]) - 1]
+                    if label == "do-parent":
+                        target["parent"] = 2
+                    elif label == "do-metadata":
+                        target["operation"] = "&&"
+                    elif label in ("body-parent", "body-span"):
+                        target = altered[cast(int, inner_body["id"]) - 1]
+                        if label == "body-parent":
+                            target["parent"] = 2
+                        else:
+                            span = cast(dict[str, dict[str, int]], target["span"])
+                            span["end"]["byte"] -= 1
+                    elif label in ("guard-type", "guard-parent"):
+                        target = altered[cast(int, guard["id"]) - 1]
+                        if label == "guard-type":
+                            target["type"] = "u32"
+                        else:
+                            target["parent"] = 2
+                    elif label == "guard-symbol":
+                        target = next(
+                            n for n in altered
+                            if n["kind"] == "declaration-reference-expression"
+                            and n.get("reference", "").startswith("phase@")
+                            and n["span"]["begin"]["line"]
+                            == guard["span"]["begin"]["line"]
+                        )
+                        target["reference"] = "foreign@99999"
+                    else:
+                        target = next(
+                            n for n in altered
+                            if n["kind"] == "unary-expression"
+                            and n.get("operation") == "++"
+                            and any(
+                                child["parent"] == n["id"]
+                                and child.get("reference", "").startswith("phase@")
+                                for child in altered
+                            )
+                        )
+                        target["parent"] = 2
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest),
+                        ],
+                        input=json.dumps(forged).encode(), capture_output=True,
+                        check=False, timeout=40,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
 if __name__ == "__main__":
     _ = unittest.main()

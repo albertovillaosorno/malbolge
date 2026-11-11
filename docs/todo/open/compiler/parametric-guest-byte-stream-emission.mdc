@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete twelve-trip Fibonacci C source nested a
+  mandatory-first two-trip `do/while` inside a bounded `for`. The JSON
+  adapter originally refused the source. Closed replay now proves the
+  post-body condition and keeps the outer counter protected. Additional
+  complete sources exercise inner `continue` and `break`: all three
+  emit independently computed masked oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative VM steps
+  under EOF and binary stdin. Five unsupported C sources and eight forged
+  ASTs refuse, including inconsistent closing-brace byte/column geometry.
+  Nested do/while inside while/do is still refused. Dynamic C control
+  and unmasked twelve-byte guest layout remain unsupported; P0 stays open.
+
 - On 2026-11-11 a complete twelve-step Fibonacci C source computed each
   next term inside a two-trip `while` nested in its source-proven `for`.
   The JSON adapter first rejected the nested loop before guest publication.

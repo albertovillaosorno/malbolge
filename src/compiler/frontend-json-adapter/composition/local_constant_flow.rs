@@ -889,6 +889,7 @@ impl<'node> Flow<'node> {
                 "switch-statement" => self.static_switch(body, last_end)?,
                 "for-statement" => self.static_for(body, last_end)?,
                 "while-statement" => self.static_while(body, last_end)?,
+                "do-statement" => self.static_do_while(body, last_end)?,
                 "compound-statement" => {
                     self.scoped_lexical_body(body, last_end, depth)?
                 },
@@ -1690,6 +1691,7 @@ impl<'node> Flow<'node> {
     /// Prove C `do { ... } while (predicate);`: the body executes first,
     /// and its pure condition is evaluated against each updated state.
     /// Reject only after a complete source-backed bounded exit is witnessed.
+    /// An enclosing for counter is protected from the inner body.
     fn static_do_while(
         &mut self,
         body: &Node,
@@ -1699,7 +1701,6 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || !self.loop_counters.is_empty()
             || self.within_while_body
         {
             return None;
@@ -1744,6 +1745,8 @@ impl<'node> Flow<'node> {
             // The trailing condition is a complete source subtree even if
             // `break` skips it at runtime. `continue` must check it.
             let (continue_loop, condition) = self.condition(statement)?;
+            // On a shared source line, body-to-condition byte and column
+            // gaps must agree; forged brace offsets cannot change alone.
             if !span_within(&statement.span, &condition.span)
                 || (if unbraced_control {
                     direct_body_end
@@ -1756,6 +1759,18 @@ impl<'node> Flow<'node> {
                     .byte
                     .checked_sub(condition.span.end.byte)?
                     != 1
+                || (!unbraced_control
+                    && loop_body.span.end.line == condition.span.begin.line
+                    && condition
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(loop_body.span.end.byte)
+                        != condition
+                            .span
+                            .begin
+                            .column
+                            .checked_sub(loop_body.span.end.column))
                 || condition_end.is_some_and(|end| self.position != end)
             {
                 return None;
