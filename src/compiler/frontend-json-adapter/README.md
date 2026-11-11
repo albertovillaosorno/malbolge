@@ -132,6 +132,16 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Direct unbraced `do` inside a source-proven `for`
+
+An unbraced do body of a six-trip bounded for emits two branch-selected
+Fibonacci bytes per outer trip. Direct Clang ancestry, full byte/column
+endpoints, the protected induction counter and the post-body condition
+are checked without an invented compound scope. The independently
+computed twelve-byte oracle matches the real guest VM in 47 steps on
+EOF and binary stdin. Four unsupported source mutations and three forged
+ASTs refuse. This is finite C source-state replay, not guest runtime loops.
+
 ### Direct unbraced `do` inside a source-proven `while`
 
 A complete masked Fibonacci recurrence uses `while (remaining > 0U)` with

@@ -25,6 +25,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Unbraced C `do…while` directly inside `for` (2026-11-11)
+
+The full Fibonacci recurrence also uses
+`for (unsigned i = 0U; i < 6U; ++i) do { ... } while (phase != 0U);`.
+Each protected for trip executes two mandatory-first inner iterations,
+updates the recurrence, emits two branch-selected bytes and resets phase.
+Pinned Clang accepts the direct do child, which the adapter previously
+rejected for lack of a synthetic compound body. Source-backed replay now
+checks the direct do ancestry, full byte/column endpoint, protected outer
+counter and the do's post-body condition.
+
+The independent unsigned-C oracle and normative guest VM both emit the
+same twelve masked Fibonacci bytes as the nested-while variant in 47
+steps, under EOF and binary stdin. Four invalid C programs and three
+forged ASTs reject without publishing a guest. Dynamic guest loops and
+general unmasked output layouts are not supported; P0 remains open.
+
 ### Unbraced C `do…while` directly inside `while` (2026-11-11)
 
 The complete Fibonacci source `local_unbraced_do_while_fibonacci.c` uses

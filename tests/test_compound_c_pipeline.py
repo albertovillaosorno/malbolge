@@ -16553,6 +16553,125 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertFalse(guest.exists(), label)
 
 
+    def test_unbraced_for_do_fibonacci_real_guest(self) -> None:
+        """Each bounded for trip directly executes a two-effect do body."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_unbraced_do_for_fibonacci.c"
+        )
+        a, b, phase = 1, 1, 0
+        expected = bytearray()
+        for _ in range(6):
+            while True:
+                following = (a + b) & 255
+                selected = following if following % 2 == 0 else following ^ 26
+                expected.append(selected & 31)
+                a, b = b, following
+                phase ^= 1
+                if phase == 0:
+                    break
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "unbraced-for-do.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER), "--repository-tools",
+                    "--source-id", "tests/unbraced-for-do-fibonacci-v1",
+                    "--capsule", "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_unbraced_for_do_rejects_unproved_sources_and_forgery(self) -> None:
+        """Protect for induction and the direct do ancestry and endpoints."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_unbraced_do_for_fibonacci.c"
+        )
+        original = source.read_text()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in {
+                "protected-counter": original.replace("phase ^= 1U;", "++i;"),
+                "unbounded-inner": original.replace("phase != 0U", "phase < 2U"),
+                "effectful-condition": original.replace(
+                    "phase != 0U", "phase++ != 0U"
+                ),
+                "input-in-do": original.replace(
+                    "next = (a + b) & 255U;", "next = (unsigned)getchar();"
+                ),
+            }.items():
+                with self.subTest(source=label):
+                    path = Path(scratch) / f"invalid-{label}.c"
+                    path.write_text(contents)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/unbraced-for-do-rejected-{label}-v1", str(path)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=frontend.stdout, capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/unbraced-for-do-forgery-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            nodes = cast(
+                list[dict[str, object]], json.loads(normalized.stdout)["nodes"]
+            )
+            outer = next(n for n in nodes if n["kind"] == "for-statement")
+            inner = next(n for n in nodes if n["kind"] == "do-statement")
+            self.assertEqual(inner["parent"], outer["id"])
+            for label in ("parent", "end-byte", "end-column"):
+                with self.subTest(ast=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(normalized.stdout),
+                    )
+                    target = forged["nodes"][cast(int, inner["id"]) - 1]
+                    if label == "parent":
+                        target["parent"] = 2
+                    else:
+                        span = cast(dict[str, dict[str, int]], target["span"])
+                        span["end"][label.removeprefix("end-")] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+
 
 if __name__ == "__main__":
     _ = unittest.main()

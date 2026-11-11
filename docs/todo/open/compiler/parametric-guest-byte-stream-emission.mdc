@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 an additional full Fibonacci C program used an unbraced
+  `do/while` directly inside a six-trip source-proven `for`, producing two
+  masked outputs per outer trip. Pinned Clang accepted the source, but the
+  JSON adapter initially refused this direct loop child. The repaired
+  source replay authenticates the full do endpoint and protected induction.
+  An independent unsigned-C oracle and real normative VM agree on twelve
+  bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with EOF and
+  binary stdin. Four bad sources and three forged ASTs refuse publication.
+  This is finite source projection; P0 guest dynamic control and unmasked
+  output layout remain unsupported.
+
+
 - On 2026-11-11 a complete C Fibonacci recurrence placed an unbraced
   `do/while` directly inside `while`, toggling inner phase and decrementing
   the outer bound during every inner trip. Pinned Clang accepted the source,

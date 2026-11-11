@@ -1453,12 +1453,12 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        // Clang directly parents an unbraced nested `for` or `if` to
-        // its outer `for`, without an invented compound scope. The single
+        // Clang directly parents an unbraced nested `for`, `do` or `if`
+        // to its outer `for`, without inventing a compound scope. The
         // child must fill the entire remainder of the outer statement.
         let unbraced_control = matches!(
             self.peek()?.kind.as_str(),
-            "for-statement" | "if-statement"
+            "for-statement" | "do-statement" | "if-statement"
         );
         let loop_body = if unbraced_control {
             statement
@@ -1472,7 +1472,7 @@ impl<'node> Flow<'node> {
                 && loop_body.span.end.byte != statement.span.end.byte)
             || (unbraced_control
                 && (self.peek()?.parent != statement.id
-                    || self.peek()?.span.end.byte != statement.span.end.byte))
+                    || self.peek()?.span.end != statement.span.end))
         {
             return None;
         }
