@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full changing-stride Fibonacci C program used
+  `limit > i || b < 20U`, with an unsigned induction bound of two.
+  Pinned Clang accepted it, but the normalized adapter initially rejected
+  the OR that extends beyond the bound. The source-backed proof now replays
+  two ordered `&&`/`||` guards after the induction comparison, retaining
+  the twelve-trip safety cap. The independent six-trip oracle and real
+  Malbolge VM both emit `02 19 1f 08 17 0f` in 97 steps under EOF and
+  binary stdin; five invalid C sources and seven forged ASTs refuse
+  without publishing guest code. Unmasked twelve-byte layout and runtime C
+  loops remain unsupported, so P0 remains open.
+
 - On 2026-11-11 a full C Fibonacci recurrence with changing stride,
   bounded locals and real branch/output effects used reversed induction
   `limit > i && b < 20U`. Pinned Clang accepted it, but normalized C

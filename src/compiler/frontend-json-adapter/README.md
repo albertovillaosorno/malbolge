@@ -147,9 +147,9 @@ and unmasked Fibonacci layout are not implemented.
 A complete Fibonacci source with a mutable unsigned stride, a local bound
 of twenty, and `i < limit && a < 9U` initially refused normalized C
 admission. The bounded source proof now accepts a left-associated chain of
-up to two `&&` operators whose first operand retains the checked unsigned
-induction comparison. Each pure right guard has exact Clang ancestry, type,
-source-ordered token spacing and both byte/column endpoints. Every guard is
+up to two `&&` or `||` operators whose first operand retains the checked
+unsigned induction comparison. Each pure right guard has exact Clang
+ancestry, type, token spacing and both byte/column endpoints. Every guard is
 re-evaluated after each body and increment, with the changing local state.
 
 The source `i < limit && a < 40U && b < 20U` proves a distinct third
@@ -159,8 +159,21 @@ conditions remain true. The normative VM emits the independent
 Nine invalid C variants and nine forged AST variants refuse publication.
 The five-output `b < 10U` variant still refuses at guest layout; this
 frontend repair does not solve general byte-stream synthesis. More guards,
-logical OR that bypasses induction, side effects, and dynamic guest loops
-remain unsupported. The finite replay is compile-time C projection only.
+side effects, and dynamic guest loops remain unsupported. A pure OR can
+extend past the first induction bound, but any loop that requires more than
+twelve iterations still refuses. The finite replay is compile-time C only.
+
+The complete `limit > i || b < 20U` Fibonacci C program starts `limit` at
+two and changes its induction stride from one to two, so the original bound
+stops being true before the last four iterations. The right Boolean guard
+keeps the loop alive, then stops it after six changing C-state iterations.
+The independent reference and normative VM both emit `02 19 1f 08 17 0f`
+in 97 guest steps under EOF and binary stdin. Five invalid C sources and
+seven forged ASTs reject without publishing a guest.
+
+The bound, right subtree, source order and every replay iteration remain
+independently checked; this does not provide general guest runtime sequencing
+or solve the original twelve-byte unmasked output-layout blocker.
 
 ### Rechecked unsigned-local `for` limits in complete C programs
 

@@ -25,6 +25,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-local disjunctive `for` guard (2026-11-11)
+
+A complete Fibonacci C recurrence uses `limit > i || b < 20U` with a
+mutable unsigned stride and checked local state. Pinned Clang accepted the
+whole program, but the normalized JSON adapter initially rejected the
+source because it admitted only `&&` guards following an induction bound.
+
+The repaired bounded proof preserves a first induction comparison and up
+to two source-ordered `&&`/`||` pure right operands, recomputing the entire
+Boolean condition after each iteration and increment. OR may keep the loop
+alive after its first comparison becomes false; an unbounded true guard
+still fails at the twelve-trip ceiling without publishing a guest.
+
+An independent C oracle proves six trips: `i` reaches 10, `a` reaches 13,
+and `b` reaches 21, while the initial bound of 2 is crossed after the
+second output. The normative guest VM emits the exact six bytes
+`02 19 1f 08 17 0f` in 97 steps under EOF and binary stdin. Five invalid
+C source variants and seven forged Clang AST variants refuse publication.
+This is bounded compile-time C-state replay, not dynamic guest C loops or
+unmasked twelve-byte stream synthesis. P0 remains open.
+
 ### Source-order-independent `for` induction (2026-11-11)
 
 The complete Fibonacci C recurrence now uses the equivalent source condition

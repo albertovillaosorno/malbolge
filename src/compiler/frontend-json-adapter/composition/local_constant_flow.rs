@@ -1176,16 +1176,17 @@ impl<'node> Flow<'node> {
         let (counter_name, _) = symbol.rsplit_once('@')?;
         let guard = self.take(statement.id, "binary-expression")?;
         // Peel a bounded left-associated chain of pure guards. The first
-        // condition must still be a proved induction comparison; no OR
-        // branch may bypass it. Clang orders each right child after its
-        // left subtree, so the complete chain is proved in source order.
-        let mut conjunctions = Vec::new();
+        // operand remains a proven induction comparison, but a pure `||`
+        // may extend the loop beyond that bound. The twelve-trip ceiling
+        // still refuses any source whose complete condition cannot stop.
+        // Clang orders each right child after the left subtree.
+        let mut logical_guards = Vec::new();
         let mut comparison = guard;
-        while comparison.operation.as_deref() == Some("&&") {
-            if conjunctions.len() >= MAX_STATIC_FOR_EXTRA_GUARDS {
+        while matches!(comparison.operation.as_deref(), Some("&&" | "||")) {
+            if logical_guards.len() >= MAX_STATIC_FOR_EXTRA_GUARDS {
                 return None;
             }
-            conjunctions.push(comparison);
+            logical_guards.push(comparison);
             comparison = self.take(comparison.id, "binary-expression")?;
         }
         // C permits equivalent reversed induction conditions such as
@@ -1219,7 +1220,7 @@ impl<'node> Flow<'node> {
         let mut bound = u8::try_from(initial_bound).ok()?;
         let mut additional_guards = Vec::new();
         let mut left = comparison;
-        for operator in conjunctions.into_iter().rev() {
+        for operator in logical_guards.into_iter().rev() {
             let guard_start = self.position;
             let (active, right) = self.condition_expression(operator.id, 0)?;
             let guard_end = self.position;
@@ -1472,18 +1473,32 @@ impl<'node> Flow<'node> {
         let body_start = self.position;
         self.loop_counters.push(symbol);
         let mut body_end = None;
-        let continues = |value: u8, limit: u8, guard_active: bool| {
-            guard_active
-                && if not_equal {
+        let continues =
+            |value: u8,
+             limit: u8,
+             guards: &[(usize, usize, &Node, &Node, bool)]| {
+                let induction = if not_equal {
                     value != limit
                 } else if descending {
                     value > limit || (inclusive && value == limit)
                 } else {
                     value < limit || (inclusive && value == limit)
-                }
-        };
-        let mut guard_active = additional_guards.iter().all(|proof| proof.4);
-        if !continues(start, bound, guard_active) {
+                };
+                // Preserve C's left-associative Boolean semantics. All
+                // admitted right operands are pure and defined, so their
+                // independent proof is safe even on a short-circuit path.
+                guards.iter().fold(
+                    induction,
+                    |previous, (_, _, operator, _, selected)| match operator
+                        .operation
+                        .as_deref()
+                    {
+                        Some("||") => previous || *selected,
+                        _ => previous && *selected,
+                    },
+                )
+            };
+        if !continues(start, bound, &additional_guards) {
             // Even a nonexecuted for body must be a complete, admissible
             // source subtree. No speculative state or output may escape.
             let starting_locals = self.locals.clone();
@@ -1498,7 +1513,7 @@ impl<'node> Flow<'node> {
         }
         let mut counter_value = start;
         let mut trips = 0;
-        while continues(counter_value, bound, guard_active) {
+        while continues(counter_value, bound, &additional_guards) {
             if trips >= MAX_STATIC_LOOP_ITERATIONS
                 || (not_equal
                     && ((descending && counter_value < bound)
@@ -1572,7 +1587,6 @@ impl<'node> Flow<'node> {
                 }
                 *selected = active;
             }
-            guard_active = additional_guards.iter().all(|proof| proof.4);
         }
         self.position = body_end?;
         self.locals.truncate(outer_len);

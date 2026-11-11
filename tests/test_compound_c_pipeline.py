@@ -3476,6 +3476,133 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", refused.stderr, label)
                 self.assertFalse(denied.exists(), label)
 
+    def test_disjunctive_for_guard_extends_loop_on_guest(self) -> None:
+        """A pure OR guard extends the loop beyond its induction bound."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_disjunctive_for_guard_fibonacci.c"
+        )
+        original = source.read_text()
+        self.assertIn("limit > i || b < 20U", original)
+        # This is a source-level C oracle, independent of the compiler and VM.
+        a = b = stride = 1
+        limit = 2
+        i = 0
+        expected = bytearray()
+        while limit > i or b < 20:
+            following = (a + b) & 255
+            expected.append((following if following % 2 == 0
+                             else following ^ 26) & 31)
+            if i == 2:
+                stride = 2
+            a, b = b, following
+            i += stride
+            self.assertLessEqual(len(expected), 12)
+        self.assertEqual((i, a, b), (10, 13, 21))
+        self.assertTrue(i > limit and b >= 20)
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            directory = Path(scratch)
+            guest = directory / "disjunctive-guard.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/disjunctive-for-guard-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=210,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=12,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:97\n")
+            for label, mutated in (
+                ("effectful-guard", original.replace(
+                    "b < 20U", "b++ < 20U")),
+                ("input-guard", original.replace(
+                    "b < 20U", "getchar() != -1")),
+                ("always-true", original.replace(
+                    "b < 20U", "b < 255U")),
+                ("bad-separator", original.replace(
+                    "i || b", "i  || b")),
+                ("wrong-induction", original.replace(
+                    "limit > i", "limit > (i + 1U)")),
+            ):
+                with self.subTest(source=label):
+                    changed = directory / f"bad-{label}.c"
+                    changed.write_text(mutated)
+                    denied = directory / f"bad-{label}.malbolge"
+                    refused = subprocess.run(
+                        [*command[:-2], str(denied), str(changed)],
+                        capture_output=True, check=False, timeout=20,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(denied.exists(), label)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/disjunctive-guard-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=12,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]],
+                         json.loads(frontend.stdout)["nodes"])
+            loop = next(
+                node for node in nodes if node["kind"] == "for-statement"
+            )
+            guard = next(node for node in nodes
+                         if node["parent"] == loop["id"]
+                         and node.get("operation") == "||")
+            right = next(node for node in nodes
+                         if node["parent"] == guard["id"]
+                         and node.get("operation") == "<")
+            for label in (
+                "unsupported-operator", "guard-type", "guard-end",
+                "right-parent", "right-begin-column", "right-end-column",
+                "right-operator",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, list[dict[str, object]]],
+                                  json.loads(frontend.stdout))
+                    records = forged["nodes"]
+                    changed_guard = records[cast(int, guard["id"]) - 1]
+                    changed_right = records[cast(int, right["id"]) - 1]
+                    if label == "unsupported-operator":
+                        changed_guard["operation"] = "^"
+                    elif label == "guard-type":
+                        changed_guard["type"] = "u32"
+                    elif label == "guard-end":
+                        cast(dict[str, dict[str, int]],
+                             changed_guard["span"])["end"]["byte"] += 1
+                    elif label == "right-parent":
+                        changed_right["parent"] = loop["id"]
+                    elif label == "right-begin-column":
+                        cast(dict[str, dict[str, int]],
+                             changed_right["span"])["begin"]["column"] += 1
+                    elif label == "right-end-column":
+                        cast(dict[str, dict[str, int]],
+                             changed_right["span"])["end"]["column"] += 1
+                    else:
+                        changed_right["operation"] = "/"
+                    refused_path = directory / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(refused_path), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=20,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(refused_path.exists(), label)
+
     def test_chained_for_guards_recheck_live_c_state_on_guest(self) -> None:
         """Three C guards stop on the final changing Fibonacci local."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
