@@ -1311,9 +1311,10 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
     None
 }
 
-/// Give the skipped forward-jump cells independent graphical data bytes.
+/// Give skipped forward-jump cells independent graphical data bytes.
 ///
-/// Unlike fixed no-op padding, these bytes are never fetched as opcodes.
+/// The jump may follow reached no-ops or genuine initial-zero outputs.
+/// Unlike fixed no-op padding, skipped data is never fetched as opcodes.
 /// The guest reads them through D and really executes crazy/rotation writes
 /// before each output. A bounded search retains the exact D phase with the
 /// accumulator and tests up to five guest steps per effect. Source cells
@@ -1323,16 +1324,49 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
     profile: &'static ProfileDescriptor,
     expected: [u8; N],
 ) -> Option<LinearLayout> {
+    (0..=3).find_map(|jump_position| {
+        let leading_zeros = expected
+            .iter()
+            .take_while(|&&byte| byte == 0)
+            .count()
+            .min(jump_position);
+        (0..=leading_zeros).rev().find_map(|prefix_outputs| {
+            verified_variable_source_scratch_at_jump(
+                profile,
+                expected,
+                jump_position,
+                prefix_outputs,
+            )
+        })
+    })
+}
+
+fn verified_variable_source_scratch_at_jump<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    jump_position: usize,
+    prefix_outputs: usize,
+) -> Option<LinearLayout> {
+    if prefix_outputs > jump_position
+        || expected
+            .get(..prefix_outputs)?
+            .iter()
+            .any(|&byte| byte != 0)
+    {
+        return None;
+    }
     if N == 0 || N > 12 || profile.id() != malbolge::current_profile().id() {
         return None;
     }
+    let jump_phase = u32::try_from(jump_position).ok()?;
     let jump_cell = (33u8..=126).find(|&byte| {
-        malbolge::decode_profile_instruction(u32::from(byte), 0) == Some(b'i')
+        malbolge::decode_profile_instruction(u32::from(byte), jump_phase)
+            == Some(b'i')
     })?;
     let target = usize::from(jump_cell).checked_add(1)?;
-    // The first jump encrypts target - 1. Leave it unused: every scratch
-    // operand is an independently selected, original graphical byte.
-    let scratch_limit = target.checked_sub(2)?;
+    // No-ops before the jump move D forward. The jump encrypts target - 1;
+    // leave it unused while selecting graphical scratch at D = jump + 1.
+    let scratch_limit = target.checked_sub(jump_position)?.checked_sub(2)?;
     let source_cells = super::pair_source_cells(profile)?;
     // An unreachable source cell still must be loader-valid, but can
     // decode as a jump or input: those two bytes were missing from the
@@ -1398,7 +1432,7 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
     // The same accumulator at different D phases has different future
     // graphical operands. Preserve both rather than merging by value alone.
     let mut states = ScratchStates::from([((0, 0u32), 0usize)]);
-    for &byte in &expected {
+    for &byte in &expected[prefix_outputs..] {
         let mut frontier = states;
         let mut finished = ScratchStates::new();
         for depth in 0..=5 {
@@ -1422,7 +1456,8 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
                 if length.saturating_add(2) > scratch_limit {
                     continue;
                 }
-                let address = length.checked_add(1)?;
+                let address =
+                    jump_position.checked_add(length)?.checked_add(1)?;
                 let options = operand_cells.get(address)?;
                 retain_first(
                     &mut successors,
@@ -1478,12 +1513,16 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
     }
     path.reverse();
     let mut operations = vec![LinearOpcode::NoOperation; target];
-    *operations.first_mut()? = LinearOpcode::JumpForward {
+    for operation in operations.iter_mut().take(prefix_outputs) {
+        *operation = LinearOpcode::OutputByte;
+    }
+    *operations.get_mut(jump_position)? = LinearOpcode::JumpForward {
         target: u32::try_from(target).ok()?,
     };
     for (index, (_, byte)) in path.iter().enumerate() {
         if let Some(byte) = byte {
-            *operations.get_mut(index.checked_add(1)?)? =
+            let address = jump_position.checked_add(index)?.checked_add(1)?;
+            *operations.get_mut(address)? =
                 LinearOpcode::SkippedDataByte { byte: u32::from(*byte) };
         }
     }

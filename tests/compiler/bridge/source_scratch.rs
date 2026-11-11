@@ -373,3 +373,95 @@ fn skipped_jump_and_input_codes_are_inert_guest_data() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn delayed_jump_replays_complete_source_fibonacci() -> Result<(), String> {
+    // This unsigned-C recurrence is independent of the guest proposal.
+    let mut previous = 1u32;
+    let mut current = 1u32;
+    let mut expected = [0u8; 12];
+    for output in &mut expected {
+        let next = previous.wrapping_add(current) & 255;
+        *output = u8::try_from(
+            (if next & 1 == 0 {
+                next
+            } else {
+                next ^ 0x1a
+            }) & 31,
+        )
+        .map_err(|error| error.to_string())?;
+        previous = current;
+        current = next;
+    }
+    assert_eq!(expected, [
+        0x02, 0x19, 0x1f, 0x08, 0x17, 0x0f, 0x02, 0x0d, 0x03, 0x10, 0x13, 0x03,
+    ]);
+    let profile = malbolge::current_profile();
+    let layout =
+        verified_variable_source_scratch_at_jump(profile, expected, 1, 0)
+            .ok_or("missing delayed guest scratch proof")?;
+    assert_eq!(layout.executed_code_positions()[..2], [0, 1]);
+    assert!(layout.executed_code_positions()[2] > 2);
+    assert_eq!(layout.executed_code_positions().len(), 47);
+    assert!(
+        layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .all(|&write| { write < layout.source().len() as u32 })
+    );
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(47),
+            Ok(RunOutcome::Terminated { steps: 47, .. })
+        ));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    assert!(
+        verified_variable_source_scratch_at_jump(
+            profile,
+            [0x02, 0x59, 0x5f],
+            1,
+            0,
+        )
+        .is_none()
+    );
+    Ok(())
+}
+
+#[test]
+fn leading_zero_outputs_precede_real_scratch_jump() -> Result<(), String> {
+    // A source statement can emit an initial NUL before a bounded C loop.
+    // It is an actual reached guest output instruction, not a host prefix.
+    let expected = [0, 0, 2, 25, 31, 8, 23, 15, 2, 13, 3, 16];
+    let profile = malbolge::current_profile();
+    let layout =
+        verified_variable_source_scratch_at_jump(profile, expected, 2, 2)
+            .ok_or("missing two source-proven NUL effects")?;
+    assert_eq!(layout.executed_code_positions()[..3], [0, 1, 2]);
+    assert!(layout.executed_code_positions()[3] > 3);
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    assert!(
+        verified_variable_source_scratch_at_jump(profile, expected, 2, 3,)
+            .is_none()
+    );
+    assert!(
+        verified_variable_source_scratch_at_jump(profile, [2, 0, 2], 2, 1,)
+            .is_none()
+    );
+    Ok(())
+}

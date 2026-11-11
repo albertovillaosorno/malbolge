@@ -920,6 +920,20 @@ and nonempty input. Division-by-zero mutation refuses publication. The
 unmasked original C stream still refuses at layout; finite source-scratch
 search is neither a complete C runtime nor arbitrary output synthesis.
 
+The same proposal grammar now varies the source-proven jump phase across the
+first four code positions rather than requiring an immediate jump. Prefix
+positions are real reached instructions: they may be no-ops or, when the
+independent effect trace begins with zero bytes, actual `OutputByte` effects
+before the jump. The remaining source-scratch operands start at the shifted
+D pointer; the jump's exact graphical encoding, encryption target, and every
+later source write are checked by the layout verifier and normative VM.
+This remains a search capped at five pre-output no-op/arithmetic
+instructions per effect, not arbitrary byte synthesis. The complete
+twelve-byte masked Fibonacci recurrence also
+has a delayed-jump witness (47 guest steps), and a two-NUL-prefixed
+recurrence has a separate verified guest witness under EOF and binary stdin.
+An unmasked `02 59 5f` prefix remains unsupported by this grammar.
+
 For twelve distinct source-proven bytes, the bridge now tries the bounded
 forward-jump scratch grammar before the costlier relocated-tail proposals.
 When scratch synthesis succeeds, the same independent layout and two-input
