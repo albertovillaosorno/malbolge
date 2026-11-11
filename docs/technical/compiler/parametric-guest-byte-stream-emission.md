@@ -40,9 +40,10 @@ effectful conditions.
 An independently computed unsigned-C oracle matches the real normative
 guest VM on twelve masked Fibonacci bytes
 `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with empty or binary
-stdin. Equivalent postfix, compound and assignment decrements also reach
-guest parity on two-trip prefixes; four unsupported C changes and
-eight forged AST variants reject without publication. This does not implement dynamic guest C
+stdin. Pinned Clang also normalizes postfix, compound and assignment
+decrement spellings. The complete guest parity evidence is limited to
+the prefix spelling; four unsupported C changes and eight forged AST
+variants reject without publication. This does not implement dynamic guest C
 loops or the original unmasked Fibonacci layout. P0 remains pending.
 
 ### Ordered C state writes between selected switch outputs (2026-11-11)

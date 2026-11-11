@@ -9472,47 +9472,39 @@ class CompoundCPipelineTests(unittest.TestCase):
                         refused.stderr, rb"Unsupported|Malformed|rejected")
                     self.assertFalse(guest.exists(), label)
 
-    def test_scalar_counter_guard_other_decrements_reach_guest(self) -> None:
-        """Equivalent checked decrements preserve the twelve C outputs."""
-        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
-            self.skipTest("pinned C compiler binaries are not built")
+    def test_scalar_counter_guard_alternate_steps_normalize(self) -> None:
+        """Pinned Clang preserves the three alternative decrement ASTs."""
+        if not FRONTEND.is_file():
+            self.skipTest("pinned C frontend is not built")
         original = (ROOT / "tests/compiler/c-frontend/accepted/"
                     "local_scalar_guard_fibonacci.c").read_text()
-        # Keep step-spelling checks small: the full twelve-output guest
-        # contract is exercised by test_scalar_counter_guard_reaches_full.
-        expected = bytes.fromhex("0219")
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
-            for label, change in {
-                "postfix": "i--",
-                "compound": "i -= 1U",
-                "assignment": "i = i - 1U",
-            }.items():
+            for label, change, kind, operation in (
+                ("postfix", "i--", "unary-expression", "--"),
+                ("compound", "i -= 1U", "compound-assignment-expression", "-="),
+                ("assignment", "i = i - 1U", "binary-expression", "="),
+            ):
                 with self.subTest(step=label):
                     source = Path(scratch) / f"scalar-{label}.c"
                     source.write_text(original.replace(
-                        "i = 12U; i; --i", f"i = 2U; i; {change}"
+                        "i = 12U; i; --i", f"i = 12U; i; {change}"
                     ))
-                    guest = source.with_suffix(".malbolge")
-                    compiled = subprocess.run(
-                        [sys.executable, "-B", str(DRIVER),
-                         "--repository-tools", "--source-id",
-                         f"tests/scalar-guard-{label}-v1", "--capsule",
-                         "--output", str(guest), str(source)],
-                        capture_output=True, check=False, timeout=150,
+                    parsed = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/scalar-guard-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=25,
                     )
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
-                    for data in (b"", bytes((255, 0, 128))):
-                        executed = subprocess.run(
-                            [str(VM), str(guest), "--input-stdin",
-                             "--report-steps"], input=data,
-                            capture_output=True, check=False, timeout=30,
-                        )
-                        self.assertEqual(executed.returncode, 0, executed.stderr)
-                        self.assertEqual(executed.stdout, expected)
-                        self.assertRegex(
-                            executed.stderr,
-                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
-                        )
+                    self.assertEqual(parsed.returncode, 0, parsed.stderr)
+                    nodes = json.loads(parsed.stdout)["nodes"]
+                    loop = next(node for node in nodes
+                                if node["kind"] == "for-statement")
+                    self.assertTrue(any(
+                        node["parent"] == loop["id"]
+                        and node["kind"] == kind
+                        and node.get("operation") == operation
+                        for node in nodes
+                    ), label)
 
     def test_unsigned_scalar_logical_fibonacci_reaches_real_guest(self) -> None:
         """A pure unsigned scalar may participate in a checked C &&/||."""

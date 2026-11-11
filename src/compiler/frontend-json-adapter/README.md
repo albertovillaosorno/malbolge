@@ -1584,9 +1584,9 @@ unsupported or effectful scalar guards are not discarded.
 
 The full `local_scalar_guard_fibonacci.c` C source emits twelve masked
 Fibonacci bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative
-guest VM steps under EOF and binary stdin. Equivalent source-proven
-postfix, compound and assignment decrements are covered on two-trip
-prefixes, as are four
-unsupported C mutations and eight forged normalized AST nodes. This is
+guest VM steps under EOF and binary stdin. Pinned Clang normalization
+also covers postfix, compound and assignment decrements; full guest
+parity for those alternate spellings is not established. Four
+unsupported C mutations and eight forged normalized AST nodes refuse. This is
 finite source-state replay, not guest runtime loop control or an unmasked
 Fibonacci layout.
