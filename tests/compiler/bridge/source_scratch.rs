@@ -496,3 +496,87 @@ fn relocated_scratch_guest_executes_three_distinct_bytes() -> Result<(), String>
     }
     Ok(())
 }
+
+#[test]
+fn scratch_written_pointer_reaches_loader_expansion() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing decoder cells")?;
+    let prefix =
+        verified_source_scratch_output_layout(profile, [2, 89], &cells)
+            .ok_or("missing source-proven Fibonacci prefix")?;
+    let target = usize::try_from(prefix.executed_code_positions()[1])
+        .map_err(|error| error.to_string())?;
+    let mut operations = vec![LinearOpcode::NoOperation; target];
+    operations[0] = LinearOpcode::JumpForward {
+        target: u32::try_from(target).map_err(|error| error.to_string())?,
+    };
+    for (index, &source_byte) in
+        prefix.source().iter().enumerate().take(target).skip(1)
+    {
+        operations[index] = LinearOpcode::SkippedDataByte {
+            byte: u32::from(source_byte),
+        };
+    }
+    let reached = prefix.executed_code_positions();
+    for &code in &reached[1..reached.len() - 1] {
+        let source_byte = prefix.source()[code as usize];
+        let decoded =
+            malbolge::decode_profile_instruction(u32::from(source_byte), code)
+                .ok_or("missing reached decoder")?;
+        operations.push(match decoded {
+            b'o' => LinearOpcode::NoOperation,
+            b'p' => LinearOpcode::CrazyData,
+            b'*' => LinearOpcode::RotateData,
+            output if output == profile.output_instruction() => {
+                LinearOpcode::OutputByte
+            },
+            _ => return Err(format!("unexpected reached opcode {decoded}")),
+        });
+    }
+    // The final original output leaves D=84. A genuine rotate at D=85
+    // writes a 15-trit value into skipped graphical source memory. The
+    // source-backed j at D=91 reads graphical 84 and moves back to D=85;
+    // a second j reads the *changed* word and enters expanded memory.
+    assert_eq!(prefix.data_pointer_positions().last(), Some(&84));
+    operations[91] = LinearOpcode::SkippedDataByte { byte: 84 };
+    for at in 84..91 {
+        operations.push(if at == 85 {
+            LinearOpcode::RotateData
+        } else {
+            LinearOpcode::NoOperation
+        });
+    }
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let layout = super::super::encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("scratch relocation: {error:?}"))?;
+    assert_eq!(layout.source().len(), 193);
+    let pointers = layout.data_pointer_positions();
+    assert_eq!(&pointers[pointers.len() - 4..], &[
+        91, 85, 9_565_964, 9_565_965
+    ]);
+    assert!(9_565_964 > layout.source().len());
+    assert!(
+        layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .any(|&at| at == 85)
+    );
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { steps: 95, .. })
+        ));
+        assert_eq!(vm.output(), [2, 89, 11]);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}

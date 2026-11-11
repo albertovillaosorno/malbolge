@@ -995,3 +995,18 @@ single output effect so existing repeated-output
 search costs are unchanged. This remains finite candidate search, not
 arbitrary byte synthesis; the twelve-byte Fibonacci trace is unsupported.
 Existing seed-selected witnesses are unchanged.
+
+
+### Verified scratch-written data relocation
+
+The source-scratch regression composes a verified two-byte Fibonacci
+prefix with two real guest `j` instructions after a graphical scratch
+`*` write. The first relocation returns to the earlier, modified
+source cell; the second uses its newly rotated 15-trit value to select
+loader-expanded guest memory, well beyond the graphical source. The
+normative VM emits `02 59 0b` and halts in 95 steps under empty and binary
+stdin, with zero input consumption. The final byte is a genuine guest
+accumulator output, not a host-synthesized suffix. This is a test-only
+linker geometry witness, not general C-to-guest translation. The original
+unmasked Fibonacci third byte `5f` and full twelve-byte stream still lack
+an admitted layout.
