@@ -31,6 +31,14 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+A source-proven unsigned C ternary may now skip a pure division or remainder
+by zero in its unselected operand, including exact parenthesized wrappers.
+The selected arm is still fully evaluated, so selected undefined arithmetic
+refuses. The twelve-step guarded Fibonacci and dual-arm division/remainder
+variants produce the independent masked oracle through the actual guest VM;
+this does not admit arbitrary C short-circuit expressions or dynamic guest
+branches. Forged operand ancestry and unselected effects still refuse.
+
 Bounded source-state replay now composes a braced `if/else` containing
 independent `switch` statements. Both C arms receive complete proof,
 but only selected assignments or outputs survive. Two full Fibonacci

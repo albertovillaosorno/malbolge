@@ -599,6 +599,57 @@ impl<'node> Flow<'node> {
         Some(statement.span.end.byte)
     }
 
+    /// Check an unexecuted C ternary operand without requiring its division
+    /// to be defined. The selected arm still uses the ordinary evaluator.
+    /// A zero divisor is tolerated only for this source-proven pure subtree:
+    /// neither an unsupported expression nor a side effect can be skipped.
+    fn unselected_expression(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<&'node Node> {
+        let start = self.position;
+        if let Some((_, expression)) = self.expression(parent, depth) {
+            return Some(expression);
+        }
+        // The speculative strict evaluation has no observable effects.
+        // Restore the exact preorder cursor before validating the skipped
+        // division's source shape (which cannot be evaluated in C).
+        self.position = start;
+        if depth >= MAX_EXPRESSION_DEPTH {
+            return None;
+        }
+        if self.peek()?.kind == "parenthesized-expression" {
+            let grouped = self.take(parent, "parenthesized-expression")?;
+            let expression =
+                self.unselected_expression(grouped.id, depth.checked_add(1)?)?;
+            if !bare_typed_node(grouped)
+                || grouped.type_name.as_deref() != Some("u32")
+                || !span_within(&grouped.span, &expression.span)
+                || grouped.span.begin.byte >= expression.span.begin.byte
+                || expression.span.end.byte >= grouped.span.end.byte
+            {
+                return None;
+            }
+            return Some(grouped);
+        }
+        let binary = self.take(parent, "binary-expression")?;
+        let operator = binary.operation.as_deref()?;
+        if !matches!(operator, "/" | "%") || !typed_operator(binary, operator) {
+            return None;
+        }
+        let (_left_value, left) =
+            self.expression(binary.id, depth.checked_add(1)?)?;
+        let (right_value, right) =
+            self.expression(binary.id, depth.checked_add(1)?)?;
+        if right_value != 0 || !ordered_binary_spans(binary, left, right) {
+            return None;
+        }
+        // A skipped division/remainder by zero is syntactically valid C;
+        // unlike a selected division, its result is never materialized.
+        Some(binary)
+    }
+
     /// Prove a source-ordered conditional, including the unselected pure arm.
     fn conditional_expression(
         &mut self,
@@ -614,10 +665,26 @@ impl<'node> Flow<'node> {
         let child_depth = depth.checked_add(1)?;
         let (take_then, condition) =
             self.condition_expression(conditional.id, child_depth)?;
-        let (then_value, then_expression) =
-            self.expression(conditional.id, child_depth)?;
-        let (else_value, else_expression) =
-            self.expression(conditional.id, child_depth)?;
+        let (then_value, then_expression) = if take_then {
+            let (value, expression) =
+                self.expression(conditional.id, child_depth)?;
+            (Some(value), expression)
+        } else {
+            (
+                None,
+                self.unselected_expression(conditional.id, child_depth)?,
+            )
+        };
+        let (else_value, else_expression) = if take_then {
+            (
+                None,
+                self.unselected_expression(conditional.id, child_depth)?,
+            )
+        } else {
+            let (value, expression) =
+                self.expression(conditional.id, child_depth)?;
+            (Some(value), expression)
+        };
         if !ordered_ternary_spans(
             conditional,
             condition,
@@ -626,13 +693,11 @@ impl<'node> Flow<'node> {
         ) {
             return None;
         }
-        // Both alternatives must be pure and defined, even if the
-        // C conditional selects only one at runtime.
         Some((
             if take_then {
-                then_value
+                then_value?
             } else {
-                else_value
+                else_value?
             },
             conditional,
         ))

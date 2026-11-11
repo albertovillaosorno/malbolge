@@ -25,6 +25,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Non-evaluated C ternary arithmetic (2026-11-11)
+
+The complete twelve-iteration masked unsigned Fibonacci program now guards
+`/` using a source-proven C conditional expression. An even term causes
+its unselected numerator/denominator subtree to include division by zero;
+the old eager JSON evaluator rejected the first declaration even though C
+would not evaluate that operand. The bounded replay now authenticates the
+skipped pure `u32` division/remainder and its parentheses without demanding
+an arithmetic result, while selected operands still use checked evaluation.
+Only the exact pure subtree with a zero divisor gains this exception.
+
+A second whole-C variant has division in one alternative and remainder in
+the other: each becomes undefined if evaluated on the opposite selection.
+Both valid selections occur over twelve iterations. The separate unsigned-C
+oracle and normative Malbolge VM agree on the twelve masked bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps, under EOF and
+binary input. Selected zero division, unselected side effects/input, and
+four forged Clang arithmetic nodes reject without guest publication.
+The original unmasked Fibonacci still rejects at
+`Layout(UnsupportedEffectTrace)`; dynamic guest branching and general C
+short-circuit evaluation remain unimplemented. P0 stays pending.
+
 ### Conditional C switch arms (2026-11-11)
 
 A complete twelve-trip unsigned Fibonacci C program places a bounded
