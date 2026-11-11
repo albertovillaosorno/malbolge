@@ -11757,6 +11757,214 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertEqual(replay.stdout, bytes(oracle))
                 self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
 
+    def test_switch_default_fallthrough_full_fibonacci_guest(self) -> None:
+        """Default direct entry and carried case state reach the real VM."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        a, b = 1, 1
+        oracle = bytearray()
+        seen = set()
+        for _ in range(12):
+            following = (a + b) & 255
+            dispatch = following & 3
+            seen.add(dispatch)
+            oracle.append(
+                following & 31 if dispatch % 2 == 0
+                else ((following ^ 26) & 31)
+            )
+            a, b = b, following
+        self.assertEqual(seen, {0, 1, 2, 3})
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "default-fallthrough.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/default-fallthrough-v1", "--capsule",
+                 "--output", str(guest),
+                 str(ROOT / "tests/compiler/c-frontend/accepted/"
+                     "local_default_fallthrough_fibonacci.c")],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(oracle))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_switch_chained_default_fallthrough_full_guest(self) -> None:
+        """Two consecutive case-to-default edges preserve carried locals."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        first, second = 1, 1
+        expected = bytearray()
+        dispatches = set()
+        for _ in range(12):
+            following = (first + second) & 255
+            dispatches.add(following & 3)
+            expected.append(
+                following & 31 if following % 2 == 0
+                else ((following ^ 26) & 31)
+            )
+            first, second = second, following
+        self.assertEqual(dispatches, {0, 1, 2, 3})
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_chained_default_fibonacci.c").read_text()
+        self.assertIn("case 0U:", original)
+        self.assertIn("case 2U:", original)
+        self.assertIn("default:", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "chained-default.c"
+            source.write_text(original)
+            guest = Path(scratch) / "chained-default.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/chained-default-v1", "--capsule",
+                 "--output", str(guest), str(source)],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                result = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, bytes(expected))
+                self.assertEqual(result.stderr, b"malbolge-steps-v1:47\n")
+            unsupported = Path(scratch) / "third-edge.c"
+            unsupported.write_text(original.replace(
+                "        default:\n            selected ^= carry;",
+                "        case 1U:\n            selected ^= 0U;\n"
+                "        default:\n            selected ^= carry;", 1,
+            ))
+            rejected_guest = Path(scratch) / "third-edge.malbolge"
+            refused = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/third-default-edge-v1", "--capsule",
+                 "--output", str(rejected_guest), str(unsupported)],
+                capture_output=True, check=False, timeout=40,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertFalse(rejected_guest.exists())
+
+    def test_switch_default_fallthrough_rejects_unproved_paths(self) -> None:
+        """Require checked AST ancestry and effect-free fallthrough to default."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_default_fallthrough_fibonacci.c").read_text()
+        invalid = {
+            "output-before-default": original.replace(
+                "            carry ^= 7U;\n        default:",
+                "            putchar(65);\n        default:", 1,
+            ),
+            "input-before-default": original.replace(
+                "            carry ^= 7U;\n        default:",
+                "            carry = (unsigned)getchar();\n        default:", 1,
+            ),
+            "input-in-default": original.replace(
+                "            selected ^= carry;",
+                "            selected = (unsigned)getchar();", 1,
+            ),
+            "output-in-default-with-tail": original.replace(
+                "            selected ^= carry;",
+                "            putchar(65);", 1,
+            ),
+            "too-many-default-effects": original.replace(
+                "            selected ^= 0U;\n            break;\n        }",
+                "            selected ^= 0U;\n"
+                + "            selected ^= carry;\n" * 4
+                + "            break;\n        }", 1,
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source_text in invalid.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(source_text)
+                    guest = source.with_suffix(".malbolge")
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/invalid-default-{label}-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "default-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/default-fallthrough-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            original_nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(frontend.stdout))["nodes"],
+            )
+            cases = [n for n in original_nodes if n["kind"] == "case-statement"]
+            default = next(n for n in original_nodes
+                           if n["kind"] == "default-statement")
+            scope = next(n for n in original_nodes
+                         if n["kind"] == "compound-statement"
+                         and n["parent"] == next(sw["id"] for sw in original_nodes
+                         if sw["kind"] == "switch-statement"))
+            default_effect = next(n for n in original_nodes
+                                  if n["kind"] == "compound-assignment-expression"
+                                  and n["parent"] == default["id"])
+            carried_effect = next(n for n in original_nodes
+                                  if n["kind"] == "compound-assignment-expression"
+                                  and n["parent"] == cases[1]["id"])
+            default_break = next(n for n in original_nodes
+                                 if n["kind"] == "break-statement"
+                                 and n["span"]["begin"]["byte"]
+                                 > default["span"]["end"]["byte"])
+            self.assertEqual(len(cases), 2)
+            for label in (
+                "default-parent", "default-span", "default-effect-parent",
+                "carried-effect-parent", "carried-label-parent",
+                "default-break-parent", "default-effect-operation",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    nodes = cast(list[dict[str, object]], forged["nodes"])
+                    if label == "default-parent":
+                        nodes[cast(int, default["id"]) - 1]["parent"] = cases[1]["id"]
+                    elif label == "default-span":
+                        node = nodes[cast(int, default["id"]) - 1]
+                        span = cast(dict[str, dict[str, int]], node["span"])
+                        span["end"]["byte"] += 1
+                    elif label == "default-effect-parent":
+                        nodes[cast(int, default_effect["id"]) - 1]["parent"] = scope["id"]
+                    elif label == "carried-effect-parent":
+                        nodes[cast(int, carried_effect["id"]) - 1]["parent"] = scope["id"]
+                    elif label == "carried-label-parent":
+                        nodes[cast(int, cases[1]["id"]) - 1]["parent"] = cases[0]["id"]
+                    elif label == "default-break-parent":
+                        nodes[cast(int, default_break["id"]) - 1]["parent"] = default["id"]
+                    elif label == "default-effect-operation":
+                        nodes[cast(int, default_effect["id"]) - 1]["operation"] = "?="
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--capsule", "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_switch_chained_fallthrough_full_fibonacci_guest(self) -> None:
         """All three dispatch entries use independent carried C local states."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

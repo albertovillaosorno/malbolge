@@ -836,6 +836,20 @@ The selected state alone survives. The program's two paths require
 change the output. The real normative VM emits the independent twelve-byte
 masked Fibonacci oracle in 47 steps under EOF/binary stdin. Five unsupported
 source mutations and six normalized-tree forgeries refuse without publication.
+A third complete masked Fibonacci recurrence carries a local write from
+`case 2U` into a final `default`, which also accepts direct dispatch from
+values 1 and 3 with different initial locals. The adapter now separately
+replays both default entry states against identical pinned-Clang source nodes
+and the same break, retaining only the selected path. The normative guest
+executes twelve independently calculated Fibonacci output bytes in 47 steps
+under empty and binary stdin. A separate complete source also traverses
+`case 0U` to `case 2U` to `default`, proving two consecutive edges and
+separate direct entries at the receiving labels. Five invalid source
+variants, seven forged ASTs and a third-edge C variant fail closed.
+Output-before-fallthrough, effectful input, a third
+consecutive edge, dynamic guest switching, and the original unmasked byte
+stream remain unsupported.
+
 A second full recurrence proves two consecutive nonempty fallthrough edges
 (`case 0U:` to `case 2U:` to `case 1U:`), with separate direct entry into
 all three cases. The projector independently replays the exact pinned-Clang

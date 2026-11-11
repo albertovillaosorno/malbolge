@@ -54,6 +54,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete masked twelve-iteration Fibonacci C switch
+  first refused a nonempty `case 2U` falling through to `default`, which
+  also receives direct dispatch from values 1 and 3. Bounded source-flow
+  replay now checks independent default entry and carried locals against
+  identical Clang node boundaries and the final switch break. The whole
+  program reaches independent twelve-byte guest oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative VM steps under
+  EOF and binary stdin. A second complete source traverses both
+  `case 0U` to `case 2U` and `case 2U` to `default` with independent
+  direct entries, also reaching exact guest parity. Five invalid C
+  sources, seven forged ASTs and a third-edge source refuse publication.
+  This does not support runtime guest switching or
+  the original unmasked Fibonacci layout, so generalized P0 remains open.
+
 - On 2026-11-10 the complete twelve-iteration unmasked Fibonacci C
   program again refused at `Layout(UnsupportedEffectTrace)` without an
   artifact. A new whole masked recurrence then failed JSON admission on

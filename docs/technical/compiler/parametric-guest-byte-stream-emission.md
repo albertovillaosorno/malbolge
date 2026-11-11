@@ -73,6 +73,35 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Source-proven switch fallthrough into default (2026-11-10)
+
+The complete masked Fibonacci source
+`tests/compiler/c-frontend/accepted/local_default_fallthrough_fibonacci.c`
+was first rejected by the JSON adapter. Its `case 2U` modifies a `carry`
+local and falls into a final `default` body; dispatch values 1 and 3 enter
+that same body directly. The two entry classes require different values of
+`carry`, and all four dispatch values occur in the twelve-step program.
+
+The closed projector now permits a non-output case effect to reach a final,
+source-ordered direct-child `default`. It independently replays the entire
+default subtree from pre-switch locals and from every pending carried state,
+checking exact Clang source-node extent, ancestry, effect order and the same
+switch-local break. This still admits no more than two consecutive fallthrough
+edges; effects before fallthrough, effectful input, extra body effects and
+forged normalized trees refuse without publishing a guest.
+
+The actual normative Malbolge VM emits the independently calculated masked
+Fibonacci oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with
+empty and binary stdin. The separate complete source
+`tests/compiler/c-frontend/accepted/local_chained_default_fibonacci.c`
+also traverses two consecutive nonempty edges, `case 0U` to `case 2U` to
+`default`, and reaches the same guest parity with separate direct dispatch
+into both receiving labels. Five unsupported C mutations, seven forged
+Clang trees, and an additional valid-C third-edge variant reject without
+publication. The original unmasked twelve-output Fibonacci still refuses at
+`Layout(UnsupportedEffectTrace)`; source-state replay is not dynamic guest
+C switching or generalized byte-stream synthesis. P0 remains open.
+
 ### Two consecutive source-proven switch fallthrough edges (2026-11-10)
 
 A complete twelve-iteration masked Fibonacci recurrence was first retried

@@ -1631,9 +1631,8 @@ impl<'node> Flow<'node> {
         Some((effect, end?))
     }
 
-    /// A nonempty case may intentionally fall into the immediately following
-    /// case label. Keep the actual state at that edge; the next arm must be
-    /// independently replayed for both direct dispatch and fallthrough.
+    /// A nonempty case may fall into the next case or final default label.
+    /// Keep its real state: both direct and carried entries must be replayed.
     /// An output followed by another case is not admitted by this grammar.
     fn switch_arm_tail_or_fallthrough(
         &mut self,
@@ -1646,7 +1645,10 @@ impl<'node> Flow<'node> {
                 let end = self.switch_break(scope, effect.end)?;
                 return Some((effect, Some(end)));
             }
-            if next.kind == "case-statement" {
+            if matches!(
+                next.kind.as_str(),
+                "case-statement" | "default-statement"
+            ) {
                 return (next.parent == scope.id
                     && next.span.begin.byte > effect.end
                     && effect.output.is_none())
@@ -1862,7 +1864,7 @@ impl<'node> Flow<'node> {
                 grouped_default_effect = Some(effect);
             }
         }
-        if case_values.is_empty() || !pending_fallthrough.is_empty() {
+        if case_values.is_empty() {
             return None;
         }
         let (default_effect, last_break) = if let Some(effect) =
@@ -1881,6 +1883,7 @@ impl<'node> Flow<'node> {
                 return None;
             }
             self.locals.clone_from(&starting_locals);
+            let default_body_position = self.position;
             let effect =
                 self.switch_arm_effect(default, default.span.begin.byte)?;
             if effect.end != default.span.end.byte
@@ -1889,8 +1892,34 @@ impl<'node> Flow<'node> {
                 return None;
             }
             let (effect, end) = self.switch_arm_tail(scope, effect)?;
+            let end_position = self.position;
+            // The default is also a direct dispatch destination. Replay its
+            // complete subtree from every preceding case's carried locals,
+            // requiring identical source node boundaries and the same break.
+            for (previous, selected_previous) in pending_fallthrough {
+                self.locals = previous.locals;
+                self.position = default_body_position;
+                let carried =
+                    self.switch_arm_effect(default, default.span.begin.byte)?;
+                if carried.end != default.span.end.byte
+                    || carried.begin_line <= default.span.begin.line
+                {
+                    return None;
+                }
+                let (carried, replay_end) =
+                    self.switch_arm_tail(scope, carried)?;
+                if replay_end != end || self.position != end_position {
+                    return None;
+                }
+                if selected_previous {
+                    selected_effect = Some(carried);
+                }
+            }
             (Some(effect), end)
         } else {
+            if !pending_fallthrough.is_empty() {
+                return None;
+            }
             // A switch without `default` does nothing if no case matches.
             // The last break must directly precede the closing brace;
             // otherwise an omitted Clang subtree could hide an effect.
