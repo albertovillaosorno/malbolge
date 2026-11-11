@@ -465,3 +465,34 @@ fn leading_zero_outputs_precede_real_scratch_jump() -> Result<(), String> {
     );
     Ok(())
 }
+
+#[test]
+fn relocated_scratch_guest_executes_three_distinct_bytes() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let expected = [0x02, 0x59, 0x5d];
+    let layout =
+        verified_relocated_source_scratch_at_jump(profile, expected, 0)
+            .ok_or("missing relocated scratch guest witness")?;
+    let points = layout.data_pointer_positions();
+    assert!(points.windows(2).any(|pair| pair[1] > pair[0] + 1));
+    assert!(
+        layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .all(|&write| { write < layout.source().len() as u32 })
+    );
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("VM load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}

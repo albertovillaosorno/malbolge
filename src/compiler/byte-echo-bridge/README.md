@@ -955,6 +955,23 @@ non-graphical operands, more general data relocation and full C runtime
 lowering remain separate work. No new source or arbitrary guest byte stream
 is admitted on the strength of the scalar reachability test alone.
 
+### Exploratory forward data relocation in source scratch
+
+A test-only bounded proposal now permits one forward data-pointer relocation
+inside graphical scratch skipped by a source-proven jump. It tracks both
+accumulator words and data-pointer phases, never revisits guest-written
+operands, and independently admits the positional source plus two normative
+VM executions. A three-byte `02 59 5d` witness executes genuine guest
+arithmetic, a scratch-pointer relocation, and three ordered outputs under
+EOF and binary stdin. This is a new guest execution geometry, not arbitrary
+C byte-stream synthesis or a production lowering fallback.
+
+The original unmasked Fibonacci third byte `5f` remains unproved.
+The exploratory search is deliberately not called by the production
+compiler: its bounded negative-case search cost is not yet acceptable.
+Follow-up work needs a faster admissible search strategy and a complete-C
+end-to-end demonstration before adopting this grammar.
+
 ### Bounded search beyond the one-byte witness tables
 
 When the existing positional one-byte witness selector has no entry, the

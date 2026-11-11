@@ -1553,6 +1553,233 @@ fn verified_variable_source_scratch_at_jump<const N: usize>(
     Some(layout)
 }
 
+/// Permit one forward data-pointer relocation within skipped graphical source
+/// scratch. Each consumed operand is a fresh, previously unread source cell.
+/// A relocation may skip ahead but never revisit a guest-written operand or
+/// the cell encrypted by the initial jump. Candidate source and effects still
+/// need independent positional-layout and normative VM verification.
+/// This exploratory grammar is test-only until its negative-case cost and
+/// complete-C applicability justify production adoption.
+#[cfg(test)]
+fn verified_relocated_source_scratch_at_jump<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    jump_position: usize,
+) -> Option<LinearLayout> {
+    if !(1..=3).contains(&N) || profile.id() != malbolge::current_profile().id()
+    {
+        return None;
+    }
+    let jump_phase = u32::try_from(jump_position).ok()?;
+    let jump_cell = (33u8..=126).find(|&byte| {
+        malbolge::decode_profile_instruction(u32::from(byte), jump_phase)
+            == Some(b'i')
+    })?;
+    let target = usize::from(jump_cell).checked_add(1)?;
+    let scratch_end = target.checked_sub(1)?;
+    if scratch_end <= jump_position.checked_add(N.saturating_mul(2))? {
+        return None;
+    }
+    let source_cells = super::pair_source_cells(profile)?;
+    let operands = source_cells
+        .iter()
+        .enumerate()
+        .map(|(position, cells)| {
+            let phase = u32::try_from(position).ok()?;
+            let opcode_byte = |opcode| {
+                (33u8..=126).find(|&byte| {
+                    malbolge::decode_profile_instruction(u32::from(byte), phase)
+                        == Some(opcode)
+                })
+            };
+            Some([
+                cells[0],
+                cells[1],
+                cells[2],
+                cells[3],
+                cells[4],
+                cells[5],
+                opcode_byte(b'i')?,
+                opcode_byte(profile.input_instruction())?,
+            ])
+        })
+        .collect::<Option<Vec<_>>>()?;
+    #[derive(Clone, Copy)]
+    struct Link {
+        opcode: LinearOpcode,
+        operand: Option<(usize, u8)>,
+        predecessor: usize,
+    }
+    type Key = (usize, u32, bool);
+    type States = BTreeMap<Key, usize>;
+    fn insert(
+        states: &mut States,
+        links: &mut Vec<Link>,
+        key: Key,
+        from: usize,
+        opcode: LinearOpcode,
+        operand: Option<(usize, u8)>,
+    ) {
+        if let std::collections::btree_map::Entry::Vacant(entry) =
+            states.entry(key)
+        {
+            let id = links.len();
+            links.push(Link {
+                opcode,
+                operand,
+                predecessor: from,
+            });
+            let _ = entry.insert(id);
+        }
+    }
+    let mut links = vec![Link {
+        opcode: LinearOpcode::NoOperation,
+        operand: None,
+        predecessor: 0,
+    }];
+    let mut states = States::from([((jump_position + 1, 0u32, false), 0)]);
+    for (emitted, &wanted) in expected.iter().enumerate() {
+        let mut frontier = states;
+        let mut completed = States::new();
+        for depth in 0..=5 {
+            for (&(data_at, accumulator, used), &prev) in &frontier {
+                if data_at < scratch_end && matches_byte(accumulator, wanted) {
+                    insert(
+                        &mut completed,
+                        &mut links,
+                        (data_at + 1, accumulator, used),
+                        prev,
+                        LinearOpcode::OutputByte,
+                        None,
+                    );
+                }
+            }
+            if depth == 5 {
+                break;
+            }
+            let mut next = States::new();
+            for (&(data_at, accumulator, used), &prev) in &frontier {
+                if data_at.checked_add(2)? >= scratch_end {
+                    continue;
+                }
+                insert(
+                    &mut next,
+                    &mut links,
+                    (data_at + 1, accumulator, used),
+                    prev,
+                    LinearOpcode::NoOperation,
+                    None,
+                );
+                for &byte in operands.get(data_at)? {
+                    let word = u32::from(byte);
+                    for (opcode, result) in [
+                        (
+                            LinearOpcode::CrazyData,
+                            malbolge::profile_crazy(word, accumulator, 15),
+                        ),
+                        (
+                            LinearOpcode::RotateData,
+                            malbolge::profile_rotate(
+                                word,
+                                profile.memory_words(),
+                            ),
+                        ),
+                    ] {
+                        insert(
+                            &mut next,
+                            &mut links,
+                            (data_at + 1, result, used),
+                            prev,
+                            opcode,
+                            Some((data_at, byte)),
+                        );
+                    }
+                    if !used {
+                        let relocated = usize::from(byte) + 1;
+                        if relocated > data_at + 1 && relocated < scratch_end {
+                            insert(
+                                &mut next,
+                                &mut links,
+                                (relocated, accumulator, true),
+                                prev,
+                                LinearOpcode::RelocateDataPointer,
+                                Some((data_at, byte)),
+                            );
+                        }
+                    }
+                }
+            }
+            frontier = next;
+            // This is a proposal search: exhausting the cap is not proof of
+            // impossibility, and unverified candidates never reach the caller.
+            if frontier.is_empty()
+                || frontier.len() > 8_192
+                || links.len() > 100_000
+            {
+                break;
+            }
+        }
+        if completed.is_empty() {
+            return None;
+        }
+        // The remaining outputs still need at least one source cell each.
+        states = completed
+            .into_iter()
+            .filter(|(key, _)| {
+                scratch_end.saturating_sub(key.0) >= N - emitted - 1
+            })
+            .collect();
+        if states.is_empty() {
+            return None;
+        }
+    }
+    for (_, &last) in states.iter().filter(|(key, _)| key.2).take(64) {
+        let mut path = Vec::new();
+        let mut cursor = last;
+        while cursor != 0 {
+            let link = links.get(cursor)?;
+            path.push((link.opcode, link.operand));
+            cursor = link.predecessor;
+        }
+        path.reverse();
+        let mut operations = vec![LinearOpcode::NoOperation; target];
+        *operations.get_mut(jump_position)? = LinearOpcode::JumpForward {
+            target: u32::try_from(target).ok()?,
+        };
+        for (_, operand) in &path {
+            if let Some(&(at, byte)) = operand.as_ref() {
+                *operations.get_mut(at)? =
+                    LinearOpcode::SkippedDataByte { byte: u32::from(byte) };
+            }
+        }
+        operations.extend(path.into_iter().map(|(opcode, _)| opcode));
+        operations.push(LinearOpcode::Halt);
+        let Ok(layout) = super::encode_linear_layout(profile, &operations)
+        else {
+            continue;
+        };
+        let valid = [Vec::new(), vec![255, 0, 128]].into_iter().all(|input| {
+            let Ok(mut vm) = super::ProfileMachine::from_source(
+                profile,
+                layout.source(),
+                input,
+            ) else {
+                return false;
+            };
+            matches!(
+                vm.run(layout.executed_code_positions().len()),
+                Ok(super::RunOutcome::Terminated { steps, .. })
+                    if steps == layout.executed_code_positions().len()
+            ) && vm.input_consumed() == 0
+                && vm.output() == expected
+        });
+        if valid {
+            return Some(layout);
+        }
+    }
+    None
+}
+
 /// Try short multi-effect guest traces without extending hostile-input cost.
 ///
 /// Unlike a fixed `p`/output ladder, this bounded beam admits repeated
