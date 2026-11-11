@@ -240,7 +240,7 @@ approve a contribution or replace deeper project verification.
 
 This lightweight contributor workflow was inspired by
 [DannyBaanks](https://github.com/DannyBaanks). The validator is original
-proprietary repository code, not copied from another project.
+Apache-2.0-licensed repository code, not copied from another project.
 
 Read [AGENTS.md](AGENTS.md) before making repository changes. It is a compact
 handoff; owning TODOs, specifications, contracts, and ADRs remain authoritative
@@ -265,10 +265,10 @@ experimental result pass. Bounded evidence must remain visibly bounded.
 
 ## License
 
-Current owner-controlled repository material is proprietary under
-[`LICENSE`](LICENSE). Historical material and
-third-party boundaries
-keep their own licensing records under [docs/legal/](docs/legal/).
+Original project code, documentation and tooling are licensed under the
+[Apache License, Version 2.0](LICENSE). Historical public-domain materials and
+other third-party sources retain their own licenses and attribution obligations;
+see the [legal records](docs/legal/).
 
 This is an experimental research repository, not a compatibility warranty or
 service-level commitment. Planned features are claims about intended work only
