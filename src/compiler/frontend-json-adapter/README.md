@@ -31,6 +31,16 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+Bounded source-state replay now composes a braced `if/else` containing
+independent `switch` statements. Both C arms receive complete proof,
+but only selected assignments or outputs survive. Two full Fibonacci
+variants emit after the conditional or within the selected switch case,
+with twelve oracle bytes and 47 real guest steps. Opening brace byte and
+column gaps, and closing arm spans, are authenticated. Five unsupported
+source mutations and 24 AST forgeries refuse; this is not dynamic guest
+branching or arbitrary unmasked byte-stream synthesis.
+
+
 A bounded whole-C source-state replay also permits a checked unsigned
 assignment **between** two real `putchar` effects in a nested switch arm.
 Both outputs retain their source order and the second sees the updated local.

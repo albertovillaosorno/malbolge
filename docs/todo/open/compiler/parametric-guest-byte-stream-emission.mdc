@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full twelve-trip unsigned Fibonacci C program nested
+  a `switch` in both braced `if/else` arms. The adapter initially
+  refused this control composition; bounded replay now proves both
+  switch alternatives and carries only selected local state and outputs.
+  A second complete C program emits inside each selected switch case.
+  The independent C oracle and normative guest VM agree on twelve masked
+  bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps. Five
+  unproved source mutations and 24 forged ASTs reject publication; new
+  byte/column brace-span checks close a discovered authenticity gap.
+  The original unmasked stream and dynamic C branching remain open.
+
+
 - On 2026-11-11 a complete descending unsigned Fibonacci source
   used `for (unsigned i = 12U; i; --i)`. The pinned C frontend accepted
   it but the JSON adapter refused its scalar induction guard. A source-

@@ -25,6 +25,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Conditional C switch arms (2026-11-11)
+
+A complete twelve-trip unsigned Fibonacci C program places a bounded
+`switch` inside both braced `if/else` arms. The pinned Clang frontend
+admitted the complete source but the adapter initially refused this
+control-flow composition. The selected switch now carries its checked
+local writes or `putchar` effects out of the conditional without leaking
+effects from the unselected arm. A second complete program moves its
+only output into the selected switch case.
+
+The independent unsigned C oracle and normative guest VM both emit
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps. Five invalid C
+mutations and 24 forged ASTs refuse publication. The source proof now
+checks full arm end spans and exact opening byte/column gaps, rejecting
+previously accepted forged brace coordinates. Dynamic guest control and
+the original unmasked Fibonacci output remain unsupported; P0 stays open.
+
+
 ### Scalar induction truth guards in complete C (2026-11-11)
 
 The full source-backed unsigned recurrence now uses a descending C loop

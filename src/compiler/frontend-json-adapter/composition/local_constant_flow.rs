@@ -295,6 +295,9 @@ impl<'node> Flow<'node> {
                     self.sequenced_writes(body, last_end, 0)?.0
                 },
                 "unary-expression" => self.standalone_step(body, last_end)?,
+                // Both conditional branches are independently re-admitted;
+                // only the chosen switch's local writes and output escape.
+                "switch-statement" => self.static_switch(body, last_end)?,
                 "break-statement" | "continue-statement" => {
                     self.loop_exit_statement(body, last_end)?
                 },
@@ -447,9 +450,11 @@ impl<'node> Flow<'node> {
     fn conditional_arm(
         &mut self,
         statement: &Node,
-        previous_end: u32,
+        previous: &Node,
         depth: u8,
+        opening_gap: u32,
     ) -> Option<u32> {
+        let previous_end = previous.span.end.byte;
         let arm = self.peek()?;
         if arm.parent != statement.id
             || !span_within(&statement.span, &arm.span)
@@ -460,7 +465,22 @@ impl<'node> Flow<'node> {
         match arm.kind.as_str() {
             "compound-statement" => {
                 let scope = self.take(statement.id, "compound-statement")?;
-                if !clean(scope) {
+                // A braced arm starts exactly after `) {` or `} else {`.
+                // Pin both byte and column geometry: a forged brace span
+                // must never grant its nested switch a fabricated scope.
+                if !clean(scope)
+                    || (scope.span.end.byte == statement.span.end.byte
+                        && scope.span.end != statement.span.end)
+                    || previous.span.end.line != scope.span.begin.line
+                    || scope.span.begin.byte.checked_sub(previous_end)
+                        != Some(opening_gap)
+                    || scope
+                        .span
+                        .begin
+                        .column
+                        .checked_sub(previous.span.end.column)
+                        != Some(opening_gap)
+                {
                     return None;
                 }
                 self.branch_effects(scope, depth)?;
@@ -506,8 +526,8 @@ impl<'node> Flow<'node> {
         let starting_exit = self.loop_exit;
         let starting_return = self.return_node;
         let output_count = self.outputs.len();
-        let then_end =
-            self.conditional_arm(statement, condition.span.end.byte, depth)?;
+        let then_node = self.peek()?;
+        let then_end = self.conditional_arm(statement, condition, depth, 2)?;
         let then_state = self.locals.clone();
         let then_exit = self.loop_exit;
         let then_return = self.return_node;
@@ -546,7 +566,8 @@ impl<'node> Flow<'node> {
             | "call-expression"
             | "binary-expression"
             | "compound-assignment-expression" => {
-                let end = self.conditional_arm(statement, then_end, depth)?;
+                let end =
+                    self.conditional_arm(statement, then_node, depth, 6)?;
                 if end != statement.span.end.byte {
                     return None;
                 }
