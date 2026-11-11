@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 the complete twelve-iteration unmasked Fibonacci C
+  program again refused at `Layout(UnsupportedEffectTrace)` without an
+  artifact. A new whole masked recurrence then failed JSON admission on
+  `case 0U:` to `case 2U:` to `case 1U:` consecutive fallthrough. The
+  bounded switch projector now replays all three direct entry states and
+  both carried paths independently against the same pinned-Clang AST,
+  proving two consecutive edges with checked local writes and one break.
+  The 12-byte independent Fibonacci oracle matches the real guest VM
+  in 47 steps under EOF/binary stdin. Five unsupported C mutations and
+  eight forged AST trees refuse without publication. A third edge,
+  fallthrough to default, runtime C switching and the original unmasked
+  byte layout remain unsupported; the generalized P0 is still open.
+
 - On 2026-11-10 a complete twelve-step masked Fibonacci C source
   first refused nonempty case-to-case fallthrough. The pinned Clang AST
   and bounded local-flow replay now prove distinct direct and carried

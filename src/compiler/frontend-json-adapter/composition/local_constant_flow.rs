@@ -1719,10 +1719,12 @@ impl<'node> Flow<'node> {
         let mut case_values = Vec::new();
         let mut selected_effect = None;
         let mut grouped_default_effect = None;
-        // Only one immediately adjacent nonempty case fallthrough is
-        // admitted; chained edges need a separate bounded state proof.
-        let mut pending_fallthrough: Option<(SwitchArmEffect<'node>, bool)> =
-            None;
+        // Replay each entry into a bounded chain independently: selecting
+        // a preceding case carries its actual local state through every
+        // subsequent label, while direct dispatch starts at switch entry.
+        // At most two consecutive fallthrough edges are source-proven.
+        let mut pending_fallthrough: Vec<(SwitchArmEffect<'node>, bool)> =
+            Vec::new();
         while self.peek()?.kind == "case-statement" {
             // A default nested below a case is the final switch label.
             if grouped_default_effect.is_some() {
@@ -1795,7 +1797,7 @@ impl<'node> Flow<'node> {
             let has_grouped_default = self.peek().is_some_and(|node| {
                 node.kind == "default-statement" && node.parent == case.id
             });
-            if has_grouped_default && pending_fallthrough.is_some() {
+            if has_grouped_default && !pending_fallthrough.is_empty() {
                 return None;
             }
             let arm_body_position = self.position;
@@ -1825,25 +1827,24 @@ impl<'node> Flow<'node> {
             let (effect, break_end) =
                 self.switch_arm_tail_or_fallthrough(scope, effect)?;
             let end_position = self.position;
-            if let Some((previous, selected_previous)) =
-                pending_fallthrough.take()
-            {
-                // Direct case entry starts from the pre-switch locals.
-                // Falling through starts from the prior case's real writes.
-                // Reconsume the same complete Clang subtree and require the
-                // exact same subsequent source-node boundary.
-                let end = break_end?;
+            let mut next_fallthrough = Vec::new();
+            for (previous, selected_previous) in pending_fallthrough.drain(..) {
+                // Reconsume the complete Clang subtree with the previous
+                // case's real state, checking the same source-node boundary.
                 self.locals = previous.locals;
                 self.position = arm_body_position;
                 let carried =
                     self.switch_arm_effect(case, previous_label_end)?;
                 let (carried, replay_end) =
-                    self.switch_arm_tail(scope, carried)?;
-                if replay_end != end || self.position != end_position {
+                    self.switch_arm_tail_or_fallthrough(scope, carried)?;
+                if replay_end != break_end || self.position != end_position {
                     return None;
                 }
                 if selected_previous {
-                    selected_effect = Some(carried);
+                    selected_effect = Some(carried.clone());
+                }
+                if break_end.is_none() {
+                    next_fallthrough.push((carried, selected_previous));
                 }
             }
             previous_arm_end = break_end.unwrap_or(effect.end);
@@ -1851,13 +1852,17 @@ impl<'node> Flow<'node> {
                 selected_effect = Some(effect.clone());
             }
             if break_end.is_none() {
-                pending_fallthrough = Some((effect.clone(), group_selected));
+                if next_fallthrough.len() >= 2 {
+                    return None;
+                }
+                next_fallthrough.push((effect.clone(), group_selected));
             }
+            pending_fallthrough = next_fallthrough;
             if has_grouped_default {
                 grouped_default_effect = Some(effect);
             }
         }
-        if case_values.is_empty() || pending_fallthrough.is_some() {
+        if case_values.is_empty() || !pending_fallthrough.is_empty() {
             return None;
         }
         let (default_effect, last_break) = if let Some(effect) =

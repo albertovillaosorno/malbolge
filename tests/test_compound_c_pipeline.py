@@ -11757,6 +11757,160 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertEqual(replay.stdout, bytes(oracle))
                 self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
 
+    def test_switch_chained_fallthrough_full_fibonacci_guest(self) -> None:
+        """All three dispatch entries use independent carried C local states."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        a, b = 1, 1
+        oracle = bytearray()
+        seen = set()
+        for _ in range(12):
+            following = (a + b) & 255
+            dispatch = following & 3
+            seen.add(dispatch)
+            # The case chain enters at 0, 2 or 1, while 3 takes default.
+            # In each path the selected output is the original masked byte.
+            oracle.append(
+                following & 31 if dispatch % 2 == 0
+                else ((following ^ 26) & 31)
+            )
+            a, b = b, following
+        self.assertEqual(seen, {0, 1, 2, 3})
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "chained.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/switch-chain-fibonacci-v1", "--capsule",
+                 "--output", str(guest),
+                 str(ROOT / "tests/compiler/c-frontend/accepted/"
+                     "local_chained_switch_fibonacci.c")],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(oracle))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_switch_chained_fallthrough_refuses_unproved_edges(self) -> None:
+        """Reject a longer chain, hidden effects and forged Clang ancestry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_chained_switch_fibonacci.c").read_text()
+        invalid = {
+            "third-fallthrough": original.replace(
+                "            selected ^= 0U;\n            break;\n        default:",
+                "            selected ^= 0U;\n"
+                "        case 3U:\n            selected ^= 0U;\n"
+                "            break;\n        default:", 1,
+            ),
+            "output-before-middle": original.replace(
+                "            carry ^= 7U;", "            putchar(65);", 1,
+            ),
+            "effectful-middle": original.replace(
+                "            carry ^= 0U;",
+                "            carry = (unsigned)getchar();", 1,
+            ),
+            "effectful-final": original.replace(
+                "            selected ^= carry;",
+                "            selected = (unsigned)getchar();", 1,
+            ),
+            "fallthrough-to-default": original.replace(
+                "            selected ^= 0U;\n            break;\n        default:",
+                "            selected ^= 0U;\n        default:", 1,
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source_text in invalid.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(source_text)
+                    guest = source.with_suffix(".malbolge")
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/invalid-switch-chain-{label}-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "chained-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/switch-chain-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            original_nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(frontend.stdout))["nodes"],
+            )
+            cases = [n for n in original_nodes if n["kind"] == "case-statement"]
+            self.assertEqual(len(cases), 3)
+            switch = next(n for n in original_nodes
+                          if n["kind"] == "switch-statement")
+            scope = next(n for n in original_nodes
+                         if n["kind"] == "compound-statement"
+                         and n["parent"] == switch["id"])
+            effects = [
+                next(n for n in original_nodes
+                     if n["kind"] == "compound-assignment-expression"
+                     and n["parent"] == case["id"])
+                for case in cases
+            ]
+            for label in (
+                "first-parent", "middle-parent", "last-parent",
+                "second-label-parent", "third-label-parent", "middle-span",
+                "middle-operation", "last-span",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    nodes = cast(list[dict[str, object]], forged["nodes"])
+                    target = None
+                    if label == "first-parent":
+                        target = nodes[cast(int, effects[0]["id"]) - 1]
+                        target["parent"] = scope["id"]
+                    elif label == "middle-parent":
+                        target = nodes[cast(int, effects[1]["id"]) - 1]
+                        target["parent"] = scope["id"]
+                    elif label == "last-parent":
+                        target = nodes[cast(int, effects[2]["id"]) - 1]
+                        target["parent"] = scope["id"]
+                    elif label == "second-label-parent":
+                        target = nodes[cast(int, cases[1]["id"]) - 1]
+                        target["parent"] = cases[0]["id"]
+                    elif label == "third-label-parent":
+                        target = nodes[cast(int, cases[2]["id"]) - 1]
+                        target["parent"] = cases[1]["id"]
+                    elif label == "middle-operation":
+                        target = nodes[cast(int, effects[1]["id"]) - 1]
+                        target["operation"] = "+="
+                    else:
+                        source_node = cases[1] if label == "middle-span" else cases[2]
+                        target = nodes[cast(int, source_node["id"]) - 1]
+                        span = cast(dict[str, dict[str, int]], target["span"])
+                        span["end"]["byte"] += 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    rejected = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--capsule", "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_switch_case_fallthrough_fail_closed(self) -> None:
         """Do not invent effects at a fallthrough edge or bypass AST proof."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):

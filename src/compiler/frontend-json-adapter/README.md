@@ -836,9 +836,15 @@ The selected state alone survives. The program's two paths require
 change the output. The real normative VM emits the independent twelve-byte
 masked Fibonacci oracle in 47 steps under EOF/binary stdin. Five unsupported
 source mutations and six normalized-tree forgeries refuse without publication.
-Output-before-fallthrough, chained case-to-case fallthrough, fallthrough
-to default, effectful input and more than four receiving-arm effects remain
-unsupported, as do runtime guest switching and original unmasked output.
+A second full recurrence proves two consecutive nonempty fallthrough edges
+(`case 0U:` to `case 2U:` to `case 1U:`), with separate direct entry into
+all three cases. The projector independently replays the exact pinned-Clang
+subtree from each candidate entry state and requires identical source-node
+boundaries. At most two consecutive edges are admitted; three, any output
+before a fallthrough, fallthrough to default, effectful input, and more than
+four effects per arm refuse. This 12-output chained program reaches the same
+47-step independent guest oracle on empty and binary stdin. The original
+unmasked program and guest runtime switching remain unsupported.
 
 ### Source-checked ordered switch-arm effects
 

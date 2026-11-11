@@ -73,6 +73,32 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Two consecutive source-proven switch fallthrough edges (2026-11-10)
+
+A complete twelve-iteration masked Fibonacci recurrence was first retried
+alongside the unchanged unmasked source. The latter still refused at
+`Layout(UnsupportedEffectTrace)` with no guest artifact. The new C source,
+`tests/compiler/c-frontend/accepted/local_chained_switch_fibonacci.c`,
+then refused at normalized JSON admission. Its switch uses three explicit
+case labels in source order `0U`, `2U`, `1U`; direct entry into each case
+must read different local state from entry via the previous label. The
+case-zero path traverses **two consecutive nonempty fallthrough edges**,
+whereas case two traverses one and case one none. Case three takes default.
+
+The repaired closed projector replays each label subtree from pre-switch
+locals for direct entry and separately from every pending carried path.
+All replays must consume the same complete Clang nodes, end at the same
+source position and agree on the switch-local `break` or next label.
+Only the selected path's local state survives. At most two consecutive
+edges are admitted, with no preceding output, no fallthrough to default,
+and no relaxation of the four-effects-per-arm proof. The complete C loop
+reaches independent masked oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+from real guest Malbolge in 47 steps under empty and binary stdin. Five
+invalid C mutations and eight forged Clang trees refuse without an
+artifact. This is finite compile-time source-state replay, not runtime
+guest C switching, generalized byte layout, or acceptance of the original
+unmasked Fibonacci target. The generalized P0 remains pending.
+
 ### Source-checked nonempty `switch` fallthrough (2026-11-10)
 
 A complete twelve-iteration masked Fibonacci C source now uses real C
