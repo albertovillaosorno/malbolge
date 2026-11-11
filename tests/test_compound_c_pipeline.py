@@ -17650,5 +17650,173 @@ class CompoundCPipelineTests(unittest.TestCase):
 
 
 
+    def test_two_outputs_in_nested_switch_reach_real_guest(self) -> None:
+        """Both selected calls survive each nested switch's state replay."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_dual_nested_switch_fibonacci.c"
+        )
+        a = b = 1
+        expected = bytearray()
+        paths: set[tuple[int, int]] = set()
+        for i in range(6):
+            first = (a + b) & 255
+            x = ((first ^ 26) if first & 1 else first) & 31
+            a, b = b, first
+            second = (a + b) & 255
+            y = ((second ^ 26) if second & 1 else second) & 31
+            a, b = b, second
+            paths.add((i & 1, second & 1))
+            expected.extend((x, y))
+        self.assertEqual(paths, {(0, 0), (0, 1), (1, 0), (1, 1)})
+        self.assertEqual(
+            expected, bytes.fromhex("02191f08170f020d03101303")
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "dual-switch.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER),
+                    "--repository-tools", "--source-id",
+                    "tests/dual-nested-switch-v1", "--capsule",
+                    "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(
+                    executed.stderr, b"malbolge-steps-v1:47\n"
+                )
+
+    def test_two_outputs_in_nested_switch_refuse_unproved_source(self) -> None:
+        """Third effects, writes after output and hidden calls cannot pass."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_dual_nested_switch_fibonacci.c"
+        ).read_text()
+        first = "                putchar((int)(x ^ (i & 1U)));"
+        second = "                putchar((int)(y ^ (second & 1U)));"
+        alternate = "                putchar((int)(y ^ ((second & 1U) ^ 1U)));"
+        cases = {
+            "third-selected-output": source.replace(
+                second, second + "\n                putchar((int)x);", 1
+            ),
+            "third-other-output": source.replace(
+                alternate, alternate + "\n                putchar((int)y);", 1
+            ),
+            "unselected-input": source.replace(
+                "putchar((int)(y ^ ((second & 1U) ^ 1U)));",
+                "putchar((int)getchar());", 1
+            ),
+            "effectful-dispatch": source.replace(
+                "switch (second & 1U)", "switch (second++ & 1U)", 1
+            ),
+            "write-after-output": source.replace(
+                second, "                x = 0U;\n" + second, 1
+            ),
+            "third-switch-level": source.replace(
+                first,
+                "                switch (x & 1U) {\n"
+                "                case 0U: putchar((int)x); break;\n"
+                "                default: putchar((int)x); break;\n"
+                "                }", 1
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in cases.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(contents, source)
+                    path = Path(scratch) / f"{label}.c"
+                    path.write_text(contents)
+                    normalized = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/dual-switch-invalid-{label}-v1",
+                            str(path),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(
+                        normalized.returncode, 0, normalized.stderr
+                    )
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest), "--capsule",
+                        ],
+                        input=normalized.stdout, capture_output=True,
+                        check=False, timeout=20,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_two_outputs_in_nested_switch_refuse_forged_ast(self) -> None:
+        """Both first and second calls need exact parent and byte geometry."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_dual_nested_switch_fibonacci.c"
+        )
+        normalized = subprocess.run(
+            [
+                str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                "--resource-dir", str(RESOURCE), "--source-id",
+                "tests/dual-switch-forgery-v1", str(source),
+            ],
+            capture_output=True, check=False, timeout=30,
+        )
+        self.assertEqual(normalized.returncode, 0, normalized.stderr)
+        original = json.loads(normalized.stdout)
+        calls = [n for n in original["nodes"] if n["kind"] == "call-expression"]
+        self.assertEqual(len(calls), 8)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for call in calls:
+                for label in (
+                    "wrong-parent", "begin-byte", "begin-column",
+                    "end-byte", "end-column", "operation",
+                ):
+                    with self.subTest(call=call["id"], ast=label):
+                        forged = json.loads(normalized.stdout)
+                        item = forged["nodes"][call["id"] - 1]
+                        if label == "wrong-parent":
+                            item["parent"] = 2
+                        elif label == "operation":
+                            item["operation"] = "++"
+                        else:
+                            end, field = label.split("-")
+                            item["span"][end][field] += (
+                                1 if end == "begin" else -1
+                            )
+                        guest = Path(scratch) / f"{call['id']}-{label}.malbolge"
+                        refused = subprocess.run(
+                            [
+                                str(ADAPTER), "--layout-backend", str(LAYOUT),
+                                "--output", str(guest), "--capsule",
+                            ],
+                            input=json.dumps(forged).encode(),
+                            capture_output=True, check=False, timeout=20,
+                        )
+                        self.assertNotEqual(refused.returncode, 0, label)
+                        self.assertIn(b"Unsupported", refused.stderr, label)
+                        self.assertFalse(guest.exists(), label)
+
+
 if __name__ == "__main__":
     _ = unittest.main()

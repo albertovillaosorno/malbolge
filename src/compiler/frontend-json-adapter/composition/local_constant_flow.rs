@@ -40,6 +40,7 @@ use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 const MAX_LOCALS: usize = 8;
 const MAX_STATIC_SWITCH_CASES: usize = 8;
 const MAX_STATIC_SWITCH_DEPTH: u8 = 2;
+const MAX_SWITCH_ARM_OUTPUTS: usize = 2;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
 const MAX_STATIC_WHILE_DO_DEPTH: u8 = 3;
@@ -95,7 +96,7 @@ struct OutputCall<'node> {
 struct SwitchArmEffect<'node> {
     begin_line: u32,
     end: u32,
-    output: Option<OutputCall<'node>>,
+    outputs: Vec<OutputCall<'node>>,
     locals: Vec<Local<'node>>,
 }
 
@@ -1813,28 +1814,28 @@ impl<'node> Flow<'node> {
         None
     }
 
-    /// Each arm has exactly one source-checked call or unsigned local write.
-    /// Capture its effect before reinitializing state for the next arm.
+    /// Capture one checked source effect before resetting for the next arm.
+    /// Nested dispatch and conditionals may contain two ordered outputs.
     fn switch_arm_effect(
         &mut self,
         body: &Node,
         previous_end: u32,
     ) -> Option<SwitchArmEffect<'node>> {
         let begin_line = self.peek()?.span.begin.line;
-        let (end, output) = match self.peek()?.kind.as_str() {
+        let (end, outputs) = match self.peek()?.kind.as_str() {
             "call-expression"
                 if self.switch_depth <= MAX_STATIC_SWITCH_DEPTH =>
             {
                 let output = checked_call(self, body, previous_end)?;
-                (output.call.span.end.byte, Some(output))
+                (output.call.span.end.byte, vec![output])
             },
             "binary-expression" | "compound-assignment-expression" => {
-                (self.assignment(body, previous_end)?.0, None)
+                (self.assignment(body, previous_end)?.0, Vec::new())
             },
             "if-statement" => {
                 // Both sides of an inner conditional receive source-checked
                 // replay, but only the selected path may affect the enclosing
-                // switch arm. Capture its one possible output until outer
+                // switch arm. Capture its bounded outputs until outer
                 // dispatch has finished proving every unselected case.
                 let first = self.position;
                 let statement = self.peek()?;
@@ -1874,43 +1875,39 @@ impl<'node> Flow<'node> {
                 {
                     return None;
                 }
-                let output =
-                    match self.outputs.len().checked_sub(output_count)? {
-                        0 => None,
-                        1 => self.outputs.pop(),
-                        _ => return None,
-                    };
-                (end, output)
+                let outputs = self.outputs.split_off(output_count);
+                if outputs.len() > MAX_SWITCH_ARM_OUTPUTS {
+                    return None;
+                }
+                (end, outputs)
             },
             "switch-statement" => {
-                // A nested dispatch may emit one source-checked byte.
+                // A nested dispatch may emit two source-checked bytes.
                 // Capture rather than publishing that effect: the enclosing
                 // switch replays selected and unselected arms independently,
                 // and only its final selected path may publish guest I/O.
                 let output_count = self.outputs.len();
                 let end = self.static_switch(body, previous_end)?;
-                let output =
-                    match self.outputs.len().checked_sub(output_count)? {
-                        0 => None,
-                        1 => self.outputs.pop(),
-                        _ => return None,
-                    };
-                (end, output)
+                let outputs = self.outputs.split_off(output_count);
+                if outputs.len() > MAX_SWITCH_ARM_OUTPUTS {
+                    return None;
+                }
+                (end, outputs)
             },
             _ => return None,
         };
         Some(SwitchArmEffect {
             begin_line,
             end,
-            output,
+            outputs,
             locals: self.locals.clone(),
         })
     }
 
     /// Clang parents only the first statement below a case/default label;
     /// subsequent statements are direct children of the switch compound.
-    /// Admit at most three additional checked local writes or one final output.
-    /// An output is terminal: later effects require an explicit new proof.
+    /// Admit at most three additional effects, with at most two outputs.
+    /// Once output starts, only further checked output calls may follow.
     fn switch_arm_tail(
         &mut self,
         scope: &Node,
@@ -1941,18 +1938,24 @@ impl<'node> Flow<'node> {
             ) {
                 return (next.parent == scope.id
                     && next.span.begin.byte > effect.end
-                    && effect.output.is_none())
+                    && effect.outputs.is_empty())
                 .then_some((effect, None));
             }
             if next.parent != scope.id
                 || next.span.begin.byte <= effect.end
-                || effect.output.is_some()
+                || (effect.outputs.len() > 0 && next.kind != "call-expression")
+                || effect.outputs.len() >= MAX_SWITCH_ARM_OUTPUTS
             {
                 return None;
             }
             let additional = self.switch_arm_effect(scope, effect.end)?;
             effect.end = additional.end;
-            effect.output = additional.output;
+            if effect.outputs.len().checked_add(additional.outputs.len())?
+                > MAX_SWITCH_ARM_OUTPUTS
+            {
+                return None;
+            }
+            effect.outputs.extend(additional.outputs);
             effect.locals = additional.locals;
         }
         None
@@ -2289,9 +2292,7 @@ impl<'node> Flow<'node> {
         }
         if let Some(chosen) = selected_effect.or(default_effect) {
             self.locals = chosen.locals;
-            if let Some(output) = chosen.output {
-                self.outputs.push(output);
-            }
+            self.outputs.extend(chosen.outputs);
         } else {
             self.locals = starting_locals;
         }

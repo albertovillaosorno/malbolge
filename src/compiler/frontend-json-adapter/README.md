@@ -132,6 +132,25 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Two ordered guest outputs in a nested C switch arm
+
+A complete six-trip unsigned Fibonacci C program now calculates two
+consecutive recurrence terms per loop trip, then selects one of four
+two-level nested `switch` arms through independent C selectors. Each
+selected innermost arm has two different source-bound `putchar` calls.
+The adapter captures their complete ordered effect vector while proving
+all unselected cases, including fallthrough checks, and publishes the
+selected vector only when enclosing switch replay is complete. This
+extends the earlier one-output switch proof, not dynamic guest control.
+
+The independent unsigned-C oracle and the normative guest VM agree on
+twelve masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47
+steps under EOF and binary stdin. Six invalid complete C mutations
+(including a third call, unselected input, and writes after output) and
+48 forged first/second output-call ASTs refuse without a guest artifact.
+Three outputs per selected arm, third-level switches and unmasked
+Fibonacci guest layout remain unsupported. P0 is still pending.
+
 ### Nested source-proven `switch` byte effects
 
 A full twelve-output Fibonacci C program now places the only `putchar`

@@ -25,6 +25,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two source-ordered outputs per nested switch arm (2026-11-11)
+
+The complete `local_dual_nested_switch_fibonacci.c` C program runs
+six source-proven bounded `for` trips. Each computes two consecutive
+unsigned Fibonacci terms and selects one of four two-level switch
+paths. Each innermost case emits both checked masked terms from two
+separate `putchar` calls, with all four selector pairs reached.
+
+The pinned Clang frontend admitted this program, but the JSON adapter
+initially refused the second call in each case. A bounded two-output
+vector now survives nested switch replay; unselected calls never
+escape, outputs cannot be followed by other state writes, and an
+effectful fallthrough or third output refuses. The independent C oracle
+and normative Malbolge VM match the ordered twelve-byte stream
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 VM steps under EOF and
+binary stdin. Six complete-C negative mutations and 48 forged Clang
+output-call nodes reject without publication.
+
+This is finite source-state replay, not general dynamic C switching or
+an arbitrary byte-stream synthesizer. The original unmasked Fibonacci
+trace still lacks a proved guest layout; the P0 remains open.
+
 ### Conditional C state inside nested switch cases (2026-11-11)
 
 A complete twelve-trip unsigned Fibonacci C program now uses four inner
