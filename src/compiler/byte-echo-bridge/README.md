@@ -1042,3 +1042,16 @@ untouched expanded words, not to guest-written operand revisits or alternate
 source-scratch geometry. The independently admitted `02 59 b9 b6` guest
 still executes under EOF and binary input. This search is test-only; it
 does not introduce a compiler fallback or prove arbitrary byte synthesis.
+
+### Exhaustive monotone source-scratch operand graph
+
+`tests/compiler/bridge/source_scratch.rs` now enumerates exact accumulator
+and output-prefix state for a phase-zero forward code jump with every possible
+loader-valid graphical operand and arbitrarily many **forward-only** data
+relocations. It explores 96,732 distinct phase/accumulator/output-prefix
+states without reaching the original Fibonacci `02 59 5f` prefix. Its positive
+control `02 59 5d` has a real 109-cell, eleven-step VM guest witness.
+This negative result covers only fresh source operands: backward or
+written-word revisits, alternate jump phases and expanded loader memory may
+still enable the original byte stream. The experiment is a test-time design
+constraint, not an accepted general-purpose synthesis algorithm.

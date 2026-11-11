@@ -244,16 +244,95 @@ fn original_fibonacci_third_byte_exceeds_graphical_scratch_grammar()
         states = completed;
     }
     let (_, third_bytes) = bounded_graphical_scratch_reachability(
-        states,
+        states.clone(),
         &operand_words,
         scratch_limit,
         None,
     );
     assert_eq!(third_bytes.len(), 205);
     assert!(!third_bytes.contains(&0x5f));
+    // The exact finite grammar below includes every forward relocation,
+    // not just twelve arithmetic steps after the prior two output effects.
+    let (complete, states) = fresh_graphical_scratch_reachability(
+        profile,
+        &operand_words,
+        scratch_limit,
+        [2, 89, 95],
+    );
+    assert_eq!(states, 96_732);
+    assert!(!complete);
+    // A positive control is independently executed as an 11-step guest in
+    // relocated_scratch_guest_executes_three_distinct_bytes.
+    let (reachable_control, _) = fresh_graphical_scratch_reachability(
+        profile,
+        &operand_words,
+        scratch_limit,
+        [2, 89, 93],
+    );
+    assert!(reachable_control);
     assert!(third_bytes.contains(&0x5d));
     assert!(third_bytes.contains(&0x79));
     Ok(())
+}
+
+/// Exhaust the fresh graphical scratch gap after a phase-zero code jump.
+///
+/// The exact accumulator and next output index are keyed by the data pointer.
+/// Source cells are independently selected from all eight loader-valid bytes
+/// for their decoder phases. Any number of strictly forward `j` relocations
+/// may skip untouched operands; D always increases, so the graph is acyclic.
+/// Writes to past cells do occur, but no rewritten operand can be revisited.
+/// Backward relocation, a different jump geometry and expanded memory remain
+/// excluded. This is a complete result only for that finite guest grammar.
+fn fresh_graphical_scratch_reachability(
+    profile: &ProfileDescriptor,
+    operands: &[Vec<u32>],
+    scratch_limit: usize,
+    expected: [u8; 3],
+) -> (bool, usize) {
+    let mut layers = vec![BTreeSet::<(u32, usize)>::new(); scratch_limit + 2];
+    _ = layers[1].insert((0, 0));
+    let mut explored = 0usize;
+    let mut completed = false;
+    for at in 1..=scratch_limit {
+        let states = std::mem::take(&mut layers[at]);
+        explored += states.len();
+        for (accumulator, emitted) in states {
+            if emitted == expected.len() {
+                completed = true;
+                continue;
+            }
+            if u8::try_from(accumulator & 255).ok() == Some(expected[emitted]) {
+                _ = layers[at + 1].insert((accumulator, emitted + 1));
+            }
+            if at == scratch_limit {
+                continue;
+            }
+            _ = layers[at + 1].insert((accumulator, emitted));
+            for &word in &operands[at] {
+                _ = layers[at + 1].insert((
+                    malbolge::profile_crazy(
+                        word,
+                        accumulator,
+                        profile.word_trits(),
+                    ),
+                    emitted,
+                ));
+                _ = layers[at + 1].insert((
+                    malbolge::profile_rotate(word, profile.memory_words()),
+                    emitted,
+                ));
+                let destination = word as usize + 1;
+                if destination > at + 1 && destination <= scratch_limit {
+                    _ = layers[destination].insert((accumulator, emitted));
+                }
+            }
+        }
+    }
+    completed |= layers[scratch_limit + 1]
+        .iter()
+        .any(|&(_, emitted)| emitted == expected.len());
+    (completed, explored)
 }
 
 #[test]
@@ -474,6 +553,8 @@ fn relocated_scratch_guest_executes_three_distinct_bytes() -> Result<(), String>
     let layout =
         verified_relocated_source_scratch_at_jump(profile, expected, 0)
             .ok_or("missing relocated scratch guest witness")?;
+    assert_eq!(layout.source().len(), 109);
+    assert_eq!(layout.executed_code_positions().len(), 11);
     let points = layout.data_pointer_positions();
     assert!(points.windows(2).any(|pair| pair[1] > pair[0] + 1));
     assert!(

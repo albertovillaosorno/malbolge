@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11, an exhaustive source-scratch finite graph for the full
+  unmasked Fibonacci C prefix `02 59 5f` rules out all fresh graphical
+  operands in the phase-zero jump gap, including any number of strictly
+  forward `j` data relocations. The graph visited 96,732 exact accumulator,
+  byte-effect, and D-phase combinations without reaching `5f`. A positive
+  `02 59 5d` control has an independently admitted eleven-step normative
+  guest witness. Backward or rewritten operand revisits, expanded memory,
+  and other code-jump layouts remain unsearched; no new C compiler
+  capability is claimed and P0 stays open.
+
+
 - On 2026-11-11 the verified scratch-written relocation guest was
   extended with a finite state-space negative experiment for the original
   unmasked C Fibonacci third output `0x5f`. Up to twelve additional

@@ -4037,3 +4037,25 @@ this negative result. The existing `02 59 b9 b6` witness still proves two
 real expanded-memory arithmetic effects in the normative VM with empty
 and binary input. No source compiler capability is claimed, and the P0
 remains unresolved.
+
+### Exhaustive fresh graphical scratch reachability
+
+The original full unmasked Fibonacci C source still needs the byte prefix
+`02 59 5f`; the compiler continues to refuse at guest layout. A new finite
+state-space experiment removes the twelve-instruction limit for a specific
+single-forward-code-jump geometry. It starts with the phase-zero jump, varies
+every subsequently read graphical scratch operand over all eight
+loader-valid positional bytes, and retains the **full 15-trit accumulator**
+and number of correctly emitted output effects at each data-pointer position.
+
+`o`, `p`, `*`, `<`, and **any number** of strictly forward `j` data-pointer
+relocations are included. Since D always increases, each operand is fresh and
+the graph is acyclic; dynamic programming exhausts all 96,732 reachable
+state/phase combinations for `02 59 5f` in this geometry. None emits the
+third byte. As a positive control, `02 59 5d` is reachable, and a separately
+admitted 109-cell source executes it in eleven normative VM instructions under
+two binary-input conditions. The result is **not** an impossibility claim for
+Malbolge or the full C program: backward/rewritten operand revisits, other
+initial jump phases, additional code jumps and loader-expanded memory are not
+part of this graph. General guest arithmetic and runtime C control remain P0
+work, not a completed compiler capability.
