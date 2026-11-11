@@ -41,7 +41,7 @@ const MAX_LOCALS: usize = 8;
 const MAX_STATIC_SWITCH_CASES: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
-const MAX_STATIC_WHILE_DO_DEPTH: u8 = 2;
+const MAX_STATIC_WHILE_DO_DEPTH: u8 = 3;
 const MAX_STATIC_FOR_EXTRA_GUARDS: usize = 2;
 const MAX_NESTED_FOR_LOOPS: usize = 2;
 const MAX_NESTED_LOOP_BLOCKS: usize = 4;
@@ -1600,7 +1600,7 @@ impl<'node> Flow<'node> {
     }
 
     /// Replay a source-proven `while (predicate) { ... }` over known locals.
-    /// Admit at most two nested while/do bodies (including within a for);
+    /// Admit at most three nested while/do bodies (including within a for);
     /// an inner break ends the nearest active loop.
     /// Recheck each condition after a body execution, or validate a skipped
     /// body on shadow state without publishing its writes or output effects.

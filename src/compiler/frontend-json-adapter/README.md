@@ -1236,12 +1236,24 @@ binary stdin. Unbounded loops, unproved effects, induction mutations and
 forged AST ancestry still refuse. These are finite compile-time source-state
 projections, not dynamic guest loops.
 
+### Three source-proven active `while/do` bodies
+
+`local_three_level_while_do_fibonacci.c` uses two nested bounded
+`while` loops and one mandatory-first `do/while` within a twelve-trip
+`for` to compute and mask a complete unsigned Fibonacci recurrence.
+The source-normalized adapter now proves three simultaneous while/do
+bodies while preserving scope, loop exits, condition rechecks and the
+outer induction symbol. The actual emitted Malbolge program outputs
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 VM steps. Unbounded
+loops and fourth-level nesting remain unsupported; this does not
+implement dynamic guest loops or general byte-stream synthesis.
+
 ### Source-proven mixed nested `while` and `do/while`
 
 `local_nested_while_do_fibonacci.c` computes each next unsigned C
 Fibonacci value with a two-trip `do/while` inside a two-trip `while`,
 all inside a protected bounded `for`. Source-backed replay now tracks
-both active `while` and `do` depths, refusing a combined third level.
+both active `while` and `do` depths, refusing a combined fourth level.
 The reverse `do/while`-then-`while`, two nested `do/while` bodies,
 inner `break`, inner `continue`, and outer `break` also retain C control
 flow and lexical lifetimes. All six complete C variants produce the
@@ -1249,7 +1261,7 @@ independent masked twelve-byte oracle
 `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 real guest VM steps
 under empty and binary stdin. Seven invalid source variants and eleven
 forged Clang ASTs reject without guest publication, including effectful
-predicates, fabricated ancestry and an illegal third nesting level.
+predicates, fabricated ancestry and an unproved third nesting level at the time.
 This is a finite source-state proof, not Malbolge runtime loop execution
 or general unmasked output layout.
 
@@ -1260,10 +1272,10 @@ inner `pass` local inside a two-trip `while` for the outer `phase` local,
 all inside a twelve-trip `for`. Every inner condition is re-evaluated against
 its own source-checked local, and `pass` is newly declared each outer trip.
 The normalized frontend previously refused the second `while`. The closed
-replay now tracks at most two active `while` bodies, retaining nearest-loop
+replay now tracks at most three active while/do bodies, retaining nearest-loop
 `break`/`continue`, lexical local lifetimes, and the protected `for` counter.
 The complete compiled source emits the independent twelve-byte masked
-Fibonacci oracle in 47 real VM steps on EOF and binary stdin. Third-level
+Fibonacci oracle in 47 real VM steps on EOF and binary stdin. Fourth-level
 `while/do` nesting, unbounded loops, input effects and forged Clang
 ancestry remain unsupported. This is static source-state proof, not
 guest runtime C execution or general unmasked byte-stream layout.

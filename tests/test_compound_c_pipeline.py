@@ -16004,6 +16004,195 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertFalse(guest.exists(), label)
 
+    @staticmethod
+    def _three_level_loop_sources() -> dict[str, str]:
+        """Build complete stateful C variants with three active while/do bodies."""
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_three_level_while_do_fibonacci.c"
+        ).read_text()
+        outer = "            ++phase;\n        }"
+        middle = "                ++stage;\n            }"
+        inner = "                } while (pass < 2U);"
+        assert all(original.count(part) == 1 for part in (outer, middle, inner))
+        return {
+            "while-while-do": original,
+            "do-while-do": original.replace(
+                "        while (phase < 2U) {", "        do {"
+            ).replace(outer, "            ++phase;\n        } while (phase < 2U);"),
+            "while-do-do": original.replace(
+                "            while (stage < 2U) {", "            do {"
+            ).replace(middle, "                ++stage;\n"
+                        "            } while (stage < 2U);"),
+            "do-do-do": original.replace(
+                "        while (phase < 2U) {", "        do {"
+            ).replace(
+                "            while (stage < 2U) {", "            do {"
+            ).replace(
+                middle, "                ++stage;\n"
+                "            } while (stage < 2U);"
+            ).replace(outer, "            ++phase;\n        } while (phase < 2U);"),
+            "inner-break": original.replace(
+                "while (pass < 2U);", "while (pass < 3U);"
+            ).replace(
+                "                    ++pass;",
+                "                    ++pass;\n"
+                "                    if (pass == 2U) { break; }",
+            ),
+            "inner-continue": original.replace(
+                "                    ++pass;",
+                "                    ++pass;\n"
+                "                    if (pass == 1U) { continue; }",
+            ),
+            "middle-break": original.replace(
+                "while (stage < 2U)", "while (stage < 3U)"
+            ).replace(
+                middle,
+                "                ++stage;\n"
+                "                if (stage == 2U) { break; }\n            }",
+            ),
+            "outer-break": original.replace(
+                "while (phase < 2U)", "while (phase < 3U)"
+            ).replace(
+                outer,
+                "            ++phase;\n"
+                "            if (phase == 2U) { break; }\n        }",
+            ),
+        }
+
+    def _assert_three_level_mixed_loop_guest(self, selected_label: str) -> None:
+        """Three stateful loop bodies produce a verified guest byte stream."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            next_value = 0
+            for phase in range(2):
+                for _stage in range(2):
+                    for _pass in range(2):
+                        if phase == 0:
+                            next_value = (previous + current) & 0xFFFFFFFF
+                        else:
+                            next_value &= 255
+            expected.append(
+                (next_value ^ 26) & 31
+                if next_value & 1 else next_value & 31
+            )
+            previous, current = current, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source in self._three_level_loop_sources().items():
+                if label != selected_label:
+                    continue
+                with self.subTest(source=label):
+                    current_source = Path(scratch) / f"{label}.c"
+                    current_source.write_text(source)
+                    guest = current_source.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [
+                            sys.executable, "-B", str(DRIVER),
+                            "--repository-tools", "--source-id",
+                            f"tests/three-level-mixed-{label}-v1",
+                            "--capsule", "--output", str(guest),
+                            str(current_source),
+                        ],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for data in (b"", bytes((0, 255, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"],
+                            input=data, capture_output=True, check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, bytes(expected))
+                        self.assertEqual(
+                            executed.stderr, b"malbolge-steps-v1:47\n"
+                        )
+
+    def test_three_level_while_while_do_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("while-while-do")
+
+    def test_three_level_do_while_do_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("do-while-do")
+
+    def test_three_level_while_do_do_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("while-do-do")
+
+    def test_three_level_do_do_do_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("do-do-do")
+
+    def test_three_level_inner_break_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("inner-break")
+
+    def test_three_level_inner_continue_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("inner-continue")
+
+    def test_three_level_middle_break_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("middle-break")
+
+    def test_three_level_outer_break_guest(self) -> None:
+        self._assert_three_level_mixed_loop_guest("outer-break")
+
+    def test_three_level_mixed_loops_refuse_unproved_source(self) -> None:
+        """Depth and side-effect limits still fail before guest publication."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = self._three_level_loop_sources()["while-while-do"]
+        assert original.count("                unsigned pass = 0U;") == 1
+        assert original.count("                } while (pass < 2U);") == 1
+        four_deep = original.replace(
+            "                unsigned pass = 0U;",
+            "                unsigned guard = 0U;\n"
+            "                while (guard < 1U) {\n"
+            "                unsigned pass = 0U;",
+        ).replace(
+            "                } while (pass < 2U);",
+            "                } while (pass < 2U);\n"
+            "                ++guard;\n"
+            "                }",
+        )
+        source_mutations = {
+            "four-active-loops": four_deep,
+            "unbounded-middle": original.replace(
+                "while (stage < 2U)", "while (stage < 13U)"
+            ),
+            "mutating-middle-predicate": original.replace(
+                "while (stage < 2U)", "while (++stage < 2U)"
+            ),
+            "mutating-inner-predicate": original.replace(
+                "while (pass < 2U)", "while (++pass < 2U)"
+            ),
+            "unproved-guest-input": original.replace(
+                "                    ++pass;",
+                "                    getchar();\n                    ++pass;",
+            ),
+        }
+        for label, source in source_mutations.items():
+            self.assertNotEqual(source, original, label)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source in source_mutations.items():
+                with self.subTest(source=label):
+                    path = Path(scratch) / f"{label}.c"
+                    path.write_text(source)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            sys.executable, "-B", str(DRIVER),
+                            "--repository-tools", "--source-id",
+                            f"tests/three-level-rejected-{label}-v1",
+                            "--capsule", "--output", str(guest),
+                            str(path),
+                        ],
+                        capture_output=True, check=False, timeout=180,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
 
 
 if __name__ == "__main__":

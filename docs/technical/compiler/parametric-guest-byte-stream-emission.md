@@ -25,6 +25,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Three source-proven mixed C while/do levels (2026-11-11)
+
+The complete twelve-output C source
+`local_three_level_while_do_fibonacci.c` nests a two-trip
+`do/while` inside a two-trip `while` inside another two-trip `while`,
+with an enclosing bounded `for`. The pinned Clang frontend accepted the
+source, but the JSON adapter initially refused the third active while/do
+body. Finite source-state replay now permits three total active while/do
+levels while retaining the existing twelve-trip cap, checked source
+ancestry, lexical local lifetimes and protected for induction.
+
+A real encoded Malbolge guest emits the independent masked unsigned-C
+Fibonacci bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps.
+The original unmasked twelve-byte layout remains unavailable, as do
+dynamic guest loops and general runtime C state.
+
 ### Mixed two-level C `while`/`do` nesting (2026-11-11)
 
 A complete twelve-output Fibonacci C source

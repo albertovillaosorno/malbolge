@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 the complete Fibonacci C source added a third
+  active `while/do` loop body, nested within two `while` bodies and a
+  bounded `for`. Pinned Clang accepted the source but the normalized
+  JSON adapter initially refused the third active loop. The bounded
+  source-state proof now admits three while/do levels, retaining the
+  twelve-trip cap and protected outer induction. The source-derived
+  unsigned-C oracle and real normative Malbolge VM agree on twelve
+  masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps.
+  Four active while/do levels and dynamic guest C control remain
+  unsupported. The original unmasked Fibonacci layout still refuses,
+  so P0 remains open.
+
 - On 2026-11-11 a complete masked Fibonacci C source nested
   `do/while` inside a two-trip `while` and enclosing bounded `for`.
   Pinned Clang accepted the source; the JSON adapter initially rejected
