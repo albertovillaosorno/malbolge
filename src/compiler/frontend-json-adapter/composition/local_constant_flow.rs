@@ -1581,16 +1581,17 @@ impl<'node> Flow<'node> {
         None
     }
 
-    /// Admit up to eight distinct source-ordered case labels and one final
-    /// default. All arms must prove a pure output and their own switch-local
-    /// break; only the selected effect escapes into the enclosing C loop.
+    /// Admit up to eight distinct source-ordered case labels, including
+    /// nested empty-label groups, and one final default. Each group must
+    /// prove one pure output and its own switch-local break; only the
+    /// selected effect escapes into the enclosing C loop.
     #[expect(
         clippy::cognitive_complexity,
         reason = "closed Clang ancestry and source-ordered switch outputs"
     )]
     #[expect(
         clippy::too_many_lines,
-        reason = "closed source-ordered non-fallthrough switch proof"
+        reason = "closed source-ordered grouped switch proof"
     )]
     fn static_switch(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
         let statement = self.take(body.id, "switch-statement")?;
@@ -1632,46 +1633,68 @@ impl<'node> Flow<'node> {
         let mut case_values = Vec::new();
         let mut selected_output = None;
         while self.peek()?.kind == "case-statement" {
-            if case_values.len() >= 8 {
+            let mut case = self.take(scope.id, "case-statement")?;
+            let outer_case_end = &case.span.end;
+            let mut previous_label_end = previous_arm_end;
+            let mut group_selected = false;
+            loop {
+                if case_values.len() >= 8
+                    || !clean(case)
+                    || !span_within(&scope.span, &case.span)
+                    || previous_label_end >= case.span.begin.byte
+                    || case.span.end != *outer_case_end
+                {
+                    return None;
+                }
+                let constant = self.take(case.id, "constant-expression")?;
+                let label = self.take(constant.id, "integer-literal")?;
+                let case_value = literal_u32(label)?;
+                if constant.type_name.as_deref() != Some("u32")
+                    || !bare_cast_metadata(constant)
+                    || constant.operation.is_some()
+                    || constant.constant_integer.as_deref()
+                        != Some(case_value.to_string().as_str())
+                    || !span_within(&case.span, &constant.span)
+                    || constant.span != label.span
+                    || constant.span.begin.byte.checked_sub(case.span.begin.byte)
+                        != Some(5)
+                    || constant
+                        .span
+                        .begin
+                        .column
+                        .checked_sub(case.span.begin.column)
+                        != Some(5)
+                    || constant.span.begin.line != case.span.begin.line
+                    || case_values.contains(&case_value)
+                {
+                    return None;
+                }
+                case_values.push(case_value);
+                group_selected |= selected == case_value;
+                previous_label_end = constant.span.end.byte;
+                // Clang nests adjacent labels with no intervening statement:
+                // `case 0U: case 2U: putchar(...);` is a single C arm.
+                // A case with any preceding effect is *not* a label group.
+                if !self.peek().is_some_and(|node| {
+                    node.kind == "case-statement" && node.parent == case.id
+                }) {
+                    break;
+                }
+                let nested = self.take(case.id, "case-statement")?;
+                if !span_within(&case.span, &nested.span)
+                    || nested.span.end != case.span.end
+                    || nested.span.begin.byte <= previous_label_end
+                {
+                    return None;
+                }
+                case = nested;
+            }
+            let output = checked_call(self, case, previous_label_end)?;
+            if output.call.span.end != *outer_case_end {
                 return None;
             }
-            let case = self.take(scope.id, "case-statement")?;
-            if !clean(case)
-                || !span_within(&scope.span, &case.span)
-                || previous_arm_end >= case.span.begin.byte
-            {
-                return None;
-            }
-            let constant = self.take(case.id, "constant-expression")?;
-            let label = self.take(constant.id, "integer-literal")?;
-            let case_value = literal_u32(label)?;
-            if constant.type_name.as_deref() != Some("u32")
-                || !bare_cast_metadata(constant)
-                || constant.operation.is_some()
-                || constant.constant_integer.as_deref()
-                    != Some(case_value.to_string().as_str())
-                || !span_within(&case.span, &constant.span)
-                || constant.span != label.span
-                || constant.span.begin.byte.checked_sub(case.span.begin.byte)
-                    != Some(5)
-                || constant
-                    .span
-                    .begin
-                    .column
-                    .checked_sub(case.span.begin.column)
-                    != Some(5)
-                || constant.span.begin.line != case.span.begin.line
-                || case_values.contains(&case_value)
-            {
-                return None;
-            }
-            case_values.push(case_value);
-            let output = checked_call(self, case, constant.span.end.byte)?;
-            if output.call.span.end != case.span.end {
-                return None;
-            }
-            previous_arm_end = self.switch_break(scope, case.span.end.byte)?;
-            if selected == case_value {
+            previous_arm_end = self.switch_break(scope, outer_case_end.byte)?;
+            if group_selected {
                 selected_output = Some(output);
             }
         }

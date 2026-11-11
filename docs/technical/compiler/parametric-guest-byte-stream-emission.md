@@ -96,6 +96,26 @@ C control selection, **not** runtime guest switch or input-dependent C
 state. The original unmasked Fibonacci output remains unsupported at
 layout, so P0 stays pending.
 
+### Grouped C switch labels in the complete recurrence (2026-11-10)
+
+The full twelve-step masked Fibonacci source was retried with ordinary
+`case 0U: case 2U:` labels sharing one pure `putchar` and a single
+switch-local `break`. Pinned Clang nests the second case beneath the first;
+the former direct-call-only projection refused the whole program without
+publishing a guest. The source-state projector now recognizes this exact
+consecutive empty-label nesting, checks both labels and the shared final
+call against one source extent, and selects the group when either label
+matches. The eight-unique-label ceiling still applies across all groups.
+An intervening effect or break is not an empty-label group and still
+refuses; neither runtime switch nor general fallthrough is implemented.
+
+All four dispatch values occur in the independent twelve-trip C oracle.
+The actual normative guest emits `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+in 47 steps under EOF and binary stdin. Two valid but unsupported
+fallthrough sources and six forged Clang case-group trees refuse with no
+guest artifact. Original unmasked Fibonacci and dynamic guest branching
+remain P0 work.
+
 ### Multiway C switch selection in the full recurrence (2026-11-10)
 
 A separate complete twelve-step masked Fibonacci C source replaced the

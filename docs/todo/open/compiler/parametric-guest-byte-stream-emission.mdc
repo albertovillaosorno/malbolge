@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete masked Fibonacci C switch with adjacent
+  `case 0U: case 2U:` labels first refused at normalized JSON admission.
+  A closed source-ordered proof now handles Clang's nested empty case
+  labels, one shared pure output and one switch-local break, while refusing
+  effectful fallthrough and forged ancestry or spans. All four dispatch
+  values occur in the 12-step oracle; the normative guest emits its exact
+  twelve bytes in 47 steps under EOF and binary stdin. Two unsupported C
+  sources and six forged AST variants fail closed. This is finite source
+  selection, not runtime guest switching or unmasked general byte layout.
+  P0 remains open.
+
 - On 2026-11-10 a complete masked twelve-step Fibonacci C recurrence
   first refused a four-way `switch (next & 3U)` at the JSON adapter. The
   checked projector now proves up to eight source-ordered distinct case

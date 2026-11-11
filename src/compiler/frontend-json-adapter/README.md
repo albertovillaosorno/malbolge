@@ -825,6 +825,17 @@ original unmasked twelve-byte output is still unsupported at layout.
 
 ### Source-checked `switch` with one case and default
 
+A complete masked twelve-step Fibonacci C source also shares a single
+output arm between consecutive `case 0U: case 2U:` labels. Pinned Clang
+nests the label nodes, which now admit a checked common call and switch-local
+break without inventing a second effect. All four dispatch values occur;
+the actual guest emits the independent twelve-byte oracle in 47 steps under
+EOF and binary stdin. Two sources with an effect or break before a second
+label and six forged nested Clang trees refuse without publication. The
+bound remains eight distinct case labels in total and a final `default`.
+Only empty-label grouping is admitted, not effectful fallthrough or
+dynamic C switch execution. Unmasked Fibonacci remains unimplemented.
+
 The source-backed `switch` selector also accepts more than one explicit
 case when each selected and unselected arm proves its own direct `putchar`
 and switch-local `break`. A red-first complete twelve-step masked Fibonacci
@@ -833,7 +844,7 @@ now reaches each of the four dispatch arms. The independent masked oracle
 is emitted by the normative guest VM in 47 steps under empty/binary stdin;
 four unsupported source variants and nine forged middle-case AST variants
 refuse before guest publication. The proof is capped at eight unique,
-ordered `u32` case labels and exactly one final default; fallthrough,
+ordered `u32` case labels and exactly one final default; effectful fallthrough,
 multiple effects per arm, case-local declarations, and arbitrary guest
 runtime branching remain unsupported. Original unmasked Fibonacci guest
 layout still fails closed.

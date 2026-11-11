@@ -136,6 +136,31 @@ def multiway_switch_fibonacci_source() -> str:
     return source.replace(original, replacement)
 
 
+def grouped_switch_fibonacci_source() -> str:
+    """Share one output body across two C cases without effectful fallthrough."""
+    source = multiway_switch_fibonacci_source()
+    source = source.replace(
+        "        case 0U:\n"
+        "            putchar((int)(next & 31U));\n"
+        "            break;\n"
+        "        case 1U:",
+        "        case 0U:\n"
+        "        case 2U:\n"
+        "            putchar((int)(next & 31U));\n"
+        "            break;\n"
+        "        case 1U:",
+    )
+    source = source.replace(
+        "        case 2U:\n"
+        "            putchar((int)(next & 31U));\n"
+        "            break;\n"
+        "        default:",
+        "        default:",
+    )
+    assert source.count("        case 2U:") == 1
+    return source
+
+
 def unbraced_masked_fibonacci_source() -> str:
     """Use ordinary unbraced if/else output arms in the full recurrence."""
     source = MASKED_FIBONACCI.read_text()
@@ -11443,6 +11468,153 @@ class CompoundCPipelineTests(unittest.TestCase):
                         self.assertNotEqual(rejected.returncode, 0, label)
                         self.assertIn(b"Unsupported", rejected.stderr, label)
                         self.assertFalse(guest.exists(), label)
+
+    def test_grouped_switch_case_labels_reach_real_guest(self) -> None:
+        """Two C labels sharing one arm preserve complete source semantics."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        a, b = 1, 1
+        expected = bytearray()
+        seen = set()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            seen.add(next_value & 3)
+            expected.append(
+                next_value & 31 if (next_value & 3) in (0, 2)
+                else (next_value ^ 26) & 31
+            )
+            a, b = b, next_value
+        self.assertEqual(seen, {0, 1, 2, 3})
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "grouped-switch.c"
+            source.write_text(grouped_switch_fibonacci_source())
+            guest = Path(scratch) / "grouped-switch.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER), "--repository-tools",
+                    "--source-id", "tests/grouped-switch-v1", "--capsule",
+                    "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, bytes(expected))
+                self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_grouped_switch_refuses_effectful_fallthrough_and_forgery(self) -> None:
+        """Clang nesting is proof, not permission for arbitrary fallthrough."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = grouped_switch_fibonacci_source()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            invalid = {
+                "effect-before-label": original.replace(
+                    "        case 0U:\n        case 2U:",
+                    "        case 0U:\n            putchar(65);\n        case 2U:",
+                ),
+                "break-before-label": original.replace(
+                    "        case 0U:\n        case 2U:",
+                    "        case 0U:\n            break;\n        case 2U:",
+                ),
+            }
+            for label, body in invalid.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-{label}.c"
+                    source.write_text(body)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/grouped-invalid-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = Path(scratch) / f"invalid-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                         "--source-id", f"tests/grouped-invalid-{label}-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(compiled.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "grouped-proof.c"
+            source.write_text(original)
+            result = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/grouped-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            original_nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(result.stdout))["nodes"],
+            )
+            cases = [n for n in original_nodes if n["kind"] == "case-statement"]
+            self.assertEqual(len(cases), 3)
+            outer, inner = cases[:2]
+            self.assertEqual(inner["parent"], outer["id"])
+            for label in (
+                "nested-parent", "nested-extent", "nested-value",
+                "duplicate-label", "nested-output-parent", "outer-extent",
+            ):
+                with self.subTest(forged=label):
+                    forged = cast(dict[str, object], json.loads(result.stdout))
+                    nodes = cast(list[dict[str, object]], forged["nodes"])
+                    nested = nodes[cast(int, inner["id"]) - 1]
+                    outer_node = nodes[cast(int, outer["id"]) - 1]
+                    if label == "nested-parent":
+                        nested["parent"] = outer_node["parent"]
+                    elif label == "nested-extent":
+                        span = cast(dict[str, dict[str, int]], nested["span"])
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    elif label == "outer-extent":
+                        span = cast(dict[str, dict[str, int]], outer_node["span"])
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    elif label == "nested-output-parent":
+                        call = next(
+                            n for n in nodes
+                            if n["kind"] == "call-expression"
+                            and n["parent"] == inner["id"]
+                        )
+                        call["parent"] = outer["id"]
+                    else:
+                        constant = next(
+                            n for n in nodes
+                            if n["kind"] == "constant-expression"
+                            and n["parent"] == inner["id"]
+                        )
+                        constant["constant_integer"] = (
+                            "999" if label == "nested-value" else "0"
+                        )
+                        if label == "duplicate-label":
+                            literal = next(
+                                n for n in nodes
+                                if n["kind"] == "integer-literal"
+                                and n["parent"] == constant["id"]
+                            )
+                            literal["constant_integer"] = "0"
+                            literal["literal"] = "0"
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                    self.assertFalse(guest.exists(), label)
 
     def test_multiway_switch_complete_fibonacci_guest(self) -> None:
         """A four-way Clang switch must select real guest effects in order."""
