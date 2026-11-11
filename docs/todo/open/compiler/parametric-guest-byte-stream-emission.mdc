@@ -1983,3 +1983,13 @@ a compiler capability gap, not a reason to return to N+1.
   and a complete three-iteration stateful C variant reaches two-input guest
   VM parity. The original twelve-output program remains unsupported, and
   guest runtime C state has not been implemented.
+
+- On 2026-11-11 a complete twelve-iteration unsigned C Fibonacci program
+  mixed a genuine `u32` scalar with an `i32` condition under nested logical
+  `&&`/`||`. Pinned Clang originally passed but normalized source-state
+  replay refused its first declaration. After mixed-operand admission, the
+  compiler produced an actual 47-step Malbolge guest emitting twelve
+  independently computed masked bytes `02 19 1f 08 17 0f 02 0d 03 10
+  13 03`. Equal-width two-unsigned logical pairs still refuse to prevent
+  forged `==` to `&&` reinterpretation; this is bounded static C replay,
+  not dynamic guest C control flow or the unmasked Fibonacci target.

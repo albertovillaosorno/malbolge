@@ -9345,6 +9345,127 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", refused.stderr)
                 self.assertFalse(guest.exists(), label)
 
+    def test_unsigned_scalar_logical_fibonacci_reaches_real_guest(self) -> None:
+        """A pure unsigned scalar may participate in a checked C &&/||."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_unsigned_scalar_logic_fibonacci.c"
+        )
+        original = source.read_text()
+        predicate = (
+            "((~next) & 1U) && (((next & 2U) != 0U) || "
+            "((next & 2U) == 0U))"
+        )
+        self.assertIn(predicate, original)
+        # Independent unsigned-C recurrence: every nonzero even-branch
+        # predicate is truthy exactly when the low bit of next is zero.
+        a = b = 1
+        expected = bytearray()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            selected = ((~next_value) & 1) != 0 and (
+                ((next_value & 2) != 0) or ((next_value & 2) == 0)
+            )
+            expected.append(
+                (next_value if selected else next_value ^ 0x1A) & 31
+            )
+            a, b = b, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex(
+            "02191f08170f020d03101303"
+        ))
+        variants = {"nested": original}
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, text in variants.items():
+                with self.subTest(variant=label):
+                    candidate = Path(scratch) / f"unsigned-{label}.c"
+                    candidate.write_text(text)
+                    guest = candidate.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/unsigned-logic-{label}-v1",
+                         "--capsule", "--output", str(guest),
+                         str(candidate)], capture_output=True, check=False,
+                        timeout=150,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for input_bytes in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"], input=input_bytes,
+                            capture_output=True, check=False, timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertEqual(
+                            executed.stderr, b"malbolge-steps-v1:47\n"
+                        )
+
+    def test_unsigned_scalar_logical_refuses_unproved_effects(self) -> None:
+        """Mixed Boolean admission must reject impure and forged C nodes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_unsigned_scalar_logic_fibonacci.c").read_text()
+        scalar = "((~next) & 1U)"
+        self.assertIn(scalar, original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed in {
+                "increment": original.replace(scalar, "((~next++) & 1U)"),
+                "both-unsigned": original.replace(
+                    "(((next & 2U) != 0U) || ((next & 2U) == 0U))",
+                    "(next & 2U)",
+                ),
+            }.items():
+                with self.subTest(source=label):
+                    candidate = Path(scratch) / f"invalid-{label}.c"
+                    candidate.write_text(changed)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/unsigned-scalar-invalid-{label}-v1",
+                         str(candidate)], capture_output=True, check=False,
+                        timeout=20,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = candidate.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)], input=frontend.stdout,
+                        capture_output=True, check=False, timeout=25,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr)
+                    self.assertFalse(guest.exists())
+            source = Path(scratch) / "forged.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/unsigned-scalar-forged-v1", str(source)],
+                capture_output=True, check=False, timeout=20,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            for label, change in {"operator": "==", "type": "u32"}.items():
+                with self.subTest(ast=label):
+                    artifact = json.loads(frontend.stdout)
+                    logical = next(node for node in artifact["nodes"]
+                                   if node.get("operation") == "&&")
+                    logical[change] = "==" if change == "operator" else "u32"
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(artifact).encode(),
+                        capture_output=True, check=False, timeout=25,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"normalized frontend rejected", refused.stderr)
+                    self.assertFalse(guest.exists())
+
     def test_pure_logical_recurrence_reaches_real_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

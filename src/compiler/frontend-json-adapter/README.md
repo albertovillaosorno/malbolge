@@ -1553,3 +1553,20 @@ independent twelve-byte Fibonacci oracle in 47 actual Malbolge VM steps on
 both empty and binary input. Six unsupported source variants and eight forged
 ASTs reject without guest artifacts. Runtime C loops and the original
 unmasked Fibonacci output layout remain unsupported.
+
+### Mixed unsigned-scalar logical conditions in bounded C
+
+A source-proven C logical `&&` or `||` may now combine one pure `u32`
+expression with one checked `i32` Boolean expression, in either operand
+order. The finite evaluator proves both operands, preserves C truth values,
+and retains the original source span and normalized Clang ancestry. Two
+`u32` operands remain unsupported: their equal-width comparison topology
+cannot safely distinguish a forged `==` from `&&` in normalized JSON.
+Neither mutation nor I/O in either operand is admitted.
+
+The complete tracked twelve-trip Fibonacci source
+`local_unsigned_scalar_logic_fibonacci.c` combines a nonzero unsigned
+bit expression with nested Boolean comparisons. Pinned Clang and the
+actual normative guest VM agree on twelve masked bytes in 47 VM steps.
+Its C branch and recurrence still execute at compile time, not as dynamic
+guest control flow. The original unmasked Fibonacci layout is not solved.

@@ -4059,3 +4059,20 @@ Malbolge or the full C program: backward/rewritten operand revisits, other
 initial jump phases, additional code jumps and loader-expanded memory are not
 part of this graph. General guest arithmetic and runtime C control remain P0
 work, not a completed compiler capability.
+
+### Mixed unsigned scalar and Boolean C conditions
+
+A new complete twelve-iteration Fibonacci source combines a pure unsigned
+bit expression with a nested `&&`/`||` condition. The normalized pinned
+Clang AST previously refused the mixed `u32`/`i32` logical operands. Bounded
+source-state replay now proves each operand, retains the original checked
+Clang ancestry and C truth semantics, and admits the mixed shape in either
+order. Two unsigned logical operands remain intentionally unsupported: an
+untrusted normalized AST can otherwise forge a same-width `==` operator into
+`&&` without distinguishable operand types.
+
+The complete C compiler emits a real 47-step guest whose twelve binary
+outputs are exactly `02 19 1f 08 17 0f 02 0d 03 10 13 03`, matching an
+independent unsigned recurrence under both empty and nonempty VM input.
+This capability extends compile-time C replay, not dynamic Malbolge guest
+state. The original unmasked Fibonacci stream and P0 remain pending.

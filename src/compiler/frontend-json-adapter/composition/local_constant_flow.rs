@@ -405,15 +405,21 @@ impl<'node> Flow<'node> {
         }
         let comparison = self.take(parent, "binary-expression")?;
         if matches!(comparison.operation.as_deref(), Some("&&" | "||")) {
-            // Restrict logical trees to int-valued Boolean subexpressions.
-            // A forged equal-width `==` -> `&&` must not reinterpret two
-            // unsigned operands as a different source predicate.
-            if self.peek()?.type_name.as_deref() != Some("i32") {
+            // C logical operators accept unsigned scalar operands in
+            // addition to int-valued Boolean comparisons. Admit the mixed
+            // shape only: ordinary unsigned `==`/`!=` also have two u32
+            // children and equal-width tokens, so forged normalized AST
+            // operators must not reinterpret those comparisons as logic.
+            let left_type = self.peek()?.type_name.as_deref()?;
+            if !matches!(left_type, "u32" | "i32") {
                 return None;
             }
             let (left_value, left) = self
                 .condition_expression(comparison.id, depth.checked_add(1)?)?;
-            if self.peek()?.type_name.as_deref() != Some("i32") {
+            let right_type = self.peek()?.type_name.as_deref()?;
+            if !matches!(right_type, "u32" | "i32")
+                || (left_type == "u32" && right_type == "u32")
+            {
                 return None;
             }
             let (right_value, right) = self
