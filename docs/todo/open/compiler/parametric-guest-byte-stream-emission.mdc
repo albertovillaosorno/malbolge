@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 the complete twelve-trip unsigned Fibonacci C recurrence
+  moved its division guard from a ternary into a source-proven `&&`
+  predicate; the pinned C frontend accepted the source but the JSON
+  adapter eagerly rejected skipped zero division. The fixed bounded replay
+  authenticates the pure unselected Boolean subtree without executing it.
+  An `||` variant selects the opposite arm and skips division on even
+  terms. Both run in the normative guest VM in 47 steps and emit the
+  independent masked recurrence oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` under EOF/binary input.
+  Selected undefined arithmetic, hidden effects and forged ASTs reject
+  publication. The original unmasked stream, dynamic guest branching and
+  more deeply nested arithmetic remain unsupported; P0 stays open.
+
 - On 2026-11-11 the original full unmasked Fibonacci C program still
   refused at `Layout(UnsupportedEffectTrace)` without guest publication.
   A separate full twelve-trip masked recurrence then exposed incorrect

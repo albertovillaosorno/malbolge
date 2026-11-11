@@ -375,8 +375,8 @@ impl<'node> Flow<'node> {
     }
 
     /// Prove a pure C Boolean tree, including negated comparisons.
-    /// Both operands are proven even when `&&`/`||` would short-circuit;
-    /// the admitted subtree contains no side effects or undefined operations.
+    /// Both operands are source-proven, but a skipped right operand
+    /// must not evaluate C arithmetic that would be undefined.
     fn condition(&mut self, statement: &Node) -> Option<(bool, &'node Node)> {
         let (selected, expression) =
             self.condition_expression(statement.id, 0)?;
@@ -425,23 +425,113 @@ impl<'node> Flow<'node> {
             {
                 return None;
             }
-            let (right_value, right) = self
-                .condition_expression(comparison.id, depth.checked_add(1)?)?;
+            let evaluate_right =
+                if comparison.operation.as_deref() == Some("&&") {
+                    left_value
+                } else {
+                    !left_value
+                };
+            let (right_value, right) = if evaluate_right {
+                let (value, expression) = self.condition_expression(
+                    comparison.id,
+                    depth.checked_add(1)?,
+                )?;
+                (Some(value), expression)
+            } else {
+                (
+                    None,
+                    self.unselected_condition_expression(
+                        comparison.id,
+                        depth.checked_add(1)?,
+                    )?,
+                )
+            };
             if !clean_i32_operator(comparison)
                 || !ordered_binary_spans(comparison, left, right)
             {
                 return None;
             }
             return Some((
-                if comparison.operation.as_deref() == Some("&&") {
-                    left_value && right_value
+                if evaluate_right {
+                    right_value?
                 } else {
-                    left_value || right_value
+                    left_value
                 },
                 comparison,
             ));
         }
         self.unsigned_comparison(comparison)
+    }
+
+    /// Authenticate a skipped Boolean subtree without evaluating it.
+    /// Undefined division may occur only in a pure, source-proven operand;
+    /// the selected operand always follows strict C evaluation.
+    fn unselected_condition_expression(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<&'node Node> {
+        let start = self.position;
+        if let Some((_, expression)) = self.condition_expression(parent, depth)
+        {
+            return Some(expression);
+        }
+        self.position = start;
+        if depth > MAX_EXPRESSION_DEPTH {
+            return None;
+        }
+        let next = self.peek()?;
+        if next.type_name.as_deref() == Some("u32") {
+            return self.unselected_expression(parent, depth);
+        }
+        match next.kind.as_str() {
+            "parenthesized-expression" => {
+                let grouped = self.take(parent, "parenthesized-expression")?;
+                let expression = self.unselected_condition_expression(
+                    grouped.id,
+                    depth.checked_add(1)?,
+                )?;
+                (grouped.type_name.as_deref() == Some("i32")
+                    && bare_typed_node(grouped)
+                    && span_within(&grouped.span, &expression.span)
+                    && grouped.span.begin.byte < expression.span.begin.byte
+                    && expression.span.end.byte < grouped.span.end.byte)
+                    .then_some(grouped)
+            },
+            "unary-expression" => {
+                let negation = self.take(parent, "unary-expression")?;
+                let operand = self.unselected_condition_expression(
+                    negation.id,
+                    depth.checked_add(1)?,
+                )?;
+                (negation.operation.as_deref() == Some("!")
+                    && clean_i32_operator(negation)
+                    && span_within(&negation.span, &operand.span)
+                    && negation.span.begin.byte < operand.span.begin.byte
+                    && negation.span.end.byte == operand.span.end.byte)
+                    .then_some(negation)
+            },
+            "binary-expression" => {
+                let comparison = self.take(parent, "binary-expression")?;
+                let operation = comparison.operation.as_deref()?;
+                if !matches!(operation, "==" | "!=" | "<" | "<=" | ">" | ">=")
+                    || !clean_i32_operator(comparison)
+                {
+                    return None;
+                }
+                let left = self.unselected_expression(
+                    comparison.id,
+                    depth.checked_add(1)?,
+                )?;
+                let right = self.unselected_expression(
+                    comparison.id,
+                    depth.checked_add(1)?,
+                )?;
+                ordered_binary_spans(comparison, left, right)
+                    .then_some(comparison)
+            },
+            _ => None,
+        }
     }
 
     /// Admit a braced scope or one direct checked effect as a C branch arm.

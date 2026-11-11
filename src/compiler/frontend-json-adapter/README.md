@@ -31,6 +31,15 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+The source-proven C Boolean evaluator now honors `&&`/`||` evaluation
+order for a skipped pure right-hand comparison containing unsigned
+division by zero. Complete twelve-iteration Fibonacci programs using
+both operators emit twelve independently calculated masked bytes in the
+real guest VM (47 steps). Selected zero division, skipped input/output
+and forged AST ancestry still refuse. This is bounded source replay;
+full runtime C logical branching and arbitrary deeply nested Boolean
+expressions remain unsupported.
+
 A source-proven unsigned C ternary may now skip a pure division or remainder
 by zero in its unselected operand, including exact parenthesized wrappers.
 The selected arm is still fully evaluated, so selected undefined arithmetic

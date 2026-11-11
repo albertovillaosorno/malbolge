@@ -25,6 +25,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Short-circuit C logical guards (2026-11-11)
+
+A complete twelve-trip unsigned Fibonacci C program guards division with
+`&&`; the pinned Clang frontend accepts it but the normalized adapter
+initially rejected it because the RHS divided by zero on even terms.
+The bounded source replay now checks the entire skipped pure Boolean RHS
+without evaluating its division, preserving C evaluation order. The same
+full program with `||` and opposite branch selection also compiles. Both
+variants match the independent unsigned-C oracle on the real normative
+VM: `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps, with
+EOF and binary stdin. Selected zero division, hidden input/output, and
+forged source nodes still reject before guest publication.
+
+This is finite source proof with bounded expression depth, not general
+guest-side short-circuit branching. Complex nested arithmetic can still
+exceed the expression-depth bound; unmasked Fibonacci and arbitrary C
+control flow remain unimplemented.
+
 ### Non-evaluated C ternary arithmetic (2026-11-11)
 
 The complete twelve-iteration masked unsigned Fibonacci program now guards
