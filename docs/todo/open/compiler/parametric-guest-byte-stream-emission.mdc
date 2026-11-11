@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete descending unsigned Fibonacci source
+  used `for (unsigned i = 12U; i; --i)`. The pinned C frontend accepted
+  it but the JSON adapter refused its scalar induction guard. A source-
+  checked pure counter truth test now replays the finite loop to zero,
+  with checked descending steps and no unsigned wrap. The independently
+  computed twelve-byte masked recurrence matches the normative guest
+  VM in 47 steps under empty and binary input, with three other
+  decrement spellings validated on two-trip prefixes. Four unsupported C
+  changes and eight forged AST variants reject without guest publication. Original unmasked Fibonacci
+  layout and dynamic guest C control remain unimplemented; P0 stays open.
+
 - On 2026-11-11, an exhaustive source-scratch finite graph for the full
   unmasked Fibonacci C prefix `02 59 5f` rules out all fresh graphical
   operands in the phase-zero jump gap, including any number of strictly

@@ -9345,6 +9345,175 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", refused.stderr)
                 self.assertFalse(guest.exists(), label)
 
+    def test_scalar_counter_guard_reaches_full_fibonacci_guest(self) -> None:
+        """A descending unsigned `for` scalar guard evaluates until zero."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (ROOT / "tests/compiler/c-frontend/accepted/"
+                  "local_scalar_guard_fibonacci.c")
+        original = source.read_text()
+        self.assertIn("for (unsigned i = 12U; i; --i)", original)
+        a = b = 1
+        expected = bytearray()
+        for remaining in range(12, 0, -1):
+            self.assertGreater(remaining, 0)
+            following = (a + b) & 255
+            expected.append((following if following % 2 == 0
+                             else following ^ 0x1A) & 31)
+            a, b = b, following
+        self.assertEqual(bytes(expected), bytes.fromhex(
+            "02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "scalar-guard.malbolge"
+            compiled = subprocess.run([
+                sys.executable, "-B", str(DRIVER),
+                "--repository-tools", "--source-id",
+                "tests/scalar-guard-fibonacci-v1", "--capsule",
+                "--output", str(guest), str(source),
+            ], capture_output=True, check=False, timeout=150)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for input_bytes in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=input_bytes, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_scalar_counter_guard_refuses_unproved_loops(self) -> None:
+        """A scalar guard may only be the exact protected counter."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_scalar_guard_fibonacci.c").read_text()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed in {
+                "foreign-local": original.replace("i; --i", "b; --i"),
+                "effectful-guard": original.replace("i; --i", "i--; --i"),
+                "wrong-direction": original.replace("i; --i", "i; ++i"),
+                "stuck-counter": original.replace("i; --i", "i; i -= 0U"),
+            }.items():
+                with self.subTest(source=label):
+                    candidate = Path(scratch) / f"invalid-{label}.c"
+                    candidate.write_text(changed)
+                    guest = candidate.with_suffix(".malbolge")
+                    compiled = subprocess.run([
+                        sys.executable, "-B", str(DRIVER),
+                        "--repository-tools", "--source-id",
+                        f"tests/scalar-guard-invalid-{label}-v1",
+                        "--capsule", "--output", str(guest),
+                        str(candidate),
+                    ], capture_output=True, check=False, timeout=60)
+                    self.assertNotEqual(compiled.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_scalar_counter_guard_forged_ast_refuses_guest(self) -> None:
+        """A normalized scalar guard cannot forge its source or symbol."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_scalar_guard_fibonacci.c").read_text()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "scalar-guard.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/scalar-guard-forged-v1", str(source)],
+                capture_output=True, check=False, timeout=25,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            baseline = json.loads(frontend.stdout)
+            loop = next(node for node in baseline["nodes"]
+                        if node["kind"] == "for-statement")
+            guard = next(node for node in baseline["nodes"]
+                         if node["parent"] == loop["id"]
+                         and node["kind"] == "cast-expression"
+                         and node.get("operation") == "lvalue-to-rvalue")
+            counter = next(node for node in baseline["nodes"]
+                           if node["parent"] == guard["id"])
+            self.assertEqual(counter["kind"],
+                             "declaration-reference-expression")
+            other = next(node for node in baseline["nodes"]
+                         if node.get("reference", "").startswith("b@"))
+            self.assertNotEqual(counter["reference"], other["reference"])
+            for label, edit in {
+                "guard-operator": lambda g, r: g.update(
+                    operation="integral-cast"),
+                "guard-type": lambda g, r: g.update(type="i32"),
+                "guard-parent": lambda g, r: g.update(parent=loop["parent"]),
+                "guard-byte": lambda g, r: g["span"]["begin"].update(
+                    byte=g["span"]["begin"]["byte"] + 1),
+                "guard-column": lambda g, r: g["span"]["begin"].update(
+                    column=g["span"]["begin"]["column"] + 1),
+                "guard-end-column": lambda g, r: g["span"]["end"].update(
+                    column=g["span"]["end"]["column"] + 1),
+                "read-symbol": lambda g, r: r.update(
+                    reference=other["reference"]),
+                "read-column": lambda g, r: r["span"]["end"].update(
+                    column=r["span"]["end"]["column"] + 1),
+            }.items():
+                with self.subTest(ast=label):
+                    forged = json.loads(frontend.stdout)
+                    altered = {node["id"]: node for node in forged["nodes"]}
+                    edit(altered[guard["id"]], altered[counter["id"]])
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(
+                        refused.stderr, rb"Unsupported|Malformed|rejected")
+                    self.assertFalse(guest.exists(), label)
+
+    def test_scalar_counter_guard_other_decrements_reach_guest(self) -> None:
+        """Equivalent checked decrements preserve the twelve C outputs."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_scalar_guard_fibonacci.c").read_text()
+        # Keep step-spelling checks small: the full twelve-output guest
+        # contract is exercised by test_scalar_counter_guard_reaches_full.
+        expected = bytes.fromhex("0219")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, change in {
+                "postfix": "i--",
+                "compound": "i -= 1U",
+                "assignment": "i = i - 1U",
+            }.items():
+                with self.subTest(step=label):
+                    source = Path(scratch) / f"scalar-{label}.c"
+                    source.write_text(original.replace(
+                        "i = 12U; i; --i", f"i = 2U; i; {change}"
+                    ))
+                    guest = source.with_suffix(".malbolge")
+                    compiled = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/scalar-guard-{label}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=150,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    for data in (b"", bytes((255, 0, 128))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin",
+                             "--report-steps"], input=data,
+                            capture_output=True, check=False, timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
     def test_unsigned_scalar_logical_fibonacci_reaches_real_guest(self) -> None:
         """A pure unsigned scalar may participate in a checked C &&/||."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

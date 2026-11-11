@@ -1189,7 +1189,17 @@ impl<'node> Flow<'node> {
         let start = u8::try_from(counter.value?).ok()?;
         let symbol = counter.symbol;
         let (counter_name, _) = symbol.rsplit_once('@')?;
-        let guard = self.take(statement.id, "binary-expression")?;
+        // A scalar induction guard is true until the source-proven counter
+        // reaches zero; only a direct protected-counter read is admissible.
+        let scalar_guard = self.peek()?.kind == "cast-expression";
+        let guard = self.take(
+            statement.id,
+            if scalar_guard {
+                "cast-expression"
+            } else {
+                "binary-expression"
+            },
+        )?;
         // Peel a bounded left-associated chain of pure guards. The first
         // operand remains a proven induction comparison, but a pure `||`
         // may extend the loop beyond that bound. The twelve-trip ceiling
@@ -1209,12 +1219,18 @@ impl<'node> Flow<'node> {
         // declaration, and the other operand remains a pure checked bound.
         // Inspect only the next Clang child and its direct reference before
         // consuming either operand; never infer order from source spelling.
-        let counter_first = self
-            .nodes
-            .get(self.position + 1)
-            .is_some_and(|read| assigned_local_reference(read, symbol));
+        let counter_first = scalar_guard
+            || self
+                .nodes
+                .get(self.position + 1)
+                .is_some_and(|read| assigned_local_reference(read, symbol));
         let (load, read, bound_node, bound_start, bound_end, initial_bound) =
-            if counter_first {
+            if scalar_guard {
+                let read =
+                    self.take(guard.id, "declaration-reference-expression")?;
+                // This virtual zero bound has no Clang operand to replay.
+                (guard, read, guard, self.position, self.position, 0)
+            } else if counter_first {
                 let load = self.take(comparison.id, "cast-expression")?;
                 let read =
                     self.take(load.id, "declaration-reference-expression")?;
@@ -1262,41 +1278,64 @@ impl<'node> Flow<'node> {
             ));
             left = operator;
         }
-        if !typed_bounded_loop_comparison(
-            comparison,
-            if counter_first {
-                load
-            } else {
-                bound_node
-            },
-            if counter_first {
-                bound_node
-            } else {
-                load
-            },
-        ) || (comparison.operation.as_deref() == Some("<")
-            && counter_first
-            && start > MAX_STATIC_LOOP_ITERATIONS)
+        let guard_proved = if scalar_guard {
+            // Exact same-line semicolon/space geometry and counter identity
+            // exclude unrelated scalar expressions from this bounded proof.
+            typed_operator(guard, "lvalue-to-rvalue")
+                && assigned_local_reference(read, symbol)
+                && source_name_span(read, counter_name)
+                && guard.span == read.span
+                && declaration_end.checked_add(1) == Some(guard.span.begin.byte)
+                && guard.span.begin.line == guard.span.end.line
+                && guard.span.begin.column
+                    == statement.span.begin.column.checked_add(
+                        guard
+                            .span
+                            .begin
+                            .byte
+                            .checked_sub(statement.span.begin.byte)?,
+                    )?
+        } else {
+            typed_bounded_loop_comparison(
+                comparison,
+                if counter_first {
+                    load
+                } else {
+                    bound_node
+                },
+                if counter_first {
+                    bound_node
+                } else {
+                    load
+                },
+            )
+        };
+        if !guard_proved
+            || (comparison.operation.as_deref() == Some("<")
+                && counter_first
+                && start > MAX_STATIC_LOOP_ITERATIONS)
             || !typed_operator(load, "lvalue-to-rvalue")
             || !assigned_local_reference(read, symbol)
             || !span_within(&statement.span, &comparison.span)
             || !span_within(&comparison.span, &load.span)
             || !span_within(&comparison.span, &bound_node.span)
             || load.span != read.span
-            || (if counter_first {
-                comparison.span.begin.byte != load.span.begin.byte
-                    || load.span.end.byte >= bound_node.span.begin.byte
-                    || comparison.span.end.byte != bound_node.span.end.byte
-            } else {
-                comparison.span.begin != bound_node.span.begin
-                    || bound_node.span.end.byte >= load.span.begin.byte
-                    || comparison.span.end != load.span.end
-            })
+            || (!scalar_guard
+                && if counter_first {
+                    comparison.span.begin.byte != load.span.begin.byte
+                        || load.span.end.byte >= bound_node.span.begin.byte
+                        || comparison.span.end.byte != bound_node.span.end.byte
+                } else {
+                    comparison.span.begin != bound_node.span.begin
+                        || bound_node.span.end.byte >= load.span.begin.byte
+                        || comparison.span.end != load.span.end
+                })
             || declaration_end >= comparison.span.begin.byte
         {
             return None;
         }
-        let not_equal = comparison.operation.as_deref() == Some("!=");
+        let not_equal =
+            scalar_guard || comparison.operation.as_deref() == Some("!=");
         let inclusive =
             matches!(comparison.operation.as_deref(), Some("<=" | ">="));
         let separated = guard.span.end.byte < self.peek()?.span.begin.byte;
@@ -1445,7 +1484,9 @@ impl<'node> Flow<'node> {
         };
         // `!=` determines direction from its proven step. For ordered
         // comparisons the step must agree with the guard's direction.
-        let descending = if not_equal {
+        let descending = if scalar_guard {
+            true
+        } else if not_equal {
             step_descending
         } else if counter_first {
             matches!(comparison.operation.as_deref(), Some(">" | ">="))
@@ -1459,6 +1500,12 @@ impl<'node> Flow<'node> {
             || !span_within(&statement.span, &increment.span)
             || !span_within(&increment.span, &increment_read.span)
             || !separated
+            || (scalar_guard
+                && (increment.span.begin.line != guard.span.end.line
+                    || increment.span.begin.byte
+                        != guard.span.end.byte.checked_add(2)?
+                    || increment.span.begin.column
+                        != guard.span.end.column.checked_add(2)?))
         {
             return None;
         }
@@ -1589,12 +1636,17 @@ impl<'node> Flow<'node> {
             // Recheck the *same* complete Clang bound subtree with the
             // updated local environment, refusing changed ancestry or an
             // unrepresentable bound before the next comparison.
-            self.position = bound_start;
-            let (next_bound, next_node) = self.expression(comparison.id, 0)?;
-            if self.position != bound_end || next_node.span != bound_node.span {
-                return None;
+            if !scalar_guard {
+                self.position = bound_start;
+                let (next_bound, next_node) =
+                    self.expression(comparison.id, 0)?;
+                if self.position != bound_end
+                    || next_node.span != bound_node.span
+                {
+                    return None;
+                }
+                bound = u8::try_from(next_bound).ok()?;
             }
-            bound = u8::try_from(next_bound).ok()?;
             for (start, end, operator, source, selected) in
                 &mut additional_guards
             {

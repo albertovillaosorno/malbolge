@@ -25,6 +25,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Scalar induction truth guards in complete C (2026-11-11)
+
+The full source-backed unsigned recurrence now uses a descending C loop
+with `for (unsigned i = 12U; i; --i)` rather than an explicit comparison.
+Pinned Clang admitted the complete program, but normalized local replay
+originally rejected its first declaration. The compiler now accepts only
+the exact protected unsigned induction variable as a pure scalar guard,
+with checked Clang source spans, canonical separator geometry, a virtual
+zero bound, and source-proven descending steps. Its finite proof refuses
+overflowing or nondecreasing increments, unrelated local reads, and
+effectful conditions.
+
+An independently computed unsigned-C oracle matches the real normative
+guest VM on twelve masked Fibonacci bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with empty or binary
+stdin. Equivalent postfix, compound and assignment decrements also reach
+guest parity on two-trip prefixes; four unsupported C changes and
+eight forged AST variants reject without publication. This does not implement dynamic guest C
+loops or the original unmasked Fibonacci layout. P0 remains pending.
+
 ### Ordered C state writes between selected switch outputs (2026-11-11)
 
 The complete `local_interleaved_switch_fibonacci.c` program performs six

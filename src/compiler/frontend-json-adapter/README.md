@@ -1570,3 +1570,23 @@ bit expression with nested Boolean comparisons. Pinned Clang and the
 actual normative guest VM agree on twelve masked bytes in 47 VM steps.
 Its C branch and recurrence still execute at compile time, not as dynamic
 guest control flow. The original unmasked Fibonacci layout is not solved.
+
+### Source-proven scalar induction guards in bounded C for loops
+
+A complete descending unsigned C recurrence now uses
+`for (unsigned i = 12U; i; --i)` rather than an explicit comparison.
+Pinned Clang admits the entire program; the JSON adapter previously
+refused it. The bounded source-flow proof now accepts a direct
+lvalue-to-rvalue read of the exact protected induction counter, its
+complete source span, and canonical semicolon separators. The bound
+is zero and the step must descend safely without unsigned wraparound;
+unsupported or effectful scalar guards are not discarded.
+
+The full `local_scalar_guard_fibonacci.c` C source emits twelve masked
+Fibonacci bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative
+guest VM steps under EOF and binary stdin. Equivalent source-proven
+postfix, compound and assignment decrements are covered on two-trip
+prefixes, as are four
+unsupported C mutations and eight forged normalized AST nodes. This is
+finite source-state replay, not guest runtime loop control or an unmasked
+Fibonacci layout.
