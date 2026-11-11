@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 the full masked Fibonacci C program added the condition
+  `i < limit && a < 9U`, a changing unsigned induction stride, and a
+  source-local Fibonacci recurrence. Pinned Clang accepted it, but the
+  normalized JSON adapter originally refused the second loop guard.
+  Source-proven Boolean `&&` now preserves the checked first induction
+  comparison, separately proves the pure right condition and replays it
+  after every source-local write and increment. Six guest outputs match the
+  independent `02 19 1f 08 17 0f` oracle in 97 normative VM steps under
+  EOF and binary stdin. Invalid source and AST variants refuse guest
+  publication. This is bounded compile-time C replay; the original
+  unmasked Fibonacci stream still refuses at layout, so P0 remains open.
+
+
 - On 2026-11-11 a complete masked Fibonacci source with an unsigned local
   `stride` initially refused its `i += stride` induction in the normalized
   JSON adapter. A checked pure source subtree is now re-evaluated after
@@ -66,7 +79,6 @@ a compiler capability gap, not a reason to return to N+1.
   publication.
   This is finite compile-time C replay; general P0 remains open.
 
-## Evidence
 
 - On 2026-11-11 a complete twelve-trip masked Fibonacci C source first
   refused a `for` bound read from a previously initialized unsigned local.
@@ -80,7 +92,6 @@ a compiler capability gap, not a reason to return to N+1.
   variants and six forged ASTs refuse without artifact publication. This
   remains bounded C-state replay, not general runtime C loops or unmasked
   byte-stream layout; P0 stays open.
-## Evidence
 
 - On 2026-11-10 a complete masked Fibonacci C program used
   `a = 1U, b = a;` as one dependent comma statement in the function body.

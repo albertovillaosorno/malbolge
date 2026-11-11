@@ -62,6 +62,9 @@ LOCAL_BOUND_FIBONACCI = (
 LOCAL_STRIDE_FIBONACCI = (
     ROOT / "tests/compiler/c-frontend/accepted/local_stride_fibonacci.c"
 )
+LOCAL_GUARDED_FOR_FIBONACCI = (
+    ROOT / "tests/compiler/c-frontend/accepted/local_guarded_for_fibonacci.c"
+)
 WIDE_STREAM = (
     ROOT / "tests/compiler/c-frontend/accepted/local_loop_wide_branch_stream.c"
 )
@@ -3220,6 +3223,129 @@ class CompoundCPipelineTests(unittest.TestCase):
                     timeout=30,
                 )
                 self.assertNotEqual(attempt.returncode, 0, label)
+                self.assertFalse(refused.exists(), label)
+
+    def test_source_local_boolean_for_guard_replays_complete_c_guest(self) -> None:
+        """A second checked for guard stops an otherwise overlong C loop."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source_text = LOCAL_GUARDED_FOR_FIBONACCI.read_text()
+        self.assertIn("i < limit && a < 9U", source_text)
+        # Independent C unsigned-state oracle; the first guard alone would
+        # exceed the bounded twelve-trip projector, while a frozen second
+        # guard would never terminate at the intended six effects.
+        a = b = stride = 1
+        limit = 20
+        i = 0
+        outputs = bytearray()
+        while i < limit and a < 9:
+            next_value = (a + b) & 255
+            outputs.append((next_value if next_value % 2 == 0
+                            else next_value ^ 26) & 31)
+            if i == 2:
+                stride = 2
+            a, b = b, next_value
+            i += stride
+            self.assertLessEqual(len(outputs), 12)
+        self.assertEqual(i, 10)
+        self.assertEqual(a, 13)
+        self.assertEqual(bytes(outputs), bytes.fromhex("02191f08170f"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            scratch_path = Path(scratch)
+            guest = scratch_path / "guarded-fibonacci.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/source-local-boolean-for-guard-v1",
+                "--capsule", "--output", str(guest),
+                str(LOCAL_GUARDED_FOR_FIBONACCI),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=210
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, check=False, capture_output=True,
+                    timeout=12,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, outputs)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:97\n")
+            for label, changed in (
+                ("logical-or", source_text.replace("&&", "||", 1)),
+                ("swapped-guards", source_text.replace(
+                    "i < limit && a < 9U", "a < 9U && i < limit")),
+                ("effectful-guard", source_text.replace(
+                    "a < 9U", "a++ < 9U")),
+                ("input-guard", source_text.replace(
+                    "a < 9U", "getchar() != -1")),
+                ("comma-guard", source_text.replace(
+                    "a < 9U", "(a < 9U, b < 13U)")),
+            ):
+                changed_source = scratch_path / f"invalid-{label}.c"
+                changed_source.write_text(changed)
+                refused = scratch_path / f"invalid-{label}.malbolge"
+                result = subprocess.run(
+                    [*command[:-2], str(refused), str(changed_source)],
+                    check=False, capture_output=True, timeout=12,
+                )
+                self.assertNotEqual(result.returncode, 0, label)
+                self.assertIn(b"Unsupported", result.stderr, label)
+                self.assertFalse(refused.exists(), label)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/source-local-boolean-guard-ast-v1",
+                 str(LOCAL_GUARDED_FOR_FIBONACCI)],
+                check=False, capture_output=True, timeout=12,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            document = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], document["nodes"])
+            loop = next(n for n in nodes if n["kind"] == "for-statement")
+            guard = next(
+                n for n in nodes if n["parent"] == loop["id"]
+                and n.get("operation") == "&&"
+            )
+            subguards = [
+                n for n in nodes if n["parent"] == guard["id"]
+                and n["kind"] == "binary-expression"
+            ]
+            self.assertEqual(len(subguards), 2)
+            right = subguards[1]
+            for label in (
+                "wrong-operator", "guard-type", "guard-end",
+                "right-parent", "right-gap", "right-operator",
+            ):
+                forged = cast(dict[str, list[dict[str, object]]],
+                              json.loads(frontend.stdout))
+                copied_guard = forged["nodes"][cast(int, guard["id"]) - 1]
+                copied_right = forged["nodes"][cast(int, right["id"]) - 1]
+                if label == "wrong-operator":
+                    copied_guard["operation"] = "||"
+                elif label == "guard-type":
+                    copied_guard["type"] = "u32"
+                elif label == "guard-end":
+                    span = cast(dict[str, dict[str, int]], copied_guard["span"])
+                    span["end"]["byte"] += 1
+                elif label == "right-parent":
+                    copied_right["parent"] = loop["id"]
+                elif label == "right-gap":
+                    span = cast(dict[str, dict[str, int]], copied_right["span"])
+                    span["begin"]["column"] += 1
+                else:
+                    copied_right["operation"] = "/"
+                refused = scratch_path / f"forged-{label}.malbolge"
+                result = subprocess.run(
+                    [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                     "--output", str(refused), "--capsule"],
+                    input=json.dumps(forged).encode(),
+                    check=False, capture_output=True, timeout=12,
+                )
+                self.assertNotEqual(result.returncode, 0, label)
+                self.assertIn(b"Unsupported", result.stderr, label)
                 self.assertFalse(refused.exists(), label)
 
     def test_strided_for_induction_emits_complete_masked_fibonacci(self) -> None:

@@ -1173,7 +1173,17 @@ impl<'node> Flow<'node> {
         let start = u8::try_from(counter.value?).ok()?;
         let symbol = counter.symbol;
         let (counter_name, _) = symbol.rsplit_once('@')?;
-        let comparison = self.take(statement.id, "binary-expression")?;
+        let guard = self.take(statement.id, "binary-expression")?;
+        // A source-ordered logical AND may impose a second, pure guard
+        // over the same changing local state. The left operand remains
+        // the bounded induction proof; an OR cannot establish that bound.
+        let conjunction =
+            (guard.operation.as_deref() == Some("&&")).then_some(guard);
+        let comparison = if let Some(operator) = conjunction {
+            self.take(operator.id, "binary-expression")?
+        } else {
+            guard
+        };
         let load = self.take(comparison.id, "cast-expression")?;
         let read = self.take(load.id, "declaration-reference-expression")?;
         // The bound may be a source-proven pure unsigned expression, not
@@ -1184,6 +1194,30 @@ impl<'node> Flow<'node> {
         let (initial_bound, bound_node) = self.expression(comparison.id, 0)?;
         let mut bound = u8::try_from(initial_bound).ok()?;
         let bound_end = self.position;
+        let additional_guard = if let Some(operator) = conjunction {
+            let guard_start = self.position;
+            let (active, right) = self.condition_expression(operator.id, 0)?;
+            let guard_end = self.position;
+            if !clean_i32_operator(operator)
+                || !ordered_binary_spans(operator, comparison, right)
+                || right.span.begin.byte.checked_sub(comparison.span.end.byte)
+                    != Some(4)
+                || right
+                    .span
+                    .begin
+                    .column
+                    .checked_sub(comparison.span.end.column)
+                    != Some(4)
+                || !span_within(&statement.span, &operator.span)
+                || operator.span.begin.line != operator.span.end.line
+                || right.span.begin.line != right.span.end.line
+            {
+                return None;
+            }
+            Some((guard_start, guard_end, right, active))
+        } else {
+            None
+        };
         if !typed_bounded_loop_comparison(comparison, load, bound_node)
             || (comparison.operation.as_deref() == Some("<")
                 && start > MAX_STATIC_LOOP_ITERATIONS)
@@ -1203,7 +1237,7 @@ impl<'node> Flow<'node> {
         let not_equal = comparison.operation.as_deref() == Some("!=");
         let inclusive =
             matches!(comparison.operation.as_deref(), Some("<=" | ">="));
-        let separated = comparison.span.end.byte < self.peek()?.span.begin.byte;
+        let separated = guard.span.end.byte < self.peek()?.span.begin.byte;
         let increment_kind = self.peek()?.kind.as_str();
         if !matches!(
             increment_kind,
@@ -1390,16 +1424,19 @@ impl<'node> Flow<'node> {
         let body_start = self.position;
         self.loop_counters.push(symbol);
         let mut body_end = None;
-        let continues = |value: u8, limit: u8| {
-            if not_equal {
-                value != limit
-            } else if descending {
-                value > limit || (inclusive && value == limit)
-            } else {
-                value < limit || (inclusive && value == limit)
-            }
+        let continues = |value: u8, limit: u8, guard_active: bool| {
+            guard_active
+                && if not_equal {
+                    value != limit
+                } else if descending {
+                    value > limit || (inclusive && value == limit)
+                } else {
+                    value < limit || (inclusive && value == limit)
+                }
         };
-        if !continues(start, bound) {
+        let mut guard_active =
+            additional_guard.is_none_or(|(_, _, _, selected)| selected);
+        if !continues(start, bound, guard_active) {
             // Even a nonexecuted for body must be a complete, admissible
             // source subtree. No speculative state or output may escape.
             let starting_locals = self.locals.clone();
@@ -1414,7 +1451,7 @@ impl<'node> Flow<'node> {
         }
         let mut counter_value = start;
         let mut trips = 0;
-        while continues(counter_value, bound) {
+        while continues(counter_value, bound, guard_active) {
             if trips >= MAX_STATIC_LOOP_ITERATIONS
                 || (not_equal
                     && ((descending && counter_value < bound)
@@ -1477,6 +1514,15 @@ impl<'node> Flow<'node> {
                 return None;
             }
             bound = u8::try_from(next_bound).ok()?;
+            if let Some((start, end, source, _)) = additional_guard {
+                self.position = start;
+                let (selected, replayed) =
+                    self.condition_expression(guard.id, 0)?;
+                if self.position != end || replayed.span != source.span {
+                    return None;
+                }
+                guard_active = selected;
+            }
         }
         self.position = body_end?;
         self.locals.truncate(outer_len);

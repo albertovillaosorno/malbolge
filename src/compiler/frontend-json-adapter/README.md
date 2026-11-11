@@ -132,6 +132,21 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Rechecked Boolean `for` guards in complete C programs
+
+A complete Fibonacci source with a mutable unsigned stride, a local bound
+of twenty, and `i < limit && a < 9U` initially refused normalized C
+admission. The bounded source proof now accepts one `&&` whose left
+operand retains the exact already-checked unsigned induction comparison,
+while the pure right condition is fully proven and re-evaluated after each
+body and increment. Both operands have exact Clang ancestry, types,
+ordered source spans and bounded syntax geometry. The right guard stops
+the source recurrence after six iterations; the normative VM emits exact
+independent bytes `02 19 1f 08 17 0f` in 97 steps under EOF and binary
+stdin. Unproved source effects, logical OR and forged ASTs refuse before
+publication. This remains bounded compile-time C replay, not runtime guest
+branching, dynamic loops or arbitrary Malbolge byte-stream layout.
+
 ### Rechecked unsigned-local `for` limits in complete C programs
 
 A complete masked twelve-step Fibonacci source first refused a `for` whose

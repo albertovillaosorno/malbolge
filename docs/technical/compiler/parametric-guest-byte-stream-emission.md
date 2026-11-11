@@ -73,6 +73,27 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Rechecked source-local Boolean `for` guard (2026-11-11)
+
+The complete source `local_guarded_for_fibonacci.c` was attempted with
+`i < limit && a < 9U`, a local bound of twenty, a mutable stride, and
+Fibonacci locals updated every trip. Pinned Clang accepted the source, but
+the closed JSON adapter initially rejected its additional `&&` guard.
+The bounded induction proof now admits one exact source-ordered pure right
+condition after the original checked unsigned counter bound. The right
+condition is independently checked for type, ancestry, span, operator and
+canonical token separation, and is re-evaluated against the updated source
+locals after each executed body and induction step. A logical OR cannot
+replace the left induction proof. A changed or effectful guard is refused.
+
+Six actual trips produce independent source oracle `02 19 1f 08 17 0f`,
+with the stride changing from one to two and the Fibonacci guard stopping
+before the twenty-step bound. The normative guest VM emits exactly those
+six bytes in 97 steps under EOF and binary stdin. Source mutations and
+forged AST variants refuse without artifact publication. This remains
+compile-time bounded C-state replay, not runtime guest loop control or a
+solution to the original unmasked Fibonacci output layout blocker.
+
 ### Re-evaluated source-local `for` increment (2026-11-11)
 
 The full masked Fibonacci program now selects a source-local unsigned
