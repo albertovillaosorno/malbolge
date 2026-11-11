@@ -1622,11 +1622,11 @@ impl<'node> Flow<'node> {
         for iteration in 0..=MAX_STATIC_LOOP_ITERATIONS {
             self.position = condition_start;
             let (continue_loop, condition) = self.condition(statement)?;
-            // Clang parents an unbraced control arm or unary step directly
-            // to while; there is no synthetic compound declaration scope.
+            // Clang parents an unbraced control arm, nested for loop or
+            // unary step directly to while, without a synthetic scope.
             let unbraced_effect = matches!(
                 self.peek()?.kind.as_str(),
-                "if-statement" | "unary-expression"
+                "if-statement" | "for-statement" | "unary-expression"
             );
             let first_body_byte = self.peek()?.span.begin.byte;
             let loop_body = if unbraced_effect {

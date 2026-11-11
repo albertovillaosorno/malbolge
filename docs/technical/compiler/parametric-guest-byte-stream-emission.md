@@ -25,6 +25,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Unbraced C `for` directly inside `while` (2026-11-11)
+
+A complete twelve-output Fibonacci C program now uses an unbraced
+`while (remaining > 0U) for (unsigned j = 0U; j < 2U; ++j) { ... }`.
+Each inner trip updates recurrence locals and the outer `remaining`
+variable, so the outer condition depends on updated state. Pinned
+Clang accepted the source, but the adapter initially rejected the
+nested `for` before guest publication. The source-backed replay now
+checks direct Clang ancestry and the full statement endpoint, retains
+inner counter scope and re-evaluates the outer condition after `for`.
+
+An independent unsigned-C oracle and the actual normative Malbolge VM
+agree on twelve masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+in 47 steps under EOF and binary stdin. Six invalid C sources and
+eight forged Clang ASTs reject with no published guest. This is bounded
+compile-time C-state replay, not dynamic guest loops. The original
+unmasked twelve-byte layout remains unsupported.
+
 ### Three source-proven mixed C while/do levels (2026-11-11)
 
 The complete twelve-output C source

@@ -1382,3 +1382,16 @@ emits the same independent twelve-byte oracle in 47 steps on empty and
 binary stdin. Five unsupported C variations and six forged AST trees
 reject without artifact publication. This is not general runtime guest
 expression sequencing or unmasked byte-stream layout.
+
+### Unbraced `while` directly owning `for`
+
+A bounded `while` can own one directly parented unbraced `for`
+as its entire body. The projector checks Clang ancestry, the exact
+statement endpoint and inner counter scope, then re-evaluates the
+outer predicate after the complete inner loop. The tracked full C
+`local_unbraced_for_while_fibonacci.c` changes its outer bound in
+each inner iteration while computing a branching Fibonacci stream.
+The independent twelve-byte oracle matches the actual guest VM
+under empty/binary stdin in 47 steps. Six invalid C sources and eight
+forged ASTs reject without guest publication. This is bounded static
+C replay, not dynamic guest loops or unmasked output synthesis.

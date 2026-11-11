@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full Fibonacci C program nested an unbraced
+  `for` directly in a source-state `while`, updating the outer
+  termination variable during each inner trip. Pinned Clang accepted
+  the program, but the JSON adapter initially refused before guest
+  publication. The corrected source replay retains direct ancestry,
+  inner counter lifetime and bounded outer-state updates. The
+  independently calculated masked bytes
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` match the normative VM
+  in 47 steps with EOF/binary input. Six unsupported C variants and
+  eight forged ASTs reject. Unmasked guest layout and general runtime
+  C control remain unsupported; P0 stays open.
+
+
 - On 2026-11-11 the complete Fibonacci C source added a third
   active `while/do` loop body, nested within two `while` bodies and a
   bounded `for`. Pinned Clang accepted the source but the normalized
