@@ -1188,16 +1188,35 @@ impl<'node> Flow<'node> {
             conjunctions.push(comparison);
             comparison = self.take(comparison.id, "binary-expression")?;
         }
-        let load = self.take(comparison.id, "cast-expression")?;
-        let read = self.take(load.id, "declaration-reference-expression")?;
-        // The bound may be a source-proven pure unsigned expression, not
-        // only a literal. Its value is re-read after every body/update: C
-        // evaluates a `for` condition on every trip, including when its
-        // bound is another local modified by the body.
-        let bound_start = self.position;
-        let (initial_bound, bound_node) = self.expression(comparison.id, 0)?;
+        // C permits equivalent reversed induction conditions such as
+        // `limit > i`. The induction read must still be the exact source
+        // declaration, and the other operand remains a pure checked bound.
+        // Inspect only the next Clang child and its direct reference before
+        // consuming either operand; never infer order from source spelling.
+        let counter_first = self
+            .nodes
+            .get(self.position + 1)
+            .is_some_and(|read| assigned_local_reference(read, symbol));
+        let (load, read, bound_node, bound_start, bound_end, initial_bound) =
+            if counter_first {
+                let load = self.take(comparison.id, "cast-expression")?;
+                let read =
+                    self.take(load.id, "declaration-reference-expression")?;
+                let bound_start = self.position;
+                let (value, bound_node) = self.expression(comparison.id, 0)?;
+                (load, read, bound_node, bound_start, self.position, value)
+            } else {
+                let bound_start = self.position;
+                let (value, bound_node) = self.expression(comparison.id, 0)?;
+                let bound_end = self.position;
+                let load = self.take(comparison.id, "cast-expression")?;
+                let read =
+                    self.take(load.id, "declaration-reference-expression")?;
+                (load, read, bound_node, bound_start, bound_end, value)
+            };
+        // Replay the same pure bound subtree after every body/increment;
+        // cached source-local values cannot stand in for changing C locals.
         let mut bound = u8::try_from(initial_bound).ok()?;
-        let bound_end = self.position;
         let mut additional_guards = Vec::new();
         let mut left = comparison;
         for operator in conjunctions.into_iter().rev() {
@@ -1227,18 +1246,36 @@ impl<'node> Flow<'node> {
             ));
             left = operator;
         }
-        if !typed_bounded_loop_comparison(comparison, load, bound_node)
-            || (comparison.operation.as_deref() == Some("<")
-                && start > MAX_STATIC_LOOP_ITERATIONS)
+        if !typed_bounded_loop_comparison(
+            comparison,
+            if counter_first {
+                load
+            } else {
+                bound_node
+            },
+            if counter_first {
+                bound_node
+            } else {
+                load
+            },
+        ) || (comparison.operation.as_deref() == Some("<")
+            && counter_first
+            && start > MAX_STATIC_LOOP_ITERATIONS)
             || !typed_operator(load, "lvalue-to-rvalue")
             || !assigned_local_reference(read, symbol)
             || !span_within(&statement.span, &comparison.span)
             || !span_within(&comparison.span, &load.span)
             || !span_within(&comparison.span, &bound_node.span)
             || load.span != read.span
-            || comparison.span.begin.byte != load.span.begin.byte
-            || load.span.end.byte >= bound_node.span.begin.byte
-            || comparison.span.end.byte != bound_node.span.end.byte
+            || (if counter_first {
+                comparison.span.begin.byte != load.span.begin.byte
+                    || load.span.end.byte >= bound_node.span.begin.byte
+                    || comparison.span.end.byte != bound_node.span.end.byte
+            } else {
+                comparison.span.begin != bound_node.span.begin
+                    || bound_node.span.end.byte >= load.span.begin.byte
+                    || comparison.span.end != load.span.end
+            })
             || declaration_end >= comparison.span.begin.byte
         {
             return None;
@@ -1394,8 +1431,10 @@ impl<'node> Flow<'node> {
         // comparisons the step must agree with the guard's direction.
         let descending = if not_equal {
             step_descending
-        } else {
+        } else if counter_first {
             matches!(comparison.operation.as_deref(), Some(">" | ">="))
+        } else {
+            matches!(comparison.operation.as_deref(), Some("<" | "<="))
         };
         if step_descending != descending {
             return None;

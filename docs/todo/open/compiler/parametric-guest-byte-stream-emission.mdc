@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full C Fibonacci recurrence with changing stride,
+  bounded locals and real branch/output effects used reversed induction
+  `limit > i && b < 20U`. Pinned Clang accepted it, but normalized C
+  admission refused before publication. The fixed source-ordered proof
+  accepts a left-hand pure bound and right-hand induction reference,
+  including exact Clang ancestry, types and byte/column geometry. The
+  independent oracle and normative Malbolge VM agree on six bytes
+  `02 19 1f 08 17 0f` in 97 steps under EOF/binary stdin. Four bad C
+  variants and six forged ASTs refuse without guest artifacts. Unmasked
+  twelve-byte Fibonacci still fails at output layout; P0 remains open.
+
 - On 2026-11-11 a full source-local Fibonacci program added a third pure
   C `for` guard to a changing bound/stride and recurrence. Pinned Clang
   accepted the nested `&&`, but the JSON adapter rejected it before guest

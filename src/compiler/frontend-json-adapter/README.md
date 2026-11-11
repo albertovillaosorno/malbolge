@@ -134,6 +134,16 @@ VM preflight. Its tests run both accepted families through real guest code.
 
 ### Rechecked Boolean `for` guards in complete C programs
 
+A reversed source induction comparison such as `limit > i && b < 20U`
+retains its genuine C operand order. The projector proves the exact
+right-hand counter, a pure source-local left-hand bound, a semantically
+ascending stride and a separately re-evaluated pure guard. A full
+mutable-stride Fibonacci C program emits six independent oracle bytes
+`02 19 1f 08 17 0f` through the normative guest VM in 97 steps under
+EOF/binary stdin. Four invalid C variants and six forged ASTs refuse.
+This is compile-time bounded state replay; general guest loop execution
+and unmasked Fibonacci layout are not implemented.
+
 A complete Fibonacci source with a mutable unsigned stride, a local bound
 of twenty, and `i < limit && a < 9U` initially refused normalized C
 admission. The bounded source proof now accepts a left-associated chain of

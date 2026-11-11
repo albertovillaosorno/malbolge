@@ -3348,6 +3348,134 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", result.stderr, label)
                 self.assertFalse(refused.exists(), label)
 
+    def test_reversed_source_local_for_guard_guest_and_refusals(self) -> None:
+        """Reversed C induction reads the same changing bound and stride."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_reversed_for_guard_fibonacci.c"
+        )
+        original = source.read_text()
+        self.assertIn("limit > i && b < 20U", original)
+        # Independently model unsigned source recurrence and condition order.
+        a = b = stride = 1
+        limit = 20
+        i = 0
+        expected = bytearray()
+        while limit > i and b < 20:
+            following = (a + b) & 255
+            expected.append((following if following % 2 == 0
+                             else following ^ 26) & 31)
+            if i == 2:
+                stride = 2
+            a, b = b, following
+            i += stride
+            self.assertLessEqual(len(expected), 12)
+        self.assertEqual((i, a, b), (10, 13, 21))
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            directory = Path(scratch)
+            guest = directory / "reversed-guard.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/reversed-for-guard-fibonacci-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=12,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:97\n")
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/reversed-guard-forged-v1", str(source)],
+                capture_output=True, check=False, timeout=12,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]],
+                         json.loads(frontend.stdout)["nodes"])
+            condition = next(
+                n for n in nodes if n.get("operation") == ">"
+                and n["kind"] == "binary-expression"
+            )
+            first = next(n for n in nodes if n["parent"] == condition["id"])
+            last = [n for n in nodes if n["parent"] == condition["id"]][-1]
+            right_ref = next(
+                n for n in nodes if n["parent"] == last["id"]
+            )
+            wrong_symbol = next(
+                n["reference"] for n in nodes
+                if n["kind"] == "declaration-reference-expression"
+                and str(n.get("reference", "")).startswith("b@")
+            )
+            for label in (
+                "wrong-operator", "wrong-counter", "left-operator",
+                "left-gap", "right-gap", "comparison-end",
+            ):
+                forged = cast(dict[str, list[dict[str, object]]],
+                              json.loads(frontend.stdout))
+                records = forged["nodes"]
+                comparison = records[cast(int, condition["id"]) - 1]
+                left = records[cast(int, first["id"]) - 1]
+                right = records[cast(int, last["id"]) - 1]
+                reference = records[cast(int, right_ref["id"]) - 1]
+                if label == "wrong-operator":
+                    comparison["operation"] = "<"
+                elif label == "wrong-counter":
+                    reference["reference"] = wrong_symbol
+                elif label == "left-operator":
+                    left["operation"] = "lvalue-to-rvalue-invalid"
+                elif label == "left-gap":
+                    span = cast(dict[str, dict[str, int]], left["span"])
+                    span["end"]["column"] += 1
+                elif label == "right-gap":
+                    span = cast(dict[str, dict[str, int]], right["span"])
+                    span["begin"]["column"] += 1
+                else:
+                    span = cast(dict[str, dict[str, int]], comparison["span"])
+                    span["end"]["column"] += 1
+                refused_guest = directory / f"forged-{label}.malbolge"
+                refused = subprocess.run(
+                    [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                     "--output", str(refused_guest), "--capsule"],
+                    input=json.dumps(forged).encode(),
+                    capture_output=True, check=False, timeout=12,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr, label)
+                self.assertFalse(refused_guest.exists(), label)
+            for label, mutated in (
+                ("reversed-direction", original.replace(
+                    "limit > i", "limit < i")),
+                ("effectful-bound", original.replace(
+                    "limit > i", "limit++ > i")),
+                ("effectful-guard", original.replace(
+                    "b < 20U", "b++ < 20U")),
+                ("wrong-induction", original.replace(
+                    "limit > i", "limit > (i + 1U)")),
+            ):
+                changed = directory / f"invalid-{label}.c"
+                changed.write_text(mutated)
+                denied = directory / f"invalid-{label}.malbolge"
+                refused = subprocess.run(
+                    [*command[:-2], str(denied), str(changed)],
+                    capture_output=True, check=False, timeout=16,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr, label)
+                self.assertFalse(denied.exists(), label)
+
     def test_chained_for_guards_recheck_live_c_state_on_guest(self) -> None:
         """Three C guards stop on the final changing Fibonacci local."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

@@ -25,6 +25,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-order-independent `for` induction (2026-11-11)
+
+The complete Fibonacci C recurrence now uses the equivalent source condition
+`limit > i && b < 20U` with a changing unsigned `stride` and source-local
+state. The pinned Clang frontend accepted this program but the normalized
+adapter initially refused because its checked induction variable had to be
+on the left. The repaired proof authenticates the original Clang operand
+order, counter identity, pure right- or left-hand bound, token spacing,
+source positions, and comparison direction. It re-evaluates the bound and
+Boolean guard after each body and increment, without confusing `>` with
+descending counter motion.
+
+The independent C oracle stops after six iterations at `b == 21`, with
+`i == 10`; the actual normative VM emits `02 19 1f 08 17 0f` in 97 steps
+under EOF and binary stdin. Four invalid source programs and six forged ASTs
+refuse guest publication. The original unmasked twelve-byte Fibonacci
+program still refuses at guest layout. This repair is bounded compile-time
+C-state replay, not dynamic guest C loops or general byte synthesis.
+
 ### Rechecked chained `for` conditions (2026-11-11)
 
 A complete C Fibonacci program now combines source-local bound and stride,
