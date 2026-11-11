@@ -54,6 +54,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete masked twelve-step Fibonacci C program
+  first refused a `switch (next & 3U)` with cases 0U and 2U but no
+  `default`. A source-backed proof now admits unmatched dispatch with
+  the initialized pre-switch local retained; both separate and grouped
+  case-label sources reach the exact independent twelve-byte guest oracle
+  in 47 VM steps under EOF/binary stdin. Three unsupported C variants and
+  six forged Clang trees refuse publication. The original unmasked
+  Fibonacci still fails guest layout; P0 stays pending.
+
 - On 2026-11-10 the original complete unmasked Fibonacci C still
   refused `Layout(UnsupportedEffectTrace)` without publishing guest code.
   A separate full four-way masked recurrence with two dependent

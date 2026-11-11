@@ -1647,7 +1647,7 @@ impl<'node> Flow<'node> {
     }
 
     /// Admit up to eight distinct source-ordered case labels, including
-    /// nested empty-label groups and a grouped final default. Each arm must
+    /// nested empty-label groups and an optional final default. Each arm must
     /// prove one to four ordered effects and its own switch-local break;
     /// only the selected arm's state and output escape into the enclosing loop.
     #[expect(
@@ -1806,27 +1806,50 @@ impl<'node> Flow<'node> {
         if case_values.is_empty() {
             return None;
         }
-        let (default_effect, last_break) =
-            if let Some(effect) = grouped_default_effect {
-                (effect, previous_arm_end)
-            } else {
-                let default = self.take(scope.id, "default-statement")?;
-                if !clean(default)
-                    || !span_within(&scope.span, &default.span)
-                    || previous_arm_end >= default.span.begin.byte
-                {
-                    return None;
-                }
-                self.locals.clone_from(&starting_locals);
-                let effect =
-                    self.switch_arm_effect(default, default.span.begin.byte)?;
-                if effect.end != default.span.end.byte
-                    || effect.begin_line <= default.span.begin.line
-                {
-                    return None;
-                }
-                self.switch_arm_tail(scope, effect)?
-            };
+        let (default_effect, last_break) = if let Some(effect) =
+            grouped_default_effect
+        {
+            (Some(effect), previous_arm_end)
+        } else if self
+            .peek()
+            .is_some_and(|node| node.kind == "default-statement")
+        {
+            let default = self.take(scope.id, "default-statement")?;
+            if !clean(default)
+                || !span_within(&scope.span, &default.span)
+                || previous_arm_end >= default.span.begin.byte
+            {
+                return None;
+            }
+            self.locals.clone_from(&starting_locals);
+            let effect =
+                self.switch_arm_effect(default, default.span.begin.byte)?;
+            if effect.end != default.span.end.byte
+                || effect.begin_line <= default.span.begin.line
+            {
+                return None;
+            }
+            let (effect, end) = self.switch_arm_tail(scope, effect)?;
+            (Some(effect), end)
+        } else {
+            // A switch without `default` does nothing if no case matches.
+            // The last break must directly precede the closing brace;
+            // otherwise an omitted Clang subtree could hide an effect.
+            let final_break = self.nodes.get(self.position.checked_sub(1)?)?;
+            if final_break.kind != "break-statement"
+                || final_break.parent != scope.id
+                || final_break.span.end.byte != previous_arm_end
+                || final_break.span.end.line.checked_add(1)?
+                    != scope.span.end.line
+                || scope.span.end.byte.checked_sub(previous_arm_end)?
+                    != statement.span.begin.column.checked_add(2)?
+                || scope.span.end.column
+                    != statement.span.begin.column.checked_add(1)?
+            {
+                return None;
+            }
+            (None, previous_arm_end)
+        };
         if last_break >= scope.span.end.byte
             || self
                 .peek()
@@ -1834,10 +1857,13 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let chosen = selected_effect.unwrap_or(default_effect);
-        self.locals = chosen.locals;
-        if let Some(output) = chosen.output {
-            self.outputs.push(output);
+        if let Some(chosen) = selected_effect.or(default_effect) {
+            self.locals = chosen.locals;
+            if let Some(output) = chosen.output {
+                self.outputs.push(output);
+            }
+        } else {
+            self.locals = starting_locals;
         }
         Some(statement.span.end.byte)
     }

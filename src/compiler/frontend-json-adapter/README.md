@@ -862,6 +862,20 @@ refuse before publication. Switch-local declarations, effectful fallthrough,
 dynamic guest switch execution and the original unmasked Fibonacci layout
 remain unsupported.
 
+### Source-checked `switch` without default
+
+A complete twelve-step masked Fibonacci source also admits a C switch
+without `default`: every checked `case` has its own source-bound assignment
+and switch-local `break`, while unmatched selector values preserve the
+initialized pre-switch local and its later output. A matched group of
+adjacent empty labels is admitted with the same effect. The closing brace
+must immediately follow the last proved break in the bounded Clang shape;
+unknown effects and forged spans reject without guest publication.
+Both full sources emit the independently computed twelve-byte masked
+oracle on the normative VM in 47 steps under empty/binary stdin; three
+unsupported source mutations and six forged ASTs reject. This is finite
+C-state replay, not runtime guest switching or general C output layout.
+
 ### Source-checked `switch` with one case and default
 
 The complete masked twelve-step Fibonacci C source additionally admits

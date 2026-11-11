@@ -73,6 +73,29 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### C switch without default in the complete recurrence (2026-11-10)
+
+The original unmasked twelve-iteration Fibonacci source still refuses at
+`Layout(UnsupportedEffectTrace)` without a guest artifact. A separate entire
+masked recurrence then attempted ordinary C `switch (next & 3U)` with
+`case 0U` and `case 2U` but **no `default`**. It initialized `selected`
+before the switch, assigned the even output in its matched arms and emitted
+the post-switch local. All four selector values occur in twelve iterations;
+1 and 3 must retain the incoming fallback local instead of selecting an
+invented default. The pinned Clang frontend accepted the source, but the
+JSON adapter initially refused it without publication.
+
+The bounded projector now checks each source-ordered case arm and break,
+requires the final break directly before the closing switch brace, and
+restores the pre-switch state on an unmatched dispatch. Separate cases and
+adjacent grouped `case 0U: case 2U:` both use this no-default behavior.
+The complete source emits the independent masked twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` on the normative VM in 47 steps,
+under empty and binary stdin. Three unsupported source variants and six
+forged Clang trees refuse without publication. This is only finite
+compile-time C-state projection: dynamic guest switching and the original
+unmasked stream remain unsupported; P0 stays open.
+
 ### Ordered switch-arm C local transfers (2026-11-10)
 
 The unmasked twelve-trip Fibonacci program was reattempted in full and still
