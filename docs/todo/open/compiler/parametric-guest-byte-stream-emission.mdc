@@ -54,6 +54,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete twelve-step masked Fibonacci C source
+  first refused nonempty case-to-case fallthrough. The pinned Clang AST
+  and bounded local-flow replay now prove distinct direct and carried
+  states at a shared receiving case, with exactly one subsequent break.
+  The separately computed twelve-byte oracle matches real current-profile
+  guest output in 47 steps under EOF/binary stdin. Five invalid C sources
+  and six forged AST mutations refuse guest publication. Chained fallthrough,
+  output before the next label, dynamic guest switching and the original
+  unmasked Fibonacci layout remain unsupported; P0 stays open.
+
 - On 2026-11-10 a complete masked twelve-step Fibonacci C program
   first refused a `switch (next & 3U)` with cases 0U and 2U but no
   `default`. A source-backed proof now admits unmatched dispatch with

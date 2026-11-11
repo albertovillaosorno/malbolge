@@ -823,6 +823,23 @@ AST mutations refuse publication. This is bounded source-backed state
 projection: the guest does not calculate the predicate at runtime. The
 original unmasked twelve-byte output is still unsupported at layout.
 
+### Source-checked nonempty case-to-case fallthrough
+
+A full twelve-trip masked Fibonacci C source now admits one adjacent
+nonempty case-to-case fallthrough when the first case performs only
+proven unsigned local writes. The next case is checked **twice**, from
+the source-backed pre-switch state for direct entry and from the prior
+case's final state for fallthrough; both replays must consume the same
+complete pinned-Clang subtree and reach the same explicit switch break.
+The selected state alone survives. The program's two paths require
+*different* incoming local values, so forgetting the carried writes would
+change the output. The real normative VM emits the independent twelve-byte
+masked Fibonacci oracle in 47 steps under EOF/binary stdin. Five unsupported
+source mutations and six normalized-tree forgeries refuse without publication.
+Output-before-fallthrough, chained case-to-case fallthrough, fallthrough
+to default, effectful input and more than four receiving-arm effects remain
+unsupported, as do runtime guest switching and original unmasked output.
+
 ### Source-checked ordered switch-arm effects
 
 An entire four-way twelve-trip masked Fibonacci C recurrence now proves
@@ -833,8 +850,8 @@ compound. The adapter checks the exact ancestry, source extent, order,
 initialized reads and pure unsigned operations: at most four effects per
 arm, with at most one terminal pure output and an explicit arm-local break.
 Every candidate arm starts from the same pre-switch locals; only the selected
-writes and its optional output survive. Unproved side effects, fallthrough,
-extra outputs, output-followed-by-write, and additional effects refuse.
+writes and its optional output survive. Unproved side effects, unbounded
+fallthrough, extra outputs, output-followed-by-write, and additional effects refuse.
 The original unmasked complete Fibonacci remains unsupported at guest layout;
 this finite C-state projection does not implement runtime C switching.
 The three full-source variants (un-grouped state transfer, grouped case/default
@@ -858,8 +875,8 @@ compound XOR assignment, and grouped compound assignment each emit the
 independent twelve-byte masked oracle on the normative current-profile VM:
 `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and
 binary stdin. Four unsupported C sources and six forged AST variants
-refuse before publication. Switch-local declarations, effectful fallthrough,
-dynamic guest switch execution and the original unmasked Fibonacci layout
+refuse before publication. Switch-local declarations, general
+fallthrough, dynamic guest switch execution and the original unmasked Fibonacci layout
 remain unsupported.
 
 ### Source-checked `switch` without default
@@ -898,8 +915,9 @@ the actual guest emits the independent twelve-byte oracle in 47 steps under
 EOF and binary stdin. Two sources with an effect or break before a second
 label and six forged nested Clang trees refuse without publication. The
 bound remains eight distinct case labels in total and a final `default`.
-Only empty-label grouping is admitted, not effectful fallthrough or
-dynamic C switch execution. Unmasked Fibonacci remains unimplemented.
+This particular label-group proof admits only empty labels; the
+separate bounded nonempty case-to-case fallthrough rule is documented above.
+Dynamic guest switch execution remains unsupported. Unmasked Fibonacci remains unimplemented.
 
 The source-backed `switch` selector also accepts more than one explicit
 case when each selected and unselected arm proves its own direct `putchar`
@@ -909,8 +927,8 @@ now reaches each of the four dispatch arms. The independent masked oracle
 is emitted by the normative guest VM in 47 steps under empty/binary stdin;
 four unsupported source variants and nine forged middle-case AST variants
 refuse before guest publication. The proof is capped at eight unique,
-ordered `u32` case labels and exactly one final default; effectful fallthrough,
-multiple effects per arm, case-local declarations, and arbitrary guest
+ordered `u32` case labels and exactly one final default; unbounded
+fallthrough, multiple effects per arm, case-local declarations, and arbitrary guest
 runtime branching remain unsupported. Original unmasked Fibonacci guest
 layout still fails closed.
 

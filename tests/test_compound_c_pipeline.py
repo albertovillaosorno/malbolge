@@ -249,6 +249,49 @@ def switch_without_default_fibonacci_source(*, grouped: bool) -> str:
     return source.replace(original, replacement)
 
 
+
+def fallthrough_switch_fibonacci_source() -> str:
+    """Replay one nonempty case into the next case with a live C local."""
+    source = assigning_switch_fibonacci_source(compound=True, grouped=False)
+    before = (
+        "        unsigned selected = next & 31U;\n"
+        "        switch (next & 3U) {\n"
+        "        case 0U:\n"
+        "            selected ^= 0U;\n"
+        "            break;\n"
+        "        case 1U:\n"
+        "            selected ^= 26U;\n"
+        "            break;\n"
+        "        case 2U:\n"
+        "            selected ^= 0U;\n"
+        "            break;\n"
+        "        default:\n"
+        "            selected ^= 26U;\n"
+        "            break;\n"
+        "        }"
+    )
+    after = (
+        "        unsigned selected = (next & 31U) ^ (((next & 2U) >> 1U) * 7U);\n"
+        "        unsigned carry = 7U;\n"
+        "        switch (next & 3U) {\n"
+        "        case 0U:\n"
+        "            carry ^= 7U;\n"
+        "        case 2U:\n"
+        "            selected ^= carry;\n"
+        "            selected ^= 0U;\n"
+        "            break;\n"
+        "        case 1U:\n"
+        "            selected ^= 26U;\n"
+        "            break;\n"
+        "        default:\n"
+        "            selected ^= 29U;\n"
+        "            break;\n"
+        "        }"
+    )
+    assert source.count(before) == 1
+    return source.replace(before, after)
+
+
 def unbraced_masked_fibonacci_source() -> str:
     """Use ordinary unbraced if/else output arms in the full recurrence."""
     source = MASKED_FIBONACCI.read_text()
@@ -11667,6 +11710,161 @@ class CompoundCPipelineTests(unittest.TestCase):
         """A final arm-local putchar sees the selected prior assignments."""
         self.check_switch_multi_effect_guest(grouped=False, output_in_arm=True)
 
+    def test_switch_case_fallthrough_full_fibonacci_guest(self) -> None:
+        """Case 0 carries a live write into case 2; case 2 also enters alone."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        a, b = 1, 1
+        oracle = bytearray()
+        dispatched = set()
+        for _ in range(12):
+            following = (a + b) & 255
+            selector = following & 3
+            dispatched.add(selector)
+            selected = (following & 31) ^ (((following & 2) >> 1) * 7)
+            carry = 7
+            if selector == 0:
+                carry ^= 7
+            if selector in (0, 2):
+                selected ^= carry
+                selected ^= 0
+            elif selector == 1:
+                selected ^= 26
+            else:
+                selected ^= 29
+            oracle.append(selected)
+            a, b = b, following
+        self.assertEqual(dispatched, {0, 1, 2, 3})
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "switch-fallthrough.c"
+            source.write_text(fallthrough_switch_fibonacci_source())
+            guest = source.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/switch-case-fallthrough-v1",
+                 "--capsule", "--output", str(guest), str(source)],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, bytes(oracle))
+                self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_switch_case_fallthrough_fail_closed(self) -> None:
+        """Do not invent effects at a fallthrough edge or bypass AST proof."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = fallthrough_switch_fibonacci_source()
+        invalid = {
+            "output-before-label": original.replace(
+                "            carry ^= 7U;", "            putchar(65);", 1,
+            ),
+            "chained-case-fallthrough": original.replace(
+                "            selected ^= 0U;\n            break;",
+                "            selected ^= carry;", 1,
+            ),
+            "fallthrough-to-default": original.replace(
+                "            selected ^= 26U;\n            break;\n        default:",
+                "            selected ^= 26U;\n        default:", 1,
+            ),
+            "side-effectful-carry": original.replace(
+                "            carry ^= 7U;",
+                "            carry = (unsigned)getchar();", 1,
+            ),
+            "too-many-followup-effects": original.replace(
+                "            selected ^= 0U;\n            break;",
+                "            selected ^= 0U;\n"
+                + "            selected ^= carry;\n" * 4
+                + "            break;", 1,
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, candidate in invalid.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"bad-{label}.c"
+                    source.write_text(candidate)
+                    guest = source.with_suffix(".malbolge")
+                    rejected = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--source-id",
+                         f"tests/fallthrough-bad-{label}-v1", "--capsule",
+                         "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "fallthrough-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/fallthrough-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(frontend.stdout))["nodes"],
+            )
+            cases = [node for node in nodes if node["kind"] == "case-statement"]
+            self.assertEqual(len(cases), 3)
+            first = next(node for node in nodes if node["parent"] == cases[0]["id"]
+                         and node["kind"] == "compound-assignment-expression")
+            second = next(node for node in nodes if node["parent"] == cases[1]["id"]
+                          and node["kind"] == "compound-assignment-expression")
+            second_span = cast(dict[str, dict[str, int]], second["span"])
+            second_read = next(
+                node for node in nodes
+                if node["kind"] == "declaration-reference-expression"
+                and str(node.get("reference", "")).startswith("carry@")
+                and second_span["begin"]["byte"]
+                < cast(dict[str, dict[str, int]], node["span"])["begin"]["byte"]
+                < second_span["end"]["byte"]
+            )
+            scope = next(node for node in nodes if node["kind"] == "compound-statement"
+                         and node["parent"] == next(n for n in nodes
+                         if n["kind"] == "switch-statement")["id"])
+            for label in (
+                "fallthrough-parent", "fallthrough-operation", "next-parent",
+                "next-read-symbol", "next-effect-parent", "first-extent",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(
+                        dict[str, list[dict[str, object]]], json.loads(frontend.stdout)
+                    )
+                    changed = forged["nodes"]
+                    if label == "fallthrough-parent":
+                        changed[cast(int, first["id"]) - 1]["parent"] = scope["id"]
+                    elif label == "fallthrough-operation":
+                        changed[cast(int, first["id"]) - 1]["operation"] = "++"
+                    elif label == "next-parent":
+                        changed[cast(int, cases[1]["id"]) - 1]["parent"] = cases[0]["id"]
+                    elif label == "next-read-symbol":
+                        changed[cast(int, second_read["id"]) - 1]["reference"] = "next@0"
+                    elif label == "next-effect-parent":
+                        changed[cast(int, second["id"]) - 1]["parent"] = scope["id"]
+                    else:
+                        span = cast(dict[str, dict[str, int]],
+                                    changed[cast(int, cases[0]["id"]) - 1]["span"])
+                        span["end"]["byte"] += 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--capsule", "--output", str(guest)],
+                        input=json.dumps(forged).encode(), capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_switch_without_default_complete_fibonacci_guest(self) -> None:
         """No matching case preserves the pre-switch fallback local value."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -11714,8 +11912,9 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.skipTest("pinned C compiler binaries are not built")
         original = switch_without_default_fibonacci_source(grouped=False)
         bad_sources = {
-            "fallthrough": original.replace(
-                "            break;\n        case 2U:", "        case 2U:", 1
+            "output-before-fallthrough": original.replace(
+                "            selected = next & 31U;\n            break;\n        case 2U:",
+                "            putchar((int)next);\n        case 2U:", 1,
             ),
             "uninitialized-fallback": original.replace(
                 "unsigned selected = (next ^ 0x1AU) & 31U;",
@@ -11812,8 +12011,9 @@ class CompoundCPipelineTests(unittest.TestCase):
                     "transferred = selected ^ 0U;",
                     "transferred = (unsigned)getchar();", 1,
                 ),
-                "fallthrough": original.replace(
-                    "            break;\n        case 1U:", "        case 1U:", 1,
+                "output-before-fallthrough": original.replace(
+                    "            break;\n        case 1U:",
+                    "            putchar((int)transferred);\n        case 1U:", 1,
                 ),
                 "output-then-write": multi_effect_switch_fibonacci_source(
                     output_in_arm=True,

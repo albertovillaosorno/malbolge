@@ -1624,12 +1624,33 @@ impl<'node> Flow<'node> {
     fn switch_arm_tail(
         &mut self,
         scope: &Node,
-        mut effect: SwitchArmEffect<'node>,
+        effect: SwitchArmEffect<'node>,
     ) -> Option<(SwitchArmEffect<'node>, u32)> {
-        for _ in 0..3 {
+        let (effect, end) =
+            self.switch_arm_tail_or_fallthrough(scope, effect)?;
+        Some((effect, end?))
+    }
+
+    /// A nonempty case may intentionally fall into the immediately following
+    /// case label. Keep the actual state at that edge; the next arm must be
+    /// independently replayed for both direct dispatch and fallthrough.
+    /// An output followed by another case is not admitted by this grammar.
+    fn switch_arm_tail_or_fallthrough(
+        &mut self,
+        scope: &Node,
+        mut effect: SwitchArmEffect<'node>,
+    ) -> Option<(SwitchArmEffect<'node>, Option<u32>)> {
+        for _ in 0..=3 {
             let next = self.peek()?;
             if next.kind == "break-statement" {
-                break;
+                let end = self.switch_break(scope, effect.end)?;
+                return Some((effect, Some(end)));
+            }
+            if next.kind == "case-statement" {
+                return (next.parent == scope.id
+                    && next.span.begin.byte > effect.end
+                    && effect.output.is_none())
+                .then_some((effect, None));
             }
             if next.parent != scope.id
                 || next.span.begin.byte <= effect.end
@@ -1642,8 +1663,7 @@ impl<'node> Flow<'node> {
             effect.output = additional.output;
             effect.locals = additional.locals;
         }
-        let end = self.switch_break(scope, effect.end)?;
-        Some((effect, end))
+        None
     }
 
     /// Admit up to eight distinct source-ordered case labels, including
@@ -1699,6 +1719,10 @@ impl<'node> Flow<'node> {
         let mut case_values = Vec::new();
         let mut selected_effect = None;
         let mut grouped_default_effect = None;
+        // Only one immediately adjacent nonempty case fallthrough is
+        // admitted; chained edges need a separate bounded state proof.
+        let mut pending_fallthrough: Option<(SwitchArmEffect<'node>, bool)> =
+            None;
         while self.peek()?.kind == "case-statement" {
             // A default nested below a case is the final switch label.
             if grouped_default_effect.is_some() {
@@ -1771,6 +1795,10 @@ impl<'node> Flow<'node> {
             let has_grouped_default = self.peek().is_some_and(|node| {
                 node.kind == "default-statement" && node.parent == case.id
             });
+            if has_grouped_default && pending_fallthrough.is_some() {
+                return None;
+            }
+            let arm_body_position = self.position;
             let effect = if has_grouped_default {
                 let default = self.take(case.id, "default-statement")?;
                 if !clean(default)
@@ -1794,16 +1822,42 @@ impl<'node> Flow<'node> {
             if effect.end != outer_case_end.byte {
                 return None;
             }
-            let (effect, break_end) = self.switch_arm_tail(scope, effect)?;
-            previous_arm_end = break_end;
+            let (effect, break_end) =
+                self.switch_arm_tail_or_fallthrough(scope, effect)?;
+            let end_position = self.position;
+            if let Some((previous, selected_previous)) =
+                pending_fallthrough.take()
+            {
+                // Direct case entry starts from the pre-switch locals.
+                // Falling through starts from the prior case's real writes.
+                // Reconsume the same complete Clang subtree and require the
+                // exact same subsequent source-node boundary.
+                let end = break_end?;
+                self.locals = previous.locals;
+                self.position = arm_body_position;
+                let carried =
+                    self.switch_arm_effect(case, previous_label_end)?;
+                let (carried, replay_end) =
+                    self.switch_arm_tail(scope, carried)?;
+                if replay_end != end || self.position != end_position {
+                    return None;
+                }
+                if selected_previous {
+                    selected_effect = Some(carried);
+                }
+            }
+            previous_arm_end = break_end.unwrap_or(effect.end);
             if group_selected {
                 selected_effect = Some(effect.clone());
+            }
+            if break_end.is_none() {
+                pending_fallthrough = Some((effect.clone(), group_selected));
             }
             if has_grouped_default {
                 grouped_default_effect = Some(effect);
             }
         }
-        if case_values.is_empty() {
+        if case_values.is_empty() || pending_fallthrough.is_some() {
             return None;
         }
         let (default_effect, last_break) = if let Some(effect) =

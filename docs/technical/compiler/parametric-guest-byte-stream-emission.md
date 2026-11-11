@@ -73,6 +73,34 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Source-checked nonempty `switch` fallthrough (2026-11-10)
+
+A complete twelve-iteration masked Fibonacci C source now uses real C
+fallthrough from `case 0U:` into the next distinct `case 2U:` while
+`case 2U:` also receives direct dispatch. Before repair, pinned Clang
+accepted the complete source but JSON admission refused it without guest
+publication. Clang parents each label's first `^=` expression directly
+to that label, and later statements and `break` to the switch compound.
+The projector checks exact label/source order, two complete entry paths,
+source-backed local reads, at most four effects per receiving arm, and one
+following break. It independently replays the receiving case from both
+pre-switch state (direct entry) and the immediately preceding case's final
+local state (fallthrough), requiring both traversals to consume the same
+complete normalized subtree. Only the selected path's state is retained.
+
+The source initializes `selected` with an extra `7` for dispatch value 2,
+then uses a real `carry` write at dispatch 0 to cancel that factor before
+falling into the same receiving code. The two entry states are deliberately
+different: losing the carried state would change observed output. All four
+dispatch values appear. The independently derived twelve-byte oracle
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` matches the actual normative
+Malbolge VM in 47 steps under EOF and binary stdin. Five unsupported
+source mutations and six forged normalized AST variants refuse with no
+guest artifact. Chained fallthrough, fallthrough to `default`, output
+before another label, effectful input, unbounded body effects, dynamic
+guest switching and the original unmasked guest layout are unsupported.
+This is bounded source-state C selection, not a general runtime branch.
+
 ### C switch without default in the complete recurrence (2026-11-10)
 
 The original unmasked twelve-iteration Fibonacci source still refuses at
