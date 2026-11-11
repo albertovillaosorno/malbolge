@@ -73,6 +73,49 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Dependent comma initialization in a function body (2026-11-10)
+
+The complete masked Fibonacci source now initializes two zeroed locals with
+`a = 1U, b = a;` directly inside the function body, before its twelve-trip
+loop. It is one source-ordered comma statement with dependent state, not two
+independent assignments. The pinned Clang frontend accepted the complete C
+source while the normalized JSON adapter originally refused the function
+statement without publication. The same bounded comma projector now applies
+to function-body writes; a child must match its source parent and the comma
+node's begin and end locations must match the first and last complete child
+spans, including columns. This closes a forged-AST end-column drift found
+by the new negative tests.
+
+The real normative guest emits the independent masked twelve-byte Fibonacci
+oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under empty and
+binary stdin. Five invalid C variants and six forged AST variants reject
+without publishing a guest artifact. The entire proof remains bounded
+compile-time source-state replay; the original unmasked output stream still
+fails at layout, not at C source admission.
+
+### Unbraced conditional arms with ordered C comma writes (2026-11-10)
+
+The complete twelve-step masked Fibonacci C source now uses two unbraced
+`if`/`else` arms, each containing `selected ^= N, a = b;` as one comma
+expression. The unselected arm must still be completely source-proven; the
+selected arm must apply the first local write before the second, and its
+updated recurrence state must survive to the next `for` iteration. Pinned
+Clang accepted the whole C source while the JSON adapter initially refused
+its direct conditional arm, without publishing a guest. The adapter now
+reuses the existing bounded left-to-right local-write proof for unbraced
+conditional expressions as well as for braced loop effects. It checks
+exact Clang parents, full source spans, symbol identity, unsigned types and
+the canonical same-line separator. At most four writes are admitted in a
+single comma tree; calls, reads used as statements and unproved operators
+still refuse.
+
+The real normative Malbolge VM emitted the independently computed twelve
+bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in exactly 47 guest steps
+under EOF and binary stdin. Eight invalid C variants and seven forged
+Clang AST variants refuse without guest publication. This remains bounded
+compile-time replay, not guest runtime sequencing or a solution to the
+original unmasked Fibonacci layout failure. Generalized P0 remains open.
+
 ### Sequenced unsigned local writes in C comma expressions (2026-11-10)
 
 The full twelve-iteration masked Fibonacci C source now uses

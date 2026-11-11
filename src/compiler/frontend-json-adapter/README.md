@@ -1194,3 +1194,40 @@ Clang control nodes refuse without a published artifact.
 This is bounded compile-time C control projection, not guest runtime
 `break`, `continue`, generalized C loops or arbitrary guest byte synthesis.
 The original unmasked twelve-byte Fibonacci layout remains unsupported.
+
+### Source-backed comma expressions in unbraced conditional arms
+
+An ordinary unbraced C `if` or `else` arm may now consist of one comma
+expression containing two to four bounded unsigned local assignments. The
+adapter reuses the left-to-right source-backed proof for body statements,
+replaying each write before the next expression reads its local value.
+Both Clang child trees and their enclosing `if` ancestry, full source spans,
+operator types and same-line comma separators are checked, including the
+unselected arm; only the selected state and its later output survive. Calls,
+read-only operands, a fifth write and unproved C side effects reject.
+
+`local_unbraced_comma_branch_fibonacci.c` exercises both unbraced arms on
+all twelve iterations of a full masked Fibonacci recurrence. The real
+normative guest emits independently derived output
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under empty and
+binary stdin. Eight unsupported source variants and seven forged ASTs
+fail closed without publication. This remains compile-time projection,
+not guest runtime C sequencing; unmasked Fibonacci guest layout remains
+unsupported.
+
+### Dependent function-body comma initialization
+
+The checked C comma statement is also available directly in the function
+body. One complete source-ordered expression such as `a = 1U, b = a;`
+updates the first local before the second expression evaluates the read.
+Exact Clang ancestry, unsigned write metadata, same-line comma punctuation
+and both full source endpoints (byte, line and column) must agree with the
+first and last child. The additional endpoint check prevents a normalized
+AST from claiming a different end column while keeping the original byte.
+
+The tracked complete `local_function_comma_fibonacci.c` initializes a and b
+from zero, then runs the twelve-step masked recurrence. The normative guest
+emits the same independent twelve-byte oracle in 47 steps on empty and
+binary stdin. Five unsupported C variations and six forged AST trees
+reject without artifact publication. This is not general runtime guest
+expression sequencing or unmasked byte-stream layout.

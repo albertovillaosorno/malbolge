@@ -54,6 +54,29 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 a complete masked Fibonacci C program used
+  `a = 1U, b = a;` as one dependent comma statement in the function body.
+  Pinned Clang accepted it, but the JSON adapter initially refused it.
+  Function-body replay now shares the bounded comma write proof, including
+  exact child parentage and both byte-and-column source endpoints. The
+  normative guest emitted independent oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and binary
+  stdin. Five invalid sources and six forged ASTs (including a discovered
+  span-column drift) reject without publication. Unmasked output layout
+  and runtime sequencing remain unsupported; P0 stays open.
+
+- On 2026-11-10 the complete twelve-step masked Fibonacci source was
+  retried with unbraced C `if` and `else` arms that each perform dependent
+  `selected ^= N, a = b;` comma writes. Pinned Clang accepted the C but the
+  JSON adapter refused before publishing a guest. Reusing the bounded
+  left-to-right source-backed comma replay for direct conditional arms
+  proved both sides independently, then committed only the selected state.
+  The normative guest emits the independent twelve-byte oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and binary
+  stdin. Eight invalid sources and seven forged ASTs refuse without a guest
+  artifact. Original unmasked output and dynamic runtime C conditional
+  sequencing remain unsupported; P0 stays open.
+
 - On 2026-11-10 the complete twelve-step masked Fibonacci source was
   retried with `a = b, b = next;` as one ordinary C comma expression in
   place of two statements. Pinned Clang accepted both assignments, but the

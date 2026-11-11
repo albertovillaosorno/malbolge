@@ -812,6 +812,295 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertFalse(guest.exists(), label)
 
+    def test_unbraced_comma_branch_reaches_real_guest(self) -> None:
+        """Both direct C if arms sequence writes before the next iteration."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            selected = following & 31
+            if following & 1:
+                selected ^= 26
+            expected.append(selected)
+            previous, current = current, following
+        self.assertEqual(
+            bytes(expected), bytes.fromhex("02191f08170f020d03101303")
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            guest = Path(scratch) / "unbraced-comma-fibonacci.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/unbraced-comma-branch-v1", "--capsule",
+                 "--output", str(guest),
+                 str(ROOT / "tests/compiler/c-frontend/accepted/"
+                     "local_unbraced_comma_branch_fibonacci.c")],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_unbraced_comma_branch_refuses_unproved_effects(self) -> None:
+        """A complete comma arm cannot erase effectful or forged operands."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_unbraced_comma_branch_fibonacci.c").read_text()
+        then_arm = "            selected ^= 0U, a = b;"
+        else_arm = "            selected ^= 26U, a = b;"
+        self.assertEqual(original.count(then_arm), 1)
+        self.assertEqual(original.count(else_arm), 1)
+        variants = {
+            "call-first": original.replace(
+                then_arm, "            putchar(65), a = b;"),
+            "call-second": original.replace(
+                then_arm, "            selected ^= 0U, putchar(65);"),
+            "input-second": original.replace(
+                then_arm,
+                "            selected ^= 0U, a = (unsigned)getchar();"),
+            "readonly-second": original.replace(
+                then_arm, "            selected ^= 0U, a;"),
+            "else-output": original.replace(
+                else_arm, "            selected ^= 26U, putchar(65);"),
+            "else-readonly": original.replace(
+                else_arm, "            selected ^= 26U, a;"),
+            "fifth-write": original.replace(
+                then_arm,
+                "            selected ^= 0U, a = b, b ^= 0U, "
+                "a ^= 0U, a ^= 0U;"),
+            "effectful-predicate": original.replace(
+                "if ((next & 1U) == 0U)", "if ((next += 1U) == 0U)"),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            for label, text in variants.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"bad-unbraced-{label}.c"
+                    source.write_text(text)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/unbraced-bad-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)], input=frontend.stdout,
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "unbraced-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/unbraced-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]],
+                         json.loads(frontend.stdout)["nodes"])
+            branches = [n for n in nodes if n["kind"] == "if-statement"]
+            commas = [n for n in nodes if n["kind"] == "binary-expression"
+                      and n.get("operation") == ","]
+            self.assertEqual(len(branches), 1)
+            self.assertEqual(len(commas), 2)
+            self.assertTrue(all(n["parent"] == branches[0]["id"]
+                                for n in commas))
+            for label in (
+                "then-parent", "else-parent", "then-type", "else-span",
+                "then-right-parent", "else-left-operator",
+                          "then-right-symbol"):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object],
+                                  json.loads(frontend.stdout))
+                    altered = cast(list[dict[str, object]], forged["nodes"])
+                    then = altered[cast(int, commas[0]["id"]) - 1]
+                    otherwise = altered[cast(int, commas[1]["id"]) - 1]
+                    if label == "then-parent":
+                        then["parent"] = 2
+                    elif label == "else-parent":
+                        otherwise["parent"] = 2
+                    elif label == "then-type":
+                        then["type"] = "i32"
+                    elif label == "else-span":
+                        cast(dict[str, dict[str, int]],
+                             otherwise["span"])["end"]["byte"] += 1
+                    else:
+                        comma = then if label.startswith("then") else otherwise
+                        children = [
+                            n for n in altered if n["parent"] == comma["id"]
+                        ]
+                        self.assertEqual(len(children), 2)
+                        left, right = children
+                        if label == "then-right-parent":
+                            altered[cast(int, right["id"]) - 1]["parent"] = 2
+                        elif label == "else-left-operator":
+                            altered[cast(int, left["id"]) - 1][
+                                "operation"
+                            ] = "**="
+                        else:
+                            read = next(n for n in altered
+                                        if n["parent"] == right["id"]
+                                        and n["kind"] ==
+                                        "declaration-reference-expression")
+                            read["reference"] = "foreign@99999"
+                    guest = Path(scratch) / f"forged-unbraced-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_function_body_comma_initialization_reaches_guest(self) -> None:
+        """A function-level comma statement preserves dependent C writes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        previous, current = 0, 0
+        previous = 1
+        current = previous
+        expected = bytearray()
+        for _ in range(12):
+            following = (previous + current) & 255
+            expected.append(
+                following & 31 if following % 2 == 0
+                else (following ^ 26) & 31
+            )
+            previous, current = current, following
+        self.assertEqual(
+            bytes(expected), bytes.fromhex("02191f08170f020d03101303")
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            guest = Path(scratch) / "function-comma-fibonacci.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/function-comma-fibonacci-v1",
+                 "--capsule",
+                 "--output", str(guest),
+                 str(ROOT / "tests/compiler/c-frontend/accepted/"
+                     "local_function_comma_fibonacci.c")],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_function_body_comma_refuses_unproved_effects(self) -> None:
+        """No function-body comma operand may be discarded silently."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = (ROOT / "tests/compiler/c-frontend/accepted/"
+                    "local_function_comma_fibonacci.c").read_text()
+        token = "    a = 1U, b = a;"
+        self.assertEqual(original.count(token), 1)
+        variants = {
+            "hidden-output": "    a = 1U, putchar(65);",
+            "hidden-input": "    a = 1U, b = (unsigned)getchar();",
+            "read-only-rhs": "    a = 1U, a;",
+            "output-after-writes": "    a = 1U, b = a, putchar(65);",
+            "fifth-write": "    a = 1U, b = a, b ^= 0U, a ^= 0U, b ^= 0U;",
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            for label, replacement in variants.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"bad-function-comma-{label}.c"
+                    source.write_text(original.replace(token, replacement))
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/function-comma-bad-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)], input=frontend.stdout,
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "function-comma-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/function-comma-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]],
+                         json.loads(frontend.stdout)["nodes"])
+            commas = [n for n in nodes if n["kind"] == "binary-expression"
+                      and n.get("operation") == ","]
+            self.assertEqual(len(commas), 1)
+            comma = commas[0]
+            self.assertEqual(comma["parent"], 2)
+            children = [n for n in nodes if n["parent"] == comma["id"]]
+            self.assertEqual(len(children), 2)
+            for label in ("comma-parent", "comma-type", "comma-span",
+                          "left-parent", "right-operation", "right-reference"):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object],
+                                  json.loads(frontend.stdout))
+                    altered = cast(list[dict[str, object]], forged["nodes"])
+                    target = altered[cast(int, comma["id"]) - 1]
+                    if label == "comma-parent":
+                        target["parent"] = 3
+                    elif label == "comma-type":
+                        target["type"] = "i32"
+                    elif label == "comma-span":
+                        cast(dict[str, dict[str, int]],
+                             target["span"])["end"]["column"] += 1
+                    else:
+                        right = altered[cast(int, children[1]["id"]) - 1]
+                        if label == "left-parent":
+                            altered[cast(int, children[0]["id"]) - 1][
+                                "parent"
+                            ] = 2
+                        elif label == "right-operation":
+                            right["operation"] = "**="
+                        else:
+                            read = next(n for n in altered
+                                        if n["parent"] == right["id"]
+                                        and n["kind"] ==
+                                        "declaration-reference-expression")
+                            read["reference"] = "foreign@99999"
+                    guest = Path(scratch) / f"forged-function-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
     def test_root_lexical_shadow_replays_complete_fibonacci_guest(self) -> None:
         """A function-body block must resolve its own b through the loop."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

@@ -222,6 +222,8 @@ impl<'node> Flow<'node> {
         // Only the canonical same-line `, ` separator is in this proof.
         // Clang's complete, ordered children must cover the parent span.
         if !ordered_binary_spans(comma, left, right)
+            || comma.span.begin != left.span.begin
+            || comma.span.end != right.span.end
             || left.span.end.line != right.span.begin.line
             || right.span.begin.byte.checked_sub(left.span.end.byte) != Some(2)
             || right.span.begin.column.checked_sub(left.span.end.column)
@@ -478,7 +480,10 @@ impl<'node> Flow<'node> {
                 Some(end)
             },
             "binary-expression" | "compound-assignment-expression" => {
-                Some(self.assignment(statement, previous_end)?.0)
+                // An unbraced arm is exactly one C expression statement.
+                // Its comma tree may sequence bounded unsigned local writes,
+                // but never a call, read-only operand or hidden side effect.
+                Some(self.sequenced_writes(statement, previous_end, 0)?.0)
             },
             "break-statement" | "continue-statement" => {
                 self.loop_exit_statement(statement, previous_end)
@@ -2495,7 +2500,7 @@ pub(super) fn canonical_multi_local_output(
             },
             "binary-expression" | "compound-assignment-expression" => {
                 let (end, _source) = flow
-                    .assignment(body, last_end)
+                    .sequenced_writes(body, last_end, 0)
                     .ok_or(FrontendJsonError::Unsupported)?;
                 last_end = end;
             },
