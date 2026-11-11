@@ -1831,6 +1831,57 @@ impl<'node> Flow<'node> {
             "binary-expression" | "compound-assignment-expression" => {
                 (self.assignment(body, previous_end)?.0, None)
             },
+            "if-statement" => {
+                // Both sides of an inner conditional receive source-checked
+                // replay, but only the selected path may affect the enclosing
+                // switch arm. Capture its one possible output until outer
+                // dispatch has finished proving every unselected case.
+                let first = self.position;
+                let statement = self.peek()?;
+                let predicate = self.nodes.get(first.checked_add(1)?)?;
+                if predicate.parent != statement.id
+                    || predicate.span.begin.line != statement.span.begin.line
+                    || predicate
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(statement.span.begin.byte)
+                        != Some(4)
+                    || predicate
+                        .span
+                        .begin
+                        .column
+                        .checked_sub(statement.span.begin.column)
+                        != Some(4)
+                {
+                    return None;
+                }
+                let output_count = self.outputs.len();
+                let end = self.conditional(body, previous_end, 0)?;
+                // This switch-local grammar requires complete braced arms.
+                // The final direct arm must also agree on Clang's closing
+                // column, not just the end byte of the whole if statement.
+                let last_arm =
+                    self.nodes.get(first..self.position)?.iter().rev().find(
+                        |node| {
+                            node.parent == statement.id
+                                && node.kind == "compound-statement"
+                        },
+                    )?;
+                if last_arm.span.end != statement.span.end
+                    || self.loop_exit.is_some()
+                    || self.return_node.is_some()
+                {
+                    return None;
+                }
+                let output =
+                    match self.outputs.len().checked_sub(output_count)? {
+                        0 => None,
+                        1 => self.outputs.pop(),
+                        _ => return None,
+                    };
+                (end, output)
+            },
             "switch-statement" => {
                 // A nested dispatch may emit one source-checked byte.
                 // Capture rather than publishing that effect: the enclosing

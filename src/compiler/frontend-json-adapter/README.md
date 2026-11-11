@@ -155,6 +155,23 @@ switch level, multiple effects along one inner path, dynamic guest
 switches, and unmasked Fibonacci guest synthesis are not implemented.
 This is bounded compile-time C state replay, not runtime C execution.
 
+### Conditional state updates inside nested switch cases
+
+A full twelve-output Fibonacci C source now places a braced `if/else`
+inside every inner `switch` case. Each condition selects an unsigned
+mask modification, followed by a checked compound XOR compensation and
+one guest `putchar`. The finite source replay checks both paths but commits
+only the selected state, including at most one captured output per arm.
+It checks the conditional's exact opening `if (` byte/column geometry
+and final brace span before permitting outer switch state selection.
+The independent C oracle and normative guest VM agree on twelve masked
+Fibonacci bytes in 47 steps under empty and binary stdin. Seven bad C
+sources and 24 forged conditional ASTs refuse without publication.
+A second full C source moves output calls inside the selected branch; its
+real guest also matches the same independent oracle in 47 VM steps.
+This remains compile-time replay, not dynamic guest C branching; the
+unmasked Fibonacci byte stream still lacks a verified guest layout.
+
 ### Source-proven two-level C switch dispatch
 
 A complete twelve-output Fibonacci C program places one `switch` within each

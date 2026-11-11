@@ -17427,5 +17427,228 @@ class CompoundCPipelineTests(unittest.TestCase):
                         self.assertFalse(guest.exists(), label)
 
 
+    def test_conditional_nested_switch_complete_fibonacci_guest(self) -> None:
+        """Inner case conditions select source C state before real guest I/O."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_conditional_nested_switch_fibonacci.c"
+        )
+        a = b = 1
+        oracle = bytearray()
+        selectors: set[int] = set()
+        branch_values: set[bool] = set()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            selectors.add(next_value & 3)
+            branch = (next_value & 4) != 0
+            branch_values.add(branch)
+            mask_base = (26 if next_value & 1 else 0) + (
+                32 if next_value & 2 else 0
+            )
+            selected_mask = mask_base ^ 4 if branch else mask_base
+            selected_mask ^= next_value & 4
+            oracle.append((next_value ^ selected_mask) & 31)
+            a, b = b, next_value
+        self.assertEqual(selectors, {0, 1, 2, 3})
+        self.assertEqual(branch_values, {False, True})
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "conditional-switch.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER),
+                    "--repository-tools", "--source-id",
+                    "tests/conditional-nested-switch-v1", "--capsule",
+                    "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertEqual(
+                    executed.stderr, b"malbolge-steps-v1:47\n"
+                )
+
+    def test_conditional_inner_output_complete_fibonacci_guest(self) -> None:
+        """Each selected nested conditional emits its own guest byte."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_conditional_inner_output_fibonacci.c"
+        )
+        a = b = 1
+        oracle = bytearray()
+        selectors: set[int] = set()
+        branch_values: set[bool] = set()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            selectors.add(next_value & 3)
+            branch = (next_value & 4) != 0
+            branch_values.add(branch)
+            mask_base = (26 if next_value & 1 else 0) + (
+                32 if next_value & 2 else 0
+            )
+            selected_mask = mask_base ^ 4 if branch else mask_base
+            selected_mask ^= next_value & 4
+            oracle.append((next_value ^ selected_mask) & 31)
+            a, b = b, next_value
+        self.assertEqual(selectors, {0, 1, 2, 3})
+        self.assertEqual(branch_values, {False, True})
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "conditional-inner-output.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER),
+                    "--repository-tools", "--source-id",
+                    "tests/conditional-inner-output-v1", "--capsule",
+                    "--output", str(guest), str(source),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, capture_output=True, check=False,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, oracle)
+                self.assertEqual(
+                    executed.stderr, b"malbolge-steps-v1:47\n"
+                )
+
+    def test_conditional_nested_switch_refuses_unproved_source(self) -> None:
+        """Nested conditions cannot introduce unknown source effects."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_conditional_nested_switch_fibonacci.c"
+        ).read_text()
+        selected = "                    mask = 0U;"
+        skipped = "                    mask = 4U;"
+        output = "                    putchar((int)((next ^ mask) & 31U));"
+        cases = {
+            "selected-branch-input": source.replace(
+                selected, "                    mask = (unsigned)getchar();", 1
+            ),
+            "unselected-branch-input": source.replace(
+                skipped, "                    mask = (unsigned)getchar();", 1
+            ),
+            "effectful-condition": source.replace(
+                "if ((next & 4U) != 0U)",
+                "if ((next++ & 4U) != 0U)", 1
+            ),
+            "selected-extra-output": source.replace(
+                selected, selected + "\n" + output, 1
+            ),
+            "selected-break": source.replace(
+                selected, selected + "\n                    break;", 1
+            ),
+            "unknown-compensation": source.replace(
+                "mask ^= next & 4U;", "mask ^= (unsigned)getchar();", 1
+            ),
+            "conditional-return": source.replace(
+                selected, selected + "\n                    return;", 1
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, contents in cases.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(contents, source)
+                    path = Path(scratch) / f"{label}.c"
+                    path.write_text(contents)
+                    normalized = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/conditional-switch-invalid-{label}-v1",
+                            str(path),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(normalized.returncode, 0, normalized.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(guest), "--capsule",
+                        ],
+                        input=normalized.stdout, capture_output=True,
+                        check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_conditional_nested_switch_refuses_forged_ast(self) -> None:
+        """Conditional case spans and Clang parentage remain source-bound."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_conditional_nested_switch_fibonacci.c"
+        )
+        normalized = subprocess.run(
+            [
+                str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                "--resource-dir", str(RESOURCE), "--source-id",
+                "tests/conditional-switch-forgery-v1", str(source),
+            ],
+            capture_output=True, check=False, timeout=30,
+        )
+        self.assertEqual(normalized.returncode, 0, normalized.stderr)
+        original = json.loads(normalized.stdout)
+        nodes = original["nodes"]
+        conditions = [n for n in nodes if n["kind"] == "if-statement"]
+        self.assertEqual(len(conditions), 4)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for condition in conditions:
+                for label in (
+                    "parent", "begin-byte", "begin-column",
+                    "end-byte", "end-column", "operation",
+                ):
+                    with self.subTest(condition=condition["id"], ast=label):
+                        forged = json.loads(normalized.stdout)
+                        node = forged["nodes"][condition["id"] - 1]
+                        if label == "parent":
+                            node["parent"] = 2
+                        elif label.startswith("begin-"):
+                            property_name = label.removeprefix("begin-")
+                            node["span"]["begin"][property_name] += 1
+                        elif label.startswith("end-"):
+                            property_name = label.removeprefix("end-")
+                            node["span"]["end"][property_name] -= 1
+                        else:
+                            node["operation"] = "!"
+                        guest = Path(scratch) / f"{condition['id']}-{label}.malbolge"
+                        refused = subprocess.run(
+                            [
+                                str(ADAPTER), "--layout-backend", str(LAYOUT),
+                                "--output", str(guest), "--capsule",
+                            ],
+                            input=json.dumps(forged).encode(),
+                            capture_output=True, check=False, timeout=30,
+                        )
+                        self.assertNotEqual(refused.returncode, 0, label)
+                        self.assertIn(b"Unsupported", refused.stderr, label)
+                        self.assertFalse(guest.exists(), label)
+
+
+
 if __name__ == "__main__":
     _ = unittest.main()

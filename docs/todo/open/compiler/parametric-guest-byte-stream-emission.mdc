@@ -52,7 +52,24 @@ a compiler capability gap, not a reason to return to N+1.
   parity after fixing its actual semantic gaps. Defer broad generated
   matrices to downstream P2/P3 compiler and verification contracts.
 
+
 ## Evidence
+
+- On 2026-11-11 a new complete unsigned Fibonacci C source put four
+  `if/else` mask selections inside the cases of two-level nested
+  `switch` dispatch. Each selected branch changes a low mask bit; a
+  subsequent XOR operation cancels it before guest I/O, so the output
+  still tests correct branch selection rather than ignoring the `if`.
+  Pinned Clang admitted the source but the JSON adapter originally
+  refused it. Bounded source replay now captures one selected conditional
+  output and checks exact opening and closing Clang spans. The independent
+  unsigned-C oracle and real guest VM match twelve masked bytes
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with EOF/binary
+  input. Seven unproved C mutations and 24 forged ASTs refuse publication.
+  A second complete C source emits its twelve bytes from within the
+  chosen conditional arms; guest output and 47 steps also match the oracle.
+  Unmasked Fibonacci layout and dynamic guest control remain unsupported.
+
 
 - On 2026-11-11 a second complete Fibonacci C variant moved its only
   guest I/O into the two-level nested switch arms, after each of four

@@ -25,6 +25,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Conditional C state inside nested switch cases (2026-11-11)
+
+A complete twelve-trip unsigned Fibonacci C program now uses four inner
+`switch` cases, each with a source-ordered `if/else` selecting a different
+low-order mask before a compound XOR compensation and a real `putchar`.
+The selected branch changes a low bit, so ignoring that decision would
+change output even though the proved compensation restores the original
+masked Fibonacci stream. Pinned Clang admitted the whole C source; before
+the repair, the JSON adapter refused the first local declaration.
+
+The bounded adapter now replays both conditional branches against the same
+source state, captures at most one selected output per switch arm and
+restores state before proving each unselected case. For switch-local
+conditionals it also checks the exact opening `if (` byte/column spacing,
+the closing branch span and forbids selected function/loop exits.
+An independent unsigned-C oracle and the normative guest VM agree on all
+twelve bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with
+EOF or binary input. Seven unsupported C variants and 24 forged conditional
+ASTs refuse without publishing a guest. A second complete C source
+moves all twelve outputs inside the selected conditional branches; the
+normative VM independently confirms the same twelve bytes and 47 steps.
+This adds finite C control replay, not guest-side dynamic branching. The original unmasked Fibonacci byte
+stream still fails layout synthesis, and the P0 remains pending.
+
 ### Nested source-proven switch output effects (2026-11-11)
 
 The original two-level switch Fibonacci source now has a second complete
