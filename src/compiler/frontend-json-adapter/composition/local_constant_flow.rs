@@ -70,7 +70,8 @@ enum LoopExit {
 struct Flow<'node> {
     locals: Vec<Local<'node>>,
     loop_counters: Vec<&'node str>,
-    within_while_body: bool,
+    while_depth: u8,
+    within_do_body: bool,
     loop_exit: Option<LoopExit>,
     return_node: Option<&'node Node>,
     nodes: &'node [Node],
@@ -965,7 +966,9 @@ impl<'node> Flow<'node> {
             },
             _ => return None,
         };
-        if (self.loop_counters.is_empty() && !self.within_while_body)
+        if (self.loop_counters.is_empty()
+            && self.while_depth == 0
+            && !self.within_do_body)
             || self.loop_exit.is_some()
         {
             return None;
@@ -1596,8 +1599,8 @@ impl<'node> Flow<'node> {
     }
 
     /// Replay a source-proven `while (predicate) { ... }` over known locals.
-    /// A while body may be nested inside a bounded for, but not another
-    /// while or do-while; an inner break is consumed at this loop boundary.
+    /// Admit at most two nested while bodies (including within a for),
+    /// never while inside do; an inner break ends the nearest while.
     /// Recheck each condition after a body execution, or validate a skipped
     /// body on shadow state without publishing its writes or output effects.
     /// Unsupported bodies and unbounded loops refuse.
@@ -1606,14 +1609,15 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || self.within_while_body
+            || self.within_do_body
+            || self.while_depth >= 2
         {
             return None;
         }
         let condition_start = self.position;
         let outer_len = self.locals.len();
         let mut body_end = None;
-        self.within_while_body = true;
+        self.while_depth = self.while_depth.checked_add(1)?;
         for iteration in 0..=MAX_STATIC_LOOP_ITERATIONS {
             self.position = condition_start;
             let (continue_loop, condition) = self.condition(statement)?;
@@ -1659,7 +1663,7 @@ impl<'node> Flow<'node> {
                     self.loop_exit = None;
                     self.return_node = starting_return;
                 }
-                self.within_while_body = false;
+                self.while_depth = self.while_depth.checked_sub(1)?;
                 return Some(statement.span.end.byte);
             }
             if iteration == MAX_STATIC_LOOP_ITERATIONS {
@@ -1679,7 +1683,7 @@ impl<'node> Flow<'node> {
                 if self.loop_exit == Some(LoopExit::Break) {
                     self.loop_exit = None;
                 }
-                self.within_while_body = false;
+                self.while_depth = self.while_depth.checked_sub(1)?;
                 return Some(statement.span.end.byte);
             }
             self.loop_exit = None;
@@ -1701,7 +1705,8 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || self.within_while_body
+            || self.within_do_body
+            || self.while_depth != 0
         {
             return None;
         }
@@ -1731,7 +1736,7 @@ impl<'node> Flow<'node> {
         let outer_len = self.locals.len();
         let mut body_end = None;
         let mut condition_end = None;
-        self.within_while_body = true;
+        self.within_do_body = true;
         for _ in 0..MAX_STATIC_LOOP_ITERATIONS {
             self.position = body_start;
             self.loop_body(loop_body)?;
@@ -1781,7 +1786,7 @@ impl<'node> Flow<'node> {
             {
                 self.loop_exit = (selected_exit == Some(LoopExit::Return))
                     .then_some(LoopExit::Return);
-                self.within_while_body = false;
+                self.within_do_body = false;
                 return Some(statement.span.end.byte);
             }
         }
@@ -2628,7 +2633,8 @@ pub(super) fn canonical_multi_local_output(
     let mut flow = Flow {
         locals: Vec::new(),
         loop_counters: Vec::new(),
-        within_while_body: false,
+        while_depth: 0,
+        within_do_body: false,
         loop_exit: None,
         return_node: None,
         nodes: &input.nodes,

@@ -25,6 +25,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two source-checked nested C `while` loops (2026-11-11)
+
+The complete twelve-iteration Fibonacci C source
+`local_nested_while_while_fibonacci.c` adds a two-trip inner `while` to an
+existing two-trip `while` inside a bounded `for`. Pinned Clang admits the
+source, while the pre-repair normalized JSON adapter refused the second
+loop. The bounded projector now uses active `while` depth rather than a
+single Boolean, proving both predicates with source-checked Clang ancestry
+and rechecking all local writes. It preserves lexical `pass` lifetimes,
+nearest-loop exits and the protected outer induction symbol.
+
+The source-derived unsigned-C oracle emits
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`; the real Malbolge VM matches
+under EOF and binary stdin in 47 steps. Third-level `while`, mixed
+`while`/`do` nesting, effectful conditions, unbounded loops and fabricated
+Clang node ancestry remain rejected before guest publication. This is
+bounded compile-time source-state replay, not dynamic guest looping.
+The original unmasked twelve-byte Fibonacci layout remains P0 work.
+
 ### Bounded C `do/while` nested in a stateful `for` (2026-11-11)
 
 A complete twelve-iteration Fibonacci C source now computes its next
@@ -59,7 +78,7 @@ it to a defined byte before a source-checked outer branch selects guest
 adapter originally rejected the inner `while` before publishing a guest.
 
 The finite replay now admits one source-proven `while` inside a bounded `for`,
-without permitting recursively nested `while` or `do/while` bodies. Inner
+with no mixed `while`/`do` bodies or third-level `while`. Inner
 `break` exits only the inner loop: a second complete C variant proves an
 explicit break on trip two does not cut short the enclosing twelve-trip
 `for`. The proof re-evaluates the inner condition and source-local effects

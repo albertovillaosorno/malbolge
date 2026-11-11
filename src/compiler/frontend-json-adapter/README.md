@@ -1224,6 +1224,33 @@ and structural typed/ternary admission but is rejected by the closed
 witnessed. This is neither a general stream backend nor runtime C state.
 
 ### Source-checked `while` inside a complete `for` recurrence
+
+`local_nested_for_while_fibonacci.c` calculates each next Fibonacci value
+using a two-trip source-local `while` inside a twelve-trip `for`. Its outer
+branch observes the inner loop's writes before emitting a masked byte. A
+second complete C variant breaks out of the inner `while` after its second
+trip, leaving the outer `for` to emit its remaining bytes. The separate
+source-C oracle and real normative VM agree on all twelve output bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with empty and
+binary stdin. Unbounded loops, unproved effects, induction mutations and
+forged AST ancestry still refuse. These are finite compile-time source-state
+projections, not dynamic guest loops.
+
+### Source-checked bounded `while` inside another `while`
+
+`local_nested_while_while_fibonacci.c` nests a two-trip `while` for the
+inner `pass` local inside a two-trip `while` for the outer `phase` local,
+all inside a twelve-trip `for`. Every inner condition is re-evaluated against
+its own source-checked local, and `pass` is newly declared each outer trip.
+The normalized frontend previously refused the second `while`. The closed
+replay now tracks at most two active `while` bodies, retaining nearest-loop
+`break`/`continue`, lexical local lifetimes, and the protected `for` counter.
+The complete compiled source emits the independent twelve-byte masked
+Fibonacci oracle in 47 real VM steps on EOF and binary stdin. Third-level
+`while`, mixed `while`/`do` nesting, unbounded loops, input effects and forged
+Clang ancestry remain unsupported. This is static source-state proof, not
+guest runtime C execution or general unmasked byte-stream layout.
+
 ### Source-checked `do/while` inside a complete `for` recurrence
 
 `local_nested_for_do_while_fibonacci.c` computes each next Fibonacci value
@@ -1236,23 +1263,9 @@ emit independent masked Fibonacci oracle
 `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative VM steps under
 EOF and binary stdin. Source mutations and forged AST ancestry refuse
 without publication, including an inconsistent closing brace byte/column.
-Nested `do/while` remains disallowed inside another `while` or `do/while`;
+`do/while` remains disallowed inside another `while` or `do/while`;
 loops are finite compile-time source-state replay, not guest runtime control.
 The original unmasked twelve-byte stream still lacks a guest layout.
-
-
-`local_nested_for_while_fibonacci.c` calculates each next Fibonacci value
-using a two-trip source-local `while` inside a twelve-trip `for`. Its outer
-branch observes the inner loop's writes before emitting a masked byte. A
-second complete C variant breaks out of the inner `while` after its second
-trip, leaving the outer `for` to emit its remaining bytes. The separate
-source-C oracle and real normative VM agree on all twelve output bytes
-`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with empty and
-binary stdin for both programs. The adapter still rejects nested `while`
-inside another `while` or `do/while`, unbounded inner loops, unproved
-source effects, mutations of a protected induction counter, and forged AST
-ancestry. These are finite compile-time source-state projections, not
-dynamic guest loops or general twelve-byte output synthesis.
 
 ### Source-proven pure logical predicates
 

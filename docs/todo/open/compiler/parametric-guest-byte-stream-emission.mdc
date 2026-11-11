@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete Fibonacci C source nested a two-trip
+  `while` inside another two-trip `while` and an enclosing bounded
+  `for`. Pinned Clang accepted it; the adapter first refused the inner
+  loop. The repaired source-state replay tracks two active `while`
+  depths, preserving nearest-loop exits, scoped locals and the `for`
+  induction counter. An independent unsigned-C oracle and the real
+  Malbolge guest both emit twelve masked bytes
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 VM steps on EOF and
+  binary input. Seven unproved C variants and ten forged Clang AST
+  variants refuse without guest publication. Recursive third-level
+  `while` and mixed `while`/`do` nesting remain unsupported. The
+  original unmasked guest layout remains P0 work.
+
 - On 2026-11-11 a complete twelve-trip Fibonacci C source nested a
   mandatory-first two-trip `do/while` inside a bounded `for`. The JSON
   adapter originally refused the source. Closed replay now proves the
@@ -70,8 +83,9 @@ a compiler capability gap, not a reason to return to N+1.
   next term inside a two-trip `while` nested in its source-proven `for`.
   The JSON adapter first rejected the nested loop before guest publication.
   Closed local-state replay now admits one inner `while`, preserving each
-  C condition check and exact Clang ancestry without allowing nested
-  `while` or `do/while`. A second whole C source uses `break` at the end
+  C condition check and exact Clang ancestry without allowing mixed
+  `while`/`do` or more than two nested `while` bodies. A second whole
+  C source uses `break` at the end
   of the second inner trip; the outer `for` still executes all twelve
   iterations. Both variants reach independent masked Fibonacci oracle
   `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 real VM steps under EOF
