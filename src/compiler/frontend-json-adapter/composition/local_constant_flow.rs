@@ -429,25 +429,6 @@ impl<'node> Flow<'node> {
         self.unsigned_comparison(comparison)
     }
 
-    /// A bounded for-loop admits only a literal unsigned bound/stride, or
-    /// an exact implicit conversion of a nonnegative int literal.
-    fn loop_literal(&mut self, parent: u32) -> Option<(u8, &'node Node)> {
-        if !matches!(
-            self.peek()?.kind.as_str(),
-            "integer-literal" | "cast-expression"
-        ) {
-            return None;
-        }
-        let (value, node) = self.expression(parent, 0)?;
-        if node.kind == "cast-expression"
-            && (node.operation.as_deref() != Some("integral-cast")
-                || node.constant_integer.is_none())
-        {
-            return None;
-        }
-        Some((u8::try_from(value).ok()?, node))
-    }
-
     /// Admit a braced scope or one direct checked effect as a C branch arm.
     /// Unbraced calls and unsigned assignments have no declaration scope;
     /// both alternatives still receive independent state/output proof.
@@ -1236,7 +1217,10 @@ impl<'node> Flow<'node> {
         let operation = increment.operation.as_deref()?;
         let increment_read =
             self.take(increment.id, "declaration-reference-expression")?;
-        let (stride, step_descending) = match increment_kind {
+        // Preserve the exact source subtree for a non-unary increment.
+        // The checked expression is pure, but its value may change in the
+        // loop body. C evaluates the increment *after* each body execution.
+        let (stride, step_descending, stride_proof) = match increment_kind {
             "unary-expression" => {
                 // A discarded prefix/postfix increment or decrement has
                 // no observable result beyond the proven counter update.
@@ -1260,12 +1244,13 @@ impl<'node> Flow<'node> {
                 (typed_operator(increment, operation)
                     && matches!(operation, "++" | "--")
                     && (prefix || postfix))
-                    .then_some((1, operation == "--"))?
+                    .then_some((1, operation == "--", None))?
             },
             "compound-assignment-expression" => {
-                // Prove a positive, bounded literal stride from the exact
-                // typed right operand and source span, not from the bound.
-                let (stride, step) = self.loop_literal(increment.id)?;
+                let step_start = self.position;
+                let (value, step) = self.expression(increment.id, 0)?;
+                let step_end = self.position;
+                let stride = u8::try_from(value).ok()?;
                 (typed_operator(increment, increment.operation.as_deref()?)
                     && matches!(
                         increment.operation.as_deref(),
@@ -1293,6 +1278,7 @@ impl<'node> Flow<'node> {
                 .then_some((
                     stride,
                     increment.operation.as_deref() == Some("-="),
+                    Some((step_start, step_end, increment.id, step)),
                 ))?
             },
             "binary-expression" => {
@@ -1306,7 +1292,10 @@ impl<'node> Flow<'node> {
                 let step_load = self.take(rhs.id, "cast-expression")?;
                 let rhs_read = self
                     .take(step_load.id, "declaration-reference-expression")?;
-                let (stride, step) = self.loop_literal(rhs.id)?;
+                let step_start = self.position;
+                let (value, step) = self.expression(rhs.id, 0)?;
+                let step_end = self.position;
+                let stride = u8::try_from(value).ok()?;
                 let step_line = rhs.span.begin.line;
                 (typed_operator(increment, "=")
                     && matches!(step_operator, "+" | "-")
@@ -1350,7 +1339,11 @@ impl<'node> Flow<'node> {
                         .column
                         .checked_sub(step_load.span.end.column)
                         == Some(3))
-                .then_some((stride, step_operator == "-"))?
+                .then_some((
+                    stride,
+                    step_operator == "-",
+                    Some((step_start, step_end, rhs.id, step)),
+                ))?
             },
             _ => return None,
         };
@@ -1441,8 +1434,9 @@ impl<'node> Flow<'node> {
             body_end = Some(self.position);
             // Inner automatic locals must not remain visible after the brace.
             self.locals.truncate(outer_len.checked_add(1)?);
-            let current_counter = self.locals.get_mut(outer_len)?;
-            if current_counter.value != Some(u32::from(counter_value)) {
+            if self.locals.get(outer_len)?.value
+                != Some(u32::from(counter_value))
+            {
                 return None;
             }
             match self.loop_exit {
@@ -1453,11 +1447,24 @@ impl<'node> Flow<'node> {
                 Some(LoopExit::Return) => break,
                 _ => self.loop_exit = None,
             }
+            let current_stride =
+                if let Some((start, end, parent, source)) = stride_proof {
+                    self.position = start;
+                    let (value, replayed) = self.expression(parent, 0)?;
+                    (self.position == end && replayed.span == source.span)
+                        .then_some(u8::try_from(value).ok()?)?
+                } else {
+                    stride
+                };
+            if !(1..=MAX_STATIC_LOOP_ITERATIONS).contains(&current_stride) {
+                return None;
+            }
             counter_value = if descending {
-                counter_value.checked_sub(stride)?
+                counter_value.checked_sub(current_stride)?
             } else {
-                counter_value.checked_add(stride)?
+                counter_value.checked_add(current_stride)?
             };
+            let current_counter = self.locals.get_mut(outer_len)?;
             current_counter.value = Some(u32::from(counter_value));
             current_counter.source = increment;
             trips = trips.checked_add(1)?;

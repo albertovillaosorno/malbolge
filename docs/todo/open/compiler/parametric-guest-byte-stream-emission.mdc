@@ -54,6 +54,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete masked Fibonacci source with an unsigned local
+  `stride` initially refused its `i += stride` induction in the normalized
+  JSON adapter. A checked pure source subtree is now re-evaluated after
+  every loop body, including a selected write from stride 1 to 2. The
+  six-trip program reaches the real normative guest VM with independent
+  bytes `02 19 1f 08 17 0f` in 97 steps under EOF and binary stdin.
+  A static entry stride would incorrectly iterate ten times. Both source
+  increment spellings reach the same oracle with EOF and binary stdin;
+  seven unsupported C sources and eight forged ASTs refuse without guest
+  publication.
+  This is finite compile-time C replay; general P0 remains open.
+
+## Evidence
+
 - On 2026-11-11 a complete twelve-trip masked Fibonacci C source first
   refused a `for` bound read from a previously initialized unsigned local.
   The source-proven induction projector now rechecks the same pure bound

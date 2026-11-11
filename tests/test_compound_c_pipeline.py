@@ -59,6 +59,9 @@ MASKED_FIBONACCI = (
 LOCAL_BOUND_FIBONACCI = (
     ROOT / "tests/compiler/c-frontend/accepted/local_bound_fibonacci.c"
 )
+LOCAL_STRIDE_FIBONACCI = (
+    ROOT / "tests/compiler/c-frontend/accepted/local_stride_fibonacci.c"
+)
 WIDE_STREAM = (
     ROOT / "tests/compiler/c-frontend/accepted/local_loop_wide_branch_stream.c"
 )
@@ -1102,6 +1105,175 @@ class CompoundCPipelineTests(unittest.TestCase):
                     )
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def _check_source_local_for_stride(self, *, assignment: bool) -> None:
+        """Recheck a selected mutable stride through the normative VM."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = LOCAL_STRIDE_FIBONACCI.read_text()
+        self.assertEqual(original.count("i < limit; i += stride"), 1)
+        self.assertEqual(original.count("stride = 2U;"), 1)
+        label = "assignment" if assignment else "compound"
+        source_text = original.replace(
+            "i < limit; i += stride", "i < limit; i = i + stride"
+        ) if assignment else original
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            source = Path(scratch) / f"{label}-stride.c"
+            source.write_text(source_text)
+            guest = Path(scratch) / f"{label}-stride.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER),
+                 "--repository-tools", "--capsule", "--source-id",
+                 f"tests/{label}-stride-v1", "--output",
+                 str(guest), str(source)],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            a, b, i, limit, stride = 1, 1, 0, 10, 1
+            expected = bytearray()
+            while i < limit:
+                following = (a + b) & 255
+                expected.append(
+                    following & 31 if following % 2 == 0
+                    else (following ^ 26) & 31
+                )
+                if i == 2:
+                    stride = 2
+                a, b = b, following
+                i += stride
+                self.assertLessEqual(i, 12)
+            self.assertEqual(len(expected), 6)
+            self.assertEqual(expected, bytes.fromhex("02191f08170f"))
+            for supplied in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin",
+                     "--report-steps"], input=supplied,
+                    capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertEqual(
+                    executed.stderr, b"malbolge-steps-v1:97\n"
+                )
+
+    def test_source_local_for_compound_stride_rechecks_guest(self) -> None:
+        """The selected `i += stride` is not frozen at loop entry."""
+        self._check_source_local_for_stride(assignment=False)
+
+    def test_source_local_for_assignment_stride_rechecks_guest(self) -> None:
+        """The selected `i = i + stride` is not frozen at loop entry."""
+        self._check_source_local_for_stride(assignment=True)
+
+    def test_source_local_for_stride_rejects_unproved_effects(self) -> None:
+        """Impure, overwide and unbounded increments publish no guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = LOCAL_STRIDE_FIBONACCI.read_text()
+        guard = "i < limit; i += stride"
+        self.assertEqual(original.count(guard), 1)
+        source_mutations = {
+            "postfix-effect": original.replace(guard,
+                "i < limit; i += stride++"),
+            "input-effect": original.replace(guard,
+                "i < limit; i += (unsigned)getchar()"),
+            "zero-step": original.replace("unsigned stride = 1U;",
+                "unsigned stride = 0U;"),
+            "overwide-step": original.replace("unsigned stride = 1U;",
+                "unsigned stride = 300U;"),
+            "changed-to-zero": original.replace("stride = 2U;",
+                "stride = 0U;"),
+            "changed-to-thirteen": original.replace("stride = 2U;",
+                "stride = 13U;"),
+            "wrong-direction": original.replace(guard,
+                "i < limit; i -= stride"),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".dependencies") as scratch:
+            for label, text in source_mutations.items():
+                with self.subTest(source=label):
+                    source = Path(scratch) / f"invalid-stride-{label}.c"
+                    source.write_text(text)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/invalid-stride-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0,
+                                     frontend.stderr)
+                    guest = source.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)], input=frontend.stdout,
+                        capture_output=True, check=False, timeout=35,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertIn(b"Unsupported", refused.stderr, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "source-stride-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/source-stride-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            normalized = cast(dict[str, object],
+                              json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
+            induction = next(n for n in nodes
+                             if n["kind"] == "compound-assignment-expression"
+                             and n.get("operation") == "+=")
+            step_read = next(n for n in nodes
+                             if n["kind"] == "declaration-reference-expression"
+                             and str(n.get("reference", "")).startswith("stride@")
+                             and cast(dict[str, object],
+                                      n["span"])["begin"]["line"] ==
+                             cast(dict[str, object],
+                                  induction["span"])["begin"]["line"])
+            step_cast = nodes[cast(int, step_read["parent"]) - 1]
+            for label in (
+                "induction-parent", "induction-operation", "step-parent",
+                "step-reference", "step-cast-type", "step-cast-operation",
+                "step-begin-column", "step-cast-end-column",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object],
+                                  json.loads(frontend.stdout))
+                    altered = cast(list[dict[str, object]], forged["nodes"])
+                    changed_induction = altered[cast(int, induction["id"]) - 1]
+                    read = altered[cast(int, step_read["id"]) - 1]
+                    conversion = altered[cast(int, step_cast["id"]) - 1]
+                    if label == "induction-parent":
+                        changed_induction["parent"] = 2
+                    elif label == "induction-operation":
+                        changed_induction["operation"] = "-="
+                    elif label == "step-parent":
+                        read["parent"] = 2
+                    elif label == "step-reference":
+                        read["reference"] = "absent@99999"
+                    elif label == "step-cast-type":
+                        conversion["type"] = "i32"
+                    elif label == "step-cast-operation":
+                        conversion["operation"] = "integral-cast"
+                    elif label == "step-begin-column":
+                        cast(dict[str, dict[str, int]],
+                             read["span"])["begin"]["column"] += 1
+                    else:
+                        cast(dict[str, dict[str, int]],
+                             conversion["span"])["end"]["column"] += 1
+                    guest = Path(scratch) / f"forged-stride-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
                     self.assertFalse(guest.exists(), label)
 
     def test_source_local_for_bound_rechecks_complete_guest(self) -> None:

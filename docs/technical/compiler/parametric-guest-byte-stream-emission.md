@@ -73,6 +73,24 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Re-evaluated source-local `for` increment (2026-11-11)
+
+The full masked Fibonacci program now selects a source-local unsigned
+stride and changes it from 1 to 2 after its third output. Pinned Clang
+accepted the complete C, but the closed JSON adapter originally rejected
+its `i += stride` induction without a guest artifact. The bounded proof
+now retains the exact pure typed increment subtree, re-evaluates it after
+each selected loop body, and only then updates the protected counter and
+rechecks the condition. The equivalent `i = i + stride` spelling shares
+this source-backed replay. Each actual stride must be between 1 and 12;
+unknown effects, unproved AST shapes and an execution beyond twelve trips
+refuse without publication. In a loop bounded by 10, the changing stride
+produces six iterations instead of the ten that a frozen increment would
+produce. The actual Malbolge VM emitted the independently computed six
+masked bytes `02 19 1f 08 17 0f` in 97 steps under EOF and binary stdin.
+This finite C-state replay does not implement runtime guest `for` loops;
+the original unmasked twelve-byte program still refuses at guest layout.
+
 ### Re-evaluated source-local `for` bound (2026-11-11)
 
 The first complete masked Fibonacci C source used `unsigned limit = 12U;`

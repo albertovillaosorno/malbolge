@@ -149,6 +149,23 @@ bounds, unbounded growth, forged references/types/spans and incomplete ASTs
 refuse before guest publication. This is compile-time bounded C-state
 projection, not dynamic Malbolge control flow or arbitrary guest I/O.
 
+### Re-evaluated unsigned-local `for` increments in complete C
+
+The complete masked Fibonacci source now uses `i += stride`, with a prior
+`unsigned stride = 1U` and an in-body write to `stride = 2U` after the
+third output. The pinned frontend accepted the whole C program, but the
+JSON adapter first refused its nonliteral induction step. The bounded
+source-backed projector now checks a pure unsigned increment expression,
+remembers its exact Clang subtree and re-evaluates it **after every loop
+body**, before updating the protected counter and rechecking its bound.
+Only positive strides of at most twelve are supported; assignment-form
+`i = i + stride` follows the same rule. An out-of-range or impure stride, forged
+source geometry, or an execution beyond twelve iterations refuses without
+publishing a guest. The six executed recurrence iterations with a moving
+stride produce the independent masked oracle `02 19 1f 08 17 0f` in 97
+normative VM steps under EOF and binary stdin. This is finite source-state
+replay, not dynamic guest induction or unrestricted C expressions.
+
 ### Source-checked middle `default` in a complete C switch
 
 A full twelve-iteration masked Fibonacci source now places `default`
