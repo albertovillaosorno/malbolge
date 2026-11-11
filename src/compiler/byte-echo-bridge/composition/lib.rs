@@ -3235,17 +3235,20 @@ pub fn encode_distinct_literal_twelve(
     if expected != *b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd" {
         let cells = pair_source_cells(profile)
             .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
-        return search_output_stream::verified_straight_write_output_layout(
-            profile, expected, &cells,
+        // The source-scratch grammar can prove compound C byte streams
+        // without exploring the much larger relocated-tail state space.
+        // Every proposal still receives independent positional/VM proof.
+        return search_output_stream::verified_variable_source_scratch_layout(
+            profile, expected,
         )
         .or_else(|| {
-            search_output_stream::verified_short_output_layout(
+            search_output_stream::verified_straight_write_output_layout(
                 profile, expected, &cells,
             )
         })
         .or_else(|| {
-            search_output_stream::verified_variable_source_scratch_layout(
-                profile, expected,
+            search_output_stream::verified_short_output_layout(
+                profile, expected, &cells,
             )
         })
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);

@@ -920,6 +920,15 @@ and nonempty input. Division-by-zero mutation refuses publication. The
 unmasked original C stream still refuses at layout; finite source-scratch
 search is neither a complete C runtime nor arbitrary output synthesis.
 
+For twelve distinct source-proven bytes, the bridge now tries the bounded
+forward-jump scratch grammar before the costlier relocated-tail proposals.
+When scratch synthesis succeeds, the same independent layout and two-input
+normative VM checks still govern publication. If it cannot prove the byte
+sequence, the existing straight-write and bounded short-layout grammars remain
+available in their original order. The complete masked twelve-step C
+Fibonacci source continues to pass the real compiler and guest-VM pipeline;
+this search ordering does not admit the unmasked original or dynamic C loops.
+
 A separate deterministic scalar regression enumerates the current
 source-scratch grammar after the original unmasked Fibonacci prefix
 `02 59`. It considers all eight loader-valid graphical skipped words and
