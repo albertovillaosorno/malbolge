@@ -578,5 +578,77 @@ fn scratch_written_pointer_reaches_loader_expansion() -> Result<(), String> {
         assert_eq!(vm.output(), [2, 89, 11]);
         assert_eq!(vm.input_consumed(), 0);
     }
+    // An output immediately after the second j only observes A left by
+    // the scratch write. Prove genuine arithmetic *after* that relocation:
+    // p writes a loader-expanded operand and * reads another disjoint word.
+    // Neither effect is a host-precomputed suffix or source-byte write.
+    let mut expanded_operations = operations;
+    expanded_operations.truncate(expanded_operations.len() - 2);
+    expanded_operations.extend([
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let expanded =
+        super::super::encode_linear_layout(profile, &expanded_operations)
+            .map_err(|error| {
+                format!("expanded scratch arithmetic: {error:?}")
+            })?;
+    let pointers = expanded.data_pointer_positions();
+    let first = pointers[pointers.len() - 5];
+    let second = pointers[pointers.len() - 3];
+    assert_eq!(second, first + 2);
+    assert!(first > expanded.source().len() as u32);
+    let writes = expanded
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let earlier_writes = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(writes.len(), earlier_writes.len() + 2);
+    assert!(writes.contains(&85));
+    assert!(writes.contains(&first));
+    assert!(writes.contains(&second));
+    let first_word = super::super::layout::unwritten_loader_word(
+        expanded.source(),
+        first as usize,
+        profile,
+    )
+    .map_err(|error| format!("first loader word: {error:?}"))?;
+    let second_word = super::super::layout::unwritten_loader_word(
+        expanded.source(),
+        second as usize,
+        profile,
+    )
+    .map_err(|error| format!("second loader word: {error:?}"))?;
+    let seed = malbolge::profile_rotate(
+        u32::from(expanded.source()[85]),
+        profile.memory_words(),
+    );
+    let third = malbolge::profile_crazy(first_word, seed, 15) as u8;
+    let fourth =
+        malbolge::profile_rotate(second_word, profile.memory_words()) as u8;
+    assert_ne!(third, 11);
+    let expected = [2, 89, third, fourth];
+    assert_eq!(expected, [2, 89, 185, 182]);
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, expanded.source(), input)
+                .map_err(|error| format!("expanded guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(expanded.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { steps: 98, .. })
+        ));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
     Ok(())
 }

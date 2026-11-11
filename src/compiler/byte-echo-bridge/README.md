@@ -1010,3 +1010,17 @@ accumulator output, not a host-synthesized suffix. This is a test-only
 linker geometry witness, not general C-to-guest translation. The original
 unmasked Fibonacci third byte `5f` and full twelve-byte stream still lack
 an admitted layout.
+
+### Expanded-memory arithmetic after scratch-written relocation
+
+The source-scratch relocation regression now also proves two distinct writes
+**after** the modified graphical word relocates D into loader-expanded memory.
+The actual guest first emits the first two independently derived Fibonacci C
+bytes `02 59`, rotates an earlier scratch operand, reads that changed word
+through a second live `j`, and then executes `p`, output, `*`, output on two
+previously untouched expanded-memory words. Independent loader-word arithmetic
+predicts `02 59 b9 b6`; the normative VM verifies the four exact bytes and
+98 executed instructions under empty and binary stdin. The two expanded writes
+are separate from each other and from the earlier scratch write, with no input
+consumption. This test-only linker geometry does not enable a production
+C-to-Malbolge fallback or resolve the unmasked third Fibonacci byte `5f`.
