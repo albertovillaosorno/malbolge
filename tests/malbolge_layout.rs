@@ -628,6 +628,12 @@ fn relocated_data_limit_is_exactly_encoded_code_zero_cell() -> Result<(), String
             machine.run(span),
             Ok(RunOutcome::Terminated { .. })
         ));
+        // Inserting one cell reaches D == source length: still expanded.
+        exact.insert(1, LinearOpcode::NoOperation);
+        let boundary = encode_linear_layout(profile, &exact)
+            .map_err(|error| format!("first expanded boundary: {error:?}"))?;
+        assert_eq!(boundary.source().len(), span + 1);
+        // A second cell makes the original j point into pending source.
         exact.insert(1, LinearOpcode::NoOperation);
         assert_eq!(
             encode_linear_layout(profile, &exact),
@@ -991,8 +997,13 @@ fn later_relocation_uses_its_own_code_phase_for_larger_data_safe_layout() -> Res
         verify_execution_witness(&mut machine, &artifact)?;
         assert!(machine.registers().data_pointer > data_address);
         assert!(machine.output().is_empty());
-        // Source position is unchanged, so one more code cell crosses the
-        // exact same encoded graphical data base and is rejected.
+        // One additional source cell lands D exactly at the first
+        // expanded word and remains valid. The next one overlaps code.
+        operations.insert(position_usize.saturating_add(1), LinearOpcode::NoOperation);
+        assert!(
+            encode_linear_layout(profile, &operations).is_ok(),
+            "first expanded word should be safe",
+        );
         operations.insert(position_usize.saturating_add(1), LinearOpcode::NoOperation);
         assert_eq!(
             encode_linear_layout(profile, &operations),
@@ -1455,13 +1466,17 @@ fn relocation_reads_prior_jump_encrypted_data_word_and_rejects_overlap() -> Resu
             .map_err(|error| format!("encrypted relocation VM: {error:?}"))?;
         verify_execution_witness(&mut machine, &artifact)?;
         assert_eq!(machine.input_consumed(), 1);
-        // Inserting enough no-ops without changing any reached phase means
-        // D=52 still holds encrypted 126, now overlapping source length 127.
+        // The encrypted operand 126 moves D to 127. Exactly 127 source
+        // cells are safe; extending one more overlaps pending source.
         let mut too_long = operations.clone();
         *too_long.last_mut().ok_or("missing original halt")? = LinearOpcode::NoOperation;
         too_long.resize(126, LinearOpcode::NoOperation);
         too_long.push(LinearOpcode::Halt);
         assert_eq!(too_long.len(), 127);
+        assert!(encode_linear_layout(profile, &too_long).is_ok());
+        *too_long.last_mut().ok_or("missing boundary halt")? =
+            LinearOpcode::NoOperation;
+        too_long.push(LinearOpcode::Halt);
         assert_eq!(
             encode_linear_layout(profile, &too_long),
             Err(LinearLayoutError::UnsafeDataPlacement)
