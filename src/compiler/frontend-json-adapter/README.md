@@ -136,16 +136,21 @@ VM preflight. Its tests run both accepted families through real guest code.
 
 A complete Fibonacci source with a mutable unsigned stride, a local bound
 of twenty, and `i < limit && a < 9U` initially refused normalized C
-admission. The bounded source proof now accepts one `&&` whose left
-operand retains the exact already-checked unsigned induction comparison,
-while the pure right condition is fully proven and re-evaluated after each
-body and increment. Both operands have exact Clang ancestry, types,
-ordered source spans and bounded syntax geometry. The right guard stops
-the source recurrence after six iterations; the normative VM emits exact
-independent bytes `02 19 1f 08 17 0f` in 97 steps under EOF and binary
-stdin. Unproved source effects, logical OR and forged ASTs refuse before
-publication. This remains bounded compile-time C replay, not runtime guest
-branching, dynamic loops or arbitrary Malbolge byte-stream layout.
+admission. The bounded source proof now accepts a left-associated chain of
+up to two `&&` operators whose first operand retains the checked unsigned
+induction comparison. Each pure right guard has exact Clang ancestry, type,
+source-ordered token spacing and both byte/column endpoints. Every guard is
+re-evaluated after each body and increment, with the changing local state.
+
+The source `i < limit && a < 40U && b < 20U` proves a distinct third
+guard: only `b` terminates the loop at six outputs, while the first two
+conditions remain true. The normative VM emits the independent
+`02 19 1f 08 17 0f` oracle in 97 steps under EOF and binary stdin.
+Nine invalid C variants and nine forged AST variants refuse publication.
+The five-output `b < 10U` variant still refuses at guest layout; this
+frontend repair does not solve general byte-stream synthesis. More guards,
+logical OR that bypasses induction, side effects, and dynamic guest loops
+remain unsupported. The finite replay is compile-time C projection only.
 
 ### Rechecked unsigned-local `for` limits in complete C programs
 

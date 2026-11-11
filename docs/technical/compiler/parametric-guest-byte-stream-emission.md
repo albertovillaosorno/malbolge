@@ -25,6 +25,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Rechecked chained `for` conditions (2026-11-11)
+
+A complete C Fibonacci program now combines source-local bound and stride,
+changing recurrence locals, a branch, guest `putchar` effects and a
+left-associated three-way `for` condition:
+`i < limit && a < 40U && b < 20U`. Pinned Clang accepted this source,
+but the normalized adapter originally rejected the nested conjunction.
+A bounded proof now retains the induction condition at the left and checks
+up to two additional pure `&&` guards, in source order, against the exact
+Clang ancestry, type, token spacing and byte/column endpoints. Every guard
+is re-evaluated against live C locals after the body and induction update.
+
+The independent C oracle proves that `b < 20U` alone ends the loop at six
+iterations, while the other two predicates are still true. The actual
+normative VM emits `02 19 1f 08 17 0f` in 97 steps under EOF and binary
+stdin. Nine unsupported C sources and nine forged AST variations refuse
+without guest publication, including a newly exposed end-column forgery.
+The five-output version stops at the separate guest-layout stage, and the
+original twelve-output unmasked Fibonacci program remains unsynthesized.
+This is bounded compile-time C-state replay, not dynamic guest execution
+of general C control flow; P0 remains open.
+
 ### First complex C experiment
 
 The following compact function uses local state, a bounded loop, a branch,

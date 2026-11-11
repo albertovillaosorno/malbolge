@@ -41,6 +41,7 @@ const MAX_LOCALS: usize = 8;
 const MAX_STATIC_SWITCH_CASES: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
+const MAX_STATIC_FOR_EXTRA_GUARDS: usize = 2;
 const MAX_NESTED_FOR_LOOPS: usize = 2;
 const MAX_NESTED_LOOP_BLOCKS: usize = 4;
 const MAX_NESTED_CONDITIONAL_DEPTH: u8 = 3;
@@ -1174,16 +1175,19 @@ impl<'node> Flow<'node> {
         let symbol = counter.symbol;
         let (counter_name, _) = symbol.rsplit_once('@')?;
         let guard = self.take(statement.id, "binary-expression")?;
-        // A source-ordered logical AND may impose a second, pure guard
-        // over the same changing local state. The left operand remains
-        // the bounded induction proof; an OR cannot establish that bound.
-        let conjunction =
-            (guard.operation.as_deref() == Some("&&")).then_some(guard);
-        let comparison = if let Some(operator) = conjunction {
-            self.take(operator.id, "binary-expression")?
-        } else {
-            guard
-        };
+        // Peel a bounded left-associated chain of pure guards. The first
+        // condition must still be a proved induction comparison; no OR
+        // branch may bypass it. Clang orders each right child after its
+        // left subtree, so the complete chain is proved in source order.
+        let mut conjunctions = Vec::new();
+        let mut comparison = guard;
+        while comparison.operation.as_deref() == Some("&&") {
+            if conjunctions.len() >= MAX_STATIC_FOR_EXTRA_GUARDS {
+                return None;
+            }
+            conjunctions.push(comparison);
+            comparison = self.take(comparison.id, "binary-expression")?;
+        }
         let load = self.take(comparison.id, "cast-expression")?;
         let read = self.take(load.id, "declaration-reference-expression")?;
         // The bound may be a source-proven pure unsigned expression, not
@@ -1194,19 +1198,19 @@ impl<'node> Flow<'node> {
         let (initial_bound, bound_node) = self.expression(comparison.id, 0)?;
         let mut bound = u8::try_from(initial_bound).ok()?;
         let bound_end = self.position;
-        let additional_guard = if let Some(operator) = conjunction {
+        let mut additional_guards = Vec::new();
+        let mut left = comparison;
+        for operator in conjunctions.into_iter().rev() {
             let guard_start = self.position;
             let (active, right) = self.condition_expression(operator.id, 0)?;
             let guard_end = self.position;
             if !clean_i32_operator(operator)
-                || !ordered_binary_spans(operator, comparison, right)
-                || right.span.begin.byte.checked_sub(comparison.span.end.byte)
+                || !ordered_binary_spans(operator, left, right)
+                || operator.span.begin != left.span.begin
+                || operator.span.end != right.span.end
+                || right.span.begin.byte.checked_sub(left.span.end.byte)
                     != Some(4)
-                || right
-                    .span
-                    .begin
-                    .column
-                    .checked_sub(comparison.span.end.column)
+                || right.span.begin.column.checked_sub(left.span.end.column)
                     != Some(4)
                 || !span_within(&statement.span, &operator.span)
                 || operator.span.begin.line != operator.span.end.line
@@ -1214,10 +1218,15 @@ impl<'node> Flow<'node> {
             {
                 return None;
             }
-            Some((guard_start, guard_end, right, active))
-        } else {
-            None
-        };
+            additional_guards.push((
+                guard_start,
+                guard_end,
+                operator,
+                right,
+                active,
+            ));
+            left = operator;
+        }
         if !typed_bounded_loop_comparison(comparison, load, bound_node)
             || (comparison.operation.as_deref() == Some("<")
                 && start > MAX_STATIC_LOOP_ITERATIONS)
@@ -1434,8 +1443,7 @@ impl<'node> Flow<'node> {
                     value < limit || (inclusive && value == limit)
                 }
         };
-        let mut guard_active =
-            additional_guard.is_none_or(|(_, _, _, selected)| selected);
+        let mut guard_active = additional_guards.iter().all(|proof| proof.4);
         if !continues(start, bound, guard_active) {
             // Even a nonexecuted for body must be a complete, admissible
             // source subtree. No speculative state or output may escape.
@@ -1514,15 +1522,18 @@ impl<'node> Flow<'node> {
                 return None;
             }
             bound = u8::try_from(next_bound).ok()?;
-            if let Some((start, end, source, _)) = additional_guard {
-                self.position = start;
-                let (selected, replayed) =
-                    self.condition_expression(guard.id, 0)?;
-                if self.position != end || replayed.span != source.span {
+            for (start, end, operator, source, selected) in
+                &mut additional_guards
+            {
+                self.position = *start;
+                let (active, replayed) =
+                    self.condition_expression(operator.id, 0)?;
+                if self.position != *end || replayed.span != source.span {
                     return None;
                 }
-                guard_active = selected;
+                *selected = active;
             }
+            guard_active = additional_guards.iter().all(|proof| proof.4);
         }
         self.position = body_end?;
         self.locals.truncate(outer_len);

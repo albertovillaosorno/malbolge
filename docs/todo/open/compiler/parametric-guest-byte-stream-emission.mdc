@@ -54,6 +54,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full source-local Fibonacci program added a third pure
+  C `for` guard to a changing bound/stride and recurrence. Pinned Clang
+  accepted the nested `&&`, but the JSON adapter rejected it before guest
+  publication. The bounded induction proof now checks up to two ordered
+  pure right guards, re-evaluated on every trip. The independent oracle
+  proves only the final `b < 20U` terminates the six-trip loop; both VM
+  input conditions emit `02 19 1f 08 17 0f` in 97 real guest steps.
+  Nine invalid C programs and nine forged ASTs refuse publication; a
+  previously overlooked end-column forgery now rejects in the adapter.
+  An independently tried five-byte stop remains blocked at guest layout,
+  as does the original unmasked twelve-byte stream. P0 remains open.
+
 - On 2026-11-11 the full masked Fibonacci C program added the condition
   `i < limit && a < 9U`, a changing unsigned induction stride, and a
   source-local Fibonacci recurrence. Pinned Clang accepted it, but the

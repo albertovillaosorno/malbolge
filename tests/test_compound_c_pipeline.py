@@ -3348,6 +3348,160 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", result.stderr, label)
                 self.assertFalse(refused.exists(), label)
 
+    def test_chained_for_guards_recheck_live_c_state_on_guest(self) -> None:
+        """Three C guards stop on the final changing Fibonacci local."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_chained_for_guards_fibonacci.c"
+        )
+        source_text = source.read_text()
+        self.assertIn("i < limit && a < 40U && b < 20U", source_text)
+        # The independent oracle verifies that the first two comparisons
+        # remain true when the final live guard stops this C iteration.
+        a = b = stride = 1
+        limit = 20
+        i = 0
+        oracle = bytearray()
+        while i < limit and a < 40 and b < 20:
+            following = (a + b) & 255
+            oracle.append(
+                (following & 31) if following % 2 == 0
+                else ((following ^ 26) & 31)
+            )
+            if i == 2:
+                stride = 2
+            a, b = b, following
+            i += stride
+            self.assertLessEqual(len(oracle), 12)
+        self.assertEqual((i, a, b), (10, 13, 21))
+        self.assertTrue(i < limit and a < 40 and not b < 20)
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            scratch_path = Path(scratch)
+            guest = scratch_path / "chained-guards.malbolge"
+            command = [
+                sys.executable, "-B", str(DRIVER), "--repository-tools",
+                "--source-id", "tests/chained-for-guards-v1",
+                "--capsule", "--output", str(guest), str(source),
+            ]
+            compiled = subprocess.run(
+                command, capture_output=True, check=False, timeout=210
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for payload in (b"", bytes((0, 255, 128))):
+                guest_vm = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=payload, capture_output=True, check=False,
+                    timeout=20,
+                )
+                self.assertEqual(guest_vm.returncode, 0, guest_vm.stderr)
+                self.assertEqual(guest_vm.stdout, oracle)
+                self.assertEqual(guest_vm.stderr, b"malbolge-steps-v1:97\n")
+            for label, changed in (
+                ("or-in-middle", source_text.replace(
+                    "i < limit && a < 40U", "i < limit || a < 40U")),
+                ("or-at-end", source_text.replace(
+                    "&& b < 20U", "|| b < 20U")),
+                ("wrong-order", source_text.replace(
+                    "i < limit && a < 40U && b < 20U",
+                    "a < 40U && i < limit && b < 20U")),
+                ("too-many", source_text.replace(
+                    "&& b < 20U", "&& b < 20U && a < 255U")),
+                ("effectful-middle", source_text.replace(
+                    "a < 40U", "a++ < 40U")),
+                ("effectful-final", source_text.replace(
+                    "b < 20U", "b++ < 20U")),
+                ("input-final", source_text.replace(
+                    "b < 20U", "getchar() != -1")),
+                ("comma-final", source_text.replace(
+                    "b < 20U", "(b < 20U, a < 40U)")),
+                ("noncanonical-space", source_text.replace(
+                    "i < limit && a", "i < limit  && a")),
+            ):
+                with self.subTest(source=label):
+                    changed_path = scratch_path / f"bad-{label}.c"
+                    changed_path.write_text(changed)
+                    refused = scratch_path / f"bad-{label}.malbolge"
+                    result = subprocess.run(
+                        [*command[:-2], str(refused), str(changed_path)],
+                        capture_output=True, check=False, timeout=20,
+                    )
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertIn(b"Unsupported", result.stderr)
+                    self.assertFalse(refused.exists())
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/chained-for-guard-ast-v1", str(source)],
+                capture_output=True, check=False, timeout=20,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            document = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], document["nodes"])
+            loop = next(n for n in nodes if n["kind"] == "for-statement")
+            outer = next(
+                n for n in nodes if n["parent"] == loop["id"]
+                and n.get("operation") == "&&"
+            )
+            inner = next(
+                n for n in nodes if n["parent"] == outer["id"]
+                and n.get("operation") == "&&"
+            )
+            last = next(
+                n for n in nodes if n["parent"] == outer["id"]
+                and n.get("operation") == "<"
+            )
+            for label in (
+                "outer-or", "inner-or", "inner-type", "outer-end",
+                "inner-end", "last-parent", "last-begin-column",
+                "last-end-column", "last-operator",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, list[dict[str, object]]],
+                                  json.loads(frontend.stdout))
+                    changed_outer = forged["nodes"][cast(int, outer["id"]) - 1]
+                    changed_inner = forged["nodes"][cast(int, inner["id"]) - 1]
+                    changed_last = forged["nodes"][cast(int, last["id"]) - 1]
+                    if label == "outer-or":
+                        changed_outer["operation"] = "||"
+                    elif label == "inner-or":
+                        changed_inner["operation"] = "||"
+                    elif label == "inner-type":
+                        changed_inner["type"] = "u32"
+                    elif label == "outer-end":
+                        span = cast(dict[str, dict[str, int]],
+                                    changed_outer["span"])
+                        span["end"]["byte"] += 1
+                    elif label == "inner-end":
+                        span = cast(dict[str, dict[str, int]],
+                                    changed_inner["span"])
+                        span["end"]["byte"] += 1
+                    elif label == "last-parent":
+                        changed_last["parent"] = loop["id"]
+                    elif label == "last-begin-column":
+                        span = cast(dict[str, dict[str, int]],
+                                    changed_last["span"])
+                        span["begin"]["column"] += 1
+                    elif label == "last-end-column":
+                        span = cast(dict[str, dict[str, int]],
+                                    changed_last["span"])
+                        span["end"]["column"] += 1
+                    else:
+                        changed_last["operation"] = "/"
+                    refused = scratch_path / f"forged-{label}.malbolge"
+                    result = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(refused), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=20,
+                    )
+                    self.assertNotEqual(result.returncode, 0, label)
+                    self.assertIn(b"Unsupported", result.stderr)
+                    self.assertFalse(refused.exists())
+
     def test_strided_for_induction_emits_complete_masked_fibonacci(self) -> None:
         """A two-step induction controls a twelve-effect C recurrence."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
