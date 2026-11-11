@@ -1057,6 +1057,25 @@ still enable the original byte stream. The experiment is a test-time design
 constraint, not an accepted general-purpose synthesis algorithm.
 
 
+### Search proposals starting at the first expanded word (2026-11-11)
+
+The byte-stream state-space, straight-write and multi-relocation preview
+filters now use the same post-`j` data-pointer boundary as the independent
+layout checker. A graphical operand at `source_length - 1` increments D to
+`source_length`, which is already a loader-expanded word. Earlier preview
+filters compared the raw operand against the source length and discarded
+that safe geometry before verification.
+
+A red-first regression constructs a real 34-cell guest with the `j` at
+position seven encoded as `33`, then performs source-independent arithmetic
+using D=34. An independent recurrence for the first expanded word predicts
+the output byte; the full position-encoded proposal passes independent
+layout admission and two normative guest VM replays. The same operand with
+a 35-cell source must be rejected as a source-overlap write. The original
+unmasked Fibonacci C experiment was retried and still refuses at
+`Layout(UnsupportedEffectTrace)`, so this corrects candidate coverage only;
+it is not a general synthesis or runtime-control capability.
+
 ### First loader-expanded relocation word (2026-11-11)
 
 The three-write, four-write triple and four-write quad preview filters now

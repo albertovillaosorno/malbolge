@@ -160,6 +160,15 @@ fn matches_byte(accumulator: u32, expected: u8) -> bool {
     u8::try_from(accumulator & 255).ok() == Some(expected)
 }
 
+// A data-pointer relocation reads the current word and then increments D.
+// The operand may be the final graphical source word: the first subsequent
+// arithmetic operation will read the first loader-expanded word instead.
+fn points_into_loader_expansion(operand: usize, source_length: usize) -> bool {
+    operand
+        .checked_add(1)
+        .is_some_and(|next_data| next_data >= source_length)
+}
+
 /// A change of output byte needs at least one genuine guest arithmetic write.
 /// Repeated outputs may reuse the accumulator, including its initial zero.
 fn required_writes(mut previous: u8, outputs: &[u8]) -> usize {
@@ -356,7 +365,7 @@ fn proposed_geometry_with_budget<const N: usize>(
         return None;
     }
     let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
-    if relocation < source_length
+    if !points_into_loader_expansion(relocation, source_length)
         || relocation.saturating_add(source_length) >= 4096
         || source_length < prefix.saturating_add(4)
     {
@@ -691,7 +700,8 @@ fn verified_terminal_layout_range<const N: usize>(
                 continue;
             }
             let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
-            if relocation < length || relocation.saturating_add(length) >= 4096
+            if !points_into_loader_expansion(relocation, length)
+                || relocation.saturating_add(length) >= 4096
             {
                 continue;
             }
@@ -784,7 +794,9 @@ pub(super) fn verified_straight_write_output_layout<const N: usize>(
             break;
         }
         let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
-        if relocation < length || relocation.checked_add(width)? >= 4096 {
+        if !points_into_loader_expansion(relocation, length)
+            || relocation.checked_add(width)? >= 4096
+        {
             continue;
         }
         let memory = cached_output_tail(
@@ -1914,7 +1926,7 @@ fn verified_two_relocation_write_layout<const N: usize>(
     for prefix in 0..=32usize {
         let length = prefix.checked_add(N.checked_mul(2)?)?.checked_add(3)?;
         let first_base = usize::from(*source_cells.get(prefix)?.get(1)?);
-        if first_base < length {
+        if !points_into_loader_expansion(first_base, length) {
             continue;
         }
         let mut source = vec![0u8; length];
@@ -2053,7 +2065,7 @@ fn verified_relocated_write_layout<const N: usize>(
             .checked_add(N.checked_mul(2)?)?
             .checked_add(relocations.checked_add(1)?)?;
         let first_base = usize::from(*source_cells.get(prefix)?.get(1)?);
-        if first_base < length {
+        if !points_into_loader_expansion(first_base, length) {
             continue;
         }
         // The final output and halt independently fix the loader-tail seed.

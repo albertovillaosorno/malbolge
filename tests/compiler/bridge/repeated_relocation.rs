@@ -1859,3 +1859,83 @@ fn five_relocations_recover_twelve_guest_outputs() -> Result<(), String> {
     );
     Ok(())
 }
+
+#[test]
+fn first_expanded_word_is_a_valid_state_space_relocation() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let cells =
+        pair_source_cells(profile).ok_or("missing positional encodings")?;
+    let mut operations = vec![LinearOpcode::NoOperation; 7];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+    ]);
+    operations.resize(33, LinearOpcode::NoOperation);
+    operations.push(LinearOpcode::Halt);
+    assert_eq!(operations.len(), 34);
+    let oracle = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("independent layout: {error:?}"))?;
+    assert_eq!(oracle.source()[7], 33);
+    let word = super::super::layout::unwritten_loader_word(
+        oracle.source(),
+        oracle.source().len(),
+        profile,
+    )
+    .map_err(|error| format!("independent loader word: {error:?}"))?;
+    let expected = [malbolge::profile_low_byte(malbolge::profile_crazy(
+        word,
+        0,
+        profile.word_trits(),
+    ))];
+    let mut preview_cells = cells.clone();
+    for cell in &mut preview_cells {
+        cell[4] = cell[0];
+    }
+    let mut tails = BTreeMap::new();
+    let memory = cached_output_tail(&preview_cells, &mut tails, 34, 67)
+        .ok_or("missing expanded memory preview")?;
+    let geometry = SearchGeometry {
+        memory,
+        prefix: 7,
+        prefix_outputs: 0,
+        source_length: 34,
+    };
+    let proposed = proposed_geometry_with_budget(
+        &cells,
+        &geometry,
+        expected,
+        TerminalSuffix::Noop,
+        MAX_STEPS_PER_GEOMETRY,
+    )
+    .ok_or("first expanded word was incorrectly excluded")?;
+    let verified =
+        verified_output_stream_layout(profile, &proposed, expected, &cells)
+            .ok_or("proposed geometry failed independent layout/VM checks")?;
+    assert_eq!(verified.source()[7], 33);
+    assert_eq!(verified.source().len(), 34);
+    // The same operand may not point into the source when it grows by one.
+    let overlapping = SearchGeometry {
+        memory,
+        prefix: 7,
+        prefix_outputs: 0,
+        source_length: 35,
+    };
+    assert!(
+        proposed_geometry_with_budget(
+            &cells,
+            &overlapping,
+            expected,
+            TerminalSuffix::Noop,
+            MAX_STEPS_PER_GEOMETRY,
+        )
+        .is_none()
+    );
+    let mut overlapping_operations = operations;
+    assert_eq!(overlapping_operations.pop(), Some(LinearOpcode::Halt));
+    overlapping_operations.push(LinearOpcode::NoOperation);
+    overlapping_operations.push(LinearOpcode::Halt);
+    assert!(encode_linear_layout(profile, &overlapping_operations).is_err());
+    Ok(())
+}
