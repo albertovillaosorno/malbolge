@@ -83,6 +83,16 @@ struct OutputCall<'node> {
     source: &'node Node,
 }
 
+/// One proven switch arm, including only the local state produced by that arm.
+/// Unselected writes must not leak into a later case or its default.
+#[derive(Clone)]
+struct SwitchArmEffect<'node> {
+    begin_line: u32,
+    end: u32,
+    output: Option<OutputCall<'node>>,
+    locals: Vec<Local<'node>>,
+}
+
 impl<'node> Flow<'node> {
     fn assignment(
         &mut self,
@@ -1581,10 +1591,36 @@ impl<'node> Flow<'node> {
         None
     }
 
+    /// Each arm has exactly one source-checked call or unsigned local write.
+    /// Capture its effect before reinitializing state for the next arm.
+    fn switch_arm_effect(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+    ) -> Option<SwitchArmEffect<'node>> {
+        let begin_line = self.peek()?.span.begin.line;
+        let (end, output) = match self.peek()?.kind.as_str() {
+            "call-expression" => {
+                let output = checked_call(self, body, previous_end)?;
+                (output.call.span.end.byte, Some(output))
+            },
+            "binary-expression" | "compound-assignment-expression" => {
+                (self.assignment(body, previous_end)?.0, None)
+            },
+            _ => return None,
+        };
+        Some(SwitchArmEffect {
+            begin_line,
+            end,
+            output,
+            locals: self.locals.clone(),
+        })
+    }
+
     /// Admit up to eight distinct source-ordered case labels, including
     /// nested empty-label groups and a grouped final default. Each group must
-    /// prove one pure output and its own switch-local break; only the
-    /// selected effect escapes into the enclosing C loop.
+    /// prove one pure output or local write and its own switch-local break;
+    /// only the selected effect escapes into the enclosing C loop.
     #[expect(
         clippy::cognitive_complexity,
         reason = "closed Clang ancestry and source-ordered switch outputs"
@@ -1629,13 +1665,14 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
+        let starting_locals = self.locals.clone();
         let mut previous_arm_end = scope.span.begin.byte;
         let mut case_values = Vec::new();
-        let mut selected_output = None;
-        let mut grouped_default_output = None;
+        let mut selected_effect = None;
+        let mut grouped_default_effect = None;
         while self.peek()?.kind == "case-statement" {
             // A default nested below a case is the final switch label.
-            if grouped_default_output.is_some() {
+            if grouped_default_effect.is_some() {
                 return None;
             }
             let mut case = self.take(scope.id, "case-statement")?;
@@ -1699,8 +1736,10 @@ impl<'node> Flow<'node> {
                 case = nested;
             }
             // Clang also nests a final `default` below a preceding empty
-            // case label. Both dispatch destinations share the same call.
-            let output = if self.peek().is_some_and(|node| {
+            // case label. Both dispatch destinations share the same effect.
+            // Every arm observes exactly the state before switch dispatch.
+            self.locals.clone_from(&starting_locals);
+            let effect = if self.peek().is_some_and(|node| {
                 node.kind == "default-statement" && node.parent == case.id
             }) {
                 let default = self.take(case.id, "default-statement")?;
@@ -1711,49 +1750,50 @@ impl<'node> Flow<'node> {
                 {
                     return None;
                 }
-                let output =
-                    checked_call(self, default, default.span.begin.byte)?;
-                if output.call.span.end != default.span.end
-                    || output.call.span.begin.line <= default.span.begin.line
+                let effect =
+                    self.switch_arm_effect(default, default.span.begin.byte)?;
+                if effect.end != default.span.end.byte
+                    || effect.begin_line <= default.span.begin.line
                 {
                     return None;
                 }
-                grouped_default_output = Some(output);
-                output
+                grouped_default_effect = Some(effect.clone());
+                effect
             } else {
-                checked_call(self, case, previous_label_end)?
+                self.switch_arm_effect(case, previous_label_end)?
             };
-            if output.call.span.end != *outer_case_end {
+            if effect.end != outer_case_end.byte {
                 return None;
             }
             previous_arm_end = self.switch_break(scope, outer_case_end.byte)?;
             if group_selected {
-                selected_output = Some(output);
+                selected_effect = Some(effect);
             }
         }
         if case_values.is_empty() {
             return None;
         }
-        let (default_output, last_break) = if let Some(output) =
-            grouped_default_output
-        {
-            (output, previous_arm_end)
-        } else {
-            let default = self.take(scope.id, "default-statement")?;
-            if !clean(default)
-                || !span_within(&scope.span, &default.span)
-                || previous_arm_end >= default.span.begin.byte
-            {
-                return None;
-            }
-            let output = checked_call(self, default, default.span.begin.byte)?;
-            if output.call.span.end != default.span.end
-                || output.call.span.begin.line <= default.span.begin.line
-            {
-                return None;
-            }
-            (output, self.switch_break(scope, default.span.end.byte)?)
-        };
+        let (default_effect, last_break) =
+            if let Some(effect) = grouped_default_effect {
+                (effect, previous_arm_end)
+            } else {
+                let default = self.take(scope.id, "default-statement")?;
+                if !clean(default)
+                    || !span_within(&scope.span, &default.span)
+                    || previous_arm_end >= default.span.begin.byte
+                {
+                    return None;
+                }
+                self.locals.clone_from(&starting_locals);
+                let effect =
+                    self.switch_arm_effect(default, default.span.begin.byte)?;
+                if effect.end != default.span.end.byte
+                    || effect.begin_line <= default.span.begin.line
+                {
+                    return None;
+                }
+                (effect, self.switch_break(scope, default.span.end.byte)?)
+            };
         if last_break >= scope.span.end.byte
             || self
                 .peek()
@@ -1761,7 +1801,11 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        self.outputs.push(selected_output.unwrap_or(default_output));
+        let chosen = selected_effect.unwrap_or(default_effect);
+        self.locals = chosen.locals;
+        if let Some(output) = chosen.output {
+            self.outputs.push(output);
+        }
         Some(statement.span.end.byte)
     }
 

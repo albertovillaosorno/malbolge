@@ -174,6 +174,34 @@ def grouped_default_switch_fibonacci_source() -> str:
     return source.replace(old, "        case 1U:\n        default:")
 
 
+def assigning_switch_fibonacci_source(*, compound: bool, grouped: bool) -> str:
+    """Select a local write in C switch; emit only after the switch exits."""
+    source = (
+        grouped_default_switch_fibonacci_source()
+        if grouped else multiway_switch_fibonacci_source()
+    )
+    replacement = (
+        "        unsigned selected = next & 31U;\n"
+        if compound else "        unsigned selected;\n"
+    )
+    source = source.replace(
+        "        switch (next & 3U) {",
+        replacement + "        switch (next & 3U) {",
+    )
+    even = "selected ^= 0U;" if compound else "selected = next & 31U;"
+    odd = (
+        "selected ^= 26U;" if compound
+        else "selected = (next ^ 0x1AU) & 31U;"
+    )
+    source = source.replace("putchar((int)(next & 31U));", even)
+    source = source.replace("putchar((int)((next ^ 0x1AU) & 31U));", odd)
+    assert source.count("        }\n        a = b;") == 1
+    return source.replace(
+        "        }\n        a = b;",
+        "        }\n        putchar((int)selected);\n        a = b;",
+    )
+
+
 def unbraced_masked_fibonacci_source() -> str:
     """Use ordinary unbraced if/else output arms in the full recurrence."""
     source = MASKED_FIBONACCI.read_text()
@@ -11481,6 +11509,178 @@ class CompoundCPipelineTests(unittest.TestCase):
                         self.assertNotEqual(rejected.returncode, 0, label)
                         self.assertIn(b"Unsupported", rejected.stderr, label)
                         self.assertFalse(guest.exists(), label)
+
+    def check_switch_local_assignment_guest(
+        self, *, compound: bool, grouped: bool,
+    ) -> None:
+        """Replay complete C, verifying both inputs against an independent oracle."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        a, b = 1, 1
+        oracle = bytearray()
+        seen = set()
+        for _ in range(12):
+            next_value = (a + b) & 255
+            seen.add(next_value & 3)
+            selected = next_value & 31
+            if next_value & 1:
+                selected ^= 26
+            oracle.append(selected)
+            a, b = b, next_value
+        self.assertEqual(seen, {0, 1, 2, 3})
+        self.assertEqual(bytes(oracle), bytes.fromhex("02191f08170f020d03101303"))
+        label = f"assign-{int(compound)}-group-{int(grouped)}"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / f"{label}.c"
+            source.write_text(assigning_switch_fibonacci_source(
+                compound=compound, grouped=grouped,
+            ))
+            guest = Path(scratch) / f"{label}.malbolge"
+            result = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", f"tests/{label}-v1", "--capsule",
+                 "--output", str(guest), str(source)],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                replay = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(replay.returncode, 0, replay.stderr)
+                self.assertEqual(replay.stdout, bytes(oracle))
+                self.assertEqual(replay.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_switch_local_assignment_guest(self) -> None:
+        """C case assignments initialize a later shared output expression."""
+        self.check_switch_local_assignment_guest(compound=False, grouped=False)
+
+    def test_switch_local_compound_assignment_guest(self) -> None:
+        """Unselected compound writes must not affect another switch arm."""
+        self.check_switch_local_assignment_guest(compound=True, grouped=False)
+
+    def test_switch_grouped_local_compound_assignment_guest(self) -> None:
+        """Two grouped label paths share one selected C assignment."""
+        self.check_switch_local_assignment_guest(compound=True, grouped=True)
+
+    def test_switch_local_assignments_refuse_unproved_effects(self) -> None:
+        """Wrong C effects or forged case ancestry cannot publish guest code."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = assigning_switch_fibonacci_source(compound=False, grouped=False)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            bad_sources = {
+                "unproved-preincrement": original.replace(
+                    "        unsigned selected;",
+                    "        unsigned selected = 0U;",
+                ).replace(
+                    "            selected = next & 31U;\n            break;",
+                    "            ++selected;\n            break;", 1,
+                ),
+                "fallthrough": original.replace(
+                    "            selected = next & 31U;\n            break;",
+                    "            selected = next & 31U;", 1,
+                ),
+                "double-write": original.replace(
+                    "            selected = next & 31U;\n            break;",
+                    "            selected = next & 31U;\n"
+                    "            selected = 65U;\n            break;", 1,
+                ),
+                "input-side-effect": original.replace(
+                    "            selected = next & 31U;",
+                    "            selected = (unsigned)getchar();", 1,
+                ),
+            }
+            for label, body in bad_sources.items():
+                with self.subTest(source=label):
+                    self.assertNotEqual(body, original)
+                    source = Path(scratch) / f"bad-{label}.c"
+                    source.write_text(body)
+                    frontend = subprocess.run(
+                        [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                         "--resource-dir", str(RESOURCE), "--source-id",
+                         f"tests/bad-switch-local-{label}-v1", str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = Path(scratch) / f"bad-{label}.malbolge"
+                    refused = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                         "--source-id", f"tests/bad-switch-local-{label}-v1",
+                         "--capsule", "--output", str(guest), str(source)],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+            source = Path(scratch) / "switch-local-proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                 "--resource-dir", str(RESOURCE), "--source-id",
+                 "tests/switch-local-proof-v1", str(source)],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(
+                list[dict[str, object]],
+                cast(dict[str, object], json.loads(frontend.stdout))["nodes"],
+            )
+            case = next(n for n in nodes if n["kind"] == "case-statement")
+            default = next(n for n in nodes if n["kind"] == "default-statement")
+            case_write = next(
+                n for n in nodes
+                if n["kind"] == "binary-expression" and n["parent"] == case["id"]
+            )
+            default_write = next(
+                n for n in nodes
+                if n["kind"] == "binary-expression" and n["parent"] == default["id"]
+            )
+            case_destination = next(
+                n for n in nodes
+                if n["kind"] == "declaration-reference-expression"
+                and n["parent"] == case_write["id"]
+            )
+            next_symbol = next(
+                cast(str, n["reference"]) for n in nodes
+                if n["kind"] == "declaration-reference-expression"
+                and cast(str, n["reference"]).startswith("next@")
+            )
+            for label in (
+                "case-write-parent", "default-write-parent", "case-write-operator",
+                "case-destination", "case-write-extent", "break-parent",
+            ):
+                with self.subTest(forged=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    changed = cast(list[dict[str, object]], forged["nodes"])
+                    write = changed[cast(int, case_write["id"]) - 1]
+                    if label == "case-write-parent":
+                        write["parent"] = case["parent"]
+                    elif label == "default-write-parent":
+                        changed[cast(int, default_write["id"]) - 1]["parent"] = case["id"]
+                    elif label == "case-write-operator":
+                        write["operation"] = "+="
+                    elif label == "case-destination":
+                        changed[cast(int, case_destination["id"]) - 1]["reference"] = next_symbol
+                    elif label == "case-write-extent":
+                        span = cast(dict[str, dict[str, int]], write["span"])
+                        span["end"]["byte"] -= 1
+                        span["end"]["column"] -= 1
+                    else:
+                        brk = next(n for n in changed if n["kind"] == "break-statement")
+                        brk["parent"] = case["id"]
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest), "--capsule"],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                    self.assertFalse(guest.exists(), label)
 
     def test_grouped_switch_case_labels_reach_real_guest(self) -> None:
         """Two C labels sharing one arm preserve complete source semantics."""

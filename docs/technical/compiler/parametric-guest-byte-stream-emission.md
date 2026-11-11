@@ -73,6 +73,31 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
+### Switch-selected C local state in a complete recurrence (2026-11-10)
+
+The complete masked Fibonacci source first refused when a four-way C switch
+assigned an uninitialized local `unsigned selected` in each arm and performed
+a single `putchar((int)selected)` afterward. Pinned Clang accepted the source,
+but the JSON adapter refused at the loop's first declaration and did not
+publish a guest. Each source-checked arm now proves exactly one unsigned
+assignment or pure output, followed by its own switch-local `break`.
+The projector snapshots the same incoming local state before every arm,
+verifies even unselected operations, and commits only the chosen arm's writes
+or output. This is required for compound `^=` arms that read initialized
+state; sequentially replaying the arms would change the selected result.
+
+Three complete source variants exercise direct initialization, compound XOR
+state updates, and nested grouped `case`/`default` assignments. All four
+switch dispatch values occur in the independent twelve-step Fibonacci
+oracle. Each normative guest execution emits
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 VM steps with empty and
+binary stdin. Four effectful/fallthrough source mutations and six forged
+Clang trees refuse without publication. The bound remains one effect per
+arm, at most eight distinct labels and one final default. This is bounded
+compile-time C state replay, not runtime switching or general source C.
+The original unmasked Fibonacci guest layout is still unsupported, so the
+P0 remains pending.
+
 ### Bounded C switch selection in a complete recurrence (2026-11-10)
 
 A full twelve-step masked Fibonacci source first refused at the normalized

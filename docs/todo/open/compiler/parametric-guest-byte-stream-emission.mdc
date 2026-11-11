@@ -54,6 +54,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-10 complete masked twelve-step Fibonacci C first
+  refused switch-local `selected = ...; break;` arms followed by a
+  single post-switch `putchar((int)selected)` at the JSON adapter.
+  Source-proven arm replay now checks every assignment against an
+  identical pre-switch local state, retaining only the selected write.
+  Direct initialization, compound XOR and grouped case/default variants
+  all emit the independent twelve-byte oracle on the normative VM in
+  47 steps under empty/binary stdin. Four invalid source variants and
+  six forged AST cases refuse without publication. Runtime guest switch
+  and original unmasked byte layout remain unsupported; P0 stays open.
+
 - On 2026-11-10 the complete masked twelve-step Fibonacci C switch
   first refused when `case 1U: default:` shared one output body. Pinned
   Clang nested the default under its case label. The checked projector

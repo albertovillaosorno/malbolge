@@ -823,6 +823,26 @@ AST mutations refuse publication. This is bounded source-backed state
 projection: the guest does not calculate the predicate at runtime. The
 original unmasked twelve-byte output is still unsupported at layout.
 
+### Source-checked switch-local assignments
+
+A complete twelve-step masked Fibonacci C source now selects one unsigned
+local write through `switch (next & 3U)` and calls `putchar` once **after**
+the switch. Each case or final default owns a single checked `=` or `^=`
+statement and an explicit switch-local `break`. The projector verifies
+all case arms from the same incoming local state, then commits only the
+selected arm. This prevents unselected compound writes from changing later
+case results. Empty-label case groups and a grouped final default remain
+subject to the same complete Clang ancestry and span proof.
+
+Direct assignment to an initially uninitialized `selected`, initialized
+compound XOR assignment, and grouped compound assignment each emit the
+independent twelve-byte masked oracle on the normative current-profile VM:
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and
+binary stdin. Four unsupported C sources and six forged AST variants
+refuse before publication. Switch-local declarations, multiple effects
+per arm, fallthrough, dynamic guest switch execution and the original
+unmasked Fibonacci layout remain unsupported.
+
 ### Source-checked `switch` with one case and default
 
 The complete masked twelve-step Fibonacci C source additionally admits
