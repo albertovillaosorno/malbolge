@@ -25,6 +25,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Unbraced C `do…while` directly inside `while` (2026-11-11)
+
+The complete Fibonacci source `local_unbraced_do_while_fibonacci.c` uses
+`while (remaining > 0U) do { ... } while (phase != 0U);` without braces
+around the outer body. The inner do toggles `phase`, changes both recurrence
+locals, decrements `remaining` twice, and emits branch-selected masked bytes.
+The outer predicate is re-evaluated against those updated locals after each
+inner do, for six outer trips and twelve output effects. Pinned Clang
+accepts the source; the JSON adapter initially refused the direct do child.
+
+The repaired source replay checks exact Clang ancestry and full source-span
+endpoints, including both byte and column geometry. It does not synthesize
+a hidden compound scope or move do's mandatory first iteration. A separate
+unsigned-C oracle and the normative Malbolge VM agree on twelve bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps, both under EOF and
+binary stdin. Six invalid C variants and nine forged AST variants refuse
+publication. Two forged closing columns exposed a byte-only endpoint check;
+that check now rejects both independently tampered columns.
+
+This is bounded compile-time C-state replay, not guest runtime C loops.
+The original unmasked twelve-byte Fibonacci layout remains unsupported;
+P0 stays open.
+
 ### Unbraced C `for` directly inside `while` (2026-11-11)
 
 A complete twelve-output Fibonacci C program now uses an unbraced

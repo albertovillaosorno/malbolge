@@ -132,6 +132,19 @@ independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.
 
+### Direct unbraced `do` inside a source-proven `while`
+
+A complete masked Fibonacci recurrence uses `while (remaining > 0U)` with
+one unbraced child `do { ... } while (phase != 0U);`. The inner do emits
+branch-selected bytes, toggles phase and decrements the outer bound twice;
+the outer condition is then rechecked for six trips. The adapter verifies
+Clang's direct ancestry, the do condition's trailing semicolon, and both
+byte and column closing endpoints. An unsigned-C oracle agrees with the
+normative Malbolge VM on twelve bytes in 47 steps under both EOF and
+binary stdin. Six unsupported sources and nine forged ASTs refuse, including
+tampered source-end columns. This is finite source-state replay, not guest
+runtime C looping or general unmasked byte-stream synthesis.
+
 ### Rechecked Boolean `for` guards in complete C programs
 
 A reversed source induction comparison such as `limit > i && b < 20U`

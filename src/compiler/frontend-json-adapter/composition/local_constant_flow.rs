@@ -1622,11 +1622,14 @@ impl<'node> Flow<'node> {
         for iteration in 0..=MAX_STATIC_LOOP_ITERATIONS {
             self.position = condition_start;
             let (continue_loop, condition) = self.condition(statement)?;
-            // Clang parents an unbraced control arm, nested for loop or
-            // unary step directly to while, without a synthetic scope.
+            // Clang parents an unbraced control arm, nested for/do loop
+            // or unary step directly to while, without a synthetic scope.
             let unbraced_effect = matches!(
                 self.peek()?.kind.as_str(),
-                "if-statement" | "for-statement" | "unary-expression"
+                "if-statement"
+                    | "for-statement"
+                    | "do-statement"
+                    | "unary-expression"
             );
             let first_body_byte = self.peek()?.span.begin.byte;
             let loop_body = if unbraced_effect {
@@ -1646,8 +1649,7 @@ impl<'node> Flow<'node> {
                     && loop_body.span.end.byte != statement.span.end.byte)
                 || (unbraced_effect
                     && (self.peek()?.parent != statement.id
-                        || self.peek()?.span.end.byte
-                            != statement.span.end.byte))
+                        || self.peek()?.span.end != statement.span.end))
             {
                 return None;
             }
@@ -1767,6 +1769,13 @@ impl<'node> Flow<'node> {
                     .end
                     .byte
                     .checked_sub(condition.span.end.byte)?
+                    != 1
+                || statement.span.end.line != condition.span.end.line
+                || statement
+                    .span
+                    .end
+                    .column
+                    .checked_sub(condition.span.end.column)?
                     != 1
                 || (!unbraced_control
                     && loop_body.span.end.line == condition.span.begin.line
