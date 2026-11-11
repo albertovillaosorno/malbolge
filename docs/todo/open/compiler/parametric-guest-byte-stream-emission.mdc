@@ -54,6 +54,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete masked Fibonacci C source nested
+  `do/while` inside a two-trip `while` and enclosing bounded `for`.
+  Pinned Clang accepted the source; the JSON adapter initially rejected
+  the inner `do`. Separate active `while`/`do` depths now enforce a shared
+  two-level ceiling and preserve nearest-loop exits and scoped locals.
+  Six complete C guest variants cover both nesting directions, double
+  `do`, inner `break`/`continue`, and outer `break`: all match an
+  independent twelve-byte unsigned-C oracle
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 real VM steps under EOF
+  and binary stdin. Seven invalid sources and eleven forged ASTs refuse
+  publication. Third-level nesting, effectful guards, dynamic guest loops
+  and the original unmasked Fibonacci layout remain unsupported.
+
 - On 2026-11-11 a complete Fibonacci C source nested a two-trip
   `while` inside another two-trip `while` and an enclosing bounded
   `for`. Pinned Clang accepted it; the adapter first refused the inner
@@ -64,7 +77,7 @@ a compiler capability gap, not a reason to return to N+1.
   `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 VM steps on EOF and
   binary input. Seven unproved C variants and ten forged Clang AST
   variants refuse without guest publication. Recursive third-level
-  `while` and mixed `while`/`do` nesting remain unsupported. The
+  `while/do` nesting remains unsupported. The
   original unmasked guest layout remains P0 work.
 
 - On 2026-11-11 a complete twelve-trip Fibonacci C source nested a
@@ -76,15 +89,16 @@ a compiler capability gap, not a reason to return to N+1.
   `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative VM steps
   under EOF and binary stdin. Five unsupported C sources and eight forged
   ASTs refuse, including inconsistent closing-brace byte/column geometry.
-  Nested do/while inside while/do is still refused. Dynamic C control
-  and unmasked twelve-byte guest layout remain unsupported; P0 stays open.
+  Only separately proven two-level while/do nesting is now admitted.
+  Dynamic C control and unmasked twelve-byte guest layout remain
+  unsupported; P0 stays open.
 
 - On 2026-11-11 a complete twelve-step Fibonacci C source computed each
   next term inside a two-trip `while` nested in its source-proven `for`.
   The JSON adapter first rejected the nested loop before guest publication.
   Closed local-state replay now admits one inner `while`, preserving each
-  C condition check and exact Clang ancestry without allowing mixed
-  `while`/`do` or more than two nested `while` bodies. A second whole
+  C condition check and exact Clang ancestry without allowing more than
+  two active `while/do` bodies. A second whole
   C source uses `break` at the end
   of the second inner trip; the outer `for` still executes all twelve
   iterations. Both variants reach independent masked Fibonacci oracle
@@ -200,8 +214,9 @@ a compiler capability gap, not a reason to return to N+1.
   `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under empty and
   binary stdin. Five source mutations with unproved input, output or
   read-only comma operands or excessive writes, plus five forged ASTs,
-  reject before guest publication. This is compile-time source-state projection, not
-  runtime guest sequencing; unmasked Fibonacci remains blocked at layout.
+  reject before guest publication. This is compile-time source-state
+  projection, not runtime guest sequencing; unmasked Fibonacci remains
+  blocked at layout.
 
 - On 2026-11-10 a complete masked twelve-step Fibonacci C source
   initially refused three consecutive nonempty switch fallthrough edges

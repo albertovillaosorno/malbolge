@@ -25,6 +25,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Mixed two-level C `while`/`do` nesting (2026-11-11)
+
+A complete twelve-output Fibonacci C source
+`local_nested_while_do_fibonacci.c` places a two-trip `do/while` inside
+an outer two-trip `while`, itself inside a bounded `for`. Pinned Clang
+accepted it, but the JSON adapter originally refused the inner `do`
+before guest publication. The repaired finite projector tracks active
+`while` and `do` depths separately, enforcing a combined two-level cap.
+It replays each inner predicate against updated locals, drops local
+`pass` declarations on scope exit, and preserves the enclosing `for`
+counter and nearest-loop `break`/`continue` targets.
+
+Six complete source variants prove inner `break`, inner `continue`, outer
+`break`, and all three loop nestings: `while/do`, `do/while`, and `do/do`.
+The independent unsigned-C oracle and actual Malbolge VM agree on twelve
+bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 guest steps on EOF
+and binary stdin in each case. Seven invalid C sources and eleven forged
+Clang trees fail without publishing guest code. Three active `while/do`
+levels, unbounded loops, effectful predicates, forged ancestry and writes
+to protected induction remain unsupported. These are compile-time C-state
+proofs, not dynamic guest loops; unmasked Fibonacci output remains blocked
+by byte-stream layout.
+
 ### Two source-checked nested C `while` loops (2026-11-11)
 
 The complete twelve-iteration Fibonacci C source
@@ -38,10 +61,10 @@ nearest-loop exits and the protected outer induction symbol.
 
 The source-derived unsigned-C oracle emits
 `02 19 1f 08 17 0f 02 0d 03 10 13 03`; the real Malbolge VM matches
-under EOF and binary stdin in 47 steps. Third-level `while`, mixed
-`while`/`do` nesting, effectful conditions, unbounded loops and fabricated
-Clang node ancestry remain rejected before guest publication. This is
-bounded compile-time source-state replay, not dynamic guest looping.
+under EOF and binary stdin in 47 steps. Third-level `while/do` nesting,
+effectful conditions, unbounded loops and fabricated Clang node ancestry
+remain rejected before guest publication. This is bounded compile-time
+source-state replay, not dynamic guest looping.
 The original unmasked twelve-byte Fibonacci layout remains P0 work.
 
 ### Bounded C `do/while` nested in a stateful `for` (2026-11-11)
@@ -64,7 +87,8 @@ Clang trees refuse before publication; a regression additionally requires
 the closing brace's same-line byte and column offsets to agree.
 
 This is finite compile-time source-state projection, not dynamic guest
-C control flow. Nested do/while inside another while/do remains refused.
+C control flow. A separately proven two-level mixed while/do family is
+now admitted; three active while/do bodies remain refused.
 The original unmasked twelve-byte Fibonacci stream still fails layout;
 general synthesis and runtime C state remain P0 work.
 
@@ -78,7 +102,7 @@ it to a defined byte before a source-checked outer branch selects guest
 adapter originally rejected the inner `while` before publishing a guest.
 
 The finite replay now admits one source-proven `while` inside a bounded `for`,
-with no mixed `while`/`do` bodies or third-level `while`. Inner
+with no third-level active `while/do` body. Inner
 `break` exits only the inner loop: a second complete C variant proves an
 explicit break on trip two does not cut short the enclosing twelve-trip
 `for`. The proof re-evaluates the inner condition and source-local effects
@@ -319,8 +343,9 @@ The entire C program reaches the independently derived masked twelve-byte
 oracle `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 normative guest steps
 under empty and binary stdin. Nested three- and four-write replay remains
 a separate timeboxed validation; five writes are outside the bounded proof.
-Five invalid sources and five forged ASTs refuse without publication. This is finite source-state replay, not dynamic
-guest sequencing or a solution to the unmasked Fibonacci layout blocker.
+Five invalid sources and five forged ASTs refuse without publication.
+This is finite source-state replay, not dynamic guest sequencing or a
+solution to the unmasked Fibonacci layout blocker.
 
 ### Bounded long switch fallthrough chain (2026-11-10)
 

@@ -41,6 +41,7 @@ const MAX_LOCALS: usize = 8;
 const MAX_STATIC_SWITCH_CASES: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
+const MAX_STATIC_WHILE_DO_DEPTH: u8 = 2;
 const MAX_STATIC_FOR_EXTRA_GUARDS: usize = 2;
 const MAX_NESTED_FOR_LOOPS: usize = 2;
 const MAX_NESTED_LOOP_BLOCKS: usize = 4;
@@ -71,7 +72,7 @@ struct Flow<'node> {
     locals: Vec<Local<'node>>,
     loop_counters: Vec<&'node str>,
     while_depth: u8,
-    within_do_body: bool,
+    do_depth: u8,
     loop_exit: Option<LoopExit>,
     return_node: Option<&'node Node>,
     nodes: &'node [Node],
@@ -968,7 +969,7 @@ impl<'node> Flow<'node> {
         };
         if (self.loop_counters.is_empty()
             && self.while_depth == 0
-            && !self.within_do_body)
+            && self.do_depth == 0)
             || self.loop_exit.is_some()
         {
             return None;
@@ -1599,8 +1600,8 @@ impl<'node> Flow<'node> {
     }
 
     /// Replay a source-proven `while (predicate) { ... }` over known locals.
-    /// Admit at most two nested while bodies (including within a for),
-    /// never while inside do; an inner break ends the nearest while.
+    /// Admit at most two nested while/do bodies (including within a for);
+    /// an inner break ends the nearest active loop.
     /// Recheck each condition after a body execution, or validate a skipped
     /// body on shadow state without publishing its writes or output effects.
     /// Unsupported bodies and unbounded loops refuse.
@@ -1609,8 +1610,8 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || self.within_do_body
-            || self.while_depth >= 2
+            || self.while_depth.checked_add(self.do_depth)?
+                >= MAX_STATIC_WHILE_DO_DEPTH
         {
             return None;
         }
@@ -1705,8 +1706,8 @@ impl<'node> Flow<'node> {
         if !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
-            || self.within_do_body
-            || self.while_depth != 0
+            || self.while_depth.checked_add(self.do_depth)?
+                >= MAX_STATIC_WHILE_DO_DEPTH
         {
             return None;
         }
@@ -1736,7 +1737,7 @@ impl<'node> Flow<'node> {
         let outer_len = self.locals.len();
         let mut body_end = None;
         let mut condition_end = None;
-        self.within_do_body = true;
+        self.do_depth = self.do_depth.checked_add(1)?;
         for _ in 0..MAX_STATIC_LOOP_ITERATIONS {
             self.position = body_start;
             self.loop_body(loop_body)?;
@@ -1786,7 +1787,7 @@ impl<'node> Flow<'node> {
             {
                 self.loop_exit = (selected_exit == Some(LoopExit::Return))
                     .then_some(LoopExit::Return);
-                self.within_do_body = false;
+                self.do_depth = self.do_depth.checked_sub(1)?;
                 return Some(statement.span.end.byte);
             }
         }
@@ -2634,7 +2635,7 @@ pub(super) fn canonical_multi_local_output(
         locals: Vec::new(),
         loop_counters: Vec::new(),
         while_depth: 0,
-        within_do_body: false,
+        do_depth: 0,
         loop_exit: None,
         return_node: None,
         nodes: &input.nodes,

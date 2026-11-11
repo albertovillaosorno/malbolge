@@ -15347,9 +15347,10 @@ class CompoundCPipelineTests(unittest.TestCase):
                 "next = a + b;", "next = (unsigned)getchar();"
             ),
             "outer-induction-write": original.replace("++phase;", "++i;"),
-            "nested-do": original.replace(
+            "nested-do-over-depth": original.replace(
                 "            ++phase;",
-                "            do { ++phase; } while (phase < 1U);\n"
+                "            do { do { ++phase; } while (phase < 1U); } "
+                "while (phase < 1U);\n"
                 "            ++phase;",
             ),
         }
@@ -15751,6 +15752,258 @@ class CompoundCPipelineTests(unittest.TestCase):
                     )
                     self.assertNotEqual(refused.returncode, 0, label)
                     self.assertFalse(guest.exists(), label)
+
+    @staticmethod
+    def _mixed_nested_loop_sources() -> dict[str, str]:
+        """Produce complete C forms without fabricating normalized Clang nodes."""
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_nested_while_do_fibonacci.c"
+        ).read_text()
+        outer = "        while (phase < 2U) {"
+        inner = "            do {"
+        inner_end = "            } while (pass < 2U);"
+        outer_end = "            ++phase;\n        }"
+        assert all(original.count(s) == 1 for s in (outer, inner, inner_end, outer_end))
+        return {
+            "while-do": original,
+            "do-while": original.replace(outer, "        do {").replace(
+                inner, "            while (pass < 2U) {"
+            ).replace(inner_end, "            }").replace(
+                outer_end, "            ++phase;\n        } while (phase < 2U);"
+            ),
+            "do-do": original.replace(outer, "        do {").replace(
+                outer_end, "            ++phase;\n        } while (phase < 2U);"
+            ),
+            "inner-break": original.replace(
+                "while (pass < 2U);", "while (pass < 3U);"
+            ).replace(
+                "                ++pass;",
+                "                ++pass;\n"
+                "                if (pass == 2U) { break; }",
+            ),
+            "inner-continue": original.replace(
+                "                ++pass;",
+                "                ++pass;\n"
+                "                if (pass == 1U) { continue; }",
+            ),
+            "outer-break": original.replace(
+                "while (phase < 2U) {", "while (phase < 3U) {"
+            ).replace(
+                outer_end,
+                "            ++phase;\n"
+                "            if (phase == 2U) { break; }\n        }",
+            ),
+        }
+
+    def _check_mixed_nested_loop_guest(self, label: str) -> None:
+        """Verify both input classes against a distinct unsigned-C oracle."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(12):
+            next_value = 0
+            for phase in range(2):
+                for _pass in range(2):
+                    if phase == 0:
+                        next_value = previous + current
+                    else:
+                        next_value &= 255
+            expected.append(
+                (next_value ^ 26) & 31 if next_value & 1 else next_value & 31
+            )
+            previous, current = current, next_value
+        self.assertEqual(bytes(expected), bytes.fromhex("02191f08170f020d03101303"))
+        source = self._mixed_nested_loop_sources()[label]
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            path = Path(scratch) / f"mixed-{label}.c"
+            path.write_text(source)
+            guest = path.with_suffix(".malbolge")
+            compiled = subprocess.run(
+                [
+                    sys.executable, "-B", str(DRIVER),
+                    "--repository-tools", "--source-id",
+                    f"tests/mixed-nested-{label}-v1", "--capsule",
+                    "--output", str(guest), str(path),
+                ],
+                capture_output=True, check=False, timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for stdin in (b"", bytes((0, 255, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=stdin, capture_output=True, check=False, timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_mixed_nested_while_do_guest(self) -> None:
+        self._check_mixed_nested_loop_guest("while-do")
+
+    def test_mixed_nested_do_while_guest(self) -> None:
+        self._check_mixed_nested_loop_guest("do-while")
+
+    def test_mixed_nested_do_do_guest(self) -> None:
+        self._check_mixed_nested_loop_guest("do-do")
+
+    def test_mixed_nested_inner_break_guest(self) -> None:
+        self._check_mixed_nested_loop_guest("inner-break")
+
+    def test_mixed_nested_inner_continue_guest(self) -> None:
+        self._check_mixed_nested_loop_guest("inner-continue")
+
+    def test_mixed_nested_outer_break_guest(self) -> None:
+        self._check_mixed_nested_loop_guest("outer-break")
+
+    def test_mixed_nested_loop_refuses_source_and_ast_forgery(self) -> None:
+        """Preserve boundedness, loop ownership and source parentage."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler binaries are not built")
+        original = self._mixed_nested_loop_sources()["while-do"]
+        mutations = {
+            "unbounded-outer": original.replace(
+                "while (phase < 2U) {", "while (phase < 13U) {"
+            ),
+            "unbounded-inner": original.replace(
+                "while (pass < 2U);", "while (pass < 13U);"
+            ),
+            "effectful-inner-guard": original.replace(
+                "while (pass < 2U);", "while ((pass += 1U) < 2U);"
+            ),
+            "input": original.replace(
+                "next = a + b;", "next = (unsigned)getchar();"
+            ),
+            "protected-induction-write": original.replace(
+                "++pass;", "++i;"
+            ),
+            "three-level-do": original.replace(
+                "                ++pass;",
+                "                do { ++pass; } while (pass < 1U);",
+            ),
+            "three-level-while": original.replace(
+                "                ++pass;",
+                "                while (pass < 1U) { ++pass; }",
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source in mutations.items():
+                with self.subTest(source=label):
+                    path = Path(scratch) / f"bad-{label}.c"
+                    path.write_text(source)
+                    frontend = subprocess.run(
+                        [
+                            str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                            "--resource-dir", str(RESOURCE), "--source-id",
+                            f"tests/mixed-bad-{label}-v1", str(path),
+                        ],
+                        capture_output=True, check=False, timeout=30,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = path.with_suffix(".malbolge")
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=frontend.stdout, capture_output=True,
+                        check=False, timeout=40,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+            source = Path(scratch) / "proof.c"
+            source.write_text(original)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                    "--resource-dir", str(RESOURCE), "--source-id",
+                    "tests/mixed-proof-v1", str(source),
+                ],
+                capture_output=True, check=False, timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            nodes = cast(list[dict[str, object]], json.loads(frontend.stdout)["nodes"])
+            outer = next(n for n in nodes if n["kind"] == "while-statement")
+            inner = next(n for n in nodes if n["kind"] == "do-statement")
+            body = next(
+                n for n in nodes
+                if n["kind"] == "compound-statement" and n["parent"] == inner["id"]
+            )
+            guard = next(
+                n for n in nodes
+                if n["kind"] == "binary-expression" and n["parent"] == inner["id"]
+            )
+            for label in (
+                "inner-parent", "inner-metadata", "body-parent",
+                "body-span", "guard-type", "guard-parent", "guard-span",
+                "guard-symbol", "step-parent", "outer-parent", "outer-guard-span",
+            ):
+                with self.subTest(ast=label):
+                    forged = cast(dict[str, object], json.loads(frontend.stdout))
+                    altered = cast(list[dict[str, object]], forged["nodes"])
+                    target = altered[cast(int, inner["id"]) - 1]
+                    if label == "inner-parent":
+                        target["parent"] = 2
+                    elif label == "inner-metadata":
+                        target["operation"] = "&&"
+                    elif label in ("body-parent", "body-span"):
+                        target = altered[cast(int, body["id"]) - 1]
+                        if label == "body-parent":
+                            target["parent"] = 2
+                        else:
+                            span = cast(dict[str, dict[str, int]], target["span"])
+                            span["end"]["byte"] -= 1
+                    elif label in ("guard-type", "guard-parent", "guard-span"):
+                        target = altered[cast(int, guard["id"]) - 1]
+                        if label == "guard-type":
+                            target["type"] = "u32"
+                        elif label == "guard-parent":
+                            target["parent"] = 2
+                        else:
+                            span = cast(dict[str, dict[str, int]], target["span"])
+                            span["end"]["byte"] -= 1
+                    elif label == "guard-symbol":
+                        target = next(
+                            n for n in altered
+                            if n["kind"] == "declaration-reference-expression"
+                            and n.get("reference", "").startswith("pass@")
+                            and n["span"]["begin"]["line"]
+                            == guard["span"]["begin"]["line"]
+                        )
+                        target["reference"] = "foreign@99999"
+                    elif label == "step-parent":
+                        target = next(
+                            n for n in altered
+                            if n["kind"] == "unary-expression"
+                            and n.get("operation") == "++"
+                            and any(
+                                child["parent"] == n["id"]
+                                and child.get("reference", "").startswith("pass@")
+                                for child in altered
+                            )
+                        )
+                        target["parent"] = 2
+                    elif label == "outer-parent":
+                        target = altered[cast(int, outer["id"]) - 1]
+                        target["parent"] = 2
+                    else:
+                        target = next(
+                            n for n in altered
+                            if n["kind"] == "binary-expression"
+                            and n["parent"] == outer["id"]
+                        )
+                        span = cast(dict[str, dict[str, int]], target["span"])
+                        span["end"]["byte"] -= 1
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                         "--output", str(guest)],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
 
 
 if __name__ == "__main__":
