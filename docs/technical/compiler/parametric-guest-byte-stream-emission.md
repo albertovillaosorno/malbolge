@@ -3793,3 +3793,20 @@ empty and binary stdin. Four invalid source variants and ten forged AST
 keyword, parent, span and metadata cases refused artifact publication.
 This does not add dynamic guest C control flow or the original
 unmasked byte-stream witness; P0 remains open.
+
+### Unbraced unsigned while updates before conditional output
+
+A pinned-Clang complete twelve-trip Fibonacci source uses an unbraced
+`while (parity < (next & 3U)) ++parity;` to calculate an unsigned
+local that selects a following putchar branch. The bounded source
+projector now admits a directly parented unary while body and replays
+its checked writes and condition before each selected output.
+
+The normalized Clang oracle and adapter regression verify twelve
+independently source-proven typed output effects, yielding
+`02 19 1f 08 17 0f 02 0d 03 10 13 03`, with malformed
+statement ancestry, foreign references and kinds refused. The
+complete guest compilation still reaches the unsolved literal-stream
+layout synthesis without publishing an artifact in its search budget.
+This is source-level static replay, not dynamically lowered guest
+loop execution; the original unmasked Fibonacci blocker remains.

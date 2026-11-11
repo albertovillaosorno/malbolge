@@ -48,6 +48,67 @@ const LOOP_DISTINCT: &[u8] =
 const SHIFT_RECURRENCE: &[u8] =
     include_bytes!("../c-frontend/golden/local_shift_recurrence_output.json");
 
+const UNBRACED_WHILE_FIBONACCI: &[u8] =
+    include_bytes!("../c-frontend/golden/local_unbraced_while_fibonacci.json");
+
+#[test]
+fn unbraced_while_updates_local_parity_before_twelve_selected_effects() {
+    let (wire, mode) =
+        canonical_guest_typed_ir(UNBRACED_WHILE_FIBONACCI).unwrap();
+    assert_eq!(mode, FrontendGuestMode::DistinctLiteralTwelve);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert_eq!(module.source_id(), "tests/unbraced-while-fibonacci-v1");
+    let effects = module.functions()[0].blocks()[0].instructions();
+    assert_eq!(effects.len(), 24);
+    let expected = [
+        0x02, 0x19, 0x1f, 0x08, 0x17, 0x0f, 0x02, 0x0d, 0x03, 0x10, 0x13, 0x03,
+    ];
+    for (index, (pair, expected_byte)) in
+        effects.chunks_exact(2).zip(expected).enumerate()
+    {
+        let [constant, output] = pair else {
+            panic!("expected one source-bound byte and output per iteration");
+        };
+        assert!(matches!(
+            constant.instruction(),
+            typed::Instruction::ConstantInteger {
+                constant, result, ..
+            } if constant.bit_width() == 8
+                && constant.little_endian() == [expected_byte]
+                && usize::try_from(result.value()) == Ok(index)
+        ));
+        assert!(matches!(
+            output.instruction(),
+            typed::Instruction::ByteOutput { value }
+                if usize::try_from(value.value()) == Ok(index)
+        ));
+    }
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn unbraced_while_rejects_forged_source_steps() {
+    let original: Value =
+        serde_json::from_slice(UNBRACED_WHILE_FIBONACCI).unwrap();
+    for (id, key, replacement) in [
+        (42, "parent", json!(19)),
+        (43, "reference", json!("foreign@0")),
+        (33, "kind", json!("do-statement")),
+    ] {
+        let mut altered = original.clone();
+        altered["nodes"][id - 1][key] = replacement;
+        assert!(
+            matches!(
+                canonical_guest_typed_ir(
+                    &serde_json::to_vec(&altered).unwrap()
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "unbraced while accepted forged node {id} field {key}"
+        );
+    }
+}
+
 #[test]
 fn selected_loop_output_calls_preserve_twelve_real_effects() {
     let (wire, mode) = canonical_guest_typed_ir(LOOP_OUTPUT).unwrap();
