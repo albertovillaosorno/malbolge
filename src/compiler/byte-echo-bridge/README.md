@@ -1024,3 +1024,21 @@ predicts `02 59 b9 b6`; the normative VM verifies the four exact bytes and
 are separate from each other and from the earlier scratch write, with no input
 consumption. This test-only linker geometry does not enable a production
 C-to-Malbolge fallback or resolve the unmasked third Fibonacci byte `5f`.
+
+### Finite expanded-tail reachability after a written source relocation
+
+The source-scratch guest regression now enumerates a bounded *negative*
+search for the unmasked Fibonacci third byte `0x5f`. After two verified
+source output effects and a guest-written data relocation into loader-expanded
+memory, the scalar search permits up to twelve further operations from
+`o`, `p`, `*`, and `j`, including at most two more `j` relocations. Four
+different terminal opcodes before halt vary the loader recurrence seed.
+All intermediate accumulator values retain their full 15-trit width.
+
+No state in that fresh-expanded-word grammar has low byte `0x5f`. Its
+exploration can include paths that would be rejected by the positional
+layout checker, so the negative result applies only to paths that read
+untouched expanded words, not to guest-written operand revisits or alternate
+source-scratch geometry. The independently admitted `02 59 b9 b6` guest
+still executes under EOF and binary input. This search is test-only; it
+does not introduce a compiler fallback or prove arbitrary byte synthesis.

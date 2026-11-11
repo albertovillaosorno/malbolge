@@ -4016,3 +4016,24 @@ complete guest compilation still reaches the unsolved literal-stream
 layout synthesis without publishing an artifact in its search budget.
 This is source-level static replay, not dynamically lowered guest
 loop execution; the original unmasked Fibonacci blocker remains.
+
+### Bounded negative reachability after expanded scratch relocation
+
+The complete unmasked C recurrence still requires `02 59 5f` at its
+start. After the previously VM-proven `02 59` source-scratch prefix, a
+guest `*` write and two live `j` relocations yield a concrete 15-trit
+accumulator and a pointer into loader-expanded memory. The bounded scalar
+regression now searches up to twelve no-op/crazy/rotate/relocation steps
+for the next byte, allowing zero to two further data relocations. For
+each candidate length, four final source opcodes before halt independently
+change the loader's two-cell recurrence seed. Exact accumulator words
+and data-pointer locations remain distinct search states.
+
+No explored fresh-expanded-word state produces `0x5f`. The graph allows
+more paths than the admissible linker, but it assumes each arithmetic
+operand retains its original loader word; guest-written operand revisits,
+modified graphical scratch, and other source tail geometries are outside
+this negative result. The existing `02 59 b9 b6` witness still proves two
+real expanded-memory arithmetic effects in the normative VM with empty
+and binary input. No source compiler capability is claimed, and the P0
+remains unresolved.

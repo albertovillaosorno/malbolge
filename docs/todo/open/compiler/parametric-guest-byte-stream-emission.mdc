@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 the verified scratch-written relocation guest was
+  extended with a finite state-space negative experiment for the original
+  unmasked C Fibonacci third output `0x5f`. Up to twelve additional
+  expanded-memory operations, two more `j` relocations and four terminal
+  loader seeds preserve full accumulator/pointer states; none yields `5f`
+  when data operands retain their original loader values. Existing real
+  VM replay still proves `02 59 b9 b6` under two input patterns. The
+  negative bound excludes written-operand revisits and other code
+  geometries, so it does not establish a general impossibility or complete
+  the P0 compiler goal.
+
 - On 2026-11-11 a complete C Fibonacci recurrence emitted two bytes
   per selected two-level switch case, with an unsigned `y ^= 1U` state
   update *between* the two outputs. Pinned Clang accepted the full source;

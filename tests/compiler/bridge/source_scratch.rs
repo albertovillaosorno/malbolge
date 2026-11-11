@@ -650,5 +650,101 @@ fn scratch_written_pointer_reaches_loader_expansion() -> Result<(), String> {
         assert_eq!(vm.output(), expected);
         assert_eq!(vm.input_consumed(), 0);
     }
+    // Negative bound for the original unmasked C recurrence's third byte.
+    // The initial [2, 89] is an independently executed guest prefix above.
+    // Search untouched expanded loader words, allowing up to two more live
+    // data relocations and twelve no-op/arithmetic/relocation instructions.
+    // The scalar graph deliberately overapproximates guest admission: it does
+    // not reject paths that reread written cells or unsafe final operations.
+    // Thus absence below rules out this fresh-word grammar, not arbitrary
+    // source mutations, graphical writes, or general Malbolge execution.
+    let base_length = expanded_operations.len() - 5;
+    let data_start =
+        usize::try_from(first).map_err(|error| error.to_string())?;
+    let memory_words = usize::try_from(profile.memory_words())
+        .map_err(|error| error.to_string())?;
+    let mut reachable_bytes = BTreeSet::new();
+    for terminal in [b'o', b'p', b'*', b'j'] {
+        for length in 0..=12usize {
+            let source_length = base_length + length + 3;
+            let tail = [
+                (33u8..=126)
+                    .find(|&byte| {
+                        malbolge::decode_profile_instruction(
+                            u32::from(byte),
+                            u32::try_from(source_length - 2)
+                                .unwrap_or(u32::MAX),
+                        ) == Some(terminal)
+                    })
+                    .ok_or("missing final guest instruction")?,
+                (33u8..=126)
+                    .find(|&byte| {
+                        malbolge::decode_profile_instruction(
+                            u32::from(byte),
+                            u32::try_from(source_length - 1)
+                                .unwrap_or(u32::MAX),
+                        ) == Some(b'v')
+                    })
+                    .ok_or("missing guest halt encoding")?,
+            ];
+            let mut frontier = BTreeSet::from([(data_start, seed, 0u8)]);
+            for _ in 0..length {
+                let mut next = BTreeSet::new();
+                for (pointer, accumulator, relocations) in frontier {
+                    if pointer < source_length || pointer >= memory_words {
+                        continue;
+                    }
+                    let word = super::super::layout::unwritten_loader_word(
+                        &tail,
+                        2 + ((pointer - source_length) % 6),
+                        profile,
+                    )
+                    .map_err(|error| format!("loader recurrence: {error:?}"))?;
+                    let choices = [
+                        (pointer + 1, accumulator, relocations),
+                        (
+                            pointer + 1,
+                            malbolge::profile_crazy(word, accumulator, 15),
+                            relocations,
+                        ),
+                        (
+                            pointer + 1,
+                            malbolge::profile_rotate(
+                                word,
+                                profile.memory_words(),
+                            ),
+                            relocations,
+                        ),
+                        (
+                            (usize::try_from(word)
+                                .map_err(|error| error.to_string())?
+                                + 1)
+                                % memory_words,
+                            accumulator,
+                            relocations + 1,
+                        ),
+                    ];
+                    for (index, (pointer, accumulator, used)) in
+                        choices.into_iter().enumerate()
+                    {
+                        if (index == 3 && relocations == 2)
+                            || pointer < source_length
+                        {
+                            continue;
+                        }
+                        _ = next.insert((pointer, accumulator, used));
+                    }
+                }
+                frontier = next;
+            }
+            reachable_bytes.extend(frontier.into_iter().map(
+                |(_, accumulator, _)| {
+                    u8::try_from(accumulator & 255).unwrap_or(0)
+                },
+            ));
+        }
+    }
+    assert!(reachable_bytes.len() > 20);
+    assert!(!reachable_bytes.contains(&0x5f));
     Ok(())
 }
