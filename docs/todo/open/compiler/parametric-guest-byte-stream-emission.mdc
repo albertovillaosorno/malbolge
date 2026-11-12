@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a source-C function with two `putchar` comma arguments,
+  one returning a nested `putchar` byte and the other discarding an early
+  nested write, failed JSON admission. The shared left-associative operand
+  proof now authenticates parenthesized Clang ancestry and returns the
+  rightmost successful byte to the outer guest output without rereading.
+  Twelve binary streams yield four oracle bytes from four guest reads
+  in nine steps; nine unsupported C shapes, sixteen forged Clang nodes
+  and a seventeen-operand overflow refuse target publication. C EOF,
+  failed I/O, arithmetic and dynamic guest control remain open.
+
+## Evidence
+
 - On 2026-11-12 a complete source-C function combining a live input local,
   nested `putchar` returns and an interleaved standalone mixed comma
   read/write expression originally failed normalized JSON admission. The

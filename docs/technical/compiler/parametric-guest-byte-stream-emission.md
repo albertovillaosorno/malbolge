@@ -26,6 +26,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+## Comma-result byte propagation in guest output (2026-11-12)
+
+A whole C function with `putchar((getchar(), putchar(getchar())))`
+and `putchar((putchar(getchar()), getchar()))` initially failed at
+source-JSON projection. The repaired projection reuses the exact source
+proof for each comma operand under a parenthesized output argument and
+preserves all input and output effects in order. The final operand's
+successful C return byte feeds the outer `putchar` without an extra read.
+
+Four guest input bytes yield four independent oracle output bytes in nine
+normative VM steps for twelve binary streams. A seventeen-operand argument,
+nine unsupported C expressions and sixteen forged AST changes refuse guest
+publication. The original two-input comma output remains admitted. This is
+a bounded single-line successful-byte grammar: general expression trees,
+EOF, failed output, C arithmetic and dynamic guest control remain open.
+
 ## Ordered mixed comma effects in guest C (2026-11-12)
 
 A complete C program first failed at the JSON adapter when a standalone

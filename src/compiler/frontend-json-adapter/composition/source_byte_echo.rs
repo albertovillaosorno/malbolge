@@ -53,8 +53,6 @@ struct LocalDeclaration<'node> {
     variable_reference: String,
 }
 
-type CommaOutputProof<'node> = (&'node Node, &'node Node, &'node Node);
-
 // Every comma operand has an actual input effect; an optional successful
 // putchar result is discarded, but the guest must execute its output.
 struct CommaEffect<'node> {
@@ -253,114 +251,86 @@ fn prove_input_call<'node>(
     source_ok.then_some(call)
 }
 
-// One source-checked comma expression consumes a successful byte before
-// evaluating the result-valued getchar() argument. The first read must not
-// be optimized away: the second one observes the next input byte.
+// The value of an entire comma expression is its rightmost successful
+// input or putchar return. Every earlier operand is evaluated in the guest,
+// and the enclosing putchar writes the last live byte one more time.
 #[expect(
     clippy::too_many_lines,
-    clippy::cognitive_complexity,
-    reason = "authenticate the complete comma call ancestry without shortcuts"
+    reason = "authenticate the complete comma-argument source and ancestry"
 )]
-fn prove_comma_output<'node>(
+fn prove_comma_output_effects<'node>(
     nodes: &'node [Node],
     body: &Node,
     previous: u32,
     expected_id: u32,
-) -> Option<CommaOutputProof<'node>> {
+) -> Option<(usize, Vec<CommaEffect<'node>>, &'node Node)> {
     let [output, cast, callee, paren, comma, ..] = nodes else {
         return None;
     };
-    if nodes.len() != 11 {
-        return None;
-    }
     let start = output.span.begin.byte;
     let line = output.span.begin.line;
     let column = output.span.begin.column;
-    let comma_start = start.checked_add(9)?;
-    let first_end = comma_start.checked_add(9)?;
-    let second = nodes.get(8)?;
-    let gap = second.span.begin.byte.checked_sub(first_end)?;
-    if !matches!(gap, 1 | 2) {
+    if start <= previous
+        || start <= body.span.begin.byte
+        || line == 0
+        || column == 0
+        || output.id != expected_id
+        || output.parent != body.id
+        || output.kind != "call-expression"
+        || output.type_name.as_deref() != Some("i32")
+        || output.reference.as_deref() != Some("external:putchar")
+        || output.operation.is_some()
+        || !metadata_empty(output)
+        || cast.id != output.id.checked_add(1)?
+        || cast.parent != output.id
+        || cast.kind != "cast-expression"
+        || cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+        || cast.operation.as_deref() != Some("function-to-pointer")
+        || cast.reference.is_some()
+        || !metadata_empty(cast)
+        || callee.id != cast.id.checked_add(1)?
+        || callee.parent != cast.id
+        || callee.kind != "declaration-reference-expression"
+        || callee.type_name.as_deref() != Some("fn(i32)->i32")
+        || callee.reference.as_deref() != Some("external:putchar")
+        || callee.operation.is_some()
+        || !metadata_empty(callee)
+        || paren.id != callee.id.checked_add(1)?
+        || paren.parent != output.id
+        || paren.kind != "parenthesized-expression"
+        || paren.type_name.as_deref() != Some("i32")
+        || paren.reference.is_some()
+        || paren.operation.is_some()
+        || !metadata_empty(paren)
+        || comma.id != paren.id.checked_add(1)?
+    {
         return None;
     }
-    let second_end = first_end.checked_add(gap)?.checked_add(9)?;
-    let end = second_end.checked_add(2)?;
-    let well_formed = start > previous
-        && start > body.span.begin.byte
-        && end < body.span.end.byte
-        && line > 0
-        && column > 0
-        && output.id == expected_id
-        && output.parent == body.id
-        && output.kind == "call-expression"
-        && output.type_name.as_deref() == Some("i32")
-        && output.reference.as_deref() == Some("external:putchar")
-        && output.operation.is_none()
-        && metadata_empty(output)
-        && source_word(output, start, end, line, column)
-        && cast.id == output.id.checked_add(1)?
-        && cast.parent == output.id
-        && cast.kind == "cast-expression"
-        && cast.type_name.as_deref() == Some("ptr(fn(i32)->i32)")
-        && cast.operation.as_deref() == Some("function-to-pointer")
-        && cast.reference.is_none()
-        && metadata_empty(cast)
-        && source_word(cast, start, start.checked_add(7)?, line, column)
-        && callee.id == cast.id.checked_add(1)?
-        && callee.parent == cast.id
-        && callee.kind == "declaration-reference-expression"
-        && callee.type_name.as_deref() == Some("fn(i32)->i32")
-        && callee.reference.as_deref() == Some("external:putchar")
-        && callee.operation.is_none()
-        && metadata_empty(callee)
-        && source_word(callee, start, start.checked_add(7)?, line, column)
-        && paren.id == callee.id.checked_add(1)?
-        && paren.parent == output.id
-        && paren.kind == "parenthesized-expression"
-        && paren.type_name.as_deref() == Some("i32")
-        && paren.reference.is_none()
-        && paren.operation.is_none()
-        && metadata_empty(paren)
-        && source_word(
+    let (comma_width, effects, last_end) = prove_discarded_comma_effects(
+        nodes.get(4..)?,
+        body,
+        previous,
+        comma.id,
+        paren.id,
+    )?;
+    let end = last_end.checked_add(2)?;
+    let width = 4usize.checked_add(comma_width)?;
+    if end >= body.span.end.byte
+        || !source_word(output, start, end, line, column)
+        || !source_word(cast, start, start.checked_add(7)?, line, column)
+        || !source_word(callee, start, start.checked_add(7)?, line, column)
+        || !source_word(
             paren,
             start.checked_add(8)?,
-            end.checked_sub(1)?,
+            last_end.checked_add(1)?,
             line,
             column.checked_add(8)?,
         )
-        && comma.id == paren.id.checked_add(1)?
-        && comma.parent == paren.id
-        && comma.kind == "binary-expression"
-        && comma.type_name.as_deref() == Some("i32")
-        && comma.reference.is_none()
-        && comma.operation.as_deref() == Some(",")
-        && metadata_empty(comma)
-        && source_word(
-            comma,
-            comma_start,
-            second_end,
-            line,
-            column.checked_add(9)?,
-        );
-    if !well_formed {
+        || comma.span.begin.byte != start.checked_add(9)?
+    {
         return None;
     }
-    let first_input = prove_input_call(
-        nodes.get(5..8)?,
-        body,
-        previous,
-        (comma.id.checked_add(1)?, comma.id),
-    )?;
-    let second_input = prove_input_call(
-        nodes.get(8..11)?,
-        body,
-        first_input.span.end.byte,
-        (comma.id.checked_add(4)?, comma.id),
-    )?;
-    (first_input.span.begin.byte == comma_start
-        && first_input.span.end.byte == first_end
-        && second_input.span.end.byte == second_end)
-        .then_some((first_input, second_input, output))
+    Some((width, effects, output))
 }
 
 // A left-associative C comma chain executes every operand, including
@@ -375,6 +345,7 @@ fn prove_discarded_comma_effects<'node>(
     body: &Node,
     previous: u32,
     expected_id: u32,
+    first_parent: u32,
 ) -> Option<(usize, Vec<CommaEffect<'node>>, u32)> {
     let binary_count = nodes
         .iter()
@@ -399,7 +370,7 @@ fn prove_discarded_comma_effects<'node>(
     }
     for (index, node) in binary_nodes.iter().enumerate() {
         let parent = if index == 0 {
-            body.id
+            first_parent
         } else {
             binary_nodes.get(index.checked_sub(1)?)?.id
         };
@@ -1008,57 +979,72 @@ pub(super) fn canonical_source_byte_echo(
         }
         if first.kind == "call-expression"
             && first.reference.as_deref() == Some("external:putchar")
-            && let Some((discarded, selected, output)) =
-                rest.get(consumed..consumed.saturating_add(11)).and_then(
-                    |nodes| prove_comma_output(nodes, body, previous, next_id),
-                )
+            && let Some((width, effects, output)) = prove_comma_output_effects(
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
+                body,
+                previous,
+                next_id,
+            )
         {
+            let inner_outputs =
+                effects.iter().filter(|e| e.output.is_some()).count();
             if inputs
-                .checked_add(2)
+                .checked_add(effects.len())
                 .is_none_or(|count| count > MAX_ECHO_CALLS)
+                || outputs
+                    .checked_add(inner_outputs)
+                    .and_then(|count| count.checked_add(1))
+                    .is_none_or(|count| count > MAX_SOURCE_OUTPUTS)
             {
                 return Err(FrontendJsonError::Unsupported);
             }
-            for (index, input_call) in [discarded, selected].iter().enumerate()
-            {
+            for effect in &effects {
+                let id = ValueId::new(
+                    u32::try_from(inputs)
+                        .map_err(|_error| FrontendJsonError::Unsupported)?,
+                );
                 instructions.push(LocatedInstruction::new(
                     Instruction::ByteInput {
-                        result: ValueId::new(
-                            u32::try_from(
-                                inputs
-                                    .checked_add(index)
-                                    .ok_or(FrontendJsonError::Unsupported)?,
-                            )
-                            .map_err(|_error| FrontendJsonError::Unsupported)?,
-                        ),
+                        result: id,
                         type_id: TypeId::new(0),
                     },
-                    typed_span(&input_call.span),
+                    typed_span(&effect.input.span),
                 ));
+                inputs = inputs
+                    .checked_add(1)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+                if let Some(write) = effect.output {
+                    instructions.push(LocatedInstruction::new(
+                        Instruction::ByteOutput { value: id },
+                        typed_span(&write.span),
+                    ));
+                    outputs = outputs
+                        .checked_add(1)
+                        .ok_or(FrontendJsonError::Unsupported)?;
+                }
             }
+            let selected = ValueId::new(
+                u32::try_from(
+                    inputs
+                        .checked_sub(1)
+                        .ok_or(FrontendJsonError::Unsupported)?,
+                )
+                .map_err(|_error| FrontendJsonError::Unsupported)?,
+            );
             instructions.push(LocatedInstruction::new(
-                Instruction::ByteOutput {
-                    value: ValueId::new(
-                        u32::try_from(
-                            inputs
-                                .checked_add(1)
-                                .ok_or(FrontendJsonError::Unsupported)?,
-                        )
-                        .map_err(|_error| FrontendJsonError::Unsupported)?,
-                    ),
-                },
+                Instruction::ByteOutput { value: selected },
                 typed_span(&output.span),
             ));
             latest_local = None;
             previous = output.span.end.byte;
             consumed = consumed
-                .checked_add(11)
+                .checked_add(width)
                 .ok_or(FrontendJsonError::Unsupported)?;
             next_id = next_id
-                .checked_add(11)
-                .ok_or(FrontendJsonError::Unsupported)?;
-            inputs = inputs
-                .checked_add(2)
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_error| FrontendJsonError::Unsupported)?,
+                )
                 .ok_or(FrontendJsonError::Unsupported)?;
             outputs = outputs
                 .checked_add(1)
@@ -1072,6 +1058,7 @@ pub(super) fn canonical_source_byte_echo(
                 body,
                 previous,
                 next_id,
+                body.id,
             )
         {
             if inputs

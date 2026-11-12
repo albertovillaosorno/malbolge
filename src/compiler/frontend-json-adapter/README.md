@@ -29,6 +29,23 @@ Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
 
+### Comma expression return bytes in source-C output arguments (2026-11-12)
+
+A source-checked `putchar((a, b, ...))` call now executes the complete
+left-associative comma effect trace before writing the rightmost operand's
+successful byte. Operands are bounded direct `getchar()` and
+`putchar(getchar())`; discarded writes still occur. The outer write reuses
+the final guest accumulator byte, including a successful inner `putchar`
+return. Pinned Clang call, cast, comma, parenthesized-expression and lexical
+source spans must agree; up to sixteen operands are admitted and seventeen
+refuse publication.
+
+One complete two-statement C program exercises both inner-last and
+inner-first output ordering: four runtime reads yield four oracle writes
+in nine normative VM steps across twelve binary streams. Nine unsupported
+sources and sixteen forged Clang records refuse publication. C EOF, failed
+writes, arithmetic and general C expression/branch evaluation remain open.
+
 ### Mixed source-C comma input/output effects (2026-11-12)
 
 An unparenthesized, left-associative comma statement now executes both
