@@ -55,6 +55,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a whole C counted loop with live input-local bytes,
+  nested outputs, selected `break`, skipped else effects, unreachable
+  later body reads and an outer trailing read initially refused normalized
+  `for-statement` lowering. A source-authenticated `break` control marker
+  now truncates the executed guest trace only after proving every Clang
+  body node. The real Malbolge VM consumes two binary guest inputs and
+  emits three independently expected bytes in six steps. This does not
+  implement runtime-dependent guest C control, EOF or mutable storage.
+
 - On 2026-11-12 a complete two-by-two nested counted C stream in a selected
   outer `if (1)` originally failed at normalized `if-statement` admission,
   although each loop-local input and output effect had source proof. The

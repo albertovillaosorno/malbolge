@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-verified early break in finite C loops (2026-11-12)
+
+A complete source-C program has a counted `for`, a new `getchar()` local,
+nested `putchar` returns, an `if (1) { break; } else` with guest input,
+unreachable trailing loop I/O, and a final input/output after the loop.
+Pinned Clang admitted the C source but the normalized adapter refused the
+outer `for-statement`. The adapter now authenticates the exact five-byte
+`break` Clang node (parent, ID, location, metadata) within a bounded loop.
+It proves *all* lexical body effects, including inactive branches and
+statements after the break, before truncating the executed trace. A selected
+break exits the immediately enclosing finite loop after the current pass;
+no skipped input is pre-consumed or synthesized by the host.
+
+The original complete C program compiles to a real 1,095-byte capsule. The
+normative VM reads two binary bytes, emits the first byte twice followed by
+the second byte, and halts in six steps. Dynamic conditions, `continue`,
+EOF-dependent behavior and generalized guest storage remain unsupported.
+This is bounded source-C loop replay, not runtime guest control. P0 remains
+open.
+
 ### Source-C counted loops selected by enclosing constant branches (2026-11-12)
 
 A complete source-C program selects a nested two-by-two `for` matrix from

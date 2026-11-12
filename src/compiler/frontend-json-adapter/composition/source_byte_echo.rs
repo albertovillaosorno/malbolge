@@ -1007,6 +1007,9 @@ struct StaticIfEffect<'node> {
     input: Option<&'node Node>,
     // Outer-to-inner Clang preorder; reverse to emit successful call returns.
     outputs: Vec<&'node Node>,
+    // Source-proven `break` exits only the immediately containing counted
+    // loop.
+    break_loop: bool,
 }
 
 struct StaticIfArm<'node> {
@@ -1047,7 +1050,11 @@ fn static_comma_effects<'node>(
                 {
                     outputs.insert(0, output);
                 }
-                StaticIfEffect { input, outputs }
+                StaticIfEffect {
+                    input,
+                    outputs,
+                    break_loop: false,
+                }
             })
             .collect(),
     )
@@ -1086,6 +1093,40 @@ fn prove_static_if_statement<'node>(
             effects.extend(proof.effects.iter().cloned());
         }
         return Some((proof.width, effects, proof.end));
+    }
+    if child.kind == "break-statement" {
+        // C's `break;` has a five-byte Clang extent; its semicolon is
+        // outside the span. A break outside a proven loop cannot be lowered.
+        let start = child.span.begin.byte;
+        let end = start.checked_add(5)?;
+        if for_depth == 0
+            || start <= previous
+            || end >= body.span.end.byte
+            || child.id != expected_id
+            || child.parent != parent
+            || child.type_name.is_some()
+            || child.reference.is_some()
+            || child.operation.is_some()
+            || !metadata_empty(child)
+            || !source_word(
+                child,
+                start,
+                end,
+                child.span.begin.line,
+                child.span.begin.column,
+            )
+        {
+            return None;
+        }
+        return Some((
+            1,
+            vec![StaticIfEffect {
+                input: None,
+                outputs: Vec::new(),
+                break_loop: true,
+            }],
+            end,
+        ));
     }
     if child.kind == "if-statement" {
         let proof = prove_static_if(
@@ -1181,7 +1222,11 @@ fn prove_static_if_statement<'node>(
     let end = outputs.first().copied().or(input)?.span.end.byte;
     (child.id == expected_id).then_some((
         width,
-        vec![StaticIfEffect { input, outputs }],
+        vec![StaticIfEffect {
+            input,
+            outputs,
+            break_loop: false,
+        }],
         end,
     ))
 }
@@ -1333,6 +1378,7 @@ fn prove_static_if_arm<'node>(
                 vec![StaticIfEffect {
                     input: Some(read),
                     outputs: Vec::new(),
+                    break_loop: false,
                 }],
                 end,
             )
@@ -1619,10 +1665,22 @@ fn prove_static_for<'node>(
     {
         return None;
     }
+    // Authenticate the entire body, including unreachable statements,
+    // before selecting the executed prefix. With a source-constant break,
+    // the induction exits on the first pass, so no later iteration executes.
+    let mut effects = arm.effects;
+    let iterations = if let Some(break_at) =
+        effects.iter().position(|effect| effect.break_loop)
+    {
+        effects.truncate(break_at);
+        1
+    } else {
+        iterations
+    };
     Some(StaticForProof {
         width: 10usize.checked_add(arm.width)?,
         iterations,
-        effects: arm.effects,
+        effects,
         end: arm.end,
     })
 }
