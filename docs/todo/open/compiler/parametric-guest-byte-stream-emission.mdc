@@ -55,6 +55,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 complete source-C nested `putchar` return-value
+  expressions exposed JSON admission refusal. Exact Clang call ancestry
+  now lowers up to sixteen nested successful-byte writes to real guest
+  input followed by repeated output, preserving C inner-to-outer evaluation
+  without rereading input. Four whole C programs match separate binary
+  return-value oracles and exact normative VM step counts. Eight invalid C
+  sources and sixteen forged AST/span mutations refuse publication. C EOF,
+  failed output and general guest C call/dataflow remain open.
+
 - On 2026-11-12 a whole C function with repeated outputs from two
   automatic `getchar` locals and an intervening direct call exposed a
   normalized JSON admission gap. Source-checked five-node additional

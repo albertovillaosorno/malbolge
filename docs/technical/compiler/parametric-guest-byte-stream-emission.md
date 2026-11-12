@@ -26,6 +26,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested source-C call return values in a real guest (2026-11-12)
+
+The complete C source `putchar(putchar(getchar()));` previously passed pinned
+Clang but failed closed at normalized JSON admission. A source-checked
+projector now authenticates up to sixteen nested `putchar` calls, their
+function-to-pointer conversions, one innermost `getchar`, exact ancestor IDs
+and all byte/line/column source endpoints. Under explicitly successful byte
+input and output, each inner `putchar` returns its written byte. The guest
+executes one input followed by the nested number of outputs, in C evaluation
+order, using the existing latest-read accumulator-only backend.
+
+Four full C programs (including three-level, sixteen-level and mixed
+statement nesting) reach the normative VM. Two independent binary inputs
+per program match the source-derived return-byte oracle and exact guest
+step counts. Eight unsupported C mutations and sixteen adversarial normalized
+AST/source-span mutations reject without target publication. The result does
+not claim C EOF, output failure, general C function returns, mutable storage
+or guest-side control flow; the P0 generalization is still incomplete.
+
 ### Dynamic source-C byte echo under successful input (2026-11-12)
 
 The next complete source-C experiment uses three runtime `getchar`

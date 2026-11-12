@@ -29,6 +29,28 @@ Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
 
+## Source-authenticated nested `putchar` return flow (2026-11-12)
+
+A complete source-C expression `putchar(putchar(getchar()));` now reaches
+the normative Malbolge guest. The pinned Clang frontend produces nested
+three-node call/cast/reference groups; the adapter authenticates their
+lexical source byte/line/column endpoints, exact caller/argument ancestry,
+external function identities, and the innermost `getchar` call. C evaluation
+runs from the innermost call outward. Each successful `putchar` returns the
+written unsigned byte, so the guest executes one real input and then one
+output for each nested call, reusing the live accumulator without a second
+input. Up to 16 nested calls per statement, 128 reads and 256 outputs are
+allowed, with at least one genuinely nested call.
+
+`tests/test_nested_c_byte_echo_pipeline.py` runs four complete C sources
+through Clang, canonical typed lowering, the opt-in latest-read linker and
+the normative VM under two binary inputs each, comparing an independent
+return-value oracle and exact executed step counts. Eight unsupported C
+mutations and sixteen forged normalized AST/source-span mutations refuse
+without guest publication. The successful-byte and successful-output
+preconditions are essential: this does not implement C EOF (`-1`), output
+failure (`EOF`), general call/return ABI, or dynamic guest-side control.
+
 ## Successful-byte dynamic C echo (2026-11-12)
 
 The source-C live-input projector now also admits repeated output of the

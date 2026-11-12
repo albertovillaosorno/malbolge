@@ -47,6 +47,9 @@ mod local_constant_flow;
 #[path = "source_byte_echo.rs"]
 mod source_byte_echo;
 
+#[path = "nested_byte_echo.rs"]
+mod nested_byte_echo;
+
 #[cfg(test)]
 use malbolge as _;
 use serde::Deserialize;
@@ -2870,6 +2873,9 @@ pub fn canonical_guest_typed_ir(
     bytes: &[u8],
 ) -> Result<CanonicalGuestProjection, FrontendJsonError> {
     if let Ok(projection) = source_byte_echo::canonical_source_byte_echo(bytes) {
+        return Ok(projection);
+    }
+    if let Ok(projection) = nested_byte_echo::canonical_nested_byte_echo(bytes) {
         return Ok(projection);
     }
     if let Ok(wire) = canonical_void_typed_ir(bytes) {
