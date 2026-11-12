@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete source-C function combining a live input local,
+  nested `putchar` return values, comma-argument nested writes and standalone
+  mixed comma effects originally failed at normalized Clang JSON admission.
+  The shared nested source proof now authenticates comma-parent ancestry and
+  emits every nested write in guest evaluation order. The real 1,183-byte
+  Malbolge capsule reads seven binary bytes and emits nine independent
+  oracle bytes in seventeen VM steps. This remains successful-byte I/O only;
+  dynamic C arithmetic/control, EOF and failed output are not implemented.
+
+## Evidence
+
 - On 2026-11-12 a source-C function with two `putchar` comma arguments,
   one returning a nested `putchar` byte and the other discarding an early
   nested write, failed JSON admission. The shared left-associative operand

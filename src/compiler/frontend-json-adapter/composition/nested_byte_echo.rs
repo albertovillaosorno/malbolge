@@ -116,12 +116,25 @@ pub(super) fn nested_call<'a>(
     previous: u32,
     expected_id: u32,
 ) -> Option<(usize, &'a Node, Vec<&'a Node>)> {
+    nested_call_in_parent(rest, body, previous, expected_id, body.id)
+}
+
+// Also prove a comma operand whose parent is a verified binary-expression.
+// The same nested call/return proof prevents untrusted AST effects from
+// being smuggled into a standalone or comma call position.
+pub(super) fn nested_call_in_parent<'a>(
+    rest: &'a [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+    first_parent: u32,
+) -> Option<(usize, &'a Node, Vec<&'a Node>)> {
     let outer = rest.first()?;
     let start = outer.span.begin.byte;
     let line = outer.span.begin.line;
     let col = outer.span.begin.column;
     if outer.id != expected_id
-        || outer.parent != body.id
+        || outer.parent != first_parent
         || start <= previous
         || start <= body.span.begin.byte
         || line <= body.span.begin.line
@@ -131,7 +144,7 @@ pub(super) fn nested_call<'a>(
     }
     let mut depth = 0usize;
     let mut calls = Vec::new();
-    let mut expected_parent = body.id;
+    let mut expected_parent = first_parent;
     while depth < MAX_DEPTH {
         let offset = depth.checked_mul(3)?;
         let [call, cast, reference] =

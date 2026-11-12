@@ -29,6 +29,21 @@ Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
 
+### Nested comma operand return bytes (2026-11-12)
+
+The authenticated Clang `putchar` return-value proof is shared between
+standalone source expressions and comma operands, including nested calls up
+to sixteen levels. The selected successful byte remains in the guest
+accumulator while each nested `putchar` emits its byte, even when the comma
+operator discards the final return. Later comma operands still execute in
+order and the enclosing `putchar` emits the final rightmost return byte.
+
+A complete source-C function mixing a captured input local, nested calls,
+comma output arguments and standalone mixed comma effects executes seven
+real byte inputs and nine outputs in 17 normative VM steps. Successful input
+and output are prerequisites; unsupported casts, parentheses, arithmetic,
+EOF, arbitrary expression trees and dynamic control still reject.
+
 ### Comma expression return bytes in source-C output arguments (2026-11-12)
 
 A source-checked `putchar((a, b, ...))` call now executes the complete

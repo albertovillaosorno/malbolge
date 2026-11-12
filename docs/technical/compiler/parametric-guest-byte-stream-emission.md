@@ -26,6 +26,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+## Nested successful-byte returns inside comma effects (2026-11-12)
+
+A complete C function combines a runtime input local, a repeated nested
+`putchar` return, a comma expression whose final operand writes twice,
+a standalone comma statement with another nested write, and a final nested
+call. It originally failed at normalized JSON admission. The shared pinned
+Clang nested-call proof now accepts a comma-parent context and returns every
+verified output ancestor instead of assuming one write per operand. The
+adapter emits all writes in C inner-to-outer order, reusing the latest guest
+input value without replaying host input.
+
+Seven guest reads produce nine oracle writes in seventeen normative VM steps.
+The bounded grammar accepts up to sixteen nested `putchar` calls per comma
+operand, preserving the sixteen-operand comma-chain limit. Each call, cast,
+function reference, source coordinate and ancestry must match; unsupported
+arithmetic, extra casts, parentheses, EOF and failed output still refuse.
+
 ## Comma-result byte propagation in guest output (2026-11-12)
 
 A whole C function with `putchar((getchar(), putchar(getchar())))`

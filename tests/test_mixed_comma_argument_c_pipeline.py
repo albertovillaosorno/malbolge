@@ -145,7 +145,7 @@ class MixedCommaArgumentCPipelineTests(unittest.TestCase):
             "putchar((getchar(), putchar(getchar() + 1)))",
             "putchar((getchar(), (putchar(getchar()))))",
             "putchar((getchar() + 1, putchar(getchar())))",
-            "putchar((getchar(), putchar(putchar(getchar()))))",
+            "putchar((getchar(), putchar(putchar(65))))",
             "putchar((getchar(), getchar() == 0))",
             "putchar((getchar(), (void)putchar(getchar())))",
             "putchar((getchar(), getchar() + 1))",

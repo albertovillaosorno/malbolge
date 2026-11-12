@@ -57,7 +57,8 @@ struct LocalDeclaration<'node> {
 // putchar result is discarded, but the guest must execute its output.
 struct CommaEffect<'node> {
     input: &'node Node,
-    output: Option<&'node Node>,
+    // Outer-to-inner preorder, emitted in inner-to-outer C evaluation order.
+    outputs: Vec<&'node Node>,
 }
 
 type OutputCallProof<'node> = (usize, Vec<&'node Node>);
@@ -397,15 +398,15 @@ fn prove_discarded_comma_effects<'node>(
         let expected_leaf_id =
             expected_id.checked_add(u32::try_from(cursor).ok()?)?;
         let leaf = nodes.get(cursor)?;
-        let (width, input, output) =
+        let (width, input, outputs) =
             if leaf.reference.as_deref() == Some("external:putchar") {
-                let (input, output) = prove_call(
-                    nodes.get(cursor..cursor.checked_add(CALL_NODE_COUNT)?)?,
+                super::nested_byte_echo::nested_call_in_parent(
+                    nodes.get(cursor..)?,
                     body,
                     last_end,
+                    expected_leaf_id,
                     parent,
-                )?;
-                (CALL_NODE_COUNT, input, Some(output))
+                )?
             } else {
                 let input = prove_input_call(
                     nodes.get(cursor..cursor.checked_add(3)?)?,
@@ -413,9 +414,9 @@ fn prove_discarded_comma_effects<'node>(
                     last_end,
                     (expected_leaf_id, parent),
                 )?;
-                (3, input, None)
+                (3, input, Vec::new())
             };
-        let extent = output.unwrap_or(input);
+        let extent = outputs.first().copied().unwrap_or(input);
         if extent.id != expected_leaf_id
             || extent.span.begin.line != line
             || extent.span.end.line != line
@@ -432,11 +433,11 @@ fn prove_discarded_comma_effects<'node>(
         }
         cursor = cursor.checked_add(width)?;
         last_end = extent.span.end.byte;
-        effects.push(CommaEffect { input, output });
+        effects.push(CommaEffect { input, outputs });
     }
     for (index, binary) in binary_nodes.iter().enumerate() {
         let right = effects.get(binary_count.checked_sub(index)?)?;
-        let right_span = right.output.unwrap_or(right.input);
+        let right_span = right.outputs.first().copied().unwrap_or(right.input);
         if !source_word(binary, start, right_span.span.end.byte, line, column) {
             return None;
         }
@@ -987,7 +988,7 @@ pub(super) fn canonical_source_byte_echo(
             )
         {
             let inner_outputs =
-                effects.iter().filter(|e| e.output.is_some()).count();
+                effects.iter().map(|e| e.outputs.len()).sum::<usize>();
             if inputs
                 .checked_add(effects.len())
                 .is_none_or(|count| count > MAX_ECHO_CALLS)
@@ -1013,7 +1014,7 @@ pub(super) fn canonical_source_byte_echo(
                 inputs = inputs
                     .checked_add(1)
                     .ok_or(FrontendJsonError::Unsupported)?;
-                if let Some(write) = effect.output {
+                for write in effect.outputs.iter().rev() {
                     instructions.push(LocatedInstruction::new(
                         Instruction::ByteOutput { value: id },
                         typed_span(&write.span),
@@ -1066,7 +1067,7 @@ pub(super) fn canonical_source_byte_echo(
                 .is_none_or(|count| count > MAX_ECHO_CALLS)
                 || outputs
                     .checked_add(
-                        effects.iter().filter(|e| e.output.is_some()).count(),
+                        effects.iter().map(|e| e.outputs.len()).sum::<usize>(),
                     )
                     .is_none_or(|count| count > MAX_SOURCE_OUTPUTS)
             {
@@ -1087,7 +1088,7 @@ pub(super) fn canonical_source_byte_echo(
                 inputs = inputs
                     .checked_add(1)
                     .ok_or(FrontendJsonError::Unsupported)?;
-                if let Some(write) = effect.output {
+                for write in effect.outputs.iter().rev() {
                     instructions.push(LocatedInstruction::new(
                         Instruction::ByteOutput { value: id },
                         typed_span(&write.span),
