@@ -55,6 +55,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full twelve-trip unsigned C Fibonacci source selected
+  unbraced stateful `while` arms directly from `if/else`, with one or two
+  source-proven steps changing the emitted byte mask. The pinned Clang
+  frontend accepted it but JSON replay refused a direct loop branch.
+  Bounded conditional replay now verifies both alternatives and preserves
+  only selected local writes, with checked multiline source geometry.
+  An independent C recurrence oracle and the normative Malbolge VM agree
+  on twelve masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+  in 47 steps under EOF and binary stdin for both original and inverted
+  dispatch. Seven invalid C sources and fourteen forged normalized AST
+  nodes refuse publication, including a corrected branch end-column gap.
+  Dynamic guest C loops and the original
+  unmasked Fibonacci byte layout remain unsupported; P0 stays open.
+
+
 - On 2026-11-11, a full twelve-trip unsigned Fibonacci C program
   selected `break` on odd terms before its `do`/`while` ternary condition,
   which contains division by zero in the then branch. Even terms tested

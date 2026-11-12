@@ -25,6 +25,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Directly parented conditional `while` arms (2026-11-11)
+
+A complete twelve-trip unsigned Fibonacci C program now selects one of two
+unbraced `while` statements from `if/else`. The chosen loop iterates once
+or twice, changing an unsigned mask before the next `putchar` call. Both
+branches execute in the complete source, and each loop has a distinct
+state-changing body; this is not a constant folded `if` with empty arms.
+Pinned Clang admitted the source, while the JSON adapter initially refused
+the first function-body declaration because the branch arm was a loop.
+
+The bounded replay now independently verifies each loop against its own
+source-checked Clang parentage and canonical multiline indentation, then
+keeps only the selected local writes. Separate source negatives reject
+nonterminating steps, hidden `getchar`, and protected counter writes.
+The independent unsigned recurrence oracle and normative Malbolge VM agree
+on `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with EOF
+and binary stdin for both the original and the inverted dispatch variant.
+Seven invalid complete C sources and fourteen forged Clang nodes refuse
+without publishing a guest, including an initially accepted end-column
+forgery repaired by exact branch-to-arm endpoint checks.
+This is compile-time C state replay, not general guest-side branching or
+loops. The original unmasked Fibonacci output is still unsupported, and
+P0 remains pending.
+
+
 ### `do` / `while` break skips a pure undefined predicate (2026-11-11)
 
 A full twelve-iteration unsigned Fibonacci C program branches inside a

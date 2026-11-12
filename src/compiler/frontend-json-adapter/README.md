@@ -1696,3 +1696,20 @@ twelve independent masked bytes on the normative guest VM (47 steps each,
 EOF and binary stdin). Six invalid C variants and fourteen forged Clang
 nodes reject without publishing a guest. Dynamic guest C loops and the
 original unmasked Fibonacci byte stream are still unsupported.
+
+### Unbraced conditional `while` arms (2026-11-11)
+
+A source-proven `if/else` may directly own a bounded `while` statement in
+both unbraced arms. The normalized projector checks their exact Clang
+parentage and canonical two-line arm separation, replays each alternative
+on its incoming unsigned state and commits only the chosen writes. Neither
+arm may hide I/O, unbounded iteration, nor a protected outer-counter write.
+
+The complete tracked `local_conditional_while_fibonacci.c` selects one or
+two mask updates per recurrence term, then emits twelve masked bytes that
+match an independent recurrence and normative guest VM (47 steps, EOF and
+binary input). The inverse dispatch also passes, while seven unsupported C
+sources and fourteen forged AST nodes refuse publication. This does not
+execute C control flow in the generated guest:
+the original unmasked Fibonacci layout and dynamic runtime control remain
+outside this source-state proof.

@@ -583,6 +583,43 @@ impl<'node> Flow<'node> {
                 self.branch_effects(scope, depth)?;
                 Some(scope.span.end.byte)
             },
+            "while-statement" => {
+                // A source-proven `if` can own a directly parented unbraced
+                // while arm. Admit only the canonical next-line indentation
+                // and (`else` on its own line) punctuation geometry. Merely
+                // trusting Clang ancestry would admit forged branch spans.
+                let expected_gap = if opening_gap == 2 {
+                    statement.span.begin.column.checked_add(5)?
+                } else if opening_gap == 6 {
+                    statement
+                        .span
+                        .begin
+                        .column
+                        .checked_mul(2)?
+                        .checked_add(8)?
+                } else {
+                    return None;
+                };
+                let expected_lines = if opening_gap == 2 {
+                    1
+                } else {
+                    2
+                };
+                if (arm.span.end.byte == statement.span.end.byte
+                    && arm.span.end != statement.span.end)
+                    || arm.span.begin.line
+                        != previous.span.end.line.checked_add(expected_lines)?
+                    || arm.span.begin.column
+                        != statement.span.begin.column.checked_add(4)?
+                    || arm.span.begin.byte.checked_sub(previous_end)
+                        != Some(expected_gap)
+                    || (opening_gap == 6
+                        && previous.span.begin.column != arm.span.begin.column)
+                {
+                    return None;
+                }
+                self.static_while(statement, previous_end)
+            },
             "call-expression" => {
                 let output = checked_call(self, statement, previous_end)?;
                 let end = output.call.span.end.byte;
@@ -660,6 +697,7 @@ impl<'node> Flow<'node> {
         }
         match else_arm.kind.as_str() {
             "compound-statement"
+            | "while-statement"
             | "call-expression"
             | "binary-expression"
             | "compound-assignment-expression" => {
