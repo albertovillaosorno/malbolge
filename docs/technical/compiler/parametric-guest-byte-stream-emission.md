@@ -26,6 +26,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Pure latest-local comma operands (2026-11-12)
+
+A complete C function captures one byte with `int first = getchar();`,
+then evaluates a plain `first` operand on either side of an inner comma in
+three different `putchar` calls. Pinned Clang accepted the source with
+unused-value warnings, but the JSON adapter originally rejected it at the
+first declaration. The bounded projector now verifies both `lvalue-to-rvalue`
+and local-reference AST nodes, their original parent and source coordinates,
+and the identity of the latest live input. Reading a local for its C value
+has no additional guest I/O effect, including when that value is discarded.
+
+The emitted Malbolge source performs one real guest input and five outputs,
+matching twelve seeded/boundary one-byte oracles in seven normative VM
+instructions. Six invalid C variants and ten forged AST mutations reject
+publication. This does not enable stale local reads after newer input,
+mutating locals, arbitrary comma arithmetic, EOF or guest runtime C storage.
+
 ### Independent input declarations before nested local uses (2026-11-12)
 
 A complete C function captures two successive `getchar` bytes into distinct

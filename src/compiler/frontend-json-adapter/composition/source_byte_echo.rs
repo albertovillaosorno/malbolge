@@ -52,10 +52,11 @@ struct LocalDeclaration<'node> {
     variable_reference: String,
 }
 
-// Every comma operand has an actual input effect; an optional successful
-// putchar result is discarded, but the guest must execute its output.
+// A comma operand selects the latest live input or consumes a fresh one.
+// Source extent differs from the input when a local value is read without I/O.
 struct CommaEffect<'node> {
     input: &'node Node,
+    extent: &'node Node,
     // Outer-to-inner preorder, emitted in inner-to-outer C evaluation order.
     outputs: Vec<&'node Node>,
 }
@@ -396,6 +397,47 @@ fn prove_comma_output_effects<'node>(
     Some((width, effects, output))
 }
 
+// Pure local operands have no new guest input or output effect. Both Clang
+// nodes must denote the current source-proven local and the same C extent.
+fn prove_comma_local_value<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    local: &LocalDeclaration<'_>,
+    previous: u32,
+    expected_id: u32,
+    parent: u32,
+) -> Option<&'node Node> {
+    let [cast, reference] = nodes else {
+        return None;
+    };
+    let start = cast.span.begin.byte;
+    let end = start.checked_add(u32::try_from(local.name.len()).ok()?)?;
+    let line = cast.span.begin.line;
+    let column = cast.span.begin.column;
+    (start > previous
+        && start > local.declaration_end
+        && end < body.span.end.byte
+        && line > local.line
+        && cast.id == expected_id
+        && cast.parent == parent
+        && cast.kind == "cast-expression"
+        && cast.type_name.as_deref() == Some("i32")
+        && cast.operation.as_deref() == Some("lvalue-to-rvalue")
+        && cast.reference.is_none()
+        && metadata_empty(cast)
+        && source_word(cast, start, end, line, column)
+        && reference.id == cast.id.checked_add(1)?
+        && reference.parent == cast.id
+        && reference.kind == "declaration-reference-expression"
+        && reference.type_name.as_deref() == Some("i32")
+        && reference.reference.as_deref()
+            == Some(local.variable_reference.as_str())
+        && reference.operation.is_none()
+        && metadata_empty(reference)
+        && source_word(reference, start, end, line, column))
+    .then_some(cast)
+}
+
 // A left-associative C comma chain executes every operand, including
 // discarded putchar(getchar()) results. The bounded grammar checks every
 // call, source byte and Clang ancestor before admitting its guest effects.
@@ -462,7 +504,7 @@ fn prove_discarded_comma_effects<'node>(
         let expected_leaf_id =
             expected_id.checked_add(u32::try_from(cursor).ok()?)?;
         let leaf = nodes.get(cursor)?;
-        let (width, input, outputs) =
+        let (width, input, outputs, extent) =
             if leaf.reference.as_deref() == Some("external:putchar") {
                 if !seen_new_input
                     && let Some(current_local) = local
@@ -475,7 +517,8 @@ fn prove_discarded_comma_effects<'node>(
                         parent,
                     )
                 {
-                    (width, current_local.input, calls)
+                    let extent = *calls.first()?;
+                    (width, current_local.input, calls, extent)
                 } else {
                     let (width, input, calls) =
                         super::nested_byte_echo::nested_call_in_parent(
@@ -486,8 +529,20 @@ fn prove_discarded_comma_effects<'node>(
                             parent,
                         )?;
                     seen_new_input = true;
-                    (width, input, calls)
+                    let extent = *calls.first()?;
+                    (width, input, calls, extent)
                 }
+            } else if leaf.kind == "cast-expression" {
+                let current_local = local.filter(|_| !seen_new_input)?;
+                let extent = prove_comma_local_value(
+                    nodes.get(cursor..cursor.checked_add(2)?)?,
+                    body,
+                    current_local,
+                    last_end,
+                    expected_leaf_id,
+                    parent,
+                )?;
+                (2, current_local.input, Vec::new(), extent)
             } else {
                 let input = prove_input_call(
                     nodes.get(cursor..cursor.checked_add(3)?)?,
@@ -496,9 +551,8 @@ fn prove_discarded_comma_effects<'node>(
                     (expected_leaf_id, parent),
                 )?;
                 seen_new_input = true;
-                (3, input, Vec::new())
+                (3, input, Vec::new(), input)
             };
-        let extent = outputs.first().copied().unwrap_or(input);
         if extent.id != expected_leaf_id
             || extent.span.begin.line != line
             || extent.span.end.line != line
@@ -515,11 +569,11 @@ fn prove_discarded_comma_effects<'node>(
         }
         cursor = cursor.checked_add(width)?;
         last_end = extent.span.end.byte;
-        effects.push(CommaEffect { input, outputs });
+        effects.push(CommaEffect { input, extent, outputs });
     }
     for (index, binary) in binary_nodes.iter().enumerate() {
         let right = effects.get(binary_count.checked_sub(index)?)?;
-        let right_span = right.outputs.first().copied().unwrap_or(right.input);
+        let right_span = right.extent;
         if !source_word(binary, start, right_span.span.end.byte, line, column) {
             return None;
         }

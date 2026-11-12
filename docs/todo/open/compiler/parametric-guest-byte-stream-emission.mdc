@@ -55,6 +55,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C source used plain input-local values as
+  both discarded and selected comma operands inside nested `putchar` calls.
+  The normalized adapter originally refused this C source. Parent-checked,
+  source-bound `lvalue-to-rvalue` operands now preserve the existing live
+  guest byte without additional input. The normative VM emits five matching
+  bytes in seven instructions for twelve independent binary inputs; six
+  unsupported C variants and ten forged Clang nodes refuse publication.
+  The proof excludes stale reads, general C storage and guest C control.
+
 - On 2026-11-12 a complete C program first consumed each of two
   `getchar` locals inside nested comma-argument `putchar` returns, then used
   the same local again in standalone comma/nested returns. The pinned

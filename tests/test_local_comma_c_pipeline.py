@@ -67,6 +67,14 @@ FIRST_COMMA_BODY = (
 )
 
 
+PURE_LOCAL_COMMA_BODY = (
+    "    int first = getchar();\n"
+    "    putchar((first, putchar(first)));\n"
+    "    putchar((putchar(first), first));\n"
+    "    putchar((first, first));\n"
+)
+
+
 class LocalCommaCPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -180,6 +188,109 @@ class LocalCommaCPipelineTests(unittest.TestCase):
                         guest.stderr,
                         f"malbolge-steps-v1:{reads + len(expected) + 1}\n".encode(),
                     )
+
+    def test_value_only_local_comma_operands_execute_in_guest(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            source = Path(folder) / "pure-local.c"
+            target = Path(folder) / "pure-local.malbolge"
+            source.write_text(self.source(PURE_LOCAL_COMMA_BODY))
+            compiled = self.compile(source, target)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            rng = random.Random(0x5A_2026)
+            samples = [0, 255, 128, 127]
+            samples += [rng.getrandbits(8) for _ in range(8)]
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                guests = executor.map(
+                    lambda value: self.vm(target, bytes((value,))), samples
+                )
+                for value, guest in zip(samples, guests, strict=True):
+                    with self.subTest(value=value):
+                        self.assertEqual(guest.returncode, 0, guest.stderr)
+                        self.assertEqual(guest.stdout, bytes((value,)) * 5)
+                        self.assertEqual(guest.stderr, b"malbolge-steps-v1:7\n")
+
+    def test_value_only_local_comma_rejects_unproved_c(self) -> None:
+        expressions = (
+            "first + 1, putchar(first)",
+            "getchar(), first",
+            "first, getchar(), first",
+            "first, (first)",
+            "first, ++first",
+            "first, putchar(getchar()), first",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            for index, expression in enumerate(expressions):
+                with self.subTest(expression=expression):
+                    source = Path(folder) / f"unsupported-value-{index}.c"
+                    target = Path(folder) / f"unsupported-value-{index}.malbolge"
+                    source.write_text(
+                        self.source(
+                            "    int first = getchar();\n"
+                            f"    putchar(({expression}));\n"
+                        )
+                    )
+                    compiled = self.compile(source, target)
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertFalse(target.exists())
+
+    def test_value_only_local_comma_forgery_refuses_publication(self) -> None:
+        changes = (
+            (13, ("operation",), "integral-cast"),
+            (13, ("parent",), 8),
+            (14, ("reference",), "first@999"),
+            (14, ("span", "end", "byte"), 999),
+            (30, ("parent",), 20),
+            (31, ("reference",), "external:getchar"),
+            (37, ("type",), "u32"),
+            (38, ("reference",), "first@999"),
+            (39, ("operation",), "noop"),
+            (40, ("parent",), 36),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            source = Path(folder) / "pure-local.c"
+            source.write_text(self.source(PURE_LOCAL_COMMA_BODY))
+            normalized = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "pure-local-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=20,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            original = json.loads(normalized.stdout)
+            for index, (node_id, path, value) in enumerate(changes):
+                with self.subTest(node_id=node_id, path=path):
+                    changed = copy.deepcopy(original)
+                    node = next(n for n in changed["nodes"] if n["id"] == node_id)
+                    field = node
+                    for key in path[:-1]:
+                        field = field[key]
+                    field[path[-1]] = value
+                    target = Path(folder) / f"forged-value-{index}.malbolge"
+                    result = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(target),
+                            "--capsule",
+                        ],
+                        input=json.dumps(changed, separators=(",", ":")).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(target.exists())
 
     def test_first_local_consumer_variants_preserve_input_order(self) -> None:
         cases = (
