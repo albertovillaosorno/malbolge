@@ -177,7 +177,7 @@ class MultilineStaticCPipelineTests(unittest.TestCase):
             "    if (getchar()) {\n        putchar(getchar());\n    }\n",
             "    if (2) {\n        putchar(getchar());\n    }\n",
             "    if (1) {\n        putchar(65);\n    }\n",
-            "    if (1) {\n        if (1) putchar(getchar());\n    }\n",
+            "    if (1) {\n        if (getchar()) putchar(getchar());\n    }\n",
             "    if (1) {\n        putchar(getchar());\n\n        putchar(getchar());\n    }\n",
             "    if (1) {\n      putchar(getchar());\n    }\n",
             "    if (1) {\n        putchar(getchar());\n  }\n",
