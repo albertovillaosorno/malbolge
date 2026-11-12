@@ -1057,6 +1057,32 @@ still enable the original byte stream. The experiment is a test-time design
 constraint, not an accepted general-purpose synthesis algorithm.
 
 
+### Revisit of guest-written graphical scratch (2026-11-11)
+
+The original complete unsigned Fibonacci C program requires output
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23`. The first three bytes now have an
+independently admitted **real guest** under the current VM. The test
+`tests/compiler/bridge/unmasked_fibonacci.rs` starts with a source-scratch
+witness for `02 59`, advances D through reached no-ops, and rotates a
+previously skipped graphical word at address 67. A real `j` reads the
+unmodified graphical word at 68 and redirects D to the just-written word
+at 67. A second `*` then reads this full-width, guest-modified value, and
+four real `p` operations yield the previously unreachable byte `0x5f`.
+
+The completed 174-cell source halts after 76 executed instructions and emits
+`02 59 5f`, with no input consumption, under both EOF and binary stdin.
+Its C-byte oracle comes from the complete unsigned recurrence, independently
+of the guest path; the ordinary layout checker re-encodes all source cells,
+proves the actual write and relocation positions, and the normative VM runs
+the resulting source. This shows why the earlier negative graphical-only and
+untouched-expanded-word searches were intentionally **grammar bounded**:
+revisiting a guest-written graphical operand adds genuine state beyond both.
+
+This is still a **test-only** evidence witness, not production automatic
+synthesis, complete twelve-byte original Fibonacci compilation, or general
+C guest-side branches. The remaining nine original bytes and a bounded
+automatic discovery strategy remain open.
+
 ### Search proposals starting at the first expanded word (2026-11-11)
 
 The byte-stream state-space, straight-write and multi-relocation preview

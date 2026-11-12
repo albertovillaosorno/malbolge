@@ -2049,6 +2049,10 @@ mod alternate_terminal_tests;
 #[path = "../../../../tests/compiler/bridge/repeated_relocation.rs"]
 mod repeated_relocation_tests;
 
+#[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/unmasked_fibonacci.rs"]
+mod unmasked_fibonacci_tests;
+
 /// Explore multiple live relocation regions using untouched loader words.
 ///
 /// A split bit selects an additional `j` before the next arithmetic/output
