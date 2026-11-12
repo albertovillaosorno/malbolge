@@ -43,6 +43,8 @@ const CALL_NODE_COUNT: usize = 6;
 const MAX_SOURCE_OUTPUTS: usize = 256;
 const MAX_NESTED_LOCAL_DEPTH: usize = 16;
 const MAX_STATIC_IF_DEPTH: usize = 4;
+const MAX_STATIC_PREDICATE_DEPTH: usize = 8;
+const MAX_STATIC_PREDICATE_NODES: usize = 31;
 
 /// The exact source-local input initializer, with no intervening effects.
 struct LocalDeclaration<'node> {
@@ -1358,92 +1360,178 @@ fn prove_decimal_condition_operand(
     .then_some(value)
 }
 
-// A static predicate may be one decimal i32 literal or a source-checked
-// comparison of two such literals. The whole expression is pure and folded
-// by the pinned frontend, but its operation, operands and fold must agree.
-fn prove_static_predicate<'node>(
-    nodes: &'node [Node],
-    conditional: &Node,
-) -> Option<(usize, bool, &'node Node)> {
-    let first = nodes.first()?;
-    let begin = &conditional.span.begin;
-    let operand_start = begin.byte.checked_add(4)?;
-    let operand_column = begin.column.checked_add(4)?;
-    if first.kind == "integer-literal" {
-        let value = prove_decimal_condition_operand(
-            first,
-            conditional.id.checked_add(1)?,
-            conditional.id,
-            operand_start,
-            begin.line,
-            operand_column,
-        )?;
-        return Some((1, value != 0, first));
-    }
-    let [comparison, left, right, ..] = nodes else {
-        return None;
-    };
-    let operation = comparison.operation.as_deref()?;
-    let op_width = u32::try_from(operation.len()).ok()?;
-    let left_value = prove_decimal_condition_operand(
-        left,
-        comparison.id.checked_add(1)?,
-        comparison.id,
-        operand_start,
-        begin.line,
-        operand_column,
-    )?;
-    let right_start =
-        left.span.end.byte.checked_add(op_width)?.checked_add(2)?;
-    let right_column =
-        left.span.end.column.checked_add(op_width)?.checked_add(2)?;
-    let right_value = prove_decimal_condition_operand(
-        right,
-        left.id.checked_add(1)?,
-        comparison.id,
-        right_start,
-        begin.line,
-        right_column,
-    )?;
-    let selected = match operation {
-        "==" => left_value == right_value,
-        "!=" => left_value != right_value,
-        "<" => left_value < right_value,
-        "<=" => left_value <= right_value,
-        ">" => left_value > right_value,
-        ">=" => left_value >= right_value,
-        _ => return None,
-    };
-    let folded = if selected {
-        "1"
-    } else {
-        "0"
-    };
-    (comparison.id == conditional.id.checked_add(1)?
-        && comparison.parent == conditional.id
-        && comparison.kind == "binary-expression"
-        && comparison.type_name.as_deref() == Some("i32")
-        && comparison.reference.is_none()
-        && comparison.literal.is_none()
-        && comparison.name.is_none()
-        && comparison.definition.is_none()
-        && comparison.inline_specified.is_none()
-        && comparison.linkage.is_none()
-        && comparison.storage_class.is_none()
-        && comparison.storage_duration.is_none()
-        && comparison.constant_integer.as_deref() == Some(folded)
-        && source_word(
-            comparison,
-            operand_start,
-            right.span.end.byte,
-            begin.line,
-            operand_column,
-        ))
-    .then_some((3, selected, right))
+// A recursive C predicate is bound to both its Clang ancestry and exact
+// source coordinates. No interpreter reads source bytes or guest input.
+#[derive(Clone, Copy)]
+struct StaticValueLocation {
+    id: u32,
+    parent: u32,
+    start: u32,
+    line: u32,
+    column: u32,
+    depth: usize,
 }
 
-// Exact static `if (0)` / `if (1)` source conditions. Each bounded C
-// call in both arms is authenticated before selecting guest effects.
+impl StaticValueLocation {
+    fn child(self, id: u32, start: u32, column: u32) -> Option<Self> {
+        Some(Self {
+            id,
+            parent: self.id,
+            start,
+            column,
+            depth: self.depth.checked_add(1)?,
+            ..self
+        })
+    }
+}
+
+// The source extent of a parenthesized value differs from its final leaf.
+fn prove_static_prefix(
+    nodes: &[Node],
+    at: StaticValueLocation,
+) -> Option<(usize, i32, u32)> {
+    let node = nodes.first()?;
+    let parenthesized = node.kind == "parenthesized-expression";
+    if !parenthesized
+        && (node.kind != "unary-expression"
+            || node.operation.as_deref() != Some("!"))
+    {
+        return None;
+    }
+    if parenthesized && node.operation.is_some() {
+        return None;
+    }
+    let child = at.child(
+        at.id.checked_add(1)?,
+        at.start.checked_add(1)?,
+        at.column.checked_add(1)?,
+    )?;
+    let (inner_width, inner_value) =
+        prove_static_value(nodes.get(1..)?, child)?;
+    let value = if parenthesized {
+        inner_value
+    } else {
+        i32::from(inner_value == 0_i32)
+    };
+    let end = nodes.get(1)?.span.end.byte;
+    Some((
+        inner_width.checked_add(1)?,
+        value,
+        if parenthesized {
+            end.checked_add(1)?
+        } else {
+            end
+        },
+    ))
+}
+
+// Reconstruct both branches of a pure binary predicate, even when C would
+// short-circuit the second value. Unknown/effectful operands reject.
+fn prove_static_binary(
+    nodes: &[Node],
+    at: StaticValueLocation,
+) -> Option<(usize, i32, u32)> {
+    let node = nodes.first()?;
+    if node.kind != "binary-expression" {
+        return None;
+    }
+    let operator = node.operation.as_deref()?;
+    if !matches!(
+        operator,
+        "==" | "!=" | "<" | "<=" | ">" | ">=" | "&&" | "||"
+    ) {
+        return None;
+    }
+    let left_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
+    let (left_width, left) = prove_static_value(nodes.get(1..)?, left_at)?;
+    let right_index = left_width.checked_add(1)?;
+    let left_root = nodes.get(1)?;
+    let gap = u32::try_from(operator.len()).ok()?.checked_add(2)?;
+    let right_at = at.child(
+        at.id.checked_add(u32::try_from(right_index).ok()?)?,
+        left_root.span.end.byte.checked_add(gap)?,
+        left_root.span.end.column.checked_add(gap)?,
+    )?;
+    let (right_width, right) =
+        prove_static_value(nodes.get(right_index..)?, right_at)?;
+    let value = match operator {
+        "==" => left == right,
+        "!=" => left != right,
+        "<" => left < right,
+        "<=" => left <= right,
+        ">" => left > right,
+        ">=" => left >= right,
+        "&&" => left != 0_i32 && right != 0_i32,
+        "||" => left != 0_i32 || right != 0_i32,
+        _ => return None,
+    };
+    Some((
+        right_index.checked_add(right_width)?,
+        i32::from(value),
+        nodes.get(right_index)?.span.end.byte,
+    ))
+}
+
+// Only bound, pure, pinned Clang expressions can select guest branch effects.
+fn prove_static_value(
+    nodes: &[Node],
+    at: StaticValueLocation,
+) -> Option<(usize, i32)> {
+    if at.depth >= MAX_STATIC_PREDICATE_DEPTH {
+        return None;
+    }
+    let node = nodes.first()?;
+    if node.kind == "integer-literal" {
+        return prove_decimal_condition_operand(
+            node, at.id, at.parent, at.start, at.line, at.column,
+        )
+        .map(|value| (1, value));
+    }
+    if node.id != at.id
+        || node.parent != at.parent
+        || node.type_name.as_deref() != Some("i32")
+        || node.reference.is_some()
+        || node.literal.is_some()
+        || node.name.is_some()
+        || node.definition.is_some()
+        || node.inline_specified.is_some()
+        || node.linkage.is_some()
+        || node.storage_class.is_some()
+        || node.storage_duration.is_some()
+    {
+        return None;
+    }
+    let (width, value, end) = if node.kind == "binary-expression" {
+        prove_static_binary(nodes, at)?
+    } else {
+        prove_static_prefix(nodes, at)?
+    };
+    (width <= MAX_STATIC_PREDICATE_NODES
+        && node.constant_integer.as_deref() == Some(value.to_string().as_str())
+        && source_word(node, at.start, end, at.line, at.column))
+    .then_some((width, value))
+}
+
+// All static predicates are pure, bounded expression trees. Prove every
+// operand even for `&&` and `||`: skipping an unknown side effect is unsafe.
+fn prove_static_predicate(
+    nodes: &[Node],
+    conditional: &Node,
+) -> Option<(usize, bool)> {
+    let begin = &conditional.span.begin;
+    let (width, value) = prove_static_value(nodes, StaticValueLocation {
+        id: conditional.id.checked_add(1)?,
+        parent: conditional.id,
+        start: begin.byte.checked_add(4)?,
+        line: begin.line,
+        column: begin.column.checked_add(4)?,
+        depth: 0,
+    })?;
+    Some((width, value != 0))
+}
+
+// Exact folded source-C predicates. Each bounded C call in both arms
+// is authenticated before selecting guest effects.
 // Runtime-dependent predicates still have no lowering.
 
 #[expect(
@@ -1480,24 +1568,26 @@ fn prove_static_if<'node>(
     {
         return None;
     }
-    let (predicate_width, condition_true, predicate_end) =
+    let (predicate_width, condition_true) =
         prove_static_predicate(nodes.get(1..)?, conditional)?;
+    let predicate_root = nodes.get(1)?;
+    let predicate_last = nodes.get(predicate_width)?;
     let arm_offset = 1usize.checked_add(predicate_width)?;
     let rest = nodes.get(arm_offset..)?;
     let then_arm = prove_static_if_arm(
         rest,
         body,
         previous,
-        predicate_end.id.checked_add(1)?,
+        predicate_last.id.checked_add(1)?,
         conditional.id,
         local,
         depth,
         column,
     )?;
-    if then_arm.begin != predicate_end.span.end.byte.checked_add(2)?
+    if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
         || then_arm.begin_line != line
         || then_arm.begin_column
-            != predicate_end.span.end.column.checked_add(2)?
+            != predicate_root.span.end.column.checked_add(2)?
     {
         return None;
     }

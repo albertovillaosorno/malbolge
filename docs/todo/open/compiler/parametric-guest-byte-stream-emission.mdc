@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a whole C stream with a captured input, pure logical
+  predicate `!(1 == 2) && (3 > 1)`, selected nested output returns,
+  skipped input arm and trailing read failed normalized adapter admission.
+  The new bounded recursive Clang proof authenticates `!`, parentheses,
+  `&&` / `||` and comparisons over pure `i32` literals, preserving actual
+  guest I/O. The original source emits `00 ff ff 80` in eight VM steps;
+  a distinct true parenthesized predicate does the same, and a false
+  predicate emits `80 01` in seven. Focused dynamic-source and forged-AST
+  rejection tests pass. This remains compile-time branch selection with
+  runtime C conditions, loops, arithmetic, EOF and storage still open.
+
+
 - On 2026-11-12 a complete source-C byte stream with an input local,
   source-constant `if (2 == 2)`, multiline selected/skipped I/O arms and
   nested byte-return outputs initially refused normalized C admission.

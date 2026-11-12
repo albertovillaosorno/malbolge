@@ -10,6 +10,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Pure logical C conditions around guest byte I/O (2026-11-12)
+
+The source-authenticated static `if` proof now evaluates exact nonnegative
+`i32` decimal literals, `!`, parentheses, six relational/equality operators,
+and `&&` / `||` over their pure subexpressions. Up to eight expression levels
+and 31 Clang preorder nodes are admitted; both logical operands must be
+independently proven, even when C would short-circuit. Every parent ID,
+folded integer, operator, source byte extent and line/column is checked.
+Selected branches preserve real guest reads, writes and live input-local
+reuse. Input-dependent predicates, arbitrary arithmetic, side effects,
+spacing variants and deeper trees refuse target publication.
+
+A complete C function containing `if (!(1 == 2) && (3 > 1))` initially
+failed JSON adapter admission. After this repair, binary input `00 ff 80`
+produces `00 ff ff 80` in eight normative VM steps; its false-condition
+counterpart emits `80 01` in seven steps from `00 ff 80 01`.
+`tests/test_static_logical_c_pipeline.py` records pure-expression and
+adversarial-source oracles. This is compile-time branch selection, not guest
+runtime C control, EOF, arithmetic, or durable C storage.
+
 ### Nested literal source-C if/else effects (2026-11-12)
 
 The source-checked successful-byte projector now accepts up to four lexical

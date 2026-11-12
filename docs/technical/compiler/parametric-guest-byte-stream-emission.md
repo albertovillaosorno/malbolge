@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated pure logical C byte-stream conditions (2026-11-12)
+
+The pinned C frontend accepts a complete source program with a live input
+local, `if (!(1 == 2) && (3 > 1))`, selected nested byte outputs, an inactive
+input arm, and a trailing read. The JSON adapter initially refused this
+source even though its condition is fully pure and constant. Its bounded
+recursive proof now admits canonical parentheses, logical negation,
+`&&` / `||`, decimal literals and existing relational/equality operators.
+The proof checks each normalized Clang ancestor, source coordinate, full
+parenthesized extent, and folded `i32` result. Both logical operands are
+proved even if one short-circuits. The limit is eight lexical expression
+levels or 31 predicate nodes; neither dynamic calls nor hidden effects can
+be skipped as constant.
+
+The real Malbolge VM matches `00 ff ff 80` in eight steps for the original
+condition and a distinct parenthesized true condition. A false logical
+condition reads the branch's two input bytes and emits `80 01` in seven
+steps. Focused invalid-source and forged-metadata checks refuse without a
+guest artifact. Full matrix runtime validation is resource-limited; this
+work does not implement runtime guest C predicates, arithmetic, EOF or
+mutable C storage. The P0 remains open.
+
 ### Source-proven decimal C comparisons around guest I/O (2026-11-12)
 
 A complete C stream captures a live `getchar` byte, selects a multiline

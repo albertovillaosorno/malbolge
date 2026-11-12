@@ -158,7 +158,7 @@ class StaticComparisonCPipelineTests(unittest.TestCase):
             "getchar() == 0",
             "first == 0",
             "2 + 1 == 3",
-            "2 == (2)",
+            "2 == (+2)",
             "2==2",
             "-1 < 0",
             "2147483648 > 0",
