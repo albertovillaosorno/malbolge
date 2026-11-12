@@ -63,6 +63,21 @@ struct CommaEffect<'node> {
 
 type OutputCallProof<'node> = (usize, Vec<&'node Node>);
 
+// The nested successful-byte return is not recomputed: every write uses the
+// same already-read guest SSA identity, in innermost-first C evaluation order.
+fn emit_comma_outputs(
+    effect: &CommaEffect<'_>,
+    value: ValueId,
+    instructions: &mut Vec<LocatedInstruction>,
+) {
+    for write in effect.outputs.iter().rev() {
+        instructions.push(LocatedInstruction::new(
+            Instruction::ByteOutput { value },
+            typed_span(&write.span),
+        ));
+    }
+}
+
 const fn metadata_empty(node: &Node) -> bool {
     node.name.is_none()
         && node.definition.is_none()
@@ -1014,15 +1029,10 @@ pub(super) fn canonical_source_byte_echo(
                 inputs = inputs
                     .checked_add(1)
                     .ok_or(FrontendJsonError::Unsupported)?;
-                for write in effect.outputs.iter().rev() {
-                    instructions.push(LocatedInstruction::new(
-                        Instruction::ByteOutput { value: id },
-                        typed_span(&write.span),
-                    ));
-                    outputs = outputs
-                        .checked_add(1)
-                        .ok_or(FrontendJsonError::Unsupported)?;
-                }
+                emit_comma_outputs(effect, id, &mut instructions);
+                outputs = outputs
+                    .checked_add(effect.outputs.len())
+                    .ok_or(FrontendJsonError::Unsupported)?;
             }
             let selected = ValueId::new(
                 u32::try_from(
@@ -1088,15 +1098,10 @@ pub(super) fn canonical_source_byte_echo(
                 inputs = inputs
                     .checked_add(1)
                     .ok_or(FrontendJsonError::Unsupported)?;
-                for write in effect.outputs.iter().rev() {
-                    instructions.push(LocatedInstruction::new(
-                        Instruction::ByteOutput { value: id },
-                        typed_span(&write.span),
-                    ));
-                    outputs = outputs
-                        .checked_add(1)
-                        .ok_or(FrontendJsonError::Unsupported)?;
-                }
+                emit_comma_outputs(effect, id, &mut instructions);
+                outputs = outputs
+                    .checked_add(effect.outputs.len())
+                    .ok_or(FrontendJsonError::Unsupported)?;
             }
             // The last input clobbers any prior accumulator-local value.
             latest_local = None;
