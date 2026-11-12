@@ -31,6 +31,16 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+Complete unsigned Fibonacci C programs may place nested pure unsigned
+arithmetic inside an entirely skipped ternary operand. Recursive
+authentication covers source-ordered addition, subtraction, multiplication,
+division, remainder, shifts and bitwise operators without performing any
+skipped operation. A selected path still evaluates all operations strictly
+and rejects division by zero. The two tested ternary polarities emit
+twelve independently justified bytes on the real VM in 43/41 steps.
+Source-side effects and forged normalized nodes remain rejected; this
+does not implement dynamic guest C arithmetic or unmasked stream layout.
+
 A complete Fibonacci condition now short-circuits a pure unsigned ternary:
 when skipped, both division and remainder branches may have zero divisors,
 without triggering undefined evaluation. Both arms are authenticated against

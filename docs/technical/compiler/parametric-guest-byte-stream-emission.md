@@ -25,6 +25,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested pure arithmetic in an unexecuted C operand (2026-11-11)
+
+A complete twelve-iteration unsigned Fibonacci C program puts additions,
+subtractions, divisions and remainders inside both arms of a ternary
+protected by an outer C short-circuit guard. Even terms skip the
+entire ternary; evaluating either nested division or remainder would
+divide by zero. The pinned C frontend admitted the source, but the
+normalized adapter originally refused the whole program.
+
+Bounded source replay now authenticates recursively every child of a
+skipped pure unsigned arithmetic expression, including multiple undefined
+operations, without materializing an arithmetic result. Selected
+operands continue through strict checked evaluation. The two full C
+variants choose opposite ternary branches on odd terms. The normative
+Malbolge VM and separate unsigned-C recurrence oracle agree on twelve
+bytes with EOF and binary stdin (43 and 41 steps, respectively). Six
+unsupported source mutations and forged normalized operators/metadata
+refuse before artifact publication. This is finite source projection,
+not guest-side C control flow or arbitrary byte-stream synthesis; the
+original unmasked Fibonacci layout is still unsupported.
+
 ### Skipped ternary inside a logical guard (2026-11-11)
 
 A complete twelve-trip unsigned Fibonacci C program uses a source-proven

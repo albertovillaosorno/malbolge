@@ -776,19 +776,22 @@ impl<'node> Flow<'node> {
         }
         let binary = self.take(parent, "binary-expression")?;
         let operator = binary.operation.as_deref()?;
-        if !matches!(operator, "/" | "%") || !typed_operator(binary, operator) {
+        if !matches!(
+            operator,
+            "+" | "-" | "*" | "/" | "%" | "<<" | ">>" | "^" | "&" | "|"
+        ) || !typed_operator(binary, operator)
+        {
             return None;
         }
-        let (_left_value, left) =
-            self.expression(binary.id, depth.checked_add(1)?)?;
-        let (right_value, right) =
-            self.expression(binary.id, depth.checked_add(1)?)?;
-        if right_value != 0 || !ordered_binary_spans(binary, left, right) {
-            return None;
-        }
-        // A skipped division/remainder by zero is syntactically valid C;
-        // unlike a selected division, its result is never materialized.
-        Some(binary)
+        // Every descendant must be a pure source-proven unsigned C
+        // expression, but none may be evaluated: zero divisors and out-of-
+        // range shifts are valid within an entirely skipped C operand.
+        // Selected expressions still use the strict evaluator above.
+        let left =
+            self.unselected_expression(binary.id, depth.checked_add(1)?)?;
+        let right =
+            self.unselected_expression(binary.id, depth.checked_add(1)?)?;
+        ordered_binary_spans(binary, left, right).then_some(binary)
     }
 
     /// Prove a source-ordered conditional, including the unselected pure arm.

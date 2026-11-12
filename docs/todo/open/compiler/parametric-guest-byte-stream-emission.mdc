@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full twelve-trip Fibonacci C program with nested
+  division/remainder and addition/subtraction in a short-circuited
+  ternary initially refused at JSON admission. A recursive proof now
+  authenticates skipped pure unsigned expressions without evaluating
+  undefined arithmetic. Both predicate polarities match a separate C
+  recurrence oracle under the real Malbolge VM with empty/binary stdin,
+  in 43/41 guest steps. Six invalid source variants and forged AST
+  metadata reject without guest publication. Dynamic C control and the
+  unmasked Fibonacci byte stream remain unimplemented; P0 stays open.
+
 - On 2026-11-11 a complete C Fibonacci program guards a ternary with
   logical short-circuiting. Its division and remainder arms both have
   a zero denominator when skipped; the first source replay rejected the
