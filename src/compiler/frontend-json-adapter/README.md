@@ -31,6 +31,18 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+Pure skipped unsigned C unary expressions now authenticate `~`, unary `+`
+and unary `-` around arithmetic whose evaluation would be undefined. The
+source-bound unary proof uses the same exact span grammar whether the
+expression executes or is skipped. In a complete twelve-trip Fibonacci
+recurrence, an outer `&&` skips `~(next / (next & 1U))` on even terms,
+when its denominator is zero. On odd terms the selected arithmetic remains
+strict. The pinned C frontend, typed adapter, layout and normative guest VM
+emit twelve independently calculated masked bytes in 47 steps under empty
+and binary stdin. Both sign spellings are also tested end to end. Selected
+zero division, skipped I/O, signed casts and forged Clang nodes reject.
+This is bounded C source replay, not dynamic guest C unary computation.
+
 Complete unsigned Fibonacci C programs may place nested pure unsigned
 arithmetic inside an entirely skipped ternary operand. Recursive
 authentication covers source-ordered addition, subtraction, multiplication,

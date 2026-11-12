@@ -25,6 +25,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Skipped pure unsigned unary arithmetic (2026-11-11)
+
+A complete twelve-trip unsigned C Fibonacci recurrence evaluates a
+short-circuit `&&` before a bitwise unary `~` applied to division. On the
+first even term the division would be undefined if executed, so the
+normalized frontend previously rejected the entire program. The
+source-proof path now authenticates skipped `~`, unary `+`, and unary `-`
+using the exact selected-unary source grammar without evaluating their
+operands. The pinned C frontend and normative Malbolge VM produce the
+independent masked recurrence `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+in 47 steps under EOF and binary stdin. Six invalid C variants and ten
+forged normalized nodes reject without a published guest. The bounded
+expression-depth limit, general guest-side C execution and original
+unmasked Fibonacci layout remain unresolved; P0 stays pending.
+
 ### Nested pure arithmetic in an unexecuted C operand (2026-11-11)
 
 A complete twelve-iteration unsigned Fibonacci C program puts additions,

@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete twelve-trip C Fibonacci recurrence used a
+  short-circuited unsigned unary expression around division by zero on
+  even terms. The pinned frontend accepted it but bounded JSON replay
+  originally refused the first declaration. A shared exact unary span
+  proof now authenticates skipped `~`, `+` and `-` without evaluating
+  undefined arithmetic, while executed operands still enforce C rules.
+  The independent recurrence oracle and real normative VM agree on twelve
+  masked bytes in 47 steps with EOF and binary stdin. Six bad C variants
+  and ten normalized AST forgeries refuse guest publication. Original
+  unmasked output and dynamic guest arithmetic remain P0 work.
+
 - On 2026-11-11 a full twelve-trip Fibonacci C program with nested
   division/remainder and addition/subtraction in a short-circuited
   ternary initially refused at JSON admission. A recursive proof now

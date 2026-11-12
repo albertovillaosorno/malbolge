@@ -342,27 +342,7 @@ impl<'node> Flow<'node> {
         let operation = unary.operation.as_deref()?;
         let (value, operand) =
             self.expression(unary.id, depth.checked_add(1)?)?;
-        if !matches!(operation, "~" | "+" | "-")
-            || !typed_operator(unary, operation)
-            || !span_within(&unary.span, &operand.span)
-            || unary.span.begin.byte >= operand.span.begin.byte
-            || unary.span.end.byte != operand.span.end.byte
-            || (operation != "~"
-                && (operand.kind != "parenthesized-expression"
-                    || unary.span.begin.line != operand.span.begin.line
-                    || operand
-                        .span
-                        .begin
-                        .byte
-                        .checked_sub(unary.span.begin.byte)
-                        != Some(1)
-                    || operand
-                        .span
-                        .begin
-                        .column
-                        .checked_sub(unary.span.begin.column)
-                        != Some(1)))
-        {
+        if !checked_unsigned_unary_span(unary, operand) {
             return None;
         }
         Some((
@@ -748,6 +728,15 @@ impl<'node> Flow<'node> {
                 return None;
             }
             return Some(grouped);
+        }
+        if self.peek()?.kind == "unary-expression" {
+            // A skipped unary expression remains source-authenticated,
+            // without evaluating its potentially undefined operand.
+            let unary = self.take(parent, "unary-expression")?;
+            let operand =
+                self.unselected_expression(unary.id, depth.checked_add(1)?)?;
+            return checked_unsigned_unary_span(unary, operand)
+                .then_some(unary);
         }
         if self.peek()?.kind == "conditional-expression" {
             // C skips the entire conditional when its parent short-circuits.
@@ -2668,6 +2657,31 @@ impl<'node> Flow<'node> {
             checked_condition_comparison(comparison, left_value, right_value)?;
         Some((selected, comparison))
     }
+}
+
+/// A pure unsigned unary operator must span its complete source operand.
+/// Preserve the selected-evaluation grammar for skipped operands as well:
+/// signs require one adjacent opening parenthesis, unlike bitwise NOT.
+fn checked_unsigned_unary_span(unary: &Node, operand: &Node) -> bool {
+    let Some(operation) = unary.operation.as_deref() else {
+        return false;
+    };
+    matches!(operation, "~" | "+" | "-")
+        && typed_operator(unary, operation)
+        && span_within(&unary.span, &operand.span)
+        && unary.span.begin.byte < operand.span.begin.byte
+        && unary.span.end.byte == operand.span.end.byte
+        && (operation == "~"
+            || (operand.kind == "parenthesized-expression"
+                && unary.span.begin.line == operand.span.begin.line
+                && operand.span.begin.byte.checked_sub(unary.span.begin.byte)
+                    == Some(1)
+                && operand
+                    .span
+                    .begin
+                    .column
+                    .checked_sub(unary.span.begin.column)
+                    == Some(1)))
 }
 
 /// Require a fully covered source-ordered binary expression, not a
