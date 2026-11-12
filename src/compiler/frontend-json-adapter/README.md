@@ -10,6 +10,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Nested literal source-C if/else effects (2026-11-12)
+
+The source-checked successful-byte projector now accepts up to four lexical
+levels of `if (0)` / `if (1)`, including unbraced nested `if/else`, `else if`
+chains, and nested conditionals in canonical multiline braced arms. It proves
+both active and skipped Clang branch trees, including parent IDs, exact
+constant literals, source coordinates, source extents and bounded depth.
+Only the compile-time selected branch emits guest `ByteInput` / `ByteOutput`
+effects, reusing the latest live local until a new read invalidates it.
+
+A complete nested function executes three byte reads and four outputs in
+eight normative VM steps across twelve binary streams. Separate multiline,
+skipped-arm and `else if` sources pass independent guest oracles; four nested
+levels execute and five refuse. Six unsupported C changes and seventeen
+forged Clang metadata variants reject without publication. This does not
+implement runtime C conditions, arithmetic, EOF or arbitrary guest storage.
+
 ### Discarded comma effects under constant C branches (2026-11-12)
 
 Source-authenticated standalone comma statements in literal C `if/else` arms

@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested constant C conditions and else-if chains (2026-11-12)
+
+A complete source-C function combines a live input local, an unbraced nested
+`if (1) if (0) ... else ...`, comma-return output, an inactive nested arm,
+and later independent reads. The pinned Clang frontend admitted the source,
+but normalized JSON-to-typed-IR projection initially refused it. The source
+proof now admits up to four nested literal `if (0)` / `if (1)` levels, including
+`else if` chains and nested statements within canonical multiline compound
+arms. Every selected and skipped child must match its direct Clang parent,
+preorder ID, exact literal, byte extent and line/column coordinates; unknown
+or nonliteral branch effects still refuse target publication.
+
+The actual Malbolge guest reads three binary bytes and emits the four-byte
+independent oracle in eight normative VM steps for twelve boundary and seeded
+streams. A multiline nested-arm source matches three independent three-byte
+oracles in seven steps, an inactive nested-arm source reads only the following
+byte in three steps, and a selected `else if` source matches four binary
+oracles in five steps. Four lexical nesting levels execute while five reject
+without an artifact. Six unsupported C sources and seventeen forged Clang
+metadata changes fail closed. This remains compile-time literal branch
+selection and accumulator-only successful-byte I/O, not runtime guest C
+conditions, EOF handling, general storage, arithmetic or loops. P0 stays open.
+
 ### Standalone comma effects in constant C arms (2026-11-12)
 
 A complete source-C function uses a multiline `if (1)` block with

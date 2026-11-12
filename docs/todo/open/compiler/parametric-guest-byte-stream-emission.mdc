@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C program nested literal conditions around
+  a live input local, comma-return output and skipped guest reads. The
+  pinned frontend accepted it, but normalized projection refused the first
+  declaration. Parent-checked bounded recursive source proof now admits
+  four static `if/else` levels, `else if` chains and nested multiline-arm
+  statements. The normative guest matches twelve three-input/four-output
+  binary oracles in eight steps, three multiline-arm oracles in seven,
+  three skipped-arm oracles in three and four `else if` streams in five.
+  A four-deep guest executes and five levels reject, as do six unknown C
+  variants and seventeen forged AST changes. Runtime C control, loops,
+  arithmetic, EOF and general mutable guest locals remain open.
+
 - On 2026-11-12 a complete C source placed standalone comma output
   returns and mixed discarded input/output calls in a selected multiline
   constant branch, with a separately proven skipped comma arm. Normalized

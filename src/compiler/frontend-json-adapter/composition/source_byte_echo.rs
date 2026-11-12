@@ -42,6 +42,7 @@ const MAX_ECHO_CALLS: usize = 128;
 const CALL_NODE_COUNT: usize = 6;
 const MAX_SOURCE_OUTPUTS: usize = 256;
 const MAX_NESTED_LOCAL_DEPTH: usize = 16;
+const MAX_STATIC_IF_DEPTH: usize = 4;
 
 /// The exact source-local input initializer, with no intervening effects.
 struct LocalDeclaration<'node> {
@@ -1052,8 +1053,29 @@ fn prove_static_if_statement<'node>(
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    depth: usize,
 ) -> Option<(usize, Vec<StaticIfEffect<'node>>, u32)> {
     let child = nodes.first()?;
+    if child.kind == "if-statement" {
+        let proof = prove_static_if(
+            nodes,
+            body,
+            previous,
+            expected_id,
+            parent,
+            local,
+            depth.checked_add(1)?,
+        )?;
+        return Some((
+            proof.width,
+            if proof.selected {
+                proof.effects
+            } else {
+                Vec::new()
+            },
+            proof.end,
+        ));
+    }
     // Authenticate a complete comma argument in the same branch parent as
     // ordinary calls; materialize each operand in C evaluation order.
     let comma_proof = if child.kind == "call-expression"
@@ -1141,8 +1163,33 @@ fn prove_static_if_arm<'node>(
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    depth: usize,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
+    if child.kind == "if-statement" {
+        let proof = prove_static_if(
+            nodes,
+            body,
+            previous,
+            expected_id,
+            parent,
+            local,
+            depth.checked_add(1)?,
+        )?;
+        return Some(StaticIfArm {
+            width: proof.width,
+            effects: if proof.selected {
+                proof.effects
+            } else {
+                Vec::new()
+            },
+            begin: child.span.begin.byte,
+            end: proof.end,
+            end_line: child.span.end.line,
+            end_column: child.span.end.column,
+            braced: false,
+        });
+    }
     if child.kind != "compound-statement" {
         let (width, effects, end) = prove_static_if_statement(
             nodes,
@@ -1151,6 +1198,7 @@ fn prove_static_if_arm<'node>(
             expected_id,
             parent,
             local,
+            depth,
         )?;
         return Some(StaticIfArm {
             width,
@@ -1219,6 +1267,7 @@ fn prove_static_if_arm<'node>(
                 expected_id.checked_add(u32::try_from(cursor).ok()?)?,
                 child.id,
                 local.filter(|_| local_is_live),
+                depth,
             )?;
         if statement_end >= end {
             return None;
@@ -1279,7 +1328,9 @@ fn prove_static_if<'node>(
     body: &Node,
     previous: u32,
     expected_id: u32,
+    parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    depth: usize,
 ) -> Option<StaticIfProof<'node>> {
     let [conditional, literal, rest @ ..] = nodes else {
         return None;
@@ -1288,12 +1339,13 @@ fn prove_static_if<'node>(
     let line = conditional.span.begin.line;
     let column = conditional.span.begin.column;
     let value = literal.literal.as_deref()?;
-    if start <= previous
+    if depth >= MAX_STATIC_IF_DEPTH
+        || start <= previous
         || start <= body.span.begin.byte
         || line == 0
         || column == 0
         || conditional.id != expected_id
-        || conditional.parent != body.id
+        || conditional.parent != parent
         || conditional.kind != "if-statement"
         || conditional.type_name.is_some()
         || conditional.reference.is_some()
@@ -1330,6 +1382,7 @@ fn prove_static_if<'node>(
         literal.id.checked_add(1)?,
         conditional.id,
         local,
+        depth,
     )?;
     if then_arm.begin != start.checked_add(7)? {
         return None;
@@ -1348,6 +1401,7 @@ fn prove_static_if<'node>(
             expected_id.checked_add(u32::try_from(width).ok()?)?,
             conditional.id,
             local,
+            depth,
         )?;
         let else_gap = if then_arm.braced {
             6
@@ -1474,7 +1528,9 @@ pub(super) fn canonical_source_byte_echo(
                 body,
                 previous,
                 next_id,
+                body.id,
                 latest_local.as_ref().map(|(local, _)| local),
+                0,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if proof.selected {
