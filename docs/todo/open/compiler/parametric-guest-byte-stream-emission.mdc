@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a whole C function with repeated outputs from two
+  automatic `getchar` locals and an intervening direct call exposed a
+  normalized JSON admission gap. Source-checked five-node additional
+  local uses now lower to output replay of the same live input SSA, and
+  the existing verified latest-read guest backend executes the effects.
+  Real VM output matches independent five-byte oracles under two binary
+  inputs in nine steps. Eight stale/effectful or over-limit C variants and thirteen
+  forged later-output AST/span mutations refuse guest publication.
+  Guest C locals, stale reads, arithmetic, EOF and C control remain open.
+
 - On 2026-11-12 a source-C experiment with automatic `int` locals
   capturing `getchar()` exposed a real Clang JSON projection refusal.
   An exact ten-node local declaration/output proof now carries each

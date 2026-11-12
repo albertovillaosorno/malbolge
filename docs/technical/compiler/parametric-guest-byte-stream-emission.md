@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ### Dynamic source-C byte echo under successful input (2026-11-12)
 
+The next complete source-C experiment uses three runtime `getchar`
+results: one automatic `int` is output twice, a direct call is output
+once, and a second automatic `int` is output twice. The pinned Clang
+frontend admitted it, but the existing ten-node adjacent-local projector
+initially refused the later output, before guest publication. The repaired
+source proof authenticates each repeated five-node output, ties it to the
+same local declaration and emits multiple guest outputs without rereading
+stdin. The compiler selects the independently verified latest-successful-
+read layout mode instead of weakening the strict echo mode.
+
+The normative guest VM emits the independent five-byte oracle for both
+`00 ff 80` and `41 0a fe` input, taking exactly nine VM steps. Eight
+unsupported stale/effectful or over-limit C programs and thirteen forged later-output
+AST/span changes reject without guest artifacts. This is genuine guest
+runtime value retention only in the accumulator; it is not mutable C
+storage, general I/O flow, EOF semantics or guest C branching. The P0
+remains open.
+
 An additional complete source-C experiment now captures each successful
 `getchar()` result in an automatic `int` local before passing that local
 to `putchar`. The pinned frontend previously refused the first declaration.

@@ -172,6 +172,189 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
                         self.assertEqual(vm.returncode, 0, vm.stderr)
                         self.assertEqual(vm.stdout, sample[:count])
 
+    def test_repeated_local_successful_byte_runs_on_guest(self) -> None:
+        # A C automatic local retains its successful getchar result while
+        # repeated putchar calls observe the same value; a fresh read evicts it.
+        source_text = (
+            "#include <stdio.h>\n"
+            "void emit(void) {\n"
+            "    int first = getchar();\n"
+            "    putchar(first);\n"
+            "    putchar(first);\n"
+            "    putchar(getchar());\n"
+            "    int second = getchar();\n"
+            "    putchar(second);\n"
+            "    putchar(second);\n"
+            "}\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            source = Path(folder) / "repeated-local.c"
+            target = Path(folder) / "repeated-local.malbolge"
+            source.write_text(source_text)
+            built = self.compile(source, target)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            self.assertTrue(target.is_file())
+            inputs = (bytes((0, 255, 128)), bytes((65, 10, 254)))
+            for data in inputs:
+                with self.subTest(data=data):
+                    oracle = bytes((data[0], data[0], data[1], data[2], data[2]))
+                    vm = subprocess.run(
+                        [str(TOOLS[3]), str(target), "--input-stdin", "--report-steps"],
+                        input=data,
+                        check=False,
+                        capture_output=True,
+                        timeout=20,
+                    )
+                    self.assertEqual(vm.returncode, 0, vm.stderr)
+                    self.assertEqual(vm.stdout, oracle)
+                    self.assertEqual(vm.stderr, b"malbolge-steps-v1:9\n")
+
+    def test_repeated_local_excess_outputs_refuses(self) -> None:
+        # Never publish a 257th live-source output instruction.
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            source = Path(folder) / "replay-257.c"
+            target = Path(folder) / "replay-257.malbolge"
+            source.write_text(
+                "#include <stdio.h>\n"
+                "void emit(void) {\n"
+                "    int first = getchar();\n" + "    putchar(first);\n" * 257 + "}\n"
+            )
+            built = self.compile(source, target)
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn(b"Unsupported", built.stderr)
+            self.assertFalse(target.exists())
+
+    def test_repeated_local_rejects_stale_and_effectful_uses(self) -> None:
+        source = self.local_source().replace(
+            "    putchar(first);\n",
+            "    putchar(first);\n    putchar(first);\n",
+        )
+        candidates = (
+            source.replace(
+                "    putchar(first);\n    putchar(first);",
+                "    putchar(first);\n    putchar(getchar());\n    putchar(first);",
+            ),
+            source.replace(
+                "    putchar(first);\n    putchar(first);",
+                "    putchar(first);\n    first = getchar();\n    putchar(first);",
+            ),
+            source.replace(
+                "    putchar(first);\n    putchar(first);",
+                "    putchar(first);\n    putchar(first + 1);",
+            ),
+            source.replace(
+                "    putchar(first);\n    putchar(first);",
+                "    putchar(first);\n    putchar(0);",
+            ),
+            source.replace(
+                "    putchar(first);\n    putchar(first);",
+                "    putchar(first);\n    putchar((unsigned char)first);",
+            ),
+            source.replace(
+                "    putchar(first);\n    putchar(first);",
+                "    putchar(first);\n    putchar(first + getchar());",
+            ),
+            source.replace(
+                "    putchar(first);\n    putchar(first);",
+                "    putchar(first);\n    int other = first;\n    putchar(other);",
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            for index, text in enumerate(candidates):
+                with self.subTest(index=index):
+                    path = Path(folder) / f"stale-{index}.c"
+                    target = Path(folder) / f"stale-{index}.malbolge"
+                    path.write_text(text)
+                    built = self.compile(path, target)
+                    self.assertNotEqual(built.returncode, 0)
+                    self.assertIn(b"Unsupported", built.stderr)
+                    self.assertFalse(target.exists())
+
+    def test_repeated_local_forged_second_output_refuses(self) -> None:
+        source_text = self.local_source().replace(
+            "    putchar(first);\n",
+            "    putchar(first);\n    putchar(first);\n",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            source = Path(folder) / "repeated-local-forgery.c"
+            source.write_text(source_text)
+            frontend = subprocess.run(
+                [
+                    str(TOOLS[0]),
+                    "--guest-include",
+                    str(ROOT / "src/runtime/guest-c-library/contract/include"),
+                    "--resource-dir",
+                    str(ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"),
+                    "--source-id",
+                    "tests/repeated-local-forgery-v1",
+                    str(source),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=15,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            artifact = json.loads(frontend.stdout)
+            self.assertEqual(len(artifact["nodes"]), 17)
+            mutations = (
+                ("new-input", 12, "reference", "external:getchar"),
+                ("wrong-parent", 13, "parent", 7),
+                ("wrong-cast", 15, "operation", "integral-cast"),
+                ("stale-local", 16, "reference", "other@45"),
+                ("extra-effect", 12, "operation", "other"),
+                ("wrong-result", 12, "type", "void"),
+                ("wrong-call-id", 12, "id", 77),
+                ("wrong-callee-type", 14, "type", "fn()->i32"),
+            )
+            for label, index, field, replacement in mutations:
+                with self.subTest(label=label):
+                    forged = json.loads(frontend.stdout)
+                    forged["nodes"][index][field] = replacement
+                    target = Path(folder) / f"forged-{label}.malbolge"
+                    run = subprocess.run(
+                        [
+                            str(TOOLS[1]),
+                            "--layout-backend",
+                            str(TOOLS[2]),
+                            "--output",
+                            str(target),
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    self.assertNotEqual(run.returncode, 0, run.stderr)
+                    self.assertIn(b"Unsupported", run.stderr)
+                    self.assertFalse(target.exists())
+            for index, side, coordinate in (
+                (12, "begin", "byte"),
+                (12, "end", "column"),
+                (15, "end", "byte"),
+                (16, "begin", "column"),
+                (16, "end", "line"),
+            ):
+                with self.subTest(index=index, side=side, coordinate=coordinate):
+                    forged = json.loads(frontend.stdout)
+                    forged["nodes"][index]["span"][side][coordinate] += 1
+                    target = Path(folder) / f"span-{index}-{side}-{coordinate}.malbolge"
+                    run = subprocess.run(
+                        [
+                            str(TOOLS[1]),
+                            "--layout-backend",
+                            str(TOOLS[2]),
+                            "--output",
+                            str(target),
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    self.assertNotEqual(run.returncode, 0, run.stderr)
+                    self.assertIn(b"Unsupported", run.stderr)
+                    self.assertFalse(target.exists())
+
     def test_source_bound_and_excess_effects(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
             source = Path(folder) / "echo-128.c"
@@ -301,7 +484,10 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
             source.replace(
                 "putchar(first);", "first = getchar();\n    putchar(first);"
             ),
-            source.replace("putchar(first);", "putchar(first);\n    putchar(first);"),
+            source.replace(
+                "putchar(first);",
+                "putchar(first);\n    putchar(getchar());\n    putchar(first);",
+            ),
             source.replace("int first", "unsigned int first"),
             source.replace("putchar(first);", "putchar((unsigned char)first);"),
             source.replace(

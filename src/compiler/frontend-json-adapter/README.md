@@ -31,6 +31,24 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Successful-byte dynamic C echo (2026-11-12)
 
+The source-C live-input projector now also admits repeated output of the
+same automatic `int` local *before* another `getchar` runs. An exact five-node
+Clang `putchar(local)` subtree proves each additional read of the original
+local declaration and all source byte/line/column endpoints. The canonical
+typed trace retains one `ByteInput` SSA identity and emits multiple
+`ByteOutput` effects for that same value. The compiler selects the existing
+opt-in `--latest-byte-trace` backend only when repetition occurs; direct and
+one-shot local pairs retain the strict adjacent-echo mode. A fresh input
+invalidates the previous local's executable SSA value. Output traces are
+limited to 256 calls and inputs to 128 successful reads.
+
+A complete mixed direct/local C function emits five bytes from three
+successful runtime inputs in nine normative VM steps. Its binary-output
+oracle, source-side mutation refusals and forged normalized AST/span
+refusals are tested in `tests/test_dynamic_c_byte_echo_pipeline.py`.
+This is not a guest C local register: arithmetic, writes, stale replay,
+conditional control, EOF and partial I/O remain unsupported.
+
 The source-authenticated input path also accepts a directly adjacent
 two-statement form, such as:
 

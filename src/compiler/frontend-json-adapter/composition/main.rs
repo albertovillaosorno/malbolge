@@ -119,6 +119,7 @@ fn execute() -> Result<(), String> {
     }
     let mode_arg = match mode {
         FrontendGuestMode::AdjacentEcho => "",
+        FrontendGuestMode::LatestRead => "--latest-byte-trace",
         FrontendGuestMode::EmptyVoid => "--empty-void",
         FrontendGuestMode::InitialZeroOutput => "--initial-zero-output",
         FrontendGuestMode::SeededByteLiteral => "--seeded-byte-literal",

@@ -40,7 +40,7 @@ use super::{
 
 const MAX_ECHO_CALLS: usize = 128;
 const CALL_NODE_COUNT: usize = 6;
-type LocalForward<'node> = (&'node Node, &'node Node, &'node str);
+const MAX_SOURCE_OUTPUTS: usize = 256;
 
 /// The exact source-local input initializer, with no intervening effects.
 struct LocalDeclaration<'node> {
@@ -342,6 +342,8 @@ fn prove_local_output<'node>(
     nodes: &'node [Node],
     body: &Node,
     local: &LocalDeclaration<'_>,
+    expected_id: u32,
+    previous: u32,
 ) -> Option<&'node Node> {
     let [
         output,
@@ -362,7 +364,7 @@ fn prove_local_output<'node>(
     let arg_end = arg_start.checked_add(name_len)?;
     let argument_column = output_column.checked_add(8)?;
     let source_ok = output_end < body.span.end.byte
-        && output.id == local.input_callee_id.checked_add(1)?
+        && output.id == expected_id
         && output.parent == body.id
         && output.kind == "call-expression"
         && output.type_name.as_deref() == Some("i32")
@@ -370,6 +372,7 @@ fn prove_local_output<'node>(
         && output.operation.is_none()
         && metadata_empty(output)
         && output_start > local.declaration_end
+        && output_start > previous
         && output_line > local.line
         && source_word(
             output,
@@ -438,24 +441,6 @@ fn prove_local_output<'node>(
     source_ok.then_some(output)
 }
 
-/// A local input assignment followed by a source-proven read of that local.
-///
-/// The layout backend still receives adjacent input/output SSA effects. It
-/// cannot observe the C automatic local, so this grammar admits no intervening
-/// read, write, cast or change to the captured successful input byte.
-fn prove_local_call<'node>(
-    nodes: &'node [Node],
-    body: &Node,
-    previous: u32,
-) -> Option<LocalForward<'node>> {
-    if nodes.len() != 10 {
-        return None;
-    }
-    let local = prove_local_declaration(nodes.get(..5)?, body, previous)?;
-    let output = prove_local_output(nodes.get(5..10)?, body, &local)?;
-    Some((local.input, output, local.name))
-}
-
 fn valid_envelope(input: &Artifact, function: &Node, body: &Node) -> bool {
     input.schema_version == 1
         && input.identity == super::EXPECTED_ARTIFACT
@@ -496,9 +481,11 @@ fn valid_envelope(input: &Artifact, function: &Node, body: &Node) -> bool {
         && body.span.begin.byte < body.span.end.byte
 }
 
-/// Admit one through 128 direct or local-forwarded input/output pairs.
+/// Admit successful input/output pairs with exact live local replay.
 ///
-/// No EOF-dependent C control or other guest effects are admitted; the
+/// Repeated local outputs do not read input again, and a later input
+/// invalidates the old local SSA identity. No other guest effects or EOF
+/// behavior are admitted; the
 /// resulting typed program describes a *successful-byte* input trace.
 ///
 /// # Errors
@@ -527,38 +514,82 @@ pub(super) fn canonical_source_byte_echo(
     let mut previous = body.span.begin.byte;
     let mut next_id = 3u32;
     let mut consumed = 0usize;
-    let mut count = 0usize;
+    let mut inputs = 0usize;
+    let mut outputs = 0usize;
+    let mut repeated = false;
     let mut local_names = HashSet::new();
+    let mut latest_local: Option<(LocalDeclaration<'_>, ValueId)> = None;
     let mut instructions = Vec::new();
     while consumed < rest.len() {
         let first = rest.get(consumed).ok_or(FrontendJsonError::Unsupported)?;
-        if count == MAX_ECHO_CALLS || first.id != next_id {
+        if outputs == MAX_SOURCE_OUTPUTS || first.id != next_id {
             return Err(FrontendJsonError::Unsupported);
         }
-        let (width, input_call, output_call) = if first.kind
-            == "declaration-statement"
+        if first.kind == "call-expression"
+            && let Some((local, value)) = latest_local.as_ref()
+            && let Some(nodes) = rest.get(consumed..consumed.saturating_add(5))
+            && let Some(output) =
+                prove_local_output(nodes, body, local, next_id, previous)
         {
-            let nodes = rest
-                .get(consumed..consumed.saturating_add(10))
+            // This is the same live successful input, not another read.
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteOutput { value: *value },
+                typed_span(&output.span),
+            ));
+            repeated = true;
+            outputs = outputs.saturating_add(1);
+            previous = output.span.end.byte;
+            consumed = consumed.saturating_add(5);
+            next_id = next_id
+                .checked_add(5)
                 .ok_or(FrontendJsonError::Unsupported)?;
-            let (read, write, name) = prove_local_call(nodes, body, previous)
-                .ok_or(FrontendJsonError::Unsupported)?;
-            if !local_names.insert(name) {
-                return Err(FrontendJsonError::Unsupported);
-            }
-            (10, read, write)
-        } else {
-            let nodes = rest
-                .get(consumed..consumed.saturating_add(CALL_NODE_COUNT))
-                .ok_or(FrontendJsonError::Unsupported)?;
-            let (read, write) = prove_call(nodes, body, previous)
-                .ok_or(FrontendJsonError::Unsupported)?;
-            (CALL_NODE_COUNT, read, write)
-        };
+            continue;
+        }
+        if inputs == MAX_ECHO_CALLS {
+            return Err(FrontendJsonError::Unsupported);
+        }
         let id = ValueId::new(
-            u32::try_from(count)
+            u32::try_from(inputs)
                 .map_err(|_error| FrontendJsonError::Unsupported)?,
         );
+        let (width, input_call, output_call) =
+            if first.kind == "declaration-statement" {
+                let nodes = rest
+                    .get(consumed..consumed.saturating_add(10))
+                    .ok_or(FrontendJsonError::Unsupported)?;
+                let local = prove_local_declaration(
+                    nodes.get(..5).ok_or(FrontendJsonError::Unsupported)?,
+                    body,
+                    previous,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+                let output = prove_local_output(
+                    nodes.get(5..10).ok_or(FrontendJsonError::Unsupported)?,
+                    body,
+                    &local,
+                    local
+                        .input_callee_id
+                        .checked_add(1)
+                        .ok_or(FrontendJsonError::Unsupported)?,
+                    local.declaration_end,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+                if !local_names.insert(local.name) {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                let read = local.input;
+                latest_local = Some((local, id));
+                (10, read, output)
+            } else {
+                let nodes = rest
+                    .get(consumed..consumed.saturating_add(CALL_NODE_COUNT))
+                    .ok_or(FrontendJsonError::Unsupported)?;
+                let (read, write) = prove_call(nodes, body, previous)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+                // A newer input destroys the previous live accumulator value.
+                latest_local = None;
+                (CALL_NODE_COUNT, read, write)
+            };
         instructions.push(LocatedInstruction::new(
             Instruction::ByteInput {
                 result: id,
@@ -578,7 +609,8 @@ pub(super) fn canonical_source_byte_echo(
                     .map_err(|_error| FrontendJsonError::Unsupported)?,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
-        count = count.saturating_add(1);
+        inputs = inputs.saturating_add(1);
+        outputs = outputs.saturating_add(1);
     }
     if previous >= body.span.end.byte {
         return Err(FrontendJsonError::Unsupported);
@@ -658,5 +690,12 @@ pub(super) fn canonical_source_byte_echo(
     {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    Ok((wire, FrontendGuestMode::AdjacentEcho))
+    Ok((
+        wire,
+        if repeated {
+            FrontendGuestMode::LatestRead
+        } else {
+            FrontendGuestMode::AdjacentEcho
+        },
+    ))
 }

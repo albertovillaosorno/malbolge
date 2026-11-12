@@ -144,6 +144,8 @@ const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 pub enum FrontendGuestMode {
     /// One or more direct successful-byte input/output calls from source C.
     AdjacentEcho,
+    /// A source-proven C local may be output repeatedly until the next input.
+    LatestRead,
     /// Exactly two VM-witnessed distinct nonzero printable bytes.
     DistinctLiteralPair,
     /// Exactly three independently VM-witnessed different bytes.
