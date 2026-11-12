@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete source-C program with two braced constant
+  `if/else` blocks and ordered guest input/output effects initially failed
+  normalized AST admission. A bounded one-line compound-arm proof now
+  authenticates both selected and skipped source-call sequences, forwarding
+  successful byte-return data and invalidating input-local aliases after
+  new reads. The independent oracle for three binary inputs is four outputs
+  in eight genuine VM steps. General runtime-dependent conditions, loops,
+  arithmetic, EOF and multiline blocks remain unsupported; the original
+  demanding input-dependent C loop still refuses without an artifact.
+
+## Evidence
+
 - On 2026-11-12 a full C program mixing `getchar`-captured local
   bytes, selected and skipped `if (0)` / `if (1)` output arms and direct
   guest I/O initially failed normalized AST admission. Source-verified

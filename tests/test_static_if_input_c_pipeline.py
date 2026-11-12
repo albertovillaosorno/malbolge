@@ -210,7 +210,7 @@ class StaticIfInputCPipelineTests(unittest.TestCase):
         invalid = (
             "if (getchar()) putchar(first);",
             "if (2) putchar(first);",
-            "if (1) { putchar(first); }",
+            "if (1) { putchar(first); ++first; }",
             "if (1) putchar(first); else ++first;",
             "if (1) putchar(first + 1);",
             "if (0) putchar(first + 1);",

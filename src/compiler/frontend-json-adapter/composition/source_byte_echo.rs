@@ -994,25 +994,30 @@ fn prove_local_output_chain<'node>(
     prove_nested_local_output(nodes, body, local, expected_id, previous, parent)
 }
 
-// Source-authenticated, unbraced C I/O arm. An unselected arm is still
-// checked completely before the adapter drops its guest effects.
-struct StaticIfArm<'node> {
-    width: usize,
+// A constant arm can contain several ordered, independently authenticated
+// byte effects. A successful read invalidates any preceding guest-local alias.
+struct StaticIfEffect<'node> {
     input: Option<&'node Node>,
-    // Outer-to-inner preorder is reversed when writing guest output.
+    // Outer-to-inner Clang preorder; reverse to emit successful call returns.
     outputs: Vec<&'node Node>,
-    begin: u32,
-    end: u32,
 }
 
-fn prove_static_if_arm<'node>(
+struct StaticIfArm<'node> {
+    width: usize,
+    effects: Vec<StaticIfEffect<'node>>,
+    begin: u32,
+    end: u32,
+    braced: bool,
+}
+
+fn prove_static_if_statement<'node>(
     nodes: &'node [Node],
     body: &Node,
     previous: u32,
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
-) -> Option<StaticIfArm<'node>> {
+) -> Option<(usize, StaticIfEffect<'node>, u32)> {
     let child = nodes.first()?;
     let (width, input, outputs) = if child.kind == "call-expression"
         && child.reference.as_deref() == Some("external:putchar")
@@ -1048,24 +1053,108 @@ fn prove_static_if_arm<'node>(
         )?;
         (3, Some(read), Vec::new())
     };
-    let extent = outputs.first().copied().or(input)?;
-    (child.id == expected_id).then_some(StaticIfArm {
+    let end = outputs.first().copied().or(input)?.span.end.byte;
+    (child.id == expected_id).then_some((
         width,
-        input,
-        outputs,
-        begin: child.span.begin.byte,
-        end: extent.span.end.byte,
+        StaticIfEffect { input, outputs },
+        end,
+    ))
+}
+
+// Braced blocks are deliberately limited to a single C source line with
+// precisely separated call statements and no nested declarations or control.
+// Both arms undergo this proof, including the discarded branch.
+fn prove_static_if_arm<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+    parent: u32,
+    local: Option<&LocalDeclaration<'node>>,
+) -> Option<StaticIfArm<'node>> {
+    let child = nodes.first()?;
+    if child.kind != "compound-statement" {
+        let (width, effect, end) = prove_static_if_statement(
+            nodes,
+            body,
+            previous,
+            expected_id,
+            parent,
+            local,
+        )?;
+        return Some(StaticIfArm {
+            width,
+            effects: vec![effect],
+            begin: child.span.begin.byte,
+            end,
+            braced: false,
+        });
+    }
+    let begin = child.span.begin.byte;
+    let end = child.span.end.byte;
+    let line = child.span.begin.line;
+    let column = child.span.begin.column;
+    if begin <= previous
+        || end >= body.span.end.byte
+        || line == 0
+        || column == 0
+        || child.id != expected_id
+        || child.parent != parent
+        || child.type_name.is_some()
+        || child.reference.is_some()
+        || child.operation.is_some()
+        || !metadata_empty(child)
+        || !source_word(child, begin, end, line, column)
+    {
+        return None;
+    }
+    let mut cursor = 1usize;
+    let mut effect_end = begin;
+    let mut effects = Vec::new();
+    let mut local_is_live = local.is_some();
+    loop {
+        if effects.len() >= 16 {
+            return None;
+        }
+        let statement = nodes.get(cursor)?;
+        if statement.span.begin.byte != effect_end.checked_add(2)? {
+            return None;
+        }
+        let (width, effect, statement_end) = prove_static_if_statement(
+            nodes.get(cursor..)?,
+            body,
+            effect_end,
+            expected_id.checked_add(u32::try_from(cursor).ok()?)?,
+            child.id,
+            local.filter(|_| local_is_live),
+        )?;
+        if statement_end >= end {
+            return None;
+        }
+        local_is_live &= effect.input.is_none();
+        effects.push(effect);
+        cursor = cursor.checked_add(width)?;
+        effect_end = statement_end;
+        if effect_end.checked_add(3)? == end {
+            break;
+        }
+    }
+    Some(StaticIfArm {
+        width: cursor,
+        effects,
+        begin,
+        end,
+        braced: true,
     })
 }
 
-// Exact static `if (0)` / `if (1)` source conditions, with one or two
-// verified unbraced I/O arms. Both arms must be authentic even though only
-// the selected one executes in the guest. No runtime condition is lowered.
+// Exact static `if (0)` / `if (1)` source conditions. Each bounded C
+// call in both arms is authenticated before selecting guest effects.
+// Runtime-dependent predicates still have no lowering.
 struct StaticIfProof<'node> {
     width: usize,
     selected: bool,
-    input: Option<&'node Node>,
-    outputs: Vec<&'node Node>,
+    effects: Vec<StaticIfEffect<'node>>,
     end: u32,
 }
 
@@ -1136,8 +1225,7 @@ fn prove_static_if<'node>(
     let mut width = 2usize.checked_add(then_arm.width)?;
     let mut end = then_arm.end;
     let mut selected = value == "1";
-    let mut input = then_arm.input;
-    let mut outputs = then_arm.outputs;
+    let mut effects = then_arm.effects;
     if conditional.span.end.byte != then_arm.end {
         let else_arm = prove_static_if_arm(
             nodes.get(width..)?,
@@ -1147,15 +1235,19 @@ fn prove_static_if<'node>(
             conditional.id,
             local,
         )?;
-        if else_arm.begin != then_arm.end.checked_add(7)? {
+        let else_gap = if then_arm.braced {
+            6
+        } else {
+            7
+        };
+        if else_arm.begin != then_arm.end.checked_add(else_gap)? {
             return None;
         }
         width = width.checked_add(else_arm.width)?;
         end = else_arm.end;
         selected = true;
         if value == "0" {
-            input = else_arm.input;
-            outputs = else_arm.outputs;
+            effects = else_arm.effects;
         }
     }
     if end >= body.span.end.byte
@@ -1166,8 +1258,7 @@ fn prove_static_if<'node>(
     Some(StaticIfProof {
         width,
         selected,
-        input,
-        outputs,
+        effects,
         end,
     })
 }
@@ -1266,40 +1357,43 @@ pub(super) fn canonical_source_byte_echo(
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if proof.selected {
-                if inputs + usize::from(proof.input.is_some()) > MAX_ECHO_CALLS
-                    || outputs + proof.outputs.len() > MAX_SOURCE_OUTPUTS
-                {
-                    return Err(FrontendJsonError::Unsupported);
+                for effect in &proof.effects {
+                    if inputs + usize::from(effect.input.is_some())
+                        > MAX_ECHO_CALLS
+                        || outputs + effect.outputs.len() > MAX_SOURCE_OUTPUTS
+                    {
+                        return Err(FrontendJsonError::Unsupported);
+                    }
+                    let value = if let Some(input) = effect.input {
+                        let value = ValueId::new(
+                            u32::try_from(inputs)
+                                .map_err(|_| FrontendJsonError::Unsupported)?,
+                        );
+                        instructions.push(LocatedInstruction::new(
+                            Instruction::ByteInput {
+                                result: value,
+                                type_id: TypeId::new(0),
+                            },
+                            typed_span(&input.span),
+                        ));
+                        inputs += 1;
+                        latest_local = None;
+                        value
+                    } else {
+                        latest_local
+                            .as_ref()
+                            .ok_or(FrontendJsonError::Unsupported)?
+                            .1
+                    };
+                    for output in effect.outputs.iter().rev() {
+                        instructions.push(LocatedInstruction::new(
+                            Instruction::ByteOutput { value },
+                            typed_span(&output.span),
+                        ));
+                    }
+                    outputs += effect.outputs.len();
+                    requires_latest = true;
                 }
-                let value = if let Some(input) = proof.input {
-                    let value = ValueId::new(
-                        u32::try_from(inputs)
-                            .map_err(|_| FrontendJsonError::Unsupported)?,
-                    );
-                    instructions.push(LocatedInstruction::new(
-                        Instruction::ByteInput {
-                            result: value,
-                            type_id: TypeId::new(0),
-                        },
-                        typed_span(&input.span),
-                    ));
-                    inputs += 1;
-                    latest_local = None;
-                    value
-                } else {
-                    latest_local
-                        .as_ref()
-                        .ok_or(FrontendJsonError::Unsupported)?
-                        .1
-                };
-                for output in proof.outputs.iter().rev() {
-                    instructions.push(LocatedInstruction::new(
-                        Instruction::ByteOutput { value },
-                        typed_span(&output.span),
-                    ));
-                }
-                outputs += proof.outputs.len();
-                requires_latest = true;
             }
             previous = proof.end;
             consumed = consumed

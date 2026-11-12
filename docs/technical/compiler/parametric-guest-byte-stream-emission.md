@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Single-line C compound arms around runtime guest I/O (2026-11-12)
+
+A complete C program first failed normalized frontend admission when two
+constant `if/else` branches used braced, ordered calls instead of one
+unbraced call per arm. The source-checked byte adapter now admits a bounded
+one-line `{ call(); call(); }` grammar with up to sixteen direct `getchar`,
+`putchar(getchar())`, nested successful `putchar` returns, and live-local
+`putchar` calls. It authenticates every Clang compound ancestor, both branch
+arms, call identity, byte/line/column extent, and the exact statement gaps.
+Only the selected arm performs guest effects; selected new input invalidates
+the preceding accumulator-only local alias. Neither arm can hide an unknown
+source effect, including an unreachable arm.
+
+The original compound C witness emits three genuine guest reads and four
+independently expected output bytes in eight VM instructions. Runtime C
+conditions, multiline blocks, arbitrary expressions, local mutations,
+EOF, failed I/O and general guest C loop or branch execution still refuse.
+The full Fibonacci-style input-dependent control experiment continues to
+reject at the normalized C adapter, without publishing an artifact.
+
 ### Constant C if/else arms around live guest bytes (2026-11-12)
 
 A complete source-C function interleaves a live input local with literal
