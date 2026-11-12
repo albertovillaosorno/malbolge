@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C program first consumed each of two
+  `getchar` locals inside nested comma-argument `putchar` returns, then used
+  the same local again in standalone comma/nested returns. The pinned
+  normalized adapter originally refused the first declaration. Separating
+  each source-authenticated local capture from its initial output now emits
+  two real guest input effects and twelve output effects. Sixteen seeded
+  binary VM cases agree with an independent oracle in fifteen steps;
+  seven unsupported C sources and thirteen forged AST changes refuse
+  publication. Guest storage, EOF and dynamic C control remain unsupported.
+
 - On 2026-11-12 a complete source-C program reused two successive `getchar`
   locals in nested and comma-argument `putchar` return expressions. The
   pinned Clang AST initially refused at normalized JSON admission. Bounded

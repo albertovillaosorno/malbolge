@@ -47,7 +47,6 @@ const MAX_NESTED_LOCAL_DEPTH: usize = 16;
 struct LocalDeclaration<'node> {
     declaration_end: u32,
     input: &'node Node,
-    input_callee_id: u32,
     line: u32,
     name: &'node str,
     variable_reference: String,
@@ -662,7 +661,6 @@ fn prove_local_declaration<'node>(
     source_ok.then_some(LocalDeclaration {
         declaration_end: declaration.span.end.byte,
         input,
-        input_callee_id: input_callee.id,
         line,
         name,
         variable_reference,
@@ -1209,52 +1207,54 @@ pub(super) fn canonical_source_byte_echo(
             requires_latest = true;
             continue;
         }
-        let (width, input_call, output_calls) = if first.kind
-            == "declaration-statement"
-        {
+        // A declaration is an input effect, not a declaration/output pair.
+        // Keep its live byte until a genuinely newer input overwrites A;
+        // the next source statement can be any separately proven consumer.
+        if first.kind == "declaration-statement" {
             let declaration_nodes = rest
                 .get(consumed..consumed.saturating_add(5))
                 .ok_or(FrontendJsonError::Unsupported)?;
             let local =
                 prove_local_declaration(declaration_nodes, body, previous)
                     .ok_or(FrontendJsonError::Unsupported)?;
-            let (output_width, calls) = prove_local_output_chain(
-                rest.get(consumed.saturating_add(5)..)
-                    .ok_or(FrontendJsonError::Unsupported)?,
-                body,
-                &local,
-                local
-                    .input_callee_id
-                    .checked_add(1)
-                    .ok_or(FrontendJsonError::Unsupported)?,
-                local.declaration_end,
-                body.id,
-            )
-            .ok_or(FrontendJsonError::Unsupported)?;
             if !local_names.insert(local.name) {
                 return Err(FrontendJsonError::Unsupported);
             }
-            let read = local.input;
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: id,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&local.input.span),
+            ));
+            previous = local.declaration_end;
             latest_local = Some((local, id));
-            (5 + output_width, read, calls)
-        } else {
-            let nodes =
-                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?;
-            let (width, read, calls) = if let Some((read, write)) = nodes
+            consumed = consumed
+                .checked_add(5)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(5)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            inputs = inputs
+                .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
+        let nodes =
+            rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?;
+        let (width, input_call, output_calls) = if let Some((read, write)) =
+            nodes
                 .get(..CALL_NODE_COUNT)
                 .and_then(|slice| prove_call(slice, body, previous, body.id))
-            {
-                (CALL_NODE_COUNT, read, vec![write])
-            } else {
-                super::nested_byte_echo::nested_call(
-                    nodes, body, previous, next_id,
-                )
+        {
+            (CALL_NODE_COUNT, read, vec![write])
+        } else {
+            super::nested_byte_echo::nested_call(nodes, body, previous, next_id)
                 .ok_or(FrontendJsonError::Unsupported)?
-            };
-            // A newer input destroys the previous live accumulator value.
-            latest_local = None;
-            (width, read, calls)
         };
+        // A newer input destroys the previous live accumulator value.
+        latest_local = None;
         if outputs
             .checked_add(output_calls.len())
             .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)

@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Independent input declarations before nested local uses (2026-11-12)
+
+A complete C function captures two successive `getchar` bytes into distinct
+`int` locals, but deliberately uses each local **first** as the inner value
+of `putchar((putchar(local), putchar(local)))`. A separate standalone comma
+statement then combines a direct local output and a nested successful
+`putchar` return. The pinned Clang source initially refused at the first
+`declaration-statement`, because the projector coupled each local
+initialization to a following direct output call.
+
+The source-checked projector now emits a declaration's real guest `ByteInput`
+independently of its eventual consumer. The established parent, reference,
+source-span and call proofs then reuse the live SSA byte when the first
+consumer is a nested or comma expression, with no hidden extra reads. In the
+normative Malbolge VM, sixteen seeded/boundary two-byte inputs each produce
+twelve independently expected outputs in fifteen instructions. Seven invalid
+C source variants and thirteen forged Clang node changes refuse target
+publication. Local values remain available only while their exact input is
+the current guest accumulator; a newer read invalidates them.
+
+This is successful-byte I/O and bounded source-authenticated straight-line
+C, not general C storage, arbitrary expression evaluation, EOF handling,
+failed output or dynamic guest control flow. The P0 remains pending.
+
 ### Live source-C input locals in comma return expressions (2026-11-12)
 
 A complete C program captures two successive `getchar` bytes in distinct
