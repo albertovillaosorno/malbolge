@@ -25,6 +25,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### `do` / `while` break skips a pure undefined predicate (2026-11-11)
+
+A full twelve-iteration unsigned Fibonacci C program branches inside a
+`do` body. Odd recurrence terms select `break` before testing a post-test
+ternary; its unselected condition contains `1U / 0U`, which must not be
+evaluated by C. Even terms do not break and evaluate the safe zero arm.
+The pinned Clang frontend admitted the program, but the normalized adapter
+previously evaluated the skipped condition and refused the source.
+
+The bounded replay now authenticates a skipped pure `do` condition without
+evaluating it after selected `break` or `return`; normal exit and selected
+`continue` still use strict evaluation. The independent unsigned recurrence
+and normative Malbolge VM agree on twelve masked bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under EOF and
+binary input. Seven unsupported C variants and eleven forged ASTs refuse
+publication, including a byte/column endpoint forgery closed by the shared
+binary-expression span proof. A valid unconditional-break variant also
+reaches the normative guest VM. This remains bounded source replay, not
+guest-side dynamic C control; unmasked Fibonacci layout remains unsupported.
+
 ### An unbraced inner `while` as a C `do` body (2026-11-11)
 
 A complete unsigned Fibonacci C program places a directly parented,

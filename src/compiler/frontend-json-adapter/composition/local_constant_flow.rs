@@ -2061,9 +2061,20 @@ impl<'node> Flow<'node> {
             // Braced declarations are not visible to the trailing test.
             self.locals.truncate(outer_len);
             let selected_exit = self.loop_exit.take();
-            // The trailing condition is a complete source subtree even if
-            // `break` skips it at runtime. `continue` must check it.
-            let (continue_loop, condition) = self.condition(statement)?;
+            // `break` and `return` skip the trailing C condition entirely;
+            // authenticate its pure source subtree without executing it.
+            // `continue` must evaluate it, including any undefined arithmetic.
+            let (continue_loop, condition) = if matches!(
+                selected_exit,
+                Some(LoopExit::Break | LoopExit::Return)
+            ) {
+                (
+                    false,
+                    self.unselected_condition_expression(statement.id, 0)?,
+                )
+            } else {
+                self.condition(statement)?
+            };
             // On a shared source line, body-to-condition byte and column
             // gaps must agree; forged brace offsets cannot change alone.
             if !span_within(&statement.span, &condition.span)
@@ -2753,16 +2764,15 @@ fn checked_unsigned_unary_span(unary: &Node, operand: &Node) -> bool {
 
 /// Require a fully covered source-ordered binary expression, not a
 /// detached operand or an unchecked trailing effect.
-const fn ordered_binary_spans(
-    expression: &Node,
-    left: &Node,
-    right: &Node,
-) -> bool {
+fn ordered_binary_spans(expression: &Node, left: &Node, right: &Node) -> bool {
     span_within(&expression.span, &left.span)
         && span_within(&expression.span, &right.span)
-        && expression.span.begin.byte == left.span.begin.byte
+        && expression.span.begin == left.span.begin
         && left.span.end.byte < right.span.begin.byte
-        && right.span.end.byte == expression.span.end.byte
+        && right.span.end == expression.span.end
+        && (left.span.end.line != right.span.begin.line
+            || right.span.begin.byte.checked_sub(left.span.end.byte)
+                == right.span.begin.column.checked_sub(left.span.end.column))
 }
 
 /// Require all three operands of `condition ? then : else` in exact C

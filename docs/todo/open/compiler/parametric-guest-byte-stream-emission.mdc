@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11, a full twelve-trip unsigned Fibonacci C program
+  selected `break` on odd terms before its `do`/`while` ternary condition,
+  which contains division by zero in the then branch. Even terms tested
+  the safe zero else branch. Pinned Clang admitted the source, but the
+  JSON adapter originally evaluated the skipped condition and refused.
+  Source-proven pure skipping now respects `break` and `return`, while
+  selected normal and `continue` predicates still evaluate strictly.
+  The original and unconditional-break variants agree with an independent
+  twelve-byte oracle under the normative Malbolge VM in 47 steps with
+  EOF and binary stdin. Seven bad C sources and eleven forged AST nodes
+  refuse publication; a previously accepted forged binary column span
+  is now rejected. Guest-side dynamic control and original unmasked
+  Fibonacci layout remain unsupported; P0 stays open.
+
 - On 2026-11-11 a complete twelve-byte Fibonacci C program nested an
   unbraced `while` directly inside a post-test `do`, with a selected
   inner `break` and outer state-dependent repetition. The pinned

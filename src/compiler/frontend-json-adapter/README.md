@@ -31,6 +31,17 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+Complete twelve-trip unsigned Fibonacci C now admits a selected
+`do`-body `break` without evaluating its source-proven pure trailing
+predicate, even when the skipped C expression contains division by zero.
+An even-term path in the same program evaluates a safe false predicate,
+while an odd-term path skips an undefined ternary arm. Bounded source replay
+verifies both paths, the twelve-byte output and 47 real VM steps under
+EOF/binary input. `return` also skips the pure post-test condition;
+`continue` still evaluates it. Seven negative C sources and eleven forged
+AST nodes refuse; the shared binary-expression span proof checks byte and
+column endpoints. Guest-side dynamic C branching is not implemented.
+
 Two nested source-checked C switches may now carry a selected inner
 `continue` into the enclosing bounded loop. The exit, ordered byte output,
 and case-local recurrence updates are isolated from every unselected inner
