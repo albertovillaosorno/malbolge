@@ -10,6 +10,28 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Nested source-proven counted loops (2026-11-12)
+
+The bounded source-C projector accepts up to two levels of canonical counted
+`for (int i = 0; i < N; ++i)` loops with distinct automatic induction
+identities. Each nested loop is verified under its actual Clang compound
+parent, including branch ancestry, lexical depth, exact source coordinates,
+positive decimal bound and source-proven body effects. The inner loop's effect
+sequence is expanded before the outer loop's, but every execution performs
+fresh normative guest input and output. Braced nested `if/else` arms may
+capture their own successful-byte input locals and reuse them until the next
+read; inactive arms are authenticated but do not execute guest effects.
+
+`tests/test_nested_static_for_c_pipeline.py` starts from a complete C program
+that previously rejected the outer `for-statement`. Its two-by-three loop
+reads eight bytes and produces fourteen byte outputs in twenty-three guest
+steps, with exact independent binary-oracle parity. Three loop shapes
+produce six matching binary VM traces, while seven source negatives and
+seven forged nested Clang node mutations reject without publication.
+Three nested loops, dynamic induction, mutable local storage, EOF and runtime
+C conditions still reject. The guest does not execute a
+runtime `for` instruction: static induction is unrolled to real byte I/O.
+
 ### Branch-scoped loop input locals (2026-11-12)
 
 The bounded counted-loop source proof now carries explicit permission to

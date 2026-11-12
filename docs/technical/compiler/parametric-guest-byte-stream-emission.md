@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested counted C loops with independent guest input (2026-11-12)
+
+A complete two-level source-C matrix stream combines nested `for` induction,
+per-inner-iteration `int current = getchar();`, selected and skipped constant
+`if/else` branches, nested successful `putchar` returns and a distinct read
+at the end of each outer iteration. Its pinned Clang JSON was initially
+rejected at the outer `for-statement` rather than producing a guest artifact.
+The extended source proof authenticates both inductions independently against
+Clang parent IDs, variable identities, exact source spans and canonical loop
+geometry. Each inner counted body is expanded in C execution order before
+its containing counted loop; guest `ByteInput` and `ByteOutput` remain real
+runtime effects with independent SSA identities for every read.
+
+The original two-by-three program now compiles into a 1,231-byte binary
+Malbolge capsule. The normative VM reads eight binary input bytes and emits
+fourteen oracle bytes in twenty-three steps, including `00`, `ff` and `80`.
+Three loop shapes (1x1, 3x2 and 2x3) match six independently constructed
+binary guest-output and exact step oracles. Seven unsupported source shapes
+and seven forged Clang node mutations refuse target publication.
+Nesting is limited to two lexical counted loops, positive decimal bounds
+1–16, and at most sixteen expanded effects inside each compound statement.
+The 128-read/256-write total trace caps remain in force. Runtime-dependent
+loop conditions, byte arithmetic, EOF and general C storage are not implemented.
+P0 remains open.
+
 ### Lexically scoped input locals in counted C branches (2026-11-12)
 
 One complete counted C loop now places `int chosen = getchar();` inside

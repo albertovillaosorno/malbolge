@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete nested two-by-three source-C stream with
+  per-iteration local input, constant `if/else`, nested output returns and
+  independent trailing reads originally rejected normalized `for-statement`
+  admission. The nested source proof now authenticates distinct Clang
+  induction declarations, source geometry and loop-body ancestry. Its actual
+  1,231-byte Malbolge capsule executes eight independent guest reads,
+  fourteen binary-oracle output bytes and 23 normative VM steps. Across
+  three loop shapes, six binary VM oracles pass; seven source and seven
+  forged-AST negatives reject unsupported control, forged ancestry
+  and stale byte use. Dynamic C loop conditions, arithmetic, EOF and general
+  mutable storage remain open; P0 is not retired.
+
 - On 2026-11-12 source-C counted loops with fresh `getchar` locals
   declared in selected nested `if` or `else` blocks initially failed at
   normalized `for-statement` admission. Literal-branch proof now carries

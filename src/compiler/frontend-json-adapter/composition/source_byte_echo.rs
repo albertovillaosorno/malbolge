@@ -43,6 +43,7 @@ const CALL_NODE_COUNT: usize = 6;
 const MAX_SOURCE_OUTPUTS: usize = 256;
 const MAX_NESTED_LOCAL_DEPTH: usize = 16;
 const MAX_STATIC_IF_DEPTH: usize = 4;
+const MAX_STATIC_FOR_DEPTH: usize = 2;
 const MAX_STATIC_PREDICATE_DEPTH: usize = 8;
 const MAX_STATIC_PREDICATE_NODES: usize = 31;
 
@@ -1001,6 +1002,7 @@ fn prove_local_output_chain<'node>(
 
 // A constant arm can contain several ordered, independently authenticated
 // byte effects. A successful read invalidates any preceding guest-local alias.
+#[derive(Clone)]
 struct StaticIfEffect<'node> {
     input: Option<&'node Node>,
     // Outer-to-inner Clang preorder; reverse to emit successful call returns.
@@ -1060,8 +1062,31 @@ fn prove_static_if_statement<'node>(
     local: Option<&LocalDeclaration<'node>>,
     depth: usize,
     allow_new_local: bool,
+    for_depth: usize,
 ) -> Option<(usize, Vec<StaticIfEffect<'node>>, u32)> {
     let child = nodes.first()?;
+    if child.kind == "for-statement" {
+        if for_depth >= MAX_STATIC_FOR_DEPTH {
+            return None;
+        }
+        let proof = prove_static_for(
+            nodes,
+            body,
+            previous,
+            expected_id,
+            parent,
+            for_depth.checked_add(1)?,
+        )?;
+        let size = proof.effects.len().checked_mul(proof.iterations)?;
+        if size > 16 {
+            return None;
+        }
+        let mut effects = Vec::with_capacity(size);
+        for _ in 0..proof.iterations {
+            effects.extend(proof.effects.iter().cloned());
+        }
+        return Some((proof.width, effects, proof.end));
+    }
     if child.kind == "if-statement" {
         let proof = prove_static_if(
             nodes,
@@ -1072,6 +1097,7 @@ fn prove_static_if_statement<'node>(
             local,
             depth.checked_add(1)?,
             allow_new_local,
+            for_depth,
         )?;
         return Some((
             proof.width,
@@ -1173,6 +1199,7 @@ fn prove_static_if_arm<'node>(
     depth: usize,
     conditional_column: u32,
     allow_new_local: bool,
+    for_depth: usize,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
     if child.kind == "if-statement" {
@@ -1185,6 +1212,7 @@ fn prove_static_if_arm<'node>(
             local,
             depth.checked_add(1)?,
             allow_new_local,
+            for_depth,
         )?;
         return Some(StaticIfArm {
             width: proof.width,
@@ -1212,6 +1240,7 @@ fn prove_static_if_arm<'node>(
             local,
             depth,
             allow_new_local,
+            for_depth,
         )?;
         return Some(StaticIfArm {
             width,
@@ -1317,6 +1346,7 @@ fn prove_static_if_arm<'node>(
                 declared_local.as_ref().or(local).filter(|_| local_is_live),
                 depth,
                 allow_new_local,
+                for_depth,
             )?
         };
         if statement_end >= end {
@@ -1327,8 +1357,10 @@ fn prove_static_if_arm<'node>(
         // than an expression whose terminating `;` is outside its span.
         previous_includes_terminator = statement.kind
             == "declaration-statement"
-            || (statement.kind == "if-statement"
-                && statement.span.end.line > statement.span.begin.line);
+            || (matches!(
+                statement.kind.as_str(),
+                "if-statement" | "for-statement"
+            ) && statement.span.end.line > statement.span.begin.line);
         expected_line = statement.span.end.line.checked_add(1)?;
         if !declares_local {
             local_is_live &= statement_effects
@@ -1394,6 +1426,8 @@ fn prove_static_for<'node>(
     body: &Node,
     previous: u32,
     expected_id: u32,
+    parent: u32,
+    for_depth: usize,
 ) -> Option<StaticForProof<'node>> {
     let [
         loop_node,
@@ -1428,7 +1462,9 @@ fn prove_static_for<'node>(
         || line == 0
         || column == 0
         || loop_node.id != expected_id
-        || loop_node.parent != body.id
+        || loop_node.parent != parent
+        || for_depth == 0
+        || for_depth > MAX_STATIC_FOR_DEPTH
         || loop_node.kind != "for-statement"
         || loop_node.type_name.is_some()
         || loop_node.reference.is_some()
@@ -1570,6 +1606,7 @@ fn prove_static_for<'node>(
         0,
         column,
         true,
+        for_depth,
     )?;
     if !arm.braced
         || arm.begin != arm_start
@@ -1816,6 +1853,7 @@ fn prove_static_if<'node>(
     local: Option<&LocalDeclaration<'node>>,
     depth: usize,
     allow_new_local: bool,
+    for_depth: usize,
 ) -> Option<StaticIfProof<'node>> {
     let [conditional, ..] = nodes else {
         return None;
@@ -1854,6 +1892,7 @@ fn prove_static_if<'node>(
         depth,
         column,
         allow_new_local,
+        for_depth,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
         || then_arm.begin_line != line
@@ -1879,6 +1918,7 @@ fn prove_static_if<'node>(
             depth,
             column,
             allow_new_local,
+            for_depth,
         )?;
         let else_gap = if then_arm.braced {
             6
@@ -2005,6 +2045,8 @@ pub(super) fn canonical_source_byte_echo(
                 body,
                 previous,
                 next_id,
+                body.id,
+                1,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             for _ in 0..proof.iterations {
@@ -2072,6 +2114,7 @@ pub(super) fn canonical_source_byte_echo(
                 latest_local.as_ref().map(|(local, _)| local),
                 0,
                 false,
+                0,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if proof.selected {
