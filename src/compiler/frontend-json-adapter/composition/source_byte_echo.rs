@@ -994,21 +994,84 @@ fn prove_local_output_chain<'node>(
     prove_nested_local_output(nodes, body, local, expected_id, previous, parent)
 }
 
-// Only a source-proven `if (0)` or `if (1)` with one unbraced I/O
-// statement can be projected. The selected arm still executes its input and
-// output in Malbolge; a skipped arm executes neither, including getchar().
+// Source-authenticated, unbraced C I/O arm. An unselected arm is still
+// checked completely before the adapter drops its guest effects.
+struct StaticIfArm<'node> {
+    width: usize,
+    input: Option<&'node Node>,
+    // Outer-to-inner preorder is reversed when writing guest output.
+    outputs: Vec<&'node Node>,
+    begin: u32,
+    end: u32,
+}
+
+fn prove_static_if_arm<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+    parent: u32,
+    local: Option<&LocalDeclaration<'node>>,
+) -> Option<StaticIfArm<'node>> {
+    let child = nodes.first()?;
+    let (width, input, outputs) = if child.kind == "call-expression"
+        && child.reference.as_deref() == Some("external:putchar")
+    {
+        if let Some(local) = local
+            && let Some((width, calls)) = prove_local_output_chain(
+                nodes,
+                body,
+                local,
+                expected_id,
+                previous,
+                parent,
+            )
+        {
+            (width, None, calls)
+        } else {
+            let (width, input, calls) =
+                super::nested_byte_echo::nested_call_in_parent(
+                    nodes,
+                    body,
+                    previous,
+                    expected_id,
+                    parent,
+                )?;
+            (width, Some(input), calls)
+        }
+    } else {
+        let read = prove_input_call(
+            nodes.get(..3)?,
+            body,
+            previous,
+            (expected_id, parent),
+        )?;
+        (3, Some(read), Vec::new())
+    };
+    let extent = outputs.first().copied().or(input)?;
+    (child.id == expected_id).then_some(StaticIfArm {
+        width,
+        input,
+        outputs,
+        begin: child.span.begin.byte,
+        end: extent.span.end.byte,
+    })
+}
+
+// Exact static `if (0)` / `if (1)` source conditions, with one or two
+// verified unbraced I/O arms. Both arms must be authentic even though only
+// the selected one executes in the guest. No runtime condition is lowered.
 struct StaticIfProof<'node> {
     width: usize,
     selected: bool,
     input: Option<&'node Node>,
-    // Source order is outer-to-inner for nested output calls.
     outputs: Vec<&'node Node>,
     end: u32,
 }
 
 #[expect(
     clippy::too_many_lines,
-    reason = "prove the literal condition and every selected or skipped child"
+    reason = "prove literal condition, both branch children and source spans"
 )]
 fn prove_static_if<'node>(
     nodes: &'node [Node],
@@ -1059,56 +1122,50 @@ fn prove_static_if<'node>(
     {
         return None;
     }
-    let child = rest.first()?;
-    let child_id = literal.id.checked_add(1)?;
-    let (width, input, outputs) = if child.kind == "call-expression"
-        && child.reference.as_deref() == Some("external:putchar")
-    {
-        if let Some(local) = local
-            && let Some((width, calls)) = prove_local_output_chain(
-                rest,
-                body,
-                local,
-                child_id,
-                previous,
-                conditional.id,
-            )
-        {
-            (width, None, calls)
-        } else {
-            let (width, input, calls) =
-                super::nested_byte_echo::nested_call_in_parent(
-                    rest,
-                    body,
-                    previous,
-                    child_id,
-                    conditional.id,
-                )?;
-            (width, Some(input), calls)
-        }
-    } else {
-        let read = prove_input_call(
-            rest.get(..3)?,
+    let then_arm = prove_static_if_arm(
+        rest,
+        body,
+        previous,
+        literal.id.checked_add(1)?,
+        conditional.id,
+        local,
+    )?;
+    if then_arm.begin != start.checked_add(7)? {
+        return None;
+    }
+    let mut width = 2usize.checked_add(then_arm.width)?;
+    let mut end = then_arm.end;
+    let mut selected = value == "1";
+    let mut input = then_arm.input;
+    let mut outputs = then_arm.outputs;
+    if conditional.span.end.byte != then_arm.end {
+        let else_arm = prove_static_if_arm(
+            nodes.get(width..)?,
             body,
-            previous,
-            (child_id, conditional.id),
+            then_arm.end,
+            expected_id.checked_add(u32::try_from(width).ok()?)?,
+            conditional.id,
+            local,
         )?;
-        (3, Some(read), Vec::new())
-    };
-    let extent = outputs.first().copied().or(input)?;
-    let end = extent.span.end.byte;
-    if child.id != child_id
-        || extent.span.begin.line != line
-        || extent.span.end.line != line
-        || child.span.begin.byte != start.checked_add(7)?
-        || end >= body.span.end.byte
+        if else_arm.begin != then_arm.end.checked_add(7)? {
+            return None;
+        }
+        width = width.checked_add(else_arm.width)?;
+        end = else_arm.end;
+        selected = true;
+        if value == "0" {
+            input = else_arm.input;
+            outputs = else_arm.outputs;
+        }
+    }
+    if end >= body.span.end.byte
         || !source_word(conditional, start, end, line, column)
     {
         return None;
     }
     Some(StaticIfProof {
-        width: width.checked_add(2)?,
-        selected: value == "1",
+        width,
+        selected,
         input,
         outputs,
         end,

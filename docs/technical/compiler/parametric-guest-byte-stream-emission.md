@@ -26,23 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
-### Constant C if arms around live guest bytes (2026-11-12)
+### Constant C if/else arms around live guest bytes (2026-11-12)
 
-A complete source-C function now interleaves a live input local with
-`if (0)` and `if (1)` arms, including skipped input, repeated-local output,
-and direct guest input/output. Pinned Clang initially admitted the program,
-but the JSON adapter rejected its input declaration. Exact AST parent,
-source coordinate, literal and called-function proof now selects only the
-single unbraced statement of a literal zero/one branch. Executed arms run
-real guest input/output instructions; skipped arms consume no guest input.
+A complete source-C function interleaves a live input local with literal
+`if (0)` / `if (1)` arms, including skipped input, repeated-local output,
+and direct guest I/O. Pinned Clang initially admitted the program, but the
+JSON adapter rejected the input declaration. Exact AST parent, source
+coordinate, literal and called-function proofs now select a single unbraced
+statement and drop every skipped effect. An optional unbraced `else` arm is
+also checked before selection; it does not reread stdin or produce output
+when it is inactive.
 
 The normative VM matches three selected binary input bytes and three output
-bytes in seven instructions under boundary and seeded inputs. Nested
-`putchar` return values, standalone reads, and captured-local return values
-also work in selected arms. Unsupported dynamic conditions, alternate
-literals, else arms, braced arms and arithmetic remain rejected. This is
-compile-time branch selection, **not** dynamic guest C branching; the
-complete C input/loop/arithmetic experiment still cannot lower.
+bytes in seven instructions for the single-arm case. In a separate whole C
+program with three `if/else` statements, ten binary guest input samples match
+four oracle outputs in eight VM steps. Nested `putchar` return values,
+standalone reads and captured-local returns work in selected arms. Eight
+unsupported C forms and 18 condition/else AST forgeries refuse publication.
+Runtime-dependent conditions, nonzero/nonone literals, braced arms and
+arithmetic remain unimplemented. This is compile-time branch selection,
+**not** dynamic guest C branching; the original C input/loop/arithmetic
+experiment still cannot lower.
 
 ### Pure latest-local comma operands (2026-11-12)
 

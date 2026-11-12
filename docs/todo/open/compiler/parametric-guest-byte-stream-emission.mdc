@@ -61,9 +61,12 @@ a compiler capability gap, not a reason to return to N+1.
   literal conditions and unbraced child-call ancestry now produce actual
   selected guest reads and writes while skipping inactive effects. Three
   binary bytes map to exactly three VM outputs in seven steps; seeded
-  boundary oracles, nested returns, negative C variants and forged AST
-  conditions have focused regressions. Dynamic guest control, C loop
-  arithmetic, EOF and general guest locals remain unsupported.
+  boundary oracles and nested returns have focused regressions. An
+  additional whole C function with three literal `if/else` statements
+  authenticates both unbraced arms before selecting one: ten binary guest
+  streams map to four oracle outputs in eight steps, while source negatives
+  and 18 condition/else AST mutations refuse publication. Dynamic guest
+  control, C loop arithmetic, EOF and general guest locals remain unsupported.
 
 - On 2026-11-12 a complete C source used plain input-local values as
   both discarded and selected comma operands inside nested `putchar` calls.

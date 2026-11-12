@@ -109,6 +109,68 @@ class StaticIfInputCPipelineTests(unittest.TestCase):
                         self.assertEqual(guest.stdout, sample)
                         self.assertEqual(guest.stderr, b"malbolge-steps-v1:7\n")
 
+    def test_if_else_selects_only_one_guest_arm(self) -> None:
+        body = (
+            "    int first = getchar();\n"
+            "    if (0) putchar(getchar()); else putchar(first);\n"
+            "    if (1) putchar(first); else putchar(getchar());\n"
+            "    if (1) putchar(getchar()); else putchar(first);\n"
+            "    putchar(getchar());\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            source = Path(directory) / "ifelse.c"
+            target = Path(directory) / "ifelse.malbolge"
+            source.write_text(self.source(body))
+            built = self.compile(source, target)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            rng = random.Random(0xE15E_2026)
+            samples = [b"\x00\xff\x80", b"\xff\x00\x01"]
+            samples += [bytes(rng.getrandbits(8) for _ in range(3)) for _ in range(8)]
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                guests = executor.map(lambda data: self.vm(target, data), samples)
+                for data, guest in zip(samples, guests, strict=True):
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    self.assertEqual(
+                        guest.stdout,
+                        bytes((data[0], data[0], data[1], data[2])),
+                    )
+                    self.assertEqual(guest.stderr, b"malbolge-steps-v1:8\n")
+
+    def test_if_else_rejects_forged_skipped_arm(self) -> None:
+        body = (
+            "    int first = getchar();\n"
+            "    if (0) putchar(getchar()); else putchar(first);\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            source = Path(directory) / "ifelse.c"
+            source.write_text(self.source(body))
+            original = self.normalized(source)
+            changes = (
+                (8, "span.end.byte", 1),
+                (10, "parent", 2),
+                (10, "reference", "external:getchar"),
+                (13, "parent", 8),
+                (16, "parent", 2),
+                (16, "span.begin.column", 1),
+                (19, "reference", "first@1000"),
+            )
+            for index, (node_id, field, value) in enumerate(changes):
+                forged = copy.deepcopy(original)
+                node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                target_field = node
+                for part in field.split(".")[:-1]:
+                    target_field = target_field[part]
+                target_field[field.split(".")[-1]] = value
+                target = Path(directory) / f"forged-else-{index}.malbolge"
+                result = subprocess.run(
+                    [str(ADAPTER), "--layout-backend", str(LAYOUT),
+                     "--output", str(target), "--capsule"],
+                    input=json.dumps(forged, separators=(",", ":")).encode(),
+                    capture_output=True, check=False, timeout=30,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(target.exists())
+
     def test_skipped_and_selected_nested_effects(self) -> None:
         bodies = (
             (
@@ -149,7 +211,7 @@ class StaticIfInputCPipelineTests(unittest.TestCase):
             "if (getchar()) putchar(first);",
             "if (2) putchar(first);",
             "if (1) { putchar(first); }",
-            "if (1) putchar(first); else putchar(first);",
+            "if (1) putchar(first); else ++first;",
             "if (1) putchar(first + 1);",
             "if (0) putchar(first + 1);",
             "if (1) ++first;",
