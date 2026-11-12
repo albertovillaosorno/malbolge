@@ -175,6 +175,118 @@ class StaticForLocalPipelineTests(unittest.TestCase):
                 self.assertEqual(guest.stdout, expected)
                 self.assertEqual(guest.stderr, b"malbolge-steps-v1:15\n")
 
+    def test_branch_scoped_local_inside_counted_loop(self) -> None:
+        statements = (
+            "        if (1) {\n"
+            "            int chosen = getchar();\n"
+            "            putchar(putchar(chosen));\n"
+            "        } else {\n"
+            "            getchar();\n"
+            "        }\n"
+            "        putchar(getchar());\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            path = root / "branch-local.c"
+            target = root / "branch-local.malbolge"
+            path.write_text(source(2, statements=statements), encoding="utf-8")
+            compiled = self.compile(path, target)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            for data in (bytes((0, 255, 1, 128, 17)), bytes((7, 16, 33, 9, 65))):
+                guest = self.guest(target, data)
+                self.assertEqual(guest.returncode, 0, guest.stderr)
+                expected = bytes((data[0],)) * 2 + data[1:2]
+                expected += bytes((data[2],)) * 2 + data[3:5]
+                self.assertEqual(guest.stdout, expected)
+                self.assertEqual(guest.stderr, b"malbolge-steps-v1:13\n")
+
+    def test_inactive_branch_local_and_selected_else_local(self) -> None:
+        statements = (
+            "        if (0) {\n"
+            "            int skipped = getchar();\n"
+            "            putchar(skipped);\n"
+            "        } else {\n"
+            "            int selected = getchar();\n"
+            "            putchar(putchar(selected));\n"
+            "        }\n"
+            "        putchar(getchar());\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            path = root / "else-local.c"
+            target = root / "else-local.malbolge"
+            path.write_text(source(2, statements=statements), encoding="utf-8")
+            compiled = self.compile(path, target)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            for data in (bytes((255, 0, 128, 1, 64)), bytes((3, 9, 6, 2, 7))):
+                guest = self.guest(target, data)
+                self.assertEqual(guest.returncode, 0, guest.stderr)
+                expected = bytes((data[0],)) * 2 + data[1:2]
+                expected += bytes((data[2],)) * 2 + data[3:5]
+                self.assertEqual(guest.stdout, expected)
+                self.assertEqual(guest.stderr, b"malbolge-steps-v1:13\n")
+
+    def test_nested_local_stale_input_and_forged_scope_refuse(self) -> None:
+        statements = (
+            "        if (1) {\n"
+            "            int chosen = getchar();\n"
+            "            putchar(putchar(chosen));\n"
+            "        } else {\n"
+            "            getchar();\n"
+            "        }\n"
+            "        putchar(getchar());\n"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            path = root / "branch-local.c"
+            path.write_text(source(2, statements=statements), encoding="utf-8")
+            normalized = self.normalized(path)
+            nodes = normalized["nodes"]
+            declaration = next(
+                n
+                for n in nodes
+                if n["kind"] == "variable-declaration" and n.get("name") == "chosen"
+            )
+            declaration_id = declaration["id"]
+            for node_id, field, replacement in (
+                (declaration_id - 1, "parent", 3),
+                (declaration_id, "reference", "chosen@1"),
+                (declaration_id + 1, "parent", 3),
+            ):
+                with self.subTest(node_id=node_id, field=field):
+                    altered = copy.deepcopy(normalized)
+                    changed = next(n for n in altered["nodes"] if n["id"] == node_id)
+                    changed[field] = replacement
+                    target = root / f"forged-scope-{node_id}.malbolge"
+                    result = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(target),
+                            "--capsule",
+                        ],
+                        input=json.dumps(altered).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=20,
+                    )
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertFalse(target.exists())
+            invalid = source(
+                2,
+                statements=statements.replace(
+                    "            putchar(putchar(chosen));\n",
+                    "            getchar();\n            putchar(putchar(chosen));\n",
+                ),
+            )
+            path.write_text(invalid, encoding="utf-8")
+            target = root / "stale-branch.malbolge"
+            result = self.compile(path, target)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(target.exists())
+
     def test_local_after_new_input_refuses_stale_guest_replay(self) -> None:
         mutations = (
             (

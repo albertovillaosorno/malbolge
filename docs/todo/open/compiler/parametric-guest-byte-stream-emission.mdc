@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 source-C counted loops with fresh `getchar` locals
+  declared in selected nested `if` or `else` blocks initially failed at
+  normalized `for-statement` admission. Literal-branch proof now carries
+  loop-local declaration permission through exact Clang scopes, including
+  independent authentication of the inactive arm. Both complete programs
+  pass two binary Malbolge VM oracles each (five reads, seven writes,
+  thirteen steps). Forged ancestry and a selected intervening input
+  refuse stale or untrusted local references. Dynamic C predicates,
+  guest C block storage and EOF remain open, so P0 stays pending.
+
 - On 2026-11-12 a complete counted C loop with `int current =
   getchar();` and repeated/nested output of `current` initially failed
   normalized `for-statement` admission. The new source-local proof accepts

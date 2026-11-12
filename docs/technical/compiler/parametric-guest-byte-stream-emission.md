@@ -26,6 +26,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Lexically scoped input locals in counted C branches (2026-11-12)
+
+One complete counted C loop now places `int chosen = getchar();` inside
+its selected `if (1)` block, uses its successful-byte return through two
+nested output calls, then reads and outputs another guest byte. A second
+whole loop declares distinct locals in both arms of `if (0) ... else ...`:
+the selected `else` emits its own input twice, while inactive-arm input
+and outputs have no guest effects. Both compile to actual Malbolge and
+match two binary VM oracles each: five reads, seven outputs, thirteen
+steps. Source-verified declaration ancestry, exact compound coordinates
+and literal-branch selection are required at every depth. Forged local
+parent/reference changes and a stale read after a selected input reject.
+
+The allowance propagates only inside the already authenticated counted
+loop body, never through arbitrary top-level control or dynamic conditions.
+Guest C block storage, input-dependent control and EOF remain unsupported.
+
 ### Counted loops with fresh local byte aliases (2026-11-12)
 
 A whole C `for (int i = 0; i < 3; ++i)` program with a source-local

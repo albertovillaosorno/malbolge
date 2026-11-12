@@ -1059,6 +1059,7 @@ fn prove_static_if_statement<'node>(
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
     depth: usize,
+    allow_new_local: bool,
 ) -> Option<(usize, Vec<StaticIfEffect<'node>>, u32)> {
     let child = nodes.first()?;
     if child.kind == "if-statement" {
@@ -1070,6 +1071,7 @@ fn prove_static_if_statement<'node>(
             parent,
             local,
             depth.checked_add(1)?,
+            allow_new_local,
         )?;
         return Some((
             proof.width,
@@ -1182,6 +1184,7 @@ fn prove_static_if_arm<'node>(
             parent,
             local,
             depth.checked_add(1)?,
+            allow_new_local,
         )?;
         return Some(StaticIfArm {
             width: proof.width,
@@ -1208,6 +1211,7 @@ fn prove_static_if_arm<'node>(
             parent,
             local,
             depth,
+            allow_new_local,
         )?;
         return Some(StaticIfArm {
             width,
@@ -1312,6 +1316,7 @@ fn prove_static_if_arm<'node>(
                 child.id,
                 declared_local.as_ref().or(local).filter(|_| local_is_live),
                 depth,
+                allow_new_local,
             )?
         };
         if statement_end >= end {
@@ -1810,6 +1815,7 @@ fn prove_static_if<'node>(
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
     depth: usize,
+    allow_new_local: bool,
 ) -> Option<StaticIfProof<'node>> {
     let [conditional, ..] = nodes else {
         return None;
@@ -1847,7 +1853,7 @@ fn prove_static_if<'node>(
         local,
         depth,
         column,
-        false,
+        allow_new_local,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
         || then_arm.begin_line != line
@@ -1872,7 +1878,7 @@ fn prove_static_if<'node>(
             local,
             depth,
             column,
-            false,
+            allow_new_local,
         )?;
         let else_gap = if then_arm.braced {
             6
@@ -2065,6 +2071,7 @@ pub(super) fn canonical_source_byte_echo(
                 body.id,
                 latest_local.as_ref().map(|(local, _)| local),
                 0,
+                false,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if proof.selected {

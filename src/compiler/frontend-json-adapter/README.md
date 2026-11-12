@@ -10,6 +10,17 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Branch-scoped loop input locals (2026-11-12)
+
+The bounded counted-loop source proof now carries explicit permission to
+validate fresh `int chosen = getchar();` declarations into nested static
+`if/else` compound arms. Both arms are independently authenticated with
+pinned-Clang parent and source extents, but only the selected arm runs
+actual guest I/O. Two complete C streams each read five independent
+bytes and write seven bytes in thirteen Malbolge VM steps under two
+binary oracles. Forged local ancestry and selected stale-byte reuse
+reject, while arbitrary top-level local branches remain unsupported.
+
 ### Fresh input locals inside bounded counted loops (2026-11-12)
 
 The canonical counted `for` body now admits automatic `int current =
