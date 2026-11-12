@@ -1247,6 +1247,8 @@ fn prove_static_if_arm<'node>(
     let mut effect_end = begin;
     let mut effects = Vec::new();
     let mut statement_count = 0usize;
+    let mut expected_line = line.checked_add(1)?;
+    let mut previous_was_braced_if = false;
     let mut local_is_live = local.is_some();
     loop {
         if statement_count >= 16 || effects.len() >= 16 {
@@ -1254,16 +1256,15 @@ fn prove_static_if_arm<'node>(
         }
         let statement = nodes.get(cursor)?;
         let gap = if multiline {
-            10
+            conditional_column
+                .checked_add(5)?
+                .checked_sub(u32::from(previous_was_braced_if))?
         } else {
             2
         };
         if statement.span.begin.byte != effect_end.checked_add(gap)?
             || (multiline
-                && (statement.span.begin.line
-                    != line.checked_add(
-                        u32::try_from(statement_count + 1).ok()?,
-                    )?
+                && (statement.span.begin.line != expected_line
                     || statement.span.begin.column
                         != conditional_column.checked_add(4)?))
         {
@@ -1282,6 +1283,11 @@ fn prove_static_if_arm<'node>(
         if statement_end >= end {
             return None;
         }
+        // A braced nested if ends in `}`, not `};`. Its following
+        // newline therefore has one fewer byte than a call statement.
+        previous_was_braced_if = statement.kind == "if-statement"
+            && statement.span.end.line > statement.span.begin.line;
+        expected_line = statement.span.end.line.checked_add(1)?;
         local_is_live &= statement_effects
             .iter()
             .all(|effect| effect.input.is_none());
@@ -1293,16 +1299,14 @@ fn prove_static_if_arm<'node>(
         cursor = cursor.checked_add(width)?;
         effect_end = statement_end;
         let end_gap = if multiline {
-            7
+            conditional_column
+                .checked_add(2)?
+                .checked_sub(u32::from(previous_was_braced_if))?
         } else {
             3
         };
         if effect_end.checked_add(end_gap)? == end {
-            if multiline
-                && child.span.end.line
-                    != line
-                        .checked_add(u32::try_from(statement_count + 1).ok()?)?
-            {
+            if multiline && child.span.end.line != expected_line {
                 return None;
             }
             break;
@@ -1318,6 +1322,226 @@ fn prove_static_if_arm<'node>(
         end_line: child.span.end.line,
         end_column: child.span.end.column,
         braced: true,
+    })
+}
+
+// The induction value is statically proven for a canonical finite C loop.
+// Only the loop body effects are repeated: guest input and output still run
+// at execution time, with no host-side byte computation or replay.
+struct StaticForProof<'node> {
+    width: usize,
+    iterations: usize,
+    effects: Vec<StaticIfEffect<'node>>,
+    end: u32,
+}
+
+// A closed, arithmetic-incrementing for loop with a fresh automatic `i`:
+//     for (int i = 0; i < N; ++i) {
+//         <source-proven byte-effect statements>
+//     }
+// Both the induction arithmetic and all body statements are authenticated
+// against the pinned Clang preorder before any target instructions exist.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the complete Clang induction and body ancestry is one proof"
+)]
+fn prove_static_for<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+) -> Option<StaticForProof<'node>> {
+    let [
+        loop_node,
+        declaration,
+        variable,
+        initial,
+        condition,
+        read_cast,
+        read_variable,
+        bound,
+        increment,
+        increment_variable,
+        rest @ ..,
+    ] = nodes
+    else {
+        return None;
+    };
+    let start = loop_node.span.begin.byte;
+    let line = loop_node.span.begin.line;
+    let column = loop_node.span.begin.column;
+    let declaration_start = start.checked_add(5)?;
+    let declaration_end = start.checked_add(15)?;
+    let variable_end = declaration_end.checked_sub(1)?;
+    let condition_start = declaration_end.checked_add(1)?;
+    let bound_start = condition_start.checked_add(4)?;
+    let increment_start = bound.span.end.byte.checked_add(2)?;
+    let increment_end = increment_start.checked_add(3)?;
+    let arm_start = increment_end.checked_add(2)?;
+    let variable_reference = format!("i@{}", declaration_start.checked_add(4)?);
+    if start <= previous
+        || start <= body.span.begin.byte
+        || line == 0
+        || column == 0
+        || loop_node.id != expected_id
+        || loop_node.parent != body.id
+        || loop_node.kind != "for-statement"
+        || loop_node.type_name.is_some()
+        || loop_node.reference.is_some()
+        || loop_node.operation.is_some()
+        || !metadata_empty(loop_node)
+        || declaration.id != expected_id.checked_add(1)?
+        || declaration.parent != loop_node.id
+        || declaration.kind != "declaration-statement"
+        || declaration.type_name.is_some()
+        || declaration.reference.is_some()
+        || declaration.operation.is_some()
+        || !metadata_empty(declaration)
+        || !source_word(
+            declaration,
+            declaration_start,
+            declaration_end,
+            line,
+            column.checked_add(5)?,
+        )
+        || variable.id != expected_id.checked_add(2)?
+        || variable.parent != declaration.id
+        || variable.kind != "variable-declaration"
+        || variable.name.as_deref() != Some("i")
+        || variable.type_name.as_deref() != Some("i32")
+        || variable.reference.as_deref() != Some(variable_reference.as_str())
+        || variable.definition.as_deref() != Some("definition")
+        || variable.linkage.as_deref() != Some("none")
+        || variable.storage_class.as_deref() != Some("none")
+        || !matches!(
+            variable.storage_duration,
+            Some(super::StorageDuration::Automatic)
+        )
+        || variable.operation.is_some()
+        || variable.literal.is_some()
+        || variable.constant_integer.is_some()
+        || variable.inline_specified.is_some()
+        || !source_word(
+            variable,
+            declaration_start,
+            variable_end,
+            line,
+            column.checked_add(5)?,
+        )
+        || prove_decimal_condition_operand(
+            initial,
+            expected_id.checked_add(3)?,
+            variable.id,
+            start.checked_add(13)?,
+            line,
+            column.checked_add(13)?,
+        )? != 0
+        || condition.id != expected_id.checked_add(4)?
+        || condition.parent != loop_node.id
+        || condition.kind != "binary-expression"
+        || condition.type_name.as_deref() != Some("i32")
+        || condition.operation.as_deref() != Some("<")
+        || !metadata_empty(condition)
+        || !source_word(
+            condition,
+            condition_start,
+            bound.span.end.byte,
+            line,
+            column.checked_add(16)?,
+        )
+        || read_cast.id != expected_id.checked_add(5)?
+        || read_cast.parent != condition.id
+        || read_cast.kind != "cast-expression"
+        || read_cast.type_name.as_deref() != Some("i32")
+        || read_cast.operation.as_deref() != Some("lvalue-to-rvalue")
+        || !metadata_empty(read_cast)
+        || !source_word(
+            read_cast,
+            condition_start,
+            condition_start.checked_add(1)?,
+            line,
+            column.checked_add(16)?,
+        )
+        || read_variable.id != expected_id.checked_add(6)?
+        || read_variable.parent != read_cast.id
+        || read_variable.kind != "declaration-reference-expression"
+        || read_variable.type_name.as_deref() != Some("i32")
+        || read_variable.reference.as_deref()
+            != Some(variable_reference.as_str())
+        || read_variable.operation.is_some()
+        || !metadata_empty(read_variable)
+        || read_variable.span != read_cast.span
+        || bound.span.begin.byte != bound_start
+        || bound.span.begin.column != column.checked_add(20)?
+        || increment.id != expected_id.checked_add(8)?
+        || increment.parent != loop_node.id
+        || increment.kind != "unary-expression"
+        || increment.type_name.as_deref() != Some("i32")
+        || increment.operation.as_deref() != Some("++")
+        || !metadata_empty(increment)
+        || !source_word(
+            increment,
+            increment_start,
+            increment_end,
+            line,
+            bound.span.end.column.checked_add(2)?,
+        )
+        || increment_variable.id != expected_id.checked_add(9)?
+        || increment_variable.parent != increment.id
+        || increment_variable.kind != "declaration-reference-expression"
+        || increment_variable.type_name.as_deref() != Some("i32")
+        || increment_variable.reference.as_deref()
+            != Some(variable_reference.as_str())
+        || increment_variable.operation.is_some()
+        || !metadata_empty(increment_variable)
+        || !source_word(
+            increment_variable,
+            increment_start.checked_add(2)?,
+            increment_end,
+            line,
+            bound.span.end.column.checked_add(4)?,
+        )
+    {
+        return None;
+    }
+    let iterations = usize::try_from(prove_decimal_condition_operand(
+        bound,
+        expected_id.checked_add(7)?,
+        condition.id,
+        bound_start,
+        line,
+        column.checked_add(20)?,
+    )?)
+    .ok()?;
+    if !(1..=16).contains(&iterations) {
+        return None;
+    }
+    let arm = prove_static_if_arm(
+        rest,
+        body,
+        increment_end,
+        expected_id.checked_add(10)?,
+        loop_node.id,
+        None,
+        0,
+        column,
+    )?;
+    if !arm.braced
+        || arm.begin != arm_start
+        || arm.begin_line != line
+        || arm.begin_column != bound.span.end.column.checked_add(7)?
+        || loop_node.span.end.byte != arm.end
+        || loop_node.span.end.line != arm.end_line
+        || loop_node.span.end.column != arm.end_column
+        || arm.end >= body.span.end.byte
+    {
+        return None;
+    }
+    Some(StaticForProof {
+        width: 10usize.checked_add(arm.width)?,
+        iterations,
+        effects: arm.effects,
+        end: arm.end,
     })
 }
 
@@ -1726,6 +1950,60 @@ pub(super) fn canonical_source_byte_echo(
         let first = rest.get(consumed).ok_or(FrontendJsonError::Unsupported)?;
         if outputs == MAX_SOURCE_OUTPUTS || first.id != next_id {
             return Err(FrontendJsonError::Unsupported);
+        }
+        if first.kind == "for-statement" {
+            let proof = prove_static_for(
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
+                body,
+                previous,
+                next_id,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
+            for _ in 0..proof.iterations {
+                for effect in &proof.effects {
+                    let input =
+                        effect.input.ok_or(FrontendJsonError::Unsupported)?;
+                    if inputs >= MAX_ECHO_CALLS
+                        || outputs
+                            .checked_add(effect.outputs.len())
+                            .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
+                    {
+                        return Err(FrontendJsonError::Unsupported);
+                    }
+                    let value = ValueId::new(
+                        u32::try_from(inputs)
+                            .map_err(|_| FrontendJsonError::Unsupported)?,
+                    );
+                    instructions.push(LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: value,
+                            type_id: TypeId::new(0),
+                        },
+                        typed_span(&input.span),
+                    ));
+                    inputs += 1;
+                    latest_local = None;
+                    for output in effect.outputs.iter().rev() {
+                        instructions.push(LocatedInstruction::new(
+                            Instruction::ByteOutput { value },
+                            typed_span(&output.span),
+                        ));
+                    }
+                    outputs += effect.outputs.len();
+                    requires_latest = true;
+                }
+            }
+            previous = proof.end;
+            consumed = consumed
+                .checked_add(proof.width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(proof.width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+            continue;
         }
         if first.kind == "if-statement" {
             let proof = prove_static_if(

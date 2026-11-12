@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Finite source-C counted loop with actual guest I/O (2026-11-12)
+
+A full C program combining a counted `for (int i = 0; i < 3; ++i)` loop,
+increment arithmetic, a literal `if/else` branch, discarded reads and
+nested successful `putchar` returns initially failed normalized Clang JSON
+admission at its `for-statement`. The adapter now authenticates the complete
+pinned-Clang induction subtree, its automatic local identity, exact prefix
+increment, positive decimal bound through 16 and all child byte-effect
+statements before unrolling the **fixed** loop body to typed guest I/O.
+Inputs are never supplied by the host: each iteration executes the actual
+normative VM input and output instructions.
+
+The original whole C program consumes ten binary input bytes and emits ten
+independently expected bytes in 21 guest steps. Counts one and four agree
+with independent oracles, as does a second program with a nested constant
+branch followed by another loop-body output (seven bytes in fifteen steps).
+Fifteen rejected C shapes and ten forged Clang mutations refuse publication.
+Source geometry for multiline nested `if` statements now accounts for
+nested indentation and brace-ending statements. General guest loops,
+input-dependent branches, mutable locals, EOF and dynamic arithmetic still
+refuse; P0 remains pending.
+
 ### Source-authenticated pure logical C byte-stream conditions (2026-11-12)
 
 The pinned C frontend accepts a complete source program with a live input

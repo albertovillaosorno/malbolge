@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C stream with `for (int i = 0; i < 3;
+  ++i)`, discarded input, nested output returns and a literal branch
+  initially failed at normalized `for-statement` admission. Pinned-Clang
+  induction proof now unrolls only source-proven fixed loops with 1–16
+  iterations while emitting all real guest reads and writes. The original
+  program reads and emits ten independent binary bytes in 21 VM steps;
+  counts 1/3/4/16 and a nested `if/else` body match eight VM samples.
+  Fifteen invalid sources and ten forged AST cases reject publication.
+  Dynamic guest loops, mutable C locals, runtime predicates and EOF remain
+  unsupported, so the P0 is still pending.
+
 - On 2026-11-12 a whole C stream with a captured input, pure logical
   predicate `!(1 == 2) && (3 > 1)`, selected nested output returns,
   skipped input arm and trailing read failed normalized adapter admission.

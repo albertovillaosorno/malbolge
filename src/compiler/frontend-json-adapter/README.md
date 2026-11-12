@@ -10,6 +10,29 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-proven counted C for loops (2026-11-12)
+
+A complete C byte-stream program now admits a canonical `for` loop whose
+fresh automatic `int i` starts at zero, uses `i < N` with decimal
+`1 <= N <= 16`, and increments with prefix `++i`. The loop's braced,
+canonically indented body contains up to sixteen separately authenticated
+byte-effect statements, including discarded `getchar`, nested successful
+`putchar` returns and pure constant `if/else` branches. Each statement's
+Clang parent, source location, induction identity and entire child tree are
+proved before compilation. The fixed induction is unrolled at compilation,
+but every input and output is an actual runtime Malbolge instruction.
+
+`tests/test_static_for_c_pipeline.py` checks a full C loop with discarded
+reads, nested returns and a following constant branch. Counts 1, 3 and 4
+match six actual guest binary executions and independent output and step
+oracles; a separate branch nested inside the counted loop emits seven
+expected bytes in fifteen VM steps. The sixteen-iteration bound also
+replays seventeen binary bytes in 35 steps. Unsupported induction, loop
+mutation, dynamic conditions, hidden effects and forged Clang ancestry refuse
+target
+publication. This is **not** general guest C loop execution, mutable locals,
+EOF handling or dynamic runtime arithmetic/branching.
+
 ### Pure logical C conditions around guest byte I/O (2026-11-12)
 
 The source-authenticated static `if` proof now evaluates exact nonnegative
