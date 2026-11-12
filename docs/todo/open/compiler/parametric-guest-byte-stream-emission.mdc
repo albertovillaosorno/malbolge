@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete counted C loop with `int current =
+  getchar();` and repeated/nested output of `current` initially failed
+  normalized `for-statement` admission. The new source-local proof accepts
+  five authenticated declaration nodes inside the loop compound; unrolled
+  iterations allocate fresh runtime guest SSA inputs rather than replaying
+  one host byte. Six binary VM oracles over counts 1/3/4 match outputs and
+  exact steps. Another complete source with two local phases and a nested
+  selected literal `if/else` matches two independent five-input/nine-output
+  VM oracles in 15 steps. Source mutations, stale local references and
+  forged Clang ancestry refuse publication. Dynamic C predicates, arbitrary
+  mutable storage and runtime loop execution remain unsupported; P0 stays
+  pending.
+
 - On 2026-11-12 a complete C stream with `for (int i = 0; i < 3;
   ++i)`, discarded input, nested output returns and a literal branch
   initially failed at normalized `for-statement` admission. Pinned-Clang

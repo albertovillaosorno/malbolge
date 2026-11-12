@@ -10,6 +10,29 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Fresh input locals inside bounded counted loops (2026-11-12)
+
+The canonical counted `for` body now admits automatic `int current =
+getchar();` declarations followed by direct or nested successful-byte
+`putchar(current)` returns. Each loop iteration executes a **fresh** guest
+`ByteInput`; subsequent outputs of that local reuse only its live accumulator
+byte. Several source-distinct locals may be declared in a single iteration,
+provided each old local is consumed before the next read. A selected nested
+literal `if/else` may reuse the latest byte; skipped arms still receive
+independent Clang authentication. The entire five-node declaration and
+matching local references remain bound to the loop compound parent, source
+bytes and pinned declaration identity.
+
+`tests/test_static_for_local_c_pipeline.py` starts with a previously rejected
+complete C program and tests counts 1, 3 and 4 against six binary VM oracles.
+One input local yields three output bytes per iteration, followed by another
+runtime input/output, in `4 * count + 3` VM steps. A second complete C program
+uses two distinct locals and a nested selected `if/else`, consuming five
+inputs and emitting nine bytes in fifteen real VM steps across two samples.
+Stale local replay, induction-dependent outputs, mutation and forged Clang
+ancestry refuse publication. This is still statically unrolled induction,
+not general mutable guest C storage, runtime branching or EOF handling.
+
 ### Source-proven counted C for loops (2026-11-12)
 
 A complete C byte-stream program now admits a canonical `for` loop whose
@@ -29,9 +52,9 @@ oracles; a separate branch nested inside the counted loop emits seven
 expected bytes in fifteen VM steps. The sixteen-iteration bound also
 replays seventeen binary bytes in 35 steps. Unsupported induction, loop
 mutation, dynamic conditions, hidden effects and forged Clang ancestry refuse
-target
-publication. This is **not** general guest C loop execution, mutable locals,
-EOF handling or dynamic runtime arithmetic/branching.
+target publication. The separate local-in-loop proof below admits fresh
+per-iteration input aliases, not general guest C loop execution, mutable
+storage, EOF handling or dynamic runtime arithmetic/branching.
 
 ### Pure logical C conditions around guest byte I/O (2026-11-12)
 

@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Counted loops with fresh local byte aliases (2026-11-12)
+
+A whole C `for (int i = 0; i < 3; ++i)` program with a source-local
+`int current = getchar();`, repeated and nested `putchar(current)` returns
+previously refused normalized Clang admission despite its bounded induction.
+The loop-body proof now authenticates the five-node declaration as a child of
+the loop compound, including original variable identity and byte/line/column
+spans. Each unrolled iteration allocates a new guest input SSA value and
+repeats the real input instruction; source-local returns only reuse that byte
+until a later read invalidates it. Successive distinct locals in a loop body
+are permitted only in latest-live order. Source-constant nested `if/else`
+arms can select outputs of that same live byte.
+
+Counts 1, 3 and 4 pass six independent binary VM-oracle executions (three
+outputs per loop input plus one trailing input/output, `4 * count + 3`
+steps). A second complete two-iteration C program with two fresh locals per
+iteration, selected nested output returns and skipped reads matches two
+binary oracles: five real inputs, nine outputs and fifteen executed steps.
+Negative source and forged-Clang ancestry tests reject stale local uses,
+mutations and unsupported induction/body effects without guest publication.
+This is not runtime C loop control, general storage, dynamic predicates,
+arithmetic over guest bytes or EOF behavior. P0 remains open.
+
 ### Finite source-C counted loop with actual guest I/O (2026-11-12)
 
 A full C program combining a counted `for (int i = 0; i < 3; ++i)` loop,

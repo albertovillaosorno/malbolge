@@ -636,6 +636,7 @@ fn prove_local_declaration<'node>(
     nodes: &'node [Node],
     body: &Node,
     previous: u32,
+    parent: u32,
 ) -> Option<LocalDeclaration<'node>> {
     let [declaration, variable, input, input_cast, input_callee] = nodes else {
         return None;
@@ -655,7 +656,7 @@ fn prove_local_declaration<'node>(
     let source_ok = start > previous
         && start > body.span.begin.byte
         && input_end < body.span.end.byte
-        && declaration.parent == body.id
+        && declaration.parent == parent
         && declaration.kind == "declaration-statement"
         && declaration.type_name.is_none()
         && declaration.reference.is_none()
@@ -1169,6 +1170,7 @@ fn prove_static_if_arm<'node>(
     local: Option<&LocalDeclaration<'node>>,
     depth: usize,
     conditional_column: u32,
+    allow_new_local: bool,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
     if child.kind == "if-statement" {
@@ -1248,8 +1250,9 @@ fn prove_static_if_arm<'node>(
     let mut effects = Vec::new();
     let mut statement_count = 0usize;
     let mut expected_line = line.checked_add(1)?;
-    let mut previous_was_braced_if = false;
+    let mut previous_includes_terminator = false;
     let mut local_is_live = local.is_some();
+    let mut declared_local: Option<LocalDeclaration<'node>> = None;
     loop {
         if statement_count >= 16 || effects.len() >= 16 {
             return None;
@@ -1258,7 +1261,7 @@ fn prove_static_if_arm<'node>(
         let gap = if multiline {
             conditional_column
                 .checked_add(5)?
-                .checked_sub(u32::from(previous_was_braced_if))?
+                .checked_sub(u32::from(previous_includes_terminator))?
         } else {
             2
         };
@@ -1270,27 +1273,63 @@ fn prove_static_if_arm<'node>(
         {
             return None;
         }
-        let (width, statement_effects, statement_end) =
+        let declares_local =
+            allow_new_local && statement.kind == "declaration-statement";
+        let (width, statement_effects, statement_end) = if declares_local {
+            // One new automatic local is initialized by an actual guest
+            // input on every loop iteration, never once at compile time.
+            // It is valid only until a later input overwrites the guest A.
+            if local.is_some() {
+                return None;
+            }
+            let declaration = prove_local_declaration(
+                nodes.get(cursor..cursor.checked_add(5)?)?,
+                body,
+                effect_end,
+                child.id,
+            )?;
+            if declaration.input.id != statement.id.checked_add(2)? {
+                return None;
+            }
+            let end = declaration.declaration_end;
+            let read = declaration.input;
+            declared_local = Some(declaration);
+            local_is_live = true;
+            (
+                5,
+                vec![StaticIfEffect {
+                    input: Some(read),
+                    outputs: Vec::new(),
+                }],
+                end,
+            )
+        } else {
             prove_static_if_statement(
                 nodes.get(cursor..)?,
                 body,
                 effect_end,
                 expected_id.checked_add(u32::try_from(cursor).ok()?)?,
                 child.id,
-                local.filter(|_| local_is_live),
+                declared_local.as_ref().or(local).filter(|_| local_is_live),
                 depth,
-            )?;
+            )?
+        };
         if statement_end >= end {
             return None;
         }
-        // A braced nested if ends in `}`, not `};`. Its following
-        // newline therefore has one fewer byte than a call statement.
-        previous_was_braced_if = statement.kind == "if-statement"
-            && statement.span.end.line > statement.span.begin.line;
+        // Declarations include their trailing `;` in the Clang extent;
+        // braced nested ifs end at `}`. Both leave one less separator byte
+        // than an expression whose terminating `;` is outside its span.
+        previous_includes_terminator = statement.kind
+            == "declaration-statement"
+            || (statement.kind == "if-statement"
+                && statement.span.end.line > statement.span.begin.line);
         expected_line = statement.span.end.line.checked_add(1)?;
-        local_is_live &= statement_effects
-            .iter()
-            .all(|effect| effect.input.is_none());
+        if !declares_local {
+            local_is_live &= statement_effects
+                .iter()
+                .all(|effect| effect.input.is_none());
+        }
         effects.extend(statement_effects);
         statement_count = statement_count.checked_add(1)?;
         if effects.len() > 16 {
@@ -1301,7 +1340,7 @@ fn prove_static_if_arm<'node>(
         let end_gap = if multiline {
             conditional_column
                 .checked_add(2)?
-                .checked_sub(u32::from(previous_was_braced_if))?
+                .checked_sub(u32::from(previous_includes_terminator))?
         } else {
             3
         };
@@ -1525,6 +1564,7 @@ fn prove_static_for<'node>(
         None,
         0,
         column,
+        true,
     )?;
     if !arm.braced
         || arm.begin != arm_start
@@ -1807,6 +1847,7 @@ fn prove_static_if<'node>(
         local,
         depth,
         column,
+        false,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
         || then_arm.begin_line != line
@@ -1831,6 +1872,7 @@ fn prove_static_if<'node>(
             local,
             depth,
             column,
+            false,
         )?;
         let else_gap = if then_arm.braced {
             6
@@ -1960,28 +2002,37 @@ pub(super) fn canonical_source_byte_echo(
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             for _ in 0..proof.iterations {
+                // SSA is per actual guest input, not per source statement:
+                // the same lexical declaration executes anew on each pass.
+                let mut iteration_byte = None;
                 for effect in &proof.effects {
-                    let input =
-                        effect.input.ok_or(FrontendJsonError::Unsupported)?;
-                    if inputs >= MAX_ECHO_CALLS
+                    if inputs
+                        .checked_add(usize::from(effect.input.is_some()))
+                        .is_none_or(|count| count > MAX_ECHO_CALLS)
                         || outputs
                             .checked_add(effect.outputs.len())
                             .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
                     {
                         return Err(FrontendJsonError::Unsupported);
                     }
-                    let value = ValueId::new(
-                        u32::try_from(inputs)
-                            .map_err(|_| FrontendJsonError::Unsupported)?,
-                    );
-                    instructions.push(LocatedInstruction::new(
-                        Instruction::ByteInput {
-                            result: value,
-                            type_id: TypeId::new(0),
-                        },
-                        typed_span(&input.span),
-                    ));
-                    inputs += 1;
+                    let value = if let Some(input) = effect.input {
+                        let value = ValueId::new(
+                            u32::try_from(inputs)
+                                .map_err(|_| FrontendJsonError::Unsupported)?,
+                        );
+                        instructions.push(LocatedInstruction::new(
+                            Instruction::ByteInput {
+                                result: value,
+                                type_id: TypeId::new(0),
+                            },
+                            typed_span(&input.span),
+                        ));
+                        inputs += 1;
+                        iteration_byte = Some(value);
+                        value
+                    } else {
+                        iteration_byte.ok_or(FrontendJsonError::Unsupported)?
+                    };
                     latest_local = None;
                     for output in effect.outputs.iter().rev() {
                         instructions.push(LocatedInstruction::new(
@@ -2258,9 +2309,13 @@ pub(super) fn canonical_source_byte_echo(
             let declaration_nodes = rest
                 .get(consumed..consumed.saturating_add(5))
                 .ok_or(FrontendJsonError::Unsupported)?;
-            let local =
-                prove_local_declaration(declaration_nodes, body, previous)
-                    .ok_or(FrontendJsonError::Unsupported)?;
+            let local = prove_local_declaration(
+                declaration_nodes,
+                body,
+                previous,
+                body.id,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
             if !local_names.insert(local.name) {
                 return Err(FrontendJsonError::Unsupported);
             }
