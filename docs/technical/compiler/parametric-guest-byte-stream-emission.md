@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Composed live local and nested call-return guest I/O (2026-11-12)
+
+A complete C source captures two `getchar` results in automatic `int` locals,
+passes each value through nested `putchar` return calls, repeats the same
+local afterward, and interleaves a directly nested runtime `getchar` call.
+Previously, the pinned Clang preorder was admitted but the JSON adapter
+refused the first local declaration. The source-checked local projector now
+proves each nested call/cast/reference trio, final local lvalue read,
+identical live declaration reference, and every exact byte/line/column
+endpoint. A new runtime input still invalidates the preceding local.
+
+The actual guest reads three bytes and writes nine in C evaluation order,
+without rereading successful input for nested or repeated outputs. A second
+complete C program mixes a direct nested call with two nested reads of the
+same later local. Binary boundary inputs and twelve seeded binary streams
+per program match an independent return-byte oracle and exact normative
+VM steps.
+
+A separate sixteen-level local-return chain emits sixteen repeated
+bytes in eighteen VM steps for zero and 255 input. Six unsupported source
+variants and fourteen forged normalized AST/position changes refuse
+publication. This is accumulator-only guest dataflow under successful I/O
+assumptions; mutable C locals, EOF, failed output, arithmetic, branches and
+general C control flow remain unsupported.
+
 ### Nested source-C call return values in a real guest (2026-11-12)
 
 The complete C source `putchar(putchar(getchar()));` previously passed pinned
@@ -59,8 +84,9 @@ read layout mode instead of weakening the strict echo mode.
 
 The normative guest VM emits the independent five-byte oracle for both
 `00 ff 80` and `41 0a fe` input, taking exactly nine VM steps. Eight
-unsupported stale/effectful or over-limit C programs and thirteen forged later-output
-AST/span changes reject without guest artifacts. This is genuine guest
+unsupported stale/effectful or over-limit C programs and thirteen forged
+later-output AST/span changes reject without guest artifacts. This is
+genuine guest
 runtime value retention only in the accumulator; it is not mutable C
 storage, general I/O flow, EOF semantics or guest C branching. The P0
 remains open.

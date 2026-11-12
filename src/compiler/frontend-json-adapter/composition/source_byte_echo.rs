@@ -41,6 +41,7 @@ use super::{
 const MAX_ECHO_CALLS: usize = 128;
 const CALL_NODE_COUNT: usize = 6;
 const MAX_SOURCE_OUTPUTS: usize = 256;
+const MAX_NESTED_LOCAL_DEPTH: usize = 16;
 
 /// The exact source-local input initializer, with no intervening effects.
 struct LocalDeclaration<'node> {
@@ -441,6 +442,167 @@ fn prove_local_output<'node>(
     source_ok.then_some(output)
 }
 
+// The innermost expression reads the live automatic local, while each
+// enclosing putchar returns the same successful byte. The Clang preorder
+// contains three call/callee nodes per level and two final local-read nodes.
+type OutputCallProof<'node> = (usize, Vec<&'node Node>);
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "check nested source coordinates and ancestry together"
+)]
+fn prove_nested_local_output<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    local: &LocalDeclaration<'_>,
+    expected_id: u32,
+    previous: u32,
+) -> Option<OutputCallProof<'node>> {
+    let outer = nodes.first()?;
+    let start = outer.span.begin.byte;
+    let line = outer.span.begin.line;
+    let column = outer.span.begin.column;
+    if start <= previous
+        || start <= local.declaration_end
+        || line <= local.line
+        || start <= body.span.begin.byte
+        || line == 0
+        || column == 0
+    {
+        return None;
+    }
+    let depth = (0..MAX_NESTED_LOCAL_DEPTH)
+        .take_while(|level| {
+            nodes.get(level.saturating_mul(3)).is_some_and(|node| {
+                node.kind == "call-expression"
+                    && node.reference.as_deref() == Some("external:putchar")
+            })
+        })
+        .count();
+    if depth < 2 {
+        return None;
+    }
+    let depth_u32 = u32::try_from(depth).ok()?;
+    let name_len = u32::try_from(local.name.len()).ok()?;
+    let argument_start = start.checked_add(depth_u32.checked_mul(8)?)?;
+    let argument_end = argument_start.checked_add(name_len)?;
+    let output_end = argument_end.checked_add(depth_u32)?;
+    if output_end >= body.span.end.byte {
+        return None;
+    }
+    let mut calls = Vec::with_capacity(depth);
+    let mut parent = body.id;
+    for level in 0..depth {
+        let offset = level.checked_mul(3)?;
+        let [call, cast, reference] =
+            nodes.get(offset..offset.checked_add(3)?)?
+        else {
+            return None;
+        };
+        let level_u32 = u32::try_from(level).ok()?;
+        let call_start = start.checked_add(level_u32.checked_mul(8)?)?;
+        let call_end = output_end.checked_sub(level_u32)?;
+        let call_column = column.checked_add(level_u32.checked_mul(8)?)?;
+        if call.id != expected_id.checked_add(u32::try_from(offset).ok()?)?
+            || call.parent != parent
+            || call.kind != "call-expression"
+            || call.type_name.as_deref() != Some("i32")
+            || call.reference.as_deref() != Some("external:putchar")
+            || call.operation.is_some()
+            || !metadata_empty(call)
+            || !source_word(call, call_start, call_end, line, call_column)
+            || cast.id != call.id.checked_add(1)?
+            || cast.parent != call.id
+            || cast.kind != "cast-expression"
+            || cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+            || cast.operation.as_deref() != Some("function-to-pointer")
+            || cast.reference.is_some()
+            || !metadata_empty(cast)
+            || !source_word(
+                cast,
+                call_start,
+                call_start.checked_add(7)?,
+                line,
+                call_column,
+            )
+            || reference.id != cast.id.checked_add(1)?
+            || reference.parent != cast.id
+            || reference.kind != "declaration-reference-expression"
+            || reference.type_name.as_deref() != Some("fn(i32)->i32")
+            || reference.reference.as_deref() != Some("external:putchar")
+            || reference.operation.is_some()
+            || !metadata_empty(reference)
+            || !source_word(
+                reference,
+                call_start,
+                call_start.checked_add(7)?,
+                line,
+                call_column,
+            )
+        {
+            return None;
+        }
+        calls.push(call);
+        parent = call.id;
+    }
+    let offset = depth.checked_mul(3)?;
+    let [value_cast, value_reference] =
+        nodes.get(offset..offset.checked_add(2)?)?
+    else {
+        return None;
+    };
+    let argument_column = column.checked_add(depth_u32.checked_mul(8)?)?;
+    if value_cast.id != expected_id.checked_add(u32::try_from(offset).ok()?)?
+        || value_cast.parent != parent
+        || value_cast.kind != "cast-expression"
+        || value_cast.type_name.as_deref() != Some("i32")
+        || value_cast.operation.as_deref() != Some("lvalue-to-rvalue")
+        || value_cast.reference.is_some()
+        || !metadata_empty(value_cast)
+        || !source_word(
+            value_cast,
+            argument_start,
+            argument_end,
+            line,
+            argument_column,
+        )
+        || value_reference.id != value_cast.id.checked_add(1)?
+        || value_reference.parent != value_cast.id
+        || value_reference.kind != "declaration-reference-expression"
+        || value_reference.type_name.as_deref() != Some("i32")
+        || value_reference.reference.as_deref()
+            != Some(local.variable_reference.as_str())
+        || value_reference.operation.is_some()
+        || !metadata_empty(value_reference)
+        || !source_word(
+            value_reference,
+            argument_start,
+            argument_end,
+            line,
+            argument_column,
+        )
+    {
+        return None;
+    }
+    Some((offset.checked_add(2)?, calls))
+}
+
+fn prove_local_output_chain<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    local: &LocalDeclaration<'_>,
+    expected_id: u32,
+    previous: u32,
+) -> Option<OutputCallProof<'node>> {
+    if let Some(first) = nodes.get(..5)
+        && let Some(call) =
+            prove_local_output(first, body, local, expected_id, previous)
+    {
+        return Some((5, vec![call]));
+    }
+    prove_nested_local_output(nodes, body, local, expected_id, previous)
+}
+
 fn valid_envelope(input: &Artifact, function: &Node, body: &Node) -> bool {
     input.schema_version == 1
         && input.identity == super::EXPECTED_ARTIFACT
@@ -527,21 +689,45 @@ pub(super) fn canonical_source_byte_echo(
         }
         if first.kind == "call-expression"
             && let Some((local, value)) = latest_local.as_ref()
-            && let Some(nodes) = rest.get(consumed..consumed.saturating_add(5))
-            && let Some(output) =
-                prove_local_output(nodes, body, local, next_id, previous)
+            && let Some((width, calls)) = prove_local_output_chain(
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
+                body,
+                local,
+                next_id,
+                previous,
+            )
         {
-            // This is the same live successful input, not another read.
-            instructions.push(LocatedInstruction::new(
-                Instruction::ByteOutput { value: *value },
-                typed_span(&output.span),
-            ));
+            if outputs
+                .checked_add(calls.len())
+                .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            // Reuse the same live input SSA, with no new guest read.
+            for call in calls.iter().rev() {
+                instructions.push(LocatedInstruction::new(
+                    Instruction::ByteOutput { value: *value },
+                    typed_span(&call.span),
+                ));
+            }
             repeated = true;
-            outputs = outputs.saturating_add(1);
-            previous = output.span.end.byte;
-            consumed = consumed.saturating_add(5);
+            outputs = outputs
+                .checked_add(calls.len())
+                .ok_or(FrontendJsonError::Unsupported)?;
+            previous = calls
+                .first()
+                .ok_or(FrontendJsonError::Unsupported)?
+                .span
+                .end
+                .byte;
+            consumed = consumed
+                .checked_add(width)
+                .ok_or(FrontendJsonError::Unsupported)?;
             next_id = next_id
-                .checked_add(5)
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_error| FrontendJsonError::Unsupported)?,
+                )
                 .ok_or(FrontendJsonError::Unsupported)?;
             continue;
         }
@@ -552,44 +738,57 @@ pub(super) fn canonical_source_byte_echo(
             u32::try_from(inputs)
                 .map_err(|_error| FrontendJsonError::Unsupported)?,
         );
-        let (width, input_call, output_call) =
-            if first.kind == "declaration-statement" {
-                let nodes = rest
-                    .get(consumed..consumed.saturating_add(10))
+        let (width, input_call, output_calls) = if first.kind
+            == "declaration-statement"
+        {
+            let declaration_nodes = rest
+                .get(consumed..consumed.saturating_add(5))
+                .ok_or(FrontendJsonError::Unsupported)?;
+            let local =
+                prove_local_declaration(declaration_nodes, body, previous)
                     .ok_or(FrontendJsonError::Unsupported)?;
-                let local = prove_local_declaration(
-                    nodes.get(..5).ok_or(FrontendJsonError::Unsupported)?,
-                    body,
-                    previous,
-                )
-                .ok_or(FrontendJsonError::Unsupported)?;
-                let output = prove_local_output(
-                    nodes.get(5..10).ok_or(FrontendJsonError::Unsupported)?,
-                    body,
-                    &local,
-                    local
-                        .input_callee_id
-                        .checked_add(1)
-                        .ok_or(FrontendJsonError::Unsupported)?,
-                    local.declaration_end,
-                )
-                .ok_or(FrontendJsonError::Unsupported)?;
-                if !local_names.insert(local.name) {
-                    return Err(FrontendJsonError::Unsupported);
-                }
-                let read = local.input;
-                latest_local = Some((local, id));
-                (10, read, output)
+            let (output_width, calls) = prove_local_output_chain(
+                rest.get(consumed.saturating_add(5)..)
+                    .ok_or(FrontendJsonError::Unsupported)?,
+                body,
+                &local,
+                local
+                    .input_callee_id
+                    .checked_add(1)
+                    .ok_or(FrontendJsonError::Unsupported)?,
+                local.declaration_end,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
+            if !local_names.insert(local.name) {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            let read = local.input;
+            latest_local = Some((local, id));
+            (5 + output_width, read, calls)
+        } else {
+            let nodes =
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?;
+            let (width, read, calls) = if let Some((read, write)) = nodes
+                .get(..CALL_NODE_COUNT)
+                .and_then(|slice| prove_call(slice, body, previous))
+            {
+                (CALL_NODE_COUNT, read, vec![write])
             } else {
-                let nodes = rest
-                    .get(consumed..consumed.saturating_add(CALL_NODE_COUNT))
-                    .ok_or(FrontendJsonError::Unsupported)?;
-                let (read, write) = prove_call(nodes, body, previous)
-                    .ok_or(FrontendJsonError::Unsupported)?;
-                // A newer input destroys the previous live accumulator value.
-                latest_local = None;
-                (CALL_NODE_COUNT, read, write)
+                super::nested_byte_echo::nested_call(
+                    nodes, body, previous, next_id,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?
             };
+            // A newer input destroys the previous live accumulator value.
+            latest_local = None;
+            (width, read, calls)
+        };
+        if outputs
+            .checked_add(output_calls.len())
+            .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteInput {
                 result: id,
@@ -597,11 +796,19 @@ pub(super) fn canonical_source_byte_echo(
             },
             typed_span(&input_call.span),
         ));
-        instructions.push(LocatedInstruction::new(
-            Instruction::ByteOutput { value: id },
-            typed_span(&output_call.span),
-        ));
-        previous = output_call.span.end.byte;
+        for call in output_calls.iter().rev() {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteOutput { value: id },
+                typed_span(&call.span),
+            ));
+        }
+        repeated |= output_calls.len() > 1;
+        previous = output_calls
+            .first()
+            .ok_or(FrontendJsonError::Unsupported)?
+            .span
+            .end
+            .byte;
         consumed = consumed.saturating_add(width);
         next_id = next_id
             .checked_add(
@@ -610,7 +817,9 @@ pub(super) fn canonical_source_byte_echo(
             )
             .ok_or(FrontendJsonError::Unsupported)?;
         inputs = inputs.saturating_add(1);
-        outputs = outputs.saturating_add(1);
+        outputs = outputs
+            .checked_add(output_calls.len())
+            .ok_or(FrontendJsonError::Unsupported)?;
     }
     if previous >= body.span.end.byte {
         return Err(FrontendJsonError::Unsupported);

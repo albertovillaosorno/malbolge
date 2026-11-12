@@ -164,7 +164,7 @@ class NestedCByteEchoPipelineTests(unittest.TestCase):
             "    putchar(putchar(getchar()));\n    getchar();\n",
             "    putchar(putchar(getchar()));\n    putchar(0);\n",
             "    if (1) putchar(putchar(getchar()));\n",
-            "    int value = getchar();\n    putchar(putchar(value));\n",
+            "    int value = getchar();\n    putchar(putchar(value + 1));\n",
             "    putchar(putchar(getchar()));\n    putchar(putchar(EOF));\n",
             "    " + "putchar(" * 17 + "getchar()" + ")" * 17 + ";\n",
         )

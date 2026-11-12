@@ -110,7 +110,7 @@ fn envelope(artifact: &Artifact, function: &Node, body: &Node) -> bool {
 // The nested output calls return the successful byte in reverse preorder.
 // The canonical guest needs exactly one input instruction, then `depth`
 // output instructions operating on the same accumulator value.
-fn nested_call<'a>(
+pub(super) fn nested_call<'a>(
     rest: &'a [Node],
     body: &Node,
     previous: u32,

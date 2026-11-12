@@ -29,6 +29,25 @@ Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
 
+## Composed local and nested successful-byte I/O (2026-11-12)
+
+An automatic `int` initialized by `getchar()` may now feed two to sixteen
+nested `putchar` calls, with later direct or nested outputs of that same
+live local before another input. Each pinned Clang call/callee trio and final
+lvalue-to-rvalue/local reference must match the exact source positions and
+original declaration identity. Direct nested `putchar(getchar())` may be
+interleaved with local reads. Lowered typed IR keeps one `ByteInput` SSA
+identity per runtime read and emits each actual `ByteOutput` in C inner-first
+order, using the verified latest-read target mode for return-value replay.
+
+`tests/test_composed_c_byte_echo_pipeline.py` proves two whole C programs
+against independent byte-output and VM-step oracles under boundary and
+seeded binary input, plus one sixteen-deep local chain under zero/255 input,
+with source and normalized-AST refusals. This is a successful-I/O,
+accumulator-only guest trace; it does not support C EOF, output failure,
+arbitrary local mutation, guest-side arithmetic, branches, or general C
+function calls.
+
 ## Source-authenticated nested `putchar` return flow (2026-11-12)
 
 A complete source-C expression `putchar(putchar(getchar()));` now reaches

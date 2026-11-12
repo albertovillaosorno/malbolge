@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete source-C program interleaving two automatic
+  input locals, nested `putchar` return calls, repeated local reads and a
+  direct nested input exposed a pinned-Clang JSON admission failure. The
+  repaired source proof authenticates two-to-sixteen nested calls with
+  byte/line/column endpoints and local identity, retaining each live byte
+  in guest SSA until the next real input. The actual Malbolge VM matches
+  separate nine-byte and six-byte return-value oracles under binary input
+  and exact VM step counts under boundary and seeded binary inputs. Six
+  invalid C sources and fourteen forged AST mutations fail without
+  publication. A sixteen-level local-return guest also matches two boundary
+  input oracles in eighteen VM steps. Guest mutable storage, EOF, failed
+  output, dynamic branches and C arithmetic remain P0 work.
+
 - On 2026-11-12 complete source-C nested `putchar` return-value
   expressions exposed JSON admission refusal. Exact Clang call ancestry
   now lowers up to sixteen nested successful-byte writes to real guest
@@ -70,8 +83,8 @@ a compiler capability gap, not a reason to return to N+1.
   local uses now lower to output replay of the same live input SSA, and
   the existing verified latest-read guest backend executes the effects.
   Real VM output matches independent five-byte oracles under two binary
-  inputs in nine steps. Eight stale/effectful or over-limit C variants and thirteen
-  forged later-output AST/span mutations refuse guest publication.
+  inputs in nine steps. Eight stale/effectful or over-limit C variants
+  and thirteen forged later-output AST/span mutations refuse guest publication.
   Guest C locals, stale reads, arithmetic, EOF and C control remain open.
 
 - On 2026-11-12 a source-C experiment with automatic `int` locals
