@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a full C program mixing `getchar`-captured local
+  bytes, selected and skipped `if (0)` / `if (1)` output arms and direct
+  guest I/O initially failed normalized AST admission. Source-verified
+  literal conditions and unbraced child-call ancestry now produce actual
+  selected guest reads and writes while skipping inactive effects. Three
+  binary bytes map to exactly three VM outputs in seven steps; seeded
+  boundary oracles, nested returns, negative C variants and forged AST
+  conditions have focused regressions. Dynamic guest control, C loop
+  arithmetic, EOF and general guest locals remain unsupported.
+
 - On 2026-11-12 a complete C source used plain input-local values as
   both discarded and selected comma operands inside nested `putchar` calls.
   The normalized adapter originally refused this C source. Parent-checked,

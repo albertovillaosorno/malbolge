@@ -994,6 +994,127 @@ fn prove_local_output_chain<'node>(
     prove_nested_local_output(nodes, body, local, expected_id, previous, parent)
 }
 
+// Only a source-proven `if (0)` or `if (1)` with one unbraced I/O
+// statement can be projected. The selected arm still executes its input and
+// output in Malbolge; a skipped arm executes neither, including getchar().
+struct StaticIfProof<'node> {
+    width: usize,
+    selected: bool,
+    input: Option<&'node Node>,
+    // Source order is outer-to-inner for nested output calls.
+    outputs: Vec<&'node Node>,
+    end: u32,
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "prove the literal condition and every selected or skipped child"
+)]
+fn prove_static_if<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+    local: Option<&LocalDeclaration<'node>>,
+) -> Option<StaticIfProof<'node>> {
+    let [conditional, literal, rest @ ..] = nodes else {
+        return None;
+    };
+    let start = conditional.span.begin.byte;
+    let line = conditional.span.begin.line;
+    let column = conditional.span.begin.column;
+    let value = literal.literal.as_deref()?;
+    if start <= previous
+        || start <= body.span.begin.byte
+        || line == 0
+        || column == 0
+        || conditional.id != expected_id
+        || conditional.parent != body.id
+        || conditional.kind != "if-statement"
+        || conditional.type_name.is_some()
+        || conditional.reference.is_some()
+        || conditional.operation.is_some()
+        || !metadata_empty(conditional)
+        || literal.id != conditional.id.checked_add(1)?
+        || literal.parent != conditional.id
+        || literal.kind != "integer-literal"
+        || literal.type_name.as_deref() != Some("i32")
+        || literal.operation.is_some()
+        || literal.reference.is_some()
+        || literal.name.is_some()
+        || literal.definition.is_some()
+        || literal.inline_specified.is_some()
+        || literal.linkage.is_some()
+        || literal.storage_class.is_some()
+        || literal.storage_duration.is_some()
+        || !matches!(value, "0" | "1")
+        || literal.constant_integer.as_deref() != Some(value)
+        || !source_word(
+            literal,
+            start.checked_add(4)?,
+            start.checked_add(5)?,
+            line,
+            column.checked_add(4)?,
+        )
+    {
+        return None;
+    }
+    let child = rest.first()?;
+    let child_id = literal.id.checked_add(1)?;
+    let (width, input, outputs) = if child.kind == "call-expression"
+        && child.reference.as_deref() == Some("external:putchar")
+    {
+        if let Some(local) = local
+            && let Some((width, calls)) = prove_local_output_chain(
+                rest,
+                body,
+                local,
+                child_id,
+                previous,
+                conditional.id,
+            )
+        {
+            (width, None, calls)
+        } else {
+            let (width, input, calls) =
+                super::nested_byte_echo::nested_call_in_parent(
+                    rest,
+                    body,
+                    previous,
+                    child_id,
+                    conditional.id,
+                )?;
+            (width, Some(input), calls)
+        }
+    } else {
+        let read = prove_input_call(
+            rest.get(..3)?,
+            body,
+            previous,
+            (child_id, conditional.id),
+        )?;
+        (3, Some(read), Vec::new())
+    };
+    let extent = outputs.first().copied().or(input)?;
+    let end = extent.span.end.byte;
+    if child.id != child_id
+        || extent.span.begin.line != line
+        || extent.span.end.line != line
+        || child.span.begin.byte != start.checked_add(7)?
+        || end >= body.span.end.byte
+        || !source_word(conditional, start, end, line, column)
+    {
+        return None;
+    }
+    Some(StaticIfProof {
+        width: width.checked_add(2)?,
+        selected: value == "1",
+        input,
+        outputs,
+        end,
+    })
+}
+
 fn valid_envelope(input: &Artifact, function: &Node, body: &Node) -> bool {
     input.schema_version == 1
         && input.identity == super::EXPECTED_ARTIFACT
@@ -1077,6 +1198,63 @@ pub(super) fn canonical_source_byte_echo(
         let first = rest.get(consumed).ok_or(FrontendJsonError::Unsupported)?;
         if outputs == MAX_SOURCE_OUTPUTS || first.id != next_id {
             return Err(FrontendJsonError::Unsupported);
+        }
+        if first.kind == "if-statement" {
+            let proof = prove_static_if(
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
+                body,
+                previous,
+                next_id,
+                latest_local.as_ref().map(|(local, _)| local),
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
+            if proof.selected {
+                if inputs + usize::from(proof.input.is_some()) > MAX_ECHO_CALLS
+                    || outputs + proof.outputs.len() > MAX_SOURCE_OUTPUTS
+                {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                let value = if let Some(input) = proof.input {
+                    let value = ValueId::new(
+                        u32::try_from(inputs)
+                            .map_err(|_| FrontendJsonError::Unsupported)?,
+                    );
+                    instructions.push(LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: value,
+                            type_id: TypeId::new(0),
+                        },
+                        typed_span(&input.span),
+                    ));
+                    inputs += 1;
+                    latest_local = None;
+                    value
+                } else {
+                    latest_local
+                        .as_ref()
+                        .ok_or(FrontendJsonError::Unsupported)?
+                        .1
+                };
+                for output in proof.outputs.iter().rev() {
+                    instructions.push(LocatedInstruction::new(
+                        Instruction::ByteOutput { value },
+                        typed_span(&output.span),
+                    ));
+                }
+                outputs += proof.outputs.len();
+                requires_latest = true;
+            }
+            previous = proof.end;
+            consumed = consumed
+                .checked_add(proof.width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(proof.width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+            continue;
         }
         if first.kind == "call-expression"
             && let Some((local, value)) = latest_local.as_ref()

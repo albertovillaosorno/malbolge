@@ -26,6 +26,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Constant C if arms around live guest bytes (2026-11-12)
+
+A complete source-C function now interleaves a live input local with
+`if (0)` and `if (1)` arms, including skipped input, repeated-local output,
+and direct guest input/output. Pinned Clang initially admitted the program,
+but the JSON adapter rejected its input declaration. Exact AST parent,
+source coordinate, literal and called-function proof now selects only the
+single unbraced statement of a literal zero/one branch. Executed arms run
+real guest input/output instructions; skipped arms consume no guest input.
+
+The normative VM matches three selected binary input bytes and three output
+bytes in seven instructions under boundary and seeded inputs. Nested
+`putchar` return values, standalone reads, and captured-local return values
+also work in selected arms. Unsupported dynamic conditions, alternate
+literals, else arms, braced arms and arithmetic remain rejected. This is
+compile-time branch selection, **not** dynamic guest C branching; the
+complete C input/loop/arithmetic experiment still cannot lower.
+
 ### Pure latest-local comma operands (2026-11-12)
 
 A complete C function captures one byte with `int first = getchar();`,
