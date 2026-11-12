@@ -31,6 +31,16 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+An unbraced `if/else` may now select a directly parented `do { ... }
+while (predicate);` in either arm. Source proof replays each post-test body
+before testing its condition, isolates the unselected arm's unsigned writes,
+and authenticates the exact `do` source span, arm indentation and `else`
+geometry (including the final semicolon). A complete twelve-trip Fibonacci
+program proves both arm choices and a reversed dispatch with initially false
+post-tests. All twelve output bytes execute on the normative guest VM in
+47 steps with EOF and binary stdin; invalid C and forged ASTs refuse without
+publication. This is bounded C state replay, not dynamic guest branching.
+
 Complete twelve-trip unsigned Fibonacci C now admits a selected
 `do`-body `break` without evaluating its source-proven pure trailing
 predicate, even when the skipped C expression contains division by zero.

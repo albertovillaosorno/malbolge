@@ -583,20 +583,22 @@ impl<'node> Flow<'node> {
                 self.branch_effects(scope, depth)?;
                 Some(scope.span.end.byte)
             },
-            "while-statement" => {
-                // A source-proven `if` can own a directly parented unbraced
-                // while arm. Admit only the canonical next-line indentation
-                // and (`else` on its own line) punctuation geometry. Merely
-                // trusting Clang ancestry would admit forged branch spans.
+            "while-statement" | "do-statement" => {
+                // A source-proven `if` may directly own a post-test or
+                // pre-test loop. Preserve both arms of an `else` and require
+                // exact indentation/keyword geometry, rather than trusting
+                // Clang ancestry alone. A do-loop's final semicolon occupies
+                // one additional source byte before the `else` keyword.
                 let expected_gap = if opening_gap == 2 {
                     statement.span.begin.column.checked_add(5)?
                 } else if opening_gap == 6 {
-                    statement
-                        .span
-                        .begin
-                        .column
-                        .checked_mul(2)?
-                        .checked_add(8)?
+                    statement.span.begin.column.checked_mul(2)?.checked_add(
+                        if previous.kind == "do-statement" {
+                            9
+                        } else {
+                            8
+                        },
+                    )?
                 } else {
                     return None;
                 };
@@ -618,7 +620,11 @@ impl<'node> Flow<'node> {
                 {
                     return None;
                 }
-                self.static_while(statement, previous_end)
+                if arm.kind == "do-statement" {
+                    self.static_do_while(statement, previous_end)
+                } else {
+                    self.static_while(statement, previous_end)
+                }
             },
             "call-expression" => {
                 let output = checked_call(self, statement, previous_end)?;
@@ -698,6 +704,7 @@ impl<'node> Flow<'node> {
         match else_arm.kind.as_str() {
             "compound-statement"
             | "while-statement"
+            | "do-statement"
             | "call-expression"
             | "binary-expression"
             | "compound-assignment-expression" => {
