@@ -209,7 +209,7 @@ class StaticIfInputCPipelineTests(unittest.TestCase):
     def test_unproved_source_if_is_not_published(self) -> None:
         invalid = (
             "if (getchar()) putchar(first);",
-            "if (2) putchar(first);",
+            "if (first) putchar(first);",
             "if (1) { putchar(first); ++first; }",
             "if (1) putchar(first); else ++first;",
             "if (1) putchar(first + 1);",
