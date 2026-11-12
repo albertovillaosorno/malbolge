@@ -354,6 +354,104 @@ fn prove_comma_output<'node>(
         .then_some((first_input, second_input, output))
 }
 
+// A left-associative standalone comma expression has a preorder chain of
+// (N-1) binary nodes followed by N three-node getchar calls. Unlike a
+// discarded single call, each comma operand must execute in the real guest.
+// The bounded, single-line grammar admits only successful input calls, never
+// output calls or arithmetic hidden in a discarded operand.
+#[expect(
+    clippy::too_many_lines,
+    reason = "verify every Clang node and source coordinate in the comma chain"
+)]
+fn prove_discarded_comma_reads<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+) -> Option<(usize, Vec<&'node Node>, u32)> {
+    let binary_count = nodes
+        .iter()
+        .take(16)
+        .take_while(|node| node.kind == "binary-expression")
+        .count();
+    if binary_count == 0 || binary_count >= 16 {
+        return None;
+    }
+    let input_count = binary_count.checked_add(1)?;
+    let width = binary_count.checked_add(input_count.checked_mul(3)?)?;
+    let chain = nodes.get(..width)?;
+    let binary_nodes = chain.get(..binary_count)?;
+    let first = binary_nodes.first()?;
+    let start = first.span.begin.byte;
+    let line = first.span.begin.line;
+    let column = first.span.begin.column;
+    if start <= previous
+        || start <= body.span.begin.byte
+        || line == 0
+        || column == 0
+    {
+        return None;
+    }
+    for (index, node) in binary_nodes.iter().enumerate() {
+        let parent = if index == 0 {
+            body.id
+        } else {
+            binary_nodes.get(index.checked_sub(1)?)?.id
+        };
+        if node.id != expected_id.checked_add(u32::try_from(index).ok()?)?
+            || node.parent != parent
+            || node.kind != "binary-expression"
+            || node.type_name.as_deref() != Some("i32")
+            || node.operation.as_deref() != Some(",")
+            || node.reference.is_some()
+            || !metadata_empty(node)
+        {
+            return None;
+        }
+    }
+    let mut reads = Vec::with_capacity(input_count);
+    let mut last_end = previous;
+    for index in 0..input_count {
+        let parent = if index < 2 {
+            binary_nodes.last()?.id
+        } else {
+            binary_nodes.get(binary_count.checked_sub(index)?)?.id
+        };
+        let offset = binary_count.checked_add(index.checked_mul(3)?)?;
+        let read = prove_input_call(
+            chain.get(offset..offset.checked_add(3)?)?,
+            body,
+            last_end,
+            (
+                expected_id.checked_add(u32::try_from(offset).ok()?)?,
+                parent,
+            ),
+        )?;
+        if read.span.begin.line != line
+            || read.span.end.line != line
+            || read.span.begin.column
+                != column
+                    .checked_add(read.span.begin.byte.checked_sub(start)?)?
+            || (index > 0
+                && !matches!(
+                    read.span.begin.byte.checked_sub(last_end)?,
+                    1 | 2
+                ))
+        {
+            return None;
+        }
+        last_end = read.span.end.byte;
+        reads.push(read);
+    }
+    for (index, binary) in binary_nodes.iter().enumerate() {
+        let right = reads.get(binary_count.checked_sub(index)?)?;
+        if !source_word(binary, start, right.span.end.byte, line, column) {
+            return None;
+        }
+    }
+    Some((width, reads, last_end))
+}
+
 fn valid_local_variable(
     variable: &Node,
     declaration: &Node,
@@ -943,6 +1041,49 @@ pub(super) fn canonical_source_byte_echo(
                 .ok_or(FrontendJsonError::Unsupported)?;
             outputs = outputs
                 .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
+        if first.kind == "binary-expression"
+            && let Some((width, reads, end)) = prove_discarded_comma_reads(
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
+                body,
+                previous,
+                next_id,
+            )
+        {
+            if inputs
+                .checked_add(reads.len())
+                .is_none_or(|count| count > MAX_ECHO_CALLS)
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            for read in &reads {
+                instructions.push(LocatedInstruction::new(
+                    Instruction::ByteInput {
+                        result: ValueId::new(u32::try_from(inputs).map_err(
+                            |_error| FrontendJsonError::Unsupported,
+                        )?),
+                        type_id: TypeId::new(0),
+                    },
+                    typed_span(&read.span),
+                ));
+                inputs = inputs
+                    .checked_add(1)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+            }
+            // The last input clobbers any prior accumulator-local value.
+            latest_local = None;
+            previous = end;
+            consumed = consumed
+                .checked_add(width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_error| FrontendJsonError::Unsupported)?,
+                )
                 .ok_or(FrontendJsonError::Unsupported)?;
             requires_latest = true;
             continue;

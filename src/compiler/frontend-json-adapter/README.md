@@ -29,6 +29,21 @@ Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
 
+### Standalone source-C comma input statements (2026-11-12)
+
+A source-checked top-level expression statement containing two to sixteen
+left-associative `getchar()` calls separated by commas now lowers every
+input effect to guest SSA even though the expression value is unused.
+The binary ancestors and direct three-node call/cast/reference subtrees
+must match the pinned Clang source spans, parent IDs, lexical columns and
+external I/O identities. Each input clobbers the prior accumulator-local
+alias. No byte is synthesized or consumed on the host, and unsupported
+arithmetic, nested parentheses, `putchar` operands, EOF and C output failures
+remain closed. A complete seven-read/five-output program reaches the
+normative VM in thirteen steps under twelve binary oracles; standalone
+three-byte input without output takes four guest steps. The focused suite
+checks source refusals, forged ASTs and the sixteen-read admission bound.
+
 ### Source-sequenced discarded byte reads (2026-11-12)
 
 A complete C source interleaves automatic `getchar` locals, a standalone

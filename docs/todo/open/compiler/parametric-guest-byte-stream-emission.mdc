@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C source interleaving nested `putchar`
+  returns, standalone `getchar(), getchar(), getchar();` and a nested comma
+  output first failed at Clang JSON adapter admission. Left-associative
+  source-proven comma call ancestry now lowers all three discarded bytes as
+  actual guest inputs, not host replay. Seven real VM reads yield five
+  independently expected outputs in thirteen steps under twelve binary
+  streams; an input-only three-read guest halts in four steps. Bounds
+  admit two to sixteen direct input calls, reject seventeen; forbidden C
+  effects and forged Clang metadata refuse artifact publication. EOF,
+  guest-side C arithmetic/control and mixed-effect comma chains remain open.
+
 - On 2026-11-12 a complete C stream mixing local byte capture,
   an unobserved standalone input, nested `putchar` returns, and repeated
   last-local output initially refused normalized JSON admission. The

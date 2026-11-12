@@ -248,7 +248,7 @@ class DiscardedCByteEchoPipelineTests(unittest.TestCase):
     def test_invalid_c_effect_sequences_do_not_publish(self) -> None:
         cases = (
             BODY.replace("    getchar();\n", "    getchar() + 1;\n"),
-            BODY.replace("    getchar();\n", "    getchar(), getchar();\n"),
+            BODY.replace("    getchar();\n", "    getchar(), putchar(65);\n"),
             BODY.replace("    getchar();\n", "    getc(stdin);\n"),
             BODY.replace("    getchar();\n", "    first = getchar();\n"),
             BODY.replace("    putchar(putchar(getchar()));\n", "    putchar(first);\n"),

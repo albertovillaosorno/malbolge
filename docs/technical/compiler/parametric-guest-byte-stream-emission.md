@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+## Standalone comma input sequencing (2026-11-12)
+
+A whole source-C program now composes one automatic input local, nested
+`putchar` return-value outputs, a three-call standalone comma chain,
+`putchar((getchar(), getchar()))`, and another local-return chain. The
+previously rejected comma expression is a real statement with three
+successive guest input effects, even though C discards every result. The
+pinned Clang preorder proves each left-associative binary comma ancestor,
+source byte/line/column span, input call and external function identity.
+The selected successful bytes execute inside the normative Malbolge VM:
+seven reads produce five oracle output bytes in thirteen steps under twelve
+independent binary streams. An input-only three-read chain emits no bytes
+and halts in four steps; 2-to-16 comma reads are admitted and 17 refuse.
+
+This remains a bounded, single-line straight-line comma expression with
+only direct `getchar` operands. Comma chains containing `putchar`, arithmetic,
+casts, parenthesized expressions, or extra effects refuse publication.
+C EOF, output failures, guest-side C branch/loop evaluation and persistent
+local storage are unimplemented. This fixes a real ordered guest-effect
+semantic gap, not arbitrary C comma expressions or general I/O lowering.
+
 ### Source-sequenced discarded byte reads (2026-11-12)
 
 A complete C source interleaves automatic `getchar` locals, a standalone
