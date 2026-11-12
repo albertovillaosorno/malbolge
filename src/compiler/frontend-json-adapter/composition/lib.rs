@@ -44,6 +44,9 @@ mod local_initialized_output;
 #[path = "local_constant_flow.rs"]
 mod local_constant_flow;
 
+#[path = "source_byte_echo.rs"]
+mod source_byte_echo;
+
 #[cfg(test)]
 use malbolge as _;
 use serde::Deserialize;
@@ -139,6 +142,8 @@ const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 /// Which independently checked guest effect trace can realize this C source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrontendGuestMode {
+    /// One or more direct successful-byte input/output calls from source C.
+    AdjacentEcho,
     /// Exactly two VM-witnessed distinct nonzero printable bytes.
     DistinctLiteralPair,
     /// Exactly three independently VM-witnessed different bytes.
@@ -2862,6 +2867,9 @@ fn canonical_literal_output_typed_ir(
 pub fn canonical_guest_typed_ir(
     bytes: &[u8],
 ) -> Result<CanonicalGuestProjection, FrontendJsonError> {
+    if let Ok(projection) = source_byte_echo::canonical_source_byte_echo(bytes) {
+        return Ok(projection);
+    }
     if let Ok(wire) = canonical_void_typed_ir(bytes) {
         return Ok((wire, FrontendGuestMode::EmptyVoid));
     }

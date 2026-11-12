@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Dynamic source-C byte echo under successful input (2026-11-12)
+
+A demanding four-iteration C program with `getchar`, EOF checks,
+stateful parity and conditional input transformations first exposed the
+source-JSON projection gap: its first local declaration still refuses.
+An independently useful narrower experiment now authenticates straight-line
+C `putchar(getchar());` source calls. The pinned Clang preorder lowers
+one to 128 adjacent read/write pairs into distinct typed SSA byte inputs
+and outputs. Unlike bounded compiler-time Fibonacci replay, each output
+here depends on a byte actually supplied to the running Malbolge guest.
+
+The real C-to-guest pipeline produces normative guest code for 1, 3 and
+16 successive pairs. A seeded test exercises every binary input byte
+from 0 through 255 plus deterministic nontrivial binary streams; guest
+stdout matches each submitted byte exactly. Separate mutated C sources
+and forged Clang AST metadata reject before publishing artifacts. The
+existing adjacent-echo layout checks its own guest VM witness.
+
+This is a conditional **successful-byte** effect equivalence only; C EOF
+returns -1 while the Malbolge VM has a different EOF accumulator word.
+C `getchar` EOF, I/O failures, input computation, dynamic state, C loops,
+control flow and the independent guest ABI remain unsupported. The P0
+work item stays open, and source-C general byte-stream emission still
+requires full semantics rather than a host-side output projection.
+
 ### Complete original unmasked Fibonacci guest (2026-11-12)
 
 The pinned, complete twelve-trip `conditional_fibonacci.c` source now passes

@@ -118,6 +118,7 @@ fn execute() -> Result<(), String> {
         let _capsule_argument = command.arg("--capsule");
     }
     let mode_arg = match mode {
+        FrontendGuestMode::AdjacentEcho => "",
         FrontendGuestMode::EmptyVoid => "--empty-void",
         FrontendGuestMode::InitialZeroOutput => "--initial-zero-output",
         FrontendGuestMode::SeededByteLiteral => "--seeded-byte-literal",
@@ -236,8 +237,12 @@ fn execute() -> Result<(), String> {
             "--distinct-literal-forty-eight"
         },
     };
+    let _arguments = command.arg("--");
+    if !mode_arg.is_empty() {
+        let _mode = command.arg(mode_arg);
+    }
     let mut child = command
-        .args(["--", mode_arg, "--typed-stdin"])
+        .arg("--typed-stdin")
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

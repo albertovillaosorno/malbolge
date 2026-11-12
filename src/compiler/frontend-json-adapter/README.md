@@ -29,6 +29,33 @@ Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
 
+## Successful-byte dynamic C echo (2026-11-12)
+
+A source-backed, **dynamic** input path now admits one to 128 direct
+`putchar(getchar());` expression statements in an external no-argument
+`void` function, without other statements or an explicit return. This path
+retains each runtime read as a distinct `ByteInput` SSA value, immediately
+followed by `ByteOutput` of that same value, instead of folding input at
+compilation. The pinned Clang 22.1.8 normalized preorder, both external
+call identities, each function-to-pointer cast, source span endpoints,
+parentage, sequential effect ordering, target and source identity are
+checked before canonical MCTI re-admission. The layout backend uses its
+existing strict adjacent-echo guest mode and independently runs the
+normative VM. This path does **not** construct guest C locals or branches.
+
+The native `c2malbolge.py --repository-tools` test compiles C with 1, 3
+and 16 such pairs to graphical guest code and checks real VM output for
+all 256 byte values and seeded binary data. Invalid source calls and 19
+adversarial normalized AST changes refuse without a guest artifact.
+
+**Precondition:** every `getchar` must successfully return a byte and
+every `putchar` must succeed, with the C function's return/ABI unobserved.
+EOF is **not** equivalent to C `getchar`'s `-1` in the current Malbolge
+VM and is not supported by this projection. Nor are extra I/O effects,
+C arithmetic on the input, conditionals, dynamic loops, I/O failures,
+or arbitrary guest libc. Do not interpret this narrow successful-input
+trace as a general-purpose C runtime.
+
 ## Witnessed guest C output
 
 A complete twelve-trip unsigned Fibonacci program now nests a source-checked
@@ -230,7 +257,8 @@ An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
 More than three parentheses, multiple unary operators, multiline
 argument spacing, general arithmetic, call-result handling,
-arbitrary output streams, interleaved effectful statements, `getchar`, EOF,
+arbitrary output streams, interleaved effectful statements, general
+`getchar` expressions outside the successful-byte echo above, EOF,
 I/O errors, general guest libc and C entry ABI remain unsupported.
 Mixing distinct **output bytes** generally refuses admission except for
 explicitly witnessed two- and three-call sequences. One two-call family starts
