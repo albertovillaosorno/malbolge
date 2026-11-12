@@ -3641,12 +3641,40 @@ fn verify_source_scratch_literal_stream<const N: usize>(
         usize::from(*artifact.source.first().ok_or("empty scratch guest")?)
             .checked_add(1)
             .ok_or("scratch jump target overflow")?;
+    if target >= decoded.len() || decoded.last() != Some(&b'v') {
+        return Err(String::from("source-scratch guest shape disagrees"));
+    }
+    // The source-revisit grammar has exactly one reached data relocation,
+    // after two outputs and before the final third output. The independent
+    // linear checker must then prove the D path and the written source word.
+    let body = &decoded[target..decoded.len() - 1];
+    let relocations = body
+        .iter()
+        .enumerate()
+        .filter_map(|(offset, &opcode)| (opcode == b'j').then_some(offset))
+        .collect::<Vec<_>>();
+    let revisits_source = N == 3
+        && relocations.len() == 1
+        && body[..relocations[0]]
+            .iter()
+            .filter(|&&opcode| opcode == profile.output_instruction())
+            .count()
+            == 2
+        && body[relocations[0] + 1..]
+            .iter()
+            .filter(|&&opcode| opcode == profile.output_instruction())
+            .count()
+            == 1;
+    if !relocations.is_empty() && !revisits_source {
+        return Err(String::from("source-scratch relocation shape disagrees"));
+    }
     if decoded.first() != Some(&b'i')
         || target >= decoded.len()
         || decoded.last() != Some(&b'v')
         || decoded[target..decoded.len() - 1].iter().any(|&opcode| {
             !matches!(opcode, b'o' | b'p' | b'*')
                 && opcode != profile.output_instruction()
+                && !(revisits_source && opcode == b'j')
         })
         || decoded[target..]
             .iter()
@@ -3671,6 +3699,7 @@ fn verify_source_scratch_literal_stream<const N: usize>(
             b'o' => Some(LinearOpcode::NoOperation),
             b'p' => Some(LinearOpcode::CrazyData),
             b'*' => Some(LinearOpcode::RotateData),
+            b'j' if revisits_source => Some(LinearOpcode::RelocateDataPointer),
             b'v' => Some(LinearOpcode::Halt),
             output if output == profile.output_instruction() => {
                 Some(LinearOpcode::OutputByte)
@@ -3695,10 +3724,60 @@ fn verify_source_scratch_literal_stream<const N: usize>(
         .flatten()
         .copied()
         .collect::<Vec<_>>();
+    // Old scratch sources never repeat a data write. The new grammar may
+    // revisit exactly one cell: it was first rotated before `j`, then is
+    // immediately rotated again after `j`. Both writes must be to a past,
+    // nonexecuted source address; no other alias is admitted.
+    let unique_writes = writes.iter().copied().collect::<BTreeSet<_>>();
+    let valid_revisit = if revisits_source {
+        let code = u32::try_from(target + relocations[0])
+            .map_err(|_error| "source-scratch relocation overflow")?;
+        let step = layout
+            .executed_code_positions()
+            .iter()
+            .position(|&position| position == code)
+            .ok_or("source-scratch relocation not reached")?;
+        let resumed = step + 1;
+        let after = layout
+            .data_write_positions()
+            .get(resumed)
+            .copied()
+            .flatten();
+        after.is_some_and(|address| {
+            let first_rotation = layout.data_write_positions()[..step]
+                .iter()
+                .zip(&layout.executed_code_positions()[..step])
+                .any(|(&write, &code)| {
+                    write == Some(address)
+                        && usize::try_from(code)
+                            .ok()
+                            .and_then(|index| decoded.get(index))
+                            == Some(&b'*')
+                });
+            let second_rotation = layout
+                .executed_code_positions()
+                .get(resumed)
+                .and_then(|&code| usize::try_from(code).ok())
+                .and_then(|index| decoded.get(index))
+                == Some(&b'*');
+            usize::try_from(address).is_ok_and(|at| at > 0 && at < target)
+                && first_rotation
+                && second_rotation
+                && layout.data_pointer_positions().get(resumed)
+                    == Some(&address)
+                && writes.iter().filter(|&&write| write == address).count() == 2
+                && unique_writes.len() + 1 == writes.len()
+        })
+    } else {
+        unique_writes.len() == writes.len()
+    };
     if writes.len()
         < usize::from(expected[0] != 0)
-            + expected.windows(2).filter(|pair| pair[0] != pair[1]).count()
-        || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
+            + expected
+                .windows(2)
+                .filter(|pair| pair[0] != pair[1])
+                .count()
+        || !valid_revisit
         || writes
             .iter()
             .any(|&address| address >= layout.source().len() as u32)
@@ -3740,11 +3819,9 @@ fn verify_distinct_literal_pair(
     // Unequal pairs require distinct guest writes. Equal pairs allow one or
     // two writes before adjacent output instructions with no host copying.
     if artifact.source.len() != artifact.steps {
-        return verify_source_scratch_literal_stream(
-            profile,
-            artifact,
-            [first, second],
-        );
+        return verify_source_scratch_literal_stream(profile, artifact, [
+            first, second,
+        ]);
     }
     let decoded = artifact
         .source
@@ -4683,7 +4760,8 @@ fn verify_distinct_twelve_layout(
             "distinct-literal twelve execution geometry disagrees",
         ));
     }
-    let operations = decode_distinct_twelve_operations(profile, &artifact.source)?;
+    let operations =
+        decode_distinct_twelve_operations(profile, &artifact.source)?;
     let layout = admit_linear_layout(
         profile,
         &operations,
@@ -4715,9 +4793,7 @@ fn verify_distinct_twelve_layout(
         .map_err(|error| format!("twelve source geometry: {error:?}"))?;
     if writes.len() != expected_writes
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
-        || writes
-            .iter()
-            .any(|&address| address < source_limit)
+        || writes.iter().any(|&address| address < source_limit)
         || layout.executed_code_positions().len() != artifact.steps
     {
         return Err(String::from(
@@ -5946,9 +6022,9 @@ fn decode_distinct_quad_operations(
     if prefix > 30
         || source.len() > 94
         || !decoded.get(..prefix).is_some_and(|prefix_bytes| {
-            prefix_bytes.iter().all(|&op| {
-                op == b'o' || op == profile.output_instruction()
-            })
+            prefix_bytes
+                .iter()
+                .all(|&op| op == b'o' || op == profile.output_instruction())
         })
         || decoded.last() != Some(&b'v')
         || !terminal.is_some_and(|op| {

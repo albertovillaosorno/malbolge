@@ -1565,6 +1565,255 @@ fn verified_variable_source_scratch_at_jump<const N: usize>(
     Some(layout)
 }
 
+/// Revisit one previously skipped source word after two real byte effects.
+///
+/// A first graphical rotation materializes a full-width word at `scratch`.
+/// The next source byte then drives a real `j` back to that same address,
+/// allowing a second rotation to consume the guest-evolved value. From there,
+/// a bounded state search chooses fresh graphical operands for the final
+/// arithmetic and output. This is a byte-parameterized proposal, not a
+/// special-case transcript: the independent layout checker and normative VM
+/// must admit every source and prove all three requested bytes.
+pub(super) fn verified_revisited_source_scratch_triple(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; 3],
+) -> Option<LinearLayout> {
+    if profile.id() != malbolge::current_profile().id() {
+        return None;
+    }
+    let prefix = verified_variable_source_scratch_at_jump(
+        profile,
+        [expected[0], expected[1]],
+        0,
+        0,
+    )?;
+    let source = prefix.source();
+    let target = usize::from(*source.first()?).checked_add(1)?;
+    let mut vm =
+        super::ProfileMachine::from_source(profile, source, Vec::new()).ok()?;
+    let _ = vm
+        .run(prefix.executed_code_positions().len().checked_sub(1)?)
+        .ok()?;
+    if vm.output() != &expected[..2] || vm.input_consumed() != 0 {
+        return None;
+    }
+    let initial_data = usize::try_from(vm.registers().data_pointer).ok()?;
+    if initial_data >= target || source.len() <= target {
+        return None;
+    }
+    // Preserve the prefix's exact operands, including skipped loader-valid
+    // jump/input bytes that are inert as code but active when D reads them.
+    let mut prefix_operations = vec![LinearOpcode::NoOperation; source.len()];
+    *prefix_operations.first_mut()? = LinearOpcode::JumpForward {
+        target: u32::try_from(target).ok()?,
+    };
+    for (at, &byte) in source.iter().enumerate().take(target).skip(1) {
+        prefix_operations[at] =
+            LinearOpcode::SkippedDataByte { byte: u32::from(byte) };
+    }
+    for (at, &byte) in source.iter().enumerate().skip(target) {
+        prefix_operations[at] = match malbolge::decode_profile_instruction(
+            u32::from(byte),
+            u32::try_from(at).ok()?,
+        )? {
+            b'o' => LinearOpcode::NoOperation,
+            b'p' => LinearOpcode::CrazyData,
+            b'*' => LinearOpcode::RotateData,
+            b'<' => LinearOpcode::OutputByte,
+            b'v' => LinearOpcode::Halt,
+            _ => return None,
+        };
+    }
+    if prefix_operations.pop()? != LinearOpcode::Halt {
+        return None;
+    }
+    // Skipped source bytes may encode any of the eight loader opcodes, even
+    // though they are never executed. Keep this fixed by source position.
+    let operands = (0..target)
+        .map(|at| {
+            (33u8..=126)
+                .filter(|&byte| {
+                    matches!(
+                        malbolge::decode_profile_instruction(
+                            u32::from(byte),
+                            u32::try_from(at).unwrap_or(u32::MAX),
+                        ),
+                        Some(
+                            b'o' | b'j'
+                                | b'p'
+                                | b'*'
+                                | b'i'
+                                | b'v'
+                                | b'<'
+                                | b'/'
+                        )
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    #[derive(Clone, Copy)]
+    struct Link {
+        predecessor: usize,
+        operation: LinearOpcode,
+        operand: Option<u8>,
+    }
+    // A fixed D and A imply identical future behavior: save one predecessor
+    // per accumulator instead of copying increasingly long operation paths.
+    // Mid-gap revisits leave room for both the original prefix and fresh
+    // tail operands. Check those high-yield geometries first; the bounded
+    // search still considers the remaining safe source addresses.
+    let mut scratch_positions =
+        (initial_data.max(34)..target.saturating_sub(7)).collect::<Vec<_>>();
+    let middle = target.saturating_mul(2) / 3;
+    scratch_positions.sort_unstable_by_key(|&at| (at.abs_diff(middle), at));
+    for scratch in scratch_positions {
+        let jump_word = u8::try_from(scratch.checked_sub(1)?).ok()?;
+        if !operands.get(scratch + 1)?.contains(&jump_word) {
+            continue;
+        }
+        for &seed in operands.get(scratch)? {
+            let rotated = malbolge::profile_rotate(
+                u32::from(seed),
+                profile.memory_words(),
+            );
+            let evolved =
+                malbolge::profile_rotate(rotated, profile.memory_words());
+            let mut links = vec![Link {
+                predecessor: 0,
+                operation: LinearOpcode::NoOperation,
+                operand: None,
+            }];
+            let mut frontier = BTreeMap::from([(evolved, 0usize)]);
+            for depth in 0..=5 {
+                for (&accumulator, &last) in &frontier {
+                    if !matches_byte(accumulator, expected[2]) {
+                        continue;
+                    }
+                    let mut suffix = Vec::with_capacity(depth);
+                    let mut cursor = last;
+                    while cursor != 0 {
+                        let link = links.get(cursor)?;
+                        suffix.push((link.operation, link.operand));
+                        cursor = link.predecessor;
+                    }
+                    suffix.reverse();
+                    let mut operations = prefix_operations.clone();
+                    operations[scratch] =
+                        LinearOpcode::SkippedDataByte { byte: u32::from(seed) };
+                    operations[scratch + 1] = LinearOpcode::SkippedDataByte {
+                        byte: u32::from(jump_word),
+                    };
+                    for (index, (_, byte)) in suffix.iter().enumerate() {
+                        if let Some(byte) = byte {
+                            operations[scratch + index + 1] =
+                                LinearOpcode::SkippedDataByte {
+                                    byte: u32::from(*byte),
+                                };
+                        }
+                    }
+                    operations.extend(repeat_n(
+                        LinearOpcode::NoOperation,
+                        scratch.saturating_sub(initial_data),
+                    ));
+                    operations.extend([
+                        LinearOpcode::RotateData,
+                        LinearOpcode::RelocateDataPointer,
+                        LinearOpcode::RotateData,
+                    ]);
+                    operations
+                        .extend(suffix.iter().map(|(operation, _)| *operation));
+                    operations
+                        .extend([LinearOpcode::OutputByte, LinearOpcode::Halt]);
+                    let Ok(layout) =
+                        super::encode_linear_layout(profile, &operations)
+                    else {
+                        continue;
+                    };
+                    let steps = layout.executed_code_positions().len();
+                    let verified = [Vec::new(), vec![255, 0, 128]]
+                        .into_iter()
+                        .all(|input| {
+                            let vm = super::ProfileMachine::from_source(
+                                profile,
+                                layout.source(),
+                                input,
+                            );
+                            let Ok(mut guest) = vm else {
+                                return false;
+                            };
+                            let outcome = guest.run(steps);
+                            let terminated = matches!(
+                                outcome,
+                                Ok(super::RunOutcome::Terminated {
+                                    steps: actual,
+                                    ..
+                                }) if actual == steps
+                            );
+                            terminated
+                                && guest.output() == expected
+                                && guest.input_consumed() == 0
+                        });
+                    if verified {
+                        return Some(layout);
+                    }
+                }
+                if depth == 5 {
+                    break;
+                }
+                let at = scratch + depth + 1;
+                let mut next = BTreeMap::new();
+                for (&accumulator, &predecessor) in &frontier {
+                    let word_options: &[u8] = if depth == 0 {
+                        std::slice::from_ref(&jump_word)
+                    } else {
+                        operands.get(at)?
+                    };
+                    let mut insert = |result, operation, operand| {
+                        if let std::collections::btree_map::Entry::Vacant(
+                            entry,
+                        ) = next.entry(result)
+                        {
+                            let id = links.len();
+                            links.push(Link {
+                                predecessor,
+                                operation,
+                                operand,
+                            });
+                            let _ = entry.insert(id);
+                        }
+                    };
+                    insert(accumulator, LinearOpcode::NoOperation, None);
+                    for &byte in word_options {
+                        insert(
+                            malbolge::profile_crazy(
+                                u32::from(byte),
+                                accumulator,
+                                profile.word_trits(),
+                            ),
+                            LinearOpcode::CrazyData,
+                            Some(byte),
+                        );
+                        insert(
+                            malbolge::profile_rotate(
+                                u32::from(byte),
+                                profile.memory_words(),
+                            ),
+                            LinearOpcode::RotateData,
+                            Some(byte),
+                        );
+                    }
+                }
+                if next.is_empty() || next.len() > 16_384 {
+                    break;
+                }
+                frontier = next;
+            }
+        }
+    }
+    None
+}
+
 /// Permit one forward data-pointer relocation within skipped graphical source
 /// scratch. Each consumed operand is a fresh, previously unread source cell.
 /// A relocation may skip ahead but never revisit a guest-written operand or

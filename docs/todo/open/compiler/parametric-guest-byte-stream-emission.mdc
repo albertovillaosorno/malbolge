@@ -2172,3 +2172,14 @@ a compiler capability gap, not a reason to return to N+1.
   independently calculated masked recurrence matches the normative VM on
   twelve bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps.
   General guest C control and the unmasked Fibonacci layout remain open.
+
+- On 2026-11-12 a complete original three-trip unsigned Fibonacci C program
+  previously refused guest layout despite an independent manually encoded
+  `02 59 5f` real VM source. A byte-parameterized search now rotates and
+  revisits one skipped source operand using a genuine `j`, then derives the
+  third accumulator byte through further guest arithmetic. The independent
+  publisher strictly proves one repeated write, D relocation, decoded source
+  and two VM runs. The pinned Clang-to-VM pipeline emits all three bytes on
+  EOF and binary input; invalid selected division fails without an artifact.
+  Full twelve-trip unmasked Fibonacci and dynamic guest C runtime state
+  remain unsupported. The full three-trip compile is currently costly.

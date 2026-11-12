@@ -4380,3 +4380,23 @@ The independently calculated twelve-byte masked recurrence
 Malbolge guest in 47 instructions with EOF and binary stdin. The
 original unmasked Fibonacci output still has no generalized layout
 witness, and the P0 remains open.
+
+### Evolved source-scratch third byte (2026-11-12)
+
+The original unmasked Fibonacci C source initially refused after three loop
+iterations (`02 59 5f`) even though a hand-constructed source-independent
+VM witness could produce the prefix. A bounded, byte-parameterized proposal
+now reuses the genuine two-output source-scratch guest, rotates an untouched
+skipped source word, relocates D back to it with a real `j`, and rotates the
+modified word a second time. Fresh graphical operands supply the final
+arithmetic and third output; neither byte is host-injected into guest stdout.
+
+The independent publisher admits exactly one relocation after two outputs
+and one repeated source write only when the relocated D revisits the earlier
+written cell. Positional decode, source shadow, all write addresses and two
+normative VM replays remain mandatory. The pinned three-trip complete C
+program emits `02 59 5f` with EOF and binary stdin, while selected undefined
+C arithmetic rejects and the original twelve-trip program still refuses
+without publication. This search costs roughly two minutes through the full
+pipeline; dynamic guest C control, longer full-width streams and faster
+reusable block synthesis remain open.

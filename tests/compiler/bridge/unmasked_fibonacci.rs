@@ -161,3 +161,85 @@ fn original_fibonacci_third_byte_reaches_real_guest_through_written_source()
     }
     Ok(())
 }
+
+#[test]
+fn original_fibonacci_third_byte_is_found_by_bounded_revisit_search()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let expected = original_fibonacci_bytes();
+    let triple = [expected[0], expected[1], expected[2]];
+    let layout = verified_revisited_source_scratch_triple(profile, triple)
+        .ok_or("source-scratch revisit search missed full-width guest")?;
+    assert!(layout.source().len() > 105);
+    assert_eq!(
+        layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .len(),
+        layout.data_write_positions().iter().flatten().count() - 1,
+        "one already-written guest source cell must be revisited",
+    );
+    let writes = layout.data_write_positions();
+    let repeated = writes
+        .iter()
+        .flatten()
+        .find(|&&address| {
+            writes
+                .iter()
+                .filter(|&&write| write == Some(address))
+                .count()
+                == 2
+        })
+        .copied()
+        .ok_or("missing repeated guest source write")?;
+    let repeated_steps = writes
+        .iter()
+        .enumerate()
+        .filter_map(|(step, &write)| (write == Some(repeated)).then_some(step))
+        .collect::<Vec<_>>();
+    assert_eq!(repeated_steps.len(), 2);
+    assert!(
+        usize::try_from(repeated)
+            .ok()
+            .is_some_and(|at| { at < usize::from(layout.source()[0]) + 1 })
+    );
+    for &step in &repeated_steps {
+        let code = layout.executed_code_positions()[step];
+        assert_eq!(
+            malbolge::decode_profile_instruction(
+                u32::from(layout.source()[code as usize]),
+                code,
+            ),
+            Some(b'*'),
+            "both source-cell writes must be real rotations",
+        );
+    }
+    let relocation = layout.executed_code_positions()[repeated_steps[1] - 1];
+    assert_eq!(
+        malbolge::decode_profile_instruction(
+            u32::from(layout.source()[relocation as usize]),
+            relocation,
+        ),
+        Some(b'j'),
+        "the second rotation must follow a real D relocation",
+    );
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut guest =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("guest loading: {error:?}"))?;
+        let result = guest
+            .run(layout.executed_code_positions().len())
+            .map_err(|error| format!("guest execution: {error:?}"))?;
+        assert!(matches!(
+            result,
+            RunOutcome::Terminated { steps, .. }
+                if steps == layout.executed_code_positions().len()
+        ));
+        assert_eq!(guest.output(), triple);
+        assert_eq!(guest.input_consumed(), 0);
+    }
+    Ok(())
+}
