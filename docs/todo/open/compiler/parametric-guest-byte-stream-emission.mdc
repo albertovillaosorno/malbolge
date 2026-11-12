@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete source-C byte stream with an input local,
+  source-constant `if (2 == 2)`, multiline selected/skipped I/O arms and
+  nested byte-return outputs initially refused normalized C admission.
+  Canonical decimal comparison proofs now authenticate six relational and
+  equality operators, both operand spans, Clang folding, and AST ancestry
+  before choosing guest effects. The normative guest reads `00 ff 80`
+  and writes `00 ff ff 80` in eight actual VM steps. Unsupported dynamic
+  predicates and forged node changes reject; runtime C comparison and
+  general mutable guest state remain unsupported, so P0 stays pending.
+
 - On 2026-11-12 a complete runtime-input C program with a loop,
   arithmetic, and parity-dependent output still failed at normalized
   admission. A separate complete program with a multiline `if (23)` arm,

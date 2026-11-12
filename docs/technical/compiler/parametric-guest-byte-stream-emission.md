@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven decimal C comparisons around guest I/O (2026-11-12)
+
+A complete C stream captures a live `getchar` byte, selects a multiline
+`if (2 == 2)` branch with local reuse and nested successful `putchar`
+returns, authenticates an inactive arm, and reads another guest byte.
+The pinned C frontend accepted the source, but the JSON adapter initially
+refused its first declaration. Its static predicate proof now covers
+`==`, `!=`, `<`, `<=`, `>` and `>=` between two canonical nonnegative
+decimal `i32` literals. The operator, operand ancestry and exact source
+coordinates, comparison type and Clang folded truth value must all agree.
+Branch effects remain source-proven in both arms before the compiler
+selects either arm; a later input invalidates the current live local.
+
+The normative VM reads binary `00 ff 80` and emits `00 ff ff 80` in eight
+real steps from this complete C program. Focused invalid-source and forged
+comparison-node checks reject without guest publication. The comparison
+replay matrix is deliberately finite due to profiled VM memory cost; it
+does not establish input-dependent C predicates, arithmetic, EOF handling,
+mutable guest C storage or dynamic guest control flow. The P0 remains open.
+
 ### Canonical decimal C truthiness in constant byte-stream arms (2026-11-12)
 
 A complete C source captured a guest input local, selected a multiline

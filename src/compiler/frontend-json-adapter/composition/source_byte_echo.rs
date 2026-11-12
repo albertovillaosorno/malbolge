@@ -1319,15 +1319,132 @@ fn prove_static_if_arm<'node>(
     })
 }
 
-// Exact static `if (0)` / `if (1)` source conditions. Each bounded C
-// call in both arms is authenticated before selecting guest effects.
-// Runtime-dependent predicates still have no lowering.
 struct StaticIfProof<'node> {
     width: usize,
     selected: bool,
     effects: Vec<StaticIfEffect<'node>>,
     end: u32,
 }
+
+// Match a source-spelled nonnegative decimal i32 operand, rather than
+// accepting an evaluated constant divorced from its source coordinates.
+fn prove_decimal_condition_operand(
+    node: &Node,
+    expected_id: u32,
+    parent: u32,
+    start: u32,
+    line: u32,
+    column: u32,
+) -> Option<i32> {
+    let spelling = node.literal.as_deref()?;
+    let value = spelling.parse::<i32>().ok()?;
+    let end = start.checked_add(u32::try_from(spelling.len()).ok()?)?;
+    (value >= 0
+        && value.to_string() == spelling
+        && node.id == expected_id
+        && node.parent == parent
+        && node.kind == "integer-literal"
+        && node.type_name.as_deref() == Some("i32")
+        && node.operation.is_none()
+        && node.reference.is_none()
+        && node.name.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+        && node.constant_integer.as_deref() == Some(spelling)
+        && source_word(node, start, end, line, column))
+    .then_some(value)
+}
+
+// A static predicate may be one decimal i32 literal or a source-checked
+// comparison of two such literals. The whole expression is pure and folded
+// by the pinned frontend, but its operation, operands and fold must agree.
+fn prove_static_predicate<'node>(
+    nodes: &'node [Node],
+    conditional: &Node,
+) -> Option<(usize, bool, &'node Node)> {
+    let first = nodes.first()?;
+    let begin = &conditional.span.begin;
+    let operand_start = begin.byte.checked_add(4)?;
+    let operand_column = begin.column.checked_add(4)?;
+    if first.kind == "integer-literal" {
+        let value = prove_decimal_condition_operand(
+            first,
+            conditional.id.checked_add(1)?,
+            conditional.id,
+            operand_start,
+            begin.line,
+            operand_column,
+        )?;
+        return Some((1, value != 0, first));
+    }
+    let [comparison, left, right, ..] = nodes else {
+        return None;
+    };
+    let operation = comparison.operation.as_deref()?;
+    let op_width = u32::try_from(operation.len()).ok()?;
+    let left_value = prove_decimal_condition_operand(
+        left,
+        comparison.id.checked_add(1)?,
+        comparison.id,
+        operand_start,
+        begin.line,
+        operand_column,
+    )?;
+    let right_start =
+        left.span.end.byte.checked_add(op_width)?.checked_add(2)?;
+    let right_column =
+        left.span.end.column.checked_add(op_width)?.checked_add(2)?;
+    let right_value = prove_decimal_condition_operand(
+        right,
+        left.id.checked_add(1)?,
+        comparison.id,
+        right_start,
+        begin.line,
+        right_column,
+    )?;
+    let selected = match operation {
+        "==" => left_value == right_value,
+        "!=" => left_value != right_value,
+        "<" => left_value < right_value,
+        "<=" => left_value <= right_value,
+        ">" => left_value > right_value,
+        ">=" => left_value >= right_value,
+        _ => return None,
+    };
+    let folded = if selected {
+        "1"
+    } else {
+        "0"
+    };
+    (comparison.id == conditional.id.checked_add(1)?
+        && comparison.parent == conditional.id
+        && comparison.kind == "binary-expression"
+        && comparison.type_name.as_deref() == Some("i32")
+        && comparison.reference.is_none()
+        && comparison.literal.is_none()
+        && comparison.name.is_none()
+        && comparison.definition.is_none()
+        && comparison.inline_specified.is_none()
+        && comparison.linkage.is_none()
+        && comparison.storage_class.is_none()
+        && comparison.storage_duration.is_none()
+        && comparison.constant_integer.as_deref() == Some(folded)
+        && source_word(
+            comparison,
+            operand_start,
+            right.span.end.byte,
+            begin.line,
+            operand_column,
+        ))
+    .then_some((3, selected, right))
+}
+
+// Exact static `if (0)` / `if (1)` source conditions. Each bounded C
+// call in both arms is authenticated before selecting guest effects.
+// Runtime-dependent predicates still have no lowering.
 
 #[expect(
     clippy::too_many_lines,
@@ -1342,20 +1459,12 @@ fn prove_static_if<'node>(
     local: Option<&LocalDeclaration<'node>>,
     depth: usize,
 ) -> Option<StaticIfProof<'node>> {
-    let [conditional, literal, rest @ ..] = nodes else {
+    let [conditional, ..] = nodes else {
         return None;
     };
     let start = conditional.span.begin.byte;
     let line = conditional.span.begin.line;
     let column = conditional.span.begin.column;
-    let value = literal.literal.as_deref()?;
-    // Clang i32 decimal literal spellings are proved without equating C
-    // truthiness to exactly 0/1 or assuming a one-column predicate.
-    let decimal = value.parse::<i32>().ok()?;
-    if decimal < 0_i32 || decimal.to_string() != value {
-        return None;
-    }
-    let literal_width = u32::try_from(value.len()).ok()?;
     if depth >= MAX_STATIC_IF_DEPTH
         || start <= previous
         || start <= body.span.begin.byte
@@ -1368,50 +1477,35 @@ fn prove_static_if<'node>(
         || conditional.reference.is_some()
         || conditional.operation.is_some()
         || !metadata_empty(conditional)
-        || literal.id != conditional.id.checked_add(1)?
-        || literal.parent != conditional.id
-        || literal.kind != "integer-literal"
-        || literal.type_name.as_deref() != Some("i32")
-        || literal.operation.is_some()
-        || literal.reference.is_some()
-        || literal.name.is_some()
-        || literal.definition.is_some()
-        || literal.inline_specified.is_some()
-        || literal.linkage.is_some()
-        || literal.storage_class.is_some()
-        || literal.storage_duration.is_some()
-        || literal.constant_integer.as_deref() != Some(value)
-        || !source_word(
-            literal,
-            start.checked_add(4)?,
-            start.checked_add(4)?.checked_add(literal_width)?,
-            line,
-            column.checked_add(4)?,
-        )
     {
         return None;
     }
+    let (predicate_width, condition_true, predicate_end) =
+        prove_static_predicate(nodes.get(1..)?, conditional)?;
+    let arm_offset = 1usize.checked_add(predicate_width)?;
+    let rest = nodes.get(arm_offset..)?;
     let then_arm = prove_static_if_arm(
         rest,
         body,
         previous,
-        literal.id.checked_add(1)?,
+        predicate_end.id.checked_add(1)?,
         conditional.id,
         local,
         depth,
         column,
     )?;
-    if then_arm.begin != literal.span.end.byte.checked_add(2)?
+    if then_arm.begin != predicate_end.span.end.byte.checked_add(2)?
         || then_arm.begin_line != line
-        || then_arm.begin_column != literal.span.end.column.checked_add(2)?
+        || then_arm.begin_column
+            != predicate_end.span.end.column.checked_add(2)?
     {
         return None;
     }
-    let mut width = 2usize.checked_add(then_arm.width)?;
+    let mut width = arm_offset.checked_add(then_arm.width)?;
     let mut end = then_arm.end;
     let mut end_line = then_arm.end_line;
     let mut end_column = then_arm.end_column;
-    let mut selected = decimal != 0_i32;
+    let mut selected = condition_true;
     let mut effects = then_arm.effects;
     if conditional.span.end.byte != then_arm.end {
         let else_arm = prove_static_if_arm(
@@ -1437,7 +1531,7 @@ fn prove_static_if<'node>(
         end_line = else_arm.end_line;
         end_column = else_arm.end_column;
         selected = true;
-        if decimal == 0_i32 {
+        if !condition_true {
             effects = else_arm.effects;
         }
     }
