@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Defined C short-circuit evaluation in full recurrence programs.
+#   - Nested and ordinary C short-circuit evaluation in full recurrences.
 # - Must-Not:
 #   - Evaluate skipped C arithmetic or replace guest VM with host output.
 # - Allows:
@@ -21,7 +21,7 @@
 # - Merge-When:
 #   - The full compiler differential suite includes logical expression guards.
 # - Summary:
-#   - Both && and || skip undefined RHS arithmetic but not selected UB.
+#   - Nested && and || skip undefined RHS arithmetic but not selected UB.
 
 """Full C-to-Malbolge short-circuit logical expression regressions."""
 
@@ -36,6 +36,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "tests/compiler/c-frontend/accepted/local_lazy_logical_fibonacci.c"
+NESTED_SOURCE = (
+    ROOT / "tests/compiler/c-frontend/accepted/local_nested_lazy_logical_fibonacci.c"
+)
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
 VM = ROOT / ".cache/rust/target/debug/malbolge"
 FRONTEND = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-frontend"
@@ -168,6 +171,109 @@ class LazyLogicalPipelineTests(unittest.TestCase):
                         self.assertEqual(executed.returncode, 0, executed.stderr)
                         self.assertEqual(executed.stdout, expected)
                         self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_nested_skipped_logical_tree_emits_real_guest_bytes(self) -> None:
+        source_text = NESTED_SOURCE.read_text()
+        self.assertIn("&& (((next & 2U) != 0U) ||", source_text)
+        expected = oracle()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            # The second variant changes which odd term selects the inner
+            # division, while even terms still skip its zero divisor.
+            for label, candidate in (
+                ("inner-even", source_text),
+                (
+                    "inner-odd",
+                    source_text.replace(
+                        "((next & 2U) != 0U) ||",
+                        "((next & 2U) == 0U) ||",
+                    ),
+                ),
+            ):
+                with self.subTest(label=label):
+                    source = Path(temporary) / f"{label}.c"
+                    source.write_text(candidate)
+                    guest = source.with_suffix(".malbolge")
+                    compiled = self.compile(
+                        source, guest, f"tests/nested-lazy-{label}-v1"
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for stdin in (b"", bytes((255, 0, 129))):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=stdin,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertEqual(executed.stderr, b"malbolge-steps-v1:47\n")
+
+    def test_nested_skipped_arithmetic_rejects_undefined_and_effects(self) -> None:
+        original = NESTED_SOURCE.read_text()
+        variants = {
+            "nested-selected-zero": original.replace(
+                "((next & 1U) != 0U) &&",
+                "((next & 1U) == 0U) &&",
+            ),
+            "nested-zero-divisor": original.replace("next / (next & 1U)", "next / 0U"),
+            "nested-skipped-input": original.replace(
+                "next / (next & 1U)", "next / (unsigned)getchar()"
+            ),
+            "nested-skipped-output": original.replace(
+                "next / (next & 1U)", "next / (unsigned)putchar(65)"
+            ),
+            "nested-hidden-comma": original.replace(
+                "next & 1U", "putchar(65), next & 1U", 1
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for label, candidate in variants.items():
+                with self.subTest(label=label):
+                    self.assertNotEqual(candidate, original)
+                    source = Path(temporary) / f"{label}.c"
+                    source.write_text(candidate)
+                    guest = source.with_suffix(".malbolge")
+                    refused = self.compile(source, guest, f"tests/{label}-v1")
+                    self.assertNotEqual(refused.returncode, 0)
+                    self.assertFalse(guest.exists())
+
+    def test_nested_skipped_boolean_ast_is_authenticated(self) -> None:
+        original = self.frontend_ast(NESTED_SOURCE)
+        nodes = json.loads(original)["nodes"]
+        logical = next(node for node in nodes if node.get("operation") == "||")
+        comparison = next(
+            node
+            for node in nodes
+            if node.get("operation") == "!="
+            and node["parent"] != 0
+            and node["span"]["begin"]["byte"] > logical["span"]["begin"]["byte"]
+        )
+        division = next(node for node in nodes if node.get("operation") == "/")
+        inner = next(
+            node
+            for node in nodes
+            if node["parent"] == logical["id"]
+            and node["kind"] == "parenthesized-expression"
+            and node["id"] > logical["id"] + 1
+        )
+        mutations = (
+            ("logical-type", logical, "type", "u32"),
+            ("logical-parent", logical, "parent", 0),
+            ("logical-effect", logical, "reference", "external:getchar"),
+            ("comparison-parent", comparison, "parent", 0),
+            ("division-kind", division, "kind", "call-expression"),
+            ("division-parent", division, "parent", 0),
+            ("division-effect", division, "reference", "external:putchar"),
+            ("inner-parent", inner, "parent", 0),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for label, node, field, replacement in mutations:
+                with self.subTest(label=label):
+                    forged = json.loads(original)
+                    forged["nodes"][node["id"] - 1][field] = replacement
+                    self.reject_ast(forged, Path(temporary) / f"{label}.malbolge")
 
     def test_selected_undefined_and_hidden_effects_refuse(self) -> None:
         source_text = SOURCE.read_text()

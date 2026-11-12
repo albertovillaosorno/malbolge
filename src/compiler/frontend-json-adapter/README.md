@@ -31,6 +31,14 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+A pure skipped Boolean RHS may itself contain a source-ordered `&&`/`||`
+tree. Both children are authenticated without evaluating a division
+that C does not execute; the selected path still rejects zero division.
+A complete nested logical Fibonacci program emits twelve oracle bytes
+through the normative VM (47 steps, two input patterns). The source
+proof remains bounded at twelve expression levels, with no guest-side
+C branching or general Boolean evaluation.
+
 The source-proven C Boolean evaluator now honors `&&`/`||` evaluation
 order for a skipped pure right-hand comparison containing unsigned
 division by zero. Complete twelve-iteration Fibonacci programs using

@@ -2043,3 +2043,15 @@ a compiler capability gap, not a reason to return to N+1.
   13 03`. Equal-width two-unsigned logical pairs still refuse to prevent
   forged `==` to `&&` reinterpretation; this is bounded static C replay,
   not dynamic guest C control flow or the unmasked Fibonacci target.
+
+- On 2026-11-11 a complete twelve-trip unsigned Fibonacci C program
+  nested `||` under `&&` so an even term skips a whole Boolean subtree
+  containing undefined zero division; odd terms select or skip a defined
+  division. Pinned Clang admitted the source, but the JSON projector
+  initially refused it. Bounded pure nested-subtree authentication and
+  an explicit twelve-level expression depth now admit the complete
+  source. The normative guest VM under EOF and binary stdin emits the
+  independent masked recurrence oracle `02 19 1f 08 17 0f 02 0d 03
+  10 13 03` in 47 steps. Selected zero division, hidden I/O and forged
+  AST effects refuse. Dynamic guest C logic and the unmasked Fibonacci
+  stream remain unimplemented, so P0 stays pending.

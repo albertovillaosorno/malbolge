@@ -48,7 +48,9 @@ const MAX_STATIC_FOR_EXTRA_GUARDS: usize = 2;
 const MAX_NESTED_FOR_LOOPS: usize = 2;
 const MAX_NESTED_LOOP_BLOCKS: usize = 4;
 const MAX_NESTED_CONDITIONAL_DEPTH: u8 = 3;
-const MAX_EXPRESSION_DEPTH: usize = 8;
+// One nested skipped logical RHS includes signed comparisons and an
+// unsigned division; keep source-expression replay explicitly finite.
+const MAX_EXPRESSION_DEPTH: usize = 12;
 // Bound the lexical prefix on an explicit source-proven `(int)` cast.
 const MAX_EXPLICIT_CAST_PREFIX_BYTES: u32 = 16;
 
@@ -514,19 +516,43 @@ impl<'node> Flow<'node> {
             "binary-expression" => {
                 let comparison = self.take(parent, "binary-expression")?;
                 let operation = comparison.operation.as_deref()?;
-                if !matches!(operation, "==" | "!=" | "<" | "<=" | ">" | ">=")
-                    || !clean_i32_operator(comparison)
-                {
+                if !clean_i32_operator(comparison) {
                     return None;
                 }
-                let left = self.unselected_expression(
-                    comparison.id,
-                    depth.checked_add(1)?,
-                )?;
-                let right = self.unselected_expression(
-                    comparison.id,
-                    depth.checked_add(1)?,
-                )?;
+                let child_depth = depth.checked_add(1)?;
+                if matches!(operation, "&&" | "||") {
+                    // When the enclosing guard has skipped this entire
+                    // logical tree, neither nested operand is evaluated.
+                    // Authenticate both pure operands independently without
+                    // speculatively executing a zero-dividing branch.
+                    let left_type = self.peek()?.type_name.as_deref()?;
+                    if !matches!(left_type, "u32" | "i32") {
+                        return None;
+                    }
+                    let left = self.unselected_condition_expression(
+                        comparison.id,
+                        child_depth,
+                    )?;
+                    let right_type = self.peek()?.type_name.as_deref()?;
+                    if !matches!(right_type, "u32" | "i32")
+                        || (left_type == "u32" && right_type == "u32")
+                    {
+                        return None;
+                    }
+                    let right = self.unselected_condition_expression(
+                        comparison.id,
+                        child_depth,
+                    )?;
+                    return ordered_binary_spans(comparison, left, right)
+                        .then_some(comparison);
+                }
+                if !matches!(operation, "==" | "!=" | "<" | "<=" | ">" | ">=") {
+                    return None;
+                }
+                let left =
+                    self.unselected_expression(comparison.id, child_depth)?;
+                let right =
+                    self.unselected_expression(comparison.id, child_depth)?;
                 ordered_binary_spans(comparison, left, right)
                     .then_some(comparison)
             },

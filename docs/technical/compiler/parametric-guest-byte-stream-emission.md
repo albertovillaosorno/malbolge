@@ -4155,3 +4155,28 @@ outputs are exactly `02 19 1f 08 17 0f 02 0d 03 10 13 03`, matching an
 independent unsigned recurrence under both empty and nonempty VM input.
 This capability extends compile-time C replay, not dynamic Malbolge guest
 state. The original unmasked Fibonacci stream and P0 remain pending.
+
+### Source-proven nested short-circuit subtrees (2026-11-11)
+
+A complete twelve-iteration unsigned Fibonacci C program now nests a
+Boolean `||` expression under an outer `&&`. The outer guard is false
+on even recurrence terms, so the entire nested expression is skipped
+including a division whose divisor would be zero. On odd terms, the
+inner `||` selectively evaluates a defined division or skips it. The
+pinned Clang frontend accepted the full C source, while bounded
+source replay originally rejected it before producing a guest artifact.
+
+The projector now authenticates both pure children of a wholly skipped
+logical subtree without evaluating undefined C arithmetic. It retains
+complete AST ancestry, checked operator metadata, source-ordered spans
+and the existing ban on ambiguous two-unsigned logical children. A
+limited expression-depth increase to twelve admits this composition;
+unknown effects, selected zero division and malformed Clang trees still
+refuse. This is **compile-time source replay**, not dynamic guest
+short-circuit execution or arbitrary C expressions.
+
+The independently calculated twelve-byte masked recurrence
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` matches the actual normative
+Malbolge guest in 47 instructions with EOF and binary stdin. The
+original unmasked Fibonacci output still has no generalized layout
+witness, and the P0 remains open.
