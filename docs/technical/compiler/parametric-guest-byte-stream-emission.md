@@ -25,6 +25,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### A selected conditional `continue` skips the following C output (2026-11-11)
+
+A complete twelve-trip unsigned Fibonacci C loop emits in its odd branch
+before `continue`; its next lexical statement is the even-branch `putchar`.
+Pinned Clang accepts the whole source, but the normalized C replay previously
+rejected the first declaration because the selected exit left an unproven
+sibling output in the enclosing compound loop body.
+
+The bounded replay now authenticates exactly one source-backed `putchar` after
+selected `continue` without applying that unreachable output effect. The
+non-continued iteration still executes that same lexical output normally.
+Additional siblings, unknown calls, writes, and selected undefined arithmetic
+remain unsupported. Both branch polarities produce the independently computed
+12-byte masked recurrence in the normative VM with empty and binary input,
+47 guest steps each. Forged normalized output metadata and unsupported C
+mutations must refuse without publishing a guest.
+
+This proves ordered source-state selection, not dynamic C branch/loop lowering.
+The original unmasked Fibonacci stream still refuses at guest layout, so P0
+remains pending.
+
 ### Directly parented conditional `while` arms (2026-11-11)
 
 A complete twelve-trip unsigned Fibonacci C program now selects one of two

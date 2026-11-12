@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a full twelve-trip Fibonacci C loop used a conditional
+  `continue` after the odd `putchar`, leaving the even `putchar` as its next
+  lexical statement. Pinned Clang admitted this complete source but the
+  normalized adapter originally refused the enclosing loop. Bounded replay
+  now authenticates one skipped output sibling without emitting it, while
+  normally executing that sibling on even terms. The independently computed
+  masked recurrence reaches the normative VM on EOF and binary stdin:
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps. Unknown/dead
+  effects and forged AST output provenance must reject publication. Dynamic
+  guest C control and the unmasked Fibonacci layout remain unimplemented.
+
 - On 2026-11-11 a full twelve-trip unsigned C Fibonacci source selected
   unbraced stateful `while` arms directly from `if/else`, with one or two
   source-proven steps changing the emitted byte mask. The pinned Clang

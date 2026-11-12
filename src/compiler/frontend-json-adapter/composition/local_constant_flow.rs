@@ -1129,6 +1129,7 @@ impl<'node> Flow<'node> {
     fn loop_body_depth(&mut self, body: &Node, depth: usize) -> Option<()> {
         let mut last_end = body.span.begin.byte;
         let mut writes = 0;
+        let mut skipped_output = false;
         while let Some(node) = self.peek() {
             // A direct control effect is the whole unbraced `do` body.
             // The trailing condition is not another body effect.
@@ -1138,11 +1139,26 @@ impl<'node> Flow<'node> {
                 break;
             }
             let expected_parent = body.id;
-            if node.parent != expected_parent
-                || writes >= MAX_WRITES
-                || self.loop_exit.is_some()
-            {
+            if node.parent != expected_parent || writes >= MAX_WRITES {
                 return None;
+            }
+            if self.loop_exit.is_some() {
+                // A selected `continue` skips the remaining sibling in
+                // the loop body. Authenticate one unreachable `putchar`
+                // against its exact source tree without publishing its
+                // effect; an unknown call or further statement still fails.
+                if self.loop_exit != Some(LoopExit::Continue)
+                    || skipped_output
+                    || body.kind != "compound-statement"
+                    || node.kind != "call-expression"
+                {
+                    return None;
+                }
+                let output = checked_call(self, body, last_end)?;
+                last_end = output.call.span.end.byte;
+                skipped_output = true;
+                writes = writes.checked_add(1)?;
+                continue;
             }
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
