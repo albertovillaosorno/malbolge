@@ -2174,12 +2174,21 @@ impl<'node> Flow<'node> {
             },
             _ => return None,
         };
+        // A selected inner switch can continue the surrounding C loop.
+        // Capture that exit in the arm rather than exposing it while the
+        // outer switch proves its other, unselected dispatch paths.
+        let loop_exit = self.loop_exit.take();
+        if loop_exit.is_some()
+            && (self.switch_depth != 1 || loop_exit != Some(LoopExit::Continue))
+        {
+            return None;
+        }
         Some(SwitchArmEffect {
             begin_line,
             end,
             outputs,
             locals: self.locals.clone(),
-            loop_exit: None,
+            loop_exit,
         })
     }
 
@@ -2212,13 +2221,15 @@ impl<'node> Flow<'node> {
                 let end = self.switch_break(scope, effect.end)?;
                 return Some((effect, Some(end)));
             }
+            // A nested continue skips the remainder of the enclosing switch
+            // arm. Permit only its checked, source-ordered terminal break;
+            // arbitrary dead writes or output cannot be silently discarded.
+            if effect.loop_exit.is_some() && next.kind != "break-statement" {
+                return None;
+            }
             if next.kind == "continue-statement" {
-                // Continue targets the enclosing loop, not this switch.
-                // Admit only a direct outermost switch arm, preserving its
-                // exit separately while checking every other case.
-                if self.switch_depth != 1 {
-                    return None;
-                }
+                // Continue targets the nearest enclosing loop regardless of
+                // the number of nested switch statements.
                 let end = self.loop_exit_statement(scope, effect.end)?;
                 if self.loop_exit.take() != Some(LoopExit::Continue) {
                     return None;

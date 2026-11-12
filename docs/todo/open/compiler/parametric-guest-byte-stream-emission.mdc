@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete twelve-trip C Fibonacci program moved
+  recurrence writes inside the selected arms of two nested switches.
+  The inner even arm emits a byte and continues the surrounding `for`;
+  the alternate inner arm breaks each switch. Pinned Clang admitted C
+  but the adapter originally refused it. Selected nested continuation
+  now carries checked writes and output through the outer dispatch,
+  proving unselected arms independently. Both this program and an
+  inner-default-continue variant emit twelve independent masked oracle
+  bytes in the normative guest VM (47 steps, EOF and binary stdin).
+  Dead effects and forged source nodes still fail closed. Original
+  unmasked Fibonacci and dynamic guest C control remain unsupported.
+
 - On 2026-11-11, complete twelve-trip C Fibonacci with `continue`
   in a `switch` case initially failed normalized frontend admission. A
   bounded source replay now carries only the selected case termination

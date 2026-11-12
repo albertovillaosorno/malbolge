@@ -25,6 +25,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested switch continuation with case-local recurrence writes (2026-11-11)
+
+A full twelve-iteration Fibonacci C source selects two switch levels and
+emits from the innermost case before updating both recurrence locals.
+The even inner case continues the enclosing `for`, while the odd case
+breaks both switches. Pinned Clang admitted the complete source, but
+normalized source replay initially refused its first declaration.
+The bounded projector now isolates an inner selected `continue` from all
+alternate outer switch arms, then carries its checked state and output
+through the outer dispatch. The only allowed unreachable outer suffix is
+a source-checked switch-local `break`; hidden writes and I/O still refuse.
+
+The independent unsigned-C oracle and normative VM agree on twelve
+masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps under
+EOF and binary stdin. A second full program continues from each inner
+default instead. Negative source mutations and forged Clang continuations
+and outer breaks refuse publication. Three nested switches, general
+guest-side C control and unmasked Fibonacci remain unsupported; P0 is open.
+
 ### `continue` from a C switch into its enclosing loop (2026-11-11)
 
 A full twelve-iteration unsigned Fibonacci source moves recurrence updates

@@ -31,6 +31,16 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+Two nested source-checked C switches may now carry a selected inner
+`continue` into the enclosing bounded loop. The exit, ordered byte output,
+and case-local recurrence updates are isolated from every unselected inner
+and outer arm; the only admitted unreachable outer tail is its independently
+checked switch-local `break`. Full twelve-trip Fibonacci C sources with
+continuation in the inner case or default agree with the independent oracle
+on the normative guest VM (47 steps, EOF/binary input). Source-negative and
+forged AST nodes refuse publication. This is finite source replay, not
+runtime guest C switching or arbitrary unmasked byte synthesis.
+
 Source-checked C `continue` at the end of an outermost switch arm now
 continues the enclosing bounded loop rather than only exiting the switch.
 Both arms are replayed independently; only the selected arm carries a
