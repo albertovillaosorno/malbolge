@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete two-by-two nested counted C stream in a selected
+  outer `if (1)` originally failed at normalized `if-statement` admission,
+  although each loop-local input and output effect had source proof. The
+  branch emitter now tracks fresh guest SSA bytes within its selected loop
+  trace rather than consulting only outer-scope locals. The actual Malbolge
+  VM reads seven independent binary bytes, emits eleven oracle bytes and
+  halts in 19 steps. Three loop/branch cases pass six binary VM oracles;
+  selected `else` locals pass two more (four reads, five writes, ten steps).
+  Four source mutations, four forged Clang nodes and stale outer-local
+  reuse reject. Dynamic guest C branches, arithmetic, EOF and general
+  storage remain unimplemented; P0 stays pending.
+
 - On 2026-11-12 a complete nested two-by-three source-C stream with
   per-iteration local input, constant `if/else`, nested output returns and
   independent trailing reads originally rejected normalized `for-statement`

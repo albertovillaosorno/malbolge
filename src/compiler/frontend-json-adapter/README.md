@@ -10,6 +10,28 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Counted loop locals selected by outer constant branches (2026-11-12)
+
+An outer literal `if/else` may contain counted `for` loops with input-local
+aliases, including two levels of nested induction. The source proof already
+expanded each loop's fresh `getchar()` and dependent `putchar(current)` into
+an ordered effect trace, but the selected-branch typed emitter mistakenly
+looked for the loop-local value only in its outer-scope local cache. The
+branch emitter now carries a separate latest guest SSA byte through every
+selected effect, including every unrolled loop iteration. Each new input
+invalidates an outer local; the unselected arm is independently proven and
+has no guest effects.
+
+`tests/test_static_if_counted_loop_c_pipeline.py` confirms six binary VM
+oracles across one-by-one and two-by-two nested loops and an inactive loop
+arm. The complete two-by-two program consumes seven runtime inputs, emits
+eleven outputs and halts in nineteen normative VM steps. A separate
+selected-`else` loop consumes four inputs, emits five outputs and takes ten
+steps under two more binary oracles. Four forged Clang metadata variants,
+four unsupported C source mutations and stale outer-local reuse reject
+without publishing a target. Dynamic control, guest C memory and EOF are
+not implemented.
+
 ### Nested source-proven counted loops (2026-11-12)
 
 The bounded source-C projector accepts up to two levels of canonical counted

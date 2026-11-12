@@ -2118,6 +2118,12 @@ pub(super) fn canonical_source_byte_echo(
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if proof.selected {
+                // A selected branch may contain a counted loop whose local
+                // initializer reads a fresh byte on *each* unrolled pass.
+                // Keep the latest guest SSA value inside this effect trace;
+                // an outer-scope local is not its identity.
+                let mut branch_byte =
+                    latest_local.as_ref().map(|(_, value)| *value);
                 for effect in &proof.effects {
                     if inputs + usize::from(effect.input.is_some())
                         > MAX_ECHO_CALLS
@@ -2139,12 +2145,10 @@ pub(super) fn canonical_source_byte_echo(
                         ));
                         inputs += 1;
                         latest_local = None;
+                        branch_byte = Some(value);
                         value
                     } else {
-                        latest_local
-                            .as_ref()
-                            .ok_or(FrontendJsonError::Unsupported)?
-                            .1
+                        branch_byte.ok_or(FrontendJsonError::Unsupported)?
                     };
                     for output in effect.outputs.iter().rev() {
                         instructions.push(LocatedInstruction::new(

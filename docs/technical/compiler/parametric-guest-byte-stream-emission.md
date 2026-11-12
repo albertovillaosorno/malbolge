@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-C counted loops selected by enclosing constant branches (2026-11-12)
+
+A complete source-C program selects a nested two-by-two `for` matrix from
+an enclosing `if (1)`, declares a fresh `getchar()` local for each inner
+iteration, emits its successful-byte return twice, and reads another guest
+byte at each outer boundary and at the end. The inactive `else` contains a
+separately authenticated counted loop. The pinned Clang JSON originally
+reached normalized source proof but failed at the outer `if-statement`:
+its selected typed-IR replay attempted to resolve nested loop-local bytes
+through only the enclosing-scope local cache. The corrected replay carries
+a latest guest SSA identity inside the selected effect trace and updates
+it at every runtime input, without reusing a previous iteration's byte.
+
+The real guest VM consumes seven independent binary bytes, emits eleven
+oracle bytes and halts in nineteen steps. The complete suite verifies six
+binary VM oracles over one-by-one, two-by-two and skipped-branch loop
+shapes. A second source program selects an `else` loop after an outer-local
+read: two binary oracles verify four inputs, five outputs and ten steps.
+Four source mutations, four forged Clang ancestry changes and a stale
+outer-local use fail closed before guest publication. No dynamic C branch,
+runtime-dependent induction, general guest storage or EOF is supported.
+P0 remains open.
+
 ### Nested counted C loops with independent guest input (2026-11-12)
 
 A complete two-level source-C matrix stream combines nested `for` induction,
