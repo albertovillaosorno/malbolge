@@ -78,6 +78,52 @@ fn emit_comma_outputs(
     }
 }
 
+// A comma operand proven to read the current local is a reuse of its live
+// guest SSA byte, not a second input. Once any operand reads new stdin, that
+// old local can no longer be materialized by this accumulator-only backend.
+fn emit_comma_effects(
+    effects: &[CommaEffect<'_>],
+    local: Option<&(LocalDeclaration<'_>, ValueId)>,
+    inputs: &mut usize,
+    outputs: &mut usize,
+    instructions: &mut Vec<LocatedInstruction>,
+) -> Option<(ValueId, bool)> {
+    let mut selected = None;
+    let mut read_new_input = false;
+    for effect in effects {
+        let value = if let Some((declaration, value)) = local
+            && effect.input.id == declaration.input.id
+        {
+            if read_new_input {
+                return None;
+            }
+            *value
+        } else {
+            if *inputs == MAX_ECHO_CALLS {
+                return None;
+            }
+            let value = ValueId::new(u32::try_from(*inputs).ok()?);
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: value,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&effect.input.span),
+            ));
+            *inputs = inputs.checked_add(1)?;
+            read_new_input = true;
+            value
+        };
+        *outputs = outputs.checked_add(effect.outputs.len())?;
+        if *outputs > MAX_SOURCE_OUTPUTS {
+            return None;
+        }
+        emit_comma_outputs(effect, value, instructions);
+        selected = Some(value);
+    }
+    Some((selected?, read_new_input))
+}
+
 const fn metadata_empty(node: &Node) -> bool {
     node.name.is_none()
         && node.definition.is_none()
@@ -279,6 +325,7 @@ fn prove_comma_output_effects<'node>(
     body: &Node,
     previous: u32,
     expected_id: u32,
+    local: Option<&LocalDeclaration<'node>>,
 ) -> Option<(usize, Vec<CommaEffect<'node>>, &'node Node)> {
     let [output, cast, callee, paren, comma, ..] = nodes else {
         return None;
@@ -328,6 +375,7 @@ fn prove_comma_output_effects<'node>(
         previous,
         comma.id,
         paren.id,
+        local,
     )?;
     let end = last_end.checked_add(2)?;
     let width = 4usize.checked_add(comma_width)?;
@@ -362,6 +410,7 @@ fn prove_discarded_comma_effects<'node>(
     previous: u32,
     expected_id: u32,
     first_parent: u32,
+    local: Option<&LocalDeclaration<'node>>,
 ) -> Option<(usize, Vec<CommaEffect<'node>>, u32)> {
     let binary_count = nodes
         .iter()
@@ -404,6 +453,7 @@ fn prove_discarded_comma_effects<'node>(
     let mut effects = Vec::with_capacity(operand_count);
     let mut cursor = binary_count;
     let mut last_end = previous;
+    let mut seen_new_input = false;
     for index in 0..operand_count {
         let parent = if index < 2 {
             binary_nodes.last()?.id
@@ -415,13 +465,30 @@ fn prove_discarded_comma_effects<'node>(
         let leaf = nodes.get(cursor)?;
         let (width, input, outputs) =
             if leaf.reference.as_deref() == Some("external:putchar") {
-                super::nested_byte_echo::nested_call_in_parent(
-                    nodes.get(cursor..)?,
-                    body,
-                    last_end,
-                    expected_leaf_id,
-                    parent,
-                )?
+                if !seen_new_input
+                    && let Some(current_local) = local
+                    && let Some((width, calls)) = prove_local_output_chain(
+                        nodes.get(cursor..)?,
+                        body,
+                        current_local,
+                        expected_leaf_id,
+                        last_end,
+                        parent,
+                    )
+                {
+                    (width, current_local.input, calls)
+                } else {
+                    let (width, input, calls) =
+                        super::nested_byte_echo::nested_call_in_parent(
+                            nodes.get(cursor..)?,
+                            body,
+                            last_end,
+                            expected_leaf_id,
+                            parent,
+                        )?;
+                    seen_new_input = true;
+                    (width, input, calls)
+                }
             } else {
                 let input = prove_input_call(
                     nodes.get(cursor..cursor.checked_add(3)?)?,
@@ -429,6 +496,7 @@ fn prove_discarded_comma_effects<'node>(
                     last_end,
                     (expected_leaf_id, parent),
                 )?;
+                seen_new_input = true;
                 (3, input, Vec::new())
             };
         let extent = outputs.first().copied().unwrap_or(input);
@@ -612,6 +680,7 @@ fn prove_local_output<'node>(
     local: &LocalDeclaration<'_>,
     expected_id: u32,
     previous: u32,
+    parent: u32,
 ) -> Option<&'node Node> {
     let [
         output,
@@ -633,7 +702,7 @@ fn prove_local_output<'node>(
     let argument_column = output_column.checked_add(8)?;
     let source_ok = output_end < body.span.end.byte
         && output.id == expected_id
-        && output.parent == body.id
+        && output.parent == parent
         && output.kind == "call-expression"
         && output.type_name.as_deref() == Some("i32")
         && output.reference.as_deref() == Some("external:putchar")
@@ -719,6 +788,7 @@ fn prove_nested_local_output<'node>(
     local: &LocalDeclaration<'_>,
     expected_id: u32,
     previous: u32,
+    first_parent: u32,
 ) -> Option<OutputCallProof<'node>> {
     let outer = nodes.first()?;
     let start = outer.span.begin.byte;
@@ -753,7 +823,7 @@ fn prove_nested_local_output<'node>(
         return None;
     }
     let mut calls = Vec::with_capacity(depth);
-    let mut parent = body.id;
+    let mut parent = first_parent;
     for level in 0..depth {
         let offset = level.checked_mul(3)?;
         let [call, cast, reference] =
@@ -855,14 +925,21 @@ fn prove_local_output_chain<'node>(
     local: &LocalDeclaration<'_>,
     expected_id: u32,
     previous: u32,
+    parent: u32,
 ) -> Option<OutputCallProof<'node>> {
     if let Some(first) = nodes.get(..5)
-        && let Some(call) =
-            prove_local_output(first, body, local, expected_id, previous)
+        && let Some(call) = prove_local_output(
+            first,
+            body,
+            local,
+            expected_id,
+            previous,
+            parent,
+        )
     {
         return Some((5, vec![call]));
     }
-    prove_nested_local_output(nodes, body, local, expected_id, previous)
+    prove_nested_local_output(nodes, body, local, expected_id, previous, parent)
 }
 
 fn valid_envelope(input: &Artifact, function: &Node, body: &Node) -> bool {
@@ -957,6 +1034,7 @@ pub(super) fn canonical_source_byte_echo(
                 local,
                 next_id,
                 previous,
+                body.id,
             )
         {
             if outputs
@@ -1000,6 +1078,7 @@ pub(super) fn canonical_source_byte_echo(
                 body,
                 previous,
                 next_id,
+                latest_local.as_ref().map(|(local, _value)| local),
             )
         {
             let inner_outputs =
@@ -1014,39 +1093,21 @@ pub(super) fn canonical_source_byte_echo(
             {
                 return Err(FrontendJsonError::Unsupported);
             }
-            for effect in &effects {
-                let id = ValueId::new(
-                    u32::try_from(inputs)
-                        .map_err(|_error| FrontendJsonError::Unsupported)?,
-                );
-                instructions.push(LocatedInstruction::new(
-                    Instruction::ByteInput {
-                        result: id,
-                        type_id: TypeId::new(0),
-                    },
-                    typed_span(&effect.input.span),
-                ));
-                inputs = inputs
-                    .checked_add(1)
-                    .ok_or(FrontendJsonError::Unsupported)?;
-                emit_comma_outputs(effect, id, &mut instructions);
-                outputs = outputs
-                    .checked_add(effect.outputs.len())
-                    .ok_or(FrontendJsonError::Unsupported)?;
-            }
-            let selected = ValueId::new(
-                u32::try_from(
-                    inputs
-                        .checked_sub(1)
-                        .ok_or(FrontendJsonError::Unsupported)?,
-                )
-                .map_err(|_error| FrontendJsonError::Unsupported)?,
-            );
+            let (selected, read_new_input) = emit_comma_effects(
+                &effects,
+                latest_local.as_ref(),
+                &mut inputs,
+                &mut outputs,
+                &mut instructions,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
             instructions.push(LocatedInstruction::new(
                 Instruction::ByteOutput { value: selected },
                 typed_span(&output.span),
             ));
-            latest_local = None;
+            if read_new_input {
+                latest_local = None;
+            }
             previous = output.span.end.byte;
             consumed = consumed
                 .checked_add(width)
@@ -1070,6 +1131,7 @@ pub(super) fn canonical_source_byte_echo(
                 previous,
                 next_id,
                 body.id,
+                latest_local.as_ref().map(|(local, _value)| local),
             )
         {
             if inputs
@@ -1083,28 +1145,18 @@ pub(super) fn canonical_source_byte_echo(
             {
                 return Err(FrontendJsonError::Unsupported);
             }
-            for effect in &effects {
-                let id = ValueId::new(
-                    u32::try_from(inputs)
-                        .map_err(|_error| FrontendJsonError::Unsupported)?,
-                );
-                instructions.push(LocatedInstruction::new(
-                    Instruction::ByteInput {
-                        result: id,
-                        type_id: TypeId::new(0),
-                    },
-                    typed_span(&effect.input.span),
-                ));
-                inputs = inputs
-                    .checked_add(1)
-                    .ok_or(FrontendJsonError::Unsupported)?;
-                emit_comma_outputs(effect, id, &mut instructions);
-                outputs = outputs
-                    .checked_add(effect.outputs.len())
-                    .ok_or(FrontendJsonError::Unsupported)?;
+            let (_selected, read_new_input) = emit_comma_effects(
+                &effects,
+                latest_local.as_ref(),
+                &mut inputs,
+                &mut outputs,
+                &mut instructions,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
+            // Only a fresh input clobbers the live accumulator-local value.
+            if read_new_input {
+                latest_local = None;
             }
-            // The last input clobbers any prior accumulator-local value.
-            latest_local = None;
             previous = end;
             consumed = consumed
                 .checked_add(width)
@@ -1176,6 +1228,7 @@ pub(super) fn canonical_source_byte_echo(
                     .checked_add(1)
                     .ok_or(FrontendJsonError::Unsupported)?,
                 local.declaration_end,
+                body.id,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if !local_names.insert(local.name) {

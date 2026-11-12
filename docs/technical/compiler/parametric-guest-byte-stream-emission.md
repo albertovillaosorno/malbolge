@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Live source-C input locals in comma return expressions (2026-11-12)
+
+A complete C program captures two successive `getchar` bytes in distinct
+`int` locals, repeats each byte through ordinary outputs, and then passes
+`putchar(local), putchar(local)` as an enclosing `putchar` comma argument.
+The existing source-C pipeline initially refused the first declaration.
+The repaired Clang ancestry proof now accepts a bounded comma operand made
+of one or more nested `putchar` calls around the current live local, with
+source coordinates, parent identity, reference and cast metadata checked.
+Every write executes in the actual guest VM using the original live SSA byte;
+no operand secretly consumes another input. The proof also admits a local
+operand before a fresh `getchar`, but refuses a stale local after a newer read.
+
+The compiled guest reads exactly two binary inputs and emits nine independently
+expected output bytes in twelve VM steps. Fifteen seeded/boundary streams
+match the oracle, as do four additional live-local/mixed-input forms with
+exact step counts. Two stale-local source variants and fourteen forged Clang
+metadata mutations refuse publication. This remains accumulator-only guest
+I/O under successful-read/write assumptions: EOF, runtime C storage,
+arithmetic and dynamic C control flow remain unsupported.
+
 ## Nested successful-byte returns inside comma effects (2026-11-12)
 
 A complete C function combines a runtime input local, a repeated nested
