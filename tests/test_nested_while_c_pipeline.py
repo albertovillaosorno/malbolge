@@ -46,7 +46,7 @@ RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
 
 
-def independent_oracle() -> bytes:
+def independent_oracle(inner_limit: int = 1, idempotent: bool = False) -> bytes:
     a, b = 1, 1
     output = bytearray()
     for _ in range(12):
@@ -54,9 +54,12 @@ def independent_oracle() -> bytes:
         mask = 0
         outer = inner = 0
         while outer < 1:
-            while inner < 1:
+            while inner < inner_limit:
                 if following & 1:
-                    mask ^= 26
+                    if idempotent:
+                        mask |= 26
+                    else:
+                        mask ^= 26
                 else:
                     mask |= 0
                 inner += 1
@@ -106,39 +109,54 @@ class NestedWhilePipelineTests(unittest.TestCase):
     def test_direct_nested_while_full_guest_parity(self) -> None:
         expected = independent_oracle()
         self.assertEqual(expected, bytes.fromhex("02191f08170f020d03101303"))
+        double_expected = independent_oracle(inner_limit=2, idempotent=True)
+        self.assertEqual(double_expected, expected)
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
-            guest = Path(scratch) / "nested-while.malbolge"
-            built = subprocess.run(
-                [
-                    sys.executable,
-                    "-B",
-                    str(DRIVER),
-                    "--repository-tools",
-                    "--source-id",
-                    "tests/nested-while-fibonacci-v1",
-                    "--capsule",
-                    "--output",
-                    str(guest),
-                    str(SOURCE),
-                ],
-                capture_output=True,
-                check=False,
-                timeout=240,
-                env={**os.environ, "TMPDIR": str(ROOT / ".temp")},
-            )
-            self.assertEqual(built.returncode, 0, built.stderr)
-            self.assertTrue(guest.is_file())
-            for supplied in (b"", bytes((0, 255, 128))):
-                run = subprocess.run(
-                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
-                    input=supplied,
-                    capture_output=True,
-                    check=False,
-                    timeout=30,
+            doubled = Path(scratch) / "two-inner-trips.c"
+            original = SOURCE.read_text()
+            doubled.write_text(
+                original.replace("inner < 1U", "inner < 2U").replace(
+                    "mask ^= 26U;", "mask |= 26U;"
                 )
-                self.assertEqual(run.returncode, 0, run.stderr)
-                self.assertEqual(run.stdout, expected)
-                self.assertEqual(run.stderr, b"malbolge-steps-v1:47\n")
+            )
+            self.assertNotEqual(doubled.read_text(), original)
+            for label, source, oracle in (
+                ("single", SOURCE, expected),
+                ("double", doubled, double_expected),
+            ):
+                with self.subTest(inner=label):
+                    guest = Path(scratch) / f"{label}-nested-while.malbolge"
+                    built = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            "tests/nested-while-fibonacci-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=240,
+                        env={**os.environ, "TMPDIR": str(ROOT / ".temp")},
+                    )
+                    self.assertEqual(built.returncode, 0, built.stderr)
+                    self.assertTrue(guest.is_file())
+                    for supplied in (b"", bytes((0, 255, 128))):
+                        run = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=supplied,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        self.assertEqual(run.returncode, 0, run.stderr)
+                        self.assertEqual(run.stdout, oracle)
+                        self.assertEqual(run.stderr, b"malbolge-steps-v1:47\n")
 
     def test_nonterminating_and_effectful_sources_refuse(self) -> None:
         original = SOURCE.read_text()

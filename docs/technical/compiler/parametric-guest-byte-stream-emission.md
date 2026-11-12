@@ -38,7 +38,9 @@ It replays both loops without introducing guest-side C state or control.
 
 The independent unsigned recurrence and normative guest VM agree on all
 12 bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`, 47 steps, under EOF
-and binary stdin. Seven negative complete C variants and nine forged AST
+and binary stdin. An independently calculated two-trip inner-loop variant
+with idempotent mask writes reaches the same real guest output. Seven
+negative complete C variants and nine forged AST
 nodes refuse before publication. Unmasked guest synthesis and dynamic
 C control remain unsupported; P0 stays pending.
 

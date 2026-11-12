@@ -38,7 +38,8 @@ the parity mask before `putchar`. Bounded replay authenticates the outer
 predicate's literal source geometry, the following newline/indentation and
 the exact nested-loop endpoint. Both parity arms execute; no selected local
 state or output is fabricated. The real guest VM emits twelve independently
-computed masked recurrence bytes in 47 steps with EOF and binary input.
+computed masked recurrence bytes in 47 steps with EOF and binary input. An idempotent two-trip inner-loop
+variant reaches the same guest oracle, proving repeated C body replay.
 Seven unbounded/effectful C variants and nine forged Clang nodes refuse.
 This is static source-state replay, not runtime guest C loop lowering or
 unmasked Fibonacci byte synthesis.
