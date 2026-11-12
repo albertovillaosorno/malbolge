@@ -1007,6 +1007,8 @@ struct StaticIfArm<'node> {
     effects: Vec<StaticIfEffect<'node>>,
     begin: u32,
     end: u32,
+    end_line: u32,
+    end_column: u32,
     braced: bool,
 }
 
@@ -1061,9 +1063,9 @@ fn prove_static_if_statement<'node>(
     ))
 }
 
-// Braced blocks are deliberately limited to a single C source line with
-// precisely separated call statements and no nested declarations or control.
-// Both arms undergo this proof, including the discarded branch.
+// Source-authenticate both one-line and canonical one-statement-per-line
+// compound arms, including the unselected branch. Each effect must have an
+// exact byte gap, line, column, ID and parent; no other C statement is erased.
 fn prove_static_if_arm<'node>(
     nodes: &'node [Node],
     body: &Node,
@@ -1087,6 +1089,8 @@ fn prove_static_if_arm<'node>(
             effects: vec![effect],
             begin: child.span.begin.byte,
             end,
+            end_line: child.span.end.line,
+            end_column: child.span.end.column,
             braced: false,
         });
     }
@@ -1094,6 +1098,12 @@ fn prove_static_if_arm<'node>(
     let end = child.span.end.byte;
     let line = child.span.begin.line;
     let column = child.span.begin.column;
+    let multiline = child.span.end.line > line;
+    let span_is_canonical = if multiline {
+        child.span.end.column == column.checked_sub(6)?
+    } else {
+        source_word(child, begin, end, line, column)
+    };
     if begin <= previous
         || end >= body.span.end.byte
         || line == 0
@@ -1104,7 +1114,7 @@ fn prove_static_if_arm<'node>(
         || child.reference.is_some()
         || child.operation.is_some()
         || !metadata_empty(child)
-        || !source_word(child, begin, end, line, column)
+        || !span_is_canonical
     {
         return None;
     }
@@ -1117,7 +1127,18 @@ fn prove_static_if_arm<'node>(
             return None;
         }
         let statement = nodes.get(cursor)?;
-        if statement.span.begin.byte != effect_end.checked_add(2)? {
+        let gap = if multiline {
+            10
+        } else {
+            2
+        };
+        if statement.span.begin.byte != effect_end.checked_add(gap)?
+            || (multiline
+                && (statement.span.begin.line
+                    != line
+                        .checked_add(u32::try_from(effects.len() + 1).ok()?)?
+                    || statement.span.begin.column != column.checked_sub(3)?))
+        {
             return None;
         }
         let (width, effect, statement_end) = prove_static_if_statement(
@@ -1135,7 +1156,19 @@ fn prove_static_if_arm<'node>(
         effects.push(effect);
         cursor = cursor.checked_add(width)?;
         effect_end = statement_end;
-        if effect_end.checked_add(3)? == end {
+        let end_gap = if multiline {
+            7
+        } else {
+            3
+        };
+        if effect_end.checked_add(end_gap)? == end {
+            if multiline
+                && child.span.end.line
+                    != line
+                        .checked_add(u32::try_from(effects.len() + 1).ok()?)?
+            {
+                return None;
+            }
             break;
         }
     }
@@ -1144,6 +1177,8 @@ fn prove_static_if_arm<'node>(
         effects,
         begin,
         end,
+        end_line: child.span.end.line,
+        end_column: child.span.end.column,
         braced: true,
     })
 }
@@ -1224,6 +1259,8 @@ fn prove_static_if<'node>(
     }
     let mut width = 2usize.checked_add(then_arm.width)?;
     let mut end = then_arm.end;
+    let mut end_line = then_arm.end_line;
+    let mut end_column = then_arm.end_column;
     let mut selected = value == "1";
     let mut effects = then_arm.effects;
     if conditional.span.end.byte != then_arm.end {
@@ -1245,14 +1282,21 @@ fn prove_static_if<'node>(
         }
         width = width.checked_add(else_arm.width)?;
         end = else_arm.end;
+        end_line = else_arm.end_line;
+        end_column = else_arm.end_column;
         selected = true;
         if value == "0" {
             effects = else_arm.effects;
         }
     }
-    if end >= body.span.end.byte
-        || !source_word(conditional, start, end, line, column)
-    {
+    let span_is_canonical = if end_line == line {
+        source_word(conditional, start, end, line, column)
+    } else {
+        conditional.span.end.byte == end
+            && conditional.span.end.line == end_line
+            && conditional.span.end.column == end_column
+    };
+    if end >= body.span.end.byte || !span_is_canonical {
         return None;
     }
     Some(StaticIfProof {

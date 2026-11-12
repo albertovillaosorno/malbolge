@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a full C byte-stream function with multiline static
+  `if/else` arms and nested `putchar` calls initially refused normalized
+  Clang admission. Canonical one-statement-per-line block geometry now proves
+  both source branches, including skipped calls, with exact spans, parent
+  identities, indentation and line increments. The actual Malbolge guest
+  reads three bytes and writes four in eight steps, with eight independent
+  binary VM oracles. The 1/2/16 multiline-call bounds pass; 17 refuses.
+  Twelve source negatives and 21 forged AST variants refuse target publication.
+  The larger input-dependent `while` / parity-`if` complete C experiment
+  still fails closed at normalized admission. Guest runtime C control,
+  arithmetic, EOF and general storage remain unsupported; P0 stays open.
+
 - On 2026-11-12 a complete source-C program with two braced constant
   `if/else` blocks and ordered guest input/output effects initially failed
   normalized AST admission. A bounded one-line compound-arm proof now

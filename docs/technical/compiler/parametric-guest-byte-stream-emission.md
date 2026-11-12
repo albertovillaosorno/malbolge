@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Canonical multiline constant C arms (2026-11-12)
+
+A complete C source with two multiline `if (1)` / `if (0)` blocks, both
+with an `else` arm, initially failed at normalized JSON adapter admission.
+The proven source-C projection now authenticates one-call-per-line compound
+blocks with canonical indentation, exactly one newline per statement, exact
+semicolon and brace byte gaps, and Clang byte/line/column, ancestry, and ID
+coordinates. Every statement in both arms is proven, including the skipped
+arm. Calls inside a selected arm preserve input and output order; a fresh
+read invalidates a previous input-local alias. Existing single-line block
+admission is unchanged.
+
+The pinned C-to-Malbolge pipeline emits a real capsule performing three guest
+byte inputs and four outputs in eight normative VM steps. Eight independent
+boundary and seeded binary streams agree with an explicit C-order oracle.
+Multiline blocks of 1, 2 and 16 `getchar()` statements execute at their exact
+step counts; a 17th call refuses. Twelve unsupported C variants and 21
+forged Clang AST alterations fail without target publication. This is
+compile-time constant branch selection, not runtime guest C conditions,
+loop arithmetic, EOF handling, failed I/O or general C storage. The original
+input-dependent `while` / parity-branch program still rejects safely at the
+JSON adapter and the P0 is pending.
+
 ### Single-line C compound arms around runtime guest I/O (2026-11-12)
 
 A complete C program first failed normalized frontend admission when two
