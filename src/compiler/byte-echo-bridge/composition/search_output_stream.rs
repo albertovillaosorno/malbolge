@@ -1877,10 +1877,23 @@ pub(super) fn verified_short_output_layout<const N: usize>(
             })
     })
     .or_else(|| {
-        // Reserve an extra data region for longer output traces only.
-        // Do not amplify the established short negative-case search.
+        // Reserve additional fresh loader-data regions for long streams.
+        // Keep the more expensive six-region scan behind the established
+        // bounded searches, without widening shorter negative cases.
         if N >= 10 {
             verified_relocated_write_layout(profile, expected, source_cells, 5)
+                .or_else(|| {
+                    if N == 12 {
+                        verified_relocated_write_layout(
+                            profile,
+                            expected,
+                            source_cells,
+                            6,
+                        )
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         }
@@ -2045,14 +2058,14 @@ mod repeated_relocation_tests;
 /// A split bit selects an additional `j` before the next arithmetic/output
 /// pair. Every region must perform at least one real guest write and output;
 /// no host-chosen D destinations, repeated writes, or source operands pass.
-/// The proposal remains bounded to twelve effects and five relocation regions.
+/// The proposal remains bounded to twelve effects and six relocation regions.
 fn verified_relocated_write_layout<const N: usize>(
     profile: &'static ProfileDescriptor,
     expected: [u8; N],
     source_cells: &[[u8; 6]],
     relocations: usize,
 ) -> Option<LinearLayout> {
-    if !(3..=5).contains(&relocations)
+    if !(3..=6).contains(&relocations)
         || !(3..=12).contains(&N)
         || relocations > N
         || profile.id() != malbolge::current_profile().id()

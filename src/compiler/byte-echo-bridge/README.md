@@ -1093,3 +1093,27 @@ loader-recurrence oracle. Growing the same source so relocation points into
 pending code still rejects. This work corrects a safe guest layout boundary;
 it does not compile the original unmasked twelve-byte C Fibonacci program
 or implement dynamic guest control.
+
+
+### Six independent loader-data regions (2026-11-11)
+
+The bounded twelve-effect byte-stream proposer now accepts **six** live
+`j` data relocations, not only five. This is a distinct source geometry:
+each relocation reads an untouched loader-expanded operand and changes where
+the next real `p` arithmetic effect reads and writes memory. The proposer
+does not select relocation destinations or output bytes on the host; the
+normative guest performs every data operation.
+
+A source-independent 32-cell positional guest with one prefix no-op,
+six relocations, twelve `p`/output pairs and a final halt emits
+`3e 0b 4a 29 5c 32 53 50 3d 0a 49 31`. The original positional
+encoder and independent bridge admission prove all twelve writes are distinct
+and outside the code, while the normative VM executes the complete stream
+under EOF and binary input. The six-region proposer recovers the exact
+source, and the production twelve-byte path independently publishes an
+equivalent verified program. A mismatched output byte refuses publication.
+
+The six-region fallback runs only for twelve-effect streams, after prior
+bounded proposal grammars. This is source-independent guest byte synthesis,
+not general runtime C arithmetic, arbitrary relocations or a solution to
+the unmasked Fibonacci stream `02 59 5f ...`.

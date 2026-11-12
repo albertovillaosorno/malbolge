@@ -1939,3 +1939,96 @@ fn first_expanded_word_is_a_valid_state_space_relocation() -> Result<(), String>
     assert!(encode_linear_layout(profile, &overlapping_operations).is_err());
     Ok(())
 }
+
+#[test]
+fn six_live_relocations_recover_twelve_guest_outputs() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing decoder phases")?;
+    // Six independently read loader operands change the data path between
+    // real arithmetic/output effects. The source geometry was selected
+    // separately, without relying on the relocation-count proposer.
+    let mut operations = vec![LinearOpcode::NoOperation];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    let splits = 0x195usize;
+    for index in 0..12 {
+        if index > 0 && splits & (1 << (index - 1)) != 0 {
+            operations.push(LinearOpcode::RelocateDataPointer);
+        }
+        operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    operations.push(LinearOpcode::Halt);
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|&&op| op == LinearOpcode::RelocateDataPointer)
+            .count(),
+        6
+    );
+    let raw = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            cells
+                .get(position)
+                .and_then(|phase| {
+                    phase.get(super::super::pair_opcode_slot(operation)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("missing positional source byte")?;
+    let mut vm = ProfileMachine::from_source(profile, &raw, Vec::new())
+        .map_err(|error| format!("independent six-region load: {error:?}"))?;
+    assert!(matches!(vm.run(raw.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+    assert_eq!(vm.input_consumed(), 0);
+    let expected: [u8; 12] = vm
+        .output()
+        .try_into()
+        .map_err(|error| format!("twelve guest outputs: {error:?}"))?;
+    assert_eq!(expected, [62, 11, 74, 41, 92, 50, 83, 80, 61, 10, 73, 49]);
+    let independently_encoded = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("independent six-region layout: {error:?}"))?;
+    assert_eq!(independently_encoded.source(), raw);
+    let original =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or("independent publisher refused six-region guest")?;
+    assert_eq!(original.source(), raw);
+    assert_eq!(original.data_write_positions().iter().flatten().count(), 12);
+
+    let recovered =
+        verified_relocated_write_layout(profile, expected, &cells, 6)
+            .ok_or("six-region proposer missed independent guest")?;
+    assert_eq!(recovered.source(), raw);
+    let published = verified_short_output_layout(profile, expected, &cells)
+        .ok_or("production bridge missed independently admitted stream")?;
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut published_vm = ProfileMachine::from_source(
+            profile,
+            published.source(),
+            input.clone(),
+        )
+        .map_err(|error| format!("published load: {error:?}"))?;
+        assert!(matches!(
+            published_vm.run(published.source().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(published_vm.output(), expected);
+        assert_eq!(published_vm.input_consumed(), 0);
+
+        let mut replay =
+            ProfileMachine::from_source(profile, recovered.source(), input)
+                .map_err(|error| format!("recovered load: {error:?}"))?;
+        assert!(matches!(replay.run(raw.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == raw.len()));
+        assert_eq!(replay.output(), expected);
+        assert_eq!(replay.input_consumed(), 0);
+    }
+    let mut forged = expected;
+    forged[7] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

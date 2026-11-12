@@ -787,6 +787,26 @@ or raw `.malbolge` artifacts with source maps. This work remains active.
 Malformed IR, unsatisfied proof obligations, impossible layout, or unsupported
 profile requirements fail closed before emitting accepted target code.
 
+
+### Six loader-controlled arithmetic regions (2026-11-11)
+
+A red-first 32-cell graphical guest alternates twelve real `p` data writes
+and twelve outputs while six live `j` relocations read untouched,
+source-derived loader words. Its emitted bytes are
+`3e 0b 4a 29 5c 32 53 50 3d 0a 49 31` in the canonical
+current-profile VM. The independent positional encoder admits the source,
+all twelve write addresses are distinct and outside code, and both EOF
+and nonempty binary input produce identical output with zero input consumed.
+
+The former five-region proposer rejected this independently admitted source.
+A generalized six-region search now recovers exactly the source and the
+production twelve-byte byte-stream bridge publishes a VM-verified layout;
+a forged expected byte is rejected. Existing shorter-stream search limits
+are retained, and search results are never accepted without independent
+source and normative VM proof. These fixed guest effects are not dynamic
+C branches, arbitrary byte synthesis or a resolution of the original
+unmasked Fibonacci `02 59 5f ...` target.
+
 ## Verification
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
