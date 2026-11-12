@@ -31,6 +31,13 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+A complete Fibonacci condition now short-circuits a pure unsigned ternary:
+when skipped, both division and remainder branches may have zero divisors,
+without triggering undefined evaluation. Both arms are authenticated against
+the source tree, while selected undefined arithmetic and hidden I/O reject.
+Exact ternary endpoint line/column proof rejects forged normalized nodes.
+This remains bounded static C replay, not general guest-side conditionals.
+
 A pure skipped Boolean RHS may itself contain a source-ordered `&&`/`||`
 tree. Both children are authenticated without evaluating a division
 that C does not execute; the selected path still rejects zero division.

@@ -749,6 +749,31 @@ impl<'node> Flow<'node> {
             }
             return Some(grouped);
         }
+        if self.peek()?.kind == "conditional-expression" {
+            // C skips the entire conditional when its parent short-circuits.
+            // Authenticate both arms and its predicate without executing
+            // either arm, even when each contains undefined division.
+            let conditional = self.take(parent, "conditional-expression")?;
+            if !bare_typed_node(conditional)
+                || conditional.type_name.as_deref() != Some("u32")
+            {
+                return None;
+            }
+            let child_depth = depth.checked_add(1)?;
+            let condition = self
+                .unselected_condition_expression(conditional.id, child_depth)?;
+            let then_expression =
+                self.unselected_expression(conditional.id, child_depth)?;
+            let else_expression =
+                self.unselected_expression(conditional.id, child_depth)?;
+            return ordered_ternary_spans(
+                conditional,
+                condition,
+                then_expression,
+                else_expression,
+            )
+            .then_some(conditional);
+        }
         let binary = self.take(parent, "binary-expression")?;
         let operator = binary.operation.as_deref()?;
         if !matches!(operator, "/" | "%") || !typed_operator(binary, operator) {
@@ -2668,9 +2693,13 @@ const fn ordered_ternary_spans(
         && span_within(&expression.span, &then_expression.span)
         && span_within(&expression.span, &else_expression.span)
         && expression.span.begin.byte == condition.span.begin.byte
+        && expression.span.begin.line == condition.span.begin.line
+        && expression.span.begin.column == condition.span.begin.column
         && condition.span.end.byte < then_expression.span.begin.byte
         && then_expression.span.end.byte < else_expression.span.begin.byte
         && else_expression.span.end.byte == expression.span.end.byte
+        && else_expression.span.end.line == expression.span.end.line
+        && else_expression.span.end.column == expression.span.end.column
 }
 
 /// Evaluate exact unsigned-C operators after both source operands are proven.

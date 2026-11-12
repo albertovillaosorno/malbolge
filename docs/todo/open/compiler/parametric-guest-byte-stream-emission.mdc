@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete C Fibonacci program guards a ternary with
+  logical short-circuiting. Its division and remainder arms both have
+  a zero denominator when skipped; the first source replay rejected the
+  program. A pure ternary authentication path now accepts both arms
+  without evaluating skipped undefined arithmetic. The normative VM
+  emits the independently calculated twelve-byte guest output; selected
+  zero arithmetic and hidden effects reject. Forged ternary source columns
+  exposed and motivated exact byte/line/column checks. Dynamic guest C
+  branching and unmasked Fibonacci layout remain unsupported; P0 stays open.
+
+
 - On 2026-11-11 the complete twelve-trip unsigned Fibonacci C recurrence
   moved its division guard from a ternary into a source-proven `&&`
   predicate; the pinned C frontend accepted the source but the JSON

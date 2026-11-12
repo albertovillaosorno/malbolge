@@ -25,6 +25,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Skipped ternary inside a logical guard (2026-11-11)
+
+A complete twelve-trip unsigned Fibonacci C program uses a source-proven
+`&&` guard whose skipped right operand is a `?:` selecting unsigned
+division or remainder. When the term is even, both would divide by zero,
+so neither may be evaluated; odd terms execute the selected arm. A red-first
+normalized-frontend refusal was repaired by authenticating both pure ternary
+arms without evaluating a skipped one. The selected path still refuses
+undefined arithmetic and unsupported effects. A forged Clang column on the
+ternary previously reached expensive guest layout; exact start/end byte,
+line and column agreement now fails closed.
+
+The real VM emits an independently calculated twelve-byte recurrence for
+the alternating division/remainder source. The original unmasked Fibonacci
+byte stream still refuses at guest layout; dynamic C control and arbitrary
+byte-stream emission are not implemented. The P0 remains open.
+
+
 ### Short-circuit C logical guards (2026-11-11)
 
 A complete twelve-trip unsigned Fibonacci C program guards division with
