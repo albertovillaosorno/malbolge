@@ -53,6 +53,9 @@ struct LocalDeclaration<'node> {
     variable_reference: String,
 }
 
+type CommaOutputProof<'node> = (&'node Node, &'node Node, &'node Node);
+type OutputCallProof<'node> = (usize, Vec<&'node Node>);
+
 const fn metadata_empty(node: &Node) -> bool {
     node.name.is_none()
         && node.definition.is_none()
@@ -191,6 +194,164 @@ fn prove_call<'node>(
         .iter()
         .all(|node| metadata_empty(node));
     well_formed.then_some((input, output))
+}
+
+// A source-proven getchar() is a guest effect even when its result
+// is discarded. Both standalone and comma-child calls use the same exact
+// three-node proof to preserve input ordering and prevent hidden effects.
+fn prove_input_call<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    identity: (u32, u32),
+) -> Option<&'node Node> {
+    let [call, cast, callee] = nodes else {
+        return None;
+    };
+    let start = call.span.begin.byte;
+    let line = call.span.begin.line;
+    let column = call.span.begin.column;
+    let end = start.checked_add(9)?;
+    let source_ok = start > previous
+        && start > body.span.begin.byte
+        && end < body.span.end.byte
+        && line > 0
+        && column > 0
+        && call.id == identity.0
+        && call.parent == identity.1
+        && call.kind == "call-expression"
+        && call.type_name.as_deref() == Some("i32")
+        && call.reference.as_deref() == Some("external:getchar")
+        && call.operation.is_none()
+        && metadata_empty(call)
+        && source_word(call, start, end, line, column)
+        && cast.id == call.id.checked_add(1)?
+        && cast.parent == call.id
+        && cast.kind == "cast-expression"
+        && cast.type_name.as_deref() == Some("ptr(fn()->i32)")
+        && cast.operation.as_deref() == Some("function-to-pointer")
+        && cast.reference.is_none()
+        && metadata_empty(cast)
+        && source_word(cast, start, start.checked_add(7)?, line, column)
+        && callee.id == cast.id.checked_add(1)?
+        && callee.parent == cast.id
+        && callee.kind == "declaration-reference-expression"
+        && callee.type_name.as_deref() == Some("fn()->i32")
+        && callee.reference.as_deref() == Some("external:getchar")
+        && callee.operation.is_none()
+        && metadata_empty(callee)
+        && source_word(callee, start, start.checked_add(7)?, line, column);
+    source_ok.then_some(call)
+}
+
+// One source-checked comma expression consumes a successful byte before
+// evaluating the result-valued getchar() argument. The first read must not
+// be optimized away: the second one observes the next input byte.
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "authenticate the complete comma call ancestry without shortcuts"
+)]
+fn prove_comma_output<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+) -> Option<CommaOutputProof<'node>> {
+    let [output, cast, callee, paren, comma, ..] = nodes else {
+        return None;
+    };
+    if nodes.len() != 11 {
+        return None;
+    }
+    let start = output.span.begin.byte;
+    let line = output.span.begin.line;
+    let column = output.span.begin.column;
+    let comma_start = start.checked_add(9)?;
+    let first_end = comma_start.checked_add(9)?;
+    let second = nodes.get(8)?;
+    let gap = second.span.begin.byte.checked_sub(first_end)?;
+    if !matches!(gap, 1 | 2) {
+        return None;
+    }
+    let second_end = first_end.checked_add(gap)?.checked_add(9)?;
+    let end = second_end.checked_add(2)?;
+    let well_formed = start > previous
+        && start > body.span.begin.byte
+        && end < body.span.end.byte
+        && line > 0
+        && column > 0
+        && output.id == expected_id
+        && output.parent == body.id
+        && output.kind == "call-expression"
+        && output.type_name.as_deref() == Some("i32")
+        && output.reference.as_deref() == Some("external:putchar")
+        && output.operation.is_none()
+        && metadata_empty(output)
+        && source_word(output, start, end, line, column)
+        && cast.id == output.id.checked_add(1)?
+        && cast.parent == output.id
+        && cast.kind == "cast-expression"
+        && cast.type_name.as_deref() == Some("ptr(fn(i32)->i32)")
+        && cast.operation.as_deref() == Some("function-to-pointer")
+        && cast.reference.is_none()
+        && metadata_empty(cast)
+        && source_word(cast, start, start.checked_add(7)?, line, column)
+        && callee.id == cast.id.checked_add(1)?
+        && callee.parent == cast.id
+        && callee.kind == "declaration-reference-expression"
+        && callee.type_name.as_deref() == Some("fn(i32)->i32")
+        && callee.reference.as_deref() == Some("external:putchar")
+        && callee.operation.is_none()
+        && metadata_empty(callee)
+        && source_word(callee, start, start.checked_add(7)?, line, column)
+        && paren.id == callee.id.checked_add(1)?
+        && paren.parent == output.id
+        && paren.kind == "parenthesized-expression"
+        && paren.type_name.as_deref() == Some("i32")
+        && paren.reference.is_none()
+        && paren.operation.is_none()
+        && metadata_empty(paren)
+        && source_word(
+            paren,
+            start.checked_add(8)?,
+            end.checked_sub(1)?,
+            line,
+            column.checked_add(8)?,
+        )
+        && comma.id == paren.id.checked_add(1)?
+        && comma.parent == paren.id
+        && comma.kind == "binary-expression"
+        && comma.type_name.as_deref() == Some("i32")
+        && comma.reference.is_none()
+        && comma.operation.as_deref() == Some(",")
+        && metadata_empty(comma)
+        && source_word(
+            comma,
+            comma_start,
+            second_end,
+            line,
+            column.checked_add(9)?,
+        );
+    if !well_formed {
+        return None;
+    }
+    let first_input = prove_input_call(
+        nodes.get(5..8)?,
+        body,
+        previous,
+        (comma.id.checked_add(1)?, comma.id),
+    )?;
+    let second_input = prove_input_call(
+        nodes.get(8..11)?,
+        body,
+        first_input.span.end.byte,
+        (comma.id.checked_add(4)?, comma.id),
+    )?;
+    (first_input.span.begin.byte == comma_start
+        && first_input.span.end.byte == first_end
+        && second_input.span.end.byte == second_end)
+        .then_some((first_input, second_input, output))
 }
 
 fn valid_local_variable(
@@ -442,11 +603,6 @@ fn prove_local_output<'node>(
     source_ok.then_some(output)
 }
 
-// The innermost expression reads the live automatic local, while each
-// enclosing putchar returns the same successful byte. The Clang preorder
-// contains three call/callee nodes per level and two final local-read nodes.
-type OutputCallProof<'node> = (usize, Vec<&'node Node>);
-
 #[expect(
     clippy::too_many_lines,
     reason = "check nested source coordinates and ancestry together"
@@ -643,12 +799,12 @@ fn valid_envelope(input: &Artifact, function: &Node, body: &Node) -> bool {
         && body.span.begin.byte < body.span.end.byte
 }
 
-/// Admit successful input/output pairs with exact live local replay.
+/// Admit a source-authenticated successful-byte input/output trace.
 ///
-/// Repeated local outputs do not read input again, and a later input
-/// invalidates the old local SSA identity. No other guest effects or EOF
-/// behavior are admitted; the
-/// resulting typed program describes a *successful-byte* input trace.
+/// Repeated local outputs do not read input again, but a discarded read
+/// and the left operand of a comma expression consume input without writing
+/// output. A later input invalidates any earlier live SSA identity. No
+/// other guest effects or EOF behavior are admitted.
 ///
 /// # Errors
 ///
@@ -678,7 +834,7 @@ pub(super) fn canonical_source_byte_echo(
     let mut consumed = 0usize;
     let mut inputs = 0usize;
     let mut outputs = 0usize;
-    let mut repeated = false;
+    let mut requires_latest = false;
     let mut local_names = HashSet::new();
     let mut latest_local: Option<(LocalDeclaration<'_>, ValueId)> = None;
     let mut instructions = Vec::new();
@@ -710,7 +866,7 @@ pub(super) fn canonical_source_byte_echo(
                     typed_span(&call.span),
                 ));
             }
-            repeated = true;
+            requires_latest = true;
             outputs = outputs
                 .checked_add(calls.len())
                 .ok_or(FrontendJsonError::Unsupported)?;
@@ -731,6 +887,66 @@ pub(super) fn canonical_source_byte_echo(
                 .ok_or(FrontendJsonError::Unsupported)?;
             continue;
         }
+        if first.kind == "call-expression"
+            && first.reference.as_deref() == Some("external:putchar")
+            && let Some((discarded, selected, output)) =
+                rest.get(consumed..consumed.saturating_add(11)).and_then(
+                    |nodes| prove_comma_output(nodes, body, previous, next_id),
+                )
+        {
+            if inputs
+                .checked_add(2)
+                .is_none_or(|count| count > MAX_ECHO_CALLS)
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            for (index, input_call) in [discarded, selected].iter().enumerate()
+            {
+                instructions.push(LocatedInstruction::new(
+                    Instruction::ByteInput {
+                        result: ValueId::new(
+                            u32::try_from(
+                                inputs
+                                    .checked_add(index)
+                                    .ok_or(FrontendJsonError::Unsupported)?,
+                            )
+                            .map_err(|_error| FrontendJsonError::Unsupported)?,
+                        ),
+                        type_id: TypeId::new(0),
+                    },
+                    typed_span(&input_call.span),
+                ));
+            }
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteOutput {
+                    value: ValueId::new(
+                        u32::try_from(
+                            inputs
+                                .checked_add(1)
+                                .ok_or(FrontendJsonError::Unsupported)?,
+                        )
+                        .map_err(|_error| FrontendJsonError::Unsupported)?,
+                    ),
+                },
+                typed_span(&output.span),
+            ));
+            latest_local = None;
+            previous = output.span.end.byte;
+            consumed = consumed
+                .checked_add(11)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(11)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            inputs = inputs
+                .checked_add(2)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            outputs = outputs
+                .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
         if inputs == MAX_ECHO_CALLS {
             return Err(FrontendJsonError::Unsupported);
         }
@@ -738,6 +954,38 @@ pub(super) fn canonical_source_byte_echo(
             u32::try_from(inputs)
                 .map_err(|_error| FrontendJsonError::Unsupported)?,
         );
+        if first.kind == "call-expression"
+            && first.reference.as_deref() == Some("external:getchar")
+            && let Some(read) = rest
+                .get(consumed..consumed.saturating_add(3))
+                .and_then(|nodes| {
+                    prove_input_call(nodes, body, previous, (next_id, body.id))
+                })
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: id,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&read.span),
+            ));
+            // This input overwrites the accumulator, so any preceding
+            // local can no longer be materialized by the guest.
+            latest_local = None;
+            previous = read.span.end.byte;
+            consumed = consumed
+                .checked_add(3)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(3)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            inputs = inputs
+                .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            // Adjacent echo cannot represent an input without output.
+            requires_latest = true;
+            continue;
+        }
         let (width, input_call, output_calls) = if first.kind
             == "declaration-statement"
         {
@@ -802,7 +1050,7 @@ pub(super) fn canonical_source_byte_echo(
                 typed_span(&call.span),
             ));
         }
-        repeated |= output_calls.len() > 1;
+        requires_latest |= output_calls.len() > 1;
         previous = output_calls
             .first()
             .ok_or(FrontendJsonError::Unsupported)?
@@ -901,7 +1149,7 @@ pub(super) fn canonical_source_byte_echo(
     }
     Ok((
         wire,
-        if repeated {
+        if requires_latest {
             FrontendGuestMode::LatestRead
         } else {
             FrontendGuestMode::AdjacentEcho

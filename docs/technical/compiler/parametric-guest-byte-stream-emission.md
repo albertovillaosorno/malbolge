@@ -26,6 +26,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-sequenced discarded byte reads (2026-11-12)
+
+A complete C source interleaves automatic `getchar` locals, a standalone
+`getchar();` whose return is unused, nested `putchar` return values, and
+repeated reads of the most recent local. The pinned Clang normalized source
+previously rejected the entire function; the source-checked projector now
+preserves the unused `getchar` as a real `ByteInput` effect, invalidates the
+old accumulator-local alias, and continues the source-order trace. The guest
+reads four bytes but emits only five, in ten normative VM steps. Fourteen
+boundary and seeded binary input samples match an independent byte oracle.
+
+A second complete C function passes `(getchar(), getchar())` as the argument
+to `putchar`, then outputs a separately captured byte through nested calls.
+The left operand must consume a guest input even though its value is
+unobserved; the comma result is the right operand's actual byte. Both call
+ancestors, the `i32` comma expression, parentheses, binary operator, lexical
+bounds and source coordinates are authenticated against Clang. The normative
+VM reads four bytes and emits four in nine steps, matching ten independent
+binary oracles. A separate input-only C function executes two VM input steps
+and one halt step with no output. Unsupported C mutations and forged Clang
+metadata reject without target publication.
+
+The admitted grammar is bounded and straight-line, with exact pinned Clang
+subtrees. All guest reads must succeed with bytes; EOF remains unimplemented,
+as do mutable C storage, nontrivial arithmetic, output failures, branches,
+loops and arbitrary comma expressions. No input is synthesized on the host.
+
 ### Composed live local and nested call-return guest I/O (2026-11-12)
 
 A complete C source captures two `getchar` results in automatic `int` locals,

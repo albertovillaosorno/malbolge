@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C stream mixing local byte capture,
+  an unobserved standalone input, nested `putchar` returns, and repeated
+  last-local output initially refused normalized JSON admission. The
+  source-checked projector now emits the discarded read as a real guest
+  effect; four bytes become five outputs in ten VM steps across fourteen
+  independent binary oracles. Another full C source uses the comma operator
+  to consume an input before emitting the next input's value, with later
+  nested local output. Ten binary oracles match its four outputs in nine
+  VM steps. Input-only C consumes two bytes and emits nothing in three
+  guest steps. Source negatives and forged Clang nodes refuse publication;
+  EOF, guest C control, arithmetic and general storage remain open.
+
 - On 2026-11-12 a complete source-C program interleaving two automatic
   input locals, nested `putchar` return calls, repeated local reads and a
   direct nested input exposed a pinned-Clang JSON admission failure. The
