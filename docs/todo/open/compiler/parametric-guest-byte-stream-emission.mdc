@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C source placed standalone comma output
+  returns and mixed discarded input/output calls in a selected multiline
+  constant branch, with a separately proven skipped comma arm. Normalized
+  frontend admission originally failed. The reused comma ancestry proof
+  now emits actual guest effects without a synthetic outer write: three
+  input bytes yield three independent oracle outputs in seven VM steps
+  across eight binary streams. Three forged comma AST fields and an
+  unsupported skipped output refuse without publication. C runtime
+  conditions, arithmetic, EOF, loops and general locals remain open.
+
 - On 2026-11-12 a full C function captured a live input byte and used
   two comma-argument outputs inside a selected multiline `if (1)` arm,
   with a separately authenticated skipped `else` comma arm. The normalized

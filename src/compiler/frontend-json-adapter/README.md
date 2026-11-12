@@ -10,6 +10,16 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Discarded comma effects under constant C branches (2026-11-12)
+
+Source-authenticated standalone comma statements in literal C `if/else` arms
+now preserve direct reads, nested successful writes, and discarded return
+values. The same operand effect proof as comma arguments is reused, but no
+extra enclosing output is invented. Skipped comma arms are checked against
+their own Clang parent and exact source extent. One multiline C function
+executes three guest reads and three outputs in seven VM steps across eight
+binary inputs; forged metadata and unknown skipped effects reject.
+
 ### Comma outputs inside constant branch arms (2026-11-12)
 
 The bounded `if (0)` / `if (1)` byte adapter accepts exact pinned-Clang

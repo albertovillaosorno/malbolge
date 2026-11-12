@@ -26,6 +26,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Standalone comma effects in constant C arms (2026-11-12)
+
+A complete source-C function uses a multiline `if (1)` block with
+standalone comma output and mixed input/output statements, plus a skipped
+`else` comma input chain. Pinned Clang accepted the source but the normalized
+adapter initially refused. The existing direct comma verifier now accepts
+literal-branch parent identity and projects every comma operand in order,
+without adding the outer `putchar` write reserved for comma arguments. The
+common effect projection reuses live locals until a new guest input replaces
+the accumulator, and proves the entire skipped comma arm independently.
+
+The normative VM emits three byte outputs from three guest inputs in seven
+steps, matching eight seeded and boundary binary oracles. Forged comma parent,
+operation and span metadata and an unsupported skipped-arm output reject
+without publishing guest code. Guest-side dynamic C branches, arithmetic,
+loops, durable storage and EOF handling are still outside the contract.
+
 ### Comma-result evaluation inside constant C branches (2026-11-12)
 
 A complete C program captures a live input local, enters a multiline `if (1)`

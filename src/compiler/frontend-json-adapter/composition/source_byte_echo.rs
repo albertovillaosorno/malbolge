@@ -1013,6 +1013,38 @@ struct StaticIfArm<'node> {
     braced: bool,
 }
 
+// Both discarded comma statements and comma-argument calls use the same
+// verified operand trace. Only the latter adds one final outer output.
+fn static_comma_effects<'node>(
+    comma_effects: Vec<CommaEffect<'node>>,
+    outer_output: Option<&'node Node>,
+    local: Option<&LocalDeclaration<'node>>,
+) -> Option<Vec<StaticIfEffect<'node>>> {
+    let last = comma_effects.len().checked_sub(1)?;
+    Some(
+        comma_effects
+            .into_iter()
+            .enumerate()
+            .map(|(index, effect)| {
+                let input = if local.is_some_and(|declaration| {
+                    declaration.input.id == effect.input.id
+                }) {
+                    None
+                } else {
+                    Some(effect.input)
+                };
+                let mut outputs = effect.outputs;
+                if index == last
+                    && let Some(output) = outer_output
+                {
+                    outputs.insert(0, output);
+                }
+                StaticIfEffect { input, outputs }
+            })
+            .collect(),
+    )
+}
+
 fn prove_static_if_statement<'node>(
     nodes: &'node [Node],
     body: &Node,
@@ -1039,28 +1071,23 @@ fn prove_static_if_statement<'node>(
         None
     };
     if let Some((width, comma_effects, output)) = comma_proof {
-        let last = comma_effects.len().checked_sub(1)?;
-        let effects = comma_effects
-            .into_iter()
-            .enumerate()
-            .map(|(index, effect)| {
-                let input = if local.is_some_and(|declaration| {
-                    declaration.input.id == effect.input.id
-                }) {
-                    None
-                } else {
-                    Some(effect.input)
-                };
-                let mut outputs = effect.outputs;
-                if index == last {
-                    // The outer putchar writes only after the rightmost
-                    // comma operand, which may itself return from putchar.
-                    outputs.insert(0, output);
-                }
-                StaticIfEffect { input, outputs }
-            })
-            .collect();
+        let effects = static_comma_effects(comma_effects, Some(output), local)?;
         return Some((width, effects, output.span.end.byte));
+    }
+    if child.kind == "binary-expression" {
+        let (width, comma_effects, end) = prove_discarded_comma_effects(
+            nodes,
+            body,
+            previous,
+            expected_id,
+            parent,
+            local,
+        )?;
+        return Some((
+            width,
+            static_comma_effects(comma_effects, None, local)?,
+            end,
+        ));
     }
     let (width, input, outputs) = if child.kind == "call-expression"
         && child.reference.as_deref() == Some("external:putchar")

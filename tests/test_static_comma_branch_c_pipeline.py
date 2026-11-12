@@ -56,6 +56,17 @@ BODY = (
 )
 
 
+DISCARDED_BODY = (
+    "    int first = getchar();\n"
+    "    if (1) {\n"
+    "        putchar(first), putchar(first);\n"
+    "        getchar(), putchar(getchar());\n"
+    "    } else {\n"
+    "        getchar(), getchar();\n"
+    "    }\n"
+)
+
+
 class StaticCommaBranchCPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -129,6 +140,83 @@ class StaticCommaBranchCPipelineTests(unittest.TestCase):
                         bytes((sample[0], sample[0], sample[2], sample[2])),
                     )
                     self.assertEqual(guest.stderr, b"malbolge-steps-v1:8\n")
+
+    def test_discarded_branch_comma_effects_match_guest_oracles(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            source = Path(directory) / "discarded.c"
+            target = Path(directory) / "discarded.malbolge"
+            source.write_text(self.source(DISCARDED_BODY))
+            built = self.compile(source, target)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            rng = random.Random(0xDC_11_2026)
+            samples = [b"\x00\xff\x80", b"\xff\x00\x01", b"ABC"]
+            samples += [bytes(rng.getrandbits(8) for _ in range(3)) for _ in range(5)]
+            for sample in samples:
+                with self.subTest(sample=sample):
+                    guest = subprocess.run(
+                        [str(VM), str(target), "--input-stdin", "--report-steps"],
+                        input=sample,
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    self.assertEqual(
+                        guest.stdout,
+                        bytes((sample[0], sample[0], sample[2])),
+                    )
+                    self.assertEqual(guest.stderr, b"malbolge-steps-v1:7\n")
+
+    def test_discarded_branch_rejects_hidden_effects_and_forged_op(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            source = Path(directory) / "discarded.c"
+            source.write_text(self.source(DISCARDED_BODY))
+            normalized = self.normalized(source)
+            comma = next(
+                node
+                for node in normalized["nodes"]
+                if node["kind"] == "binary-expression"
+            )
+            for index, (field, value) in enumerate(
+                (("operation", "+"), ("parent", 1), ("span.end.column", 1))
+            ):
+                with self.subTest(index=index):
+                    forged = copy.deepcopy(normalized)
+                    node = next(n for n in forged["nodes"] if n["id"] == comma["id"])
+                    if field == "span.end.column":
+                        node["span"]["end"]["column"] = value
+                    else:
+                        node[field] = value
+                    target = Path(directory) / f"forged-discarded-{index}.malbolge"
+                    result = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(target),
+                            "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(target.exists())
+            bad = self.source(
+                "    if (0) {\n"
+                "        getchar(), putchar(65);\n"
+                "    } else {\n"
+                "        getchar(), putchar(getchar());\n"
+                "    }\n"
+            )
+            bad_source = Path(directory) / "bad.c"
+            bad_target = Path(directory) / "bad.malbolge"
+            bad_source.write_text(bad)
+            built = self.compile(bad_source, bad_target)
+            self.assertNotEqual(built.returncode, 0)
+            self.assertFalse(bad_target.exists())
 
     def test_unproved_comma_branches_never_publish(self) -> None:
         invalid = (
