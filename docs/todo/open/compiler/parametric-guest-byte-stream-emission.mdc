@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11 a complete twelve-byte Fibonacci C program nested an
+  unbraced `while` directly inside a post-test `do`, with a selected
+  inner `break` and outer state-dependent repetition. The pinned
+  frontend accepted the source but bounded replay refused it. The fixed
+  source proof authenticates exact loop nesting and comparison geometry,
+  rejecting six unsupported C sources and fourteen forged AST nodes.
+  Two full variants, with six two-output or three four-output outer
+  trips, match an independent unsigned C oracle in the normative VM:
+  `02 19 1f 08 17 0f 02 0d 03 10 13 03`, 47 steps each,
+  with EOF and binary stdin. Original unmasked Fibonacci layout and
+  dynamic guest C loops remain unimplemented; P0 stays pending.
+
 - On 2026-11-11 a complete twelve-trip C Fibonacci program moved
   recurrence writes inside the selected arms of two nested switches.
   The inner even arm emits a byte and continues the surrounding `for`;

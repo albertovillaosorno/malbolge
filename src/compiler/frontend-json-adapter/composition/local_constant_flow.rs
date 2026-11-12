@@ -1932,7 +1932,7 @@ impl<'node> Flow<'node> {
                         loop_body.span.begin.byte
                     }
                 || (!unbraced_effect
-                    && loop_body.span.end.byte != statement.span.end.byte)
+                    && loop_body.span.end != statement.span.end)
                 || (unbraced_effect
                     && (self.peek()?.parent != statement.id
                         || self.peek()?.span.end != statement.span.end))
@@ -2002,14 +2002,36 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        // Clang parents an unbraced `if`, `for` or `switch` directly to
-        // `do`, followed by its condition. Never invent a compound scope.
+        // Clang parents an unbraced control statement directly to
+        // `do`, followed by the outer post-test condition.
+        let direct = self.peek()?;
         let unbraced_control = matches!(
-            self.peek()?.kind.as_str(),
-            "if-statement" | "for-statement" | "switch-statement"
+            direct.kind.as_str(),
+            "if-statement"
+                | "for-statement"
+                | "while-statement"
+                | "switch-statement"
         );
-        let first_body_byte = self.peek()?.span.begin.byte;
-        let direct_body_end = self.peek()?.span.end.byte;
+        let first_body_byte = direct.span.begin.byte;
+        let direct_body_end = direct.span.end.byte;
+        // Admit the new directly nested `while` only with the exact
+        // canonical two-line `do` / `while` token geometry. Clang
+        // ancestry alone does not authenticate source columns or bytes.
+        let nested_while = direct.kind == "while-statement";
+        if nested_while
+            && (direct.span.begin.line
+                != statement.span.begin.line.checked_add(1)?
+                || direct.span.begin.column
+                    != statement.span.begin.column.checked_add(4)?
+                || direct
+                    .span
+                    .begin
+                    .byte
+                    .checked_sub(statement.span.begin.byte)
+                    != Some(direct.span.begin.column.checked_add(2)?))
+        {
+            return None;
+        }
         let loop_body = if unbraced_control {
             statement
         } else {
@@ -2682,6 +2704,21 @@ impl<'node> Flow<'node> {
         let (right_value, right) = self.expression(comparison.id, 0)?;
         if !ordered_binary_spans(comparison, left, right) {
             return None;
+        }
+        // The normalized operator is not itself source text. Within a
+        // source line, insist on exact adjacent or symmetrically spaced
+        // token width; a forged same-line < / != substitution must not
+        // change a bounded C loop decision before guest publication.
+        if left.span.end.line == right.span.begin.line {
+            let width =
+                u32::try_from(comparison.operation.as_deref()?.len()).ok()?;
+            let gap = right.span.begin.byte.checked_sub(left.span.end.byte)?;
+            if right.span.begin.column.checked_sub(left.span.end.column)
+                != Some(gap)
+                || (gap != width && gap != width.checked_add(2)?)
+            {
+                return None;
+            }
         }
         let selected =
             checked_condition_comparison(comparison, left_value, right_value)?;

@@ -1672,3 +1672,16 @@ parity for those alternate spellings is not established. Four
 unsupported C mutations and eight forged normalized AST nodes refuse. This is
 finite source-state replay, not guest runtime loop control or an unmasked
 Fibonacci layout.
+
+### Directly nested post-test C loops (2026-11-11)
+
+A source-proven `do` may directly own one unbraced `while` in the
+canonical two-line form. The inner loop may output and select a bounded
+`break`, which exits only that loop; the enclosing `do` still evaluates
+its own post-test condition. Exact source geometry authenticates the new
+nesting, and same-line unsigned comparisons reject forged operator widths.
+The complete two-per-trip and four-per-trip Fibonacci variants match
+twelve independent masked bytes on the normative guest VM (47 steps each,
+EOF and binary stdin). Six invalid C variants and fourteen forged Clang
+nodes reject without publishing a guest. Dynamic guest C loops and the
+original unmasked Fibonacci byte stream are still unsupported.

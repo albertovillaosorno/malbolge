@@ -25,6 +25,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### An unbraced inner `while` as a C `do` body (2026-11-11)
+
+A complete unsigned Fibonacci C program places a directly parented,
+unbraced `while` inside an outer post-test `do`. Every inner trip advances
+the recurrence and writes a selected output byte; a source-proven conditional
+`break` exits only the inner `while`. Its changed state and completed-trip
+counter drive the outer `do` predicate. Pinned Clang accepted the source, but
+the normalized JSON adapter initially refused the first declaration.
+
+The bounded replay now admits that exact two-line `do` / `while` ancestry
+with checked byte, line and column placement, and requires the nested
+braced `while` endpoint to match its enclosing Clang span. A forged
+comparison operator exposed an existing source-authenticity gap; same-line
+unsigned comparisons now check both operator width and byte/column gaps.
+All fourteen forged AST variants and six unsupported C mutations refuse
+before guest publication.
+
+Two complete variants use two outputs across six outer trips or four
+outputs across three trips. Both agree with the independent unsigned-C
+oracle and actual Malbolge VM on twelve masked bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps, under EOF
+and binary stdin. This is bounded source-state replay, not guest-side C
+loop execution or an unmasked Fibonacci layout; P0 remains open.
+
 ### Nested switch continuation with case-local recurrence writes (2026-11-11)
 
 A full twelve-iteration Fibonacci C source selects two switch levels and
