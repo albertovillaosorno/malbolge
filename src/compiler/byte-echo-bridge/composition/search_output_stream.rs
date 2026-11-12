@@ -1814,6 +1814,287 @@ pub(super) fn verified_revisited_source_scratch_triple(
     None
 }
 
+/// Explore one acyclic continuation after a proven source-cell revisit.
+///
+/// Every state carries the complete guest accumulator, rather than only its
+/// output byte. Skipped source cells may supply fresh graphical operands;
+/// executed and encrypted source cells instead retain their exact VM words.
+/// Candidates receive independent positional admission and VM replay.
+pub(super) fn verified_revisited_source_scratch_stream<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+) -> Option<LinearLayout> {
+    if !(4..=12).contains(&N)
+        || profile.id() != malbolge::current_profile().id()
+    {
+        return None;
+    }
+    let prefix = verified_revisited_source_scratch_triple(profile, [
+        expected[0],
+        expected[1],
+        expected[2],
+    ])?;
+    let source = prefix.source();
+    let target = usize::from(*source.first()?).checked_add(1)?;
+    let mut vm =
+        super::ProfileMachine::from_source(profile, source, Vec::new()).ok()?;
+    let _ = vm
+        .run(prefix.executed_code_positions().len().checked_sub(1)?)
+        .ok()?;
+    if vm.output() != &expected[..3] || vm.input_consumed() != 0 {
+        return None;
+    }
+    let initial_data = usize::try_from(vm.registers().data_pointer).ok()?;
+    let initial_accumulator = vm.registers().accumulator;
+    if initial_data >= target || target >= source.len() {
+        return None;
+    }
+    let last_code = source.len().checked_sub(1)?;
+    let mut source_operations = Vec::with_capacity(source.len());
+    source_operations.push(LinearOpcode::JumpForward {
+        target: u32::try_from(target).ok()?,
+    });
+    for &byte in source.get(1..target)? {
+        source_operations
+            .push(LinearOpcode::SkippedDataByte { byte: u32::from(byte) });
+    }
+    for (position, &byte) in source.iter().enumerate().skip(target) {
+        let code = malbolge::decode_profile_instruction(
+            u32::from(byte),
+            u32::try_from(position).ok()?,
+        )?;
+        source_operations.push(match code {
+            b'o' => LinearOpcode::NoOperation,
+            b'p' => LinearOpcode::CrazyData,
+            b'*' => LinearOpcode::RotateData,
+            b'j' => LinearOpcode::RelocateDataPointer,
+            b'<' => LinearOpcode::OutputByte,
+            b'v' => LinearOpcode::Halt,
+            _ => return None,
+        });
+    }
+    if source_operations.pop()? != LinearOpcode::Halt {
+        return None;
+    }
+    // Read-only no-ops and outputs are insensitive to the source word at D.
+    // Every other reached data read and every prior write pins its operand.
+    let sensitive =
+        prefix
+            .executed_code_positions()
+            .iter()
+            .zip(prefix.data_pointer_positions())
+            .take(prefix.executed_code_positions().len().checked_sub(1)?)
+            .filter_map(|(&code, &data)| {
+                let byte = *source.get(usize::try_from(code).ok()?)?;
+                (!matches!(malbolge::decode_profile_instruction(
+                u32::from(byte), code,
+            ), Some(b'o' | b'<'))).then_some(data)
+            })
+            .collect::<BTreeSet<_>>();
+    let written_data = prefix
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let jump_operands = (33u8..=126)
+        .filter(|&byte| {
+            let landing = usize::from(byte) + 1;
+            landing >= 34
+                && landing < initial_data
+                && matches!(
+                    malbolge::decode_profile_instruction(
+                        u32::from(byte),
+                        u32::try_from(initial_data).unwrap_or(u32::MAX),
+                    ),
+                    Some(b'o' | b'j' | b'p' | b'*' | b'i' | b'v' | b'<' | b'/')
+                )
+        })
+        .collect::<Vec<_>>();
+    for jump_operand in jump_operands {
+        let suffix_start = usize::from(jump_operand) + 1;
+        let mut starting_operations = source_operations.clone();
+        starting_operations[initial_data] = LinearOpcode::SkippedDataByte {
+            byte: u32::from(jump_operand),
+        };
+        starting_operations.push(LinearOpcode::RelocateDataPointer);
+        #[derive(Clone, Copy)]
+        struct Link {
+            predecessor: usize,
+            operation: LinearOpcode,
+            operand: Option<u8>,
+        }
+        let mut links = vec![Link {
+            predecessor: 0,
+            operation: LinearOpcode::NoOperation,
+            operand: None,
+        }];
+        let mut states =
+            BTreeMap::from([((3usize, initial_accumulator), 0usize)]);
+        for address in suffix_start..last_code {
+            let slot = u32::try_from(address).ok()?;
+            let fresh = address < target
+                && !sensitive.contains(&slot)
+                && !written_data.contains(&slot);
+            let options = if fresh {
+                (33u8..=126)
+                    .filter(|&byte| {
+                        matches!(
+                            malbolge::decode_profile_instruction(
+                                u32::from(byte),
+                                slot,
+                            ),
+                            Some(
+                                b'o' | b'j'
+                                    | b'p'
+                                    | b'*'
+                                    | b'i'
+                                    | b'v'
+                                    | b'<'
+                                    | b'/'
+                            )
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            let fixed = vm.memory_word(slot).ok()?;
+            let mut next = BTreeMap::new();
+            for (&(emitted, accumulator), &previous) in &states {
+                let mut insert = |operation, value, operand| {
+                    let new_emitted = emitted
+                        + usize::from(operation == LinearOpcode::OutputByte);
+                    if new_emitted > N
+                        || !can_fit_effects(
+                            last_code.saturating_sub(address + 1),
+                            u8::try_from(value & 255).unwrap_or(0),
+                            &expected[new_emitted..],
+                        )
+                        || next.contains_key(&(new_emitted, value))
+                    {
+                        return;
+                    }
+                    let index = links.len();
+                    links.push(Link {
+                        predecessor: previous,
+                        operation,
+                        operand,
+                    });
+                    let _ = next.insert((new_emitted, value), index);
+                };
+                insert(LinearOpcode::NoOperation, accumulator, None);
+                if emitted < N && matches_byte(accumulator, expected[emitted]) {
+                    insert(LinearOpcode::OutputByte, accumulator, None);
+                }
+                if fresh {
+                    for &operand in &options {
+                        insert(
+                            LinearOpcode::CrazyData,
+                            malbolge::profile_crazy(
+                                u32::from(operand),
+                                accumulator,
+                                profile.word_trits(),
+                            ),
+                            Some(operand),
+                        );
+                        insert(
+                            LinearOpcode::RotateData,
+                            malbolge::profile_rotate(
+                                u32::from(operand),
+                                profile.memory_words(),
+                            ),
+                            Some(operand),
+                        );
+                    }
+                } else {
+                    insert(
+                        LinearOpcode::CrazyData,
+                        malbolge::profile_crazy(
+                            fixed,
+                            accumulator,
+                            profile.word_trits(),
+                        ),
+                        None,
+                    );
+                    insert(
+                        LinearOpcode::RotateData,
+                        malbolge::profile_rotate(fixed, profile.memory_words()),
+                        None,
+                    );
+                }
+            }
+            for (&(emitted, _), &last) in &next {
+                if emitted != N {
+                    continue;
+                }
+                let mut suffix = Vec::new();
+                let mut cursor = last;
+                while cursor != 0 {
+                    let link = links.get(cursor)?;
+                    suffix.push((link.operation, link.operand));
+                    cursor = link.predecessor;
+                }
+                suffix.reverse();
+                let mut operations = starting_operations.clone();
+                for (at, &(operation, operand)) in suffix.iter().enumerate() {
+                    if let Some(byte) = operand {
+                        operations[suffix_start + at] =
+                            LinearOpcode::SkippedDataByte {
+                                byte: u32::from(byte),
+                            };
+                    }
+                    operations.push(operation);
+                }
+                operations.push(LinearOpcode::Halt);
+                let Ok(layout) =
+                    super::encode_linear_layout(profile, &operations)
+                else {
+                    continue;
+                };
+                let accepted = [Vec::new(), vec![255, 0, 128]].into_iter().all(|input| {
+                let Ok(mut guest) = super::ProfileMachine::from_source(
+                    profile, layout.source(), input,
+                ) else { return false; };
+                matches!(guest.run(layout.executed_code_positions().len()),
+                    Ok(super::RunOutcome::Terminated { steps, .. })
+                        if steps == layout.executed_code_positions().len())
+                    && guest.output() == expected
+                    && guest.input_consumed() == 0
+            });
+                if accepted {
+                    return Some(layout);
+                }
+            }
+            if next.len() > 16_384 {
+                // Retain exact full words across every achieved output count,
+                // not only the most advanced prefix. A
+                // discarded state never proves impossibility,
+                // so exhausted search must fail closed.
+                let mut bounded = BTreeMap::new();
+                for count in (3..N).rev() {
+                    for (&(emitted, accumulator), &index) in &next {
+                        if emitted != count {
+                            continue;
+                        }
+                        if bounded.len() >= 16_384 {
+                            break;
+                        }
+                        let _ = bounded.insert((emitted, accumulator), index);
+                    }
+                }
+                states = bounded;
+            } else {
+                states = next;
+            }
+            if states.is_empty() {
+                break;
+            }
+        }
+    }
+    None
+}
+
 /// Continue a proven source-revisit stream with one new guest accumulator.
 ///
 /// The third byte has already been computed using the same source cell

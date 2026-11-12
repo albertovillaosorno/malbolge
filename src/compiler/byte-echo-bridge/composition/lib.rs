@@ -3243,9 +3243,17 @@ pub fn encode_distinct_literal_twelve(
         // The source-scratch grammar can prove compound C byte streams
         // without exploring the much larger relocated-tail state space.
         // Every proposal still receives independent positional/VM proof.
-        return search_output_stream::verified_variable_source_scratch_layout(
+        // Source-revisited words can realize byte transitions that cannot
+        // be constructed from pristine data alone. Give that verified
+        // grammar a bounded first opportunity, then try cheaper layouts.
+        return search_output_stream::verified_revisited_source_scratch_stream(
             profile, expected,
         )
+        .or_else(|| {
+            search_output_stream::verified_variable_source_scratch_layout(
+                profile, expected,
+            )
+        })
         .or_else(|| {
             search_output_stream::verified_straight_write_output_layout(
                 profile, expected, &cells,

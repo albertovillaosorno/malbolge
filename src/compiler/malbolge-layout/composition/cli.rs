@@ -3644,27 +3644,35 @@ fn verify_source_scratch_literal_stream<const N: usize>(
     if target >= decoded.len() || decoded.last() != Some(&b'v') {
         return Err(String::from("source-scratch guest shape disagrees"));
     }
-    // The source-revisit grammar has exactly one reached data relocation,
-    // after two outputs and before the final third output. The independent
-    // linear checker must then prove the D path and the written source word.
+    // The triple/four-byte grammar revisits source after the second output;
+    // the extended stream has one additional reached relocation after the
+    // third output. Positional admission proves every D path and source write.
     let body = &decoded[target..decoded.len() - 1];
     let relocations = body
         .iter()
         .enumerate()
         .filter_map(|(offset, &opcode)| (opcode == b'j').then_some(offset))
         .collect::<Vec<_>>();
-    let revisits_source = matches!(N, 3 | 4)
-        && relocations.len() == 1
+    let revisits_source = (matches!(N, 3 | 4) && relocations.len() == 1
+        || N == 12 && relocations.len() == 2)
         && body[..relocations[0]]
             .iter()
             .filter(|&&opcode| opcode == profile.output_instruction())
             .count()
             == 2
-        && body[relocations[0] + 1..]
+        && (relocations.len() == 1 || {
+            let middle = &body[relocations[0] + 1..relocations[1]];
+            middle
+                .iter()
+                .filter(|&&opcode| opcode == profile.output_instruction())
+                .count()
+                == 1
+        })
+        && body[relocations[relocations.len() - 1] + 1..]
             .iter()
             .filter(|&&opcode| opcode == profile.output_instruction())
             .count()
-            == N.saturating_sub(2);
+            == N.saturating_sub(2 + usize::from(relocations.len() == 2));
     if !relocations.is_empty() && !revisits_source {
         return Err(String::from("source-scratch relocation shape disagrees"));
     }
@@ -3724,10 +3732,10 @@ fn verify_source_scratch_literal_stream<const N: usize>(
         .flatten()
         .copied()
         .collect::<Vec<_>>();
-    // Old scratch sources never repeat a data write. The new grammar may
-    // revisit exactly one cell: it was first rotated before `j`, then is
-    // immediately rotated again after `j`. Both writes must be to a past,
-    // nonexecuted source address; no other alias is admitted.
+    // The new grammar first rotates a skipped source word before `j` and
+    // immediately rotates that exact written word after `j`. A longer
+    // continuation may revisit other past data writes; the independent
+    // layout admission checks their exact positions, words and code safety.
     let unique_writes = writes.iter().copied().collect::<BTreeSet<_>>();
     let valid_revisit = if revisits_source {
         let code = u32::try_from(target + relocations[0])
@@ -3765,8 +3773,8 @@ fn verify_source_scratch_literal_stream<const N: usize>(
                 && second_rotation
                 && layout.data_pointer_positions().get(resumed)
                     == Some(&address)
-                && writes.iter().filter(|&&write| write == address).count() == 2
-                && unique_writes.len() + 1 == writes.len()
+                && writes.iter().filter(|&&write| write == address).count() >= 2
+                && unique_writes.len() < writes.len()
         })
     } else {
         unique_writes.len() == writes.len()

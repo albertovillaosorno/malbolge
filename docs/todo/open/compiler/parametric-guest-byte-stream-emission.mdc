@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 the original complete twelve-iteration unsigned C
+  Fibonacci source reached the production guest VM. Its independently
+  calculated byte stream `02 59 5f 08 57 4f 22 6d 03 90 b3 23` matches
+  the executed guest under EOF and binary input without consuming stdin.
+  A bounded second source-cell relocation continues the written-source
+  three-byte prefix; independent layout and publisher checks prove safe
+  code/D/write geometry, required source rotation and VM replay. The full
+  C-to-Malbolge pipeline test passes, not just the direct bridge search.
+  P0 remains pending for generalized guest control, arbitrary byte streams
+  and the reproducible seeded verification matrix. Earlier entries below
+  are historical and their unmasked-refusal observations are superseded.
+
 - On 2026-11-12 a bounded source-revisit continuation extended the real
   three-byte Fibonacci guest prefix by one new guest rotation. The verified
   four-byte trace `02 59 5f 08` executes in the normative VM under empty

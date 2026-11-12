@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed. Generalized compiler behavior and its proof are not implemented.
+Partial. One original complete Fibonacci C program now reaches the guest VM;
+generalized source-C and arbitrary byte-stream support are not implemented.
 
 ## Purpose
 
@@ -24,6 +25,33 @@ and their tests. It does not require a single enormous hand-authored C file
 or hundreds of individual documentation pages.
 
 ## Current Behavior
+
+### Complete original unmasked Fibonacci guest (2026-11-12)
+
+The pinned, complete twelve-trip `conditional_fibonacci.c` source now passes
+Clang admission, bounded source-state replay, ternary lowering, layout
+publication and normative Malbolge execution. An independent unsigned
+recurrence calculates `02 59 5f 08 57 4f 22 6d 03 90 b3 23`; the emitted
+guest produces all twelve bytes under both EOF and binary stdin, without
+consuming input. The Python integration test compiles the original source,
+checks guest artifact publication and independently executes the VM.
+
+The extended search starts with a proved guest-written graphical source word,
+revisits it after a real `j`, then uses a second real `j` to reposition D
+behind executing code. A bounded state search tracks full accumulator words,
+output prefixes, fixed memory operands and admissible graphical operands.
+The independent positional layout checker and CLI publisher then validate
+all code, D and write positions, the required first repeated rotation, guest
+termination and two complete normative VM replays. This witness has more
+than one repeated write address; the old exactly-one-repeat requirement was
+valid only for the three/four-byte prefix grammar.
+
+This is a finite, source-revisited output synthesis for one admitted complete
+C trace, not general guest execution of C loops, conditionals or arithmetic.
+The C control/state is still replayed at compile time. General source-C
+lowering, arbitrary output streams and a seeded verification matrix remain
+open under P0. The dated sections below document earlier bounded stages;
+their then-current unmasked-layout refusals were superseded by this proof.
 
 ### Revisited guest source continues to a fourth byte (2026-11-12)
 

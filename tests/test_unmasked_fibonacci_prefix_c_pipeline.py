@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Full source-C unmasked Fibonacci three-byte guest VM proof.
+#   - Full source-C unmasked Fibonacci guest VM proof.
 # - Must-Not:
 #   - Replace guest arithmetic with host output or publish unsupported C.
 # - Allows:
@@ -21,9 +21,9 @@
 # - Merge-When:
 #   - Full unmasked Fibonacci production guest covers the same prefix.
 # - Summary:
-#   - Evolved guest source scratch emits the original third recurrence byte.
+#   - Evolved guest scratch emits the full original twelve-byte recurrence.
 
-"""Original three-trip Fibonacci reaches the VM through evolved guest scratch."""
+"""Original full Fibonacci reaches the VM through evolved guest scratch."""
 
 from __future__ import annotations
 
@@ -118,10 +118,24 @@ class UnmaskedFibonacciPrefixPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", result.stderr)
             self.assertFalse(guest.exists())
 
-    def test_original_twelve_trip_c_refuses_without_artifact(self) -> None:
+    def test_original_twelve_trip_c_reaches_normative_vm(self) -> None:
+        expected = original_oracle(12)
+        self.assertEqual(expected, bytes.fromhex("02595f08574f226d0390b323"))
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
             guest = Path(folder) / "original-fibonacci-twelve.malbolge"
             result = self.compile(SOURCE, guest)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn(b"Layout(UnsupportedEffectTrace)", result.stderr)
-            self.assertFalse(guest.exists())
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(guest.is_file())
+            for supplied in (b"", bytes((255, 0, 128))):
+                execution = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(execution.returncode, 0, execution.stderr)
+                self.assertEqual(execution.stdout, expected)
+                self.assertRegex(
+                    execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )

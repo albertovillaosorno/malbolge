@@ -285,3 +285,46 @@ fn original_fibonacci_fourth_byte_follows_a_written_source_revisit()
     }
     Ok(())
 }
+
+#[test]
+fn original_fibonacci_complete_stream_from_relocated_source_scratch()
+-> Result<(), String> {
+    let expected = original_fibonacci_bytes();
+    let profile = malbolge::current_profile();
+    let layout = verified_revisited_source_scratch_stream(profile, expected)
+        .ok_or("complete original guest stream not found")?;
+    let relocations = layout
+        .executed_code_positions()
+        .iter()
+        .filter(|&&position| {
+            malbolge::decode_profile_instruction(
+                u32::from(layout.source()[position as usize]),
+                position,
+            ) == Some(b'j')
+        })
+        .count();
+    assert_eq!(relocations, 2, "guest must execute both real D relocations");
+    let writes = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<Vec<_>>();
+    assert!(
+        writes.len() > writes.iter().copied().collect::<BTreeSet<_>>().len(),
+        "the guest must compute through a previously written source cell"
+    );
+    for supplied in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), supplied)
+                .map_err(|error| format!("complete guest load: {error:?}"))?;
+        let result = vm
+            .run(layout.executed_code_positions().len())
+            .map_err(|error| format!("complete guest run: {error:?}"))?;
+        assert!(matches!(result, RunOutcome::Terminated { steps, .. }
+            if steps == layout.executed_code_positions().len()));
+        assert_eq!(vm.output(), expected);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}
