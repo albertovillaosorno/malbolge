@@ -25,6 +25,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### A selected `do` break skips a lexical output (2026-11-12)
+
+A complete twelve-trip unsigned Fibonacci C program now executes an inner
+`do` loop per recurrence term. The selected odd branch emits its masked
+byte, then executes `break` before a following lexical `putchar`; even
+terms instead execute that very same following output. The post-test
+predicate contains division by zero only in its odd arm, which the selected
+break must not evaluate. Pinned Clang accepted this complete source, but the
+normalized adapter initially refused its first local declaration.
+
+The bounded source replay now accepts one source-authenticated unreachable
+`putchar` following a selected loop-local `break`, just as it already does
+for `continue`. The skipped statement has no published guest effect; when
+control reaches it normally, the same statement executes and emits its
+byte. This proof does not introduce runtime guest branching or arbitrary
+unreachable C statements. Unknown calls, extra dead siblings, and
+unsupported selected arithmetic remain explicit refusals. The independently
+computed unsigned recurrence produces twelve masked bytes
+`02 19 1f 08 17 0f 02 0d 03 10 13 03` under the normative guest VM
+in 47 steps. The original unmasked Fibonacci layout and dynamic guest C
+control remain unimplemented, so P0 is still open.
+
 ### A selected conditional `continue` skips the following C output (2026-11-11)
 
 A complete twelve-trip unsigned Fibonacci C loop emits in its odd branch

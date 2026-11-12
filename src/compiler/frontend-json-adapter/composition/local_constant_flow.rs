@@ -1143,12 +1143,14 @@ impl<'node> Flow<'node> {
                 return None;
             }
             if self.loop_exit.is_some() {
-                // A selected `continue` skips the remaining sibling in
-                // the loop body. Authenticate one unreachable `putchar`
-                // against its exact source tree without publishing its
-                // effect; an unknown call or further statement still fails.
-                if self.loop_exit != Some(LoopExit::Continue)
-                    || skipped_output
+                // A selected `continue` or loop-local `break` skips the
+                // remaining lexical sibling. Authenticate one unreachable
+                // `putchar` against its exact source tree without publishing
+                // its effect; an unknown call or further statement refuses.
+                if !matches!(
+                    self.loop_exit,
+                    Some(LoopExit::Continue | LoopExit::Break)
+                ) || skipped_output
                     || body.kind != "compound-statement"
                     || node.kind != "call-expression"
                 {

@@ -2161,3 +2161,14 @@ a compiler capability gap, not a reason to return to N+1.
   10 13 03` in 47 steps. Selected zero division, hidden I/O and forged
   AST effects refuse. Dynamic guest C logic and the unmasked Fibonacci
   stream remain unimplemented, so P0 stays pending.
+
+- On 2026-11-12 a twelve-iteration unsigned Fibonacci C program used
+  `do` with an odd-term `break` between two lexical output paths. Pinned
+  Clang accepted it, but the adapter originally refused the first local
+  declaration. The bounded source replay now authenticates one following
+  unreachable `putchar` after selected `break`, without emitting its effect;
+  even terms execute that same output normally. The break also skips a
+  post-test condition containing undefined division on the odd arm. The
+  independently calculated masked recurrence matches the normative VM on
+  twelve bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps.
+  General guest C control and the unmasked Fibonacci layout remain open.
