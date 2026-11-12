@@ -2183,3 +2183,14 @@ a compiler capability gap, not a reason to return to N+1.
   EOF and binary input; invalid selected division fails without an artifact.
   Full twelve-trip unmasked Fibonacci and dynamic guest C runtime state
   remain unsupported. The full three-trip compile is currently costly.
+
+- On 2026-11-12 a complete twelve-trip unsigned C Fibonacci program used
+  an unbraced `while` as the body of another `while`, with both loops
+  modifying distinct local induction counters and the inner body selecting
+  both parity-mask branches. Pinned Clang accepted the source but the
+  normalized adapter originally refused it. Exact predicate/child geometry
+  and bounded nested while replay now admit the whole C program. The actual
+  guest VM emits the independent masked recurrence oracle on EOF and binary
+  stdin in 47 steps. Seven unsupported C changes and nine forged Clang AST
+  nodes fail closed. General guest C loops and unmasked Fibonacci remain
+  P0 work, not established by this source-state proof.

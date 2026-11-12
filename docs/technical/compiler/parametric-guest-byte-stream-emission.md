@@ -25,6 +25,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### A `while` body directly contains a second `while` (2026-11-12)
+
+The original full twelve-trip unmasked Fibonacci C source still refuses at
+`Layout(UnsupportedEffectTrace)`. A separate complete masked recurrence then
+exposed a normalized-C gap: an outer `while` with an unbraced inner `while`
+body was rejected after pinned Clang admission. Both loops mutate separate
+unsigned counters; the inner loop selects a real parity branch and writes
+its mask before output. A bounded source proof now checks the outer predicate,
+exact nested parentage, next-line indentation and identical body endpoint.
+It replays both loops without introducing guest-side C state or control.
+
+The independent unsigned recurrence and normative guest VM agree on all
+12 bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`, 47 steps, under EOF
+and binary stdin. Seven negative complete C variants and nine forged AST
+nodes refuse before publication. Unmasked guest synthesis and dynamic
+C control remain unsupported; P0 stays pending.
+
 ### A selected `do` break skips a lexical output (2026-11-12)
 
 A complete twelve-trip unsigned Fibonacci C program now executes an inner

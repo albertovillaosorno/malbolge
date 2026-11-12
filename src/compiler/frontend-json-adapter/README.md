@@ -31,6 +31,18 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+A complete twelve-trip unsigned Fibonacci program now nests a source-checked
+`while` directly as the unbraced body of another `while`. Each loop uses an
+independent unsigned counter, with a conditional in the inner scope updating
+the parity mask before `putchar`. Bounded replay authenticates the outer
+predicate's literal source geometry, the following newline/indentation and
+the exact nested-loop endpoint. Both parity arms execute; no selected local
+state or output is fabricated. The real guest VM emits twelve independently
+computed masked recurrence bytes in 47 steps with EOF and binary input.
+Seven unbounded/effectful C variants and nine forged Clang nodes refuse.
+This is static source-state replay, not runtime guest C loop lowering or
+unmasked Fibonacci byte synthesis.
+
 An unbraced `if/else` may now select a directly parented `do { ... }
 while (predicate);` in either arm. Source proof replays each post-test body
 before testing its condition, isolates the unselected arm's unsigned writes,

@@ -1976,11 +1976,37 @@ impl<'node> Flow<'node> {
                 self.peek()?.kind.as_str(),
                 "if-statement"
                     | "for-statement"
+                    | "while-statement"
                     | "do-statement"
                     | "switch-statement"
                     | "unary-expression"
             );
-            let first_body_byte = self.peek()?.span.begin.byte;
+            let direct = self.peek()?;
+            let first_body_byte = direct.span.begin.byte;
+            // A directly nested while is a real, source-spelled body: the
+            // outer predicate closes on its own line, followed by one newline
+            // and a four-space deeper while. Reject inconsistent Clang spans
+            // rather than trusting parent IDs alone for a repeated body.
+            if direct.kind == "while-statement"
+                && (condition.span.begin.line != statement.span.begin.line
+                    || condition.span.begin.byte
+                        != statement.span.begin.byte.checked_add(7)?
+                    || condition.span.begin.column
+                        != statement.span.begin.column.checked_add(7)?
+                    || condition.span.end.line != statement.span.begin.line
+                    || direct.span.begin.line
+                        != statement.span.begin.line.checked_add(1)?
+                    || direct.span.begin.column
+                        != statement.span.begin.column.checked_add(4)?
+                    || direct
+                        .span
+                        .begin
+                        .byte
+                        .checked_sub(condition.span.end.byte)
+                        != direct.span.begin.column.checked_add(1))
+            {
+                return None;
+            }
             let loop_body = if unbraced_effect {
                 statement
             } else {
