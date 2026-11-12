@@ -10,6 +10,20 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-proven continue in bounded C loops (2026-11-12)
+
+Selected `continue;` in a canonical counted `for` body truncates the
+source-proven executed body prefix in every unrolled iteration, unlike
+`break;`, which terminates the loop after one pass. The exact Clang
+keyword extent, direct parent, statement ID and metadata are checked;
+inactive branches and lexical statements after `continue` are still
+independently proven before guest effects are emitted. Each remaining
+iteration executes a separate guest `ByteInput`, never a host-side byte
+replay. The complete three-trip example emits seven expected bytes from
+four binary inputs in 12 actual VM steps. Nested continuation affects
+only its innermost loop. The finite source-local proof does not admit
+runtime-dependent C loops, conditions, EOF or general guest storage.
+
 ### Counted loop locals selected by outer constant branches (2026-11-12)
 
 An outer literal `if/else` may contain counted `for` loops with input-local

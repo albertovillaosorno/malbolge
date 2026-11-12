@@ -1002,14 +1002,19 @@ fn prove_local_output_chain<'node>(
 
 // A constant arm can contain several ordered, independently authenticated
 // byte effects. A successful read invalidates any preceding guest-local alias.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StaticLoopExit {
+    Break,
+    Continue,
+}
+
 #[derive(Clone)]
 struct StaticIfEffect<'node> {
     input: Option<&'node Node>,
     // Outer-to-inner Clang preorder; reverse to emit successful call returns.
     outputs: Vec<&'node Node>,
-    // Source-proven `break` exits only the immediately containing counted
-    // loop.
-    break_loop: bool,
+    // Both exits affect only the innermost source-authenticated counted loop.
+    loop_exit: Option<StaticLoopExit>,
 }
 
 struct StaticIfArm<'node> {
@@ -1053,7 +1058,7 @@ fn static_comma_effects<'node>(
                 StaticIfEffect {
                     input,
                     outputs,
-                    break_loop: false,
+                    loop_exit: None,
                 }
             })
             .collect(),
@@ -1094,11 +1099,19 @@ fn prove_static_if_statement<'node>(
         }
         return Some((proof.width, effects, proof.end));
     }
-    if child.kind == "break-statement" {
-        // C's `break;` has a five-byte Clang extent; its semicolon is
-        // outside the span. A break outside a proven loop cannot be lowered.
+    if matches!(
+        child.kind.as_str(),
+        "break-statement" | "continue-statement"
+    ) {
+        // The semicolon lies outside the Clang keyword extent for both
+        // `break;` and `continue;`. Neither is valid outside a proven loop.
+        let (keyword_width, exit) = if child.kind == "break-statement" {
+            (5, StaticLoopExit::Break)
+        } else {
+            (8, StaticLoopExit::Continue)
+        };
         let start = child.span.begin.byte;
-        let end = start.checked_add(5)?;
+        let end = start.checked_add(keyword_width)?;
         if for_depth == 0
             || start <= previous
             || end >= body.span.end.byte
@@ -1123,7 +1136,7 @@ fn prove_static_if_statement<'node>(
             vec![StaticIfEffect {
                 input: None,
                 outputs: Vec::new(),
-                break_loop: true,
+                loop_exit: Some(exit),
             }],
             end,
         ));
@@ -1225,7 +1238,7 @@ fn prove_static_if_statement<'node>(
         vec![StaticIfEffect {
             input,
             outputs,
-            break_loop: false,
+            loop_exit: None,
         }],
         end,
     ))
@@ -1378,7 +1391,7 @@ fn prove_static_if_arm<'node>(
                 vec![StaticIfEffect {
                     input: Some(read),
                     outputs: Vec::new(),
-                    break_loop: false,
+                    loop_exit: None,
                 }],
                 end,
             )
@@ -1666,14 +1679,19 @@ fn prove_static_for<'node>(
         return None;
     }
     // Authenticate the entire body, including unreachable statements,
-    // before selecting the executed prefix. With a source-constant break,
-    // the induction exits on the first pass, so no later iteration executes.
+    // before selecting its executed prefix. Break exits this loop after one
+    // pass; continue skips the suffix on *every* statically proven pass.
     let mut effects = arm.effects;
-    let iterations = if let Some(break_at) =
-        effects.iter().position(|effect| effect.break_loop)
+    let iterations = if let Some(exit_at) =
+        effects.iter().position(|effect| effect.loop_exit.is_some())
     {
-        effects.truncate(break_at);
-        1
+        let exit = effects[exit_at].loop_exit?;
+        effects.truncate(exit_at);
+        if exit == StaticLoopExit::Break {
+            1
+        } else {
+            iterations
+        }
     } else {
         iterations
     };

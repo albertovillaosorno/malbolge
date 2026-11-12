@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete three-trip source-C stream with a fresh
+  input local, nested output return, selected `continue`, inactive `else`
+  input and unreachable body read initially refused normalized counted-loop
+  admission. Exact Clang control proof now skips the remainder of each
+  statically unrolled trip while preserving fresh guest input on later
+  trips. The actual 1,143-byte Malbolge capsule reads four binary bytes,
+  emits seven independent oracle bytes and halts in 12 steps. Bounds 1/3/4,
+  nested continuation, skipped exits and forged source metadata are tested.
+  Runtime C control, dynamic predicates, EOF and storage remain open.
+
 - On 2026-11-12 a whole C counted loop with live input-local bytes,
   nested outputs, selected `break`, skipped else effects, unreachable
   later body reads and an outer trailing read initially refused normalized

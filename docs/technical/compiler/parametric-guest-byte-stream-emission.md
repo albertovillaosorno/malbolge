@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven continue in finite C byte loops (2026-11-12)
+
+A complete three-iteration C loop captures one fresh `getchar()` byte on
+any pass, writes it twice, selects a constant `continue` branch, skips a
+separately authenticated `else` read and the remaining body read, and
+then executes a final read outside the loop. Pinned Clang accepted the
+source, but normalized admission refused the outer `for-statement`.
+
+The adapter now authenticates `continue` as an exact eight-byte Clang
+statement with the right loop ancestry and no additional metadata.
+Every statement after the exit is still independently source-proven;
+only the executed prefix is emitted. Unlike `break`, `continue` repeats
+the fixed induction and performs a new guest read on each later trip.
+A typed loop-exit marker keeps the two source-control meanings distinct.
+
+The original program now compiles to a 1,143-byte capsule. For binary
+stdin `00 ff 80 01`, the normative Malbolge VM emits precisely
+`00 00 ff ff 80 80 01` and halts after 12 steps. The regression
+includes counts 1/3/4, a nested two-by-two loop where `continue` exits
+only the inner body, an inactive exit branch, six unsupported sources
+and six forged-Clang mutations, each checked for non-publication.
+C dynamic conditions, runtime-dependent loops, EOF and general guest
+storage remain unsupported. The P0 remains pending.
+
 ### Source-verified early break in finite C loops (2026-11-12)
 
 A complete source-C program has a counted `for`, a new `getchar()` local,
