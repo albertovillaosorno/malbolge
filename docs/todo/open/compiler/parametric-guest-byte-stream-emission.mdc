@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete source-C function combining a live input local,
+  nested `putchar` returns and an interleaved standalone mixed comma
+  read/write expression originally failed normalized JSON admission. The
+  repaired source proof authenticates each left-associative comma ancestor
+  and direct input or `putchar(getchar())` operand, preserving every read
+  and discarded-result output as normative guest effects. Twelve binary
+  streams yield five oracle output bytes from five inputs in 11 VM steps.
+  Two-, four- and sixteen-operand guest chains, ten unsupported C variants
+  and 17 adversarial Clang metadata mutations pass; 17 operands refuse.
+  Only successful byte I/O and an exact straight-line grammar are admitted;
+  guest C control, arithmetic, EOF and failed output remain open.
+
+## Evidence
+
 - On 2026-11-12 a complete C source interleaving nested `putchar`
   returns, standalone `getchar(), getchar(), getchar();` and a nested comma
   output first failed at Clang JSON adapter admission. Left-associative

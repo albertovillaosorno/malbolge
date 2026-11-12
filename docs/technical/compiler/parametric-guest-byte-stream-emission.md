@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+## Ordered mixed comma effects in guest C (2026-11-12)
+
+A complete C program first failed at the JSON adapter when a standalone
+left-associative comma statement mixed `getchar()` and
+`putchar(getchar())`, after a local capture and nested output and before
+another nested output. The source-checked projection now authenticates
+all comma ancestors and each operand's exact Clang call, cast, reference,
+source coordinates and lexical bounds. It emits each guest `ByteInput`,
+including discarded reads, and each successful `ByteOutput`, including
+writes whose return values are discarded.
+
+The complete program reads five runtime bytes and writes the independently
+computed five-byte oracle in 11 normative VM steps for 12 seeded/boundary
+binary streams. Standalone two-, four- and sixteen-operand chains preserve
+alternating reads and outputs with exact step counts; a seventeenth operand,
+ten invalid source expressions and 17 forged Clang mutations refuse target
+publication. The grammar supports only unparenthesized one-line comma chains
+whose operands are direct `getchar()` or `putchar(getchar())`. C EOF,
+failed I/O, parenthesized/general comma expression trees, guest-side
+arithmetic, loops, branches and durable locals are still unimplemented.
+
 ## Standalone comma input sequencing (2026-11-12)
 
 A whole source-C program now composes one automatic input local, nested

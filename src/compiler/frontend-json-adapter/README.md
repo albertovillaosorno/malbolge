@@ -29,6 +29,25 @@ Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
 
+### Mixed source-C comma input/output effects (2026-11-12)
+
+An unparenthesized, left-associative comma statement now executes both
+`getchar()` and `putchar(getchar())` operands in source order. Every direct
+input and nested successful-byte output must match its pinned Clang call,
+cast, reference, comma parent, lexical span and source column. The guest
+preserves discarded `putchar` effects instead of eliding them or replacing
+stdin with host replay. Two to sixteen operands are admitted; a seventeenth
+and effectful unsupported operands refuse target publication.
+
+A complete source-C function combines a captured automatic local, nested
+`putchar` return values, three mixed comma operands, and another nested call.
+The normative guest consumes five binary bytes and emits five oracle bytes in
+11 steps across 12 independent boundary/seeded input streams. Additional
+2-, 4- and 16-operand chains execute real guest writes; ten unsupported C
+forms and 17 adversarial Clang metadata changes refuse publication. This is
+bounded successful-byte and successful-output execution, not general comma
+expression semantics, C EOF, guest arithmetic or dynamic control flow.
+
 ### Standalone source-C comma input statements (2026-11-12)
 
 A source-checked top-level expression statement containing two to sixteen
