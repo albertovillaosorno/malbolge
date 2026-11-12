@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete four-trip C loop with fresh `getchar` input,
+  `if (i == 1)` selecting nested output and `continue`, `if (i == 3)`
+  selecting `break`, and a trailing read initially rejected at normalized
+  `for-statement` admission. Canonical counter comparisons now select effects
+  independently for each statically proven induction value, without replaying
+  runtime input bytes or evaluating guest-dependent predicates on the host.
+  The 1,167-byte Malbolge capsule reads seven binary bytes, emits seven
+  independently expected bytes, and halts in 15 VM steps. Bounds 1/2/4/5,
+  shadowed nested induction, six comparison predicates, unsupported C and
+  forged-AST refusal are exercised in focused tests. Dynamic guest C control,
+  general mutable storage, arithmetic and EOF still block P0 completion.
+
 - On 2026-11-12 a complete three-trip source-C stream with a fresh
   input local, nested output return, selected `continue`, inactive `else`
   input and unreachable body read initially refused normalized counted-loop

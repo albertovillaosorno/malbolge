@@ -10,6 +10,24 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Induction-dependent branches in C loops (2026-11-12)
+
+An admitted counted `for (int i = 0; i < N; ++i)` may branch on a direct
+comparison of its exact induction declaration with a canonical nonnegative
+decimal `i32` literal. All six comparison operators are source-checked and
+the complete Clang child/parent shape is authenticated. Each fixed iteration
+re-proves its body under its own `i`, selecting different input/output effects,
+`continue` suffixes or a later `break`. The generated Malbolge program still
+performs every selected input read at runtime, including zero and binary
+bytes. Shadowed inner loop counters resolve to the nearest loop declaration.
+
+A whole four-trip C program originally refused now compiles to a 1,167-byte
+capsule and emits seven oracle bytes in 15 normative VM steps. Focused
+regressions exercise bounds 1/2/4/5, nested counter shadowing, comparison
+operators, unsupported dynamic expressions and forged AST metadata. The
+compiler still refuses input-dependent C conditions, general mutable state,
+guest arithmetic and EOF behavior. This is finite source-time replay only.
+
 ### Source-proven continue in bounded C loops (2026-11-12)
 
 Selected `continue;` in a canonical counted `for` body truncates the

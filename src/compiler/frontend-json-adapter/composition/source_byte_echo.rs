@@ -1002,6 +1002,12 @@ fn prove_local_output_chain<'node>(
 
 // A constant arm can contain several ordered, independently authenticated
 // byte effects. A successful read invalidates any preceding guest-local alias.
+#[derive(Clone, Copy)]
+struct StaticInduction<'name> {
+    reference: &'name str,
+    value: i32,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StaticLoopExit {
     Break,
@@ -1075,6 +1081,7 @@ fn prove_static_if_statement<'node>(
     depth: usize,
     allow_new_local: bool,
     for_depth: usize,
+    induction: Option<StaticInduction<'_>>,
 ) -> Option<(usize, Vec<StaticIfEffect<'node>>, u32)> {
     let child = nodes.first()?;
     if child.kind == "for-statement" {
@@ -1089,15 +1096,10 @@ fn prove_static_if_statement<'node>(
             parent,
             for_depth.checked_add(1)?,
         )?;
-        let size = proof.effects.len().checked_mul(proof.iterations)?;
-        if size > 16 {
+        if proof.effects.len() > 16 {
             return None;
         }
-        let mut effects = Vec::with_capacity(size);
-        for _ in 0..proof.iterations {
-            effects.extend(proof.effects.iter().cloned());
-        }
-        return Some((proof.width, effects, proof.end));
+        return Some((proof.width, proof.effects, proof.end));
     }
     if matches!(
         child.kind.as_str(),
@@ -1152,6 +1154,7 @@ fn prove_static_if_statement<'node>(
             depth.checked_add(1)?,
             allow_new_local,
             for_depth,
+            induction,
         )?;
         return Some((
             proof.width,
@@ -1258,6 +1261,7 @@ fn prove_static_if_arm<'node>(
     conditional_column: u32,
     allow_new_local: bool,
     for_depth: usize,
+    induction: Option<StaticInduction<'_>>,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
     if child.kind == "if-statement" {
@@ -1271,6 +1275,7 @@ fn prove_static_if_arm<'node>(
             depth.checked_add(1)?,
             allow_new_local,
             for_depth,
+            induction,
         )?;
         return Some(StaticIfArm {
             width: proof.width,
@@ -1299,6 +1304,7 @@ fn prove_static_if_arm<'node>(
             depth,
             allow_new_local,
             for_depth,
+            induction,
         )?;
         return Some(StaticIfArm {
             width,
@@ -1406,6 +1412,7 @@ fn prove_static_if_arm<'node>(
                 depth,
                 allow_new_local,
                 for_depth,
+                induction,
             )?
         };
         if statement_end >= end {
@@ -1465,7 +1472,6 @@ fn prove_static_if_arm<'node>(
 // at execution time, with no host-side byte computation or replay.
 struct StaticForProof<'node> {
     width: usize,
-    iterations: usize,
     effects: Vec<StaticIfEffect<'node>>,
     end: u32,
 }
@@ -1655,51 +1661,64 @@ fn prove_static_for<'node>(
     if !(1..=16).contains(&iterations) {
         return None;
     }
-    let arm = prove_static_if_arm(
-        rest,
-        body,
-        increment_end,
-        expected_id.checked_add(10)?,
-        loop_node.id,
-        None,
-        0,
-        column,
-        true,
-        for_depth,
-    )?;
-    if !arm.braced
-        || arm.begin != arm_start
-        || arm.begin_line != line
-        || arm.begin_column != bound.span.end.column.checked_add(7)?
-        || loop_node.span.end.byte != arm.end
-        || loop_node.span.end.line != arm.end_line
-        || loop_node.span.end.column != arm.end_column
-        || arm.end >= body.span.end.byte
-    {
-        return None;
-    }
-    // Authenticate the entire body, including unreachable statements,
-    // before selecting its executed prefix. Break exits this loop after one
-    // pass; continue skips the suffix on *every* statically proven pass.
-    let mut effects = arm.effects;
-    let iterations = if let Some(exit_at) =
-        effects.iter().position(|effect| effect.loop_exit.is_some())
-    {
-        let exit = effects[exit_at].loop_exit?;
-        effects.truncate(exit_at);
-        if exit == StaticLoopExit::Break {
-            1
-        } else {
-            iterations
+    // Re-evaluate the source-verified body with the actual C induction value
+    // on every static trip. Guest reads remain fresh runtime instructions.
+    let mut effects = Vec::new();
+    let mut arm_width = None;
+    let mut arm_end = None;
+    for iteration in 0..iterations {
+        let arm = prove_static_if_arm(
+            rest,
+            body,
+            increment_end,
+            expected_id.checked_add(10)?,
+            loop_node.id,
+            None,
+            0,
+            column,
+            true,
+            for_depth,
+            Some(StaticInduction {
+                reference: &variable_reference,
+                value: i32::try_from(iteration).ok()?,
+            }),
+        )?;
+        if !arm.braced
+            || arm.begin != arm_start
+            || arm.begin_line != line
+            || arm.begin_column != bound.span.end.column.checked_add(7)?
+            || loop_node.span.end.byte != arm.end
+            || loop_node.span.end.line != arm.end_line
+            || loop_node.span.end.column != arm.end_column
+            || arm.end >= body.span.end.byte
+        {
+            return None;
         }
-    } else {
-        iterations
-    };
+        arm_width = Some(arm.width);
+        arm_end = Some(arm.end);
+        // The nearest selected exit decides this trip. A continue skips
+        // only this trip's suffix; a break stops all later trips.
+        let mut trip = arm.effects;
+        let exit = trip
+            .iter()
+            .position(|effect| effect.loop_exit.is_some())
+            .and_then(|index| {
+                let exit = trip[index].loop_exit;
+                trip.truncate(index);
+                exit
+            });
+        effects.extend(trip);
+        if effects.len() > MAX_SOURCE_OUTPUTS {
+            return None;
+        }
+        if exit == Some(StaticLoopExit::Break) {
+            break;
+        }
+    }
     Some(StaticForProof {
-        width: 10usize.checked_add(arm.width)?,
-        iterations,
+        width: 10usize.checked_add(arm_width?)?,
         effects,
-        end: arm.end,
+        end: arm_end?,
     })
 }
 
@@ -1894,12 +1913,88 @@ fn prove_static_value(
     .then_some((width, value))
 }
 
+// This is source-time C induction, not a guest read. The Clang tree must
+// refer to the exact protected loop declaration and spell a direct comparison
+// against a checked decimal i32 literal. No mutable C state is projected.
+fn prove_induction_predicate(
+    nodes: &[Node],
+    conditional: &Node,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool)> {
+    let [comparison, cast, variable, bound, ..] = nodes else {
+        return None;
+    };
+    let operator = comparison.operation.as_deref()?;
+    if !matches!(operator, "==" | "!=" | "<" | "<=" | ">" | ">=") {
+        return None;
+    }
+    let start = conditional.span.begin.byte.checked_add(4)?;
+    let line = conditional.span.begin.line;
+    let column = conditional.span.begin.column.checked_add(4)?;
+    let right_offset = 3u32.checked_add(u32::try_from(operator.len()).ok()?)?;
+    let right_start = start.checked_add(right_offset)?;
+    let right_column = column.checked_add(right_offset)?;
+    if comparison.id != conditional.id.checked_add(1)?
+        || comparison.parent != conditional.id
+        || comparison.kind != "binary-expression"
+        || comparison.type_name.as_deref() != Some("i32")
+        || comparison.reference.is_some()
+        || !metadata_empty(comparison)
+        || cast.id != comparison.id.checked_add(1)?
+        || cast.parent != comparison.id
+        || cast.kind != "cast-expression"
+        || cast.type_name.as_deref() != Some("i32")
+        || cast.operation.as_deref() != Some("lvalue-to-rvalue")
+        || cast.reference.is_some()
+        || !metadata_empty(cast)
+        || !source_word(cast, start, start.checked_add(1)?, line, column)
+        || variable.id != cast.id.checked_add(1)?
+        || variable.parent != cast.id
+        || variable.kind != "declaration-reference-expression"
+        || variable.type_name.as_deref() != Some("i32")
+        || variable.operation.is_some()
+        || variable.reference.as_deref() != Some(induction.reference)
+        || !metadata_empty(variable)
+        || variable.span != cast.span
+    {
+        return None;
+    }
+    let rhs = prove_decimal_condition_operand(
+        bound,
+        variable.id.checked_add(1)?,
+        comparison.id,
+        right_start,
+        line,
+        right_column,
+    )?;
+    if !source_word(comparison, start, bound.span.end.byte, line, column) {
+        return None;
+    }
+    let selected = match operator {
+        "==" => induction.value == rhs,
+        "!=" => induction.value != rhs,
+        "<" => induction.value < rhs,
+        "<=" => induction.value <= rhs,
+        ">" => induction.value > rhs,
+        ">=" => induction.value >= rhs,
+        _ => return None,
+    };
+    Some((4, selected))
+}
+
 // All static predicates are pure, bounded expression trees. Prove every
 // operand even for `&&` and `||`: skipping an unknown side effect is unsafe.
 fn prove_static_predicate(
     nodes: &[Node],
     conditional: &Node,
+    induction: Option<StaticInduction<'_>>,
 ) -> Option<(usize, bool)> {
+    if let Some(induction) = induction
+        && let Some(result) =
+            prove_induction_predicate(nodes, conditional, induction)
+    {
+        return Some(result);
+    }
     let begin = &conditional.span.begin;
     let (width, value) = prove_static_value(nodes, StaticValueLocation {
         id: conditional.id.checked_add(1)?,
@@ -1930,6 +2025,7 @@ fn prove_static_if<'node>(
     depth: usize,
     allow_new_local: bool,
     for_depth: usize,
+    induction: Option<StaticInduction<'_>>,
 ) -> Option<StaticIfProof<'node>> {
     let [conditional, ..] = nodes else {
         return None;
@@ -1953,7 +2049,7 @@ fn prove_static_if<'node>(
         return None;
     }
     let (predicate_width, condition_true) =
-        prove_static_predicate(nodes.get(1..)?, conditional)?;
+        prove_static_predicate(nodes.get(1..)?, conditional, induction)?;
     let predicate_root = nodes.get(1)?;
     let predicate_last = nodes.get(predicate_width)?;
     let arm_offset = 1usize.checked_add(predicate_width)?;
@@ -1969,6 +2065,7 @@ fn prove_static_if<'node>(
         column,
         allow_new_local,
         for_depth,
+        induction,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
         || then_arm.begin_line != line
@@ -1995,6 +2092,7 @@ fn prove_static_if<'node>(
             column,
             allow_new_local,
             for_depth,
+            induction,
         )?;
         let else_gap = if then_arm.braced {
             6
@@ -2125,48 +2223,46 @@ pub(super) fn canonical_source_byte_echo(
                 1,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
-            for _ in 0..proof.iterations {
-                // SSA is per actual guest input, not per source statement:
-                // the same lexical declaration executes anew on each pass.
-                let mut iteration_byte = None;
-                for effect in &proof.effects {
-                    if inputs
-                        .checked_add(usize::from(effect.input.is_some()))
-                        .is_none_or(|count| count > MAX_ECHO_CALLS)
-                        || outputs
-                            .checked_add(effect.outputs.len())
-                            .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
-                    {
-                        return Err(FrontendJsonError::Unsupported);
-                    }
-                    let value = if let Some(input) = effect.input {
-                        let value = ValueId::new(
-                            u32::try_from(inputs)
-                                .map_err(|_| FrontendJsonError::Unsupported)?,
-                        );
-                        instructions.push(LocatedInstruction::new(
-                            Instruction::ByteInput {
-                                result: value,
-                                type_id: TypeId::new(0),
-                            },
-                            typed_span(&input.span),
-                        ));
-                        inputs += 1;
-                        iteration_byte = Some(value);
-                        value
-                    } else {
-                        iteration_byte.ok_or(FrontendJsonError::Unsupported)?
-                    };
-                    latest_local = None;
-                    for output in effect.outputs.iter().rev() {
-                        instructions.push(LocatedInstruction::new(
-                            Instruction::ByteOutput { value },
-                            typed_span(&output.span),
-                        ));
-                    }
-                    outputs += effect.outputs.len();
-                    requires_latest = true;
+            // Each static trip has already been source-proven with its
+            // induction value; the ordered trace still reads from the guest.
+            let mut iteration_byte = None;
+            for effect in &proof.effects {
+                if inputs
+                    .checked_add(usize::from(effect.input.is_some()))
+                    .is_none_or(|count| count > MAX_ECHO_CALLS)
+                    || outputs
+                        .checked_add(effect.outputs.len())
+                        .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
+                {
+                    return Err(FrontendJsonError::Unsupported);
                 }
+                let value = if let Some(input) = effect.input {
+                    let value = ValueId::new(
+                        u32::try_from(inputs)
+                            .map_err(|_| FrontendJsonError::Unsupported)?,
+                    );
+                    instructions.push(LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: value,
+                            type_id: TypeId::new(0),
+                        },
+                        typed_span(&input.span),
+                    ));
+                    inputs += 1;
+                    iteration_byte = Some(value);
+                    value
+                } else {
+                    iteration_byte.ok_or(FrontendJsonError::Unsupported)?
+                };
+                latest_local = None;
+                for output in effect.outputs.iter().rev() {
+                    instructions.push(LocatedInstruction::new(
+                        Instruction::ByteOutput { value },
+                        typed_span(&output.span),
+                    ));
+                }
+                outputs += effect.outputs.len();
+                requires_latest = true;
             }
             previous = proof.end;
             consumed = consumed
@@ -2191,6 +2287,7 @@ pub(super) fn canonical_source_byte_echo(
                 0,
                 false,
                 0,
+                None,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if proof.selected {

@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Iteration-dependent branches in bounded source-C for loops (2026-11-12)
+
+A complete four-trip C program captures fresh input into `current`, selects
+`if (i == 1)` to emit twice and `continue`, selects `if (i == 3)` to `break`,
+and otherwise outputs the captured byte followed by another runtime read.
+An independent final read still executes after the early break. Pinned Clang
+accepted the whole source, but the adapter initially refused its outer
+`for-statement`. The bounded source proof now validates the exact `i` binding,
+checked decimal comparison operand, Clang parentage, reference and extents,
+then reevaluates each canonical loop body against its own compile-time
+induction value. It preserves lexical body authentication even after a
+selected exit and emits the resulting ordered *guest* input/output trace.
+
+The original source compiles to a 1,167-byte capsule, consumes seven
+independent binary inputs and emits `00 ff 80 80 01 2a 7f` in 15 normative
+Malbolge VM steps. Bounds 1/2/4/5 and shadowed two-level induction loops
+have binary VM parity regressions. Six relational operators have a seeded
+independent-oracle test, with explicit source/forged-AST rejection coverage.
+This is source-time induction selection, not runtime C predicate evaluation,
+mutable guest C locals, arbitrary arithmetic or EOF support. P0 remains open.
+
 ### Source-proven continue in finite C byte loops (2026-11-12)
 
 A complete three-iteration C loop captures one fresh `getchar()` byte on
