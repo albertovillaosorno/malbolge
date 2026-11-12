@@ -1008,6 +1008,8 @@ struct StaticIfArm<'node> {
     width: usize,
     effects: Vec<StaticIfEffect<'node>>,
     begin: u32,
+    begin_line: u32,
+    begin_column: u32,
     end: u32,
     end_line: u32,
     end_column: u32,
@@ -1164,6 +1166,7 @@ fn prove_static_if_arm<'node>(
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
     depth: usize,
+    conditional_column: u32,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
     if child.kind == "if-statement" {
@@ -1184,6 +1187,8 @@ fn prove_static_if_arm<'node>(
                 Vec::new()
             },
             begin: child.span.begin.byte,
+            begin_line: child.span.begin.line,
+            begin_column: child.span.begin.column,
             end: proof.end,
             end_line: child.span.end.line,
             end_column: child.span.end.column,
@@ -1204,6 +1209,8 @@ fn prove_static_if_arm<'node>(
             width,
             effects,
             begin: child.span.begin.byte,
+            begin_line: child.span.begin.line,
+            begin_column: child.span.begin.column,
             end,
             end_line: child.span.end.line,
             end_column: child.span.end.column,
@@ -1216,7 +1223,7 @@ fn prove_static_if_arm<'node>(
     let column = child.span.begin.column;
     let multiline = child.span.end.line > line;
     let span_is_canonical = if multiline {
-        child.span.end.column == column.checked_sub(6)?
+        child.span.end.column == conditional_column.checked_add(1)?
     } else {
         source_word(child, begin, end, line, column)
     };
@@ -1255,7 +1262,8 @@ fn prove_static_if_arm<'node>(
                     != line.checked_add(
                         u32::try_from(statement_count + 1).ok()?,
                     )?
-                    || statement.span.begin.column != column.checked_sub(3)?))
+                    || statement.span.begin.column
+                        != conditional_column.checked_add(4)?))
         {
             return None;
         }
@@ -1302,6 +1310,8 @@ fn prove_static_if_arm<'node>(
         width: cursor,
         effects,
         begin,
+        begin_line: line,
+        begin_column: column,
         end,
         end_line: child.span.end.line,
         end_column: child.span.end.column,
@@ -1339,6 +1349,13 @@ fn prove_static_if<'node>(
     let line = conditional.span.begin.line;
     let column = conditional.span.begin.column;
     let value = literal.literal.as_deref()?;
+    // Clang i32 decimal literal spellings are proved without equating C
+    // truthiness to exactly 0/1 or assuming a one-column predicate.
+    let decimal = value.parse::<i32>().ok()?;
+    if decimal < 0_i32 || decimal.to_string() != value {
+        return None;
+    }
+    let literal_width = u32::try_from(value.len()).ok()?;
     if depth >= MAX_STATIC_IF_DEPTH
         || start <= previous
         || start <= body.span.begin.byte
@@ -1363,12 +1380,11 @@ fn prove_static_if<'node>(
         || literal.linkage.is_some()
         || literal.storage_class.is_some()
         || literal.storage_duration.is_some()
-        || !matches!(value, "0" | "1")
         || literal.constant_integer.as_deref() != Some(value)
         || !source_word(
             literal,
             start.checked_add(4)?,
-            start.checked_add(5)?,
+            start.checked_add(4)?.checked_add(literal_width)?,
             line,
             column.checked_add(4)?,
         )
@@ -1383,15 +1399,19 @@ fn prove_static_if<'node>(
         conditional.id,
         local,
         depth,
+        column,
     )?;
-    if then_arm.begin != start.checked_add(7)? {
+    if then_arm.begin != literal.span.end.byte.checked_add(2)?
+        || then_arm.begin_line != line
+        || then_arm.begin_column != literal.span.end.column.checked_add(2)?
+    {
         return None;
     }
     let mut width = 2usize.checked_add(then_arm.width)?;
     let mut end = then_arm.end;
     let mut end_line = then_arm.end_line;
     let mut end_column = then_arm.end_column;
-    let mut selected = value == "1";
+    let mut selected = decimal != 0_i32;
     let mut effects = then_arm.effects;
     if conditional.span.end.byte != then_arm.end {
         let else_arm = prove_static_if_arm(
@@ -1402,6 +1422,7 @@ fn prove_static_if<'node>(
             conditional.id,
             local,
             depth,
+            column,
         )?;
         let else_gap = if then_arm.braced {
             6
@@ -1416,7 +1437,7 @@ fn prove_static_if<'node>(
         end_line = else_arm.end_line;
         end_column = else_arm.end_column;
         selected = true;
-        if value == "0" {
+        if decimal == 0_i32 {
             effects = else_arm.effects;
         }
     }

@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete runtime-input C program with a loop,
+  arithmetic, and parity-dependent output still failed at normalized
+  admission. A separate complete program with a multiline `if (23)` arm,
+  skipped `else`, nested successful-byte outputs and later `if (0)` exposed
+  a narrower source-proof refusal. Canonical decimal `i32` condition
+  truthiness now uses checked literal width and direct-parent source
+  coordinates. The normative eight-step guest reads three binary bytes
+  `00 ff 80` and emits four independently expected bytes `00 ff ff 80`;
+  negative/nondecimal/dynamic conditions and forged AST fields refuse.
+  This remains compiler-time branch selection, not runtime C control,
+  arithmetic, loops, EOF or complete P0 acceptance.
+
 - On 2026-11-12 a complete C program nested literal conditions around
   a live input local, comma-return output and skipped guest reads. The
   pinned frontend accepted it, but normalized projection refused the first

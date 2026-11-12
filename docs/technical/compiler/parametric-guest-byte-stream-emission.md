@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Canonical decimal C truthiness in constant byte-stream arms (2026-11-12)
+
+A complete C source captured a guest input local, selected a multiline
+`if (23)` block containing local reuse and nested `putchar` returns, skipped
+its independently checked `else` branch, then selected the `else` of
+`if (0)`. The pinned frontend accepted the source but normalized admission
+initially refused it, even though the corresponding `if (1)` program worked.
+The repaired byte adapter proves canonical, nonnegative decimal `i32`
+conditions from `0` through `2147483647`, including literal width,
+Clang type/value metadata, branch ancestry, and actual multiline opening,
+body, and closing coordinates. Any nonzero literal selects the true arm;
+zero selects the false arm. This is compile-time C truthiness only.
+
+The actual 1,111-byte Malbolge guest reads `00 ff 80`, emits
+`00 ff ff 80`, and halts after eight VM steps. The boundary tests cover
+one-, two-, and ten-digit nonzero predicates, seeded binary stream parity,
+unsupported expression spellings, and forged Clang metadata. Arithmetic,
+negative or nondecimal predicates, EOF and runtime-dependent control flow
+still refuse. The original input-dependent `while` / parity C experiment
+was rerun and still refuses normalized admission without a guest artifact.
+
 ### Nested constant C conditions and else-if chains (2026-11-12)
 
 A complete source-C function combines a live input local, an unbraced nested

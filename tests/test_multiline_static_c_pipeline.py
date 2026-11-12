@@ -175,7 +175,7 @@ class MultilineStaticCPipelineTests(unittest.TestCase):
     def test_unproved_multiline_statements_never_publish(self) -> None:
         invalid = (
             "    if (getchar()) {\n        putchar(getchar());\n    }\n",
-            "    if (2) {\n        putchar(getchar());\n    }\n",
+            "    if (2 + 0) {\n        putchar(getchar());\n    }\n",
             "    if (1) {\n        putchar(65);\n    }\n",
             "    if (1) {\n        if (getchar()) putchar(getchar());\n    }\n",
             "    if (1) {\n        putchar(getchar());\n\n        putchar(getchar());\n    }\n",
