@@ -31,6 +31,14 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Witnessed guest C output
 
+Source-checked C `continue` at the end of an outermost switch arm now
+continues the enclosing bounded loop rather than only exiting the switch.
+Both arms are replayed independently; only the selected arm carries a
+continue, while source span and dead-suffix checks reject disguised exits.
+Two twelve-trip complete C Fibonacci switch variants emit the independently
+computed twelve-byte masked recurrence on the real guest VM, 47 steps each.
+Nested switch continuation and guest-side C control remain unsupported.
+
 Pure skipped unsigned C unary expressions now authenticate `~`, unary `+`
 and unary `-` around arithmetic whose evaluation would be undefined. The
 source-bound unary proof uses the same exact span grammar whether the

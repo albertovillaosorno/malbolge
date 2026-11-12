@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-11, complete twelve-trip C Fibonacci with `continue`
+  in a `switch` case initially failed normalized frontend admission. A
+  bounded source replay now carries only the selected case termination
+  through the enclosing `for` loop, while checking alternate switch arms.
+  Both the even-case and default-case continue variants reach genuine
+  Malbolge VM output `02 19 1f 08 17 0f 02 0d 03 10 13 03`
+  in 47 steps with EOF and binary stdin. Source-negative and forged AST
+  tests reject. Guest-side C control, nested continues, and original
+  unmasked Fibonacci layout remain unsupported; P0 stays pending.
+
 - On 2026-11-11 a complete twelve-trip C Fibonacci recurrence used a
   short-circuited unsigned unary expression around division by zero on
   even terms. The pinned frontend accepted it but bounded JSON replay

@@ -25,6 +25,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### `continue` from a C switch into its enclosing loop (2026-11-11)
+
+A full twelve-iteration unsigned Fibonacci source moves recurrence updates
+before a `switch` whose even case emits a byte and continues the enclosing
+`for` loop, while its default arm emits and breaks the switch. Pinned Clang
+accepted the complete program, but the source-state adapter initially refused
+its declaration. The bounded replay now authenticates direct switch-local
+`continue` with its exact Clang keyword span and retains the exit only for
+the selected arm, after checking the other cases. The inverse variant
+continues from the default arm. Both reach real Malbolge VM execution with
+twelve independent masked-oracle bytes in 47 steps under empty/binary input.
+Unsupported C mutations and forged normalized continuations reject publication.
+Nested-switch continues, guest dynamic C branching and the original unmasked
+Fibonacci guest layout remain unimplemented; P0 stays pending.
+
 ### Skipped pure unsigned unary arithmetic (2026-11-11)
 
 A complete twelve-trip unsigned C Fibonacci recurrence evaluates a

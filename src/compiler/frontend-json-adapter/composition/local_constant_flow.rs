@@ -100,6 +100,7 @@ struct SwitchArmEffect<'node> {
     end: u32,
     outputs: Vec<OutputCall<'node>>,
     locals: Vec<Local<'node>>,
+    loop_exit: Option<LoopExit>,
 }
 
 impl<'node> Flow<'node> {
@@ -2178,6 +2179,7 @@ impl<'node> Flow<'node> {
             end,
             outputs,
             locals: self.locals.clone(),
+            loop_exit: None,
         })
     }
 
@@ -2208,6 +2210,20 @@ impl<'node> Flow<'node> {
             let next = self.peek()?;
             if next.kind == "break-statement" {
                 let end = self.switch_break(scope, effect.end)?;
+                return Some((effect, Some(end)));
+            }
+            if next.kind == "continue-statement" {
+                // Continue targets the enclosing loop, not this switch.
+                // Admit only a direct outermost switch arm, preserving its
+                // exit separately while checking every other case.
+                if self.switch_depth != 1 {
+                    return None;
+                }
+                let end = self.loop_exit_statement(scope, effect.end)?;
+                if self.loop_exit.take() != Some(LoopExit::Continue) {
+                    return None;
+                }
+                effect.loop_exit = Some(LoopExit::Continue);
                 return Some((effect, Some(end)));
             }
             if matches!(
@@ -2578,6 +2594,7 @@ impl<'node> Flow<'node> {
         if let Some(chosen) = selected_effect.or(default_effect) {
             self.locals = chosen.locals;
             self.outputs.extend(chosen.outputs);
+            self.loop_exit = chosen.loop_exit;
         } else {
             self.locals = starting_locals;
         }
@@ -2594,8 +2611,10 @@ impl<'node> Flow<'node> {
         previous_arm_end: u32,
     ) -> Option<()> {
         let final_break = self.nodes.get(self.position.checked_sub(1)?)?;
-        (final_break.kind == "break-statement"
-            && final_break.parent == scope.id
+        (matches!(
+            final_break.kind.as_str(),
+            "break-statement" | "continue-statement"
+        ) && final_break.parent == scope.id
             && final_break.span.end.byte == previous_arm_end
             && final_break.span.end.line.checked_add(1)? == scope.span.end.line
             && scope.span.end.byte.checked_sub(previous_arm_end)?
