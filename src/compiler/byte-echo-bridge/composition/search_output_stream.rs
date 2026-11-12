@@ -1880,23 +1880,19 @@ pub(super) fn verified_short_output_layout<const N: usize>(
         // Reserve additional fresh loader-data regions for long streams.
         // Keep the more expensive six-region scan behind the established
         // bounded searches, without widening shorter negative cases.
-        if N >= 10 {
-            verified_relocated_write_layout(profile, expected, source_cells, 5)
-                .or_else(|| {
-                    if N == 12 {
-                        verified_relocated_write_layout(
-                            profile,
-                            expected,
-                            source_cells,
-                            6,
-                        )
-                    } else {
-                        None
-                    }
-                })
-        } else {
-            None
-        }
+        let maximum_relocations = match N {
+            12 => 6,
+            10 | 11 => 5,
+            _ => 4,
+        };
+        (5..=maximum_relocations).find_map(|relocations| {
+            verified_relocated_write_layout(
+                profile,
+                expected,
+                source_cells,
+                relocations,
+            )
+        })
     })
     .or_else(|| {
         verified_split_relocation_output_layout(profile, expected, source_cells)
