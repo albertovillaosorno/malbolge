@@ -2509,6 +2509,11 @@ pub fn encode_distinct_literal_quad(
     .or_else(|| {
         verified_four_write_quad_layout(profile, expected, &source_cells)
     })
+    .or_else(|| {
+        search_output_stream::verified_revisited_source_scratch_quad(
+            profile, expected,
+        )
+    })
     .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 

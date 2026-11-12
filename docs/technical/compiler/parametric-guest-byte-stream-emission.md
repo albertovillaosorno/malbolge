@@ -25,6 +25,20 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Revisited guest source continues to a fourth byte (2026-11-12)
+
+The original unsigned C Fibonacci source emits `02 59 5f 08` in four
+iterations. Its three-byte prefix already needs a real rotated source word
+revisited after a guest `j`; pristine graphical operands cannot reproduce
+that prefix under the existing narrow grammar. A new bounded proposal extends
+that guest-evolved prefix using checked data-pointer strides and a fourth
+rotation of a fresh graphical source cell. The focused Rust test proves the
+full four-byte guest output under EOF and binary stdin, with exactly one
+repeated write, source-behind-code safety, and independent normative VM replay.
+This does not generalize to the original twelve-byte Fibonacci trace or
+establish guest-side C control flow. The complete pinned C-to-guest regression
+remains a separate publication check.
+
 ### A `while` body directly contains a second `while` (2026-11-12)
 
 The original full twelve-trip unmasked Fibonacci C source still refuses at

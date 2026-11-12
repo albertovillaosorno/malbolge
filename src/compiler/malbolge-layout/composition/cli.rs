@@ -3653,7 +3653,7 @@ fn verify_source_scratch_literal_stream<const N: usize>(
         .enumerate()
         .filter_map(|(offset, &opcode)| (opcode == b'j').then_some(offset))
         .collect::<Vec<_>>();
-    let revisits_source = N == 3
+    let revisits_source = matches!(N, 3 | 4)
         && relocations.len() == 1
         && body[..relocations[0]]
             .iter()
@@ -3664,7 +3664,7 @@ fn verify_source_scratch_literal_stream<const N: usize>(
             .iter()
             .filter(|&&opcode| opcode == profile.output_instruction())
             .count()
-            == 1;
+            == N.saturating_sub(2);
     if !relocations.is_empty() && !revisits_source {
         return Err(String::from("source-scratch relocation shape disagrees"));
     }
@@ -6074,7 +6074,7 @@ fn verify_distinct_literal_quad(
     bytes: [u8; 4],
 ) -> Result<(), String> {
     if artifact.source.len() != artifact.steps {
-        return Err(String::from("distinct-literal quad geometry disagrees"));
+        return verify_source_scratch_literal_stream(profile, artifact, bytes);
     }
     let operations =
         decode_distinct_quad_operations(profile, &artifact.source)?;

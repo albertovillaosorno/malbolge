@@ -55,6 +55,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a bounded source-revisit continuation extended the real
+  three-byte Fibonacci guest prefix by one new guest rotation. The verified
+  four-byte trace `02 59 5f 08` executes in the normative VM under empty
+  and binary input. The proof checks one genuinely repeated source-cell
+  write and disallows writes ahead of active code. The original twelve-byte
+  unmasked stream and dynamic guest C execution remain unsupported.
+
+
 - On 2026-11-11 a full twelve-trip Fibonacci C loop used a conditional
   `continue` after the odd `putchar`, leaving the even `putchar` as its next
   lexical statement. Pinned Clang admitted this complete source but the

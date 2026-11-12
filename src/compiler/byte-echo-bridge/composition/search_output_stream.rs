@@ -1814,6 +1814,151 @@ pub(super) fn verified_revisited_source_scratch_triple(
     None
 }
 
+/// Continue a proven source-revisit stream with one new guest accumulator.
+///
+/// The third byte has already been computed using the same source cell
+/// before and after a real data-pointer relocation. The following guest D
+/// address is taken from the verified prefix layout, not inferred from the
+/// requested bytes. A fresh skipped graphical source word may be rotated
+/// after bounded no-op strides, producing an independently replayed fourth
+/// output. Both the revisited write and the new output must remain genuine
+/// guest effects; no C-side byte is copied into the emitted transcript.
+pub(super) fn verified_revisited_source_scratch_quad(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; 4],
+) -> Option<LinearLayout> {
+    if profile.id() != malbolge::current_profile().id() {
+        return None;
+    }
+    let prefix = verified_revisited_source_scratch_triple(profile, [
+        expected[0],
+        expected[1],
+        expected[2],
+    ])?;
+    let source = prefix.source();
+    let target = usize::from(*source.first()?).checked_add(1)?;
+    let last_data =
+        usize::try_from(*prefix.data_pointer_positions().last()?).ok()?;
+    if last_data == 0 || last_data >= target {
+        return None;
+    }
+    let mut operations = source
+        .iter()
+        .enumerate()
+        .map(|(address, &byte)| {
+            if address == 0 {
+                return Some(LinearOpcode::JumpForward {
+                    target: u32::try_from(target).ok()?,
+                });
+            }
+            if address < target {
+                return Some(LinearOpcode::SkippedDataByte {
+                    byte: u32::from(byte),
+                });
+            }
+            match malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(address).ok()?,
+            )? {
+                b'o' => Some(LinearOpcode::NoOperation),
+                b'p' => Some(LinearOpcode::CrazyData),
+                b'*' => Some(LinearOpcode::RotateData),
+                b'j' => Some(LinearOpcode::RelocateDataPointer),
+                b'<' => Some(LinearOpcode::OutputByte),
+                b'v' => Some(LinearOpcode::Halt),
+                _ => None,
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if operations.pop()? != LinearOpcode::Halt {
+        return None;
+    }
+    // The final D position belongs to the removed halt and was not read.
+    // A new operand may only occupy unvisited, unmodified skipped source.
+    let used_data = prefix
+        .data_pointer_positions()
+        .iter()
+        .take(prefix.data_pointer_positions().len().saturating_sub(1))
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let written_data = prefix
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for stride in 0..target.saturating_sub(last_data).min(24) {
+        let data = last_data.checked_add(stride)?;
+        let address = u32::try_from(data).ok()?;
+        if used_data.contains(&address) || written_data.contains(&address) {
+            continue;
+        }
+        for byte in 33u8..=126 {
+            if !matches_byte(
+                malbolge::profile_rotate(
+                    u32::from(byte),
+                    profile.memory_words(),
+                ),
+                expected[3],
+            ) || !matches!(
+                malbolge::decode_profile_instruction(u32::from(byte), address,),
+                Some(b'o' | b'j' | b'p' | b'*' | b'i' | b'v' | b'<' | b'/')
+            ) {
+                continue;
+            }
+            let mut candidate = operations.clone();
+            *candidate.get_mut(data)? =
+                LinearOpcode::SkippedDataByte { byte: u32::from(byte) };
+            candidate.extend(repeat_n(LinearOpcode::NoOperation, stride));
+            candidate.extend([
+                LinearOpcode::RotateData,
+                LinearOpcode::OutputByte,
+                LinearOpcode::Halt,
+            ]);
+            let Ok(layout) = super::encode_linear_layout(profile, &candidate)
+            else {
+                continue;
+            };
+            let writes = layout
+                .data_write_positions()
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>();
+            if writes.iter().copied().collect::<BTreeSet<_>>().len() + 1
+                != writes.len()
+                || layout
+                    .executed_code_positions()
+                    .iter()
+                    .zip(layout.data_write_positions())
+                    .any(|(&code, &write)| write.is_some_and(|at| at >= code))
+            {
+                continue;
+            }
+            let accepted =
+                [Vec::new(), vec![255, 0, 128]].into_iter().all(|input| {
+                    let Ok(mut vm) = super::ProfileMachine::from_source(
+                        profile,
+                        layout.source(),
+                        input,
+                    ) else {
+                        return false;
+                    };
+                    matches!(
+                        vm.run(layout.executed_code_positions().len()),
+                        Ok(super::RunOutcome::Terminated { steps, .. })
+                            if steps == layout.executed_code_positions().len()
+                    ) && vm.output() == expected
+                        && vm.input_consumed() == 0
+                });
+            if accepted {
+                return Some(layout);
+            }
+        }
+    }
+    None
+}
+
 /// Permit one forward data-pointer relocation within skipped graphical source
 /// scratch. Each consumed operand is a fresh, previously unread source cell.
 /// A relocation may skip ahead but never revisit a guest-written operand or

@@ -243,3 +243,45 @@ fn original_fibonacci_third_byte_is_found_by_bounded_revisit_search()
     }
     Ok(())
 }
+
+#[test]
+fn original_fibonacci_fourth_byte_follows_a_written_source_revisit()
+-> Result<(), String> {
+    let expected = original_fibonacci_bytes();
+    let four = [expected[0], expected[1], expected[2], expected[3]];
+    let profile = malbolge::current_profile();
+    let layout = verified_revisited_source_scratch_quad(profile, four)
+        .ok_or("cannot extend source-revisited guest with a fourth byte")?;
+    assert_eq!(four, [2, 89, 95, 8]);
+    assert!(layout.source().len() > 105);
+    assert_eq!(
+        layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .len()
+            + 1,
+        layout.data_write_positions().iter().flatten().count(),
+        "the source-revisit write remains a real alias",
+    );
+    for supplied in [Vec::new(), vec![0, 255, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), supplied)
+                .map_err(|error| {
+                    format!("four-output guest load: {error:?}")
+                })?;
+        let result = vm
+            .run(layout.executed_code_positions().len())
+            .map_err(|error| format!("four-output guest run: {error:?}"))?;
+        assert!(matches!(
+            result,
+            RunOutcome::Terminated { steps, .. }
+                if steps == layout.executed_code_positions().len()
+        ));
+        assert_eq!(vm.output(), four);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}
