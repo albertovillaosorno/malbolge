@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a source-C experiment with automatic `int` locals
+  capturing `getchar()` exposed a real Clang JSON projection refusal.
+  An exact ten-node local declaration/output proof now carries each
+  successful input byte into a distinct runtime guest SSA echo, mixing
+  direct and local-forward pairs. The normative VM matches three mixed
+  calls and sixteen independent local captures under binary input; eight
+  unsupported source variants and twenty-five forged AST/span changes
+  refuse guest publication. EOF, guest-side mutable local state,
+  input arithmetic and C control flow remain P0 work.
+
 - On 2026-11-12 the original complete twelve-iteration unsigned C
   Fibonacci source reached the production guest VM. Its independently
   calculated byte stream `02 59 5f 08 57 4f 22 6d 03 90 b3 23` matches

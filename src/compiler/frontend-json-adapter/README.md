@@ -31,6 +31,26 @@ duplicate fields, extra source statements and all non-void programs reject.
 
 ## Successful-byte dynamic C echo (2026-11-12)
 
+The source-authenticated input path also accepts a directly adjacent
+two-statement form, such as:
+
+```c
+int value = getchar();
+putchar(value);
+```
+
+The initialized automatic local must have type `int`, a unique source
+identifier and an exact declaration reference reused by the following
+output call. The pinned ten-node Clang preorder and source byte/column
+coordinates prove the input initializer, variable access and both external
+I/O calls, with no intervening mutation or effect. These local-forward pairs
+can be mixed with direct nested `putchar(getchar());` calls, with 128 total
+successful-byte pairs at most. The compiler does not allocate guest storage:
+each proved identity flow lowers to an adjacent live input/output SSA pair.
+Tests include a sixteen-local guest program, mixed direct/local input,
+eight unlowered source variants and twenty-five forged AST mutations.
+EOF and general C local state remain explicitly unsupported.
+
 A source-backed, **dynamic** input path now admits one to 128 direct
 `putchar(getchar());` expression statements in an external no-argument
 `void` function, without other statements or an explicit return. This path

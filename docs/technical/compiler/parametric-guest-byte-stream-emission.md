@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ### Dynamic source-C byte echo under successful input (2026-11-12)
 
+An additional complete source-C experiment now captures each successful
+`getchar()` result in an automatic `int` local before passing that local
+to `putchar`. The pinned frontend previously refused the first declaration.
+The repaired Clang projection checks the ten-node declaration, initializer,
+value-read and call ancestry and ties the exact local declaration reference
+to the output argument. Adjacent direct calls can be mixed with local-forward
+pairs, up to 128 total live reads. Every pair becomes a distinct runtime
+`ByteInput`/`ByteOutput` SSA effect; the automatic local is only elided
+after proof that no intervening use or mutation is present.
+
+Two complete sources (a three-read mixed call/local trace and sixteen
+distinct automatic locals) now produce real guest VM byte parity under
+binary input. Eight unsupported source mutations and twenty-five forged
+normalized AST node/span variants refuse before target publication. This is
+source-local identity forwarding, not guest storage, input arithmetic,
+reordering, C EOF behavior or runtime C control flow. The P0 remains open.
+
 A demanding four-iteration C program with `getchar`, EOF checks,
 stateful parity and conditional input transformations first exposed the
 source-JSON projection gap: its first local declaration still refuses.
