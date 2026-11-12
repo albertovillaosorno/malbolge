@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a full C function captured a live input byte and used
+  two comma-argument outputs inside a selected multiline `if (1)` arm,
+  with a separately authenticated skipped `else` comma arm. The normalized
+  adapter originally refused at its first declaration. Parent-checked comma
+  operand proof now preserves nested output returns, discarded reads, the
+  outer write order and local invalidation. The normative VM reads three
+  bytes and emits four independent oracle bytes in eight steps across ten
+  binary inputs; ten unsupported source variants and twelve forged Clang
+  AST changes refuse publication. The demanding input-dependent while/parity
+  C experiment still rejects; runtime C branching, arithmetic, loops, EOF
+  and durable locals remain open.
+
 - On 2026-11-12 a full C byte-stream function with multiline static
   `if/else` arms and nested `putchar` calls initially refused normalized
   Clang admission. Canonical one-statement-per-line block geometry now proves

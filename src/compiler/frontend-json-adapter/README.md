@@ -10,6 +10,18 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Comma outputs inside constant branch arms (2026-11-12)
+
+The bounded `if (0)` / `if (1)` byte adapter accepts exact pinned-Clang
+comma-output arguments in selected or skipped source-authenticated branches.
+Every operand's guest input and nested successful-byte output is preserved in
+order; the outer `putchar` emits the final operand's byte last. An input
+invalidates the previous accumulator-local alias, and forged ancestry or
+unknown effects fail closed. The selected multiline C witness emits four
+bytes from three guest reads in eight VM steps across ten binary inputs.
+No dynamic C condition evaluation, EOF, arithmetic or general storage is
+implied by this proof.
+
 For the effect-free void family, the complete normalized artifact must contain
 exactly one no-argument external `fn()->void` definition with a compound
 body containing only standalone null statements (`;`), single-digit standalone zero expressions (`0;`),

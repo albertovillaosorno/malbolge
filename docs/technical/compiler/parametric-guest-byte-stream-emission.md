@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Comma-result evaluation inside constant C branches (2026-11-12)
+
+A complete C program captures a live input local, enters a multiline `if (1)`
+arm, writes the return byte of `putchar((putchar(first), first))`, then
+executes a distinct `putchar((getchar(), putchar(getchar())))` comma chain.
+An inactive `else` arm contains an independently proven two-read comma output.
+The pinned Clang frontend accepted the source, but the JSON adapter initially
+refused the first declaration. The existing call/comma source proof now accepts
+an explicit `if`-arm parent and expands every comma operand into ordered guest
+read/write effects, placing the outer output last. Selected new reads still
+invalidate an earlier live local. The skipped arm must also authenticate its
+entire expression tree and cannot hide unsupported I/O or arithmetic.
+
+The actual Malbolge capsule reads three binary bytes, emits four independent
+oracle bytes, and halts in eight VM steps, as demonstrated across ten seeded
+and boundary inputs. Ten unsupported C forms and twelve forged Clang AST
+variations fail without publishing target artifacts. This is bounded,
+compile-time constant-arm selection under successful-byte I/O; runtime input
+conditions, EOF, arithmetic, mutable C state, and loops remain unsupported.
+The original input-dependent loop/parity/arithmetic C experiment still fails
+closed at normalized JSON admission. P0 remains open.
+
 ### Canonical multiline constant C arms (2026-11-12)
 
 A complete C source with two multiline `if (1)` / `if (0)` blocks, both

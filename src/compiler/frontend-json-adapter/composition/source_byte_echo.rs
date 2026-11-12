@@ -325,6 +325,7 @@ fn prove_comma_output_effects<'node>(
     body: &Node,
     previous: u32,
     expected_id: u32,
+    parent: u32,
     local: Option<&LocalDeclaration<'node>>,
 ) -> Option<(usize, Vec<CommaEffect<'node>>, &'node Node)> {
     let [output, cast, callee, paren, comma, ..] = nodes else {
@@ -338,7 +339,7 @@ fn prove_comma_output_effects<'node>(
         || line == 0
         || column == 0
         || output.id != expected_id
-        || output.parent != body.id
+        || output.parent != parent
         || output.kind != "call-expression"
         || output.type_name.as_deref() != Some("i32")
         || output.reference.as_deref() != Some("external:putchar")
@@ -1019,8 +1020,48 @@ fn prove_static_if_statement<'node>(
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
-) -> Option<(usize, StaticIfEffect<'node>, u32)> {
+) -> Option<(usize, Vec<StaticIfEffect<'node>>, u32)> {
     let child = nodes.first()?;
+    // Authenticate a complete comma argument in the same branch parent as
+    // ordinary calls; materialize each operand in C evaluation order.
+    let comma_proof = if child.kind == "call-expression"
+        && child.reference.as_deref() == Some("external:putchar")
+    {
+        prove_comma_output_effects(
+            nodes,
+            body,
+            previous,
+            expected_id,
+            parent,
+            local,
+        )
+    } else {
+        None
+    };
+    if let Some((width, comma_effects, output)) = comma_proof {
+        let last = comma_effects.len().checked_sub(1)?;
+        let effects = comma_effects
+            .into_iter()
+            .enumerate()
+            .map(|(index, effect)| {
+                let input = if local.is_some_and(|declaration| {
+                    declaration.input.id == effect.input.id
+                }) {
+                    None
+                } else {
+                    Some(effect.input)
+                };
+                let mut outputs = effect.outputs;
+                if index == last {
+                    // The outer putchar writes only after the rightmost
+                    // comma operand, which may itself return from putchar.
+                    outputs.insert(0, output);
+                }
+                StaticIfEffect { input, outputs }
+            })
+            .collect();
+        return Some((width, effects, output.span.end.byte));
+    }
     let (width, input, outputs) = if child.kind == "call-expression"
         && child.reference.as_deref() == Some("external:putchar")
     {
@@ -1058,7 +1099,7 @@ fn prove_static_if_statement<'node>(
     let end = outputs.first().copied().or(input)?.span.end.byte;
     (child.id == expected_id).then_some((
         width,
-        StaticIfEffect { input, outputs },
+        vec![StaticIfEffect { input, outputs }],
         end,
     ))
 }
@@ -1076,7 +1117,7 @@ fn prove_static_if_arm<'node>(
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
     if child.kind != "compound-statement" {
-        let (width, effect, end) = prove_static_if_statement(
+        let (width, effects, end) = prove_static_if_statement(
             nodes,
             body,
             previous,
@@ -1086,7 +1127,7 @@ fn prove_static_if_arm<'node>(
         )?;
         return Some(StaticIfArm {
             width,
-            effects: vec![effect],
+            effects,
             begin: child.span.begin.byte,
             end,
             end_line: child.span.end.line,
@@ -1121,9 +1162,10 @@ fn prove_static_if_arm<'node>(
     let mut cursor = 1usize;
     let mut effect_end = begin;
     let mut effects = Vec::new();
+    let mut statement_count = 0usize;
     let mut local_is_live = local.is_some();
     loop {
-        if effects.len() >= 16 {
+        if statement_count >= 16 || effects.len() >= 16 {
             return None;
         }
         let statement = nodes.get(cursor)?;
@@ -1135,25 +1177,33 @@ fn prove_static_if_arm<'node>(
         if statement.span.begin.byte != effect_end.checked_add(gap)?
             || (multiline
                 && (statement.span.begin.line
-                    != line
-                        .checked_add(u32::try_from(effects.len() + 1).ok()?)?
+                    != line.checked_add(
+                        u32::try_from(statement_count + 1).ok()?,
+                    )?
                     || statement.span.begin.column != column.checked_sub(3)?))
         {
             return None;
         }
-        let (width, effect, statement_end) = prove_static_if_statement(
-            nodes.get(cursor..)?,
-            body,
-            effect_end,
-            expected_id.checked_add(u32::try_from(cursor).ok()?)?,
-            child.id,
-            local.filter(|_| local_is_live),
-        )?;
+        let (width, statement_effects, statement_end) =
+            prove_static_if_statement(
+                nodes.get(cursor..)?,
+                body,
+                effect_end,
+                expected_id.checked_add(u32::try_from(cursor).ok()?)?,
+                child.id,
+                local.filter(|_| local_is_live),
+            )?;
         if statement_end >= end {
             return None;
         }
-        local_is_live &= effect.input.is_none();
-        effects.push(effect);
+        local_is_live &= statement_effects
+            .iter()
+            .all(|effect| effect.input.is_none());
+        effects.extend(statement_effects);
+        statement_count = statement_count.checked_add(1)?;
+        if effects.len() > 16 {
+            return None;
+        }
         cursor = cursor.checked_add(width)?;
         effect_end = statement_end;
         let end_gap = if multiline {
@@ -1165,7 +1215,7 @@ fn prove_static_if_arm<'node>(
             if multiline
                 && child.span.end.line
                     != line
-                        .checked_add(u32::try_from(effects.len() + 1).ok()?)?
+                        .checked_add(u32::try_from(statement_count + 1).ok()?)?
             {
                 return None;
             }
@@ -1503,6 +1553,7 @@ pub(super) fn canonical_source_byte_echo(
                 body,
                 previous,
                 next_id,
+                body.id,
                 latest_local.as_ref().map(|(local, _value)| local),
             )
         {
