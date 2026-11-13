@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete six-read C byte stream with a copied source
+  local, four-trip loop, remainder-selected `continue` and final guest
+  input initially failed at normalized alias-declaration admission.
+  The new exact Clang/source-witness proof preserves one guest SSA input
+  through both top-level and per-iteration identity copies, including
+  chained aliases, scoped selected arms and zero-trip authentication.
+  Eight independent binary VM oracle comparisons match in five or
+  thirteen steps; twelve invalid sources, eight forged node variants
+  and a missing source witness reject. General mutable C storage, guest
+  arithmetic and dependent branches remain outside the admitted slice.
+
 - On 2026-11-13 a full four-trip C stream with live `getchar` locals,
   induction-dependent branch and `continue`, explicit
   `putchar((unsigned char)current)` and trailing runtime I/O initially

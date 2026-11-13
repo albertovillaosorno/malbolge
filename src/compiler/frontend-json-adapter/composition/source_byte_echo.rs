@@ -727,6 +727,102 @@ fn prove_local_declaration<'node>(
     })
 }
 
+// A plain C `int alias = live;` copies the currently resident input byte.
+// It creates a new source binding but no guest instruction or host-time byte.
+// Requiring original source bytes prevents a forged normalized AST from
+// asserting an identity copy where the C expression performs other work.
+#[expect(
+    clippy::too_many_lines,
+    reason = "authenticate every bound C alias node and its source spelling"
+)]
+fn prove_local_alias<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    live: &LocalDeclaration<'node>,
+    source: &[u8],
+) -> Option<LocalDeclaration<'node>> {
+    let [declaration, variable, cast, reference] = nodes else {
+        return None;
+    };
+    let name = variable.name.as_deref()?;
+    if !valid_local_name(name) || name == live.name {
+        return None;
+    }
+    let start = declaration.span.begin.byte;
+    let line = declaration.span.begin.line;
+    let column = declaration.span.begin.column;
+    let name_start = start.checked_add(4)?;
+    let value_start = name_start
+        .checked_add(u32::try_from(name.len()).ok()?)?
+        .checked_add(3)?;
+    let end = value_start.checked_add(u32::try_from(live.name.len()).ok()?)?;
+    let variable_reference = format!("{name}@{name_start}");
+    let spelling = format!("int {name} = {};", live.name);
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+    {
+        return None;
+    }
+    let verified = start > previous
+        && start > live.declaration_end
+        && end < body.span.end.byte
+        && line > live.line
+        && column > 0
+        && declaration.parent == parent
+        && declaration.kind == "declaration-statement"
+        && declaration.type_name.is_none()
+        && declaration.reference.is_none()
+        && declaration.operation.is_none()
+        && metadata_empty(declaration)
+        && source_word(declaration, start, end.checked_add(1)?, line, column)
+        && valid_local_variable(
+            variable,
+            declaration,
+            &variable_reference,
+            end,
+        )
+        && cast.id == variable.id.checked_add(1)?
+        && cast.parent == variable.id
+        && cast.kind == "cast-expression"
+        && cast.type_name.as_deref() == Some("i32")
+        && cast.operation.as_deref() == Some("lvalue-to-rvalue")
+        && cast.reference.is_none()
+        && metadata_empty(cast)
+        && source_word(
+            cast,
+            value_start,
+            end,
+            line,
+            column.checked_add(value_start.checked_sub(start)?)?,
+        )
+        && reference.id == cast.id.checked_add(1)?
+        && reference.parent == cast.id
+        && reference.kind == "declaration-reference-expression"
+        && reference.type_name.as_deref() == Some("i32")
+        && reference.reference.as_deref()
+            == Some(live.variable_reference.as_str())
+        && reference.operation.is_none()
+        && metadata_empty(reference)
+        && source_word(
+            reference,
+            value_start,
+            end,
+            line,
+            column.checked_add(value_start.checked_sub(start)?)?,
+        );
+    verified.then(|| LocalDeclaration {
+        declaration_end: declaration.span.end.byte,
+        input: live.input,
+        line,
+        name,
+        variable_reference,
+    })
+}
+
 /// The exact read of the source-local value in the following output call.
 #[expect(
     clippy::too_many_lines,
@@ -1230,6 +1326,7 @@ fn prove_static_if_statement<'node>(
     allow_new_local: bool,
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
+    source: Option<&[u8]>,
 ) -> Option<(usize, Vec<StaticIfEffect<'node>>, u32)> {
     let child = nodes.first()?;
     if child.kind == "for-statement" {
@@ -1243,6 +1340,7 @@ fn prove_static_if_statement<'node>(
             expected_id,
             parent,
             for_depth.checked_add(1)?,
+            source,
         )?;
         if proof.effects.len() > 16 {
             return None;
@@ -1304,6 +1402,7 @@ fn prove_static_if_statement<'node>(
             allow_new_local,
             for_depth,
             induction,
+            source,
         )?;
         return Some((
             proof.width,
@@ -1411,6 +1510,7 @@ fn prove_static_if_arm<'node>(
     allow_new_local: bool,
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
+    source: Option<&[u8]>,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
     if child.kind == "if-statement" {
@@ -1425,6 +1525,7 @@ fn prove_static_if_arm<'node>(
             allow_new_local,
             for_depth,
             induction,
+            source,
         )?;
         return Some(StaticIfArm {
             width: proof.width,
@@ -1454,6 +1555,7 @@ fn prove_static_if_arm<'node>(
             allow_new_local,
             for_depth,
             induction,
+            source,
         )?;
         return Some(StaticIfArm {
             width,
@@ -1521,49 +1623,71 @@ fn prove_static_if_arm<'node>(
         }
         let declares_local =
             allow_new_local && statement.kind == "declaration-statement";
-        let (width, statement_effects, statement_end) = if declares_local {
-            // One new automatic local is initialized by an actual guest
-            // input on every loop iteration, never once at compile time.
-            // It is valid only until a later input overwrites the guest A.
-            if local.is_some() {
-                return None;
-            }
-            let declaration = prove_local_declaration(
-                nodes.get(cursor..cursor.checked_add(5)?)?,
-                body,
-                effect_end,
-                child.id,
-            )?;
-            if declaration.input.id != statement.id.checked_add(2)? {
-                return None;
-            }
-            let end = declaration.declaration_end;
-            let read = declaration.input;
-            declared_local = Some(declaration);
-            local_is_live = true;
-            (
-                5,
-                vec![StaticIfEffect {
-                    input: Some(read),
-                    outputs: Vec::new(),
-                    loop_exit: None,
-                }],
-                end,
-            )
+        let alias = if declares_local && local_is_live {
+            declared_local.as_ref().or(local).and_then(|live| {
+                source.and_then(|witness| {
+                    prove_local_alias(
+                        nodes.get(cursor..cursor.checked_add(4)?)?,
+                        body,
+                        effect_end,
+                        child.id,
+                        live,
+                        witness,
+                    )
+                })
+            })
         } else {
-            prove_static_if_statement(
-                nodes.get(cursor..)?,
-                body,
-                effect_end,
-                expected_id.checked_add(u32::try_from(cursor).ok()?)?,
-                child.id,
-                declared_local.as_ref().or(local).filter(|_| local_is_live),
-                depth,
-                allow_new_local,
-                for_depth,
-                induction,
-            )?
+            None
         };
+        let (width, statement_effects, statement_end) =
+            if let Some(alias) = alias {
+                let end = alias.declaration_end;
+                declared_local = Some(alias);
+                (4, Vec::new(), end)
+            } else if declares_local {
+                // One new automatic local is initialized by an actual guest
+                // input on every loop iteration, never once at compile time.
+                // It is valid only until a later input overwrites the guest A.
+                if local.is_some() || declared_local.is_some() {
+                    return None;
+                }
+                let declaration = prove_local_declaration(
+                    nodes.get(cursor..cursor.checked_add(5)?)?,
+                    body,
+                    effect_end,
+                    child.id,
+                )?;
+                if declaration.input.id != statement.id.checked_add(2)? {
+                    return None;
+                }
+                let end = declaration.declaration_end;
+                let read = declaration.input;
+                declared_local = Some(declaration);
+                local_is_live = true;
+                (
+                    5,
+                    vec![StaticIfEffect {
+                        input: Some(read),
+                        outputs: Vec::new(),
+                        loop_exit: None,
+                    }],
+                    end,
+                )
+            } else {
+                prove_static_if_statement(
+                    nodes.get(cursor..)?,
+                    body,
+                    effect_end,
+                    expected_id.checked_add(u32::try_from(cursor).ok()?)?,
+                    child.id,
+                    declared_local.as_ref().or(local).filter(|_| local_is_live),
+                    depth,
+                    allow_new_local,
+                    for_depth,
+                    induction,
+                    source,
+                )?
+            };
         if statement_end >= end {
             return None;
         }
@@ -1651,6 +1775,7 @@ fn prove_static_for<'node>(
     expected_id: u32,
     parent: u32,
     for_depth: usize,
+    source: Option<&[u8]>,
 ) -> Option<StaticForProof<'node>> {
     let [
         loop_node,
@@ -1991,6 +2116,7 @@ fn prove_static_for<'node>(
                     initial_value.checked_sub(i32::try_from(iteration).ok()?)?
                 },
             }),
+            source,
         )?;
         if !arm.braced
             || arm.begin != arm_start
@@ -2718,6 +2844,7 @@ fn prove_static_if<'node>(
     allow_new_local: bool,
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
+    source: Option<&[u8]>,
 ) -> Option<StaticIfProof<'node>> {
     let [conditional, ..] = nodes else {
         return None;
@@ -2758,6 +2885,7 @@ fn prove_static_if<'node>(
         allow_new_local,
         for_depth,
         induction,
+        source,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
         || then_arm.begin_line != line
@@ -2785,6 +2913,7 @@ fn prove_static_if<'node>(
             allow_new_local,
             for_depth,
             induction,
+            source,
         )?;
         let else_gap = if then_arm.braced {
             6
@@ -2941,6 +3070,7 @@ pub(super) fn canonical_source_byte_echo(
                 false,
                 0,
                 None,
+                source,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if !terminated
@@ -2970,6 +3100,7 @@ pub(super) fn canonical_source_byte_echo(
                 next_id,
                 body.id,
                 1,
+                source,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             // Each static trip has already been source-proven with its
@@ -3044,6 +3175,7 @@ pub(super) fn canonical_source_byte_echo(
                 false,
                 0,
                 None,
+                source,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
             if proof.selected {
@@ -3251,6 +3383,31 @@ pub(super) fn canonical_source_byte_echo(
                 )
                 .ok_or(FrontendJsonError::Unsupported)?;
             requires_latest = true;
+            continue;
+        }
+        if first.kind == "declaration-statement"
+            && let Some((live, value)) = latest_local.as_ref()
+            && let Some(alias) = source.and_then(|witness| {
+                rest.get(consumed..consumed.saturating_add(4)).and_then(
+                    |nodes| {
+                        prove_local_alias(
+                            nodes, body, previous, body.id, live, witness,
+                        )
+                    },
+                )
+            })
+        {
+            if !local_names.insert(alias.name) {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            previous = alias.declaration_end;
+            latest_local = Some((alias, *value));
+            consumed = consumed
+                .checked_add(4)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(4)
+                .ok_or(FrontendJsonError::Unsupported)?;
             continue;
         }
         if inputs == MAX_ECHO_CALLS {

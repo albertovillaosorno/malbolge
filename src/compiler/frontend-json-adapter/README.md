@@ -10,6 +10,28 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-witnessed live C local copies (2026-11-13)
+
+A complete C program reads `getchar()` into `current`, copies the live
+byte through `int snapshot = current;`, emits it, then runs a four-trip
+induction-branch loop with fresh input locals, selected `continue` and a
+final guest read. The pinned frontend accepted the source but normalized
+lowering initially refused the new declaration. The repair authenticates
+all four Clang alias nodes, declaration/reference identity, source spans,
+and exact `int NAME = LIVE;` spelling from the driver-checked original C
+file. A copy rebinds the current guest SSA byte without adding a second
+input instruction or substituting a host-provided byte. Chained top-level
+copies, per-iteration loop copies, scoped selected-branch copies and
+zero-trip dead-body proof use the same bound source witness.
+
+The full guest executes six independent byte reads and six writes in
+thirteen normative VM steps. Eight binary VM comparisons, including zero,
+128 and 255, match independent byte-stream oracles. Twelve unsupported
+sources, eight forged normalized nodes and a missing-source witness refuse
+publication. This is accumulator-resident identity copying, not general
+mutable C storage, arbitrary expressions, guest-dependent control or EOF.
+The P0 remains open.
+
 ### Source-witnessed unsigned-byte casts in finite C streams (2026-11-13)
 
 A complete four-trip source-C program reads fresh `getchar()` locals,
