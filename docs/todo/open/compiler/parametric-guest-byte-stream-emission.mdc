@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C program declared a local from the
+  successful return of putchar(getchar()), used induction remainder,
+  a four-trip branch/continue loop and a later output-return rebind.
+  Pinned Clang admitted the source, but normalized lowering rejected
+  its first declaration. An exact SHA-checked declaration and Clang
+  nested-call proof now preserves one genuine guest input through every
+  successful output call and binds only the new local. The normative
+  guest VM emits seven copies of one binary byte and two of the next in
+  twelve steps. Scoped branch/loop initializers use the same proof;
+  EOF, output failure, runtime guest control, arithmetic and storage
+  remain P0 gaps.
+
 - On 2026-11-13 a complete C three-trip remainder-branch and
   `continue` loop used
   `putchar(putchar(current = putchar(getchar())));` then read the

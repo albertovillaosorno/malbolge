@@ -756,6 +756,92 @@ fn prove_local_declaration<'node>(
     })
 }
 
+// A successful output-call return can initialize a new C local, not only
+// reassign an existing one. Prove the full source declaration and every
+// normalized nested call before emitting a guest input and its writes.
+// The fresh byte becomes the resident local; no older byte is restored.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the source declaration and nested call ancestry form one proof"
+)]
+fn prove_output_return_declaration<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    source: &[u8],
+) -> Option<(LocalDeclaration<'node>, usize, Vec<&'node Node>)> {
+    let [declaration, variable, output, ..] = nodes else {
+        return None;
+    };
+    let name = variable.name.as_deref()?;
+    if !valid_local_name(name) {
+        return None;
+    }
+    let start = declaration.span.begin.byte;
+    let line = declaration.span.begin.line;
+    let column = declaration.span.begin.column;
+    let name_start = start.checked_add(4)?;
+    let output_start = name_start
+        .checked_add(u32::try_from(name.len()).ok()?)?
+        .checked_add(3)?;
+    let local_reference = format!("{name}@{name_start}");
+    let (call_width, read, calls) =
+        super::nested_byte_echo::nested_call_in_parent(
+            nodes.get(2..)?,
+            body,
+            previous,
+            output.id,
+            variable.id,
+        )?;
+    let depth = u32::try_from(calls.len()).ok()?;
+    let end = output_start
+        .checked_add(9)?
+        .checked_add(depth.checked_mul(9)?)?;
+    let spelling = format!(
+        "int {name} = {}getchar(){};",
+        "putchar(".repeat(calls.len()),
+        ")".repeat(calls.len())
+    );
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+        || start <= previous
+        || start <= body.span.begin.byte
+        || end >= body.span.end.byte
+        || line == 0
+        || column == 0
+        || declaration.parent != parent
+        || declaration.kind != "declaration-statement"
+        || declaration.type_name.is_some()
+        || declaration.reference.is_some()
+        || declaration.operation.is_some()
+        || !metadata_empty(declaration)
+        || !source_word(declaration, start, end.checked_add(1)?, line, column)
+        || !valid_local_variable(variable, declaration, &local_reference, end)
+        || output.id != variable.id.checked_add(1)?
+        || output.span.begin.byte != output_start
+        || output.span.end.byte != end
+        || output.span.begin.line != line
+        || output.span.begin.column
+            != column.checked_add(output_start.checked_sub(start)?)?
+    {
+        return None;
+    }
+    Some((
+        LocalDeclaration {
+            declaration_end: declaration.span.end.byte,
+            input: read,
+            line,
+            name,
+            variable_reference: local_reference,
+        },
+        call_width.checked_add(2)?,
+        calls,
+    ))
+}
+
 // A plain C `int alias = live;` copies the currently resident input byte.
 // It creates a new source binding but no guest instruction or host-time byte.
 // Requiring original source bytes prevents a forged normalized AST from
@@ -2536,37 +2622,47 @@ fn prove_static_if_arm<'node>(
             // Several sequential locals may share this lexical block, but
             // only the latest byte remains resident in the accumulator.
             // Never recover an older, overwritten C value from a stale name.
-            let declaration = prove_local_declaration(
-                nodes.get(cursor..cursor.checked_add(5)?)?,
-                body,
-                effect_end,
-                child.id,
-            )?;
-            // Clang-shaped nodes cannot manufacture new guest input after a
-            // forged source digest changes a constant initializer to a call.
-            // Require exact original C spelling for *every* scoped read,
-            // including the first declaration in a loop without outer locals.
+            // Clang-shaped nodes cannot manufacture a guest read or output
+            // from a different C initializer. Both declaration forms require
+            // the exact original source spelling, including every call.
             let witness = source?;
-            let begin = usize::try_from(statement.span.begin.byte).ok()?;
-            let end = usize::try_from(declaration.declaration_end).ok()?;
-            let spelling = format!("int {} = getchar();", declaration.name);
-            if witness.get(begin..end) != Some(spelling.as_bytes()) {
-                return None;
-            }
-            if declaration.input.id != statement.id.checked_add(2)? {
-                return None;
-            }
+            let (declaration, width, calls) = if let Some(proof) =
+                prove_output_return_declaration(
+                    nodes.get(cursor..)?,
+                    body,
+                    effect_end,
+                    child.id,
+                    witness,
+                ) {
+                proof
+            } else {
+                let declaration = prove_local_declaration(
+                    nodes.get(cursor..cursor.checked_add(5)?)?,
+                    body,
+                    effect_end,
+                    child.id,
+                )?;
+                let begin = usize::try_from(statement.span.begin.byte).ok()?;
+                let end = usize::try_from(declaration.declaration_end).ok()?;
+                let spelling = format!("int {} = getchar();", declaration.name);
+                if witness.get(begin..end) != Some(spelling.as_bytes())
+                    || declaration.input.id != statement.id.checked_add(2)?
+                {
+                    return None;
+                }
+                (declaration, 5, Vec::new())
+            };
             let end = declaration.declaration_end;
             let read = declaration.input;
             equivalent_locals.clear();
             declared_local = Some(declaration);
             local_is_live = true;
             (
-                5,
+                width,
                 vec![StaticIfEffect {
                     input: Some(read),
                     assigned_local: None,
-                    outputs: Vec::new(),
+                    outputs: calls,
                     loop_exit: None,
                 }],
                 end,
@@ -4658,6 +4754,61 @@ pub(super) fn canonical_source_byte_echo(
             next_id = next_id
                 .checked_add(4)
                 .ok_or(FrontendJsonError::Unsupported)?;
+            continue;
+        }
+        if first.kind == "declaration-statement"
+            && let Some((local, width, calls)) = source.and_then(|witness| {
+                prove_output_return_declaration(
+                    rest.get(consumed..)?,
+                    body,
+                    previous,
+                    body.id,
+                    witness,
+                )
+            })
+        {
+            if inputs == MAX_ECHO_CALLS
+                || declared_locals.len() >= MAX_SOURCE_OUTPUTS
+                || outputs
+                    .checked_add(calls.len())
+                    .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
+                || !local_names.insert(local.name)
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            let value = ValueId::new(
+                u32::try_from(inputs)
+                    .map_err(|_| FrontendJsonError::Unsupported)?,
+            );
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: value,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&local.input.span),
+            ));
+            for call in calls.iter().rev() {
+                instructions.push(LocatedInstruction::new(
+                    Instruction::ByteOutput { value },
+                    typed_span(&call.span),
+                ));
+            }
+            previous = local.declaration_end;
+            declared_locals.push(local.clone());
+            latest_local = Some((local, value));
+            equivalent_locals.clear();
+            consumed = consumed
+                .checked_add(width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+            inputs += 1;
+            outputs += calls.len();
+            requires_latest = true;
             continue;
         }
         if inputs == MAX_ECHO_CALLS {

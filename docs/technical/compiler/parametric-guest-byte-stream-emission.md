@@ -26,6 +26,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Successful output-call returns initialize source-C locals (2026-11-13)
+
+The pinned Clang frontend accepts a complete branch/continue C loop whose
+first declaration is int current = putchar(getchar()), but normalized
+lowering previously refused the declaration. The new bounded source proof
+checks the exact original C declaration, local binding, every nested
+successful output call, its Clang parent/cast/reference/span and one real
+getchar. Each putchar forwards the same guest byte, and the newly bound C
+local can be reused or reassigned without inventing a host value.
+
+This is also admitted for block-local declarations in statically selected
+branches and bounded counted loops; declarations do not export bindings
+outside their lexical block. The original four-trip program emits seven
+copies of the first binary input and two copies of a subsequent input,
+with 12 normative VM steps. EOF, output failure, guest-dependent control,
+general storage and arithmetic remain unsupported.
+
 ### Output returns on both sides of a local assignment (2026-11-13)
 
 The original complete C source with
