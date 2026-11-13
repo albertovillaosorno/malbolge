@@ -11,6 +11,24 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-proven assignment-valued byte output (2026-11-13)
+
+The exact expression `putchar(NAME = getchar());` may write a fresh guest
+input and retain it in the authenticated C `int` destination. All eight pinned
+Clang nodes, reference identity, node extents, and the exact original source
+spelling must agree. A stale top-level destination may be overwritten without
+reading its old value; a selected branch or counted loop keeps the proven
+resident binding across subsequent outputs. In a borrowed counted loop,
+every guest input must assign to that same outer C binding or the loop is
+refused. Other previously copied C names become stale after a new read.
+
+The first full source-C branch/loop program emits six bytes from four guest
+reads in eleven normative VM steps. A second full scoped-loop program emits
+eleven bytes from ten reads in 22 guest steps. Boundary and seeded binary
+oracles, selected branch and zero-trip cases, source/AST forgeries and stale
+alias rejection are covered by dedicated tests. Runtime C arithmetic, EOF,
+general memory and guest-dependent control remain unsupported.
+
 ### Live outer C bytes in finite output loops (2026-11-13)
 
 An input-free counted C `for` body may output the already resident guest
