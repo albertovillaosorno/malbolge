@@ -55,6 +55,22 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C source-local loop with induction,
+  remainder-selected continue and nested guest input/output assigned
+  the successful return of putchar(getchar()) inside a comma argument.
+  Pinned Clang accepted; normalized lowering initially refused. An
+  exact original-source and Clang ancestry proof now rebinds the
+  resident guest byte, emits each inner successful output in order and
+  supports the return assignment as the last comma operand. The
+  normative VM matches independent boundary and twelve seeded streams
+  at six real reads, seven writes, fourteen steps; a two-deep variant
+  has nine writes in sixteen steps and a zero-trip emits two bytes.
+  Six unsupported C expressions, all 21 affected Clang node
+  parents/spans, missing source and SHA-adjusted operator/name
+  forgeries refuse. Guest-dependent C control, arithmetic, arbitrary
+  storage, EOF and failed output remain unimplemented; P0 stays open.
+
+
 - On 2026-11-13 a full C induction-branch/`continue` loop with a live
   source-local byte tried `putchar((current = getchar(), current, current));`.
   Clang accepted but the adapter refused a nested assignment in a comma tree.

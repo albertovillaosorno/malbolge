@@ -11,6 +11,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Comma assignments from successful output returns (2026-11-13)
+
+An original complete C branch/continue loop first refused a comma
+operand assigning the successful return of putchar(getchar()) to an
+already authenticated local. The exact pinned Clang assignment/call
+ancestry and SHA-checked original C now retain the new guest byte while
+emitting every inner putchar effect before later comma operands and the
+enclosing call. An assignment in the final comma position is also
+supported, with its closing source delimiter authenticated.
+
+The actual normative VM matches independent binary oracles over fourteen
+boundary/seeded streams at six guest reads, seven writes and fourteen
+steps. Two-deep successful returns produce nine real writes in sixteen
+steps; a zero-trip variant performs only the initial/final input and
+output effects. Unsupported arithmetic, stale operands, forged Clang
+parents/spans, absent source and SHA-adjusted expression/name changes
+refuse. EOF, failed output, runtime-dependent C control and general
+storage remain unsupported.
+
+
 ### Comma assignments retain the guest byte for later operands
 
 An authenticated `NAME = getchar()` within an ordered C comma argument can

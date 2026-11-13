@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Rebinding a comma operand from a successful output return (2026-11-13)
+
+An original complete C program with a local, counted remainder branch,
+selected continue and real input/output initially failed normalized
+lowering on a comma operand assigning the result of
+putchar(getchar()) to the live local. The source-/Clang-authenticated
+reassignment proof now retains that successful returned guest byte,
+accounts for its nested outputs in order and permits a later comma
+operand to read the rebound name. The final comma operand may itself
+be the assignment when followed by the proven closing parenthesis.
+No previously clobbered C alias is reconstructed.
+
+Actual normative guest VM execution agrees with independent binary
+oracles for two boundary and twelve seeded six-input streams: six reads,
+seven writes and fourteen steps. A nested two-output-return form produces
+six reads, nine writes and sixteen steps; a final-operand assignment
+preserves the same seven-write oracle. A zero-trip loop executes only
+two reads and two writes in five steps. Unsupported C expressions,
+forged pinned Clang parents/spans and SHA-adjusted original C operators
+or names refuse without guest publication. This remains successful
+single-byte replay, not general runtime C storage, arithmetic, EOF,
+output failure or dependent control flow.
+
+
 ### A comma assignment can feed subsequent guest effects (2026-11-13)
 
 A complete original C program declares a live input local, enters a three-trip

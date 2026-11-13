@@ -683,15 +683,42 @@ fn prove_discarded_comma_effects<'node>(
             {
                 let current_local = local?;
                 let witness = source?;
-                let read = prove_local_input_reassignment(
-                    nodes.get(cursor..cursor.checked_add(5)?)?,
-                    (body, last_end, parent),
-                    current_local,
-                    witness,
-                    b',',
-                )?;
+                // The final comma assignment is followed by the surrounding
+                // parenthesis or statement semicolon, not another comma.
+                // Authenticate the exact separator and pinned Clang tree.
+                let terminator = if index.checked_add(1)? == operand_count {
+                    match witness
+                        .get(usize::try_from(leaf.span.end.byte).ok()?)?
+                    {
+                        b')' => b')',
+                        b';' => b';',
+                        _ => return None,
+                    }
+                } else {
+                    b','
+                };
+                let (width, read, outputs) = if let Some(read) =
+                    prove_local_input_reassignment(
+                        nodes.get(cursor..cursor.checked_add(5)?)?,
+                        (body, last_end, parent),
+                        current_local,
+                        witness,
+                        terminator,
+                    ) {
+                    (5, read, Vec::new())
+                } else {
+                    // A successful output return may also rebind the same C
+                    // local before later comma operands consume that byte.
+                    prove_output_return_reassignment(
+                        nodes.get(cursor..)?,
+                        (body, last_end, parent),
+                        current_local,
+                        witness,
+                        terminator,
+                    )?
+                };
                 local_is_live = true;
-                (5, read, Vec::new(), leaf, false, true)
+                (width, read, outputs, leaf, false, true)
             } else if leaf.reference.as_deref() == Some("external:putchar") {
                 if local_is_live
                     && let Some(current_local) = local
@@ -1362,7 +1389,7 @@ fn prove_local_input_reassignment<'node>(
     source: &[u8],
     terminator: u8,
 ) -> Option<&'node Node> {
-    if !matches!(terminator, b';' | b',') {
+    if !matches!(terminator, b';' | b',' | b')') {
         return None;
     }
     let (body, previous, parent) = scope;
@@ -1441,7 +1468,7 @@ fn prove_output_return_reassignment<'node>(
     source: &[u8],
     terminator: u8,
 ) -> Option<(usize, &'node Node, Vec<&'node Node>)> {
-    if !matches!(terminator, b';' | b')') {
+    if !matches!(terminator, b';' | b')' | b',') {
         return None;
     }
     let (body, previous, parent) = scope;
