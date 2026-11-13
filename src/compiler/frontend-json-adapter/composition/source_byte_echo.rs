@@ -922,10 +922,6 @@ fn prove_local_input_reassignment<'node>(
 // guest input and leaves that exact byte in the named C destination. The
 // supported C byte domain excludes EOF and output failure: this is not a
 // general host-side evaluation of C call results.
-#[expect(
-    clippy::too_many_lines,
-    reason = "verify original source, assignment binding and all six call nodes"
-)]
 fn prove_output_return_reassignment<'node>(
     nodes: &'node [Node],
     scope: (&Node, u32, u32),
