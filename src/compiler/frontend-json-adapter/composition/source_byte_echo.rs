@@ -1535,7 +1535,10 @@ fn prove_static_for<'node>(
     let bound_start = condition_start.checked_add(3 + operator_width)?;
     let increment_start = bound.span.end.byte.checked_add(2)?;
     let compound_increment = increment.kind == "compound-assignment-expression";
-    let increment_length = if compound_increment {
+    let assigned_increment = increment.kind == "binary-expression";
+    let increment_length = if assigned_increment {
+        9
+    } else if compound_increment {
         6
     } else {
         3
@@ -1552,7 +1555,7 @@ fn prove_static_for<'node>(
         column.checked_add(13)?,
     )?;
     // Only source-shaped unit steps in the comparison's direction are
-    // admitted: ++i, i++, i += 1, --i, i--, or i -= 1.
+    // admitted: ++i, i++, i += 1, i = i + 1 and their reverse forms.
     if start <= previous
         || start <= body.span.begin.byte
         || line == 0
@@ -1648,18 +1651,24 @@ fn prove_static_for<'node>(
         || increment.id != expected_id.checked_add(8)?
         || increment.parent != loop_node.id
         || increment.kind
-            != if compound_increment {
+            != if assigned_increment {
+                "binary-expression"
+            } else if compound_increment {
                 "compound-assignment-expression"
             } else {
                 "unary-expression"
             }
         || increment.type_name.as_deref() != Some("i32")
         || increment.operation.as_deref()
-            != Some(match (ascending, compound_increment) {
-                (true, true) => "+=",
-                (true, false) => "++",
-                (false, true) => "-=",
-                (false, false) => "--",
+            != Some(if assigned_increment {
+                "="
+            } else {
+                match (ascending, compound_increment) {
+                    (true, true) => "+=",
+                    (true, false) => "++",
+                    (false, true) => "-=",
+                    (false, false) => "--",
+                }
             })
         || !metadata_empty(increment)
         || !source_word(
@@ -1694,9 +1703,71 @@ fn prove_static_for<'node>(
     {
         return None;
     }
-    // The extra Clang child of `i += 1` must be exactly a literal i32 one,
-    // with no hidden calls or an unproved value changing the increment.
-    let (rest, arm_id_offset) = if compound_increment {
+    // For `i = i + 1`, authenticate every child of the assignment and
+    // arithmetic subtree: neither an unrelated local nor a hidden effect
+    // can supply the right-hand side. Guest values remain runtime bytes.
+    let (rest, arm_id_offset) = if assigned_increment {
+        let [arithmetic, read, variable, one, tail @ ..] = rest else {
+            return None;
+        };
+        let rhs_start = increment_start.checked_add(4)?;
+        let rhs_column = bound.span.end.column.checked_add(6)?;
+        if arithmetic.id != expected_id.checked_add(10)?
+            || arithmetic.parent != increment.id
+            || arithmetic.kind != "binary-expression"
+            || arithmetic.type_name.as_deref() != Some("i32")
+            || arithmetic.operation.as_deref()
+                != Some(if ascending {
+                    "+"
+                } else {
+                    "-"
+                })
+            || arithmetic.reference.is_some()
+            || !metadata_empty(arithmetic)
+            || !source_word(
+                arithmetic,
+                rhs_start,
+                increment_end,
+                line,
+                rhs_column,
+            )
+            || read.id != expected_id.checked_add(11)?
+            || read.parent != arithmetic.id
+            || read.kind != "cast-expression"
+            || read.type_name.as_deref() != Some("i32")
+            || read.operation.as_deref() != Some("lvalue-to-rvalue")
+            || read.reference.is_some()
+            || !metadata_empty(read)
+            || !source_word(
+                read,
+                rhs_start,
+                rhs_start.checked_add(1)?,
+                line,
+                rhs_column,
+            )
+            || variable.id != expected_id.checked_add(12)?
+            || variable.parent != read.id
+            || variable.kind != "declaration-reference-expression"
+            || variable.type_name.as_deref() != Some("i32")
+            || variable.reference.as_deref()
+                != Some(variable_reference.as_str())
+            || variable.operation.is_some()
+            || !metadata_empty(variable)
+            || variable.span != read.span
+            || prove_decimal_condition_operand(
+                one,
+                expected_id.checked_add(13)?,
+                arithmetic.id,
+                increment_start.checked_add(8)?,
+                line,
+                bound.span.end.column.checked_add(10)?,
+            )? != 1
+        {
+            return None;
+        }
+        (tail, 14)
+    } else if compound_increment {
+        // The additional compound-assignment child must be exactly one.
         let (one, tail) = rest.split_first()?;
         if prove_decimal_condition_operand(
             one,

@@ -26,6 +26,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Assignment-form unit steps with live guest streams (2026-11-12)
+
+A complete four-trip source-C loop with `int current = getchar();`,
+branch-selected nested `putchar` output, `continue`, a later `break`,
+and a final live input initially failed at `for-statement` admission
+when its step was `i = i + 1`. The adapter now authenticates the entire
+pinned Clang assignment subtree, including the protected induction
+reference, `i32` read cast, direction-matched `+` / `-`, the exact literal
+one, IDs, parentage and source coordinates. Both `i = i + 1` and
+`i = i - 1` support source-time forward/reverse finite loops; actual
+guest inputs stay runtime values.
+
+Five original program variants (including inclusive bounds and zero trips)
+match two independent binary guest VM oracles each. Eight invalid source
+steps and nine independently forged AST changes refuse output publication.
+This is finite source-time induction proof, not guest-side C arithmetic,
+mutable state, dynamic loop conditions or EOF. The P0 remains pending.
+
 ### Proven zero-trip C loops with authenticated dead bodies (2026-11-12)
 
 A complete source-C byte stream begins with a false-entry counted loop

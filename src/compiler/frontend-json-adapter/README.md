@@ -10,6 +10,18 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Assignment-shaped C induction steps (2026-11-12)
+
+Both forward `i = i + 1` and reverse `i = i - 1` are now admitted as
+canonical finite `for` steps. The normalized assignment, binary arithmetic,
+`i32` read cast, protected induction reference and exact decimal unit are
+all checked with source coordinates, types and Clang ancestry. The source
+program still runs real `getchar` and `putchar` effects in the normative
+Malbolge VM; only the finite induction counter is known at compile time.
+Five loop variants match ten binary guest output oracles, while eight
+unsupported source steps and nine forged AST fields fail closed. Dynamic
+C arithmetic, mutable state and guest-dependent control remain unsupported.
+
 ### Finite descending source-time C loops (2026-11-12)
 
 Source-proven `for (int i = 4; i >= 1; i--)` now counts down under `>` or

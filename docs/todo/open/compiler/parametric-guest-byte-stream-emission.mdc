@@ -55,6 +55,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C program with a four-trip `for` loop,
+  fresh `getchar` locals, branch-selected nested `putchar`, `continue`,
+  `break` and final guest I/O first rejected canonical `i = i + 1`.
+  Exact pinned Clang proof now accepts unit assignment steps in both
+  directions (`i = i + 1` and `i = i - 1`). Five forward/reverse,
+  inclusive and zero-trip programs match ten binary guest VM oracles;
+  eight invalid source programs and nine forged AST fields reject.
+  General C arithmetic, runtime loop control, storage and EOF remain open.
+
 - On 2026-11-12 a compound whole C stream with a dead counted loop,
   nested input and output, `continue`, a second live counted loop,
   selected `break` and trailing byte I/O first refused the dead
