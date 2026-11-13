@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### A comma assignment can feed subsequent guest effects (2026-11-13)
+
+A complete original C program declares a live input local, enters a three-trip
+induction-remainder branch with `continue`, and uses a comma-valued `putchar`
+argument to assign a fresh input before reading the rebound name multiple
+times. The pinned Clang frontend accepted the original source, but normalized
+lowering refused it before guest emission. The comma-tree proof now counts only
+actual comma operators, admits a source-checked five-node assignment operand,
+and carries the assigned byte through later pure reads or nested successful
+`putchar(current)` calls. A new read without a proven assignment invalidates
+the C binding; original-C identifiers must match their Clang references.
+
+The normative guest matches two boundary and sixteen seeded binary streams at
+four real reads, five outputs and ten VM steps for repeated pure references.
+An effectful middle `putchar(current)` matches two boundary and twelve seeded
+streams at four reads, seven writes and twelve VM steps. A zero-trip variant
+leaves the original byte live. Five regression methods cover independent guest
+oracles, stale/unsupported expressions, mutated Clang ancestry, missing source,
+and SHA-adjusted original-C expression and identifier spoofs. Guest-dependent
+conditions, arithmetic, general C storage, EOF and output failure still block
+P0 completion; this is successful-byte residence only.
+
 ### Comma-output argument can rebind and reread one C local (2026-11-13)
 
 A complete C program with a live input local, three-trip induction loop,

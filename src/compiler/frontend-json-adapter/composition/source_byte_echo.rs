@@ -70,6 +70,10 @@ struct CommaEffect<'node> {
     extent: &'node Node,
     // Outer-to-inner preorder, emitted in inner-to-outer C evaluation order.
     outputs: Vec<&'node Node>,
+    // Only source-proven local reads may reuse the resident guest SSA byte.
+    reads_local: bool,
+    // A fresh input assigned inside a comma keeps this C local resident.
+    assigns_local: bool,
 }
 
 type OutputCallProof<'node> = (usize, Vec<&'node Node>);
@@ -98,17 +102,13 @@ fn emit_comma_effects(
     inputs: &mut usize,
     outputs: &mut usize,
     instructions: &mut Vec<LocatedInstruction>,
-) -> Option<(ValueId, bool)> {
+) -> Option<(ValueId, bool, bool)> {
     let mut selected = None;
+    let mut resident = local.map(|(_, value)| *value);
     let mut read_new_input = false;
     for effect in effects {
-        let value = if let Some((declaration, value)) = local
-            && effect.input.id == declaration.input.id
-        {
-            if read_new_input {
-                return None;
-            }
-            *value
+        let value = if effect.reads_local {
+            resident?
         } else {
             if *inputs == MAX_ECHO_CALLS {
                 return None;
@@ -123,6 +123,9 @@ fn emit_comma_effects(
             ));
             *inputs = inputs.checked_add(1)?;
             read_new_input = true;
+            // A fresh read clobbers the accumulator's old byte. Only an
+            // authenticated assignment makes that new byte a C local value.
+            resident = effect.assigns_local.then_some(value);
             value
         };
         *outputs = outputs.checked_add(effect.outputs.len())?;
@@ -132,7 +135,7 @@ fn emit_comma_effects(
         emit_comma_outputs(effect, value, instructions);
         selected = Some(value);
     }
-    Some((selected?, read_new_input))
+    Some((selected?, read_new_input, resident.is_some()))
 }
 
 const fn metadata_empty(node: &Node) -> bool {
@@ -338,6 +341,7 @@ fn prove_comma_output_effects<'node>(
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    source: Option<&[u8]>,
 ) -> Option<(usize, Vec<CommaEffect<'node>>, &'node Node)> {
     let [output, cast, callee, paren, comma, ..] = nodes else {
         return None;
@@ -388,9 +392,19 @@ fn prove_comma_output_effects<'node>(
         comma.id,
         paren.id,
         local,
+        source,
     )?;
     let end = last_end.checked_add(2)?;
     let width = 4usize.checked_add(comma_width)?;
+    if let Some(witness) = source {
+        let begin = usize::try_from(start).ok()?;
+        let close = usize::try_from(end).ok()?;
+        if witness.get(begin..begin.checked_add(9)?) != Some(b"putchar((")
+            || witness.get(close.checked_sub(2)?..close) != Some(b"))")
+        {
+            return None;
+        }
+    }
     if end >= body.span.end.byte
         || !source_word(output, start, end, line, column)
         || !source_word(cast, start, start.checked_add(7)?, line, column)
@@ -607,11 +621,15 @@ fn prove_discarded_comma_effects<'node>(
     expected_id: u32,
     first_parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    source: Option<&[u8]>,
 ) -> Option<(usize, Vec<CommaEffect<'node>>, u32)> {
     let binary_count = nodes
         .iter()
         .take(16)
-        .take_while(|node| node.kind == "binary-expression")
+        .take_while(|node| {
+            node.kind == "binary-expression"
+                && node.operation.as_deref() == Some(",")
+        })
         .count();
     if binary_count == 0 || binary_count >= 16 {
         return None;
@@ -649,7 +667,7 @@ fn prove_discarded_comma_effects<'node>(
     let mut effects = Vec::with_capacity(operand_count);
     let mut cursor = binary_count;
     let mut last_end = previous;
-    let mut seen_new_input = false;
+    let mut local_is_live = local.is_some();
     for index in 0..operand_count {
         let parent = if index < 2 {
             binary_nodes.last()?.id
@@ -659,9 +677,23 @@ fn prove_discarded_comma_effects<'node>(
         let expected_leaf_id =
             expected_id.checked_add(u32::try_from(cursor).ok()?)?;
         let leaf = nodes.get(cursor)?;
-        let (width, input, outputs, extent) =
-            if leaf.reference.as_deref() == Some("external:putchar") {
-                if !seen_new_input
+        let (width, input, outputs, extent, reads_local, assigns_local) =
+            if leaf.kind == "binary-expression"
+                && leaf.operation.as_deref() == Some("=")
+            {
+                let current_local = local?;
+                let witness = source?;
+                let read = prove_local_input_reassignment(
+                    nodes.get(cursor..cursor.checked_add(5)?)?,
+                    (body, last_end, parent),
+                    current_local,
+                    witness,
+                    b',',
+                )?;
+                local_is_live = true;
+                (5, read, Vec::new(), leaf, false, true)
+            } else if leaf.reference.as_deref() == Some("external:putchar") {
+                if local_is_live
                     && let Some(current_local) = local
                     && let Some((width, calls)) = prove_local_output_chain(
                         nodes.get(cursor..)?,
@@ -673,7 +705,7 @@ fn prove_discarded_comma_effects<'node>(
                     )
                 {
                     let extent = *calls.first()?;
-                    (width, current_local.input, calls, extent)
+                    (width, current_local.input, calls, extent, true, false)
                 } else {
                     let (width, input, calls) =
                         super::nested_byte_echo::nested_call_in_parent(
@@ -683,12 +715,12 @@ fn prove_discarded_comma_effects<'node>(
                             expected_leaf_id,
                             parent,
                         )?;
-                    seen_new_input = true;
+                    local_is_live = false;
                     let extent = *calls.first()?;
-                    (width, input, calls, extent)
+                    (width, input, calls, extent, false, false)
                 }
             } else if leaf.kind == "cast-expression" {
-                let current_local = local.filter(|_| !seen_new_input)?;
+                let current_local = local.filter(|_| local_is_live)?;
                 let extent = prove_comma_local_value(
                     nodes.get(cursor..cursor.checked_add(2)?)?,
                     body,
@@ -697,7 +729,7 @@ fn prove_discarded_comma_effects<'node>(
                     expected_leaf_id,
                     parent,
                 )?;
-                (2, current_local.input, Vec::new(), extent)
+                (2, current_local.input, Vec::new(), extent, true, false)
             } else {
                 let input = prove_input_call(
                     nodes.get(cursor..cursor.checked_add(3)?)?,
@@ -705,9 +737,20 @@ fn prove_discarded_comma_effects<'node>(
                     last_end,
                     (expected_leaf_id, parent),
                 )?;
-                seen_new_input = true;
-                (3, input, Vec::new(), input)
+                local_is_live = false;
+                (3, input, Vec::new(), input, false, false)
             };
+        // A valid Clang comma subtree and SHA-matching bytes alone do not
+        // prove the source operator; reject a changed `,` to `+` or `-`.
+        if index > 0
+            && let Some(witness) = source
+        {
+            let begin = usize::try_from(last_end).ok()?;
+            let end = usize::try_from(extent.span.begin.byte).ok()?;
+            if !matches!(witness.get(begin..end), Some(b",") | Some(b", ")) {
+                return None;
+            }
+        }
         if extent.id != expected_leaf_id
             || extent.span.begin.line != line
             || extent.span.end.line != line
@@ -724,7 +767,13 @@ fn prove_discarded_comma_effects<'node>(
         }
         cursor = cursor.checked_add(width)?;
         last_end = extent.span.end.byte;
-        effects.push(CommaEffect { input, extent, outputs });
+        effects.push(CommaEffect {
+            input,
+            extent,
+            outputs,
+            reads_local,
+            assigns_local,
+        });
     }
     for (index, binary) in binary_nodes.iter().enumerate() {
         let right = effects.get(binary_count.checked_sub(index)?)?;
@@ -732,6 +781,14 @@ fn prove_discarded_comma_effects<'node>(
         if !source_word(binary, start, right_span.span.end.byte, line, column) {
             return None;
         }
+    }
+    // Clang node positions and the source hash alone cannot prove that
+    // a borrowed C name still appears at its advertised byte position.
+    // Compare every admitted function/local reference with the real source.
+    if let Some(witness) = source
+        && !source_identifiers_match(nodes.get(..cursor)?, witness)
+    {
+        return None;
     }
     Some((cursor, effects, last_end))
 }
@@ -1050,6 +1107,7 @@ fn prove_comma_local_declaration<'node>(
         comma.id,
         paren.id,
         None,
+        Some(source),
     )?;
     let end = last_end.checked_add(1)?;
     if end >= body.span.end.byte
@@ -1164,6 +1222,7 @@ fn prove_comma_local_reassignment<'node>(
         comma.id,
         paren.id,
         None,
+        Some(source),
     )?;
     let end = last_end.checked_add(1)?;
     if end >= body.span.end.byte
@@ -2492,13 +2551,10 @@ fn static_comma_effects<'node>(
             .into_iter()
             .enumerate()
             .map(|(index, effect)| {
-                let input = if local.is_some_and(|declaration| {
-                    declaration.input.id == effect.input.id
-                }) {
-                    None
-                } else {
-                    Some(effect.input)
-                };
+                let input = (!effect.reads_local).then_some(effect.input);
+                let assigned_local = local
+                    .filter(|_| effect.assigns_local)
+                    .map(|declaration| declaration.variable_reference.clone());
                 let mut outputs = effect.outputs;
                 if index == last
                     && let Some(output) = outer_output
@@ -2507,7 +2563,7 @@ fn static_comma_effects<'node>(
                 }
                 StaticIfEffect {
                     input,
-                    assigned_local: None,
+                    assigned_local,
                     outputs,
                     loop_exit: None,
                 }
@@ -2753,6 +2809,7 @@ fn prove_static_if_statement<'node>(
             expected_id,
             parent,
             local,
+            source,
         )
     } else {
         None
@@ -2831,6 +2888,7 @@ fn prove_static_if_statement<'node>(
             expected_id,
             parent,
             local,
+            source,
         )?;
         return Some((
             width,
@@ -4963,6 +5021,7 @@ pub(super) fn canonical_source_byte_echo(
                 next_id,
                 body.id,
                 latest_local.as_ref().map(|(local, _value)| local),
+                source,
             )
         {
             let inner_outputs =
@@ -4977,7 +5036,7 @@ pub(super) fn canonical_source_byte_echo(
             {
                 return Err(FrontendJsonError::Unsupported);
             }
-            let (selected, read_new_input) = emit_comma_effects(
+            let (selected, read_new_input, retains_local) = emit_comma_effects(
                 &effects,
                 latest_local.as_ref(),
                 &mut inputs,
@@ -4990,7 +5049,11 @@ pub(super) fn canonical_source_byte_echo(
                 typed_span(&output.span),
             ));
             if read_new_input {
-                latest_local = None;
+                latest_local = if retains_local {
+                    latest_local.map(|(local, _)| (local, selected))
+                } else {
+                    None
+                };
                 equivalent_locals.clear();
             }
             previous = output.span.end.byte;
@@ -5026,7 +5089,7 @@ pub(super) fn canonical_source_byte_echo(
                     })
                 })
         {
-            let (value, read_new_input) = emit_comma_effects(
+            let (value, read_new_input, _retains_local) = emit_comma_effects(
                 &effects,
                 None,
                 &mut inputs,
@@ -5211,6 +5274,7 @@ pub(super) fn canonical_source_byte_echo(
                 next_id,
                 body.id,
                 latest_local.as_ref().map(|(local, _value)| local),
+                source,
             )
         {
             if inputs
@@ -5224,7 +5288,7 @@ pub(super) fn canonical_source_byte_echo(
             {
                 return Err(FrontendJsonError::Unsupported);
             }
-            let (_selected, read_new_input) = emit_comma_effects(
+            let (selected, read_new_input, retains_local) = emit_comma_effects(
                 &effects,
                 latest_local.as_ref(),
                 &mut inputs,
@@ -5234,7 +5298,11 @@ pub(super) fn canonical_source_byte_echo(
             .ok_or(FrontendJsonError::Unsupported)?;
             // Only a fresh input clobbers the live accumulator-local value.
             if read_new_input {
-                latest_local = None;
+                latest_local = if retains_local {
+                    latest_local.map(|(local, _)| (local, selected))
+                } else {
+                    None
+                };
                 equivalent_locals.clear();
             }
             previous = end;
@@ -5310,7 +5378,7 @@ pub(super) fn canonical_source_byte_echo(
             {
                 return Err(FrontendJsonError::Unsupported);
             }
-            let (value, read_new_input) = emit_comma_effects(
+            let (value, read_new_input, _retains_local) = emit_comma_effects(
                 &effects,
                 None,
                 &mut inputs,

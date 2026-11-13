@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a full C induction-branch/`continue` loop with a live
+  source-local byte tried `putchar((current = getchar(), current, current));`.
+  Clang accepted but the adapter refused a nested assignment in a comma tree.
+  A generic source/Clang proof now retains the assigned guest byte for later
+  comma operands, including `putchar(current)` as an ordered middle effect.
+  The normative VM matches independent binary oracles: four real reads,
+  five outputs and ten steps for the repeated-value form across two boundary
+  and sixteen seeded streams; four reads, seven writes and twelve steps for
+  the effectful form across two boundary and twelve seeded streams.
+  Zero-trip, unsupported/stale C expressions, forged Clang ancestry, absent
+  source and SHA-adjusted expression/identifier spoofs are tested. Dynamic
+  guest C control, arithmetic, general storage, EOF and failed output remain
+  unimplemented, so P0 stays pending.
+
 - On 2026-11-13 a complete counted C stream used
   `putchar((current = getchar(), current))` before a selected `continue`
   and a trailing real guest input. Pinned Clang accepted but the normalized

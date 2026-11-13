@@ -11,6 +11,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Comma assignments retain the guest byte for later operands
+
+An authenticated `NAME = getchar()` within an ordered C comma argument can
+rebind the single resident byte before subsequent `NAME` or
+`putchar(NAME)` operands. The source and normalized Clang proof verifies the
+five assignment nodes, comma ancestor structure, original C lexemes and each
+later referenced C name. A plain fresh input without an assignment invalidates
+the borrowed local. Inner outputs execute before the enclosing `putchar`;
+unsuccessful output returns, general mutable storage and guest-dependent
+control remain unsupported.
+
+Two complete three-trip C branch/continue programs reach actual Malbolge and
+match independent binary-input oracle streams: the repeated-local form
+consumes four inputs, emits five bytes and takes ten VM steps; the form with
+an effectful middle `putchar` emits seven bytes in twelve steps from four
+inputs. Zero-trip, source/Clang tampering and invalid operands fail closed.
+
 ### Comma output after assigning a fresh guest byte (2026-11-13)
 
 The exact source-C expression `putchar((NAME = getchar(), NAME));` now
