@@ -175,7 +175,7 @@ class SourceLocalAliasCPipelineTests(unittest.TestCase):
             ("int snapshot = getchar();", "current"),
             ("int snapshot = (unsigned char)current;", "snapshot"),
             ("int snapshot;", "snapshot"),
-            ("int snapshot = current;", "current"),
+            ("int snapshot = current;", "current + 0"),
             ("int current = current;", "current"),
             ("int snapshot = byte;", "snapshot"),
         )
