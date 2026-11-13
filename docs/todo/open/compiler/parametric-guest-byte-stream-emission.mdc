@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete four-trip C function used source-local
+  `getchar()` bytes, `if (i >= 1 && i < 3)` with nested outputs and
+  `continue`, a later induction-dependent `break`, and a final guest read.
+  Pinned Clang accepted it but normalized `for-statement` admission refused.
+  Recursive bounded source proof now selects pure `&&` / `||` induction
+  predicates while keeping input bytes live in the emitted guest. The actual
+  1,159-byte capsule reads six binary bytes, writes the independent seven-byte
+  oracle and halts in fourteen normative VM steps. Five program shapes,
+  ten binary VM comparisons, seven unsupported C and ten forged AST refusals
+  are covered. Runtime-dependent C branches, EOF and guest storage remain
+  pending; this does not retire the P0.
+
+
 - On 2026-11-12 a complete four-trip C loop with fresh `getchar` input,
   `if (i == 1)` selecting nested output and `continue`, `if (i == 3)`
   selecting `break`, and a trailing read initially rejected at normalized

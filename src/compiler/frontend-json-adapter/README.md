@@ -10,6 +10,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Compound C induction conditions with real guest byte streams
+
+The bounded counted-loop projection now proves source-ordered logical `&&`
+and `||` over canonical `i`-to-decimal comparisons, including nested trees
+and pure literal operands. Every node and both operands are authenticated
+against pinned Clang ancestry and exact same-line coordinates, even when
+short-circuiting would skip one operand. Only the induction value is known
+at compile time: `getchar()` inputs remain distinct runtime guest effects.
+
+A complete four-trip C program selects two nested outputs and `continue`
+under `i >= 1 && i < 3`, then `break` under `i == 3`, and performs a final
+read. Its emitted 1,159-byte capsule consumes six binary bytes and writes
+seven expected bytes in fourteen normative VM steps. The seeded regression
+covers conjunction, disjunction, precedence, pure operands and a shorter
+loop, plus forged normalized trees and dynamic guest predicate refusals.
+This does not add runtime C conditions, mutable guest locals or EOF handling.
+
 ### Induction-dependent branches in C loops (2026-11-12)
 
 An admitted counted `for (int i = 0; i < N; ++i)` may branch on a direct

@@ -1913,14 +1913,14 @@ fn prove_static_value(
     .then_some((width, value))
 }
 
-// This is source-time C induction, not a guest read. The Clang tree must
-// refer to the exact protected loop declaration and spell a direct comparison
-// against a checked decimal i32 literal. No mutable C state is projected.
-fn prove_induction_predicate(
+// This is source-time C induction, not a guest read. A leaf comparison
+// must prove the same loop-local declaration, canonical token geometry and
+// Clang ancestry on every unrolled trip. No C storage is projected.
+fn prove_induction_comparison(
     nodes: &[Node],
-    conditional: &Node,
+    at: StaticValueLocation,
     induction: StaticInduction<'_>,
-) -> Option<(usize, bool)> {
+) -> Option<(usize, bool, u32)> {
     let [comparison, cast, variable, bound, ..] = nodes else {
         return None;
     };
@@ -1928,14 +1928,11 @@ fn prove_induction_predicate(
     if !matches!(operator, "==" | "!=" | "<" | "<=" | ">" | ">=") {
         return None;
     }
-    let start = conditional.span.begin.byte.checked_add(4)?;
-    let line = conditional.span.begin.line;
-    let column = conditional.span.begin.column.checked_add(4)?;
     let right_offset = 3u32.checked_add(u32::try_from(operator.len()).ok()?)?;
-    let right_start = start.checked_add(right_offset)?;
-    let right_column = column.checked_add(right_offset)?;
-    if comparison.id != conditional.id.checked_add(1)?
-        || comparison.parent != conditional.id
+    let right_start = at.start.checked_add(right_offset)?;
+    let right_column = at.column.checked_add(right_offset)?;
+    if comparison.id != at.id
+        || comparison.parent != at.parent
         || comparison.kind != "binary-expression"
         || comparison.type_name.as_deref() != Some("i32")
         || comparison.reference.is_some()
@@ -1947,7 +1944,13 @@ fn prove_induction_predicate(
         || cast.operation.as_deref() != Some("lvalue-to-rvalue")
         || cast.reference.is_some()
         || !metadata_empty(cast)
-        || !source_word(cast, start, start.checked_add(1)?, line, column)
+        || !source_word(
+            cast,
+            at.start,
+            at.start.checked_add(1)?,
+            at.line,
+            at.column,
+        )
         || variable.id != cast.id.checked_add(1)?
         || variable.parent != cast.id
         || variable.kind != "declaration-reference-expression"
@@ -1964,10 +1967,16 @@ fn prove_induction_predicate(
         variable.id.checked_add(1)?,
         comparison.id,
         right_start,
-        line,
+        at.line,
         right_column,
     )?;
-    if !source_word(comparison, start, bound.span.end.byte, line, column) {
+    if !source_word(
+        comparison,
+        at.start,
+        bound.span.end.byte,
+        at.line,
+        at.column,
+    ) {
         return None;
     }
     let selected = match operator {
@@ -1979,7 +1988,87 @@ fn prove_induction_predicate(
         ">=" => induction.value >= rhs,
         _ => return None,
     };
-    Some((4, selected))
+    Some((4, selected, bound.span.end.byte))
+}
+
+// Admit only fully proven, pure logical combinations of exact induction
+// comparisons or already-proven source constants. Both sides are authenticated
+// regardless of short-circuit selection, so no effect can hide on an arm.
+fn prove_induction_value(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool, u32)> {
+    if at.depth >= MAX_STATIC_PREDICATE_DEPTH {
+        return None;
+    }
+    let node = nodes.first()?;
+    if node.kind == "binary-expression"
+        && matches!(node.operation.as_deref(), Some("&&" | "||"))
+    {
+        if node.id != at.id
+            || node.parent != at.parent
+            || node.type_name.as_deref() != Some("i32")
+            || node.reference.is_some()
+            || !metadata_empty(node)
+        {
+            return None;
+        }
+        let left_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
+        let (left_width, left, left_end) =
+            prove_induction_value(nodes.get(1..)?, left_at, induction)?;
+        let right_index = left_width.checked_add(1)?;
+        let gap = 4;
+        let right_at = at.child(
+            at.id.checked_add(u32::try_from(right_index).ok()?)?,
+            left_end.checked_add(gap)?,
+            at.column
+                .checked_add(left_end.checked_sub(at.start)?)?
+                .checked_add(gap)?,
+        )?;
+        let (right_width, right, right_end) = prove_induction_value(
+            nodes.get(right_index..)?,
+            right_at,
+            induction,
+        )?;
+        let width = right_index.checked_add(right_width)?;
+        if width > MAX_STATIC_PREDICATE_NODES
+            || !source_word(node, at.start, right_end, at.line, at.column)
+        {
+            return None;
+        }
+        let selected = if node.operation.as_deref() == Some("&&") {
+            left && right
+        } else {
+            left || right
+        };
+        return Some((width, selected, right_end));
+    }
+    if let Some((width, value)) = prove_static_value(nodes, at) {
+        return Some((width, value != 0, node.span.end.byte));
+    }
+    prove_induction_comparison(nodes, at, induction)
+}
+
+fn prove_induction_predicate(
+    nodes: &[Node],
+    conditional: &Node,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool)> {
+    let begin = &conditional.span.begin;
+    let (width, selected, _) = prove_induction_value(
+        nodes,
+        StaticValueLocation {
+            id: conditional.id.checked_add(1)?,
+            parent: conditional.id,
+            start: begin.byte.checked_add(4)?,
+            line: begin.line,
+            column: begin.column.checked_add(4)?,
+            depth: 0,
+        },
+        induction,
+    )?;
+    Some((width, selected))
 }
 
 // All static predicates are pure, bounded expression trees. Prove every

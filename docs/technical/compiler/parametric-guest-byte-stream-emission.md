@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Pure compound predicates over C induction values (2026-11-12)
+
+A complete four-trip C function with a live `getchar()` local originally
+failed normalized `for-statement` admission when `if (i >= 1 && i < 3)`
+selected two nested outputs and `continue`, followed by a separate
+`if (i == 3)` break and a trailing independent guest read. The predicate
+proof now recursively checks bounded same-line `&&` / `||` trees whose leaves
+are either canonical comparisons against the exact induction declaration or
+already-proven pure `i32` constants. Each Clang parent, node ID, type,
+reference, child span and token gap is checked; both operands are proven
+regardless of the selected short-circuit result. No guest input can be used
+to decide C control at compilation time.
+
+The original 1,159-byte capsule consumes six binary guest inputs, emits seven
+independent oracle bytes `00 ff 80 80 01 01 09`, and halts after fourteen
+normative VM steps. The regression covers two input streams for each of
+five conjunction, disjunction, nested-precedence, pure-operand and short
+loop shapes, alongside seven source refusals and ten forged-tree refusals.
+This is source-time branch replay over finite induction, not dynamic guest
+C conditions, general C storage, EOF semantics or guest-side loop execution.
+The wider P0 remains pending.
+
 ### Iteration-dependent branches in bounded source-C for loops (2026-11-12)
 
 A complete four-trip C program captures fresh input into `current`, selects
