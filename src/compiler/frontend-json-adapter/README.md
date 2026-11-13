@@ -10,6 +10,27 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### One-based and inclusive finite C byte loops (2026-11-12)
+
+A complete C byte stream with `for (int i = 1; i <= 4; i++)`, fresh
+`getchar()` locals, `i == 2 || i == 3` selecting nested output and
+`continue`, an `i == 4` break, and final live input originally refused at
+normalized `for-statement` admission. Its source proof now checks a canonical
+zero- or one-based initial `int i`, either strict `<` or inclusive `<=`,
+the comparison's exact column and byte geometry, a unit-increasing step,
+and the correct C induction value on every source-time trip. Only 1–16
+nonempty trips are admitted; guest input bytes remain runtime values.
+
+The original emits seven independently expected binary bytes from six
+actual guest reads in fourteen normative VM steps. Six loop shapes,
+including zero-based `<= 0` and one-based `<= 16`, match twelve binary
+VM oracles. Nine unsupported C sources and ten forged normalized changes
+fail without artifact publication. Equal-width `!=` is deliberately refused:
+without a source-token witness a forged `!=` cannot be distinguished from
+`<=` using normalized Clang spans alone. Runtime guest-dependent C control,
+arithmetic, EOF, and general mutable guest storage remain outside the
+bounded proof; P0 stays pending.
+
 ### Pure C induction scalar truth tests
 
 A bounded source-proven loop can select `if (i)`, `if (!i)` or `i && ...`

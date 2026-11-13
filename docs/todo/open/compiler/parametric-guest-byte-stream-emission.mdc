@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete one-based inclusive C loop with real input
+  locals, compound induction branches, selected `continue`, later `break`
+  and a final read originally refused normalized `for-statement` proof.
+  Source-authenticated zero/one starts and `<`/`<=` bounds now preserve the
+  real C induction value across 1–16 finite trips. The original compiled
+  Malbolge capsule reads six runtime bytes and emits seven oracle bytes in
+  fourteen VM steps. Six loop shapes match twelve binary guest oracles;
+  nine invalid C variants and ten forged AST changes fail closed. Equal-width
+  `!=` stays unsupported because the normalized AST does not prove its
+  lexical spelling. Runtime guest arithmetic and control remain pending.
+
+
 - On 2026-11-12 a complete four-trip byte stream combined new guest
   `getchar()` locals, `i && !(i == 3)` branches, nested outputs, selected
   `continue`, later `break` and trailing live input. Pinned Clang admitted

@@ -1478,10 +1478,13 @@ struct StaticForProof<'node> {
 
 // A closed, arithmetic-incrementing for loop with a fresh automatic `i`:
 //     for (int i = 0; i < N; ++i) {
-//     for (int i = 0; i < N; i++) {
+//     for (int i = 1; i <= N; i++) {
 //     for (int i = 0; i < N; i += 1) {
 //         <source-proven byte-effect statements>
 //     }
+// A proven one-based start or inclusive bound must still advance through
+// 1–16 trips. Equal-width `!=` is intentionally refused: without source
+// tokens its normalized operator cannot be distinguished from forged `<=`.
 // Both the induction arithmetic and all body statements are authenticated
 // against the pinned Clang preorder before any target instructions exist.
 #[expect(
@@ -1519,7 +1522,13 @@ fn prove_static_for<'node>(
     let declaration_end = start.checked_add(15)?;
     let variable_end = declaration_end.checked_sub(1)?;
     let condition_start = declaration_end.checked_add(1)?;
-    let bound_start = condition_start.checked_add(4)?;
+    let condition_operator = condition.operation.as_deref()?;
+    let operator_width = match condition_operator {
+        "<" => 1u32,
+        "<=" => 2u32,
+        _ => return None,
+    };
+    let bound_start = condition_start.checked_add(3 + operator_width)?;
     let increment_start = bound.span.end.byte.checked_add(2)?;
     let compound_increment = increment.kind == "compound-assignment-expression";
     let increment_length = if compound_increment {
@@ -1530,6 +1539,14 @@ fn prove_static_for<'node>(
     let increment_end = increment_start.checked_add(increment_length)?;
     let arm_start = increment_end.checked_add(2)?;
     let variable_reference = format!("i@{}", declaration_start.checked_add(4)?);
+    let initial_value = prove_decimal_condition_operand(
+        initial,
+        expected_id.checked_add(3)?,
+        variable.id,
+        start.checked_add(13)?,
+        line,
+        column.checked_add(13)?,
+    )?;
     // A source-proven standalone step is one of `++i`, `i++`, and
     // `i += 1`. Its precise operand span prevents aliasing a mutated counter.
     if start <= previous
@@ -1583,19 +1600,11 @@ fn prove_static_for<'node>(
             line,
             column.checked_add(5)?,
         )
-        || prove_decimal_condition_operand(
-            initial,
-            expected_id.checked_add(3)?,
-            variable.id,
-            start.checked_add(13)?,
-            line,
-            column.checked_add(13)?,
-        )? != 0
+        || !matches!(initial_value, 0 | 1)
         || condition.id != expected_id.checked_add(4)?
         || condition.parent != loop_node.id
         || condition.kind != "binary-expression"
         || condition.type_name.as_deref() != Some("i32")
-        || condition.operation.as_deref() != Some("<")
         || !metadata_empty(condition)
         || !source_word(
             condition,
@@ -1627,7 +1636,7 @@ fn prove_static_for<'node>(
         || !metadata_empty(read_variable)
         || read_variable.span != read_cast.span
         || bound.span.begin.byte != bound_start
-        || bound.span.begin.column != column.checked_add(20)?
+        || bound.span.begin.column != column.checked_add(19 + operator_width)?
         || increment.id != expected_id.checked_add(8)?
         || increment.parent != loop_node.id
         || increment.kind
@@ -1695,15 +1704,21 @@ fn prove_static_for<'node>(
     } else {
         (rest, 10)
     };
-    let iterations = usize::try_from(prove_decimal_condition_operand(
+    let bound_value = prove_decimal_condition_operand(
         bound,
         expected_id.checked_add(7)?,
         condition.id,
         bound_start,
         line,
-        column.checked_add(20)?,
-    )?)
-    .ok()?;
+        column.checked_add(19 + operator_width)?,
+    )?;
+    // For a unit-increasing counter, `<=` includes the final value;
+    // `<` stops before the bound. A nonpositive trip count
+    // is deliberately outside this finite, nonempty source grammar.
+    let trip_count = bound_value
+        .checked_sub(initial_value)?
+        .checked_add(i32::from(condition_operator == "<="))?;
+    let iterations = usize::try_from(trip_count).ok()?;
     if !(1..=16).contains(&iterations) {
         return None;
     }
@@ -1726,7 +1741,8 @@ fn prove_static_for<'node>(
             for_depth,
             Some(StaticInduction {
                 reference: &variable_reference,
-                value: i32::try_from(iteration).ok()?,
+                value: initial_value
+                    .checked_add(i32::try_from(iteration).ok()?)?,
             }),
         )?;
         if !arm.braced
