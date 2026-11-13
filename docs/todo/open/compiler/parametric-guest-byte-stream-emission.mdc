@@ -55,6 +55,22 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 an original complete three-trip C loop assigned
+  `current = putchar(putchar(getchar()));` in remainder-selected
+  `continue` arms, then read the rebound byte. Clang accepted but the
+  adapter refused the whole C source. A 1–16-call nested return proof
+  now authenticates every pinned Clang call, cast, parent, span and exact
+  SHA-checked C token, emitting one guest input and each real output
+  before rebinding only the proven local. Four guest reads, nine writes
+  and fourteen normative steps match two boundary and twelve seeded
+  independent binary oracles. A three-deep top-level assignment and
+  zero-trip variant also match. Six regression methods test six invalid
+  C programs, sixteen AST field forgeries, eight span shifts, missing
+  source evidence and a SHA-adjusted operator forgery. EOF, failed
+  output, dependent control, arbitrary storage and C arithmetic
+  remain unsupported; P0 stays pending.
+
+
 - On 2026-11-13 an original complete C three-trip remainder-branch and
   `continue` loop assigned the successful return of
   `current = putchar(getchar());` to an existing C local, then read the

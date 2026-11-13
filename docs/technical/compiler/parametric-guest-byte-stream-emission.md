@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested successful output returns rebind one C local (2026-11-13)
+
+A complete original C program uses a three-trip remainder-selected loop
+with `current = putchar(putchar(getchar()));`, followed by a read of
+`current` and `continue`. Pinned Clang accepts it, but the earlier
+normalized adapter refused the output-return assignment. The source-checked
+projector now proves each nested `putchar` call, function-pointer cast,
+reference, parent ID and byte span against the SHA-checked original C.
+The single real guest input is output innermost-first and rebound only to
+the authenticated C destination. The exact grammar supports 1–16 nested
+successful output calls, not general C call-result storage.
+
+The original entire C stream reads four binary bytes and writes nine
+independently predicted bytes in fourteen normative VM steps on two
+boundary and twelve seeded streams. A three-deep top-level assignment
+to a stale local writes five bytes from four inputs in ten steps; a
+zero-trip proof skips all loop effects. Six focused regression methods
+cover guest parity, six invalid C programs, sixteen forged Clang
+fields, eight shifted spans, missing source evidence and a SHA-adjusted
+C operator spoof. Older aliases remain stale after the fresh input.
+Failed output, EOF, dynamic C control, arithmetic and arbitrary guest
+memory remain P0 blockers.
+
+
 ### Successful output-call return assigned to a C local (2026-11-13)
 
 A complete original C program first reads a runtime byte and writes it,

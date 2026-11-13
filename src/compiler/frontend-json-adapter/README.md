@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Nested successful C output return assignments (2026-11-13)
+
+The exact source-C grammar `NAME = putchar(putchar(getchar()));`
+and deeper successful `putchar` nesting now binds the result to an
+authenticated existing C local. Each call independently proves the pinned
+Clang ID, parent, cast type, external function reference, same-line span
+and original SHA-checked source bytes. The single real guest input is
+written once per nested output call, in C evaluation order. No previous
+value of a stale destination is read; a fresh input invalidates older
+aliases. The proof is bounded to sixteen calls.
+
+A complete three-trip branch/`continue` C stream matches nine guest
+outputs from four binary inputs in fourteen normative VM steps, while
+a three-deep top-level variant and a zero-trip loop also match independent
+oracles. Malformed C, spoofed source/AST and stale alias reads refuse.
+This is successful-byte return identity only, not general guest C
+storage, arithmetic, EOF, output-failure handling or runtime control.
+
+
 ### Output-return assignment keeps the actual guest byte (2026-11-13)
 
 The exact source-C statement `NAME = putchar(getchar());` now performs a

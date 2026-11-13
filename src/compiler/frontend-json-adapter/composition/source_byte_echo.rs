@@ -918,18 +918,21 @@ fn prove_local_input_reassignment<'node>(
     Some(input)
 }
 
-// Assigning the return of a successful putchar(getchar()) writes a real
-// guest input and leaves that exact byte in the named C destination. The
-// supported C byte domain excludes EOF and output failure: this is not a
-// general host-side evaluation of C call results.
+// The return of each successful nested putchar is the same guest byte.
+// Assigning that result rebinds only the authenticated C destination.
+// Each call must have canonical Clang ancestry and original source spelling.
+#[expect(
+    clippy::too_many_lines,
+    reason = "nested output-return assignment is one closed source proof"
+)]
 fn prove_output_return_reassignment<'node>(
     nodes: &'node [Node],
     scope: (&Node, u32, u32),
     local: &LocalDeclaration<'_>,
     source: &[u8],
-) -> Option<(&'node Node, &'node Node)> {
+) -> Option<(usize, &'node Node, Vec<&'node Node>)> {
     let (body, previous, parent) = scope;
-    let [assignment, destination, output, _, _, _, _, _] = nodes else {
+    let [assignment, destination, output, ..] = nodes else {
         return None;
     };
     let start = assignment.span.begin.byte;
@@ -937,8 +940,28 @@ fn prove_output_return_reassignment<'node>(
     let column = assignment.span.begin.column;
     let name_end = start.checked_add(u32::try_from(local.name.len()).ok()?)?;
     let output_start = name_end.checked_add(3)?;
-    let end = output_start.checked_add(18)?;
-    let spelling = format!("{} = putchar(getchar());", local.name);
+    let depth = (0..MAX_NESTED_LOCAL_DEPTH)
+        .take_while(|level| {
+            nodes
+                .get(2usize.saturating_add(level.saturating_mul(3)))
+                .is_some_and(|node| {
+                    node.kind == "call-expression"
+                        && node.reference.as_deref() == Some("external:putchar")
+                })
+        })
+        .count();
+    let prefix_depth = depth.checked_sub(1)?;
+    let inner_offset = prefix_depth.checked_mul(3)?.checked_add(2)?;
+    let width = inner_offset.checked_add(6)?;
+    let end = output_start
+        .checked_add(18)?
+        .checked_add(u32::try_from(prefix_depth.checked_mul(9)?).ok()?)?;
+    let spelling = format!(
+        "{} = {}getchar(){};",
+        local.name,
+        "putchar(".repeat(depth),
+        ")".repeat(depth)
+    );
     if source.get(
         usize::try_from(start).ok()?
             ..usize::try_from(end.checked_add(1)?).ok()?,
@@ -972,12 +995,77 @@ fn prove_output_return_reassignment<'node>(
     {
         return None;
     }
-    prove_call(
-        nodes.get(2..8)?,
-        body,
-        destination.span.end.byte,
-        assignment.id,
-    )
+    let mut call_parent = assignment.id;
+    let mut calls = Vec::with_capacity(depth);
+    for level in 0..prefix_depth {
+        let offset = level.checked_mul(3)?.checked_add(2)?;
+        let [call, cast, callee] = nodes.get(offset..offset.checked_add(3)?)?
+        else {
+            return None;
+        };
+        let level_u32 = u32::try_from(level).ok()?;
+        let call_start = output_start.checked_add(level_u32.checked_mul(8)?)?;
+        let call_column = column.checked_add(call_start.checked_sub(start)?)?;
+        if call.id != assignment.id.checked_add(u32::try_from(offset).ok()?)?
+            || call.parent != call_parent
+            || call.kind != "call-expression"
+            || call.type_name.as_deref() != Some("i32")
+            || call.reference.as_deref() != Some("external:putchar")
+            || call.operation.is_some()
+            || !metadata_empty(call)
+            || !source_word(
+                call,
+                call_start,
+                end.checked_sub(level_u32)?,
+                line,
+                call_column,
+            )
+            || cast.id != call.id.checked_add(1)?
+            || cast.parent != call.id
+            || cast.kind != "cast-expression"
+            || cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+            || cast.operation.as_deref() != Some("function-to-pointer")
+            || cast.reference.is_some()
+            || !metadata_empty(cast)
+            || !source_word(
+                cast,
+                call_start,
+                call_start.checked_add(7)?,
+                line,
+                call_column,
+            )
+            || callee.id != cast.id.checked_add(1)?
+            || callee.parent != cast.id
+            || callee.kind != "declaration-reference-expression"
+            || callee.type_name.as_deref() != Some("fn(i32)->i32")
+            || callee.reference.as_deref() != Some("external:putchar")
+            || callee.operation.is_some()
+            || !metadata_empty(callee)
+            || !source_word(
+                callee,
+                call_start,
+                call_start.checked_add(7)?,
+                line,
+                call_column,
+            )
+        {
+            return None;
+        }
+        calls.push(call);
+        call_parent = call.id;
+    }
+    let inner = nodes.get(inner_offset..width)?;
+    if inner.first()?.id
+        != assignment
+            .id
+            .checked_add(u32::try_from(inner_offset).ok()?)?
+    {
+        return None;
+    }
+    let (read, innermost) =
+        prove_call(inner, body, destination.span.end.byte, call_parent)?;
+    calls.push(innermost);
+    Some((width, read, calls))
 }
 
 // `putchar(name = getchar());` returns and writes the fresh guest byte,
@@ -2028,20 +2116,19 @@ fn prove_static_if_statement<'node>(
         && child.operation.as_deref() == Some("=")
         && let Some(bound) = local
         && let Some(witness) = source
-        && let Some(candidate) = nodes.get(..8)
-        && let Some((read, output)) = prove_output_return_reassignment(
-            candidate,
+        && let Some((width, read, outputs)) = prove_output_return_reassignment(
+            nodes,
             (body, previous, parent),
             bound,
             witness,
         )
     {
         return (child.id == expected_id).then_some((
-            8,
+            width,
             vec![StaticIfEffect {
                 input: Some(read),
                 assigned_local: Some(bound.variable_reference.clone()),
-                outputs: vec![output],
+                outputs,
                 loop_exit: None,
             }],
             child.span.end.byte,
@@ -4180,22 +4267,26 @@ pub(super) fn canonical_source_byte_echo(
         }
         if first.kind == "binary-expression"
             && first.operation.as_deref() == Some("=")
-            && let Some((destination, read, output)) =
+            && let Some((destination, width, read, calls)) =
                 source.and_then(|witness| {
-                    let nodes =
-                        rest.get(consumed..consumed.saturating_add(8))?;
+                    let nodes = rest.get(consumed..)?;
                     declared_locals.iter().find_map(|candidate| {
-                        prove_output_return_reassignment(
-                            nodes,
-                            (body, previous, body.id),
-                            candidate,
-                            witness,
-                        )
-                        .map(|(read, output)| (candidate.clone(), read, output))
+                        let (width, read, calls) =
+                            prove_output_return_reassignment(
+                                nodes,
+                                (body, previous, body.id),
+                                candidate,
+                                witness,
+                            )?;
+                        Some((candidate.clone(), width, read, calls))
                     })
                 })
         {
-            if inputs == MAX_ECHO_CALLS || outputs == MAX_SOURCE_OUTPUTS {
+            if inputs == MAX_ECHO_CALLS
+                || outputs
+                    .checked_add(calls.len())
+                    .is_none_or(|count| count > MAX_SOURCE_OUTPUTS)
+            {
                 return Err(FrontendJsonError::Unsupported);
             }
             let value = ValueId::new(
@@ -4209,24 +4300,29 @@ pub(super) fn canonical_source_byte_echo(
                 },
                 typed_span(&read.span),
             ));
-            instructions.push(LocatedInstruction::new(
-                Instruction::ByteOutput { value },
-                typed_span(&output.span),
-            ));
+            for call in calls.iter().rev() {
+                instructions.push(LocatedInstruction::new(
+                    Instruction::ByteOutput { value },
+                    typed_span(&call.span),
+                ));
+            }
             latest_local = Some((destination, value));
             equivalent_locals.clear();
             inputs = inputs
                 .checked_add(1)
                 .ok_or(FrontendJsonError::Unsupported)?;
             outputs = outputs
-                .checked_add(1)
+                .checked_add(calls.len())
                 .ok_or(FrontendJsonError::Unsupported)?;
             previous = first.span.end.byte;
             consumed = consumed
-                .checked_add(8)
+                .checked_add(width)
                 .ok_or(FrontendJsonError::Unsupported)?;
             next_id = next_id
-                .checked_add(8)
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
                 .ok_or(FrontendJsonError::Unsupported)?;
             requires_latest = true;
             continue;

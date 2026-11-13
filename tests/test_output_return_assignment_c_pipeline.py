@@ -161,7 +161,7 @@ class OutputReturnAssignmentCPipelineTests(unittest.TestCase):
     def test_unsupported_C_output_return_expressions_refuse(self) -> None:
         variants = (
             "current = putchar(getchar() + 1);",
-            "current = putchar(putchar(getchar()));",
+            "current = putchar(putchar(getchar() + 1));",
             "current += putchar(getchar());",
             "current = getchar() + putchar(getchar());",
             "current = putchar(current);",
