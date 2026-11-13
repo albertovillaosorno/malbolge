@@ -2026,13 +2026,13 @@ fn prove_static_if_statement<'node>(
     }
     if child.kind == "binary-expression"
         && child.operation.as_deref() == Some("=")
-        && let Some(local) = local
+        && let Some(bound) = local
         && let Some(witness) = source
         && let Some(candidate) = nodes.get(..8)
         && let Some((read, output)) = prove_output_return_reassignment(
             candidate,
             (body, previous, parent),
-            local,
+            bound,
             witness,
         )
     {
@@ -2040,7 +2040,7 @@ fn prove_static_if_statement<'node>(
             8,
             vec![StaticIfEffect {
                 input: Some(read),
-                assigned_local: Some(local.variable_reference.clone()),
+                assigned_local: Some(bound.variable_reference.clone()),
                 outputs: vec![output],
                 loop_exit: None,
             }],
@@ -4200,7 +4200,7 @@ pub(super) fn canonical_source_byte_echo(
             }
             let value = ValueId::new(
                 u32::try_from(inputs)
-                    .map_err(|_| FrontendJsonError::Unsupported)?,
+                    .map_err(|_error| FrontendJsonError::Unsupported)?,
             );
             instructions.push(LocatedInstruction::new(
                 Instruction::ByteInput {
@@ -4215,10 +4215,16 @@ pub(super) fn canonical_source_byte_echo(
             ));
             latest_local = Some((destination, value));
             equivalent_locals.clear();
-            inputs += 1;
-            outputs += 1;
+            inputs = inputs
+                .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            outputs = outputs
+                .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
             previous = first.span.end.byte;
-            consumed += 8;
+            consumed = consumed
+                .checked_add(8)
+                .ok_or(FrontendJsonError::Unsupported)?;
             next_id = next_id
                 .checked_add(8)
                 .ok_or(FrontendJsonError::Unsupported)?;
