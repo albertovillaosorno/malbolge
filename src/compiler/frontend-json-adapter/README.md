@@ -11,6 +11,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Comma output after assigning a fresh guest byte (2026-11-13)
+
+The exact source-C expression `putchar((NAME = getchar(), NAME));` now
+rebinds a previously authenticated local before the comma's final value
+is read. A twelve-node pinned Clang proof checks the output call, comma,
+five-node input assignment, final bound local and SHA-checked C spelling.
+It emits exactly one guest input and output. A statically selected branch
+or counted C loop may preserve the new identity for later output; a skipped
+arm cannot produce a guest effect or overwrite its local. A stale local
+may be explicitly rebound, but its former alias remains invalid.
+
+The full three-trip branch/continue stream matches eighteen independent
+binary guest-input oracles at five reads, eight writes and fourteen steps.
+Unsupported C operators and forged AST/source evidence fail closed. No
+general mutable C storage, EOF, failed output or dynamic C control is
+claimed.
+
 ### Rebinding an outer C byte inside a counted loop (2026-11-13)
 
 A canonical finite loop may reassign its authenticated enclosing C local

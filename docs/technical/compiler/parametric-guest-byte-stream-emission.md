@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Comma-output argument can rebind and reread one C local (2026-11-13)
+
+A complete C program with a live input local, three-trip induction loop,
+remainder-selected `continue`, and final guest input tried
+`putchar((current = getchar(), current));`. Pinned Clang accepted the entire
+program, but the normalized JSON-to-typed stage initially refused it.
+The source-authenticated proof now reuses the existing five-node C input
+assignment proof inside the exact twelve-node comma/output ancestry. It
+verifies C token spelling and Clang spans, then reads one actual guest byte,
+rebinds only the assigned local, and outputs the freshly assigned value.
+
+The normative guest VM matches two boundary and sixteen seeded independent
+binary oracles with five reads, eight writes and fourteen steps. Selected
+and skipped branches preserve the right C byte, while a zero-trip loop
+skips all effects. A stale top-level local may be rebound after an unrelated
+read; old aliases remain inaccessible. Unsupported expressions, forged
+Clang ancestry, absent original source and SHA-adjusted source changes
+refuse. This is bounded successful-byte identity, not general C memory,
+EOF, I/O failure, arithmetic or runtime-dependent branch execution.
+
 ### Loop-local effects rebind an outer C local (2026-11-13)
 
 A complete original C source declares a live local, then reassigns it in

@@ -22,6 +22,12 @@
 //   - Source control-flow lowering proves the same call composition.
 // - Summary:
 //   - Retains live successful guest input instead of host-time projection.
+// - Description:
+//   - Authenticates pinned Clang and C byte-input/output expressions.
+// - Usage:
+//   - Invoked by the normalized JSON-to-typed projection gate.
+// - Defaults:
+//   - Rejects unrecognized source effects and stale C byte values.
 
 //! Closed dynamic-byte input provenance from normalized source C to typed IR.
 
@@ -401,6 +407,149 @@ fn prove_comma_output_effects<'node>(
         return None;
     }
     Some((width, effects, output))
+}
+
+// C evaluates the left operand of this comma before reading the right.
+// A successful `NAME = getchar()` rebinds the same source local that the
+// outer putchar then reads. The target can replay this with one guest input
+// and one output without ever recovering the overwritten prior byte.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the full comma assignment and output ancestry is one source proof"
+)]
+fn prove_comma_assigned_output<'node>(
+    nodes: &'node [Node],
+    scope: (&Node, u32, u32),
+    local: &LocalDeclaration<'_>,
+    source: &[u8],
+) -> Option<(&'node Node, &'node Node)> {
+    let (body, previous, parent) = scope;
+    let [
+        output,
+        output_cast,
+        output_callee,
+        paren,
+        comma,
+        assignment,
+        _,
+        _,
+        _,
+        input_callee,
+        local_cast,
+        _,
+        ..,
+    ] = nodes
+    else {
+        return None;
+    };
+    let start = output.span.begin.byte;
+    let line = output.span.begin.line;
+    let column = output.span.begin.column;
+    let name_width = u32::try_from(local.name.len()).ok()?;
+    let assign_start = start.checked_add(9)?;
+    let assign_end = assign_start.checked_add(name_width)?.checked_add(12)?;
+    let read_start = assign_end.checked_add(2)?;
+    let read_end = read_start.checked_add(name_width)?;
+    let end = read_end.checked_add(2)?;
+    let spelling =
+        format!("putchar(({} = getchar(), {}));", local.name, local.name);
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+        || start <= previous
+        || start <= local.declaration_end
+        || end >= body.span.end.byte
+        || line <= local.line
+        || column == 0
+        || output.parent != parent
+        || output.kind != "call-expression"
+        || output.type_name.as_deref() != Some("i32")
+        || output.reference.as_deref() != Some("external:putchar")
+        || output.operation.is_some()
+        || !metadata_empty(output)
+        || !source_word(output, start, end, line, column)
+        || output_cast.id != output.id.checked_add(1)?
+        || output_cast.parent != output.id
+        || output_cast.kind != "cast-expression"
+        || output_cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+        || output_cast.operation.as_deref() != Some("function-to-pointer")
+        || output_cast.reference.is_some()
+        || !metadata_empty(output_cast)
+        || !source_word(output_cast, start, start.checked_add(7)?, line, column)
+        || output_callee.id != output_cast.id.checked_add(1)?
+        || output_callee.parent != output_cast.id
+        || output_callee.kind != "declaration-reference-expression"
+        || output_callee.type_name.as_deref() != Some("fn(i32)->i32")
+        || output_callee.reference.as_deref() != Some("external:putchar")
+        || output_callee.operation.is_some()
+        || !metadata_empty(output_callee)
+        || !source_word(
+            output_callee,
+            start,
+            start.checked_add(7)?,
+            line,
+            column,
+        )
+        || paren.id != output_callee.id.checked_add(1)?
+        || paren.parent != output.id
+        || paren.kind != "parenthesized-expression"
+        || paren.type_name.as_deref() != Some("i32")
+        || paren.reference.is_some()
+        || paren.operation.is_some()
+        || !metadata_empty(paren)
+        || !source_word(
+            paren,
+            start.checked_add(8)?,
+            end.checked_sub(1)?,
+            line,
+            column.checked_add(8)?,
+        )
+        || comma.id != paren.id.checked_add(1)?
+        || comma.parent != paren.id
+        || comma.kind != "binary-expression"
+        || comma.type_name.as_deref() != Some("i32")
+        || comma.operation.as_deref() != Some(",")
+        || comma.reference.is_some()
+        || !metadata_empty(comma)
+        || !source_word(
+            comma,
+            assign_start,
+            read_end,
+            line,
+            column.checked_add(9)?,
+        )
+        || assignment.id != comma.id.checked_add(1)?
+        || input_callee.id != assignment.id.checked_add(4)?
+        || local_cast.id != input_callee.id.checked_add(1)?
+    {
+        return None;
+    }
+    let read = prove_local_input_reassignment(
+        nodes.get(5..10)?,
+        (body, previous, comma.id),
+        local,
+        source,
+        b',',
+    )?;
+    if assignment.span.begin.byte != assign_start
+        || assignment.span.end.byte != assign_end
+        || prove_comma_local_value(
+            nodes.get(10..12)?,
+            body,
+            local,
+            assign_end,
+            local_cast.id,
+            comma.id,
+        )?
+        .span
+        .end
+        .byte
+            != read_end
+    {
+        return None;
+    }
+    Some((read, output))
 }
 
 // Pure local operands have no new guest input or output effect. Both Clang
@@ -1152,7 +1301,11 @@ fn prove_local_input_reassignment<'node>(
     scope: (&Node, u32, u32),
     local: &LocalDeclaration<'_>,
     source: &[u8],
+    terminator: u8,
 ) -> Option<&'node Node> {
+    if !matches!(terminator, b';' | b',') {
+        return None;
+    }
     let (body, previous, parent) = scope;
     let [assignment, destination, input, _, _] = nodes else {
         return None;
@@ -1164,7 +1317,8 @@ fn prove_local_input_reassignment<'node>(
         .checked_add(u32::try_from(local.name.len()).ok()?)?
         .checked_add(3)?;
     let end = input_start.checked_add(9)?;
-    let spelling = format!("{} = getchar();", local.name);
+    let spelling =
+        format!("{} = getchar(){}", local.name, char::from(terminator));
     if source.get(
         usize::try_from(start).ok()?
             ..usize::try_from(end.checked_add(1)?).ok()?,
@@ -2565,6 +2719,28 @@ fn prove_static_if_statement<'node>(
             end,
         ));
     }
+    if child.kind == "call-expression"
+        && child.reference.as_deref() == Some("external:putchar")
+        && let Some(bound) = local
+        && let Some(witness) = source
+        && let Some((read, output)) = prove_comma_assigned_output(
+            nodes,
+            (body, previous, parent),
+            bound,
+            witness,
+        )
+    {
+        return (child.id == expected_id).then_some((
+            12,
+            vec![StaticIfEffect {
+                input: Some(read),
+                assigned_local: Some(bound.variable_reference.clone()),
+                outputs: vec![output],
+                loop_exit: None,
+            }],
+            output.span.end.byte,
+        ));
+    }
     // Authenticate a complete comma argument in the same branch parent as
     // ordinary calls; materialize each operand in C evaluation order.
     let comma_proof = if child.kind == "call-expression"
@@ -2634,6 +2810,7 @@ fn prove_static_if_statement<'node>(
             (body, previous, parent),
             local?,
             source?,
+            b';',
         )?;
         return (child.id == expected_id).then_some((
             5,
@@ -4684,6 +4861,51 @@ pub(super) fn canonical_source_byte_echo(
             continue;
         }
         if first.kind == "call-expression"
+            && first.reference.as_deref() == Some("external:putchar")
+            && let Some((destination, read, output)) =
+                source.and_then(|witness| {
+                    declared_locals.iter().find_map(|candidate| {
+                        let (read, output) = prove_comma_assigned_output(
+                            rest.get(consumed..)?,
+                            (body, previous, body.id),
+                            candidate,
+                            witness,
+                        )?;
+                        Some((candidate.clone(), read, output))
+                    })
+                })
+        {
+            if inputs == MAX_ECHO_CALLS || outputs == MAX_SOURCE_OUTPUTS {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            let value = ValueId::new(
+                u32::try_from(inputs)
+                    .map_err(|_| FrontendJsonError::Unsupported)?,
+            );
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: value,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&read.span),
+            ));
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteOutput { value },
+                typed_span(&output.span),
+            ));
+            latest_local = Some((destination, value));
+            equivalent_locals.clear();
+            inputs += 1;
+            outputs += 1;
+            previous = output.span.end.byte;
+            consumed += 12;
+            next_id = next_id
+                .checked_add(12)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
+        if first.kind == "call-expression"
             && let Some((local, value)) = latest_local.as_ref()
             && let Some((width, calls)) = std::iter::once(local)
                 .chain(equivalent_locals.iter())
@@ -4947,6 +5169,7 @@ pub(super) fn canonical_source_byte_echo(
                         (body, previous, body.id),
                         candidate,
                         witness,
+                        b';',
                     )
                     .map(|read| (candidate.clone(), read))
                 })

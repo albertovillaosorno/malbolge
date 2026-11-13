@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete counted C stream used
+  `putchar((current = getchar(), current))` before a selected `continue`
+  and a trailing real guest input. Pinned Clang accepted but the normalized
+  adapter refused the comma argument. The source-proven twelve-node proof
+  now authenticates its nested assignment, reads the rebound local and
+  emits one actual guest input/output. Normative VM parity holds for two
+  boundary and sixteen seeded independent streams: five reads, eight
+  outputs and fourteen steps. Selected/skipped branches, zero-trip loops,
+  stale top-level rebinding and stale-alias refusals are tested. Unsupported
+  expressions, forged Clang parentage and SHA-adjusted original C refuse.
+  This is successful-byte replay, not guest runtime control, C arithmetic,
+  arbitrary storage, EOF or output failure; P0 remains pending.
+
 - On 2026-11-13, the pinned frontend accepted a complete two-trip
   counted/continue C stream assigning
   `current = (putchar(getchar()), getchar());` to a live outer local,
