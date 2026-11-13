@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Output returns on both sides of a local assignment (2026-11-13)
+
+The original complete C source with
+`putchar(putchar(current = putchar(getchar())));` in selected arms of
+a three-trip remainder-branch/`continue` loop initially failed at
+normalized JSON lowering. The repaired proof authenticates all pinned
+Clang call, cast, reference, parent and same-line spans for both
+output-call chains, plus the exact SHA-checked source spelling and
+existing local destination. The single guest input is written once
+per actual successful `putchar` in innermost-to-outermost C order;
+only the authenticated local can read the returned byte afterward.
+Between two and sixteen output calls can straddle the assignment.
+
+The actual normative Malbolge VM emits eleven oracle bytes for four
+binary inputs in sixteen steps on zero/255 boundaries and sixteen
+seeded streams. A top-level mix of one- and two-call chains on each
+side emits nine bytes from four inputs in fourteen steps, and the
+zero-trip loop skips the nested effects. Six tests cover whole-C
+guest parity, source/AST refusal, stale aliases and zero trips;
+sixteen altered Clang fields, ten shifted spans and a SHA-adjusted
+operator spoof are rejected without publication. This is successful
+byte identity, not EOF, failed `putchar`, general C storage,
+arithmetic or runtime-dependent control. P0 remains pending.
+
 ### Nested successful output returns rebind one C local (2026-11-13)
 
 A complete original C program uses a three-trip remainder-selected loop

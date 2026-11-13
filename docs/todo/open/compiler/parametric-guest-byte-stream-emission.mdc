@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C three-trip remainder-branch and
+  `continue` loop used
+  `putchar(putchar(current = putchar(getchar())));` then read the
+  rebound local. Pinned Clang accepted, but the JSON adapter refused
+  the enclosing output calls around the assigned output return.
+  A new SHA-checked C and Clang ancestry proof admits two to sixteen
+  total successful output calls on both sides of a verified local
+  assignment. Actual VM parity gives eleven writes from four binary
+  reads in sixteen steps on boundary and sixteen seeded streams.
+  Top-level mixed nesting and a zero-trip variant also match.
+  Six methods cover source and AST forgery, stale aliases, invalid
+  expressions and skipped effects. EOF, failed output, dynamic C
+  control, arithmetic and guest storage remain P0 gaps.
+
 - On 2026-11-13 an original complete three-trip C loop assigned
   `current = putchar(putchar(getchar()));` in remainder-selected
   `continue` arms, then read the rebound byte. Clang accepted but the

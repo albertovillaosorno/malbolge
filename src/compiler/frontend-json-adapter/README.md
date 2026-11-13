@@ -11,6 +11,24 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Both sides of a successful output-return assignment (2026-11-13)
+
+The bounded source-C expression
+`putchar(putchar(NAME = putchar(getchar())));` now authenticates both
+the outer and inner output-call chains around an existing `int` local.
+The original SHA-checked C spelling, pinned Clang preorder, call/cast
+ancestry, function references, destination identity and exact spans all
+must agree. Between two and sixteen total calls are admitted across
+the two sides. One actual guest input supplies all nested writes in
+inner-to-outer evaluation order and rebinds only the proven C local.
+
+The full three-trip remainder-selected `continue` loop matches eleven
+oracle output bytes from four runtime input bytes in sixteen normative
+VM steps, including zero and 255. A top-level mixed-depth variant and
+zero-trip loop also match; invalid expressions, forged ASTs/spans,
+missing/modified source and stale aliases refuse. Failed output, EOF,
+runtime-dependent control, arithmetic and arbitrary storage remain open.
+
 ### Nested successful C output return assignments (2026-11-13)
 
 The exact source-C grammar `NAME = putchar(putchar(getchar()));`

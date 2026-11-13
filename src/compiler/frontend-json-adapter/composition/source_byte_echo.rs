@@ -930,7 +930,11 @@ fn prove_output_return_reassignment<'node>(
     scope: (&Node, u32, u32),
     local: &LocalDeclaration<'_>,
     source: &[u8],
+    terminator: u8,
 ) -> Option<(usize, &'node Node, Vec<&'node Node>)> {
+    if !matches!(terminator, b';' | b')') {
+        return None;
+    }
     let (body, previous, parent) = scope;
     let [assignment, destination, output, ..] = nodes else {
         return None;
@@ -957,10 +961,11 @@ fn prove_output_return_reassignment<'node>(
         .checked_add(18)?
         .checked_add(u32::try_from(prefix_depth.checked_mul(9)?).ok()?)?;
     let spelling = format!(
-        "{} = {}getchar(){};",
+        "{} = {}getchar(){}{}",
         local.name,
         "putchar(".repeat(depth),
-        ")".repeat(depth)
+        ")".repeat(depth),
+        char::from(terminator)
     );
     if source.get(
         usize::try_from(start).ok()?
@@ -1066,6 +1071,149 @@ fn prove_output_return_reassignment<'node>(
         prove_call(inner, body, destination.span.end.byte, call_parent)?;
     calls.push(innermost);
     Some((width, read, calls))
+}
+
+// Output calls may surround an assignment whose value is itself a
+// successful inner output return. Authenticate both call chains, the Clang
+// ancestry and the original C spelling before binding the guest byte.
+#[expect(
+    clippy::too_many_lines,
+    reason = "both output-call ancestries are one closed source proof"
+)]
+fn prove_wrapped_output_return_reassignment<'node>(
+    nodes: &'node [Node],
+    scope: (&Node, u32, u32),
+    local: &LocalDeclaration<'_>,
+    source: &[u8],
+) -> Option<(usize, &'node Node, Vec<&'node Node>)> {
+    let (body, previous, first_parent) = scope;
+    let outer = nodes.first()?;
+    let start = outer.span.begin.byte;
+    let line = outer.span.begin.line;
+    let column = outer.span.begin.column;
+    let depth = (0..MAX_NESTED_LOCAL_DEPTH)
+        .take_while(|level| {
+            nodes.get(level.saturating_mul(3)).is_some_and(|node| {
+                node.kind == "call-expression"
+                    && node.reference.as_deref() == Some("external:putchar")
+            })
+        })
+        .count();
+    if depth == 0
+        || start <= previous
+        || start <= local.declaration_end
+        || line <= local.line
+        || column == 0
+    {
+        return None;
+    }
+    let offset = depth.checked_mul(3)?;
+    let mut parent = first_parent;
+    let mut outer_calls = Vec::with_capacity(depth);
+    for level in 0..depth {
+        let index = level.checked_mul(3)?;
+        let [call, cast, reference] =
+            nodes.get(index..index.checked_add(3)?)?
+        else {
+            return None;
+        };
+        let level_u32 = u32::try_from(level).ok()?;
+        let call_start = start.checked_add(level_u32.checked_mul(8)?)?;
+        let call_column = column.checked_add(level_u32.checked_mul(8)?)?;
+        if call.id != outer.id.checked_add(u32::try_from(index).ok()?)?
+            || call.parent != parent
+            || call.kind != "call-expression"
+            || call.type_name.as_deref() != Some("i32")
+            || call.reference.as_deref() != Some("external:putchar")
+            || call.operation.is_some()
+            || !metadata_empty(call)
+            || cast.id != call.id.checked_add(1)?
+            || cast.parent != call.id
+            || cast.kind != "cast-expression"
+            || cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+            || cast.operation.as_deref() != Some("function-to-pointer")
+            || cast.reference.is_some()
+            || !metadata_empty(cast)
+            || !source_word(
+                cast,
+                call_start,
+                call_start.checked_add(7)?,
+                line,
+                call_column,
+            )
+            || reference.id != cast.id.checked_add(1)?
+            || reference.parent != cast.id
+            || reference.kind != "declaration-reference-expression"
+            || reference.type_name.as_deref() != Some("fn(i32)->i32")
+            || reference.reference.as_deref() != Some("external:putchar")
+            || reference.operation.is_some()
+            || !metadata_empty(reference)
+            || !source_word(
+                reference,
+                call_start,
+                call_start.checked_add(7)?,
+                line,
+                call_column,
+            )
+        {
+            return None;
+        }
+        outer_calls.push(call);
+        parent = call.id;
+    }
+    let inner = nodes.get(offset..)?;
+    let (inner_width, read, mut inner_calls) =
+        prove_output_return_reassignment(
+            inner,
+            (body, previous, parent),
+            local,
+            source,
+            b')',
+        )?;
+    if inner_calls.len().checked_add(depth)? > MAX_NESTED_LOCAL_DEPTH {
+        return None;
+    }
+    let assignment = inner.first()?;
+    if assignment.id != outer.id.checked_add(u32::try_from(offset).ok()?)? {
+        return None;
+    }
+    let end = assignment
+        .span
+        .end
+        .byte
+        .checked_add(u32::try_from(depth).ok()?)?;
+    if end >= body.span.end.byte {
+        return None;
+    }
+    for (level, call) in outer_calls.iter().enumerate() {
+        let level_u32 = u32::try_from(level).ok()?;
+        if !source_word(
+            call,
+            start.checked_add(level_u32.checked_mul(8)?)?,
+            end.checked_sub(level_u32)?,
+            line,
+            column.checked_add(level_u32.checked_mul(8)?)?,
+        ) {
+            return None;
+        }
+    }
+    let spelling = format!(
+        "{}{} = {}getchar(){}{};",
+        "putchar(".repeat(depth),
+        local.name,
+        "putchar(".repeat(inner_calls.len()),
+        ")".repeat(inner_calls.len()),
+        ")".repeat(depth),
+    );
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+    {
+        return None;
+    }
+    outer_calls.append(&mut inner_calls);
+    Some((offset.checked_add(inner_width)?, read, outer_calls))
 }
 
 // `putchar(name = getchar());` returns and writes the fresh guest byte,
@@ -2073,12 +2221,20 @@ fn prove_static_if_statement<'node>(
         && let Some(local) = local
         && let Some(witness) = source
         && let Some((width, read, outputs)) =
-            prove_nested_output_input_assignment(
+            prove_wrapped_output_return_reassignment(
                 nodes,
                 (body, previous, parent),
                 local,
                 witness,
             )
+            .or_else(|| {
+                prove_nested_output_input_assignment(
+                    nodes,
+                    (body, previous, parent),
+                    local,
+                    witness,
+                )
+            })
     {
         let end = outputs.first()?.span.end.byte;
         return (child.id == expected_id).then_some((
@@ -2121,6 +2277,7 @@ fn prove_static_if_statement<'node>(
             (body, previous, parent),
             bound,
             witness,
+            b';',
         )
     {
         return (child.id == expected_id).then_some((
@@ -4097,12 +4254,20 @@ pub(super) fn canonical_source_byte_echo(
                 source.and_then(|witness| {
                     let nodes = rest.get(consumed..)?;
                     declared_locals.iter().find_map(|candidate| {
-                        let proof = prove_nested_output_input_assignment(
+                        let proof = prove_wrapped_output_return_reassignment(
                             nodes,
                             (body, previous, body.id),
                             candidate,
                             witness,
                         )
+                        .or_else(|| {
+                            prove_nested_output_input_assignment(
+                                nodes,
+                                (body, previous, body.id),
+                                candidate,
+                                witness,
+                            )
+                        })
                         .or_else(|| {
                             prove_output_input_assignment(
                                 nodes.get(..8)?,
@@ -4277,6 +4442,7 @@ pub(super) fn canonical_source_byte_echo(
                                 (body, previous, body.id),
                                 candidate,
                                 witness,
+                                b';',
                             )?;
                         Some((candidate.clone(), width, read, calls))
                     })
