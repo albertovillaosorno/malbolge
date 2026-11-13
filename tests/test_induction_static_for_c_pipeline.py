@@ -238,6 +238,200 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
                 self.assertEqual(vm.stdout, data)
                 self.assertEqual(vm.stderr, b"malbolge-steps-v1:19\n")
 
+    def test_postfix_induction_preserves_branch_exits_and_live_stdin(self) -> None:
+        rng = random.Random(0x50F17)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for bound in (1, 2, 4, 5):
+                with self.subTest(bound=bound):
+                    source = exit_program(bound).replace(
+                        "++i)", "i++)"
+                    ).replace("i == 1", "i && !(i == 3)")
+                    path = root / f"postfix-{bound}.c"
+                    target = root / f"postfix-{bound}.malbolge"
+                    path.write_text(source, encoding="utf-8")
+                    result = self.compile(path, target)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    for data in (
+                        bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
+                        bytes(rng.randrange(256) for _ in range(10)),
+                    ):
+                        output = bytearray()
+                        cursor = 0
+                        for i in range(bound):
+                            current = data[cursor]
+                            cursor += 1
+                            if i != 0 and i != 3:
+                                output.extend((current, current))
+                                continue
+                            if i == 3:
+                                break
+                            output.append(current)
+                            output.append(data[cursor])
+                            cursor += 1
+                        output.append(data[cursor])
+                        cursor += 1
+                        vm = self.vm(target, data)
+                        self.assertEqual(vm.returncode, 0, vm.stderr)
+                        self.assertEqual(vm.stdout, bytes(output))
+                        self.assertEqual(
+                            vm.stderr,
+                            f"malbolge-steps-v1:{cursor + len(output) + 1}\n".encode(),
+                        )
+
+    def test_postfix_increment_forged_geometry_refuses(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            path = root / "postfix.c"
+            path.write_text(exit_program().replace("++i)", "i++)"),
+                            encoding="utf-8")
+            normalized = self.normalized(path)
+            nodes = normalized["nodes"]
+            loop = next(n for n in nodes if n["kind"] == "for-statement")
+            increment = next(
+                n for n in nodes if n["parent"] == loop["id"]
+                and n["kind"] == "unary-expression"
+            )
+            variable = next(n for n in nodes if n["parent"] == increment["id"])
+            mutations = (
+                (increment["id"], "operation", "--"),
+                (increment["id"], "parent", 2),
+                (increment["id"], "type", "u32"),
+                (increment["id"], "constant_integer", "1"),
+                (increment["id"], "span.end.byte", 0),
+                (variable["id"], "reference", "i@999999"),
+                (variable["id"], "parent", 2),
+                (variable["id"], "span.begin.byte", 0),
+                (variable["id"], "span.end.byte", 0),
+                (variable["id"], "span.begin.column", 0),
+            )
+            for index, (node_id, field, value) in enumerate(mutations):
+                with self.subTest(index=index):
+                    forged = copy.deepcopy(normalized)
+                    node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                    target_field = node
+                    components = field.split(".")
+                    for component in components[:-1]:
+                        target_field = target_field[component]
+                    target_field[components[-1]] = value
+                    target = root / f"forged-postfix-{index}.malbolge"
+                    result = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(target), "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertFalse(target.exists())
+
+    def test_compound_unit_step_retains_live_io_and_exact_exits(self) -> None:
+        rng = random.Random(0xA11CE)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for bound in (2, 4):
+                with self.subTest(bound=bound):
+                    source = exit_program(bound).replace(
+                        "++i)", "i += 1)"
+                    ).replace("i == 1", "i && !(i == 3)")
+                    path = root / f"compound-{bound}.c"
+                    target = root / f"compound-{bound}.malbolge"
+                    path.write_text(source, encoding="utf-8")
+                    result = self.compile(path, target)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    for data in (
+                        bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
+                        bytes(rng.randrange(256) for _ in range(10)),
+                    ):
+                        output = bytearray()
+                        cursor = 0
+                        for i in range(bound):
+                            current = data[cursor]
+                            cursor += 1
+                            if i != 0 and i != 3:
+                                output.extend((current, current))
+                                continue
+                            if i == 3:
+                                break
+                            output.append(current)
+                            output.append(data[cursor])
+                            cursor += 1
+                        output.append(data[cursor])
+                        cursor += 1
+                        vm = self.vm(target, data)
+                        self.assertEqual(vm.returncode, 0, vm.stderr)
+                        self.assertEqual(vm.stdout, bytes(output))
+                        self.assertEqual(
+                            vm.stderr,
+                            f"malbolge-steps-v1:{cursor + len(output) + 1}\n".encode(),
+                        )
+
+    def test_compound_step_source_and_forged_literal_refuse(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            original = exit_program().replace("++i)", "i += 1)")
+            for index, variant in enumerate((
+                original.replace("i += 1", "i += 2"),
+                original.replace("i += 1", "i += 0"),
+                original.replace("i += 1", "i -= 1"),
+                original.replace("i += 1", "i += getchar()"),
+                original.replace("i += 1", "i += 1U"),
+            )):
+                with self.subTest(source=index):
+                    path = root / f"invalid-compound-{index}.c"
+                    target = root / f"invalid-compound-{index}.malbolge"
+                    path.write_text(variant, encoding="utf-8")
+                    self.assertNotEqual(self.compile(path, target).returncode, 0)
+                    self.assertFalse(target.exists())
+            path = root / "compound.c"
+            path.write_text(original, encoding="utf-8")
+            normalized = self.normalized(path)
+            nodes = normalized["nodes"]
+            increment = next(
+                node for node in nodes
+                if node["kind"] == "compound-assignment-expression"
+            )
+            operands = [node for node in nodes if node["parent"] == increment["id"]]
+            self.assertEqual(len(operands), 2)
+            variable, literal = operands
+            mutations = (
+                (increment["id"], "operation", "-="),
+                (increment["id"], "parent", 2),
+                (increment["id"], "span.end.byte", 0),
+                (variable["id"], "reference", "i@999999"),
+                (variable["id"], "span.end.column", 0),
+                (literal["id"], "constant_integer", "2"),
+                (literal["id"], "literal", "2"),
+                (literal["id"], "parent", 2),
+                (literal["id"], "span.begin.byte", 0),
+                (literal["id"], "type", "u32"),
+            )
+            for index, (node_id, field, value) in enumerate(mutations):
+                with self.subTest(forged=index):
+                    forged = copy.deepcopy(normalized)
+                    node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                    target_field = node
+                    components = field.split(".")
+                    for component in components[:-1]:
+                        target_field = target_field[component]
+                    target_field[components[-1]] = value
+                    target = root / f"forged-compound-{index}.malbolge"
+                    result = subprocess.run(
+                        [
+                            str(ADAPTER), "--layout-backend", str(LAYOUT),
+                            "--output", str(target), "--capsule",
+                        ],
+                        input=json.dumps(forged).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertFalse(target.exists())
+
     def test_unsupported_dynamic_control_refuses_artifact(self) -> None:
         source = exit_program()
         variants = (

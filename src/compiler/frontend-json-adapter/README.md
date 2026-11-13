@@ -2174,3 +2174,15 @@ sources and fourteen forged AST nodes refuse publication. This does not
 execute C control flow in the generated guest:
 the original unmasked Fibonacci layout and dynamic runtime control remain
 outside this source-state proof.
+
+### Canonical unit steps for source-proven C byte loops (2026-11-12)
+
+Standalone `++i`, `i++` and `i += 1` are now accepted for a strict
+`for (int i = 0; i < N; STEP)` induction that does not expose the step
+result. Clang ID, reference, source geometry and operand metadata must
+match. Compound increment must carry a directly proven decimal `i32`
+literal one. A complete branching C stream using each newly supported
+spelling produces six actual guest input reads and seven oracle output
+bytes in fourteen normative VM steps; forged AST and non-unit steps
+refuse without artifacts. Dynamic guest-side C loops and general mutable
+storage remain unsupported.

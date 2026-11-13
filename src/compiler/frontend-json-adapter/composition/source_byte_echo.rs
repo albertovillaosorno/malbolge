@@ -1478,6 +1478,8 @@ struct StaticForProof<'node> {
 
 // A closed, arithmetic-incrementing for loop with a fresh automatic `i`:
 //     for (int i = 0; i < N; ++i) {
+//     for (int i = 0; i < N; i++) {
+//     for (int i = 0; i < N; i += 1) {
 //         <source-proven byte-effect statements>
 //     }
 // Both the induction arithmetic and all body statements are authenticated
@@ -1519,9 +1521,17 @@ fn prove_static_for<'node>(
     let condition_start = declaration_end.checked_add(1)?;
     let bound_start = condition_start.checked_add(4)?;
     let increment_start = bound.span.end.byte.checked_add(2)?;
-    let increment_end = increment_start.checked_add(3)?;
+    let compound_increment = increment.kind == "compound-assignment-expression";
+    let increment_length = if compound_increment {
+        6
+    } else {
+        3
+    };
+    let increment_end = increment_start.checked_add(increment_length)?;
     let arm_start = increment_end.checked_add(2)?;
     let variable_reference = format!("i@{}", declaration_start.checked_add(4)?);
+    // A source-proven standalone step is one of `++i`, `i++`, and
+    // `i += 1`. Its precise operand span prevents aliasing a mutated counter.
     if start <= previous
         || start <= body.span.begin.byte
         || line == 0
@@ -1620,9 +1630,19 @@ fn prove_static_for<'node>(
         || bound.span.begin.column != column.checked_add(20)?
         || increment.id != expected_id.checked_add(8)?
         || increment.parent != loop_node.id
-        || increment.kind != "unary-expression"
+        || increment.kind
+            != if compound_increment {
+                "compound-assignment-expression"
+            } else {
+                "unary-expression"
+            }
         || increment.type_name.as_deref() != Some("i32")
-        || increment.operation.as_deref() != Some("++")
+        || increment.operation.as_deref()
+            != Some(if compound_increment {
+                "+="
+            } else {
+                "++"
+            })
         || !metadata_empty(increment)
         || !source_word(
             increment,
@@ -1639,16 +1659,42 @@ fn prove_static_for<'node>(
             != Some(variable_reference.as_str())
         || increment_variable.operation.is_some()
         || !metadata_empty(increment_variable)
-        || !source_word(
+        || !(source_word(
             increment_variable,
-            increment_start.checked_add(2)?,
-            increment_end,
+            increment_start,
+            increment_start.checked_add(1)?,
             line,
-            bound.span.end.column.checked_add(4)?,
-        )
+            bound.span.end.column.checked_add(2)?,
+        ) || (!compound_increment
+            && source_word(
+                increment_variable,
+                increment_start.checked_add(2)?,
+                increment_end,
+                line,
+                bound.span.end.column.checked_add(4)?,
+            )))
     {
         return None;
     }
+    // The extra Clang child of `i += 1` must be exactly a literal i32 one,
+    // with no hidden calls or an unproved value changing the increment.
+    let (rest, arm_id_offset) = if compound_increment {
+        let (one, tail) = rest.split_first()?;
+        if prove_decimal_condition_operand(
+            one,
+            expected_id.checked_add(10)?,
+            increment.id,
+            increment_start.checked_add(5)?,
+            line,
+            bound.span.end.column.checked_add(7)?,
+        )? != 1
+        {
+            return None;
+        }
+        (tail, 11)
+    } else {
+        (rest, 10)
+    };
     let iterations = usize::try_from(prove_decimal_condition_operand(
         bound,
         expected_id.checked_add(7)?,
@@ -1671,7 +1717,7 @@ fn prove_static_for<'node>(
             rest,
             body,
             increment_end,
-            expected_id.checked_add(10)?,
+            expected_id.checked_add(arm_id_offset)?,
             loop_node.id,
             None,
             0,
@@ -1686,7 +1732,8 @@ fn prove_static_for<'node>(
         if !arm.braced
             || arm.begin != arm_start
             || arm.begin_line != line
-            || arm.begin_column != bound.span.end.column.checked_add(7)?
+            || arm.begin_column
+                != bound.span.end.column.checked_add(increment_length + 4)?
             || loop_node.span.end.byte != arm.end
             || loop_node.span.end.line != arm.end_line
             || loop_node.span.end.column != arm.end_column
@@ -1716,7 +1763,9 @@ fn prove_static_for<'node>(
         }
     }
     Some(StaticForProof {
-        width: 10usize.checked_add(arm_width?)?,
+        width: usize::try_from(arm_id_offset)
+            .ok()?
+            .checked_add(arm_width?)?,
         effects,
         end: arm_end?,
     })

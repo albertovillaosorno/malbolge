@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Canonical increment spellings in bounded C byte streams (2026-11-12)
+
+A full C stream used fresh `getchar()` locals, a source-proven `i &&
+!(i == 3)` predicate, nested output, selected `continue`, a later
+`break`, and a trailing guest read. Pinned Clang accepted `i++` and
+`i += 1` as the counted-loop step, but the JSON adapter initially
+refused both complete programs. The source proof now admits those two
+canonical increment spellings alongside `++i`. The first two authenticate
+exact unary operand spans; the compound step additionally proves the
+single direct literal `i32` operand is exactly decimal `1`, with matching
+Clang parent, IDs, metadata, and source coordinates. Induction values stay
+bounded (1–16 trips) and protected from unverified mutation.
+
+For the four-trip program, the real guest reads six independent binary
+bytes, emits seven independent oracle bytes, and halts in fourteen
+normative VM steps. Four postfix loop bounds and two compound bounds
+have two seeded input comparisons each; ten postfix and ten compound
+forged-node mutations reject, as do five unsupported compound source
+steps. No runtime C branch, guest arithmetic, general C storage or EOF
+behavior is claimed. The P0 remains pending.
+
 ### Source-proven scalar induction truth (2026-11-12)
 
 A complete four-trip C stream selected `if (i && !(i == 3))`, emitted
