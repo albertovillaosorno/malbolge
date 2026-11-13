@@ -818,6 +818,77 @@ fn prove_local_alias<'node>(
     })
 }
 
+// A source-local `name = getchar();` overwrites the live byte with a fresh
+// *guest* input. It is not a host-time write or a general assignable C object:
+// the destination must still be the one resident accumulator-local binding.
+// Prove all five pinned Clang nodes and the exact source bytes before emitting.
+fn prove_local_input_reassignment<'node>(
+    nodes: &'node [Node],
+    scope: (&Node, u32, u32),
+    local: &LocalDeclaration<'_>,
+    source: &[u8],
+) -> Option<&'node Node> {
+    let (body, previous, parent) = scope;
+    let [assignment, destination, input, _, _] = nodes else {
+        return None;
+    };
+    let start = assignment.span.begin.byte;
+    let line = assignment.span.begin.line;
+    let column = assignment.span.begin.column;
+    let input_start = start
+        .checked_add(u32::try_from(local.name.len()).ok()?)?
+        .checked_add(3)?;
+    let end = input_start.checked_add(9)?;
+    let spelling = format!("{} = getchar();", local.name);
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+        || start <= previous
+        || start <= local.declaration_end
+        || end >= body.span.end.byte
+        || line <= local.line
+        || column == 0
+        || assignment.parent != parent
+        || assignment.kind != "binary-expression"
+        || assignment.type_name.as_deref() != Some("i32")
+        || assignment.operation.as_deref() != Some("=")
+        || assignment.reference.is_some()
+        || !metadata_empty(assignment)
+        || !source_word(assignment, start, end, line, column)
+        || destination.id != assignment.id.checked_add(1)?
+        || destination.parent != assignment.id
+        || destination.kind != "declaration-reference-expression"
+        || destination.type_name.as_deref() != Some("i32")
+        || destination.reference.as_deref()
+            != Some(local.variable_reference.as_str())
+        || destination.operation.is_some()
+        || !metadata_empty(destination)
+        || !source_word(
+            destination,
+            start,
+            input_start.checked_sub(3)?,
+            line,
+            column,
+        )
+        || input.id != destination.id.checked_add(1)?
+        || prove_input_call(
+            nodes.get(2..5)?,
+            body,
+            destination.span.end.byte,
+            (input.id, assignment.id),
+        )
+        .is_none()
+        || input.span.begin.byte != input_start
+        || input.span.begin.line != line
+        || input.span.begin.column
+            != column.checked_add(input_start.checked_sub(start)?)?
+    {
+        return None;
+    }
+    Some(input)
+}
+
 /// The exact read of the source-local value in the following output call.
 #[expect(
     clippy::too_many_lines,
@@ -1429,6 +1500,25 @@ fn prove_static_if_statement<'node>(
         let effects = static_comma_effects(comma_effects, Some(output), local)?;
         return Some((width, effects, output.span.end.byte));
     }
+    if child.kind == "binary-expression"
+        && child.operation.as_deref() == Some("=")
+    {
+        let read = prove_local_input_reassignment(
+            nodes.get(..5)?,
+            (body, previous, parent),
+            local?,
+            source?,
+        )?;
+        return (child.id == expected_id).then_some((
+            5,
+            vec![StaticIfEffect {
+                input: Some(read),
+                outputs: Vec::new(),
+                loop_exit: None,
+            }],
+            child.span.end.byte,
+        ));
+    }
     if child.kind == "binary-expression" {
         let (width, comma_effects, end) = prove_discarded_comma_effects(
             nodes,
@@ -1694,7 +1784,10 @@ fn prove_static_if_arm<'node>(
                 "if-statement" | "for-statement"
             ) && statement.span.end.line > statement.span.begin.line);
         expected_line = statement.span.end.line.checked_add(1)?;
-        if !declares_local {
+        if !declares_local
+            && !(statement.kind == "binary-expression"
+                && statement.operation.as_deref() == Some("="))
+        {
             local_is_live &= statement_effects
                 .iter()
                 .all(|effect| effect.input.is_none());
@@ -3328,6 +3421,48 @@ pub(super) fn canonical_source_byte_echo(
                 .ok_or(FrontendJsonError::Unsupported)?;
             outputs = outputs
                 .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
+        if first.kind == "binary-expression"
+            && first.operation.as_deref() == Some("=")
+            && let Some((local, _)) = latest_local.as_ref()
+            && let Some(read) = source.and_then(|witness| {
+                rest.get(consumed..consumed.saturating_add(5)).and_then(
+                    |nodes| {
+                        prove_local_input_reassignment(
+                            nodes,
+                            (body, previous, body.id),
+                            local,
+                            witness,
+                        )
+                    },
+                )
+            })
+        {
+            if inputs == MAX_ECHO_CALLS {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            let id = ValueId::new(
+                u32::try_from(inputs)
+                    .map_err(|_| FrontendJsonError::Unsupported)?,
+            );
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: id,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&read.span),
+            ));
+            if let Some((_, value)) = latest_local.as_mut() {
+                *value = id;
+            }
+            inputs += 1;
+            previous = first.span.end.byte;
+            consumed += 5;
+            next_id = next_id
+                .checked_add(5)
                 .ok_or(FrontendJsonError::Unsupported)?;
             requires_latest = true;
             continue;

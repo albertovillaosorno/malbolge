@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-witnessed live C local reassignment (2026-11-13)
+
+A complete source-C stream reads `current`, reassigns it with
+`current = getchar();`, then runs three induction-selected loop trips
+with their own `byte = getchar();` reassignments, `continue` and a final
+guest read. Pinned Clang accepted the program, but the normalized compiler
+originally rejected its assignment. The repair authenticates the five
+Clang assignment/destination/input nodes, their IDs, parentage, types,
+declaration identity and source geometry, plus exact `NAME = getchar();`
+spelling from the SHA-256-checked original source. Each assignment emits a
+fresh guest input and replaces the current SSA byte for later `putchar`
+calls; a dead loop body is authenticated without emitting input.
+
+The 1,167-byte guest capsule consumes nine runtime bytes, emits the
+independently expected five bytes and halts in fifteen normative VM steps.
+Two binary input streams, six rejected source changes and eight forged
+Clang-node variants plus a missing source witness verify the narrow slice.
+Only an already live accumulator-local `int` can be reassigned; arbitrary
+stores, stale locals, arithmetic, guest-dependent control and EOF remain
+unsupported. The P0 remains open.
+
 ### Source-witnessed live C local copies (2026-11-13)
 
 A complete C program reads `getchar()` into `current`, copies the live

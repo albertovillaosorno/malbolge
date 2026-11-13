@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C byte stream with `current = getchar();`,
+  three induction-selected trips with `byte = getchar();`, selected
+  `continue` and trailing I/O first rejected normalized assignments.
+  Five Clang/source-authenticated assignment nodes now rebind the current
+  guest byte to fresh runtime input, without host substitution. The
+  1,167-byte Malbolge capsule reads nine binary bytes, emits five
+  independent oracle bytes and halts in fifteen VM steps. Two binary
+  VM comparisons, six source refusals, eight forged node refusals and a
+  missing source-witness refusal are covered. Arbitrary mutable C
+  storage, arithmetic, guest-dependent control and EOF remain open.
+
 - On 2026-11-13 a complete six-read C byte stream with a copied source
   local, four-trip loop, remainder-selected `continue` and final guest
   input initially failed at normalized alias-declaration admission.
