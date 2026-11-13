@@ -218,7 +218,7 @@ class StaticForBreakCPipelineTests(unittest.TestCase):
         variants = (
             # Canonical continue is now supported; reject dynamic control.
             original.replace("break;", "if (current) break;"),
-            original.replace("break;", "return;"),
+            original.replace("break;", "if (current) return;"),
             original.replace("if (1)", "if (getchar())"),
             original.replace("int current = getchar();", "int current = 4;"),
             original.replace(

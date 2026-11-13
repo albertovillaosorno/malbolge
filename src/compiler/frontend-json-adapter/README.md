@@ -10,6 +10,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Authenticated early void-return in finite C guest streams (2026-11-12)
+
+An exact pinned Clang `return;` node may terminate a void C function from
+an admitted source-time branch, including inside nested bounded `for` loops.
+Its six-byte keyword span, parent, metadata and declaration ancestry are
+checked before the return propagates across every surrounding loop. Selected
+returns discard subsequent guest effects; every unreachable suffix statement
+must still be authenticated, or compilation fails without publication.
+Unselected returns leave the byte stream unchanged.
+
+A whole C program with a four-trip loop and trailing input now emits four
+oracle bytes from three real VM reads in eight steps. An unselected return
+runs all four trips and the trailing read; a shadowed nested-loop return
+exits both loops after two reads and three writes. Five focused tests check
+binary stream parity, unsupported dead effects, dynamic predicates and nine
+independent forged Clang fields. This proves finite source-time return
+selection, not guest-dependent control, arbitrary C storage, arithmetic
+or EOF semantics.
+
+
 ### Pure conditional `?:` on source-proven C induction (2026-11-12)
 
 A finite C loop may now use a canonical `condition ? when_true : when_false`

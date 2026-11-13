@@ -26,6 +26,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated early C return in live guest streams (2026-11-12)
+
+A complete C program reads fresh runtime bytes inside a four-trip `for`,
+uses an induction-dependent `if` to emit nested output then `return;`,
+and leaves a final input/output statement after the loop. Pinned Clang
+accepted the program, but the normalized adapter initially refused its
+containing `for`. The repair authenticates the exact six-byte Clang
+`return-statement` span, ID, parent and empty metadata. Its selected
+control exit propagates across any bounded nested loops to terminate the
+function rather than only the innermost iteration.
+
+The original guest reads three independent binary bytes, writes four
+oracle bytes and halts in eight normative VM steps. The unselected-return
+variant preserves four iterations plus its trailing read; a shadowed
+nested-loop variant returns through both loops. Unreachable suffix
+statements are still source-authenticated without emitting their effects;
+unsupported dead arithmetic, guest-dependent predicates and forged
+return nodes refuse publication. Five regression methods exercise
+live binary streams, top-level return shapes, six invalid source
+variants and nine forged fields.
+
+This is source-time selection over proven finite C state. Dynamic guest
+control, general arithmetic and storage, and EOF remain unimplemented.
+The P0 remains open.
+
+
 ### Pure C conditional operator in finite guest byte loops (2026-11-12)
 
 A complete C stream uses `for (int i = 12; i >= 8; i--)`, fresh guest

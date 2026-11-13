@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete C loop with live `getchar` locals, selected
+  nested output and `return;`, and a trailing dead guest read first
+  rejected normalized `for` admission. Exact pinned Clang source proof
+  now propagates the selected return through nested counted loops while
+  authenticating every unreachable suffix. The actual normative guest
+  reads three binary bytes, outputs four independent oracle bytes and
+  halts in eight steps; unselected and nested-shadowed returns preserve
+  their distinct execution traces. Five focused methods check both
+  binary streams, six unsupported sources and nine forged AST fields.
+  Dynamic guest-dependent C control, storage, arithmetic and EOF remain
+  P0 blockers.
+
+
 - On 2026-11-12 a complete descending C loop with fresh `getchar`
   locals used `i % 2 == 0 ? i == 12 : i == 11` to choose nested output
   and `continue`, followed by `break` and a final guest read. Pinned Clang

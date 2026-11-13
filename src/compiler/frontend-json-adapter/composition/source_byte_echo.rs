@@ -1012,6 +1012,7 @@ struct StaticInduction<'name> {
 enum StaticLoopExit {
     Break,
     Continue,
+    Return,
 }
 
 #[derive(Clone)]
@@ -1019,7 +1020,8 @@ struct StaticIfEffect<'node> {
     input: Option<&'node Node>,
     // Outer-to-inner Clang preorder; reverse to emit successful call returns.
     outputs: Vec<&'node Node>,
-    // Both exits affect only the innermost source-authenticated counted loop.
+    // Return propagates to the function; break/continue stop at the inner
+    // loop.
     loop_exit: Option<StaticLoopExit>,
 }
 
@@ -1103,18 +1105,19 @@ fn prove_static_if_statement<'node>(
     }
     if matches!(
         child.kind.as_str(),
-        "break-statement" | "continue-statement"
+        "break-statement" | "continue-statement" | "return-statement"
     ) {
-        // The semicolon lies outside the Clang keyword extent for both
-        // `break;` and `continue;`. Neither is valid outside a proven loop.
-        let (keyword_width, exit) = if child.kind == "break-statement" {
-            (5, StaticLoopExit::Break)
-        } else {
-            (8, StaticLoopExit::Continue)
+        // The semicolon lies outside the Clang keyword extent. Only a
+        // void `return;` can terminate the containing function from any depth.
+        let (keyword_width, exit) = match child.kind.as_str() {
+            "break-statement" => (5, StaticLoopExit::Break),
+            "continue-statement" => (8, StaticLoopExit::Continue),
+            "return-statement" => (6, StaticLoopExit::Return),
+            _ => return None,
         };
         let start = child.span.begin.byte;
         let end = start.checked_add(keyword_width)?;
-        if for_depth == 0
+        if (for_depth == 0 && exit != StaticLoopExit::Return)
             || start <= previous
             || end >= body.span.end.byte
             || child.id != expected_id
@@ -1863,19 +1866,28 @@ fn prove_static_for<'node>(
         // The nearest selected exit decides this trip. A continue skips
         // only this trip's suffix; a break stops all later trips.
         let mut trip = arm.effects;
-        let exit = trip
-            .iter()
-            .position(|effect| effect.loop_exit.is_some())
-            .and_then(|index| {
-                let exit = trip[index].loop_exit;
-                trip.truncate(index);
-                exit
-            });
+        let exit = trip.iter().position(|effect| effect.loop_exit.is_some());
+        let exit_kind = if let Some(index) = exit {
+            let exit = trip[index].clone();
+            let kind = exit.loop_exit;
+            trip.truncate(index);
+            // A selected return must survive inner loops to stop the entire
+            // function. Break and continue are consumed at this loop level.
+            if exit.loop_exit == Some(StaticLoopExit::Return) {
+                trip.push(exit);
+            }
+            kind
+        } else {
+            None
+        };
         effects.extend(trip);
         if effects.len() > MAX_SOURCE_OUTPUTS {
             return None;
         }
-        if exit == Some(StaticLoopExit::Break) {
+        if matches!(
+            exit_kind,
+            Some(StaticLoopExit::Break | StaticLoopExit::Return)
+        ) {
             break;
         }
     }
@@ -2742,10 +2754,46 @@ pub(super) fn canonical_source_byte_echo(
     let mut local_names = HashSet::new();
     let mut latest_local: Option<(LocalDeclaration<'_>, ValueId)> = None;
     let mut instructions = Vec::new();
+    let mut terminated = false;
     while consumed < rest.len() {
         let first = rest.get(consumed).ok_or(FrontendJsonError::Unsupported)?;
         if outputs == MAX_SOURCE_OUTPUTS || first.id != next_id {
             return Err(FrontendJsonError::Unsupported);
+        }
+        if terminated || first.kind == "return-statement" {
+            // Still authenticate every dead suffix node. Do not publish its
+            // guest effects or treat an unverified effect as harmless.
+            let (width, effects, end) = prove_static_if_statement(
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
+                body,
+                previous,
+                next_id,
+                body.id,
+                None,
+                0,
+                false,
+                0,
+                None,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
+            if !terminated
+                && (effects.len() != 1
+                    || effects[0].loop_exit != Some(StaticLoopExit::Return))
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            terminated = true;
+            previous = end;
+            consumed = consumed
+                .checked_add(width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+            continue;
         }
         if first.kind == "for-statement" {
             let proof = prove_static_for(
@@ -2761,6 +2809,13 @@ pub(super) fn canonical_source_byte_echo(
             // induction value; the ordered trace still reads from the guest.
             let mut iteration_byte = None;
             for effect in &proof.effects {
+                if let Some(exit) = effect.loop_exit {
+                    if exit != StaticLoopExit::Return {
+                        return Err(FrontendJsonError::Unsupported);
+                    }
+                    terminated = true;
+                    break;
+                }
                 if inputs
                     .checked_add(usize::from(effect.input.is_some()))
                     .is_none_or(|count| count > MAX_ECHO_CALLS)
@@ -2832,6 +2887,13 @@ pub(super) fn canonical_source_byte_echo(
                 let mut branch_byte =
                     latest_local.as_ref().map(|(_, value)| *value);
                 for effect in &proof.effects {
+                    if let Some(exit) = effect.loop_exit {
+                        if exit != StaticLoopExit::Return {
+                            return Err(FrontendJsonError::Unsupported);
+                        }
+                        terminated = true;
+                        break;
+                    }
                     if inputs + usize::from(effect.input.is_some())
                         > MAX_ECHO_CALLS
                         || outputs + effect.outputs.len() > MAX_SOURCE_OUTPUTS
