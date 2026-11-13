@@ -136,6 +136,7 @@ class GuestByteEquivalentArmsCPipelineTests(unittest.TestCase):
             "current == 7 ? current : current",
             "current != 7 ? current : current",
             "current & 255 ? current : current",
+            "current & 256 ? current : current",
             "current > 127 ? (current == 0 ? 0 : current) : (current ^ 0)",
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
@@ -179,7 +180,7 @@ class GuestByteEquivalentArmsCPipelineTests(unittest.TestCase):
             "current > 127 ? current : putchar(current)",
             "getchar() > 127 ? current : current",
             "putchar(current) > 127 ? current : current",
-            "current & 256 ? current : current",
+            "current & 2147483648 ? current : current",
             "current / 0 ? current : current",
             "current + 1 ? current : current",
             "current > 127 ? current : current + getchar()",

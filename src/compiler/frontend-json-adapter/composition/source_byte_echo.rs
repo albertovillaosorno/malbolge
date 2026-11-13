@@ -2679,8 +2679,9 @@ fn pure_expression_source(
     .then_some(())
 }
 
-// A predicate literal is a single canonical decimal token in [0, 255].
-// Checking the Clang coordinates independently excludes forged node ancestry.
+// A predicate literal is a nonnegative, source-backed signed C integer.
+// This allows proving comparisons with thresholds outside the guest byte
+// interval; the Clang coordinate and value must still agree exactly.
 fn pure_guard_decimal_literal<'node>(
     literal: &'node Node,
     root: &Node,
@@ -2688,7 +2689,10 @@ fn pure_guard_decimal_literal<'node>(
     prefix_len: usize,
 ) -> Option<&'node str> {
     let digits = literal.literal.as_deref()?;
-    let _byte = digits.parse::<u8>().ok()?;
+    let value = digits.parse::<i32>().ok()?;
+    if value.to_string() != digits {
+        return None;
+    }
     let start = root
         .span
         .begin
@@ -2899,18 +2903,32 @@ fn prove_equivalent_byte_arms(
     Some((width, spelling))
 }
 
-// A successful getchar byte is in the closed integer interval [0, 255].
-// No host guess is needed for these four endpoint comparisons or zero mask.
-// The caller has already source-/Clang-proven the entire pure predicate.
-fn proven_byte_range_truth(nodes: &[Node], width: usize) -> Option<bool> {
+// The selected pure identity must win on every *positive* successful byte.
+// At zero, either the identity or the literal-zero arm produces the same 0.
+// The caller already proved the entire pure C/Clang guard and both arm trees.
+fn proven_positive_byte_range_truth(
+    nodes: &[Node],
+    width: usize,
+) -> Option<bool> {
     let root = nodes.first()?;
     if root.kind != "binary-expression" {
         return None;
     }
-    let value = nodes.get(width.checked_sub(1)?)?.literal.as_deref()?;
+    let value = nodes
+        .get(width.checked_sub(1)?)?
+        .literal
+        .as_deref()?
+        .parse::<i32>()
+        .ok()?;
     match (root.operation.as_deref()?, value) {
-        ("<" | "&", "0") | (">", "255") => Some(false),
-        (">=", "0") | ("<=", "255") => Some(true),
+        ("<", 0 | 1) | ("<=", 0) | (">", 255..) => Some(false),
+        ("<", 256..) | ("<=", 255..) | (">", 0) => Some(true),
+        (">=", 0 | 1) => Some(true),
+        (">=", 256..) => Some(false),
+        ("==", 0 | 256..) => Some(false),
+        ("!=", 0 | 256..) => Some(true),
+        ("&", value) if value & 255 == 0 => Some(false),
+        ("&", value) if value & 255 == 255 => Some(true),
         _ => None,
     }
 }
@@ -3019,9 +3037,9 @@ fn prove_range_ternary_arms(
     ))
 }
 
-// A successful getchar byte is already guaranteed to be in [0, 255]. The
-// source-/Clang-authenticated guard is decided by this interval, not by
-// inspecting guest input, and only its authenticated identity is reused.
+// The selected pure byte identity must execute for all successful positive
+// bytes; zero may choose either pure arm since both produce zero at zero.
+// The proof never inspects guest input or invents dynamic guest control.
 #[expect(
     clippy::too_many_arguments,
     reason = "prove the original source, the guard and both C arm witnesses"
@@ -3052,7 +3070,7 @@ fn prove_range_selected_byte_identity(
         source,
     )?;
     let condition_value =
-        proven_byte_range_truth(condition_nodes, condition_width)?;
+        proven_positive_byte_range_truth(condition_nodes, condition_width)?;
     let (width, then_spelling, else_spelling) = prove_range_ternary_arms(
         nodes,
         local,

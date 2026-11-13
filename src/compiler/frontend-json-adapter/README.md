@@ -11,6 +11,30 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Total wide-integer comparisons of successful guest bytes (2026-11-13)
+
+A complete original C loop with static branch/continue, a genuine live
+`getchar()`, nested identity arithmetic and trailing input first refused
+`current < 256 ? ((current ^ 0) & 255) : 0` at normalized lowering.
+The source-/Clang-backed guard proves comparison or mask truth across
+positive successful bytes `[1, 255]`, including canonical nonnegative
+`i32` thresholds above 255 and masks with no overlapping low-byte bits.
+At zero, either branch gives zero: the authenticated pure identity or the
+literal-zero arm. Only the arm selected for every positive byte may
+reuse the resident guest byte. No hidden effect can be erased.
+
+The original guest emits five copies of its first input byte and then its
+second, on four boundary and sixteen seeded streams, in nine real VM steps.
+A second complete C program first refused the zero-exception predicate
+`current >= 1 ? ((current ^ 0) & 255) : 0`; it now matches the guest
+for three binary boundaries and twelve seeded inputs in eight steps.
+False-guard and zero-trip programs also match exactly. Fourteen further
+guard forms reach the deliberately failing layout boundary; inconclusive
+guards, effects, forgeries and out-of-range literals refuse.
+This is interval-total selection, not dynamic guest control flow. EOF, failed
+I/O, nonidentity arithmetic and general storage remain unsupported.
+
+
 ### Successful-byte range selection in pure C ternaries (2026-11-13)
 
 A complete four-trip C program with a local binary `getchar()` byte, induction,

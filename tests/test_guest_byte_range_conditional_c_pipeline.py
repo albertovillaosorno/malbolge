@@ -140,7 +140,7 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
         invalid = (
             "current > 127 ? current : 0",
             "current <= 254 ? current : 0",
-            "current >= 1 ? current : 0",
+            "current >= 2 ? current : 0",
             "current < 255 ? 0 : current",
             "current == 0 ? current : 0",
             "current <= 255 ? (current + 1) : 0",

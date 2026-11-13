@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Total wide-integer range tests over a live input byte (2026-11-13)
+
+A complete C program combining a live binary input, a four-trip induction
+loop, selected `continue`, source-local state and nested arithmetic first
+failed normalized projection on `current < 256 ? ((current ^ 0) & 255) : 0`.
+The new interval proof authenticates a nonnegative signed C decimal literal
+and each pinned Clang node against the original C source. Comparisons are
+selected when all positive successful bytes in `[1, 255]` agree; at
+zero both arms yield zero. An incompatible mask is proven false when
+no low byte bits can overlap. Both arms are source-proven separately,
+and the inactive one must be a literal zero.
+No guest input value is fabricated or host-evaluated.
+
+The actual Malbolge VM emits the first input byte five times and the
+second once, in nine steps over four boundaries and sixteen deterministic
+seeded pairs. A false-guard program and a zero-trip program also pass
+two-input parity. A second whole-C zero-exception comparison,
+`current >= 1 ? ((current ^ 0) & 255) : 0`, now emits its first
+byte four times then the second in eight real VM steps across fifteen
+binary pairs. Fourteen other threshold/mask forms reach layout;
+inconclusive comparisons, forged literals, changed source, effects and
+out-of-range signed literals refuse. Dynamic C branching, arithmetic,
+storage, EOF and failed I/O remain P0 gaps.
+
+
 ### Proven successful-byte range conditions (2026-11-13)
 
 The original complete source-C four-trip induction/continue program first

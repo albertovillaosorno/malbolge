@@ -55,6 +55,24 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete four-trip C loop/branch/continue program first
+  refused the live-byte guard `current < 256` at normalized projection.
+  The adapter now proves comparisons against canonical nonnegative `i32`
+  thresholds on the positive-byte interval `[1, 255]`, and proves
+  masks with no overlapping byte bits. Zero can select either pure arm
+  because both return zero. The exact original
+  source, Clang preorder and both pure arms remain required. The real
+  Malbolge VM emits five first-input copies then its second byte in nine
+  steps, on four boundaries and sixteen deterministic seeded streams.
+  A second full C program originally refused `current >= 1 ? current
+  : 0` but now emits four first-input copies plus a second read in eight
+  VM steps across fifteen binary pairs. A false-polarity and zero-trip
+  guest pass, fourteen further forms reach layout admission, and
+  inconclusive/effectful/forged cases refuse.
+  There is still no general guest-dependent C branching, arithmetic,
+  storage, EOF or failed output; P0 remains pending.
+
+
 - On 2026-11-13 an original four-trip C induction/continue program with
   live binary input first refused a conditional whose arms differ but whose
   `current <= 255` guard is universally true for a successful byte. Strict
