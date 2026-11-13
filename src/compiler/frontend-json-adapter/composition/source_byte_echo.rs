@@ -1418,6 +1418,9 @@ enum StaticLoopExit {
 #[derive(Clone)]
 struct StaticIfEffect<'node> {
     input: Option<&'node Node>,
+    // A proven assignment targets this source C local. A call or a scoped
+    // declaration has no outer-scope identity after the enclosing branch.
+    assigned_local: Option<String>,
     // Outer-to-inner Clang preorder; reverse to emit successful call returns.
     outputs: Vec<&'node Node>,
     // Return propagates to the function; break/continue stop at the inner
@@ -1465,6 +1468,7 @@ fn static_comma_effects<'node>(
                 }
                 StaticIfEffect {
                     input,
+                    assigned_local: None,
                     outputs,
                     loop_exit: None,
                 }
@@ -1542,6 +1546,7 @@ fn prove_static_if_statement<'node>(
             1,
             vec![StaticIfEffect {
                 input: None,
+                assigned_local: None,
                 outputs: Vec::new(),
                 loop_exit: Some(exit),
             }],
@@ -1605,6 +1610,7 @@ fn prove_static_if_statement<'node>(
             5,
             vec![StaticIfEffect {
                 input: Some(read),
+                assigned_local: Some(local?.variable_reference.clone()),
                 outputs: Vec::new(),
                 loop_exit: None,
             }],
@@ -1665,6 +1671,7 @@ fn prove_static_if_statement<'node>(
         width,
         vec![StaticIfEffect {
             input,
+            assigned_local: None,
             outputs,
             loop_exit: None,
         }],
@@ -1855,6 +1862,7 @@ fn prove_static_if_arm<'node>(
                 5,
                 vec![StaticIfEffect {
                     input: Some(read),
+                    assigned_local: None,
                     outputs: Vec::new(),
                     loop_exit: None,
                 }],
@@ -3444,7 +3452,21 @@ pub(super) fn canonical_source_byte_echo(
                             typed_span(&input.span),
                         ));
                         inputs += 1;
-                        latest_local = None;
+                        // A source-authenticated assignment to an existing
+                        // C local remains live after a statically selected
+                        // branch. An ordinary read or scoped declaration
+                        // cannot export that identity to the outer scope.
+                        latest_local = effect.assigned_local.as_ref().and_then(
+                            |reference| {
+                                declared_locals
+                                    .iter()
+                                    .find(|local| {
+                                        &local.variable_reference == reference
+                                    })
+                                    .cloned()
+                                    .map(|local| (local, value))
+                            },
+                        );
                         equivalent_locals.clear();
                         branch_byte = Some(value);
                         value

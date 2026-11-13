@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete source-C stream assigned fresh input to a
+  live alias inside a selected `if`, then read the alias after the
+  branch and ran a counted loop with a conditional `continue`.
+  Clang accepted it but the adapter discarded the rebound identity.
+  Authenticated branch effects now retain a proven destination across
+  the selected branch exit, but discard identity for other reads.
+  The normative guest consumes seven binary bytes and emits six
+  independent oracle bytes in fourteen steps; skipped assignments,
+  unsupported C, forged AST and missing source evidence are checked.
+  Runtime C conditions, storage and arithmetic remain P0 blockers.
+
 - On 2026-11-13 an original complete C stream alternated direct
   `getchar()` assignments among previously declared source-proven locals,
   then copied the live byte, ran a finite induction-selected branch/loop

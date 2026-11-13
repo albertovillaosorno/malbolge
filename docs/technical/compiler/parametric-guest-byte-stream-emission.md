@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Selected C branch retains authenticated guest input (2026-11-13)
+
+An original C program initializes and aliases a live guest byte, assigns a
+fresh `getchar()` to that same alias inside a compile-time-selected `if`,
+then reads the reassigned name **after** the branch and runs a three-trip
+counted loop with conditional output, `continue` and final input. The
+pinned Clang frontend accepted it; the normalized adapter previously
+discarded the updated local identity after the branch. The exact source
+and five Clang assignment nodes already proved the new read. A selected
+branch now exports that checked C binding to its outer scope; nonassignment
+input effects and scoped declarations still erase or cannot export aliases.
+
+The actual Malbolge VM reads seven binary bytes and emits six
+independently predicted bytes in fourteen steps on a boundary stream
+and a seeded stream. An unselected assignment keeps the original live
+name; unsupported C edits, stale aliases, six forged AST mutations and
+missing source evidence refuse. Guest-dependent conditions, EOF,
+general mutable storage and runtime arithmetic remain unsupported.
+The P0 remains open.
+
 ### Fresh guest input can overwrite a stale C local (2026-11-13)
 
 An original complete C stream alternated `saved = getchar();` and

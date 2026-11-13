@@ -11,6 +11,19 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Selected branch exports a verified live local (2026-11-13)
+
+A source-time-selected `if` may assign fresh `getchar()` input to the
+currently resident C local and use that C name outside the arm. The
+adapter carries the destination reference only when all five assignment
+nodes and the original C source spelling authenticate. A different
+input read clears the identity, and a scoped declaration cannot escape.
+The original complete program emits six independent-oracle bytes from
+seven real binary guest reads in fourteen steps, including a counted
+branch/continue loop. Skipped assignments, stale alias reads, malformed
+source and forged Clang nodes remain fail-closed. This is not
+guest-dependent branching, general mutable C storage or EOF support.
+
 ### Rebind any proven top-level C local from a fresh read (2026-11-13)
 
 A complete C stream switches `getchar()` assignments between previously
