@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete live C byte stream starting its ascending
+  induction at 2, with nested output, selected `continue`, `break` and
+  trailing input, first failed at normalized `for-statement` admission.
+  Exact source/Clang proof now permits ascending 0–9 starts while
+  preserving descending 1–9 starts and 0–16 bounded iterations.
+  Four complete ascending variants pass eight binary VM oracles and a
+  shadowed mixed-direction nested stream passes two more. Five unsupported
+  source forms and five forged initial nodes fail without target output.
+  Guest-dependent branching, arbitrary C arithmetic, storage and EOF
+  remain outside the admitted slice; P0 remains open.
+
 - On 2026-11-12 a complete C program with a four-trip `for` loop,
   fresh `getchar` locals, branch-selected nested `putchar`, `continue`,
   `break` and final guest I/O first rejected canonical `i = i + 1`.

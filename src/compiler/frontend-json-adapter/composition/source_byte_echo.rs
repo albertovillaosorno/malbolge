@@ -1484,7 +1484,9 @@ struct StaticForProof<'node> {
 //     for (int i = 4; i >= 1; i -= 1) {
 //         <source-proven byte-effect statements>
 //     }
-// Both directions admit only 0–16 finite trips. Equal-width `!=` is
+// Ascending starts may be 0–9; descending starts remain 1–9.
+// Both directions admit 0–16 finite trips.
+// Equal-width `!=` is
 // intentionally refused: its normalized operator alone cannot authenticate
 // the spelling of an inclusive bound.
 // Both the induction arithmetic and all body statements are authenticated
@@ -1608,7 +1610,7 @@ fn prove_static_for<'node>(
             column.checked_add(5)?,
         )
         || if ascending {
-            !matches!(initial_value, 0 | 1)
+            !(0..=9).contains(&initial_value)
         } else {
             !(1..=9).contains(&initial_value)
         }

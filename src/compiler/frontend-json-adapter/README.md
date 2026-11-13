@@ -10,6 +10,24 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Nonzero ascending finite C induction (2026-11-12)
+
+The source-authenticated finite `for` proof now accepts ascending starts
+from 0 through 9, rather than only zero or one. Descending starts remain
+1 through 9. The initial signed comparison determines zero trips and the
+exact induction value for every selected trip; only 0–16 iterations may
+execute. Pinned Clang integer literals, one-character source geometry and
+counter ancestry remain mandatory, so two-digit starts, non-unit steps,
+and dynamic input-dependent conditions still refuse guest publication.
+
+A whole ascending stream starting at 2 combines a `getchar()` local,
+branch-selected nested output, `continue`, `break` and a trailing runtime
+read. Four start/condition/step shapes match eight binary VM oracles;
+a shadowed mixed-direction nested stream matches two more. Five source
+refusals and five forged initial-node variants reject without artifacts.
+The guest executes all selected I/O; C storage, dynamic arithmetic,
+runtime branch conditions and EOF remain unsupported.
+
 ### Assignment-shaped C induction steps (2026-11-12)
 
 Both forward `i = i + 1` and reverse `i = i - 1` are now admitted as
