@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete descending C loop with fresh `getchar`
+  locals used `i % 2 == 0 ? i == 12 : i == 11` to choose nested output
+  and `continue`, followed by `break` and a final guest read. Pinned Clang
+  accepted the source but the JSON adapter refused the containing `for`.
+  The source-time proof now authenticates the exact three-child ternary
+  subtree, both pure arms, counter binding, Clang ancestry and canonical
+  source geometry. The original six runtime input reads emit seven
+  independent binary oracle bytes in fourteen normative VM steps.
+  Grouped/nested/logical conditions, dead bodies, nested shadowing,
+  unsupported source effects and forged AST fields are covered by focused
+  regressions. This does not implement guest-dependent C selection,
+  general storage, division or EOF, so P0 remains pending.
+
 - On 2026-11-12 a complete descending C loop used source induction
   remainders to choose a nested `putchar` and `continue`, a later `break`,
   and a final live `getchar`. Pinned Clang accepted the whole source, but

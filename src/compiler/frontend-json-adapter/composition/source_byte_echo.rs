@@ -2361,6 +2361,61 @@ fn prove_induction_prefix(
     ))
 }
 
+// Clang's conditional-expression has three direct subtrees in preorder.
+// Every arm must be independently source-proven even if that arm is never
+// selected by the finite induction value. ` ? ` and ` : ` are exact token
+// gaps; guest input and side effects cannot participate in these branches.
+fn prove_induction_ternary(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool, u32)> {
+    let ternary = nodes.first()?;
+    if ternary.id != at.id
+        || ternary.parent != at.parent
+        || ternary.kind != "conditional-expression"
+        || ternary.type_name.as_deref() != Some("i32")
+        || ternary.operation.is_some()
+        || ternary.reference.is_some()
+        || !metadata_empty(ternary)
+    {
+        return None;
+    }
+    let condition_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
+    let (condition_width, condition, condition_end) =
+        prove_induction_value(nodes.get(1..)?, condition_at, induction)?;
+    let true_index = condition_width.checked_add(1)?;
+    let true_start = condition_end.checked_add(3)?;
+    let true_at = at.child(
+        at.id.checked_add(u32::try_from(true_index).ok()?)?,
+        true_start,
+        at.column.checked_add(true_start.checked_sub(at.start)?)?,
+    )?;
+    let (true_width, true_value, true_end) =
+        prove_induction_value(nodes.get(true_index..)?, true_at, induction)?;
+    let false_index = true_index.checked_add(true_width)?;
+    let false_start = true_end.checked_add(3)?;
+    let false_at = at.child(
+        at.id.checked_add(u32::try_from(false_index).ok()?)?,
+        false_start,
+        at.column.checked_add(false_start.checked_sub(at.start)?)?,
+    )?;
+    let (false_width, false_value, false_end) =
+        prove_induction_value(nodes.get(false_index..)?, false_at, induction)?;
+    let width = false_index.checked_add(false_width)?;
+    (width <= MAX_STATIC_PREDICATE_NODES
+        && source_word(ternary, at.start, false_end, at.line, at.column))
+    .then_some((
+        width,
+        if condition {
+            true_value
+        } else {
+            false_value
+        },
+        false_end,
+    ))
+}
+
 // Admit only fully proven, pure logical combinations of exact induction
 // comparisons or already-proven source constants. Both sides are authenticated
 // regardless of short-circuit selection, so no effect can hide on an arm.
@@ -2413,6 +2468,9 @@ fn prove_induction_value(
             left || right
         };
         return Some((width, selected, right_end));
+    }
+    if node.kind == "conditional-expression" {
+        return prove_induction_ternary(nodes, at, induction);
     }
     if node.kind == "cast-expression" {
         return prove_induction_truth(nodes, at, induction);

@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Pure C conditional operator in finite guest byte loops (2026-11-12)
+
+A complete C stream uses `for (int i = 12; i >= 8; i--)`, fresh guest
+`getchar()` locals, `if (i % 2 == 0 ? i == 12 : i == 11)`, nested output,
+selected `continue`, later `break`, and a final runtime read. The pinned
+frontend accepted the source but the normalized adapter refused the
+containing `for` statement. The finite source predicate evaluator now
+authenticates the pinned Clang three-child `conditional-expression`: each
+pure condition and both arms must separately prove their exact counter
+binding, parent IDs, types, positions, and canonical ` ? ` / ` : ` gaps.
+Only the protected induction value is evaluated at compile time; selected
+`getchar`/`putchar` remain real guest effects. Nesting is bounded by the
+existing expression depth/node limits. This is not a guest-side C ternary.
+
+The original source's six live guest reads produce seven binary-oracle
+bytes in fourteen normative VM steps. The regression verifies grouped,
+logical and nested ternaries, zero-trip body proof and shadowed counters;
+unsupported byte-dependent arms and forged Clang nodes fail closed.
+Division predicates remain deliberately unsupported: normalized JSON has
+no independent token witness to disambiguate a forged equal-width `/`
+from the existing `%` proof. Dynamic guest C control, mutable storage,
+EOF and arbitrary byte arithmetic remain P0 gaps.
+
 ### Source-proven remainder predicates in finite C loops (2026-11-12)
 
 A complete descending `for (int i = 12; i >= 8; i -= 1)` C program reads

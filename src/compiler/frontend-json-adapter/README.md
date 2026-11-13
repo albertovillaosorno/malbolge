@@ -10,6 +10,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Pure conditional `?:` on source-proven C induction (2026-11-12)
+
+A finite C loop may now use a canonical `condition ? when_true : when_false`
+inside an `if` when each of its three operands is a pure, separately
+source-authenticated counter predicate. Exact Clang node IDs, parentage,
+`i32` type, spans, and the canonical spaces around `?` and `:` are
+checked before selecting a source-time arm. Both arms must be proven,
+including the unselected arm and unreachable zero-trip loop bodies.
+Fresh guest input and output remain actual runtime VM instructions;
+no guest byte can influence the ternary or be folded on the host.
+
+The complete descending byte stream with selected `continue`, later
+`break`, and trailing read emits seven oracle bytes from six real guest
+inputs in fourteen normative VM steps. Grouped and nested ternaries,
+shadowed counters, binary byte parity, unsupported runtime expressions,
+and forged normalized nodes have dedicated regressions. Division,
+general guest-side branch selection, arithmetic, mutable state and EOF
+remain unsupported.
+
 ### Counter remainder predicates over source-proven finite C loops
 
 Canonical `i % N` with positive decimal `N` now selects source-time C
