@@ -135,9 +135,9 @@ class NonzeroStartStaticForCPipelineTests(unittest.TestCase):
                 self.assertEqual(guest.stderr, b"malbolge-steps-v1:7\n")
 
     def test_unsupported_start_shapes_and_stride_fail_closed(self) -> None:
-        """Wider literals, reverse steps and excessive trips are not proofs."""
+        """Three-digit starts, bad steps and excessive trips refuse."""
         sources = (
-            program(initial=10, operator="<", bound=12),
+            program(initial=100, operator="<", bound=102),
             program(initial=2, operator="<", bound=19),
             program(initial=2, operator="<", bound=6, step="i += 2"),
             program(initial=2, operator="<", bound=6, step="i = i + 2"),
