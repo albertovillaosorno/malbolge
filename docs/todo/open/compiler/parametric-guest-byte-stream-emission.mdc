@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13, a complete C induction/branch/continue binary stream
+  rejected `putchar(current & 255)` at normalized lowering. The checked
+  source-C and Clang seven-node proof now recognizes ten exact integer
+  identities of a successful live guest byte, without inventing an input or
+  evaluating that byte on the host. The normative Malbolge VM matches the
+  original program over two boundary and twelve seeded input pairs: five
+  writes from two reads in eight steps. Four additional identity operator
+  shapes reach binary VM parity; all ten pass frontend admission. Twelve
+  nonidentities, forged AST parent/spans, SHA-adjusted C source and missing
+  source refuse. The original dynamic input-controlled bitwise branch still
+  rejects: guest C arithmetic, dynamic branching, storage, EOF and failed
+  output remain unresolved. P0 stays pending.
+
 - On 2026-11-13 a complete C induction/remainder/continue loop with a live
   binary input attempted `putchar((current = putchar(current), current));`.
   Pinned Clang admitted it, but normalized lowering refused the program. A

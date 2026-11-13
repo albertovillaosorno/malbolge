@@ -11,6 +11,18 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Exact identities of one successful runtime byte (2026-11-13)
+
+A proven resident `int` from a successful `getchar()` is in `[0, 255]`.
+Direct `putchar(NAME OP CONSTANT)` admits ten source-authenticated exact
+identities: `& 255`, `% 256`, `| 0`, `^ 0`, `+ 0`, `- 0`, `* 1`, `/ 1`,
+`<< 0`, and `>> 0`. All seven normalized Clang nodes, original C tokens,
+local identity and literal value must agree. The guest emits the same actual
+runtime byte, without a second read or fabricated host output. The complete
+loop/branch/continue source passes binary VM oracles at five writes, two
+reads and eight steps; four other operator shapes also pass the VM. Guest
+branching, other runtime arithmetic, EOF and I/O errors are not admitted.
+
 ### A resident output-return assignment remains a live C byte (2026-11-13)
 
 Within an exact source-C comma expression, `NAME = putchar(NAME)` and bounded

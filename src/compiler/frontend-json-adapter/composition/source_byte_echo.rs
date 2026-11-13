@@ -764,6 +764,7 @@ fn prove_discarded_comma_effects<'node>(
                         expected_leaf_id,
                         last_end,
                         parent,
+                        source,
                     )
                 {
                     let extent = *calls.first()?;
@@ -1677,6 +1678,7 @@ fn prove_resident_output_return_reassignment<'node>(
         assignment.id.checked_add(2)?,
         name_end,
         assignment.id,
+        Some(source),
     )?;
     let end = calls.first()?.span.end.byte;
     let depth = calls.len();
@@ -2464,6 +2466,161 @@ fn prove_unsigned_cast_local_output<'node>(
     Some(output)
 }
 
+// On a successful guest read the resident C `int` lies in [0, 255].
+// These exact integer identities preserve that byte without introducing
+// host-time evaluation or a second guest I/O effect. The source spelling and
+// all seven pinned Clang nodes must agree, including the literal's value.
+#[expect(
+    clippy::too_many_lines,
+    reason = "prove source bytes and seven pinned Clang nodes as one unit"
+)]
+fn prove_identity_binary_local_output<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    local: &LocalDeclaration<'_>,
+    expected_id: u32,
+    previous: u32,
+    parent: u32,
+    source: &[u8],
+) -> Option<&'node Node> {
+    let [
+        output,
+        callee_cast,
+        callee,
+        expression,
+        value_cast,
+        value_ref,
+        literal,
+    ] = nodes
+    else {
+        return None;
+    };
+    let (operator, value) = match expression.operation.as_deref()? {
+        "&" => ("&", "255"),
+        "%" => ("%", "256"),
+        "|" => ("|", "0"),
+        "^" => ("^", "0"),
+        "+" => ("+", "0"),
+        "-" => ("-", "0"),
+        "*" => ("*", "1"),
+        "/" => ("/", "1"),
+        "<<" => ("<<", "0"),
+        ">>" => (">>", "0"),
+        _ => return None,
+    };
+    let spelling = format!("putchar({} {operator} {value})", local.name);
+    let start = output.span.begin.byte;
+    let line = output.span.begin.line;
+    let column = output.span.begin.column;
+    let end = start.checked_add(u32::try_from(spelling.len()).ok()?)?;
+    let operand_start = start.checked_add(8)?;
+    let operand_end = end.checked_sub(1)?;
+    let name_end =
+        operand_start.checked_add(u32::try_from(local.name.len()).ok()?)?;
+    let literal_start =
+        operand_end.checked_sub(u32::try_from(value.len()).ok()?)?;
+    let operand_column = column.checked_add(8)?;
+    let literal_column =
+        column.checked_add(literal_start.checked_sub(start)?)?;
+    if start <= previous
+        || start <= local.declaration_end
+        || line <= local.line
+        || end >= body.span.end.byte
+        || source.get(usize::try_from(start).ok()?..usize::try_from(end).ok()?)
+            != Some(spelling.as_bytes())
+        || output.id != expected_id
+        || output.parent != parent
+        || output.kind != "call-expression"
+        || output.type_name.as_deref() != Some("i32")
+        || output.reference.as_deref() != Some("external:putchar")
+        || output.operation.is_some()
+        || !metadata_empty(output)
+        || !source_word(output, start, end, line, column)
+        || callee_cast.id != output.id.checked_add(1)?
+        || callee_cast.parent != output.id
+        || callee_cast.kind != "cast-expression"
+        || callee_cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+        || callee_cast.operation.as_deref() != Some("function-to-pointer")
+        || callee_cast.reference.is_some()
+        || !metadata_empty(callee_cast)
+        || !source_word(callee_cast, start, start.checked_add(7)?, line, column)
+        || callee.id != callee_cast.id.checked_add(1)?
+        || callee.parent != callee_cast.id
+        || callee.kind != "declaration-reference-expression"
+        || callee.type_name.as_deref() != Some("fn(i32)->i32")
+        || callee.reference.as_deref() != Some("external:putchar")
+        || callee.operation.is_some()
+        || !metadata_empty(callee)
+        || !source_word(callee, start, start.checked_add(7)?, line, column)
+        || expression.id != callee.id.checked_add(1)?
+        || expression.parent != output.id
+        || expression.kind != "binary-expression"
+        || expression.type_name.as_deref() != Some("i32")
+        || expression.reference.is_some()
+        || !metadata_empty(expression)
+        || !source_word(
+            expression,
+            operand_start,
+            operand_end,
+            line,
+            operand_column,
+        )
+        || value_cast.id != expression.id.checked_add(1)?
+        || value_cast.parent != expression.id
+        || value_cast.kind != "cast-expression"
+        || value_cast.type_name.as_deref() != Some("i32")
+        || value_cast.operation.as_deref() != Some("lvalue-to-rvalue")
+        || value_cast.reference.is_some()
+        || !metadata_empty(value_cast)
+        || !source_word(
+            value_cast,
+            operand_start,
+            name_end,
+            line,
+            operand_column,
+        )
+        || value_ref.id != value_cast.id.checked_add(1)?
+        || value_ref.parent != value_cast.id
+        || value_ref.kind != "declaration-reference-expression"
+        || value_ref.type_name.as_deref() != Some("i32")
+        || value_ref.reference.as_deref()
+            != Some(local.variable_reference.as_str())
+        || value_ref.operation.is_some()
+        || !metadata_empty(value_ref)
+        || !source_word(
+            value_ref,
+            operand_start,
+            name_end,
+            line,
+            operand_column,
+        )
+        || literal.id != value_ref.id.checked_add(1)?
+        || literal.parent != expression.id
+        || literal.kind != "integer-literal"
+        || literal.type_name.as_deref() != Some("i32")
+        || literal.reference.is_some()
+        || literal.operation.is_some()
+        || literal.name.is_some()
+        || literal.definition.is_some()
+        || literal.inline_specified.is_some()
+        || literal.linkage.is_some()
+        || literal.storage_class.is_some()
+        || literal.storage_duration.is_some()
+        || literal.literal.as_deref() != Some(value)
+        || literal.constant_integer.as_deref() != Some(value)
+        || !source_word(
+            literal,
+            literal_start,
+            operand_end,
+            line,
+            literal_column,
+        )
+    {
+        return None;
+    }
+    Some(output)
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "check nested source coordinates and ancestry together"
@@ -2612,6 +2769,7 @@ fn prove_local_output_chain<'node>(
     expected_id: u32,
     previous: u32,
     parent: u32,
+    source: Option<&[u8]>,
 ) -> Option<OutputCallProof<'node>> {
     if let Some(first) = nodes.get(..5)
         && let Some(call) = prove_local_output(
@@ -2633,6 +2791,20 @@ fn prove_local_output_chain<'node>(
             expected_id,
             previous,
             parent,
+        )
+    {
+        return Some((7, vec![call]));
+    }
+    if let Some(source) = source
+        && let Some(first) = nodes.get(..7)
+        && let Some(call) = prove_identity_binary_local_output(
+            first,
+            body,
+            local,
+            expected_id,
+            previous,
+            parent,
+            source,
         )
     {
         return Some((7, vec![call]));
@@ -3049,6 +3221,7 @@ fn prove_static_if_statement<'node>(
                 expected_id,
                 previous,
                 parent,
+                source,
             )
         {
             (width, None, calls)
@@ -5117,6 +5290,7 @@ pub(super) fn canonical_source_byte_echo(
                         next_id,
                         previous,
                         body.id,
+                        source,
                     )
                 })
         {

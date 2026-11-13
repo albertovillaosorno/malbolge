@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exact integer identities preserve successful runtime bytes (2026-11-13)
+
+A full C source with a live `getchar()` local, counted induction/remainder
+branch, `continue`, and binary guest I/O first rejected `putchar(current &
+255)` at normalized lowering. A separate guest-dependent parity/bitwise
+branch experiment also rejected; dynamic guest control is still unsupported.
+
+The bounded source-and-Clang proof now admits `putchar(NAME OP CONSTANT)`
+for ten exact integer identities on successful guest bytes in `[0, 255]`:
+`& 255`, `% 256`, `| 0`, `^ 0`, `+ 0`, `- 0`, `* 1`, `/ 1`, `<< 0`, and
+`>> 0`. Every literal, operator, local reference, C source byte, Clang
+parent, type and span is checked. No host evaluation or fresh guest input
+is substituted for the real byte, and other arithmetic fails closed.
+
+The original complete loop now produces four copies of its first binary input
+and one of its second in eight normative VM steps, matching zero/255 and
+12 deterministic seeded streams. Four additional full C/VM variants for
+modulo, XOR, multiplication and right shift match independent boundary
+oracles. The pinned frontend and adapter admit all ten operator shapes; the
+admission-only test deliberately fails the layout stage, so it does not claim
+VM evidence for those other shapes. Twelve nonidentity/unsupported expressions,
+changed Clang parent/span evidence, absent source and SHA-adjusted source
+spoofs refuse without a guest artifact. General C arithmetic, memory,
+EOF, output failure and guest-dependent branches remain P0 blockers.
+
 ### Successful output return can rebind an already-live byte (2026-11-13)
 
 A complete C source with a live input local, a counted induction loop,
