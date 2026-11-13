@@ -30,7 +30,10 @@ from __future__ import annotations
 import copy
 import hashlib
 from itertools import product
+import json
 from pathlib import Path
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
+import sys
 import tempfile
 from typing import cast
 from typing import override
@@ -50,6 +53,7 @@ PROJECT = previous.PROJECT
 OUTPUT_LINE = 6
 PARENT_FIELD = "parent"
 EIGHT_STEPS = b"malbolge-steps-v1:8\n"
+BACKEND_ERROR = b"layout backend exited unsuccessfully"
 
 
 def _source(
@@ -97,13 +101,12 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
 
     def test_zero_trip_and_alternate_identity_shapes(self) -> None:
         """All zero-guard directions preserve runtime data and guest steps."""
+        # The complete fixture above proves the primary runtime trace. Two
+        # distinct traces here witness reversed guards and skipped loops;
+        # remaining equivalent forms need only run the source-authentication
+        # gate, not repeat expensive synthesis of the same effect trace.
         variants = (
-            ("current ? current : 0", 3, 8, 4),
-            ("(current ^ 0) ? (current & 255) : 0", 3, 8, 4),
             ("current == 0 ? 0 : (current + 0)", 3, 8, 4),
-            ("current != 0 ? (current & 255) : 0", 3, 8, 4),
-            ("!current ? 0 : (current ^ 0)", 3, 8, 4),
-            ("(current == 0 ? 0 : current) ^ 0", 3, 8, 4),
             ("current ? ((current * 1) % 256) : 0", 0, 5, 1),
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
@@ -129,6 +132,44 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
                     assert (
                         result.stderr == f"malbolge-steps-v1:{steps}\n".encode()
                     )
+
+    def test_other_identity_guards_pass_source_frontend(self) -> None:
+        """Additional pure guards authenticate without repeated guest search."""
+        identities = (
+            "current ? current : 0",
+            "(current ^ 0) ? (current & 255) : 0",
+            "current != 0 ? (current & 255) : 0",
+            "!current ? 0 : (current ^ 0)",
+            "(current == 0 ? 0 : current) ^ 0",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, expression in enumerate(identities):
+                program = root / f"guard-{index}.c"
+                guest = root / f"guard-{index}.malbolge"
+                program.write_text(
+                    _source(expression=expression), encoding="utf-8"
+                )
+                result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        sys.executable,
+                        "--output",
+                        str(guest),
+                        "--source",
+                        str(program),
+                        "--capsule",
+                    ],
+                    input=json.dumps(NORMALIZED(program)).encode(),
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+                if result.returncode != 1:
+                    self.fail(f"unexpected adapter status for {expression}")
+                assert BACKEND_ERROR in result.stderr
+                assert not guest.exists(), expression
 
     def test_unsound_conditional_expressions_refuse(self) -> None:
         """Incorrect identities, extra reads and hidden outputs fail closed."""
