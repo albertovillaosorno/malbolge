@@ -79,6 +79,7 @@ struct CommaEffect<'node> {
 }
 
 type OutputCallProof<'node> = (usize, Vec<&'node Node>);
+type PureTernaryArmProof = (usize, String, String);
 
 // The nested successful-byte return is not recomputed: every write uses the
 // same already-read guest SSA identity, in innermost-first C evaluation order.
@@ -2635,6 +2636,269 @@ fn prove_byte_zero_guard(
     .then_some((width, spelling, nonzero))
 }
 
+// Shared exact root contract for pure C integer expressions in the pinned
+// normalized Clang preorder. Leaf/node checks remain independent below.
+fn pure_integer_root(
+    root: &Node,
+    kind: &str,
+    parent: u32,
+    expected_id: u32,
+) -> bool {
+    root.id == expected_id
+        && root.parent == parent
+        && root.kind == kind
+        && root.type_name.as_deref() == Some("i32")
+        && root.reference.is_none()
+        && metadata_empty(root)
+}
+
+// Independently bind a reconstructed pure expression to the same C source
+// bytes and pinned Clang span. This is shared by the guard and full ternary.
+fn pure_expression_source(
+    root: &Node,
+    spelling: &str,
+    source: &[u8],
+) -> Option<()> {
+    let end = root
+        .span
+        .begin
+        .byte
+        .checked_add(u32::try_from(spelling.len()).ok()?)?;
+    (spelling.len() <= MAX_BYTE_IDENTITY_LENGTH
+        && source_word(
+            root,
+            root.span.begin.byte,
+            end,
+            root.span.begin.line,
+            root.span.begin.column,
+        )
+        && source.get(
+            usize::try_from(root.span.begin.byte).ok()?
+                ..usize::try_from(end).ok()?,
+        ) == Some(spelling.as_bytes()))
+    .then_some(())
+}
+
+// A predicate literal is a single canonical decimal token in [0, 255].
+// Checking the Clang coordinates independently excludes forged node ancestry.
+fn pure_guard_decimal_literal<'node>(
+    literal: &'node Node,
+    root: &Node,
+    index: usize,
+    prefix_len: usize,
+) -> Option<&'node str> {
+    let digits = literal.literal.as_deref()?;
+    let _byte = digits.parse::<u8>().ok()?;
+    let start = root
+        .span
+        .begin
+        .byte
+        .checked_add(u32::try_from(prefix_len).ok()?)?;
+    let end = start.checked_add(u32::try_from(digits.len()).ok()?)?;
+    (literal.id == root.id.checked_add(u32::try_from(index).ok()?)?
+        && literal.parent == root.id
+        && literal.kind == "integer-literal"
+        && literal.type_name.as_deref() == Some("i32")
+        && literal.reference.is_none()
+        && literal.operation.is_none()
+        && literal.name.is_none()
+        && literal.definition.is_none()
+        && literal.inline_specified.is_none()
+        && literal.linkage.is_none()
+        && literal.storage_class.is_none()
+        && literal.storage_duration.is_none()
+        && literal.constant_integer.as_deref() == Some(digits)
+        && source_word(
+            literal,
+            start,
+            end,
+            root.span.begin.line,
+            root.span
+                .begin
+                .column
+                .checked_add(start.checked_sub(root.span.begin.byte)?)?,
+        ))
+    .then_some(digits)
+}
+
+// A pure comparison or mask of the resident byte may choose either branch,
+// provided both branches independently prove the same successful guest byte.
+// This proves a conditional *result*, not guest-side control flow.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "cross-check the pure predicate against original C and Clang"
+)]
+fn prove_pure_byte_guard(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    depth: usize,
+    source: &[u8],
+) -> Option<(usize, String)> {
+    if let Some((width, spelling, _)) = prove_byte_zero_guard(
+        nodes,
+        local,
+        body,
+        previous,
+        parent,
+        expected_id,
+        depth,
+        source,
+    ) {
+        return Some((width, spelling));
+    }
+    let root = nodes.first()?;
+    let operator = root.operation.as_deref()?;
+    if !pure_integer_root(root, "binary-expression", parent, expected_id)
+        || !matches!(operator, "<" | "<=" | ">" | ">=" | "==" | "!=" | "&")
+    {
+        return None;
+    }
+    let (left_width, left, input, outputs) = prove_byte_identity_expression(
+        nodes.get(1..)?,
+        local,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(1)?,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    if input.is_some() || !outputs.is_empty() {
+        return None;
+    }
+    let index = left_width.checked_add(1)?;
+    let digits = pure_guard_decimal_literal(
+        nodes.get(index)?,
+        root,
+        index,
+        left.len().checked_add(operator.len())?.checked_add(2)?,
+    )?;
+    let spelling = format!("{left} {operator} {digits}");
+    pure_expression_source(root, &spelling, source)?;
+    Some((index.checked_add(1)?, spelling))
+}
+
+// Both operands must be pure and each must independently retain the same
+// resident guest byte; a nested read or output can never be skipped.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "preserve independently checked nested Clang ancestry"
+)]
+fn pure_identity_arm(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    depth: usize,
+    source: &[u8],
+) -> Option<(usize, String)> {
+    let (width, spelling, input, outputs) = prove_byte_identity_expression(
+        nodes,
+        local,
+        body,
+        previous,
+        parent,
+        expected_id,
+        depth,
+        source,
+    )?;
+    (input.is_none() && outputs.is_empty()).then_some((width, spelling))
+}
+
+// Keep the source-ordered two-arm proof separate from the guard and outer
+// source span: both byte identities must be established independently.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "retain parent IDs and limits for each Clang child proof"
+)]
+fn pure_ternary_arms(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    root: &Node,
+    guard_width: usize,
+    depth: usize,
+    source: &[u8],
+) -> Option<PureTernaryArmProof> {
+    let then_index = guard_width.checked_add(1)?;
+    let (then_width, then_spelling) = pure_identity_arm(
+        nodes.get(then_index..)?,
+        local,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(u32::try_from(then_index).ok()?)?,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let else_index = then_index.checked_add(then_width)?;
+    let (else_width, else_spelling) = pure_identity_arm(
+        nodes.get(else_index..)?,
+        local,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(u32::try_from(else_index).ok()?)?,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    Some((
+        else_index.checked_add(else_width)?,
+        then_spelling,
+        else_spelling,
+    ))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prove both ternary branches and the original source geometry"
+)]
+fn prove_equivalent_byte_arms(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    depth: usize,
+    source: &[u8],
+) -> Option<(usize, String)> {
+    let root = nodes.first().filter(|root| {
+        pure_integer_root(root, "conditional-expression", parent, expected_id)
+            && root.operation.is_none()
+    })?;
+    let (guard_width, guard) = prove_pure_byte_guard(
+        nodes.get(1..)?,
+        local,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(1)?,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let (width, then_spelling, else_spelling) = pure_ternary_arms(
+        nodes,
+        local,
+        body,
+        previous,
+        root,
+        guard_width,
+        depth,
+        source,
+    )?;
+    let spelling = format!("{guard} ? {then_spelling} : {else_spelling}");
+    pure_expression_source(root, &spelling, source)?;
+    Some((width, spelling))
+}
+
 // Match the entire Clang preorder and original C bytes for exact identities.
 // A leaf is either a proven live local or a source-proven input/output call
 // that returns the same successful byte. Preserve the leaf's actual guest
@@ -2744,6 +3008,18 @@ fn prove_byte_identity_expression<'node>(
         "conditional-expression"
             if root.reference.is_none() && root.operation.is_none() =>
         {
+            if let Some((width, spelling)) = prove_equivalent_byte_arms(
+                nodes,
+                local,
+                body,
+                previous,
+                parent,
+                expected_id,
+                depth,
+                source,
+            ) {
+                return Some((width, spelling, None, Vec::new()));
+            }
             let _ = local?;
             let (condition_width, condition, nonzero) = prove_byte_zero_guard(
                 nodes.get(1..)?,

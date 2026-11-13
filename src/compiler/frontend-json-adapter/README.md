@@ -11,6 +11,29 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Equivalent pure conditional arms over a live guest byte (2026-11-13)
+
+An original source-C program with a live binary `getchar()` result, three-trip
+induction, a selected `continue` branch and trailing guest input initially
+refused `putchar(current > 127 ? (current + 0) : (current & 255))` at
+normalized lowering. The adapter now authenticates pure comparisons (`<`,
+`<=`, `>`, `>=`, `==`, `!=`) and a bitmask test (`&`) of a successful byte
+against a decimal constant in `[0, 255]`, including exact pinned Clang
+parentage, i32 types, source coordinates, operands and literal values.
+The branches must each independently prove a pure identity of that same
+resident byte; thus either runtime outcome produces the same byte, without
+host evaluation or invented guest control flow. Existing zero guards also
+support two identity arms.
+
+The original complete C source emits four copies of its first binary byte
+and the second in eight normative VM steps across four comparison boundaries
+and sixteen seeded pairs. A parity-mask variant and a zero-trip variant
+also execute in the real VM. Nine further guard/identity forms pass the
+source admission gate; unequal or effectful arms, input/output guards,
+unsupported operations, forged Clang nodes, changed original C and absent
+source fail closed without guest artifacts. This is not general C branching,
+arithmetic, storage, EOF or failed output; P0 remains pending.
+
 ### Zero-guarded identities of a live guest byte (2026-11-13)
 
 An original complete C program with a live `getchar()` byte, counted induction,

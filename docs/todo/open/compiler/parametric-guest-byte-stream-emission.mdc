@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 an original complete C counted/branch/continue stream
+  initially rejected a live-byte threshold conditional with two pure byte
+  identity arms. Source- and pinned-Clang-proven comparisons and bitmasks
+  against `[0, 255]` now authenticate both effect-free arms independently,
+  so no guest-dependent branch is invented. The real VM emits five bytes
+  from two binary inputs in eight steps over four boundaries and sixteen
+  seeded streams. A parity guard, zero-trip, nine other admitted forms and
+  source/AST/effect refusals are covered. Different or effectful arms,
+  general guest-dependent control, arithmetic, storage and EOF remain
+  unsupported; P0 stays open.
+
+
 - On 2026-11-13 a full source-C counted/continue loop with a live binary
   input first rejected `putchar(current ? (current + 0) : 0)` at normalized
   lowering. A strict original-source and pinned Clang proof now recognizes
