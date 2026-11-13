@@ -820,9 +820,9 @@ fn prove_local_alias<'node>(
 }
 
 // A source-local `name = getchar();` overwrites the live byte with a fresh
-// *guest* input. It is not a host-time write or a general assignable C object:
-// the destination must still be the one resident accumulator-local binding.
-// Prove all five pinned Clang nodes and the exact source bytes before emitting.
+// *guest* input. The destination can have a stale previous value because
+// reading a new byte never needs that old value. This is not general storage:
+// prove all five pinned Clang nodes and the exact C bytes before emitting.
 fn prove_local_input_reassignment<'node>(
     nodes: &'node [Node],
     scope: (&Node, u32, u32),
@@ -3623,18 +3623,17 @@ pub(super) fn canonical_source_byte_echo(
         }
         if first.kind == "binary-expression"
             && first.operation.as_deref() == Some("=")
-            && let Some((local, _)) = latest_local.as_ref()
-            && let Some(read) = source.and_then(|witness| {
-                rest.get(consumed..consumed.saturating_add(5)).and_then(
-                    |nodes| {
-                        prove_local_input_reassignment(
-                            nodes,
-                            (body, previous, body.id),
-                            local,
-                            witness,
-                        )
-                    },
-                )
+            && let Some((destination, read)) = source.and_then(|witness| {
+                let nodes = rest.get(consumed..consumed.saturating_add(5))?;
+                declared_locals.iter().find_map(|candidate| {
+                    prove_local_input_reassignment(
+                        nodes,
+                        (body, previous, body.id),
+                        candidate,
+                        witness,
+                    )
+                    .map(|read| (candidate.clone(), read))
+                })
             })
         {
             if inputs == MAX_ECHO_CALLS {
@@ -3651,11 +3650,10 @@ pub(super) fn canonical_source_byte_echo(
                 },
                 typed_span(&read.span),
             ));
-            if let Some((_, value)) = latest_local.as_mut() {
-                *value = id;
-            }
-            // Other C aliases still hold the old byte, which cannot be
-            // recalled after the replacement read by this guest backend.
+            // This fresh read makes its verified destination resident even
+            // when it previously held a stale byte. All other C names keep
+            // their old values, which this accumulator backend cannot recall.
+            latest_local = Some((destination, id));
             equivalent_locals.clear();
             inputs += 1;
             previous = first.span.end.byte;

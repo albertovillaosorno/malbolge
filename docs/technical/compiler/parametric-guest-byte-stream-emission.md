@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Fresh guest input can overwrite a stale C local (2026-11-13)
+
+An original complete C stream alternated `saved = getchar();` and
+`current = getchar();` after both names had been proven, then copied the
+current input back into an older local before running a three-trip
+induction-selected branch/`continue` loop. The pinned Clang frontend
+accepted the C source; the JSON adapter rejected its first attempt to
+reassign a stale local. Fresh `getchar()` never needs the prior C value:
+the adapter now authenticates the destination against any previously
+validated top-level local declaration and proves the exact five-node
+Clang assignment plus SHA-checked source bytes. It emits a genuine guest
+read, makes that destination the sole live SSA byte, and invalidates all
+other guest aliases. No retained stale byte is synthesized.
+
+The complete program consumes eight independent binary bytes and emits
+seven source-predicted bytes in sixteen normative VM steps on both boundary
+and reproducible seeded input. Negative source variants, forged assignment
+nodes, absent source witness, and stale value reads still refuse without
+an artifact. This is byte-input rebinding, not general guest memory, EOF
+handling, guest arithmetic or dynamic C control; the P0 remains open.
+
 ### Source-proven C byte aliases and identity rebinding (2026-11-13)
 
 A whole C stream first failed after `int saved = current;` when it emitted

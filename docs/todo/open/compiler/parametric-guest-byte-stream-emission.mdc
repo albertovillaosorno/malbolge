@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 an original complete C stream alternated direct
+  `getchar()` assignments among previously declared source-proven locals,
+  then copied the live byte, ran a finite induction-selected branch/loop
+  and emitted a final guest read. The adapter initially rejected the
+  first stale destination. Five-node Clang/source authentication now
+  admits a fresh read into any validated top-level C local without
+  pretending to preserve its previous byte. The normative Malbolge VM
+  consumes eight actual binary inputs, emits seven independent oracle
+  bytes and halts in sixteen steps on boundary and seeded inputs.
+  Malformed source assignments, forged AST, absent source evidence and
+  stale-value reads still refuse. General guest storage, arithmetic,
+  EOF and dynamic guest control remain unimplemented; P0 stays open.
+
 - On 2026-11-13 a complete source-C loop with a copied `getchar`
   local initially failed when reading the original name after the copy.
   Exact proven aliases now share a live guest input identity until the next

@@ -11,6 +11,21 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Rebind any proven top-level C local from a fresh read (2026-11-13)
+
+A complete C stream switches `getchar()` assignments between previously
+verified `int` declarations, reads through the newly assigned name,
+source-proves one identity copy and executes a three-trip C branch/loop.
+The adapter now permits a stale destination for exact
+`NAME = getchar();`: it must match an already authenticated declaration,
+all five pinned Clang nodes and the SHA-checked original source bytes.
+A new guest read makes that destination resident and invalidates all
+old alias identities. The actual guest consumes eight input bytes,
+writes seven independently predicted bytes and halts after sixteen steps
+on boundary and seeded binary streams. Unsupported source expressions,
+forged nodes and stale-value reads still reject. No guest C storage,
+byte arithmetic, EOF or runtime C branching is implied.
+
 ### Source-witnessed equivalent C local names (2026-11-13)
 
 A complete source-C byte stream reads `current = getchar()` into a local,
