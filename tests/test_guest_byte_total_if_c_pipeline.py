@@ -131,6 +131,37 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                 self.assertEqual(vm.stdout, bytes((data[0],) * 4 + (data[1],)))
                 self.assertEqual(vm.stderr, b"malbolge-steps-v1:8\n")
 
+    def test_false_mask_without_else_skips_guest_input(self) -> None:
+        """A fully skipped C statement cannot consume the nested read."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            program = root / "skipped-if.c"
+            guest = root / "skipped-if.malbolge"
+            first = (
+                "            if (current & 256) {\n"
+                "                putchar(current);\n"
+                "            } else {\n"
+                "                putchar(getchar());\n"
+                "            }"
+            )
+            replacement = (
+                "            if (current & 256) {\n"
+                "                putchar(getchar());\n"
+                "            }"
+            )
+            original = source("current & 256")
+            self.assertIn(first, original)
+            _ = program.write_text(
+                original.replace(first, replacement), encoding="utf-8"
+            )
+            compiled = COMPILE(program, guest)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            for data in (bytes((0, 255)), bytes((255, 0)), bytes((33, 89))):
+                vm = RUN(guest, data)
+                self.assertEqual(vm.returncode, 0, vm.stderr)
+                self.assertEqual(vm.stdout, bytes((data[0],) * 2 + (data[1],)))
+                self.assertEqual(vm.stderr, b"malbolge-steps-v1:6\n")
+
     def test_non_total_and_effectful_conditions_refuse(self) -> None:
         """A guard that can change at a successful byte cannot be folded."""
         invalid = (
