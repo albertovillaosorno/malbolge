@@ -737,17 +737,16 @@ fn prove_local_declaration<'node>(
 )]
 fn prove_local_alias<'node>(
     nodes: &'node [Node],
-    body: &Node,
-    previous: u32,
-    parent: u32,
-    live: &LocalDeclaration<'node>,
+    scope: (&Node, u32, u32),
+    bound_local: &LocalDeclaration<'node>,
     source: &[u8],
 ) -> Option<LocalDeclaration<'node>> {
+    let (body, previous, parent) = scope;
     let [declaration, variable, cast, reference] = nodes else {
         return None;
     };
     let name = variable.name.as_deref()?;
-    if !valid_local_name(name) || name == live.name {
+    if !valid_local_name(name) || name == bound_local.name {
         return None;
     }
     let start = declaration.span.begin.byte;
@@ -757,9 +756,10 @@ fn prove_local_alias<'node>(
     let value_start = name_start
         .checked_add(u32::try_from(name.len()).ok()?)?
         .checked_add(3)?;
-    let end = value_start.checked_add(u32::try_from(live.name.len()).ok()?)?;
-    let variable_reference = format!("{name}@{name_start}");
-    let spelling = format!("int {name} = {};", live.name);
+    let end =
+        value_start.checked_add(u32::try_from(bound_local.name.len()).ok()?)?;
+    let alias_reference = format!("{name}@{name_start}");
+    let spelling = format!("int {name} = {};", bound_local.name);
     if source.get(
         usize::try_from(start).ok()?
             ..usize::try_from(end.checked_add(1)?).ok()?,
@@ -768,9 +768,9 @@ fn prove_local_alias<'node>(
         return None;
     }
     let verified = start > previous
-        && start > live.declaration_end
+        && start > bound_local.declaration_end
         && end < body.span.end.byte
-        && line > live.line
+        && line > bound_local.line
         && column > 0
         && declaration.parent == parent
         && declaration.kind == "declaration-statement"
@@ -779,12 +779,7 @@ fn prove_local_alias<'node>(
         && declaration.operation.is_none()
         && metadata_empty(declaration)
         && source_word(declaration, start, end.checked_add(1)?, line, column)
-        && valid_local_variable(
-            variable,
-            declaration,
-            &variable_reference,
-            end,
-        )
+        && valid_local_variable(variable, declaration, &alias_reference, end)
         && cast.id == variable.id.checked_add(1)?
         && cast.parent == variable.id
         && cast.kind == "cast-expression"
@@ -804,7 +799,7 @@ fn prove_local_alias<'node>(
         && reference.kind == "declaration-reference-expression"
         && reference.type_name.as_deref() == Some("i32")
         && reference.reference.as_deref()
-            == Some(live.variable_reference.as_str())
+            == Some(bound_local.variable_reference.as_str())
         && reference.operation.is_none()
         && metadata_empty(reference)
         && source_word(
@@ -814,12 +809,12 @@ fn prove_local_alias<'node>(
             line,
             column.checked_add(value_start.checked_sub(start)?)?,
         );
-    verified.then(|| LocalDeclaration {
+    verified.then_some(LocalDeclaration {
         declaration_end: declaration.span.end.byte,
-        input: live.input,
+        input: bound_local.input,
         line,
         name,
-        variable_reference,
+        variable_reference: alias_reference,
     })
 }
 
@@ -1628,9 +1623,7 @@ fn prove_static_if_arm<'node>(
                 source.and_then(|witness| {
                     prove_local_alias(
                         nodes.get(cursor..cursor.checked_add(4)?)?,
-                        body,
-                        effect_end,
-                        child.id,
+                        (body, effect_end, child.id),
                         live,
                         witness,
                     )
@@ -3391,7 +3384,10 @@ pub(super) fn canonical_source_byte_echo(
                 rest.get(consumed..consumed.saturating_add(4)).and_then(
                     |nodes| {
                         prove_local_alias(
-                            nodes, body, previous, body.id, live, witness,
+                            nodes,
+                            (body, previous, body.id),
+                            live,
+                            witness,
                         )
                     },
                 )
