@@ -198,7 +198,7 @@ class CommaOutputReturnRebindingCPipelineTests(unittest.TestCase):
             "current + putchar(getchar())",
             "current = putchar(getchar() + 1)",
             "current = putchar(getchar()) + 1",
-            "current = putchar(current)",
+            "current = putchar(current + 1)",
             "current = (putchar(getchar()))",
             "current == putchar(getchar())",
         )

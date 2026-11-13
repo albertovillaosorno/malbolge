@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Successful output return can rebind an already-live byte (2026-11-13)
+
+A complete C source with a live input local, a counted induction loop,
+remainder-selected branch, `continue`, and nested output expressions first
+failed at normalized lowering on
+`putchar((current = putchar(current), current));`. Its fresh-input-free
+assignment is now source-proven against the pinned Clang call, declaration,
+operator, parent and span ancestry and exact original C bytes. Each successful
+`putchar` writes the currently resident guest byte, while the assignment
+retains that value under the authenticated C local without a new guest input.
+One to sixteen nested output calls and a final comma assignment are supported.
+
+The normative VM matches an independent binary oracle for the full three-trip
+program: two actual guest reads, seven output bytes, ten steps. A two-deep
+return writes nine bytes in twelve steps. A fresh `getchar()` assignment
+followed by an output-return reassignment inside the comma expression yields
+four reads, seven outputs, twelve steps; a zero-trip loop emits only its
+post-loop I/O. Invalid C, stale local reads after an unrelated input, forged
+Clang ancestry and modified SHA-matched source must refuse publication.
+This is resident single-byte reuse, not general guest C storage, arithmetic,
+EOF, output failure or runtime-dependent control. P0 stays pending.
+
 ### A comma output operand can assign the fresh guest byte (2026-11-13)
 
 An original complete C program with a live local, counted induction,

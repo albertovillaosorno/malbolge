@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C induction/remainder/continue loop with a live
+  binary input attempted `putchar((current = putchar(current), current));`.
+  Pinned Clang admitted it, but normalized lowering refused the program. A
+  source- and Clang-checked assignment-from-resident-output proof now writes
+  each genuine guest byte and retains the same local identity without a
+  fabricated read. The normative VM emits six copies of the first input and
+  one final fresh byte from two reads in ten steps. Nested output-return and
+  final-comma variants produce nine/seven bytes in twelve/ten steps; a comma
+  fresh-input rebind produces seven writes from four reads in twelve steps.
+  Binary boundary and seeded streams, a zero-trip loop, invalid C, stale
+  locals, modified Clang parents/spans, missing source and SHA-adjusted source
+  spoofing are regression-tested. No guest-dependent C control, general C
+  storage, arithmetic, EOF or output failure is implemented; P0 stays open.
+
 - On 2026-11-13 a complete original C stream with local state, a three-trip
   induction/remainder branch, selected `continue`, and nested I/O in a comma
   argument first refused at normalized lowering. The now source-proven

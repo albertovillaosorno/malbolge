@@ -11,6 +11,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### A resident output-return assignment remains a live C byte (2026-11-13)
+
+Within an exact source-C comma expression, `NAME = putchar(NAME)` and bounded
+nested successful `putchar` returns may rebind the live guest byte without
+consuming fresh input. The proof authenticates the original SHA-checked source,
+existing C local identity, pinned Clang assignment, call, return and span
+ancestry, and comma delimiter. Every successful output is emitted in order;
+a later comma operand and subsequent C output read the same byte. Following
+an unrelated `getchar()` without rebinding, that old name remains stale.
+
+A full induction/branch/`continue` loop produces seven VM output bytes from
+two binary input reads in ten steps, and a two-deep form produces nine writes
+in twelve steps. Source/AST forgery and stale-C-value regressions fail closed.
+General C memory, dependent branching, EOF and output errors remain outside
+this successful-byte proof.
+
 ### Nested output assignment inside a C comma expression (2026-11-13)
 
 A `putchar(NAME = getchar())` comma operand can now rebind an already proven

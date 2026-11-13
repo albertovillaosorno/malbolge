@@ -697,7 +697,10 @@ fn prove_discarded_comma_effects<'node>(
                 } else {
                     b','
                 };
-                let (width, read, outputs) = if let Some(read) =
+                // A fresh input may bind directly or through successful
+                // outputs; a resident output-return is a separate no-read
+                // proof.
+                let (width, input, outputs, reads_local) = if let Some(read) =
                     prove_local_input_reassignment(
                         nodes.get(cursor..cursor.checked_add(5)?)?,
                         (body, last_end, parent),
@@ -705,20 +708,32 @@ fn prove_discarded_comma_effects<'node>(
                         witness,
                         terminator,
                     ) {
-                    (5, read, Vec::new())
-                } else {
-                    // A successful output return may also rebind the same C
-                    // local before later comma operands consume that byte.
+                    (5, read, Vec::new(), false)
+                } else if let Some((width, read, outputs)) =
                     prove_output_return_reassignment(
                         nodes.get(cursor..)?,
                         (body, last_end, parent),
                         current_local,
                         witness,
                         terminator,
-                    )?
+                    )
+                {
+                    (width, read, outputs, false)
+                } else {
+                    // putchar(LIVE) returns the current guest byte. A stale
+                    // C local cannot be recovered by reassigning its output.
+                    local_is_live.then_some(())?;
+                    let (width, outputs) =
+                        prove_resident_output_return_reassignment(
+                            nodes.get(cursor..)?,
+                            (body, last_end, parent),
+                            current_local,
+                            (witness, terminator),
+                        )?;
+                    (width, current_local.input, outputs, true)
                 };
                 local_is_live = true;
-                (width, read, outputs, leaf, false, true)
+                (width, input, outputs, leaf, reads_local, true)
             } else if leaf.reference.as_deref() == Some("external:putchar") {
                 if let Some(current_local) = local
                     && let Some(witness) = source
@@ -1627,6 +1642,86 @@ fn prove_output_return_reassignment<'node>(
         prove_call(inner, body, destination.span.end.byte, call_parent)?;
     calls.push(innermost);
     Some((width, read, calls))
+}
+
+// Assigning the successful return of putchar(LIVE) does not consume a second
+// guest byte. Authenticate the C destination, all nested output calls, and
+// the exact source tokens before reusing the accumulator's resident value.
+#[expect(
+    clippy::too_many_lines,
+    reason = "source and nested Clang ancestry are one closed assignment proof"
+)]
+fn prove_resident_output_return_reassignment<'node>(
+    nodes: &'node [Node],
+    scope: (&Node, u32, u32),
+    local: &LocalDeclaration<'_>,
+    witness: (&[u8], u8),
+) -> Option<OutputCallProof<'node>> {
+    let (source, terminator) = witness;
+    if !matches!(terminator, b';' | b')' | b',') {
+        return None;
+    }
+    let (body, previous, parent) = scope;
+    let [assignment, destination, call, ..] = nodes else {
+        return None;
+    };
+    let start = assignment.span.begin.byte;
+    let line = assignment.span.begin.line;
+    let column = assignment.span.begin.column;
+    let name_end = start.checked_add(u32::try_from(local.name.len()).ok()?)?;
+    let call_start = name_end.checked_add(3)?;
+    let (call_width, calls) = prove_local_output_chain(
+        nodes.get(2..)?,
+        body,
+        local,
+        assignment.id.checked_add(2)?,
+        name_end,
+        assignment.id,
+    )?;
+    let end = calls.first()?.span.end.byte;
+    let depth = calls.len();
+    let spelling = format!(
+        "{} = {}{}{}{}",
+        local.name,
+        "putchar(".repeat(depth),
+        local.name,
+        ")".repeat(depth),
+        char::from(terminator),
+    );
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+        || start <= previous
+        || start <= local.declaration_end
+        || end >= body.span.end.byte
+        || line <= local.line
+        || column == 0
+        || assignment.parent != parent
+        || assignment.kind != "binary-expression"
+        || assignment.type_name.as_deref() != Some("i32")
+        || assignment.operation.as_deref() != Some("=")
+        || assignment.reference.is_some()
+        || !metadata_empty(assignment)
+        || !source_word(assignment, start, end, line, column)
+        || destination.id != assignment.id.checked_add(1)?
+        || destination.parent != assignment.id
+        || destination.kind != "declaration-reference-expression"
+        || destination.type_name.as_deref() != Some("i32")
+        || destination.reference.as_deref()
+            != Some(local.variable_reference.as_str())
+        || destination.operation.is_some()
+        || !metadata_empty(destination)
+        || !source_word(destination, start, name_end, line, column)
+        || call.id != destination.id.checked_add(1)?
+        || call.span.begin.byte != call_start
+        || call.span.begin.line != line
+        || call.span.begin.column
+            != column.checked_add(call_start.checked_sub(start)?)?
+    {
+        return None;
+    }
+    Some((call_width.checked_add(2)?, calls))
 }
 
 // Output calls may surround an assignment whose value is itself a
