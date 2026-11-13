@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Zero-dependent C conditional byte identities (2026-11-13)
+
+An original complete C stream with a live binary `getchar()` byte, three-trip
+induction, a remainder-selected `continue` branch and a trailing guest input
+first refused `current ? (current + 0) : 0` at normalized lowering. The
+repaired proof authenticates the full source-C spelling and every pinned
+Clang child, parent, span, type, operator and literal. Its only admitted
+runtime-dependent predicates are a pure, successful resident byte, that
+byte's zero equality or inequality, and its logical negation. The two
+branches are restricted to source-proven pure byte identities and literal
+zero in the matching order. Since either arm selects the identical runtime
+byte, typed IR reuses the existing guest SSA identity without host-time
+prediction, another input or invented guest control flow.
+
+The original stream emits five correct bytes from two real inputs in eight
+normative VM steps, verified on two binary boundaries and sixteen seeded
+streams. Three reversed/zero-comparison guards, nested arithmetic composition,
+zero-trip behavior, invalid expressions, altered source and forged normalized
+Clang evidence have independent tests. General guest-dependent branches,
+nonidentity arithmetic, memory, EOF and failed I/O remain outside this
+bounded proof; P0 remains pending.
+
 ### Effectful identities compose genuine guest I/O (2026-11-13)
 
 An original C program combined a source-local binary input, a three-trip

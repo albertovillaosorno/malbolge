@@ -11,6 +11,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Zero-guarded identities of a live guest byte (2026-11-13)
+
+An original complete C program with a live `getchar()` byte, counted induction,
+remainder-selected branch, `continue`, and trailing binary input first refused
+`putchar(current ? (current + 0) : 0)`. A bounded source/Clang proof now
+recognizes pure zero-guarded ternary expressions over that same resident byte:
+`b ? b : 0`, `b != 0 ? b : 0`, `b == 0 ? 0 : b`, and
+`!b ? 0 : b`, with exact byte-preserving identities substituted for the
+reads of `b`. Conditional results may themselves enter further exact
+identities. In each case, both C arms agree on the actual runtime byte;
+no branch is executed on the host or in newly synthesized guest control flow.
+
+The original program emits four copies of its first input and the second
+input in eight normative VM steps across zero/255 and sixteen seeded binary
+streams. Other guard directions, nested composition and a zero-trip variant
+match independent VM oracles. Effects hidden in guards or arms, nonzero
+constants, nonidentities, forged Clang ancestry, changed original C and
+missing source fail closed. This does not admit arbitrary guest-dependent
+branching, general guest C arithmetic, EOF, I/O failure or storage.
+
 ### Effectful byte leaves in identity expressions (2026-11-13)
 
 A source-authenticated `getchar()` call or a bounded sequence of successful

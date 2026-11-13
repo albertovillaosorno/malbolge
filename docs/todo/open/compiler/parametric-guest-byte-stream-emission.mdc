@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a full source-C counted/continue loop with a live binary
+  input first rejected `putchar(current ? (current + 0) : 0)` at normalized
+  lowering. A strict original-source and pinned Clang proof now recognizes
+  zero-guarded conditional expressions that yield the same successful
+  guest byte in both arms, including `== 0`, `!= 0`, `!`, nested identities
+  and a composing outer identity. The original real Malbolge VM emits four
+  copies of its first input then the second in eight steps for two binary
+  boundaries and sixteen independent seeded pairs. Zero-trip, other guards,
+  effectful/incorrect C, forged AST and SHA-adjusted source refuse or match
+  as appropriate. No general guest-dependent branching, memory, arithmetic,
+  EOF or failed I/O has been implemented; P0 remains pending.
+
 - On 2026-11-13, a complete C induction/branch/`continue` binary stream
   first refused `putchar((putchar(getchar()) + 0) ^ 0)` at normalized lowering.
   Recursive source-proven identities now accept genuine guest input and

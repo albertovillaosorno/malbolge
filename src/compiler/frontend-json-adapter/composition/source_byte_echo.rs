@@ -2490,6 +2490,151 @@ fn byte_identity_operator(
     }
 }
 
+// A C zero token must be both the exact source character and the exact
+// normalized Clang integer value. No effectful expression can masquerade as
+// the inactive branch of a guest-dependent byte identity.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "verify all source coordinates and normalized node identity"
+)]
+fn prove_byte_zero_literal(
+    node: &Node,
+    expected_id: u32,
+    parent: u32,
+    start: u32,
+    line: u32,
+    column: u32,
+) -> Option<()> {
+    (node.id == expected_id
+        && node.parent == parent
+        && node.kind == "integer-literal"
+        && node.type_name.as_deref() == Some("i32")
+        && node.reference.is_none()
+        && node.operation.is_none()
+        && node.name.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+        && node.literal.as_deref() == Some("0")
+        && node.constant_integer.as_deref() == Some("0")
+        && source_word(node, start, start.checked_add(1)?, line, column))
+    .then_some(())
+}
+
+// Authenticate a pure C test equivalent to (b != 0) or (b == 0) for the
+// one proven, successful resident byte. Strict source spelling rules out
+// changing the tested byte, hiding guest I/O, or forging Clang parentage.
+#[expect(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "a zero test combines a source proof and Clang preorder proof"
+)]
+fn prove_byte_zero_guard(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    depth: usize,
+    source: &[u8],
+) -> Option<(usize, String, bool)> {
+    let root = nodes.first()?;
+    if root.id != expected_id
+        || root.parent != parent
+        || root.type_name.as_deref() != Some("i32")
+        || root.reference.is_some()
+        || !metadata_empty(root)
+    {
+        return None;
+    }
+    let (width, spelling, nonzero) = if root.kind == "unary-expression"
+        && root.operation.as_deref() == Some("!")
+    {
+        let (width, operand, read, calls) = prove_byte_identity_expression(
+            nodes.get(1..)?,
+            local,
+            body,
+            previous,
+            root.id,
+            root.id.checked_add(1)?,
+            depth.checked_add(1)?,
+            source,
+        )?;
+        if read.is_some() || !calls.is_empty() {
+            return None;
+        }
+        (width.checked_add(1)?, format!("!{operand}"), false)
+    } else if root.kind == "binary-expression"
+        && matches!(root.operation.as_deref(), Some("==" | "!="))
+    {
+        let (width, operand, read, calls) = prove_byte_identity_expression(
+            nodes.get(1..)?,
+            local,
+            body,
+            previous,
+            root.id,
+            root.id.checked_add(1)?,
+            depth.checked_add(1)?,
+            source,
+        )?;
+        if read.is_some() || !calls.is_empty() {
+            return None;
+        }
+        let literal_index = width.checked_add(1)?;
+        let literal = nodes.get(literal_index)?;
+        let start =
+            root.span.begin.byte.checked_add(
+                u32::try_from(operand.len().checked_add(4)?).ok()?,
+            )?;
+        prove_byte_zero_literal(
+            literal,
+            root.id.checked_add(u32::try_from(literal_index).ok()?)?,
+            root.id,
+            start,
+            root.span.begin.line,
+            root.span
+                .begin
+                .column
+                .checked_add(start.checked_sub(root.span.begin.byte)?)?,
+        )?;
+        let operator = root.operation.as_deref()?;
+        (
+            literal_index.checked_add(1)?,
+            format!("{operand} {operator} 0"),
+            operator == "!=",
+        )
+    } else {
+        let (width, operand, read, calls) = prove_byte_identity_expression(
+            nodes,
+            local,
+            body,
+            previous,
+            parent,
+            expected_id,
+            depth,
+            source,
+        )?;
+        if read.is_some() || !calls.is_empty() {
+            return None;
+        }
+        (width, operand, true)
+    };
+    let start = root.span.begin.byte;
+    let end = start.checked_add(u32::try_from(spelling.len()).ok()?)?;
+    (source_word(
+        root,
+        start,
+        end,
+        root.span.begin.line,
+        root.span.begin.column,
+    ) && source.get(usize::try_from(start).ok()?..usize::try_from(end).ok()?)
+        == Some(spelling.as_bytes()))
+    .then_some((width, spelling, nonzero))
+}
+
 // Match the entire Clang preorder and original C bytes for exact identities.
 // A leaf is either a proven live local or a source-proven input/output call
 // that returns the same successful byte. Preserve the leaf's actual guest
@@ -2591,6 +2736,104 @@ fn prove_byte_identity_expression<'node>(
                 ")".repeat(calls.len()),
             );
             (width, spelling, Some(read), calls)
+        },
+        // Both directions of a source-proven zero test select the same
+        // successful guest byte: b ? b : 0, b != 0 ? b : 0,
+        // b == 0 ? 0 : b and !b ? 0 : b. No guest branch executes because
+        // the two pure C arms agree on the byte for every b in [0, 255].
+        "conditional-expression"
+            if root.reference.is_none() && root.operation.is_none() =>
+        {
+            let _ = local?;
+            let (condition_width, condition, nonzero) = prove_byte_zero_guard(
+                nodes.get(1..)?,
+                local,
+                body,
+                previous,
+                root.id,
+                root.id.checked_add(1)?,
+                depth.checked_add(1)?,
+                source,
+            )?;
+            let true_index = condition_width.checked_add(1)?;
+            let (true_width, true_spelling) = if nonzero {
+                let (width, spelling, input, outputs) =
+                    prove_byte_identity_expression(
+                        nodes.get(true_index..)?,
+                        local,
+                        body,
+                        previous,
+                        root.id,
+                        root.id.checked_add(u32::try_from(true_index).ok()?)?,
+                        depth.checked_add(1)?,
+                        source,
+                    )?;
+                if input.is_some() || !outputs.is_empty() {
+                    return None;
+                }
+                (width, spelling)
+            } else {
+                let true_start = root.span.begin.byte.checked_add(
+                    u32::try_from(condition.len().checked_add(3)?).ok()?,
+                )?;
+                prove_byte_zero_literal(
+                    nodes.get(true_index)?,
+                    root.id.checked_add(u32::try_from(true_index).ok()?)?,
+                    root.id,
+                    true_start,
+                    root.span.begin.line,
+                    root.span.begin.column.checked_add(
+                        true_start.checked_sub(root.span.begin.byte)?,
+                    )?,
+                )?;
+                (1, String::from("0"))
+            };
+            let false_index = true_index.checked_add(true_width)?;
+            let (false_width, false_spelling) = if nonzero {
+                let false_start = root.span.begin.byte.checked_add(
+                    u32::try_from(
+                        condition
+                            .len()
+                            .checked_add(true_spelling.len())?
+                            .checked_add(6)?,
+                    )
+                    .ok()?,
+                )?;
+                prove_byte_zero_literal(
+                    nodes.get(false_index)?,
+                    root.id.checked_add(u32::try_from(false_index).ok()?)?,
+                    root.id,
+                    false_start,
+                    root.span.begin.line,
+                    root.span.begin.column.checked_add(
+                        false_start.checked_sub(root.span.begin.byte)?,
+                    )?,
+                )?;
+                (1, String::from("0"))
+            } else {
+                let (width, spelling, input, outputs) =
+                    prove_byte_identity_expression(
+                        nodes.get(false_index..)?,
+                        local,
+                        body,
+                        previous,
+                        root.id,
+                        root.id
+                            .checked_add(u32::try_from(false_index).ok()?)?,
+                        depth.checked_add(1)?,
+                        source,
+                    )?;
+                if input.is_some() || !outputs.is_empty() {
+                    return None;
+                }
+                (width, spelling)
+            };
+            (
+                false_index.checked_add(false_width)?,
+                format!("{condition} ? {true_spelling} : {false_spelling}"),
+                None,
+                Vec::new(),
+            )
         },
         "binary-expression" if root.reference.is_none() => {
             let (operator, value) =
