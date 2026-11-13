@@ -80,6 +80,7 @@ struct CommaEffect<'node> {
 
 type OutputCallProof<'node> = (usize, Vec<&'node Node>);
 type PureTernaryArmProof = (usize, String, String);
+type TotalByteGuardProof = (usize, String, bool);
 
 // The nested successful-byte return is not recomputed: every write uses the
 // same already-read guest SSA identity, in innermost-first C evaluation order.
@@ -5553,6 +5554,154 @@ fn prove_static_predicate(
 // every positive byte, an if-statement can select its effects without
 // reading or predicting the guest value on the host. An inconclusive
 // condition must still refuse, even when its arms happen to look alike.
+// Prove every evaluated and short-circuited operand independently pure and
+// invariant over successful [0, 255] guest bytes. The source must match the
+// pinned Clang tree exactly; a host-side guessed guest value is never used.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "verify each Clang parent and source-backed byte-range predicate"
+)]
+fn prove_total_byte_guard(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    local: Option<&LocalDeclaration<'_>>,
+    depth: usize,
+    source: &[u8],
+) -> Option<TotalByteGuardProof> {
+    (depth < MAX_STATIC_PREDICATE_DEPTH).then_some(())?;
+    let root = nodes.first()?;
+    if matches!(root.operation.as_deref(), Some("&&" | "||")) {
+        return prove_total_byte_logical(
+            nodes,
+            body,
+            previous,
+            parent,
+            expected_id,
+            local,
+            depth,
+            source,
+        );
+    }
+    prove_total_byte_leaf(
+        nodes,
+        body,
+        previous,
+        parent,
+        expected_id,
+        local,
+        depth,
+        source,
+    )
+}
+
+// Reconstruct both pure operands in Clang preorder, then verify the exact
+// original C spelling and i32 parent before selecting either statement arm.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "retain both operand contexts and exact parent/source evidence"
+)]
+fn prove_total_byte_logical(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    local: Option<&LocalDeclaration<'_>>,
+    depth: usize,
+    source: &[u8],
+) -> Option<TotalByteGuardProof> {
+    let root = nodes.first()?;
+    let operator = root.operation.as_deref()?;
+    pure_integer_root(root, "binary-expression", parent, expected_id)
+        .then_some(())?;
+    let (left_width, left, left_truth) = prove_total_byte_guard(
+        nodes.get(1..)?,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(1)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let right_index = left_width.checked_add(1)?;
+    let (right_width, right, right_truth) = prove_total_byte_guard(
+        nodes.get(right_index..)?,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(u32::try_from(right_index).ok()?)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let width = right_index.checked_add(right_width)?;
+    (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
+    let spelling = format!("{left} {operator} {right}");
+    pure_expression_source(root, &spelling, source)?;
+    let truth = match operator {
+        "&&" => left_truth && right_truth,
+        "||" => left_truth || right_truth,
+        _ => return None,
+    };
+    Some((width, spelling, truth))
+}
+
+// An individual leaf is constant only if both zero and the full positive
+// byte interval yield the same result. No C expression is evaluated here.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "bind the leaf's source, operand and Clang parent provenance"
+)]
+fn prove_total_byte_leaf(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    local: Option<&LocalDeclaration<'_>>,
+    depth: usize,
+    source: &[u8],
+) -> Option<TotalByteGuardProof> {
+    let root = nodes.first()?;
+    let (width, spelling) = prove_pure_byte_guard(
+        nodes,
+        local,
+        body,
+        previous,
+        parent,
+        expected_id,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let positive = proven_positive_byte_range_truth(nodes, width)?;
+    let literal = nodes
+        .get(width.checked_sub(1)?)?
+        .literal
+        .as_deref()?
+        .parse::<i32>()
+        .ok()?;
+    let zero = match root.operation.as_deref()? {
+        "<" => 0i32 < literal,
+        "<=" => 0i32 <= literal,
+        ">" => 0i32 > literal,
+        ">=" => 0i32 >= literal,
+        "==" => literal == 0i32,
+        "!=" => literal != 0i32,
+        "&" => false,
+        _ => return None,
+    };
+    (width <= MAX_STATIC_PREDICATE_NODES && zero == positive)
+        .then_some((width, spelling, positive))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "retain the source and Clang predicate envelope context"
+)]
 fn prove_total_byte_if_predicate(
     nodes: &[Node],
     body: &Node,
@@ -5561,36 +5710,17 @@ fn prove_total_byte_if_predicate(
     local: Option<&LocalDeclaration<'_>>,
     source: Option<&[u8]>,
 ) -> Option<(usize, bool)> {
-    let witness = source?;
-    let (width, _) = prove_pure_byte_guard(
+    let (width, _, truth) = prove_total_byte_guard(
         nodes,
-        local,
         body,
         previous,
         conditional.id,
         conditional.id.checked_add(1)?,
+        local,
         0,
-        witness,
+        source?,
     )?;
-    let positive = proven_positive_byte_range_truth(nodes, width)?;
-    let root = nodes.first()?;
-    let literal = nodes
-        .get(width.checked_sub(1)?)?
-        .literal
-        .as_deref()?
-        .parse::<i32>()
-        .ok()?;
-    let zero = match root.operation.as_deref()? {
-        "<" => 0 < literal,
-        "<=" => 0 <= literal,
-        ">" => 0 > literal,
-        ">=" => 0 >= literal,
-        "==" => literal == 0,
-        "!=" => literal != 0,
-        "&" => false,
-        _ => return None,
-    };
-    (zero == positive).then_some((width, positive))
+    Some((width, truth))
 }
 
 // Exact folded source-C predicates. Each bounded C call in both arms

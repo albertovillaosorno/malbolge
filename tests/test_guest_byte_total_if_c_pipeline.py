@@ -162,6 +162,166 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                 self.assertEqual(vm.stdout, bytes((data[0],) * 2 + (data[1],)))
                 self.assertEqual(vm.stderr, b"malbolge-steps-v1:6\n")
 
+    def test_compound_total_guards_match_binary_guest(self) -> None:
+        """Pure C short-circuit conditions choose a full live-byte arm."""
+        guards = (
+            ("current >= 0 && current <= 255", False),
+            ("current < 0 || current >= 256", True),
+            ("current & 256 || current < 256", False),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, (guard, reverse) in enumerate(guards):
+                with self.subTest(guard=guard):
+                    program = root / f"compound-{index}.c"
+                    guest = root / f"compound-{index}.malbolge"
+                    _ = program.write_text(
+                        source(guard, reverse=reverse), encoding="utf-8"
+                    )
+                    compiled = COMPILE(program, guest)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    for data in (
+                        bytes((0, 255)),
+                        bytes((255, 0)),
+                        bytes((1, 254)),
+                        *(
+                            hashlib.shake_256(bytes((247, i))).digest(2)
+                            for i in range(8)
+                        ),
+                    ):
+                        with self.subTest(data=data):
+                            vm = RUN(guest, data)
+                            self.assertEqual(vm.returncode, 0, vm.stderr)
+                            self.assertEqual(
+                                vm.stdout, bytes((data[0],) * 4 + (data[1],))
+                            )
+                            self.assertEqual(vm.stderr, b"malbolge-steps-v1:8\n")
+
+    def test_nested_compound_predicates_match_guest(self) -> None:
+        """Precedence must follow pinned C syntax, not host byte guesses."""
+        guards = (
+            ("current >= 0 && current <= 255 || current > 255", False),
+            ("current < 0 || current >= 256 && current <= 255", True),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, (guard, reverse) in enumerate(guards):
+                with self.subTest(guard=guard):
+                    program = root / f"nested-{index}.c"
+                    guest = root / f"nested-{index}.malbolge"
+                    _ = program.write_text(
+                        source(guard, reverse=reverse), encoding="utf-8"
+                    )
+                    compiled = COMPILE(program, guest)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    for data in (
+                        bytes((0, 255)),
+                        bytes((255, 0)),
+                        *(
+                            hashlib.shake_256(bytes((249, i))).digest(2)
+                            for i in range(4)
+                        ),
+                    ):
+                        vm = RUN(guest, data)
+                        self.assertEqual(vm.returncode, 0, vm.stderr)
+                        self.assertEqual(vm.stdout, bytes((data[0],) * 4 + (data[1],)))
+                        self.assertEqual(vm.stderr, b"malbolge-steps-v1:8\n")
+
+    def test_false_compound_if_without_else_skips_input(self) -> None:
+        """Short-circuiting cannot consume a skipped C input call."""
+        guard = "current < 0 || current >= 256"
+        original = source(guard)
+        first = (
+            f"            if ({guard}) {{\n"
+            "                putchar(current);\n"
+            "            } else {\n"
+            "                putchar(getchar());\n"
+            "            }"
+        )
+        replacement = (
+            f"            if ({guard}) {{\n"
+            "                putchar(getchar());\n"
+            "            }"
+        )
+        self.assertIn(first, original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            program = root / "no-else.c"
+            guest = root / "no-else.malbolge"
+            _ = program.write_text(
+                original.replace(first, replacement), encoding="utf-8"
+            )
+            compiled = COMPILE(program, guest)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            for data in (bytes((0, 255)), bytes((255, 0))):
+                vm = RUN(guest, data)
+                self.assertEqual(vm.returncode, 0, vm.stderr)
+                self.assertEqual(vm.stdout, bytes((data[0],) * 2 + (data[1],)))
+                self.assertEqual(vm.stderr, b"malbolge-steps-v1:6\n")
+
+    def test_non_total_and_effectful_compound_guards_refuse(self) -> None:
+        """No host-side optimization may discard impure short circuits."""
+        invalid = (
+            "current > 0 && current <= 255",
+            "current < 0 || current == 255",
+            "current >= 0 && current <= 254",
+            "current >= 0 && getchar() >= 0",
+            "current < 0 && getchar() >= 0",
+            "putchar(current) >= 0 || current <= 255",
+            "current >= 0 || current > 0",
+            "current >= 0 & current <= 255",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, guard in enumerate(invalid):
+                with self.subTest(guard=guard):
+                    program = root / f"invalid-compound-{index}.c"
+                    guest = root / f"invalid-compound-{index}.malbolge"
+                    _ = program.write_text(source(guard), encoding="utf-8")
+                    result = COMPILE(program, guest)
+                    self.assertNotEqual(result.returncode, 0, guard)
+                    self.assertFalse(guest.exists())
+
+    def test_forged_compound_guards_refuse(self) -> None:
+        """Every Clang operand, operator and source byte is authenticated."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            program = root / "valid-compound.c"
+            original = source("current >= 0 && current <= 255")
+            _ = program.write_text(original, encoding="utf-8")
+            normalized = NORMALIZED(program)
+            for field in ("operation", "parent", "span", "literal"):
+                with self.subTest(field=field):
+                    forged = copy.deepcopy(normalized)
+                    nodes = cast("list[dict[str, object]]", forged["nodes"])
+                    if field == "operation":
+                        node = next(n for n in nodes if n.get("operation") == "&&")
+                        node[field] = "||"
+                    else:
+                        node = next(n for n in nodes if n.get("literal") == "255")
+                        if field == "parent":
+                            node[field] = 0
+                        elif field == "literal":
+                            node[field] = "254"
+                        else:
+                            extent = cast("dict[str, dict[str, int]]", node[field])
+                            extent["begin"]["column"] += 1
+                    guest = root / f"forged-compound-{field}.malbolge"
+                    result = PROJECT(forged, guest, program)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(guest.exists())
+            changed = root / "changed-compound.c"
+            _ = changed.write_text(original.replace(" && ", " || "), encoding="utf-8")
+            forged = copy.deepcopy(normalized)
+            record = cast("dict[str, object]", forged["source"])
+            record["sha256"] = hashlib.sha256(changed.read_bytes()).hexdigest()
+            guest = root / "changed-compound.malbolge"
+            self.assertNotEqual(PROJECT(forged, guest, changed).returncode, 0)
+            self.assertFalse(guest.exists())
+            guest = root / "missing-compound.malbolge"
+            self.assertNotEqual(PROJECT(normalized, guest, None).returncode, 0)
+            self.assertFalse(guest.exists())
+
     def test_non_total_and_effectful_conditions_refuse(self) -> None:
         """A guard that can change at a successful byte cannot be folded."""
         invalid = (

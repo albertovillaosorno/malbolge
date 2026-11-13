@@ -11,6 +11,24 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Proven compound successful-byte C conditions (2026-11-13)
+
+A complete C stream with a live `getchar()` local, three-trip induction,
+nested `if` statements, selected `continue` and trailing I/O initially
+refused `current >= 0 && current <= 255`. The source-backed pinned-Clang
+proof now accepts bounded pure `&&` and `||` trees if every leaf is
+invariant across successful guest input bytes `[0, 255]`. Both operands
+are authenticated even when C would short-circuit one of them. Neither
+actual guest data nor side effects are predicted by the host.
+
+Three two-operand guards, two nested mixed-operator guards and an
+always-false guard without `else` execute in the normative VM: five
+outputs in eight steps for the former and three outputs in six steps
+for the latter. Boundary and seeded binary streams match their oracles.
+Eight dependent or effectful conditions and six source/Clang mutations
+refuse publication. Dynamic C branches, EOF, I/O failures, general
+C storage and arithmetic remain unsupported; P0 stays open.
+
 ### Successful-byte-total C `if` statements (2026-11-13)
 
 A complete C stream with an input local, a three-trip induction loop,

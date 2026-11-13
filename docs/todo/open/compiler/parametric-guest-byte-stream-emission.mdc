@@ -55,6 +55,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C input-local, three-trip induction,
+  remainder/continue and nested-if program first refused the live
+  `current >= 0 && current <= 255` guard at normalized projection.
+  A bounded source-/Clang-authenticated proof now composes `&&`/`||` only
+  when each comparison/mask leaf is pure and constant across successful
+  input bytes `[0, 255]`. The normative VM matches four copies of the
+  first byte followed by the second in eight steps for three two-leaf
+  and two mixed-precedence programs on boundary and seeded streams.
+  A false no-`else` guard skips a read and outputs three bytes in six
+  steps. Eight dependent/effectful inputs, modified Clang and original
+  source evidence, and absent source refuse. General runtime C control,
+  storage, arithmetic, EOF and failed output remain unimplemented;
+  P0 stays pending.
+
+
 - On 2026-11-13 a complete C input-local, induction, static branch,
   `continue`, nested `if (current < 256)` and trailing byte-I/O program
   first refused normalized projection. A source-/pinned-Clang-backed

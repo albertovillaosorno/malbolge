@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Pure compound successful-byte predicates select C arms
+
+An original C program with an input local, three-trip induction loop,
+remainder branch, `continue`, nested C `if` and trailing real guest I/O
+first refused `if (current >= 0 && current <= 255)` at the normalized
+adapter. The bounded proof now authenticates the original C bytes,
+pinned Clang `i32` logical `&&`/`||` parents, operand trees and spans.
+Each leaf must have one truth value across successful bytes `[0, 255]`;
+the combined result is independent of the actual runtime input. Both
+operands must be pure, including those skipped by C short-circuiting.
+
+Three two-operand and two mixed-precedence complete streams execute in
+the normative VM with four genuine copies of the first input followed
+by the second, in eight guest steps. Boundary and seeded binary cases
+match an independent byte oracle. A separate false compound `if`
+without `else` skips an input effect and emits two copies of the first
+byte followed by the second in six steps. Eight inconclusive/effectful
+guards and six source/Clang integrity cases refuse without an artifact.
+Dynamic C branching, EOF, failed writes, general storage and arithmetic
+remain unsupported.
+
 ### Total successful-byte predicates select a whole C statement arm
 
 An original full C stream combines a live `getchar()` local, a three-trip
