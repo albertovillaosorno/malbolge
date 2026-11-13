@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13, the pinned frontend accepted a complete two-trip
+  counted/continue C stream assigning
+  `current = (putchar(getchar()), getchar());` to a live outer local,
+  but normalized lowering initially rejected it. A source-proven
+  ordered-effect liveness proof now permits discarded reads only when
+  the local is rebound before subsequent output. The normative guest
+  VM matches two boundary and sixteen seeded binary streams at six
+  actual reads, five writes and twelve steps. Selected/skipped inner
+  branch rebinding and a zero-trip variant match independent outputs.
+  Stale intervening reads, unsupported expressions, source and Clang
+  forgeries refuse. EOF, general storage, guest C arithmetic and
+  runtime-dependent control remain outside this bounded capability;
+  P0 stays pending.
+
 - On 2026-11-13 a complete C program used a comma-valued assignment
   to rebind a live local before a three-trip induction/continue loop and
   a final guest input/output. Pinned Clang admitted the source while the
@@ -68,8 +82,9 @@ a compiler capability gap, not a reason to return to N+1.
   Seven unsupported expressions, twelve forged Clang nodes, missing
   source and SHA-adjusted source spoofing refuse. The first attempted
   version with a fresh comma assignment inside each loop iteration
-  still rejects, as do EOF, output failure, general guest storage and
-  guest-dependent control. P0 stays pending.
+  initially rejected; the bounded outer-local repair is recorded above.
+  EOF, output failure, general storage and guest-dependent control
+  remain unsupported. P0 stays pending.
 
 
 - On 2026-11-13 a complete C stream initialized a local from

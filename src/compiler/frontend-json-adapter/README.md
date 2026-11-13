@@ -11,6 +11,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Rebinding an outer C byte inside a counted loop (2026-11-13)
+
+A canonical finite loop may reassign its authenticated enclosing C local
+with a source-proven comma sequence that discards earlier successful
+`getchar()`/nested `putchar()` effects and retains only the final
+input or output-return byte. A selected nested branch may perform the
+reassignment, while a skipped branch preserves the original live byte.
+The proof checks every Clang statement and original source token before
+emitting the ordered guest trace. Any output of the outer name after
+an unbound input, but before a fresh explicit reassignment, refuses.
+
+A complete two-trip induction/continue C stream matches 18 independent
+binary oracles at six actual reads, five writes and twelve normative
+VM steps. Selected/skipped arms and zero-trip loops preserve their exact
+guest traces. This is bounded single-byte residence, not a general
+implementation of C memory, arithmetic, EOF or runtime-dependent control.
+
 ### Comma-valued source-C reassignment (2026-11-13)
 
 An existing authenticated C local may be rebound by a canonical
@@ -28,8 +45,9 @@ four binary inputs in eleven normative VM steps. An unselected branch and
 a stale destination with three comma operands also match independent guest
 oracles. Seven unsupported C expressions, twelve forged Clang ancestry edits,
 missing source and SHA-adjusted source spoofing refuse without publication.
-Loop-local comma rebinding, general C memory, arithmetic, EOF, output
-failure and guest-dependent control remain unsupported.
+The bounded outer-local loop case is now admitted as documented above;
+general C memory, arithmetic, EOF, output failure and guest-dependent
+control remain unsupported.
 
 
 ### Ordered C comma initializers retain only the final guest byte (2026-11-13)

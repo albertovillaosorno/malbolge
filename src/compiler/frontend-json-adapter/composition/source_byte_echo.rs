@@ -2362,6 +2362,25 @@ fn static_comma_effects<'node>(
     )
 }
 
+// Borrowed C storage is represented by exactly one resident guest byte.
+// A discarded input may overwrite that byte temporarily, but a later output
+// of the outer local needs a proven rebind first. Check the ordered, already
+// source-authenticated effect trace, not just each input in isolation.
+fn outer_loop_byte_after_effects(
+    effects: &[StaticIfEffect<'_>],
+    reference: &str,
+    mut available: bool,
+) -> Option<bool> {
+    for effect in effects {
+        if effect.input.is_some() {
+            available = effect.assigned_local.as_deref() == Some(reference);
+        } else if !available && !effect.outputs.is_empty() {
+            return None;
+        }
+    }
+    Some(available)
+}
+
 fn prove_static_if_statement<'node>(
     nodes: &'node [Node],
     body: &Node,
@@ -2406,11 +2425,13 @@ fn prove_static_if_statement<'node>(
                 for_depth.checked_add(1)?,
                 source,
             )?;
-            (proof.effects.iter().all(|effect| {
-                effect.input.is_none()
-                    || effect.assigned_local.as_deref()
-                        == Some(live.variable_reference.as_str())
-            }) && source_identifiers_match(nodes.get(..proof.width)?, witness))
+            (outer_loop_byte_after_effects(
+                &proof.effects,
+                &live.variable_reference,
+                true,
+            )
+            .is_some()
+                && source_identifiers_match(nodes.get(..proof.width)?, witness))
             .then_some(proof)
         })?;
         if proof.effects.len() > 16 {
@@ -2979,18 +3000,12 @@ fn prove_static_if_arm<'node>(
             {
                 equivalent_locals.clear();
             }
-            if !(statement.kind == "binary-expression"
-                && statement.operation.as_deref() == Some("="))
-            {
-                local_is_live &= statement_effects.iter().all(|effect| {
-                    effect.input.is_none()
-                        || declared_local.as_ref().or(local).is_some_and(
-                            |bound| {
-                                effect.assigned_local.as_deref()
-                                    == Some(bound.variable_reference.as_str())
-                            },
-                        )
-                });
+            if let Some(bound) = declared_local.as_ref().or(local) {
+                local_is_live = outer_loop_byte_after_effects(
+                    &statement_effects,
+                    &bound.variable_reference,
+                    local_is_live,
+                )?;
             }
         }
         effects.extend(statement_effects);
@@ -4391,9 +4406,8 @@ pub(super) fn canonical_source_byte_echo(
                 remaining, body, previous, next_id, body.id, None, 1, source,
             )
             .or_else(|| {
-                // A loop with fresh reads can change the accumulator between
-                // trips. Reuse the enclosing C binding only if no guest input
-                // occurs on the selected trace.
+                // The selected trace may have discarded inputs, but the outer
+                // C local must be rebound before its next observed use.
                 let (live, _) = latest_local.as_ref()?;
                 let witness = source?;
                 std::iter::once(live)
@@ -4409,16 +4423,16 @@ pub(super) fn canonical_source_byte_echo(
                             1,
                             source,
                         )?;
-                        (proof.effects.iter().all(|effect| {
-                            effect.input.is_none()
-                                || effect.assigned_local.as_deref()
-                                    == Some(
-                                        candidate.variable_reference.as_str(),
-                                    )
-                        }) && source_identifiers_match(
-                            remaining.get(..proof.width)?,
-                            witness,
-                        ))
+                        (outer_loop_byte_after_effects(
+                            &proof.effects,
+                            &candidate.variable_reference,
+                            true,
+                        )
+                        .is_some()
+                            && source_identifiers_match(
+                                remaining.get(..proof.width)?,
+                                witness,
+                            ))
                         .then_some(proof)
                     })
             })

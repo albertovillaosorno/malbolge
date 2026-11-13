@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Loop-local effects rebind an outer C local (2026-11-13)
+
+A complete original C source declares a live local, then reassigns it in
+each iteration of a two-trip induction loop with a comma expression:
+`current = (putchar(getchar()), getchar());`. A remainder-selected
+`continue` branch consumes that newly bound byte. The pinned Clang
+frontend accepted the full program, while normalized lowering initially
+refused the outer declaration because discarded reads lacked direct
+reassignment targets.
+
+The source- and Clang-authenticated finite-loop proof now follows each
+ordered input/output effect. A discarded fresh input may temporarily
+invalidate the outer byte, but output of that C local is admitted only
+after a proven assignment restores its identity. This rule also handles
+a selected inner branch; skipped branches preserve their prior byte.
+The normative guest VM matches 18 binary-input oracle streams at six
+reads, five writes and twelve steps. Selected/skipped rebinding and
+zero-trip proofs match four reads/four writes/nine steps and two
+reads/one write/four steps. Stale intervening reads, unsupported
+operands, changed Clang ancestry and source spoofing refuse. This does
+not implement general C storage, EOF or runtime guest-dependent control.
+
 ### Ordered C comma-valued assignment into a proven local (2026-11-13)
 
 A complete source-C byte stream assigned a parenthesized comma expression
@@ -43,9 +65,10 @@ A skipped branch preserves its original local with two reads and four writes
 in seven steps. A stale top-level destination with three comma operands
 matches six reads, four writes and eleven steps. Unsupported arithmetic,
 stale C value operands, forged AST ancestry, absent source and SHA-adjusted
-spoofed C source all refuse without publication. The originally attempted
-loop-local rebinding variant remains unsupported. EOF, failed putchar,
-general C storage and guest-dependent conditions also remain P0 blockers.
+spoofed C source all refuse without publication. A later bounded,
+source-proven loop-local reassignment proof is documented above. EOF,
+failed putchar, general C storage and guest-dependent conditions remain
+P0 blockers.
 
 
 ### Ordered source-C comma initializers (2026-11-13)
