@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a full C branch/loop stream with three sequential scoped
+  `getchar` declarations and a copied local first refused the second input.
+  The source-proof adapter now accepts successive lexical inputs, each
+  overwriting the guest-resident byte, and requires exact original-C source
+  proof even for the first scoped declaration in a standalone counted loop.
+  The normative Malbolge VM matches independent binary oracles with nine
+  reads/nine writes/nineteen steps; the skipped branch matches five reads,
+  six writes and twelve steps. A separate two-read-per-trip C loop emits
+  four bytes from seven genuine reads in twelve steps. Boundary/seeded
+  streams, six unsupported C edits, six forged nodes, absent source and
+  SHA-adjusted source/AST forgeries are covered. This remains bounded C
+  replay, not dynamic guest control, storage, arithmetic or EOF.
+
 - On 2026-11-13 two complete C streams introduced a source-local alias
   and a fresh shadowing input declaration in top-level `if` arms before a
   counted loop with guest I/O, induction branches and `continue`. The pinned

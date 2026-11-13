@@ -1838,31 +1838,26 @@ fn prove_static_if_arm<'node>(
             declared_local = Some(alias);
             (4, Vec::new(), end)
         } else if declares_local {
-            // A newly scoped local may shadow the outer C byte binding.
-            // Its fresh guest read replaces the resident accumulator, so
-            // the previous outer byte must not be recovered afterward.
-            // Accept only one new initialized local in this lexical block.
-            if declared_local.is_some() {
-                return None;
-            }
+            // Each source-proven declaration reads a fresh guest byte.
+            // Several sequential locals may share this lexical block, but
+            // only the latest byte remains resident in the accumulator.
+            // Never recover an older, overwritten C value from a stale name.
             let declaration = prove_local_declaration(
                 nodes.get(cursor..cursor.checked_add(5)?)?,
                 body,
                 effect_end,
                 child.id,
             )?;
-            // When an outer byte is still resident, a nested C declaration
-            // can shadow it only through its exact authenticated new read.
-            // Clang-shaped nodes alone must not turn a constant initializer
-            // into a guest input after a forged source digest is supplied.
-            if local.is_some() {
-                let witness = source?;
-                let begin = usize::try_from(statement.span.begin.byte).ok()?;
-                let end = usize::try_from(declaration.declaration_end).ok()?;
-                let spelling = format!("int {} = getchar();", declaration.name);
-                if witness.get(begin..end) != Some(spelling.as_bytes()) {
-                    return None;
-                }
+            // Clang-shaped nodes cannot manufacture new guest input after a
+            // forged source digest changes a constant initializer to a call.
+            // Require exact original C spelling for *every* scoped read,
+            // including the first declaration in a loop without outer locals.
+            let witness = source?;
+            let begin = usize::try_from(statement.span.begin.byte).ok()?;
+            let end = usize::try_from(declaration.declaration_end).ok()?;
+            let spelling = format!("int {} = getchar();", declaration.name);
+            if witness.get(begin..end) != Some(spelling.as_bytes()) {
+                return None;
             }
             if declaration.input.id != statement.id.checked_add(2)? {
                 return None;

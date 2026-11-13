@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Multiple original-C scoped reads in one branch or loop (2026-11-13)
+
+A complete C stream placed three distinct `getchar()`-initialized locals in
+one statically selected `if` arm, interleaved a source-proven alias and outputs,
+then ran a three-trip induction-selected `continue` loop. Pinned Clang accepted
+it, but the normalized adapter previously refused the second scoped read.
+The branch proof now accepts successive independently source-authenticated
+scoped declarations, overwriting only the resident guest accumulator value;
+stale C locals are not restored. Every scoped read, including the first local
+in a counted loop without an outer binding, must match the SHA-checked
+original-C spelling, not merely Clang-shaped JSON.
+
+The full selected C stream consumes nine binary guest reads and emits nine
+independently predicted bytes in nineteen normative VM steps. Its skipped-arm
+variant keeps the original local live and emits six bytes from five reads in
+twelve steps. A separate whole C loop with two new scoped reads per trip
+consumes seven bytes, emits four independently predicted bytes, and halts in
+twelve steps. Each program matches both boundary and seeded binary oracles;
+six malformed or stale C variants, six forged Clang nodes, absent source proof
+and forged C initializers refuse. This is still finite source-time control,
+not guest-dependent branching, general C storage, arithmetic or EOF.
+
 ### Lexically scoped C byte aliases and fresh shadows (2026-11-13)
 
 An original complete C program copied a live `getchar()` value into a

@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Successive scoped C byte inputs (2026-11-13)
+
+A statically selected C branch can declare several fresh `int NAME =
+getchar();` inputs in one lexical block, interleaved with verified copies and
+`putchar` effects. Each declaration emits a real guest read and invalidates
+all stale byte aliases; the current source binding alone can be reused.
+Even a first scoped declaration in a counted loop without an outer live
+byte must carry the exact SHA-checked original-C spelling. This prevents
+forged normalized JSON from inventing input after a source change.
+
+The actual Malbolge guest matches a complete branch-and-loop C program on
+nine runtime reads and nine writes in nineteen steps; its unselected arm
+matches five reads and six writes in twelve steps. A second complete C loop
+reads two different scoped locals per iteration and emits four of seven
+runtime input bytes in twelve steps. All three paths match independently
+computed binary oracles; stale reads, malformed C, forged normalized nodes,
+missing witnesses and SHA-adjusted source spoofs refuse. Guest-dependent
+control, arbitrary source storage, arithmetic and EOF remain unsupported.
+
 ### Scoped C branch aliases and input shadows (2026-11-13)
 
 The normalized adapter now authenticates a block-local alias of the resident
