@@ -26,6 +26,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Total successful-byte predicates select a whole C statement arm
+
+An original full C stream combines a live `getchar()` local, a three-trip
+induction loop, a static remainder branch and `continue`, a nested C `if`
+and trailing binary input/output. The adapter initially refused the live
+`if (current < 256)` comparison. It now proves one pure, pinned-Clang
+comparison against exact original C text, selects an arm only if its truth
+value agrees at zero and across all positive successful bytes `[1, 255]`,
+and authenticates both complete C arms before emitting the selected effects.
+It never evaluates the actual byte on the host or invents guest branching.
+
+The normative VM reads two real bytes and emits five: four copies of the
+first and one fresh second byte, in eight guest steps across four boundaries
+and twelve seeded binary pairs. A reversed always-false threshold also
+matches. Nine byte-dependent/side-effectful guards, changed Clang nodes,
+forged source SHA and an absent original C witness refuse without an artifact.
+No arbitrary guest-dependent `if`, EOF, failed output, arithmetic or memory
+is implemented; this P0 remains pending.
+
 ### Total wide-integer range tests over a live input byte (2026-11-13)
 
 A complete C program combining a live binary input, a four-trip induction

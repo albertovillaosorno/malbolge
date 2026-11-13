@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Successful-byte-total C `if` statements (2026-11-13)
+
+A complete C stream with an input local, a three-trip induction loop,
+remainder-selected `continue`, nested C `if` statements and genuine binary
+I/O initially refused a `current < 256` statement guard. Normalized
+lowering now checks that the source-authenticated pinned Clang predicate
+has the same truth value at zero and every positive successful byte.
+The selected whole C arm executes with its ordered input/output effects;
+the other arm is still authenticated and cannot introduce hidden effects.
+No dynamic branch, byte prediction or input-side callback is synthesized.
+
+The original C program emits four copies of its first byte and then its
+second, in eight normative VM steps. Four binary boundaries and twelve
+seeded streams match independently computed output; a reversed false-guard
+variant also matches. Nine non-total or effectful predicates and six
+forged/missing source cases refuse. Conditions that vary across successful
+bytes, EOF, failed I/O, general guest-dependent control, arithmetic and
+storage remain unsupported, so the P0 contract stays open.
+
 ### Total wide-integer comparisons of successful guest bytes (2026-11-13)
 
 A complete original C loop with static branch/continue, a genuine live

@@ -5548,9 +5548,54 @@ fn prove_static_predicate(
     Some((width, value != 0))
 }
 
+// A successful getchar/putchar byte is in [0, 255]. When a pure,
+// source-authenticated comparison has the same truth value at zero as at
+// every positive byte, an if-statement can select its effects without
+// reading or predicting the guest value on the host. An inconclusive
+// condition must still refuse, even when its arms happen to look alike.
+fn prove_total_byte_if_predicate(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    conditional: &Node,
+    local: Option<&LocalDeclaration<'_>>,
+    source: Option<&[u8]>,
+) -> Option<(usize, bool)> {
+    let witness = source?;
+    let (width, _) = prove_pure_byte_guard(
+        nodes,
+        local,
+        body,
+        previous,
+        conditional.id,
+        conditional.id.checked_add(1)?,
+        0,
+        witness,
+    )?;
+    let positive = proven_positive_byte_range_truth(nodes, width)?;
+    let root = nodes.first()?;
+    let literal = nodes
+        .get(width.checked_sub(1)?)?
+        .literal
+        .as_deref()?
+        .parse::<i32>()
+        .ok()?;
+    let zero = match root.operation.as_deref()? {
+        "<" => 0 < literal,
+        "<=" => 0 <= literal,
+        ">" => 0 > literal,
+        ">=" => 0 >= literal,
+        "==" => literal == 0,
+        "!=" => literal != 0,
+        "&" => false,
+        _ => return None,
+    };
+    (zero == positive).then_some((width, positive))
+}
+
 // Exact folded source-C predicates. Each bounded C call in both arms
-// is authenticated before selecting guest effects.
-// Runtime-dependent predicates still have no lowering.
+// is authenticated before selecting guest effects. Invariant predicates
+// over a successful guest byte also select an entire statement arm.
 
 #[expect(
     clippy::too_many_lines,
@@ -5591,7 +5636,17 @@ fn prove_static_if<'node>(
         return None;
     }
     let (predicate_width, condition_true) =
-        prove_static_predicate(nodes.get(1..)?, conditional, induction)?;
+        prove_static_predicate(nodes.get(1..)?, conditional, induction)
+            .or_else(|| {
+                prove_total_byte_if_predicate(
+                    nodes.get(1..)?,
+                    body,
+                    previous,
+                    conditional,
+                    local,
+                    source,
+                )
+            })?;
     let predicate_root = nodes.get(1)?;
     let predicate_last = nodes.get(predicate_width)?;
     let arm_offset = 1usize.checked_add(predicate_width)?;

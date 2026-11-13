@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C input-local, induction, static branch,
+  `continue`, nested `if (current < 256)` and trailing byte-I/O program
+  first refused normalized projection. A source-/pinned-Clang-backed
+  total-range proof now selects the whole statement arm if its guard has
+  identical truth at zero and across positive successful bytes. The
+  inactive arm remains authenticated. The real guest VM emits four copies
+  of its first input followed by its second, from two reads and five
+  writes, in eight steps across four boundaries and twelve seeded pairs.
+  An always-false reversed arm also passes. Nine inconclusive/effectful
+  predicates, forged Clang nodes, changed SHA-adjusted source and absent
+  source refuse. This is proven-static selection, not arbitrary runtime
+  guest C branches, arithmetic, storage, EOF or output failure. P0 remains
+  pending.
+
 - On 2026-11-13 a complete four-trip C loop/branch/continue program first
   refused the live-byte guard `current < 256` at normalized projection.
   The adapter now proves comparisons against canonical nonnegative `i32`
