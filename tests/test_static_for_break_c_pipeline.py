@@ -216,7 +216,8 @@ class StaticForBreakCPipelineTests(unittest.TestCase):
     def test_untrusted_break_forms_refuse_target_publication(self) -> None:
         original = break_source()
         variants = (
-            original.replace("break;", "continue;"),
+            # Canonical continue is now supported; reject dynamic control.
+            original.replace("break;", "if (current) break;"),
             original.replace("break;", "return;"),
             original.replace("if (1)", "if (getchar())"),
             original.replace("int current = getchar();", "int current = 4;"),
