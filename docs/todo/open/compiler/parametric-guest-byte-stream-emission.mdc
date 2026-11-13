@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 an original four-trip C induction/continue program with
+  live binary input first refused a conditional whose arms differ but whose
+  `current <= 255` guard is universally true for a successful byte. Strict
+  source and pinned Clang proof now selects a pure live-byte identity for
+  `< 0`, `>= 0`, `<= 255`, `> 255` or `& 0`, authenticating an inactive
+  literal zero and rejecting hidden effects. The real normative VM emits
+  five copies of its first byte then the second, from two inputs, in nine
+  steps across four boundary and sixteen seeded pairs, with an stratified
+  32-value first-byte sweep; false-polarity and
+  zero-trip variants also match. Source/AST tampering and non-total guards
+  refuse. General guest-dependent C control, arithmetic, EOF, failed
+  output and storage are still unsupported; P0 remains open.
+
 - On 2026-11-13 an original complete C counted/branch/continue stream
   initially rejected a live-byte threshold conditional with two pure byte
   identity arms. Source- and pinned-Clang-proven comparisons and bitmasks

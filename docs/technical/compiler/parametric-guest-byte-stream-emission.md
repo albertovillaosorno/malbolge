@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Proven successful-byte range conditions (2026-11-13)
+
+The original complete source-C four-trip induction/continue program first
+failed at normalized lowering on a pure range conditional with unequal arms:
+`current <= 255 ? ((current ^ 0) & 255) : 0`. The repair authenticates the
+original C bytes and every normalized Clang expression, including the guard,
+selected pure byte identity, inactive zero literal and complete ternary span.
+For successful `getchar()` byte values only, comparisons with the two exact
+range endpoints and `& 0` have invariant truth values. Reusing the genuine
+guest SSA byte is sound without host input evaluation or a fabricated branch.
+
+The source now emits five copies of its first input byte and then the second,
+from two genuine guest reads and six writes, in nine normative VM steps on
+four boundary and sixteen seeded binary pairs, plus 32 stratified
+successful first-byte values. Two alternative polarity and
+zero-trip programs also match the VM. Negative examples, every affected
+Clang line-six node parent/span, forged literal fields, SHA-updated changed
+source and missing source fail closed. This proof does not support EOF,
+failed output, dependent control, nonidentity arithmetic or arbitrary storage;
+the general P0 obligation remains pending.
+
 ### Equivalent pure conditional arms over a live guest byte (2026-11-13)
 
 An original source-C program with a live binary `getchar()` result, three-trip

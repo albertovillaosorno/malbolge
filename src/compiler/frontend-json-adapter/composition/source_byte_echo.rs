@@ -2899,6 +2899,177 @@ fn prove_equivalent_byte_arms(
     Some((width, spelling))
 }
 
+// A successful getchar byte is in the closed integer interval [0, 255].
+// No host guess is needed for these four endpoint comparisons or zero mask.
+// The caller has already source-/Clang-proven the entire pure predicate.
+fn proven_byte_range_truth(nodes: &[Node], width: usize) -> Option<bool> {
+    let root = nodes.first()?;
+    if root.kind != "binary-expression" {
+        return None;
+    }
+    let value = nodes.get(width.checked_sub(1)?)?.literal.as_deref()?;
+    match (root.operation.as_deref()?, value) {
+        ("<" | "&", "0") | (">", "255") => Some(false),
+        (">=", "0") | ("<=", "255") => Some(true),
+        _ => None,
+    }
+}
+
+// Both C arms are authenticated even when one is unreachable for a successful
+// byte: the selected arm is a pure identity and the other must be literal zero.
+// No otherwise unreachable I/O or unproved arithmetic may be silently erased.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "retain the Clang parent, source span and pure selected C arm"
+)]
+fn prove_range_ternary_arm(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    root: &Node,
+    index: usize,
+    depth: usize,
+    source: &[u8],
+    start: u32,
+    selected: bool,
+) -> Option<(usize, String)> {
+    let expected_id = root.id.checked_add(u32::try_from(index).ok()?)?;
+    if selected {
+        return pure_identity_arm(
+            nodes.get(index..)?,
+            local,
+            body,
+            previous,
+            root.id,
+            expected_id,
+            depth.checked_add(1)?,
+            source,
+        );
+    }
+    prove_byte_zero_literal(
+        nodes.get(index)?,
+        expected_id,
+        root.id,
+        start,
+        root.span.begin.line,
+        root.span
+            .begin
+            .column
+            .checked_add(start.checked_sub(root.span.begin.byte)?)?,
+    )?;
+    Some((1, String::from("0")))
+}
+
+// The byte-bound guard is proven separately; this verifies source order and
+// the full Clang child ancestry of both pure arms, regardless of selection.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "bind two C arm proofs to the exact parent and source context"
+)]
+fn prove_range_ternary_arms(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    root: &Node,
+    condition: &str,
+    condition_width: usize,
+    condition_value: bool,
+    depth: usize,
+    source: &[u8],
+) -> Option<PureTernaryArmProof> {
+    let then_index = condition_width.checked_add(1)?;
+    let then_start =
+        root.span.begin.byte.checked_add(
+            u32::try_from(condition.len().checked_add(3)?).ok()?,
+        )?;
+    let (then_width, then_spelling) = prove_range_ternary_arm(
+        nodes,
+        local,
+        body,
+        previous,
+        root,
+        then_index,
+        depth,
+        source,
+        then_start,
+        condition_value,
+    )?;
+    let else_index = then_index.checked_add(then_width)?;
+    let else_start = then_start.checked_add(
+        u32::try_from(then_spelling.len().checked_add(3)?).ok()?,
+    )?;
+    let (else_width, else_spelling) = prove_range_ternary_arm(
+        nodes,
+        local,
+        body,
+        previous,
+        root,
+        else_index,
+        depth,
+        source,
+        else_start,
+        !condition_value,
+    )?;
+    Some((
+        else_index.checked_add(else_width)?,
+        then_spelling,
+        else_spelling,
+    ))
+}
+
+// A successful getchar byte is already guaranteed to be in [0, 255]. The
+// source-/Clang-authenticated guard is decided by this interval, not by
+// inspecting guest input, and only its authenticated identity is reused.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prove the original source, the guard and both C arm witnesses"
+)]
+fn prove_range_selected_byte_identity(
+    nodes: &[Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    depth: usize,
+    source: &[u8],
+) -> Option<(usize, String)> {
+    let root = nodes.first().filter(|root| {
+        pure_integer_root(root, "conditional-expression", parent, expected_id)
+            && root.operation.is_none()
+    })?;
+    let condition_nodes = nodes.get(1..)?;
+    let (condition_width, condition) = prove_pure_byte_guard(
+        condition_nodes,
+        local,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(1)?,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let condition_value =
+        proven_byte_range_truth(condition_nodes, condition_width)?;
+    let (width, then_spelling, else_spelling) = prove_range_ternary_arms(
+        nodes,
+        local,
+        body,
+        previous,
+        root,
+        &condition,
+        condition_width,
+        condition_value,
+        depth,
+        source,
+    )?;
+    let spelling = format!("{condition} ? {then_spelling} : {else_spelling}");
+    pure_expression_source(root, &spelling, source)?;
+    Some((width, spelling))
+}
+
 // Match the entire Clang preorder and original C bytes for exact identities.
 // A leaf is either a proven live local or a source-proven input/output call
 // that returns the same successful byte. Preserve the leaf's actual guest
@@ -3009,6 +3180,18 @@ fn prove_byte_identity_expression<'node>(
             if root.reference.is_none() && root.operation.is_none() =>
         {
             if let Some((width, spelling)) = prove_equivalent_byte_arms(
+                nodes,
+                local,
+                body,
+                previous,
+                parent,
+                expected_id,
+                depth,
+                source,
+            ) {
+                return Some((width, spelling, None, Vec::new()));
+            }
+            if let Some((width, spelling)) = prove_range_selected_byte_identity(
                 nodes,
                 local,
                 body,

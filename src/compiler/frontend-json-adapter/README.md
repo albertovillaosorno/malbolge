@@ -11,6 +11,28 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Successful-byte range selection in pure C ternaries (2026-11-13)
+
+A complete four-trip C program with a local binary `getchar()` byte, induction,
+remainder-selected `continue`, nested arithmetic identities and trailing I/O
+first refused `current <= 255 ? ((current ^ 0) & 255) : 0` at normalized
+lowering. A new strict source-/Clang-proven range test now selects a pure
+byte-preserving arm when its predicate is universally true or false for a
+successful input byte in `[0, 255]`. This covers `< 0`, `>= 0`, `<= 255`,
+`> 255`, and `& 0`; the other arm must be the exact pure integer literal
+zero. It does not predict guest input on the host, erase a hidden call,
+or claim guest-dependent control flow.
+
+The original program emits five copies of the first binary byte and the
+second byte, with nine real normative VM steps, on four boundary pairs and
+16 seeded pairs and a 32-point stratified first-byte sweep. Two
+additional true/false and zero-trip guests match both
+boundary inputs. Five tests enforce source/Clang ancestry and literal
+integrity, unchanged-source binding, source-backed admission and refusals
+for inconclusive guards, incorrect selected arithmetic and effectful arms.
+EOF, failed output, general arithmetic, memory and dynamic C branching
+remain unsupported.
+
 ### Equivalent pure conditional arms over a live guest byte (2026-11-13)
 
 An original source-C program with a live binary `getchar()` result, three-trip
