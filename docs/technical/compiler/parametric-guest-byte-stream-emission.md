@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven outer C byte across counted output loops (2026-11-13)
+
+A complete C stream reads a runtime byte, copies it into a block-local
+alias in a selected branch, and emits it through a four-trip induction
+loop with alternating selected `continue` paths. Pinned Clang accepted
+the full program, but the normalized adapter refused the loop's outer
+C binding. The adapter now reuses the resident guest byte through
+input-free, fully authenticated finite loops and nested counted loops;
+it also accepts a previously proven equivalent top-level C alias.
+The original C output loop runs in the normative VM under boundary and
+seeded binary input: two guest reads, eight writes, eleven steps.
+Zero-trip, nested and equivalent-alias variants emit four, six and five
+bytes respectively with no synthesized reads.
+
+The fallback requires the SHA-checked original source, validates the
+spelling of every loop-local C and external identifier reference, and
+prohibits any selected guest input while borrowing an outer binding.
+An input-producing loop uses the existing independent replay path and
+invalidates old aliases. Missing source, a same-length forged C source
+with a different live local, stale reads and unsupported arithmetic
+refuse without an output artifact. This is source-time bounded replay,
+not general guest control, arithmetic, storage or EOF. P0 stays open.
+
+
 ### Multiple original-C scoped reads in one branch or loop (2026-11-13)
 
 A complete C stream placed three distinct `getchar()`-initialized locals in

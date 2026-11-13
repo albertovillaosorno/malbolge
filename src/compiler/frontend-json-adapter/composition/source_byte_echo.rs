@@ -630,6 +630,34 @@ fn valid_local_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
+// A borrowed outer byte has no local initializer inside the counted loop.
+// Verify that each Clang name reference actually occurs in the caller-checked
+// original C source, not just at a compatible normalized AST byte extent.
+fn source_identifiers_match(nodes: &[Node], source: &[u8]) -> bool {
+    nodes
+        .iter()
+        .filter(|node| node.kind == "declaration-reference-expression")
+        .all(|node| {
+            let Some(reference) = node.reference.as_deref() else {
+                return false;
+            };
+            let name = reference.strip_prefix("external:").or_else(|| {
+                reference.split_once('@').map(|(name, _offset)| name)
+            });
+            let Some(name) = name else {
+                return false;
+            };
+            let (Ok(start), Ok(end)) = (
+                usize::try_from(node.span.begin.byte),
+                usize::try_from(node.span.end.byte),
+            ) else {
+                return false;
+            };
+            valid_local_name(name)
+                && source.get(start..end) == Some(name.as_bytes())
+        })
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "check all five pinned Clang declaration nodes atomically"
@@ -1501,9 +1529,30 @@ fn prove_static_if_statement<'node>(
             previous,
             expected_id,
             parent,
+            None,
             for_depth.checked_add(1)?,
             source,
-        )?;
+        )
+        .or_else(|| {
+            // Only an input-free loop can safely reuse a byte bound before
+            // the loop. A fresh read in one trip would make it stale in the
+            // next trip; do not project that lost C storage into the guest.
+            let live = local?;
+            let witness = source?;
+            let proof = prove_static_for(
+                nodes,
+                body,
+                previous,
+                expected_id,
+                parent,
+                Some(live),
+                for_depth.checked_add(1)?,
+                source,
+            )?;
+            (proof.effects.iter().all(|effect| effect.input.is_none())
+                && source_identifiers_match(nodes.get(..proof.width)?, witness))
+            .then_some(proof)
+        })?;
         if proof.effects.len() > 16 {
             return None;
         }
@@ -2018,6 +2067,7 @@ fn prove_static_for<'node>(
     previous: u32,
     expected_id: u32,
     parent: u32,
+    outer_local: Option<&LocalDeclaration<'node>>,
     for_depth: usize,
     source: Option<&[u8]>,
 ) -> Option<StaticForProof<'node>> {
@@ -2347,7 +2397,7 @@ fn prove_static_for<'node>(
             increment_end,
             expected_id.checked_add(arm_id_offset)?,
             loop_node.id,
-            None,
+            outer_local,
             0,
             column,
             true,
@@ -3341,19 +3391,46 @@ pub(super) fn canonical_source_byte_echo(
             continue;
         }
         if first.kind == "for-statement" {
+            let remaining =
+                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?;
             let proof = prove_static_for(
-                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
-                body,
-                previous,
-                next_id,
-                body.id,
-                1,
-                source,
+                remaining, body, previous, next_id, body.id, None, 1, source,
             )
+            .or_else(|| {
+                // A loop with fresh reads can change the accumulator between
+                // trips. Reuse the enclosing C binding only if no guest input
+                // occurs on the selected trace.
+                let (live, _) = latest_local.as_ref()?;
+                let witness = source?;
+                std::iter::once(live)
+                    .chain(equivalent_locals.iter())
+                    .find_map(|candidate| {
+                        let proof = prove_static_for(
+                            remaining,
+                            body,
+                            previous,
+                            next_id,
+                            body.id,
+                            Some(candidate),
+                            1,
+                            source,
+                        )?;
+                        (proof
+                            .effects
+                            .iter()
+                            .all(|effect| effect.input.is_none())
+                            && source_identifiers_match(
+                                remaining.get(..proof.width)?,
+                                witness,
+                            ))
+                        .then_some(proof)
+                    })
+            })
             .ok_or(FrontendJsonError::Unsupported)?;
             // Each static trip has already been source-proven with its
             // induction value; the ordered trace still reads from the guest.
-            let mut iteration_byte = None;
+            let mut iteration_byte =
+                latest_local.as_ref().map(|(_, value)| *value);
             for effect in &proof.effects {
                 if let Some(exit) = effect.loop_exit {
                     if exit != StaticLoopExit::Return {
@@ -3385,12 +3462,24 @@ pub(super) fn canonical_source_byte_echo(
                     ));
                     inputs += 1;
                     iteration_byte = Some(value);
+                    // Fresh guest input invalidates earlier C identities.
+                    // A source-proven assignment to an enclosing C local
+                    // can replace it; a loop-local declaration cannot escape.
+                    latest_local =
+                        effect.assigned_local.as_ref().and_then(|reference| {
+                            declared_locals
+                                .iter()
+                                .find(|local| {
+                                    &local.variable_reference == reference
+                                })
+                                .cloned()
+                                .map(|local| (local, value))
+                        });
+                    equivalent_locals.clear();
                     value
                 } else {
                     iteration_byte.ok_or(FrontendJsonError::Unsupported)?
                 };
-                latest_local = None;
-                equivalent_locals.clear();
                 for output in effect.outputs.iter().rev() {
                     instructions.push(LocatedInstruction::new(
                         Instruction::ByteOutput { value },

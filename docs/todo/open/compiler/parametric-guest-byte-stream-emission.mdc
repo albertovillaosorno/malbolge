@@ -55,6 +55,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a whole C program with a live outer `getchar` byte,
+  source-proven branch alias, four-trip induction-selected `continue`
+  loop and trailing fresh guest read was first refused by the JSON
+  adapter. Input-free counted loops now reuse only an authenticated
+  resident C byte or proven equivalent alias; no guest input may
+  clobber that borrowed value. The normative VM matches independent
+  boundary/seeded binary oracles at two reads, eight writes and eleven
+  steps. A zero-trip, nested and top-level alias loop match four,
+  six and five writes in seven, nine and eight steps respectively.
+  Source identifier spelling, missing-source and SHA-adjusted C/AST
+  forgeries refuse, as do stale values and unlowered byte arithmetic.
+  This does not add dynamic C loops, general storage, arithmetic or
+  EOF; P0 remains open.
+
+
 - On 2026-11-13 a full C branch/loop stream with three sequential scoped
   `getchar` declarations and a copied local first refused the second input.
   The source-proof adapter now accepts successive lexical inputs, each

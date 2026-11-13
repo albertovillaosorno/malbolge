@@ -11,6 +11,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Live outer C bytes in finite output loops (2026-11-13)
+
+An input-free counted C `for` body may output the already resident guest
+byte from an authenticated outer local or an equivalent source-proven
+top-level alias, including selected `continue`, zero trips and nested
+loops. The original complete branch-and-loop program consumes two
+binary input bytes and writes eight independent-oracle bytes in eleven
+normative VM steps; related zero-trip, nested and alias cases also pass.
+Clang node ancestry and original-C identifier spellings are checked
+before borrowing the outer byte; a missing source or SHA-adjusted AST
+spoof cannot invent another C binding. Any selected read inside the
+borrowed loop is refused instead of restoring stale C state; loops
+with independent fresh reads retain their existing separate path.
+Dynamic control, general guest storage, arithmetic and EOF remain open.
+
+
 ### Successive scoped C byte inputs (2026-11-13)
 
 A statically selected C branch can declare several fresh `int NAME =
