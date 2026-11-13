@@ -10,6 +10,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Finite descending source-time C loops (2026-11-12)
+
+Source-proven `for (int i = 4; i >= 1; i--)` now counts down under `>` or
+`>=` with `--i`, `i--`, or `i -= 1`. The proof preserves exact Clang
+declaration, condition, step, body and comparison ancestry and re-evaluates
+source-only predicates at the correct descending value. Initial values
+1–9 and 1–16 finite trips are admitted. Mismatched steps, dynamic control,
+noncanonical literals and unproved loops are rejected. Guest byte reads
+and writes still execute at runtime.
+
+The full source reads six binary bytes and emits seven oracle bytes in
+fourteen normative VM steps. Seven loop variants match fourteen binary
+inputs, a nested forward/reverse loop matches two more, and thirteen
+invalid sources plus ten forged metadata changes refuse publication.
+General dynamic C loops, arithmetic, EOF and mutable locals remain open.
+
 ### One-based and inclusive finite C byte loops (2026-11-12)
 
 A complete C byte stream with `for (int i = 1; i <= 4; i++)`, fresh

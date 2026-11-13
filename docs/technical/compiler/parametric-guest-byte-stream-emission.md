@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Finite descending C induction with live byte streams (2026-11-12)
+
+A complete descending `for (int i = 4; i >= 1; i--)` program captures
+fresh `getchar()` locals, selects nested output and `continue` at `i == 3`
+or `i == 2`, breaks at `i == 1`, and emits one final live read. The pinned
+frontend accepted its source, but the normalized compiler first refused the
+`for-statement`. The source proof now admits `>` and `>=` only with canonical
+`--i`, `i--` or `i -= 1`, authenticates the bounded induction ancestry,
+and uses the actual decreasing value on every statically proven trip. The
+one-digit initial value is limited to 1–9 and loops to 1–16 nonempty trips.
+Runtime guest input remains independent of source-time control.
+
+The original program emits seven independently computed output bytes from
+six real binary guest reads in fourteen normative VM steps. Seven loop
+shapes match fourteen binary guest oracles; a mixed forward/reverse nested
+loop matches two seven-byte input/output oracles in fifteen steps.
+Thirteen invalid C sources and ten individually forged Clang mutations
+refuse target publication. Mutable C state, runtime guest-dependent
+control, guest arithmetic and EOF remain unsupported; P0 stays open.
+
 ### One-based and inclusive finite C byte loops (2026-11-12)
 
 A complete C byte stream with `for (int i = 1; i <= 4; i++)`, fresh

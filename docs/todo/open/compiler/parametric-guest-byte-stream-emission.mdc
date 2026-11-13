@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a descending C byte-stream loop with live
+  `getchar()` locals, nested branch-selected output and `continue`,
+  a later `break` and trailing read first refused normalized `for`.
+  Canonical `>`/`>=` conditions and three unit-decrement forms now
+  prove true descending induction values for 1–16 finite trips. The
+  original capsule reads six runtime bytes, writes seven independent
+  oracle bytes and halts after fourteen normative steps. Seven source
+  variants match fourteen binary guest oracles; mixed nested directions
+  match two more in fifteen steps. Thirteen unsupported sources and ten
+  individually forged Clang fields refuse publication. Dynamic C
+  control, arithmetic, mutable state and EOF remain open.
+
 - On 2026-11-12 a complete one-based inclusive C loop with real input
   locals, compound induction branches, selected `continue`, later `break`
   and a final read originally refused normalized `for-statement` proof.

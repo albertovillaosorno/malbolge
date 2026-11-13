@@ -1476,15 +1476,17 @@ struct StaticForProof<'node> {
     end: u32,
 }
 
-// A closed, arithmetic-incrementing for loop with a fresh automatic `i`:
+// A closed, unit-step for loop with a fresh automatic `i`:
 //     for (int i = 0; i < N; ++i) {
 //     for (int i = 1; i <= N; i++) {
-//     for (int i = 0; i < N; i += 1) {
+//     for (int i = 4; i >= 1; i--) {
+//     for (int i = 4; i > 0; --i) {
+//     for (int i = 4; i >= 1; i -= 1) {
 //         <source-proven byte-effect statements>
 //     }
-// A proven one-based start or inclusive bound must still advance through
-// 1–16 trips. Equal-width `!=` is intentionally refused: without source
-// tokens its normalized operator cannot be distinguished from forged `<=`.
+// Both directions admit only 1–16 nonempty trips. Equal-width `!=` is
+// intentionally refused: its normalized operator alone cannot authenticate
+// the spelling of an inclusive bound.
 // Both the induction arithmetic and all body statements are authenticated
 // against the pinned Clang preorder before any target instructions exist.
 #[expect(
@@ -1523,9 +1525,11 @@ fn prove_static_for<'node>(
     let variable_end = declaration_end.checked_sub(1)?;
     let condition_start = declaration_end.checked_add(1)?;
     let condition_operator = condition.operation.as_deref()?;
-    let operator_width = match condition_operator {
-        "<" => 1u32,
-        "<=" => 2u32,
+    let (ascending, inclusive, operator_width) = match condition_operator {
+        "<" => (true, false, 1u32),
+        "<=" => (true, true, 2u32),
+        ">" => (false, false, 1u32),
+        ">=" => (false, true, 2u32),
         _ => return None,
     };
     let bound_start = condition_start.checked_add(3 + operator_width)?;
@@ -1547,8 +1551,8 @@ fn prove_static_for<'node>(
         line,
         column.checked_add(13)?,
     )?;
-    // A source-proven standalone step is one of `++i`, `i++`, and
-    // `i += 1`. Its precise operand span prevents aliasing a mutated counter.
+    // Only source-shaped unit steps in the comparison's direction are
+    // admitted: ++i, i++, i += 1, --i, i--, or i -= 1.
     if start <= previous
         || start <= body.span.begin.byte
         || line == 0
@@ -1600,7 +1604,11 @@ fn prove_static_for<'node>(
             line,
             column.checked_add(5)?,
         )
-        || !matches!(initial_value, 0 | 1)
+        || if ascending {
+            !matches!(initial_value, 0 | 1)
+        } else {
+            !(1..=9).contains(&initial_value)
+        }
         || condition.id != expected_id.checked_add(4)?
         || condition.parent != loop_node.id
         || condition.kind != "binary-expression"
@@ -1647,10 +1655,11 @@ fn prove_static_for<'node>(
             }
         || increment.type_name.as_deref() != Some("i32")
         || increment.operation.as_deref()
-            != Some(if compound_increment {
-                "+="
-            } else {
-                "++"
+            != Some(match (ascending, compound_increment) {
+                (true, true) => "+=",
+                (true, false) => "++",
+                (false, true) => "-=",
+                (false, false) => "--",
             })
         || !metadata_empty(increment)
         || !source_word(
@@ -1712,12 +1721,14 @@ fn prove_static_for<'node>(
         line,
         column.checked_add(19 + operator_width)?,
     )?;
-    // For a unit-increasing counter, `<=` includes the final value;
-    // `<` stops before the bound. A nonpositive trip count
-    // is deliberately outside this finite, nonempty source grammar.
-    let trip_count = bound_value
-        .checked_sub(initial_value)?
-        .checked_add(i32::from(condition_operator == "<="))?;
+    // Include the bound on either signed direction only for <= or >=.
+    // A zero-trip or nonterminating source loop is outside this proof.
+    let trip_count = if ascending {
+        bound_value.checked_sub(initial_value)?
+    } else {
+        initial_value.checked_sub(bound_value)?
+    }
+    .checked_add(i32::from(inclusive))?;
     let iterations = usize::try_from(trip_count).ok()?;
     if !(1..=16).contains(&iterations) {
         return None;
@@ -1741,8 +1752,11 @@ fn prove_static_for<'node>(
             for_depth,
             Some(StaticInduction {
                 reference: &variable_reference,
-                value: initial_value
-                    .checked_add(i32::try_from(iteration).ok()?)?,
+                value: if ascending {
+                    initial_value.checked_add(i32::try_from(iteration).ok()?)?
+                } else {
+                    initial_value.checked_sub(i32::try_from(iteration).ok()?)?
+                },
             }),
         )?;
         if !arm.braced
