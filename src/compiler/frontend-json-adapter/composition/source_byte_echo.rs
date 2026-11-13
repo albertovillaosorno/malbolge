@@ -918,132 +918,6 @@ fn prove_local_input_reassignment<'node>(
     Some(input)
 }
 
-// `putchar(name = getchar());` returns and writes the fresh guest byte,
-// *and* rebinds the source-C destination for subsequent source reads. The
-// assignment is an expression inside the output call, not an independent
-// statement: authenticate all eight pinned nodes and the actual source token.
-#[expect(
-    clippy::too_many_lines,
-    reason = "the nested output/assignment/input ancestry is one proof"
-)]
-fn prove_output_input_assignment<'node>(
-    nodes: &'node [Node],
-    scope: (&Node, u32, u32),
-    local: &LocalDeclaration<'_>,
-    source: &[u8],
-) -> Option<(&'node Node, &'node Node)> {
-    let (body, previous, parent) = scope;
-    let [
-        output,
-        output_cast,
-        output_callee,
-        assignment,
-        destination,
-        input,
-        input_cast,
-        input_callee,
-    ] = nodes
-    else {
-        return None;
-    };
-    let start = output.span.begin.byte;
-    let line = output.span.begin.line;
-    let column = output.span.begin.column;
-    let destination_start = start.checked_add(8)?;
-    let destination_end =
-        destination_start.checked_add(u32::try_from(local.name.len()).ok()?)?;
-    let input_start = destination_end.checked_add(3)?;
-    let input_end = input_start.checked_add(9)?;
-    let end = input_end.checked_add(1)?;
-    let spelling = format!("putchar({} = getchar());", local.name);
-    if source.get(
-        usize::try_from(start).ok()?
-            ..usize::try_from(end.checked_add(1)?).ok()?,
-    ) != Some(spelling.as_bytes())
-    {
-        return None;
-    }
-    let verified = start > previous
-        && start > local.declaration_end
-        && end < body.span.end.byte
-        && line > local.line
-        && column > 0
-        && output.parent == parent
-        && output.kind == "call-expression"
-        && output.type_name.as_deref() == Some("i32")
-        && output.reference.as_deref() == Some("external:putchar")
-        && output.operation.is_none()
-        && metadata_empty(output)
-        && source_word(output, start, end, line, column)
-        && output_cast.id == output.id.checked_add(1)?
-        && output_cast.parent == output.id
-        && output_cast.kind == "cast-expression"
-        && output_cast.type_name.as_deref() == Some("ptr(fn(i32)->i32)")
-        && output_cast.operation.as_deref() == Some("function-to-pointer")
-        && output_cast.reference.is_none()
-        && metadata_empty(output_cast)
-        && source_word(output_cast, start, start.checked_add(7)?, line, column)
-        && output_callee.id == output_cast.id.checked_add(1)?
-        && output_callee.parent == output_cast.id
-        && output_callee.kind == "declaration-reference-expression"
-        && output_callee.type_name.as_deref() == Some("fn(i32)->i32")
-        && output_callee.reference.as_deref() == Some("external:putchar")
-        && output_callee.operation.is_none()
-        && metadata_empty(output_callee)
-        && source_word(
-            output_callee,
-            start,
-            start.checked_add(7)?,
-            line,
-            column,
-        )
-        && assignment.id == output_callee.id.checked_add(1)?
-        && assignment.parent == output.id
-        && assignment.kind == "binary-expression"
-        && assignment.type_name.as_deref() == Some("i32")
-        && assignment.operation.as_deref() == Some("=")
-        && assignment.reference.is_none()
-        && metadata_empty(assignment)
-        && source_word(
-            assignment,
-            destination_start,
-            input_end,
-            line,
-            column.checked_add(8)?,
-        )
-        && destination.id == assignment.id.checked_add(1)?
-        && destination.parent == assignment.id
-        && destination.kind == "declaration-reference-expression"
-        && destination.type_name.as_deref() == Some("i32")
-        && destination.reference.as_deref()
-            == Some(local.variable_reference.as_str())
-        && destination.operation.is_none()
-        && metadata_empty(destination)
-        && source_word(
-            destination,
-            destination_start,
-            destination_end,
-            line,
-            column.checked_add(8)?,
-        )
-        && input.id == destination.id.checked_add(1)?
-        && input_cast.id == input.id.checked_add(1)?
-        && input_callee.id == input_cast.id.checked_add(1)?
-        && prove_input_call(
-            nodes.get(5..8)?,
-            body,
-            destination_end,
-            (input.id, assignment.id),
-        )
-        .is_some()
-        && input.span.begin.byte == input_start
-        && input.span.end.byte == input_end
-        && input.span.begin.line == line
-        && input.span.begin.column
-            == column.checked_add(input_start.checked_sub(start)?)?;
-    verified.then_some((input, output))
-}
-
 // Copy a currently resident guest byte into an already declared C local.
 // The destination may hold a stale byte: a successful identity assignment
 // rebinds that C name without reading input or materializing another value.
@@ -1675,11 +1549,8 @@ fn prove_static_if_statement<'node>(
                 for_depth.checked_add(1)?,
                 source,
             )?;
-            (proof.effects.iter().all(|effect| {
-                effect.input.is_none()
-                    || effect.assigned_local.as_deref()
-                        == Some(live.variable_reference.as_str())
-            }) && source_identifiers_match(nodes.get(..proof.width)?, witness))
+            (proof.effects.iter().all(|effect| effect.input.is_none())
+                && source_identifiers_match(nodes.get(..proof.width)?, witness))
             .then_some(proof)
         })?;
         if proof.effects.len() > 16 {
@@ -1753,27 +1624,6 @@ fn prove_static_if_statement<'node>(
                 Vec::new()
             },
             proof.end,
-        ));
-    }
-    if child.kind == "call-expression"
-        && child.reference.as_deref() == Some("external:putchar")
-        && let Some(local) = local
-        && let Some((read, output)) = prove_output_input_assignment(
-            nodes.get(..8)?,
-            (body, previous, parent),
-            local,
-            source?,
-        )
-    {
-        return (child.id == expected_id).then_some((
-            8,
-            vec![StaticIfEffect {
-                input: Some(read),
-                assigned_local: Some(local.variable_reference.clone()),
-                outputs: vec![output],
-                loop_exit: None,
-            }],
-            output.span.end.byte,
         ));
     }
     // Authenticate a complete comma argument in the same branch parent as
@@ -2144,15 +1994,9 @@ fn prove_static_if_arm<'node>(
             if !(statement.kind == "binary-expression"
                 && statement.operation.as_deref() == Some("="))
             {
-                local_is_live &= statement_effects.iter().all(|effect| {
-                    effect.input.is_none()
-                        || declared_local.as_ref().or(local).is_some_and(
-                            |bound| {
-                                effect.assigned_local.as_deref()
-                                    == Some(bound.variable_reference.as_str())
-                            },
-                        )
-                });
+                local_is_live &= statement_effects
+                    .iter()
+                    .all(|effect| effect.input.is_none());
             }
         }
         effects.extend(statement_effects);
@@ -3571,16 +3415,14 @@ pub(super) fn canonical_source_byte_echo(
                             1,
                             source,
                         )?;
-                        (proof.effects.iter().all(|effect| {
-                            effect.input.is_none()
-                                || effect.assigned_local.as_deref()
-                                    == Some(
-                                        candidate.variable_reference.as_str(),
-                                    )
-                        }) && source_identifiers_match(
-                            remaining.get(..proof.width)?,
-                            witness,
-                        ))
+                        (proof
+                            .effects
+                            .iter()
+                            .all(|effect| effect.input.is_none())
+                            && source_identifiers_match(
+                                remaining.get(..proof.width)?,
+                                witness,
+                            ))
                         .then_some(proof)
                     })
             })
@@ -3751,52 +3593,6 @@ pub(super) fn canonical_source_byte_echo(
                         .map_err(|_| FrontendJsonError::Unsupported)?,
                 )
                 .ok_or(FrontendJsonError::Unsupported)?;
-            continue;
-        }
-        if first.kind == "call-expression"
-            && first.reference.as_deref() == Some("external:putchar")
-            && let Some((destination, read, output)) =
-                source.and_then(|witness| {
-                    let nodes = rest.get(consumed..consumed.checked_add(8)?)?;
-                    declared_locals.iter().find_map(|candidate| {
-                        prove_output_input_assignment(
-                            nodes,
-                            (body, previous, body.id),
-                            candidate,
-                            witness,
-                        )
-                        .map(|(read, output)| (candidate.clone(), read, output))
-                    })
-                })
-        {
-            if inputs == MAX_ECHO_CALLS || outputs == MAX_SOURCE_OUTPUTS {
-                return Err(FrontendJsonError::Unsupported);
-            }
-            let value = ValueId::new(
-                u32::try_from(inputs)
-                    .map_err(|_| FrontendJsonError::Unsupported)?,
-            );
-            instructions.push(LocatedInstruction::new(
-                Instruction::ByteInput {
-                    result: value,
-                    type_id: TypeId::new(0),
-                },
-                typed_span(&read.span),
-            ));
-            instructions.push(LocatedInstruction::new(
-                Instruction::ByteOutput { value },
-                typed_span(&output.span),
-            ));
-            latest_local = Some((destination, value));
-            equivalent_locals.clear();
-            inputs += 1;
-            outputs += 1;
-            previous = output.span.end.byte;
-            consumed += 8;
-            next_id = next_id
-                .checked_add(8)
-                .ok_or(FrontendJsonError::Unsupported)?;
-            requires_latest = true;
             continue;
         }
         if first.kind == "call-expression"
