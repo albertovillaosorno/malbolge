@@ -11,6 +11,28 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Effect-equivalent byte-dependent `if` arms (2026-11-13)
+
+A complete C program with a live `getchar()` local, induction, `continue`,
+byte-dependent `if (current & 1)`, and trailing guest I/O first refused at
+normalized lowering. A pure source-/pinned-Clang-proven predicate may now
+remain byte-dependent when **both** complete C arms independently prove the
+same nonempty sequence of output-only resident-byte effects. The proof checks
+each statement and rejects reads, local assignments, loop exits and unequal
+output counts in either arm. It authenticates both original arms and every
+guard operand, including short-circuited operands; the emitted guest uses
+one verified arm without predicting the input or synthesizing a branch.
+
+The original full C program emits four copies of its first real input and
+then a fresh second byte in eight normative VM steps across binary
+boundaries, seeded streams and stratified first bytes. A second full C
+program with two differently spelled identity writes in each dynamic arm
+emits three first-byte copies and a second byte in seven steps; a zero-trip
+program emits both inputs in five steps. Unequal effects, effectful guards,
+forged AST/source and missing witnesses refuse. This is a narrow proof of
+trace equivalence for successful I/O, not general guest-dependent C
+control flow, arbitrary storage, arithmetic, EOF, or failed output.
+
 ### Exact pure Boolean partitions of guest bytes (2026-11-13)
 
 The original full counted C stream with input, nested branches, selected

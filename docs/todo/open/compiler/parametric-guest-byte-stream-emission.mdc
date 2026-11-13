@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a full source-C byte input, induction/continue,
+  dynamic `if (current & 1)` and trailing guest stream first failed at
+  normalized lowering, although each arm independently emitted the same
+  resident byte. The source-/Clang-proven guard now permits a nonconstant
+  256-byte truth set only when both entire arms have identical nonempty
+  pure-output traces: no read, storage assignment or loop exit may differ.
+  The normative Malbolge VM produces five bytes in eight steps for 37
+  binary boundary/seed/stratified streams. A two-output-per-arm variant
+  executes four outputs in seven steps, and a zero-trip variant executes
+  two outputs in five steps. Unequal effects, dependent impure predicates
+  and forged source/AST fail without an artifact. This does not implement
+  arbitrary runtime C branching, arithmetic, storage, EOF or I/O failure;
+  P0 stays pending.
+
 - On 2026-11-13 a complete C induction/continue program with binary
   input and nested `if` first refused `current == 0 || current != 0`.
   Source-/Clang-proven 256-bit Boolean truth sets now compose pure

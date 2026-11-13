@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven equivalent effects across dependent C arms (2026-11-13)
+
+A complete original C program with a live input local, induction, branch,
+`continue` and trailing I/O initially refused `if (current & 1)` even
+though both arms independently output the identical resident guest byte.
+The bounded adapter now proves a pure guard against original source and
+pinned Clang, including all short-circuited operands. If its Boolean truth
+set varies across `[0, 255]`, both authenticated arms must have the same
+nonempty output-only effect trace, with no read, assignment or loop exit
+in either arm. Different C spellings of byte-preserving expressions may
+therefore eliminate the branch, without predicting a guest byte or host
+simulation of the branch.
+
+The original C program executes in the normative VM with five outputs and
+eight steps for five binary boundaries, 16 seeded pairs and 16 stratified
+first bytes. A two-output-per-arm C variant emits four bytes in seven steps
+across both guard polarities; zero-trip behavior emits two bytes in five
+steps. Unequal/effectful arms, impure guards, AST parent/operator/literal
+and span mutations, changed original source and absent witness refuse
+without publication. This establishes only successful-byte output trace
+equivalence, not general guest-dependent C branching, storage, arithmetic,
+EOF or failed output. P0 remains pending.
+
 ### Boolean-complete guest-byte partitions (2026-11-13)
 
 A complete C program with input, three-trip induction, static `continue`,

@@ -5717,7 +5717,7 @@ fn prove_total_byte_if_predicate(
     conditional: &Node,
     local: Option<&LocalDeclaration<'_>>,
     source: Option<&[u8]>,
-) -> Option<(usize, bool)> {
+) -> Option<(usize, Option<bool>)> {
     let (width, _, truth) = prove_total_byte_guard(
         nodes,
         body,
@@ -5728,12 +5728,52 @@ fn prove_total_byte_if_predicate(
         0,
         source?,
     )?;
-    if truth == [u64::MAX; 4] {
-        Some((width, true))
-    } else if truth == [0u64; 4] {
-        Some((width, false))
+    let selected = if truth == [u64::MAX; 4] {
+        Some(true)
+    } else if truth == [0; 4] {
+        Some(false)
     } else {
         None
+    };
+    Some((width, selected))
+}
+
+// Two arms can be folded without predicting the guest byte only when their
+// source-proven traces write that same resident byte the same number of times.
+// No input, assignment, local storage update, or control exit is erased. The
+// output nodes remain source-authenticated even though their spans differ.
+fn equivalent_pure_byte_outputs(
+    then_effects: &[StaticIfEffect<'_>],
+    else_effects: &[StaticIfEffect<'_>],
+) -> bool {
+    !then_effects.is_empty()
+        && then_effects.len() == else_effects.len()
+        && then_effects.iter().zip(else_effects).all(|(left, right)| {
+            left.input.is_none()
+                && right.input.is_none()
+                && left.assigned_local.is_none()
+                && right.assigned_local.is_none()
+                && left.loop_exit.is_none()
+                && right.loop_exit.is_none()
+                && !left.outputs.is_empty()
+                && left.outputs.len() == right.outputs.len()
+        })
+}
+
+// Preserve the complete authenticated output trace only when its contents
+// cannot depend on a source-C branch that is still variable at guest runtime.
+fn select_byte_if_effects<'node>(
+    condition_true: Option<bool>,
+    then_effects: Vec<StaticIfEffect<'node>>,
+    else_effects: Vec<StaticIfEffect<'node>>,
+) -> Option<Vec<StaticIfEffect<'node>>> {
+    match condition_true {
+        Some(true) => Some(then_effects),
+        Some(false) => Some(else_effects),
+        None if equivalent_pure_byte_outputs(&then_effects, &else_effects) => {
+            Some(then_effects)
+        },
+        None => None,
     }
 }
 
@@ -5781,6 +5821,7 @@ fn prove_static_if<'node>(
     }
     let (predicate_width, condition_true) =
         prove_static_predicate(nodes.get(1..)?, conditional, induction)
+            .map(|(width, selected)| (width, Some(selected)))
             .or_else(|| {
                 prove_total_byte_if_predicate(
                     nodes.get(1..)?,
@@ -5820,7 +5861,7 @@ fn prove_static_if<'node>(
     let mut end = then_arm.end;
     let mut end_line = then_arm.end_line;
     let mut end_column = then_arm.end_column;
-    let mut selected = condition_true;
+    let mut selected = condition_true.unwrap_or(false);
     let mut effects = then_arm.effects;
     if conditional.span.end.byte != then_arm.end {
         let else_arm = prove_static_if_arm(
@@ -5850,9 +5891,11 @@ fn prove_static_if<'node>(
         end_line = else_arm.end_line;
         end_column = else_arm.end_column;
         selected = true;
-        if !condition_true {
-            effects = else_arm.effects;
-        }
+        effects =
+            select_byte_if_effects(condition_true, effects, else_arm.effects)?;
+    } else if condition_true.is_none() {
+        // A non-total guard without an else would skip these effects.
+        return None;
     }
     let span_is_canonical = if end_line == line {
         source_word(conditional, start, end, line, column)
