@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Effectful byte leaves in identity expressions (2026-11-13)
+
+A source-authenticated `getchar()` call or a bounded sequence of successful
+`putchar(...getchar()...)` returns can now supply the leaf of recursive exact
+integer identities. `putchar((putchar(getchar()) + 0) ^ 0)` evaluates the
+inner input and output in the normative guest, then writes that same byte
+again. The proof reuses exact Clang call and original C source witnesses,
+retains each nested output effect and forbids second reads or host-time
+arithmetic. Existing resident-local identities remain effect-free.
+
+A complete source C program with local state, a three-trip counted loop,
+remainder-selected `continue`, and the nested effectful expression matches
+two binary boundaries plus twelve seeded input pairs in eight guest steps.
+Direct input identities, two-deep nested outputs and a zero-trip loop also
+match the normative VM. Nonidentities, hidden reads, mutated Clang ancestry,
+source SHA forgeries and missing original source fail closed. Guest-dependent
+C branches, nonidentity arithmetic, EOF and output failures remain unsupported.
+
+
 ### Composed identities of a successful guest input byte (2026-11-13)
 
 `putchar((current + 0) ^ 0)` now compiles in an original C program with a

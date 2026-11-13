@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13, a complete C induction/branch/`continue` binary stream
+  first refused `putchar((putchar(getchar()) + 0) ^ 0)` at normalized lowering.
+  Recursive source-proven identities now accept genuine guest input and
+  bounded successful nested-output returns as effectful leaves. The original
+  VM emits three copies of its first byte, then two of its second, in eight
+  steps for two boundary and twelve seeded binary streams. Direct input,
+  two-deep returns and zero-trip behavior also match the normative guest.
+  Nonidentity arithmetic, hidden effects, forged Clang/source ancestry and
+  missing source refuse. Runtime C-dependent branching, arithmetic, storage,
+  EOF and failed output are still P0 gaps.
+
+
 - On 2026-11-13, a full induction/branch/continue C program with
   genuine binary input first refused a two-step expression
   `putchar((current + 0) ^ 0)`. Recursive, source-proven Clang identity

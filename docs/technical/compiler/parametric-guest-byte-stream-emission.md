@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Effectful identities compose genuine guest I/O (2026-11-13)
+
+An original C program combined a source-local binary input, a three-trip
+induction loop, a remainder-selected `continue`, and the effectful expression
+`putchar((putchar(getchar()) + 0) ^ 0)`. Pinned Clang accepted the entire
+program; normalized lowering initially refused it because the prior
+identity proof could only begin from a resident C local. The repaired
+recursive proof accepts an exact source/Clang-authenticated `getchar()` or
+nested successful `putchar` return at the leaf, retaining all real guest
+read/write effects in order. Only the ten exact identity operators compose
+on top; neither guest data nor C arithmetic is evaluated on the host.
+
+The original program now writes three copies of its first binary byte and
+two of its second in eight actual normative VM steps. Two boundary and
+twelve seeded binary streams match an independent oracle. Direct input
+identities, two-deep nested output returns, a zero-trip loop, unsupported
+nonidentities, hidden effects, forged Clang ancestry, changed SHA-adjusted
+source and missing source have dedicated regressions. This does not establish
+guest-dependent branching, arbitrary guest C arithmetic, storage, EOF or
+failed output; the generalized P0 remains pending.
+
+
 ### Composed C integer identities of a live guest byte (2026-11-13)
 
 An original C stream combining a `getchar()` local, counted induction,

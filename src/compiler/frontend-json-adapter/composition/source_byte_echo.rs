@@ -2490,38 +2490,41 @@ fn byte_identity_operator(
     }
 }
 
-// Match the *entire* normalized Clang preorder and its exact C source bytes.
-// Recursion is restricted to a live local read, parentheses, and left-nested
-// integer identities with a source-proven right literal. No call, assignment,
-// arbitrary cast or other C side effect is allowed inside the expression.
+// Match the entire Clang preorder and original C bytes for exact identities.
+// A leaf is either a proven live local or a source-proven input/output call
+// that returns the same successful byte. Preserve the leaf's actual guest
+// effects; arithmetic never evaluates the input on the host.
 #[expect(
     clippy::cognitive_complexity,
     clippy::too_many_arguments,
     clippy::too_many_lines,
     reason = "check every Clang node and source byte as one proof"
 )]
-fn prove_byte_identity_expression(
-    nodes: &[Node],
-    local: &LocalDeclaration<'_>,
+fn prove_byte_identity_expression<'node>(
+    nodes: &'node [Node],
+    local: Option<&LocalDeclaration<'_>>,
+    body: &Node,
+    previous: u32,
     parent: u32,
     expected_id: u32,
     depth: usize,
     source: &[u8],
-) -> Option<(usize, String)> {
+) -> Option<(usize, String, Option<&'node Node>, Vec<&'node Node>)> {
     let root = nodes.first()?;
     if depth > MAX_BYTE_IDENTITY_DEPTH
         || root.id != expected_id
         || root.parent != parent
         || root.type_name.as_deref() != Some("i32")
-        || root.reference.is_some()
         || !metadata_empty(root)
     {
         return None;
     }
-    let (width, spelling) = match root.kind.as_str() {
+    let (width, spelling, input, outputs) = match root.kind.as_str() {
         "cast-expression"
-            if root.operation.as_deref() == Some("lvalue-to-rvalue") =>
+            if root.operation.as_deref() == Some("lvalue-to-rvalue")
+                && root.reference.is_none() =>
         {
+            let local = local?;
             let reference = nodes.get(1)?;
             if reference.id != root.id.checked_add(1)?
                 || reference.parent != root.id
@@ -2535,30 +2538,74 @@ fn prove_byte_identity_expression(
             {
                 return None;
             }
-            (2, local.name.to_owned())
+            (2, local.name.to_owned(), None, Vec::new())
         },
-        "parenthesized-expression" if root.operation.is_none() => {
-            let (child_width, child) = prove_byte_identity_expression(
-                nodes.get(1..)?,
-                local,
-                root.id,
-                root.id.checked_add(1)?,
-                depth.checked_add(1)?,
-                source,
+        "parenthesized-expression"
+            if root.operation.is_none() && root.reference.is_none() =>
+        {
+            let (child_width, child, input, outputs) =
+                prove_byte_identity_expression(
+                    nodes.get(1..)?,
+                    local,
+                    body,
+                    previous,
+                    root.id,
+                    root.id.checked_add(1)?,
+                    depth.checked_add(1)?,
+                    source,
+                )?;
+            (
+                child_width.checked_add(1)?,
+                format!("({child})"),
+                input,
+                outputs,
+            )
+        },
+        "call-expression"
+            if root.reference.as_deref() == Some("external:getchar")
+                && root.operation.is_none() =>
+        {
+            let read = prove_input_call(
+                nodes.get(..3)?,
+                body,
+                previous,
+                (root.id, root.parent),
             )?;
-            (child_width.checked_add(1)?, format!("({child})"))
+            (3, String::from("getchar()"), Some(read), Vec::new())
         },
-        "binary-expression" => {
+        "call-expression"
+            if root.reference.as_deref() == Some("external:putchar")
+                && root.operation.is_none() =>
+        {
+            let (width, read, calls) =
+                super::nested_byte_echo::nested_call_in_parent(
+                    nodes,
+                    body,
+                    previous,
+                    root.id,
+                    root.parent,
+                )?;
+            let spelling = format!(
+                "{}getchar(){}",
+                "putchar(".repeat(calls.len()),
+                ")".repeat(calls.len()),
+            );
+            (width, spelling, Some(read), calls)
+        },
+        "binary-expression" if root.reference.is_none() => {
             let (operator, value) =
                 byte_identity_operator(root.operation.as_deref())?;
-            let (left_width, left) = prove_byte_identity_expression(
-                nodes.get(1..)?,
-                local,
-                root.id,
-                root.id.checked_add(1)?,
-                depth.checked_add(1)?,
-                source,
-            )?;
+            let (left_width, left, input, outputs) =
+                prove_byte_identity_expression(
+                    nodes.get(1..)?,
+                    local,
+                    body,
+                    previous,
+                    root.id,
+                    root.id.checked_add(1)?,
+                    depth.checked_add(1)?,
+                    source,
+                )?;
             let literal = nodes.get(left_width.checked_add(1)?)?;
             if literal.id
                 != root
@@ -2601,6 +2648,8 @@ fn prove_byte_identity_expression(
             (
                 left_width.checked_add(2)?,
                 format!("{left} {operator} {value}"),
+                input,
+                outputs,
             )
         },
         _ => return None,
@@ -2619,7 +2668,7 @@ fn prove_byte_identity_expression(
         root.span.begin.line,
         root.span.begin.column,
     ) && source.get(source_start..source_end) == Some(spelling.as_bytes()))
-    .then_some((width, spelling))
+    .then_some((width, spelling, input, outputs))
 }
 
 // The call itself is checked separately from the recursive C expression:
@@ -2629,26 +2678,29 @@ fn prove_byte_identity_expression(
     clippy::too_many_arguments,
     reason = "source proof requires independent Clang and call coordinates"
 )]
-fn prove_identity_binary_local_output<'node>(
+fn prove_identity_byte_output<'node>(
     nodes: &'node [Node],
     body: &Node,
-    local: &LocalDeclaration<'_>,
+    local: Option<&LocalDeclaration<'_>>,
     expected_id: u32,
     previous: u32,
     parent: u32,
     source: &[u8],
-) -> Option<(usize, &'node Node)> {
+) -> Option<(usize, &'node Node, Option<&'node Node>, Vec<&'node Node>)> {
     let [output, callee_cast, callee, rest @ ..] = nodes else {
         return None;
     };
-    let (expression_width, argument) = prove_byte_identity_expression(
-        rest,
-        local,
-        output.id,
-        output.id.checked_add(3)?,
-        0,
-        source,
-    )?;
+    let (expression_width, argument, input, outputs) =
+        prove_byte_identity_expression(
+            rest,
+            local,
+            body,
+            previous,
+            output.id,
+            output.id.checked_add(3)?,
+            0,
+            source,
+        )?;
     let start = output.span.begin.byte;
     let line = output.span.begin.line;
     let column = output.span.begin.column;
@@ -2657,8 +2709,9 @@ fn prove_identity_binary_local_output<'node>(
         .checked_add(9)?;
     let spelling = format!("putchar({argument})");
     if start <= previous
-        || start <= local.declaration_end
-        || line <= local.line
+        || local.is_some_and(|local| {
+            start <= local.declaration_end || line <= local.line
+        })
         || end >= body.span.end.byte
         || source.get(usize::try_from(start).ok()?..usize::try_from(end).ok()?)
             != Some(spelling.as_bytes())
@@ -2689,7 +2742,34 @@ fn prove_identity_binary_local_output<'node>(
     {
         return None;
     }
-    Some((expression_width.checked_add(3)?, output))
+    Some((expression_width.checked_add(3)?, output, input, outputs))
+}
+
+// The local-only output path may borrow the existing guest accumulator but
+// must never silently discard fresh input or nested output effects.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "source proof requires independent Clang and call coordinates"
+)]
+fn prove_identity_binary_local_output<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    local: &LocalDeclaration<'_>,
+    expected_id: u32,
+    previous: u32,
+    parent: u32,
+    source: &[u8],
+) -> Option<(usize, &'node Node)> {
+    let (width, call, input, outputs) = prove_identity_byte_output(
+        nodes,
+        body,
+        Some(local),
+        expected_id,
+        previous,
+        parent,
+        source,
+    )?;
+    (input.is_none() && outputs.is_empty()).then_some((width, call))
 }
 
 #[expect(
@@ -5345,6 +5425,64 @@ pub(super) fn canonical_source_byte_echo(
             next_id = next_id
                 .checked_add(12)
                 .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
+        if first.kind == "call-expression"
+            && first.reference.as_deref() == Some("external:putchar")
+            && let Some((width, outer, Some(read), inner)) =
+                source.and_then(|witness| {
+                    prove_identity_byte_output(
+                        rest.get(consumed..)?,
+                        body,
+                        None,
+                        next_id,
+                        previous,
+                        body.id,
+                        witness,
+                    )
+                })
+        {
+            if inputs == MAX_ECHO_CALLS
+                || outputs
+                    .checked_add(inner.len())
+                    .and_then(|count| count.checked_add(1))
+                    .is_none_or(|count| count > MAX_SOURCE_OUTPUTS)
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            let value = ValueId::new(
+                u32::try_from(inputs)
+                    .map_err(|_| FrontendJsonError::Unsupported)?,
+            );
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: value,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&read.span),
+            ));
+            for call in inner.iter().rev().chain(std::iter::once(&outer)) {
+                instructions.push(LocatedInstruction::new(
+                    Instruction::ByteOutput { value },
+                    typed_span(&call.span),
+                ));
+            }
+            // The new read invalidates every preceding source-C local.
+            latest_local = None;
+            equivalent_locals.clear();
+            previous = outer.span.end.byte;
+            consumed = consumed
+                .checked_add(width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+            inputs += 1;
+            outputs += inner.len() + 1;
             requires_latest = true;
             continue;
         }
