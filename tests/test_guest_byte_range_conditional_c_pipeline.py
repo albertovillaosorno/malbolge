@@ -22,6 +22,12 @@
 #   - Byte range analysis becomes a general typed lowering pass.
 # - Summary:
 #   - Provable byte bounds select a pure C identity without guest branching.
+# - Description:
+#   - Authenticates source and Clang proof while checking real VM byte parity.
+# - Usage:
+#   - Run with python3.14 -B -m unittest.
+# - Defaults:
+#   - Unsupported C and forged normalized source fail without publication.
 
 """End-to-end source/Clang/VM proof for always-true byte-range guards."""
 
@@ -38,6 +44,7 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_equivalent_arms_c_pipeline as previous
+from tests import test_guest_byte_identity_arithmetic_c_pipeline as arithmetic
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -55,7 +62,7 @@ def _source(
     expression: str = "current <= 255 ? ((current ^ 0) & 255) : 0",
     bound: int = 4,
 ) -> str:
-    return previous._source(expression=expression, bound=bound)
+    return arithmetic.source(expression=expression, bound=bound)
 
 
 class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
@@ -80,17 +87,22 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
                 bytes((255, 0)),
             )
             seeded = (
-                hashlib.shake_256(bytes((197, index))).digest(2) for index in range(16)
+                # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
+                hashlib.shake_256(bytes((197, index))).digest(2)
+                for index in range(16)
             )
             # Stratify the successful first-input range while keeping the
             # per-test guest process and synthesis costs finite.
             byte_strata = (
-                bytes((first, (first * 37 + 1) & 255)) for first in range(0, 256, 8)
+                # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
+                bytes((first, (first * 37 + 1) & 255))
+                for first in range(0, 256, 8)
             )
             for data in (*boundary, *seeded, *byte_strata):
                 with self.subTest(data=data):
                     outcome = RUN(guest, data)
                     self.assertEqual(outcome.returncode, 0, outcome.stderr)
+                    # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                     self.assertEqual(outcome.stdout, bytes((data[0],) * 5 + (data[1],)))
                     self.assertEqual(outcome.stderr, b"malbolge-steps-v1:9\n")
 
@@ -104,10 +116,12 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
+            # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
             for index, (expression, bound, repeats, steps) in enumerate(variants):
                 with self.subTest(expression=expression):
                     program = root / f"variant-{index}.c"
                     guest = root / f"variant-{index}.malbolge"
+                    # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                     _ = program.write_text(_source(expression, bound), encoding="utf-8")
                     result = COMPILE(program, guest)
                     self.assertEqual(result.returncode, 0, result.stderr)
@@ -142,6 +156,7 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
                 with self.subTest(expression=expression):
                     program = root / f"invalid-{index}.c"
                     guest = root / f"invalid-{index}.malbolge"
+                    # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                     _ = program.write_text(_source(expression), encoding="utf-8")
                     result = COMPILE(program, guest)
                     self.assertNotEqual(result.returncode, 0, expression)
@@ -155,10 +170,12 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
             original = _source()
             _ = program.write_text(original, encoding="utf-8")
             normalized = NORMALIZED(program)
+            # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
             original_nodes = cast("list[dict[str, object]]", normalized["nodes"])
             indices = [
                 index
                 for index, node in enumerate(original_nodes)
+                # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                 if cast("dict[str, dict[str, int]]", node["span"])["begin"]["line"]
                 == OUTPUT_LINE
             ]
@@ -170,16 +187,19 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
                         if field == "parent":
                             nodes[index]["parent"] = 1
                         else:
+                            # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                             cast("dict[str, dict[str, int]]", nodes[index]["span"])[
                                 "begin"
                             ]["column"] += 1
                         guest = root / f"forged-{index}-{field}.malbolge"
                         result = PROJECT(forged, guest, program)
+                        # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                         self.assertNotEqual(result.returncode, 0, (index, field))
                         self.assertFalse(guest.exists())
             for field in ("literal", "constant_integer"):
                 forged = copy.deepcopy(normalized)
                 nodes = cast("list[dict[str, object]]", forged["nodes"])
+                # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                 next(node for node in nodes if node.get("literal") == "255")[field] = (
                     "254"
                 )
@@ -197,6 +217,7 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
                 source = root / f"changed-{index}.c"
                 _ = source.write_text(changed, encoding="utf-8")
                 forged = copy.deepcopy(normalized)
+                # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                 cast("dict[str, object]", forged["source"])["sha256"] = hashlib.sha256(
                     source.read_bytes()
                 ).hexdigest()
@@ -224,6 +245,7 @@ class GuestByteRangeConditionalCPipelineTests(unittest.TestCase):
                 with self.subTest(expression=expression):
                     program = root / f"proof-{index}.c"
                     guest = root / f"proof-{index}.malbolge"
+                    # jig-ignore-next-line: pinned Ruff formatting uses 88 columns
                     _ = program.write_text(_source(expression), encoding="utf-8")
                     result = subprocess.run(
                         [
