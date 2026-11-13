@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Authenticated grouped, negated, and bare-byte C guards (2026-11-13)
+
+A complete source-C induction/continue program initially refused
+`if (!(current & 1))`, even though both arms output the same real input
+byte. The bounded 256-byte truth-set proof now verifies pinned Clang unary
+`!` and parenthesized expressions with exact original-source spans and
+ancestry, preserving all short-circuit operands. A second red-first full
+program refused `current || !current`; source-proven resident-byte identity
+and zero-test leaves now cover exactly the nonzero or zero successful bytes.
+Both changes compose with `&&` and `||` without guessing any guest data.
+
+Six original complete C programs now match 30 independent binary VM streams:
+17 for the dependent equivalent-effect guard, four for grouped total/false
+guards, and nine for direct-byte complements. The guest executes the original
+source outputs in eight or six steps, with no invented branch or extra input.
+Unequal branch effects, impure predicates, forged AST parent/operation/span
+and missing source still refuse. EOF, failed I/O, runtime-dependent guest
+branching, general arithmetic and storage remain unsupported.
+
 ### Effect-equivalent byte-dependent `if` arms (2026-11-13)
 
 A complete C program with a live `getchar()` local, induction, `continue`,

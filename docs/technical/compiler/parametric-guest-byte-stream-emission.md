@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Grouping, negation, and direct-byte Boolean partitions (2026-11-13)
+
+A full C program with live binary input, counted induction, `continue`, and
+trailing I/O initially refused an input-dependent `!(current & 1)` guard
+although both arms independently write the same byte. The bounded adapter
+now recursively authenticates parentheses and unary logical negation in a
+256-value truth set. Both source spellings and pinned Clang parentage must
+match exactly; `!` complements the bitmap and parentheses preserve it.
+
+A second red-first program refused `current || !current`. A proven pure
+resident byte now contributes the truth set for all nonzero successful
+bytes, while its source-checked zero test contributes the singleton zero
+set. `&&` and `||` compose these without computing the runtime byte. Both
+arms are authenticated, including short-circuited operands. Non-total
+guards only pass if both arms have identical nonempty output-only effects.
+
+Six source C streams execute in the normative Malbolge VM: 17 independent
+binary streams for the negated dependent guard, four for grouped true/false
+partitions, and nine for direct-byte tautologies and contradictions. Their
+expected output is an independent function of the binary inputs, with no
+extra reads and exactly six or eight VM steps. Effectful guards, unequal
+arms and forged source/AST refuse without an artifact. This is a proof of
+successful-byte static effects, not guest-dependent runtime branching,
+EOF, failed output, general arithmetic or storage. P0 remains pending.
+
 ### Source-proven equivalent effects across dependent C arms (2026-11-13)
 
 A complete original C program with a live input local, induction, branch,

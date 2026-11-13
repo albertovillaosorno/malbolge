@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13, a complete counted/continue C program with binary input
+  initially refused `if (!(current & 1))` despite both arms writing the
+  same live byte. Source- and pinned-Clang-backed parentheses and logical
+  `!` now transform a finite 256-byte Boolean truth set without predicting
+  guest input. A second red-first stream refused `current || !current`;
+  the adapter now proves direct-byte and zero-test leaves and composes them
+  under `&&`/`||`. Six complete C programs produce independently expected
+  output on 30 binary VM streams at six/eight steps, including grouped
+  tautologies, contradictions, both guard polarities and dependent identical
+  effects. Unequal/impure branches and forged AST reject without publishing.
+  Actual guest-dependent branching, C storage/arithmetic, EOF and failed
+  I/O remain unsupported; P0 stays pending.
+
 - On 2026-11-13 a full source-C byte input, induction/continue,
   dynamic `if (current & 1)` and trailing guest stream first failed at
   normalized lowering, although each arm independently emitted the same

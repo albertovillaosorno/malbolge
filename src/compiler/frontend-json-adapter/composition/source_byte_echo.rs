@@ -5573,6 +5573,42 @@ fn prove_total_byte_guard(
 ) -> Option<TotalByteGuardProof> {
     (depth < MAX_STATIC_PREDICATE_DEPTH).then_some(())?;
     let root = nodes.first()?;
+    // Grouping is truth-preserving, while logical negation complements every
+    // successful byte. Authenticate the entire original spelling and the
+    // pinned Clang parent before reusing the recursively proven truth set.
+    if root.kind == "parenthesized-expression"
+        || (root.kind == "unary-expression"
+            && root.operation.as_deref() == Some("!"))
+    {
+        if !pure_integer_root(root, &root.kind, parent, expected_id)
+            || (root.kind == "parenthesized-expression"
+                && root.operation.is_some())
+        {
+            return None;
+        }
+        let (child_width, child, child_truth) = prove_total_byte_guard(
+            nodes.get(1..)?,
+            body,
+            previous,
+            root.id,
+            root.id.checked_add(1)?,
+            local,
+            depth.checked_add(1)?,
+            source,
+        )?;
+        let spelling = if root.kind == "parenthesized-expression" {
+            format!("({child})")
+        } else {
+            format!("!{child}")
+        };
+        pure_expression_source(root, &spelling, source)?;
+        let truth = if root.kind == "parenthesized-expression" {
+            child_truth
+        } else {
+            child_truth.map(|word| !word)
+        };
+        return Some((child_width.checked_add(1)?, spelling, truth));
+    }
     if matches!(root.operation.as_deref(), Some("&&" | "||")) {
         return prove_total_byte_logical(
             nodes,
@@ -5668,6 +5704,27 @@ fn prove_total_byte_leaf(
     depth: usize,
     source: &[u8],
 ) -> Option<TotalByteGuardProof> {
+    // A source-authenticated identity is true for precisely the nonzero
+    // successful bytes. Its proven zero test has the complementary set.
+    // This admits `current || !current` without inventing guest control.
+    if let Some((width, spelling, nonzero)) = prove_byte_zero_guard(
+        nodes,
+        local,
+        body,
+        previous,
+        parent,
+        expected_id,
+        depth.checked_add(1)?,
+        source,
+    ) {
+        let truth = if nonzero {
+            [!1u64, u64::MAX, u64::MAX, u64::MAX]
+        } else {
+            [1u64, 0, 0, 0]
+        };
+        return (width <= MAX_STATIC_PREDICATE_NODES)
+            .then_some((width, spelling, truth));
+    }
     let root = nodes.first()?;
     let (width, spelling) = prove_pure_byte_guard(
         nodes,
