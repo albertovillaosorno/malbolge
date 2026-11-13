@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Assignment-valued output retains C byte identity (2026-11-13)
+
+A complete original C program used `putchar(current = getchar())` in a
+source-selected `continue` branch of a counted loop, then read `current` in
+later trips and after loop exit. Pinned Clang parsed the whole C program, but
+the normalized adapter initially refused the first declaration. The bounded
+byte projector now authenticates all eight nested Clang expression nodes and
+the exact `putchar(NAME = getchar());` token sequence from SHA-checked C
+source. Each call consumes one real guest input, outputs that byte, and
+rebinds only the proven C destination; older aliases cannot be resurrected.
+
+The original selected-loop program emits six independent-oracle bytes from
+four binary guest inputs in eleven normative VM steps. A second complete C
+program with scoped assignments, static branch selection, a three-trip
+counted loop and source-selected `continue` consumes ten guest inputs and
+emits eleven independent-oracle bytes in 22 steps. The separate selected
+branch, zero-trip loop and boundary/seeded streams also reach VM parity.
+Unlowered arithmetic, stale aliases, ten AST mutations, forged source
+operators and missing source witnesses are refused without publication.
+Ordinary short scoped output calls remain admissible when the optional
+eight-node assignment proof does not fit the remaining Clang nodes.
+Borrowed-loop inputs are permitted only when every fresh read explicitly
+rebinds that same authenticated outer C local. This is accumulator-resident
+source-C identity, not dynamic C storage or general assignment expressions.
+
 ### Source-proven outer C byte across counted output loops (2026-11-13)
 
 A complete C stream reads a runtime byte, copies it into a block-local

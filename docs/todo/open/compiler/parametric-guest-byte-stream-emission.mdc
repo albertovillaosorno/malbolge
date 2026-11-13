@@ -55,6 +55,22 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 an original source-C counted loop used an assignment-valued
+  output `putchar(current = getchar())` in selected `continue` branches,
+  followed by reads of that same C local. The pinned frontend accepted the
+  program, but the normalized projector initially refused the whole source.
+  Source-proven eight-node C output assignment now consumes one real guest
+  input, writes it and retains that C binding. The normative VM matches two
+  independent binary oracles: four inputs, six outputs and eleven steps. A
+  compound branch/loop program matches ten inputs and eleven outputs in 22
+  steps. Selected branch, zero-trip, stale-alias, original-source operator
+  and forged-AST cases verify the same admission boundary. A separately
+  reproduced regression in final five-node scoped `putchar` calls was fixed:
+  optional eight-node matching must fall through, not terminate the proof.
+  Runtime C memory,
+  arithmetic, EOF and dependent control remain unimplemented; P0 stays open.
+
+
 - On 2026-11-13 a whole C program with a live outer `getchar` byte,
   source-proven branch alias, four-trip induction-selected `continue`
   loop and trailing fresh guest read was first refused by the JSON
