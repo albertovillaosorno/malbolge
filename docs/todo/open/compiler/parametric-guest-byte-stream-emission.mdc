@@ -55,6 +55,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete descending C loop starting at `12` mixed fresh
+  guest `getchar` bytes, nested `putchar`, a selected `continue`, a later
+  `break` and a trailing input. The pinned frontend accepted it, but the
+  normalized adapter refused its two-digit initializer. Source-derived
+  decimal width now shifts the exact Clang declaration, comparison and bound
+  positions without weakening node or induction-reference authentication.
+  The original C source now emits a 1,135-byte capsule; the normative guest
+  outputs `00 ff 80 80 07` in eleven steps. Five loop shapes match ten
+  independent binary VM oracles and nested shadowing matches two more;
+  six invalid sources and seven forged nodes refuse. Both directions may
+  begin below 100 and execute at most sixteen proven trips; three-digit
+  and noncanonical starts refuse. Guest-side dynamic
+  control, general state and EOF remain open, so P0 is not retired.
+
+
 - On 2026-11-12 a complete live C byte stream starting its ascending
   induction at 2, with nested output, selected `continue`, `break` and
   trailing input, first failed at normalized `for-statement` admission.

@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two-digit finite induction starts (2026-11-12)
+
+The exact pinned Clang `for (int i = N; ...)` proof now derives the
+initializer's source width from a canonical one- or two-digit decimal literal.
+All declaration, condition and bound spans advance together; each node remains
+independently checked before guest instructions are emitted. The admissible
+source-time starts are 0–99 ascending and 1–99 descending, with at most
+16 finite trips in either direction, including zero-trip loops.
+
+This capability preserves actual guest input and output, nested counter
+shadowing, selected `continue` and `break`, and source-proven direction-matched
+unit steps. A complete descending program starting at 12 first failed at
+normalized `for` admission, then produced a 1,135-byte capsule whose normative
+VM emitted the independent `00 ff 80 80 07` oracle in 11 steps.
+Five two-digit loop shapes match ten independent binary guest oracles, and
+nested shadowed induction matches two more. Six unsupported C sources and
+seven forged Clang node changes refuse publication. Three-digit starts,
+signed or noncanonical initializers, non-unit strides, guest-dependent
+predicates, general mutable storage and EOF remain outside this slice.
+
+
 ### Nonzero ascending finite C induction (2026-11-12)
 
 The source-authenticated finite `for` proof now accepts ascending starts

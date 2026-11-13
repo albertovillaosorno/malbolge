@@ -1484,7 +1484,7 @@ struct StaticForProof<'node> {
 //     for (int i = 4; i >= 1; i -= 1) {
 //         <source-proven byte-effect statements>
 //     }
-// Ascending starts may be 0–9; descending starts remain 1–9.
+// Ascending starts may be 0–99; descending starts remain 1–99.
 // Both directions admit 0–16 finite trips.
 // Equal-width `!=` is
 // intentionally refused: its normalized operator alone cannot authenticate
@@ -1523,9 +1523,18 @@ fn prove_static_for<'node>(
     let line = loop_node.span.begin.line;
     let column = loop_node.span.begin.column;
     let declaration_start = start.checked_add(5)?;
-    let declaration_end = start.checked_add(15)?;
+    // The pinned single `int i` declarator has a fixed prefix, but the
+    // canonical decimal initializer may occupy one or two source columns.
+    let initial_width =
+        u32::try_from(initial.literal.as_deref()?.len()).ok()?;
+    if !(1..=2).contains(&initial_width) {
+        return None;
+    }
+    let declaration_end = start.checked_add(14)?.checked_add(initial_width)?;
     let variable_end = declaration_end.checked_sub(1)?;
     let condition_start = declaration_end.checked_add(1)?;
+    let condition_column =
+        column.checked_add(15)?.checked_add(initial_width)?;
     let condition_operator = condition.operation.as_deref()?;
     let (ascending, inclusive, operator_width) = match condition_operator {
         "<" => (true, false, 1u32),
@@ -1610,9 +1619,9 @@ fn prove_static_for<'node>(
             column.checked_add(5)?,
         )
         || if ascending {
-            !(0..=9).contains(&initial_value)
+            !(0..=99).contains(&initial_value)
         } else {
-            !(1..=9).contains(&initial_value)
+            !(1..=99).contains(&initial_value)
         }
         || condition.id != expected_id.checked_add(4)?
         || condition.parent != loop_node.id
@@ -1624,7 +1633,7 @@ fn prove_static_for<'node>(
             condition_start,
             bound.span.end.byte,
             line,
-            column.checked_add(16)?,
+            condition_column,
         )
         || read_cast.id != expected_id.checked_add(5)?
         || read_cast.parent != condition.id
@@ -1637,7 +1646,7 @@ fn prove_static_for<'node>(
             condition_start,
             condition_start.checked_add(1)?,
             line,
-            column.checked_add(16)?,
+            condition_column,
         )
         || read_variable.id != expected_id.checked_add(6)?
         || read_variable.parent != read_cast.id
@@ -1649,7 +1658,8 @@ fn prove_static_for<'node>(
         || !metadata_empty(read_variable)
         || read_variable.span != read_cast.span
         || bound.span.begin.byte != bound_start
-        || bound.span.begin.column != column.checked_add(19 + operator_width)?
+        || bound.span.begin.column
+            != condition_column.checked_add(3 + operator_width)?
         || increment.id != expected_id.checked_add(8)?
         || increment.parent != loop_node.id
         || increment.kind
@@ -1792,7 +1802,7 @@ fn prove_static_for<'node>(
         condition.id,
         bound_start,
         line,
-        column.checked_add(19 + operator_width)?,
+        condition_column.checked_add(3 + operator_width)?,
     )?;
     // Include the bound on either signed direction only for <= or >=.
     // A false initial condition is a real, finite zero-trip loop.

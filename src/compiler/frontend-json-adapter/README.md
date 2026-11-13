@@ -10,6 +10,17 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Two-digit canonical C induction starts (2026-11-12)
+
+Bounded source-time `for (int i = N; ...)` proof now supports canonical
+decimal starts through 99 (descending from 1–99), deriving each subsequent
+Clang source column from the checked initializer width. Finite trip counts
+remain 0–16, and the pinned declaration, comparison, increment and body
+ancestry must all agree. Nested byte effects remain real Malbolge VM I/O;
+no host byte replay is admitted. Three-digit or noncanonical starts, dynamic
+C control and mutable guest-side induction remain unsupported.
+
+
 ### Nonzero ascending finite C induction (2026-11-12)
 
 The source-authenticated finite `for` proof now accepts ascending starts
