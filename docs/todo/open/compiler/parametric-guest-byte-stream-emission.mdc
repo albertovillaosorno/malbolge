@@ -55,6 +55,23 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 an original complete source-C program read runtime
+  bytes, used `putchar(putchar(current = getchar()));` in selected
+  counted-loop `continue` branches, and read the updated local after
+  each assignment. The pinned frontend accepted the source but the
+  adapter initially refused it. A source-checked nested call/assignment
+  proof now reuses one real guest byte through successful inner-to-outer
+  output returns and retains only the authenticated C destination.
+  The normative VM matches independent boundary and seeded binary
+  oracles: four reads, nine writes, fourteen steps. Top-level and
+  three-deep selected-arm variants each match three reads, six writes,
+  ten steps; skipped loop effects produce no input. Seven regression
+  methods include five invalid C expressions, fifteen forged Clang
+  node/span edits, SHA-adjusted source operator spoofing, missing
+  source evidence and stale aliases. This is bounded successful-byte
+  replay, not dynamic guest C arithmetic, storage, EOF or control.
+  P0 stays pending.
+
 - On 2026-11-13 an original source-C counted loop used an assignment-valued
   output `putchar(current = getchar())` in selected `continue` branches,
   followed by reads of that same C local. The pinned frontend accepted the
@@ -559,7 +576,7 @@ a compiler capability gap, not a reason to return to N+1.
   parent-aware local call proof and guest SSA reuse now preserve two reads
   and nine true guest writes in twelve normative VM steps across fifteen
   independently computed binary oracles. Four local/mixed-input variants,
-  two stale-local refusals and fourteen forged AST mutations pass. This
+  two stale-local refusals and fifteen forged AST mutations pass. This
   covers only the latest live local and successful-byte I/O, not C storage,
   EOF, arithmetic or runtime guest branches; P0 stays open.
 
@@ -631,7 +648,7 @@ a compiler capability gap, not a reason to return to N+1.
   in guest SSA until the next real input. The actual Malbolge VM matches
   separate nine-byte and six-byte return-value oracles under binary input
   and exact VM step counts under boundary and seeded binary inputs. Six
-  invalid C sources and fourteen forged AST mutations fail without
+  invalid C sources and fifteen forged AST mutations fail without
   publication. A sixteen-level local-return guest also matches two boundary
   input oracles in eighteen VM steps. Guest mutable storage, EOF, failed
   output, dynamic branches and C arithmetic remain P0 work.
@@ -705,7 +722,7 @@ a compiler capability gap, not a reason to return to N+1.
   An independent C recurrence oracle and the normative Malbolge VM agree
   on twelve masked bytes `02 19 1f 08 17 0f 02 0d 03 10 13 03`
   in 47 steps under EOF and binary stdin for both original and inverted
-  dispatch. Seven invalid C sources and fourteen forged normalized AST
+  dispatch. Seven invalid C sources and fifteen forged normalized AST
   nodes refuse publication, including a corrected branch end-column gap.
   Dynamic guest C loops and the original
   unmasked Fibonacci byte layout remain unsupported; P0 stays open.
@@ -730,7 +747,7 @@ a compiler capability gap, not a reason to return to N+1.
   inner `break` and outer state-dependent repetition. The pinned
   frontend accepted the source but bounded replay refused it. The fixed
   source proof authenticates exact loop nesting and comparison geometry,
-  rejecting six unsupported C sources and fourteen forged AST nodes.
+  rejecting six unsupported C sources and fifteen forged AST nodes.
   Two full variants, with six two-output or three four-output outer
   trips, match an independent unsigned C oracle in the normative VM:
   `02 19 1f 08 17 0f 02 0d 03 10 13 03`, 47 steps each,

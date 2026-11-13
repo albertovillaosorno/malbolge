@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Nested source-proven assignment-valued `putchar` (2026-11-13)
+
+The exact expression `putchar(putchar(NAME = getchar()));` and
+its three-deep counterpart pass the same authenticated successful-byte
+value through every nested `putchar` return, without an extra guest
+input. Clang node IDs, function references, parents, cast types, complete
+same-line spans and original SHA-checked source spelling are proved at
+every level. The assignment retains the C local only when its
+declaration was independently authenticated. A new read invalidates
+older aliases, including across selected loop branches.
+
+The original complete C source with a three-trip conditional-continue
+loop emits nine bytes from four real guest reads in fourteen normative
+VM steps. Top-level and three-deep branch variants emit six bytes from
+three reads in ten steps. Independent binary oracles, forged AST nodes,
+altered C spellings, stale aliases and unsupported expressions are
+covered in dedicated tests. This is not dynamic C control, storage,
+arithmetic or EOF.
+
 ### Source-proven assignment-valued byte output (2026-11-13)
 
 The exact expression `putchar(NAME = getchar());` may write a fresh guest

@@ -26,6 +26,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested assignment-valued source-C byte output (2026-11-13)
+
+A complete original C stream used
+`putchar(putchar(current = getchar()));` inside a
+remainder-selected `continue` arm of a counted loop, followed by reads of
+the rebound C name. The pinned Clang frontend accepted the program but
+the normalized adapter refused it before guest emission. The bounded
+projector now source-authenticates every enclosing `putchar` call, its
+parentage, function-pointer cast, span, and final assignment/read subtree,
+including the exact SHA-checked original C expression and semicolon.
+The one real guest input is written by each nested successful call in
+inner-to-outer order, and only the proven destination becomes resident;
+previous C aliases stay invalid after a new read.
+
+The complete branch/loop program produces nine independent-oracle bytes
+from four genuine guest reads in fourteen normative VM steps, under
+boundary and seeded binary input. A top-level nested assignment and a
+three-deep selected branch with a zero-trip loop each emit six bytes
+from three reads in ten guest steps. Seven focused regression methods
+cover these cases, five unsupported C expressions, fifteen altered
+Clang nodes/spans, absent source proof, SHA-adjusted C operator spoofing,
+and a stale alias. Dynamic C arithmetic, mutable storage, EOF and
+guest-dependent control flow still have no general lowering; P0 remains
+open.
+
 ### Assignment-valued output retains C byte identity (2026-11-13)
 
 A complete original C program used `putchar(current = getchar())` in a
@@ -965,7 +990,7 @@ operand before a fresh `getchar`, but refuses a stale local after a newer read.
 The compiled guest reads exactly two binary inputs and emits nine independently
 expected output bytes in twelve VM steps. Fifteen seeded/boundary streams
 match the oracle, as do four additional live-local/mixed-input forms with
-exact step counts. Two stale-local source variants and fourteen forged Clang
+exact step counts. Two stale-local source variants and fifteen forged Clang
 metadata mutations refuse publication. This remains accumulator-only guest
 I/O under successful-read/write assumptions: EOF, runtime C storage,
 arithmetic and dynamic C control flow remain unsupported.
@@ -1092,7 +1117,7 @@ VM steps.
 
 A separate sixteen-level local-return chain emits sixteen repeated
 bytes in eighteen VM steps for zero and 255 input. Six unsupported source
-variants and fourteen forged normalized AST/position changes refuse
+variants and fifteen forged normalized AST/position changes refuse
 publication. This is accumulator-only guest dataflow under successful I/O
 assumptions; mutable C locals, EOF, failed output, arithmetic, branches and
 general C control flow remain unsupported.
@@ -1297,7 +1322,7 @@ nonterminating steps, hidden `getchar`, and protected counter writes.
 The independent unsigned recurrence oracle and normative Malbolge VM agree
 on `02 19 1f 08 17 0f 02 0d 03 10 13 03` in 47 steps with EOF
 and binary stdin for both the original and the inverted dispatch variant.
-Seven invalid complete C sources and fourteen forged Clang nodes refuse
+Seven invalid complete C sources and fifteen forged Clang nodes refuse
 without publishing a guest, including an initially accepted end-column
 forgery repaired by exact branch-to-arm endpoint checks.
 This is compile-time C state replay, not general guest-side branching or
@@ -1339,7 +1364,7 @@ with checked byte, line and column placement, and requires the nested
 braced `while` endpoint to match its enclosing Clang span. A forged
 comparison operator exposed an existing source-authenticity gap; same-line
 unsigned comparisons now check both operator width and byte/column gaps.
-All fourteen forged AST variants and six unsupported C mutations refuse
+All fifteen forged AST variants and six unsupported C mutations refuse
 before guest publication.
 
 Two complete variants use two outputs across six outer trips or four
