@@ -11,6 +11,37 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-witnessed equivalent C local names (2026-11-13)
+
+A complete source-C byte stream reads `current = getchar()` into a local,
+then declares `int saved = current;` and writes both `putchar(current)` and
+`putchar(saved)` before an induction-selected three-trip loop. Each loop trip
+copies its fresh guest `byte` into `copy`, selects one of the two names in
+an `if` with `continue`, and the function performs a final live read.
+The pinned frontend accepted the complete C source, but the normalized
+projector initially refused the original-name output after copying.
+
+The repaired projector remembers **only proven equivalent live names** for
+one accumulator-resident guest SSA byte. It source-authenticates exact
+Clang and original-C alias declarations, copies and output references;
+new guest input invalidates all prior equivalents. A separate full C
+stream now supports `saved = getchar(); current = saved;` to rebind an
+older top-level C local from the newly live byte, with no guest read for
+the identity assignment. The four normalized assignment nodes and the
+original `DEST = LIVE;` source spelling must match, including declaration
+IDs, parentage, types, cast and byte positions. Both known C declarations
+are required; an inactive/stale source name never qualifies.
+
+The actual Malbolge guest consumes five independent binary inputs, emits
+six oracle output bytes and halts in twelve VM steps for the original
+branching stream. The rebinding stream consumes six inputs, emits six
+oracle bytes and halts in thirteen VM steps. Seeded and boundary byte
+streams, unsupported source mutations, forged Clang fields and absent
+source evidence have dedicated tests. This remains live accumulator
+identity proof, not general C storage: guest arithmetic, historical byte
+recall, input-dependent branches, arbitrary scope mutation and EOF still
+reject. The P0 remains pending.
+
 ### Source-witnessed live C local reassignment (2026-11-13)
 
 A complete source-C stream reads `current`, reassigns it with

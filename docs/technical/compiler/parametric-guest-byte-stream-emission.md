@@ -26,6 +26,36 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven C byte aliases and identity rebinding (2026-11-13)
+
+A whole C stream first failed after `int saved = current;` when it emitted
+`putchar(current)`: the normalized projector remembered only the newest
+alias to the resident guest byte. It now retains all independently
+source-authenticated aliases of the *same* current guest SSA input, so
+both original and copied names may be read. A new runtime `getchar()`
+invalidates previous equivalents. The fixed source also runs three
+induction-selected iterations with a per-trip byte alias, conditional
+output, `continue` and a final guest read. The real Malbolge VM reads
+five independent binary inputs, emits six independently expected bytes,
+and halts in twelve steps across two binary input oracles.
+
+A second original C program copies a newly read byte back into a stale
+top-level local with `saved = getchar(); current = saved;`, then emits
+through either live name and continues into the same bounded loop. A
+four-node Clang assignment proof binds the destination to a previously
+validated C declaration and the source to the **currently resident**
+byte; exact `DEST = LIVE;` bytes come from the SHA-checked original C.
+The copy produces no extra guest operation. The six-read guest emits six
+independently predicted bytes and halts in thirteen steps on two binary
+streams. Rebound aliases may be copied again while they stay live.
+
+Unproven arithmetic or casting, stale reads or assignments, noncanonical
+source spelling, forged normalized type/parent/reference/span fields and
+missing source witness refuse without publishing output. The compile-time
+loop proof only reuses old aliases for checked output calls, not for
+unproved stores. There is still no general guest C storage, dynamic
+control, arithmetic or EOF; this does not retire the wider P0.
+
 ### Source-witnessed live C local reassignment (2026-11-13)
 
 A complete source-C stream reads `current`, reassigns it with

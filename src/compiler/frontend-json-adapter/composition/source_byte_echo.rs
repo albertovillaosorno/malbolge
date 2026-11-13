@@ -48,6 +48,7 @@ const MAX_STATIC_PREDICATE_DEPTH: usize = 8;
 const MAX_STATIC_PREDICATE_NODES: usize = 31;
 
 /// The exact source-local input initializer, with no intervening effects.
+#[derive(Clone)]
 struct LocalDeclaration<'node> {
     declaration_end: u32,
     input: &'node Node,
@@ -889,6 +890,97 @@ fn prove_local_input_reassignment<'node>(
     Some(input)
 }
 
+// Copy a currently resident guest byte into an already declared C local.
+// The destination may hold a stale byte: a successful identity assignment
+// rebinds that C name without reading input or materializing another value.
+// Both sides must come from independently authenticated declarations and
+// exactly match the caller-verified original source bytes.
+#[expect(
+    clippy::too_many_lines,
+    reason = "authenticate both C assignment bindings and their original bytes"
+)]
+fn prove_local_copy_assignment(
+    nodes: &[Node],
+    scope: (&Node, u32, u32),
+    destination: &LocalDeclaration<'_>,
+    source_local: &LocalDeclaration<'_>,
+    source: &[u8],
+) -> Option<()> {
+    let (body, previous, parent) = scope;
+    let [assignment, destination_ref, read, source_ref] = nodes else {
+        return None;
+    };
+    let start = assignment.span.begin.byte;
+    let line = assignment.span.begin.line;
+    let column = assignment.span.begin.column;
+    let destination_end =
+        start.checked_add(u32::try_from(destination.name.len()).ok()?)?;
+    let source_start = destination_end.checked_add(3)?;
+    let end = source_start
+        .checked_add(u32::try_from(source_local.name.len()).ok()?)?;
+    let spelling = format!("{} = {};", destination.name, source_local.name);
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+    {
+        return None;
+    }
+    let verified = start > previous
+        && start > destination.declaration_end
+        && start > source_local.declaration_end
+        && end < body.span.end.byte
+        && line > destination.line
+        && line > source_local.line
+        && column > 0
+        && assignment.parent == parent
+        && assignment.kind == "binary-expression"
+        && assignment.type_name.as_deref() == Some("i32")
+        && assignment.operation.as_deref() == Some("=")
+        && assignment.reference.is_none()
+        && metadata_empty(assignment)
+        && source_word(assignment, start, end, line, column)
+        && destination_ref.id == assignment.id.checked_add(1)?
+        && destination_ref.parent == assignment.id
+        && destination_ref.kind == "declaration-reference-expression"
+        && destination_ref.type_name.as_deref() == Some("i32")
+        && destination_ref.reference.as_deref()
+            == Some(destination.variable_reference.as_str())
+        && destination_ref.operation.is_none()
+        && metadata_empty(destination_ref)
+        && source_word(destination_ref, start, destination_end, line, column)
+        && read.id == destination_ref.id.checked_add(1)?
+        && read.parent == assignment.id
+        && read.kind == "cast-expression"
+        && read.type_name.as_deref() == Some("i32")
+        && read.operation.as_deref() == Some("lvalue-to-rvalue")
+        && read.reference.is_none()
+        && metadata_empty(read)
+        && source_word(
+            read,
+            source_start,
+            end,
+            line,
+            column.checked_add(source_start.checked_sub(start)?)?,
+        )
+        && source_ref.id == read.id.checked_add(1)?
+        && source_ref.parent == read.id
+        && source_ref.kind == "declaration-reference-expression"
+        && source_ref.type_name.as_deref() == Some("i32")
+        && source_ref.reference.as_deref()
+            == Some(source_local.variable_reference.as_str())
+        && source_ref.operation.is_none()
+        && metadata_empty(source_ref)
+        && source_word(
+            source_ref,
+            source_start,
+            end,
+            line,
+            column.checked_add(source_start.checked_sub(start)?)?,
+        );
+    verified.then_some(())
+}
+
 /// The exact read of the source-local value in the following output call.
 #[expect(
     clippy::too_many_lines,
@@ -1686,6 +1778,9 @@ fn prove_static_if_arm<'node>(
     let mut previous_includes_terminator = false;
     let mut local_is_live = local.is_some();
     let mut declared_local: Option<LocalDeclaration<'node>> = None;
+    // Within this exact C block, identity copies keep all their prior
+    // source names until a fresh guest input replaces the resident byte.
+    let mut equivalent_locals: Vec<LocalDeclaration<'node>> = Vec::new();
     loop {
         if statement_count >= 16 || effects.len() >= 16 {
             return None;
@@ -1710,67 +1805,106 @@ fn prove_static_if_arm<'node>(
             allow_new_local && statement.kind == "declaration-statement";
         let alias = if declares_local && local_is_live {
             declared_local.as_ref().or(local).and_then(|live| {
-                source.and_then(|witness| {
-                    prove_local_alias(
-                        nodes.get(cursor..cursor.checked_add(4)?)?,
-                        (body, effect_end, child.id),
-                        live,
-                        witness,
-                    )
-                })
+                let witness = source?;
+                let nodes = nodes.get(cursor..cursor.checked_add(4)?)?;
+                std::iter::once(live)
+                    .chain(equivalent_locals.iter())
+                    .find_map(|candidate| {
+                        prove_local_alias(
+                            nodes,
+                            (body, effect_end, child.id),
+                            candidate,
+                            witness,
+                        )
+                    })
             })
         } else {
             None
         };
-        let (width, statement_effects, statement_end) =
-            if let Some(alias) = alias {
-                let end = alias.declaration_end;
-                declared_local = Some(alias);
-                (4, Vec::new(), end)
-            } else if declares_local {
-                // One new automatic local is initialized by an actual guest
-                // input on every loop iteration, never once at compile time.
-                // It is valid only until a later input overwrites the guest A.
-                if local.is_some() || declared_local.is_some() {
-                    return None;
-                }
-                let declaration = prove_local_declaration(
-                    nodes.get(cursor..cursor.checked_add(5)?)?,
-                    body,
-                    effect_end,
-                    child.id,
-                )?;
-                if declaration.input.id != statement.id.checked_add(2)? {
-                    return None;
-                }
-                let end = declaration.declaration_end;
-                let read = declaration.input;
-                declared_local = Some(declaration);
-                local_is_live = true;
-                (
-                    5,
-                    vec![StaticIfEffect {
-                        input: Some(read),
-                        outputs: Vec::new(),
-                        loop_exit: None,
-                    }],
-                    end,
-                )
-            } else {
-                prove_static_if_statement(
-                    nodes.get(cursor..)?,
-                    body,
-                    effect_end,
-                    expected_id.checked_add(u32::try_from(cursor).ok()?)?,
-                    child.id,
-                    declared_local.as_ref().or(local).filter(|_| local_is_live),
-                    depth,
-                    allow_new_local,
-                    for_depth,
-                    induction,
-                    source,
-                )?
-            };
+        let (width, statement_effects, statement_end) = if let Some(alias) =
+            alias
+        {
+            let end = alias.declaration_end;
+            if let Some(live) = declared_local.as_ref().or(local) {
+                equivalent_locals.push(live.clone());
+            }
+            declared_local = Some(alias);
+            (4, Vec::new(), end)
+        } else if declares_local {
+            // One new automatic local is initialized by an actual guest
+            // input on every loop iteration, never once at compile time.
+            // It is valid only until a later input overwrites the guest A.
+            if local.is_some() || declared_local.is_some() {
+                return None;
+            }
+            let declaration = prove_local_declaration(
+                nodes.get(cursor..cursor.checked_add(5)?)?,
+                body,
+                effect_end,
+                child.id,
+            )?;
+            if declaration.input.id != statement.id.checked_add(2)? {
+                return None;
+            }
+            let end = declaration.declaration_end;
+            let read = declaration.input;
+            equivalent_locals.clear();
+            declared_local = Some(declaration);
+            local_is_live = true;
+            (
+                5,
+                vec![StaticIfEffect {
+                    input: Some(read),
+                    outputs: Vec::new(),
+                    loop_exit: None,
+                }],
+                end,
+            )
+        } else {
+            // Every candidate is tied to this same live guest SSA
+            // byte. Try the most recent C binding, then earlier exact
+            // aliases; no input may have intervened.
+            let active =
+                declared_local.as_ref().or(local).filter(|_| local_is_live);
+            active
+                .into_iter()
+                .chain(equivalent_locals.iter().filter(|_| {
+                    local_is_live && statement.kind == "call-expression"
+                }))
+                .find_map(|candidate| {
+                    prove_static_if_statement(
+                        nodes.get(cursor..)?,
+                        body,
+                        effect_end,
+                        expected_id.checked_add(u32::try_from(cursor).ok()?)?,
+                        child.id,
+                        Some(candidate),
+                        depth,
+                        allow_new_local,
+                        for_depth,
+                        induction,
+                        source,
+                    )
+                })
+                .or_else(|| {
+                    (!local_is_live).then(|| {
+                        prove_static_if_statement(
+                            nodes.get(cursor..)?,
+                            body,
+                            effect_end,
+                            expected_id
+                                .checked_add(u32::try_from(cursor).ok()?)?,
+                            child.id,
+                            None,
+                            depth,
+                            allow_new_local,
+                            for_depth,
+                            induction,
+                            source,
+                        )
+                    })?
+                })?
+        };
         if statement_end >= end {
             return None;
         }
@@ -1784,13 +1918,20 @@ fn prove_static_if_arm<'node>(
                 "if-statement" | "for-statement"
             ) && statement.span.end.line > statement.span.begin.line);
         expected_line = statement.span.end.line.checked_add(1)?;
-        if !declares_local
-            && !(statement.kind == "binary-expression"
-                && statement.operation.as_deref() == Some("="))
-        {
-            local_is_live &= statement_effects
+        if !declares_local {
+            if statement_effects
                 .iter()
-                .all(|effect| effect.input.is_none());
+                .any(|effect| effect.input.is_some())
+            {
+                equivalent_locals.clear();
+            }
+            if !(statement.kind == "binary-expression"
+                && statement.operation.as_deref() == Some("="))
+            {
+                local_is_live &= statement_effects
+                    .iter()
+                    .all(|effect| effect.input.is_none());
+            }
         }
         effects.extend(statement_effects);
         statement_count = statement_count.checked_add(1)?;
@@ -3134,7 +3275,11 @@ pub(super) fn canonical_source_byte_echo(
     let mut outputs = 0usize;
     let mut requires_latest = false;
     let mut local_names = HashSet::new();
+    let mut declared_locals: Vec<LocalDeclaration<'_>> = Vec::new();
     let mut latest_local: Option<(LocalDeclaration<'_>, ValueId)> = None;
+    // Identity copies keep their old C names while sharing the current
+    // accumulator byte. A new guest read invalidates all of these names.
+    let mut equivalent_locals: Vec<LocalDeclaration<'_>> = Vec::new();
     let mut instructions = Vec::new();
     let mut terminated = false;
     while consumed < rest.len() {
@@ -3228,6 +3373,7 @@ pub(super) fn canonical_source_byte_echo(
                     iteration_byte.ok_or(FrontendJsonError::Unsupported)?
                 };
                 latest_local = None;
+                equivalent_locals.clear();
                 for output in effect.outputs.iter().rev() {
                     instructions.push(LocatedInstruction::new(
                         Instruction::ByteOutput { value },
@@ -3299,6 +3445,7 @@ pub(super) fn canonical_source_byte_echo(
                         ));
                         inputs += 1;
                         latest_local = None;
+                        equivalent_locals.clear();
                         branch_byte = Some(value);
                         value
                     } else {
@@ -3328,14 +3475,18 @@ pub(super) fn canonical_source_byte_echo(
         }
         if first.kind == "call-expression"
             && let Some((local, value)) = latest_local.as_ref()
-            && let Some((width, calls)) = prove_local_output_chain(
-                rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?,
-                body,
-                local,
-                next_id,
-                previous,
-                body.id,
-            )
+            && let Some((width, calls)) = std::iter::once(local)
+                .chain(equivalent_locals.iter())
+                .find_map(|candidate| {
+                    prove_local_output_chain(
+                        rest.get(consumed..)?,
+                        body,
+                        candidate,
+                        next_id,
+                        previous,
+                        body.id,
+                    )
+                })
         {
             if outputs
                 .checked_add(calls.len())
@@ -3408,6 +3559,7 @@ pub(super) fn canonical_source_byte_echo(
             ));
             if read_new_input {
                 latest_local = None;
+                equivalent_locals.clear();
             }
             previous = output.span.end.byte;
             consumed = consumed
@@ -3423,6 +3575,50 @@ pub(super) fn canonical_source_byte_echo(
                 .checked_add(1)
                 .ok_or(FrontendJsonError::Unsupported)?;
             requires_latest = true;
+            continue;
+        }
+        if first.kind == "binary-expression"
+            && first.operation.as_deref() == Some("=")
+            && let Some((live, value)) = latest_local.as_ref()
+            && let Some(destination) = source.and_then(|witness| {
+                let nodes = rest.get(consumed..consumed.saturating_add(4))?;
+                declared_locals.iter().find(|destination| {
+                    std::iter::once(live).chain(equivalent_locals.iter()).any(
+                        |candidate| {
+                            prove_local_copy_assignment(
+                                nodes,
+                                (body, previous, body.id),
+                                destination,
+                                candidate,
+                                witness,
+                            )
+                            .is_some()
+                        },
+                    )
+                })
+            })
+        {
+            let destination = destination.clone();
+            let value = *value;
+            let previous_latest = live.clone();
+            equivalent_locals.retain(|candidate| {
+                candidate.variable_reference != destination.variable_reference
+            });
+            if previous_latest.variable_reference
+                != destination.variable_reference
+                && !equivalent_locals.iter().any(|candidate| {
+                    candidate.variable_reference
+                        == previous_latest.variable_reference
+                })
+            {
+                equivalent_locals.push(previous_latest);
+            }
+            latest_local = Some((destination, value));
+            previous = first.span.end.byte;
+            consumed += 4;
+            next_id = next_id
+                .checked_add(4)
+                .ok_or(FrontendJsonError::Unsupported)?;
             continue;
         }
         if first.kind == "binary-expression"
@@ -3458,6 +3654,9 @@ pub(super) fn canonical_source_byte_echo(
             if let Some((_, value)) = latest_local.as_mut() {
                 *value = id;
             }
+            // Other C aliases still hold the old byte, which cannot be
+            // recalled after the replacement read by this guest backend.
+            equivalent_locals.clear();
             inputs += 1;
             previous = first.span.end.byte;
             consumed += 5;
@@ -3499,6 +3698,7 @@ pub(super) fn canonical_source_byte_echo(
             // Only a fresh input clobbers the live accumulator-local value.
             if read_new_input {
                 latest_local = None;
+                equivalent_locals.clear();
             }
             previous = end;
             consumed = consumed
@@ -3516,22 +3716,27 @@ pub(super) fn canonical_source_byte_echo(
         if first.kind == "declaration-statement"
             && let Some((live, value)) = latest_local.as_ref()
             && let Some(alias) = source.and_then(|witness| {
-                rest.get(consumed..consumed.saturating_add(4)).and_then(
-                    |nodes| {
+                let nodes = rest.get(consumed..consumed.saturating_add(4))?;
+                std::iter::once(live)
+                    .chain(equivalent_locals.iter())
+                    .find_map(|candidate| {
                         prove_local_alias(
                             nodes,
                             (body, previous, body.id),
-                            live,
+                            candidate,
                             witness,
                         )
-                    },
-                )
+                    })
             })
         {
-            if !local_names.insert(alias.name) {
+            if declared_locals.len() >= MAX_SOURCE_OUTPUTS
+                || !local_names.insert(alias.name)
+            {
                 return Err(FrontendJsonError::Unsupported);
             }
             previous = alias.declaration_end;
+            declared_locals.push(alias.clone());
+            equivalent_locals.push(live.clone());
             latest_local = Some((alias, *value));
             consumed = consumed
                 .checked_add(4)
@@ -3566,6 +3771,7 @@ pub(super) fn canonical_source_byte_echo(
             // This input overwrites the accumulator, so any preceding
             // local can no longer be materialized by the guest.
             latest_local = None;
+            equivalent_locals.clear();
             previous = read.span.end.byte;
             consumed = consumed
                 .checked_add(3)
@@ -3594,7 +3800,9 @@ pub(super) fn canonical_source_byte_echo(
                 body.id,
             )
             .ok_or(FrontendJsonError::Unsupported)?;
-            if !local_names.insert(local.name) {
+            if declared_locals.len() >= MAX_SOURCE_OUTPUTS
+                || !local_names.insert(local.name)
+            {
                 return Err(FrontendJsonError::Unsupported);
             }
             instructions.push(LocatedInstruction::new(
@@ -3605,6 +3813,8 @@ pub(super) fn canonical_source_byte_echo(
                 typed_span(&local.input.span),
             ));
             previous = local.declaration_end;
+            declared_locals.push(local.clone());
+            equivalent_locals.clear();
             latest_local = Some((local, id));
             consumed = consumed
                 .checked_add(5)
@@ -3632,6 +3842,7 @@ pub(super) fn canonical_source_byte_echo(
         };
         // A newer input destroys the previous live accumulator value.
         latest_local = None;
+        equivalent_locals.clear();
         if outputs
             .checked_add(output_calls.len())
             .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)

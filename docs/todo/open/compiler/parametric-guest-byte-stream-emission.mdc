@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete source-C loop with a copied `getchar`
+  local initially failed when reading the original name after the copy.
+  Exact proven aliases now share a live guest input identity until the next
+  input, and `DEST = LIVE;` may rebind an earlier declared top-level local
+  to the current guest byte with source-checked four-node Clang proof.
+  Two original C loops match binary Malbolge VM oracles at five reads,
+  six writes and twelve steps, and at six reads, six writes and thirteen
+  steps, respectively. Stale alias reassignment, unsupported arithmetic,
+  forged AST and missing source evidence reject. Guest-dependent C
+  control, general storage, arithmetic and EOF still block completion.
+
 - On 2026-11-13 a complete C byte stream with `current = getchar();`,
   three induction-selected trips with `byte = getchar();`, selected
   `continue` and trailing I/O first rejected normalized assignments.
