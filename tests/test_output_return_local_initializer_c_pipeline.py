@@ -190,7 +190,7 @@ class OutputReturnLocalInitializerCPipelineTests(unittest.TestCase):
             "putchar((unsigned char)getchar())",
             "putchar(putchar(getchar())) + 1",
             "fputc(getchar(), stdout)",
-            "(putchar(getchar()), getchar())",
+            "(putchar(getchar()), getchar() + 1)",
             "putchar(current)",
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:

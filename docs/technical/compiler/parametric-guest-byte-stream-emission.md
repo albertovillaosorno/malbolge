@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Ordered source-C comma initializers (2026-11-13)
+
+A complete C program used `int seen = (putchar(getchar()), getchar());`
+then a three-trip `for` loop with an induction remainder branch and `continue`,
+followed by another real guest read/write. Pinned Clang accepted it, but the
+JSON adapter initially rejected the first declaration. A new bounded source
+proof admits two to sixteen comma operands with fresh `getchar()` effects,
+each optionally wrapped in nested successful `putchar()` calls.
+
+It checks pinned Clang call/binary/parenthesis ancestry, source coordinates and
+the SHA-verified original C bytes. Guest instructions execute all reads and
+writes in C order and bind only the final input/return to the new local.
+
+The original program now emits five independently predicted bytes from three
+actual binary inputs in nine normative VM steps over boundary and sixteen
+seeded streams. A selected branch and counted loop emit seven bytes from eight
+reads in sixteen steps; the skipped branch emits six bytes from six reads in
+thirteen steps. Scopes cannot export local bindings, and noncanonical C,
+forged normalized nodes, missing source and SHA-adjusted spoofing refuse.
+General C comma operands, arbitrary storage, EOF, output failure and dynamic
+C conditions remain unsupported; P0 stays pending.
+
 ### Successful output-call returns initialize source-C locals (2026-11-13)
 
 The pinned Clang frontend accepts a complete branch/continue C loop whose

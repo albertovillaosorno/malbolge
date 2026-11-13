@@ -11,6 +11,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Ordered C comma initializers retain only the final guest byte (2026-11-13)
+
+A canonical `int NAME = (EXPR, EXPR, ...);` declaration may sequence two to
+sixteen fresh `getchar()` inputs, each optionally wrapped in successful nested
+`putchar()` calls. Exact SHA-checked source spelling, pinned Clang ancestry,
+parent IDs, types, locations and each ordered effect are authenticated before
+guest output. Only the final input or successful output return initializes the
+new C local; earlier reads and writes still execute in guest order.
+
+A complete three-trip C loop with `continue` and a remainder-selected branch
+emits five independent-oracle bytes from three runtime inputs in nine normative
+VM steps, including zero and 255. Selected and skipped lexical branches and a
+counted loop match the guest VM at eight reads/seven writes/sixteen steps and
+six reads/six writes/thirteen steps. Comma effects never export block-local
+bindings. General C comma values, old C storage, EOF, failed output and
+guest-dependent branches remain unsupported.
+
 ### Successful output-call returns initialize source-C locals (2026-11-13)
 
 The pinned Clang frontend accepts a complete branch/continue C loop whose

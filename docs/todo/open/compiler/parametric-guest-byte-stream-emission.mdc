@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C stream initialized a local from
+  `(putchar(getchar()), getchar())`, then selected `continue` branches in a
+  three-trip counted loop, and performed a final real guest I/O effect.
+  Pinned Clang accepted but normalized lowering first rejected the local.
+  Source- and Clang-proven comma initialization now executes every genuine
+  guest read/write in order and binds only the final operand. The normative
+  VM matches independent boundary/seeded oracles at three reads, five writes
+  and nine steps. Selected/skipped scoped branches and counted loops match
+  eight reads/seven writes and six reads/six writes respectively. Forged
+  ancestry, SHA-adjusted C source and unsupported expressions refuse.
+  EOF, output failures, guest-dependent control, arithmetic and general
+  C storage remain P0 gaps.
+
 - On 2026-11-13 a complete C program declared a local from the
   successful return of putchar(getchar()), used induction remainder,
   a four-trip branch/continue loop and a later output-return rebind.
@@ -111,8 +124,6 @@ a compiler capability gap, not a reason to return to N+1.
   and SHA-adjusted source witnesses and stale aliases. Guest C EOF,
   output failures, general storage, arithmetic and dependent control
   remain P0 blockers.
-
-## Evidence
 
 - On 2026-11-13 an original complete source-C program read runtime
   bytes, used `putchar(putchar(current = getchar()));` in selected
@@ -595,7 +606,6 @@ a compiler capability gap, not a reason to return to N+1.
   arithmetic, EOF and multiline blocks remain unsupported; the original
   demanding input-dependent C loop still refuses without an artifact.
 
-## Evidence
 
 - On 2026-11-12 a full C program mixing `getchar`-captured local
   bytes, selected and skipped `if (0)` / `if (1)` output arms and direct
@@ -648,7 +658,6 @@ a compiler capability gap, not a reason to return to N+1.
   oracle bytes in seventeen VM steps. This remains successful-byte I/O only;
   dynamic C arithmetic/control, EOF and failed output are not implemented.
 
-## Evidence
 
 - On 2026-11-12 a source-C function with two `putchar` comma arguments,
   one returning a nested `putchar` byte and the other discarding an early
@@ -660,7 +669,6 @@ a compiler capability gap, not a reason to return to N+1.
   and a seventeen-operand overflow refuse target publication. C EOF,
   failed I/O, arithmetic and dynamic guest control remain open.
 
-## Evidence
 
 - On 2026-11-12 a complete source-C function combining a live input local,
   nested `putchar` returns and an interleaved standalone mixed comma
@@ -674,7 +682,6 @@ a compiler capability gap, not a reason to return to N+1.
   Only successful byte I/O and an exact straight-line grammar are admitted;
   guest C control, arithmetic, EOF and failed output remain open.
 
-## Evidence
 
 - On 2026-11-12 a complete C source interleaving nested `putchar`
   returns, standalone `getchar(), getchar(), getchar();` and a nested comma

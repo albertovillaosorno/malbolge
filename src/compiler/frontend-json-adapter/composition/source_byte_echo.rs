@@ -842,6 +842,117 @@ fn prove_output_return_declaration<'node>(
     ))
 }
 
+// A comma initializer is a C sequence: each left operand has its own guest
+// effects and only the rightmost result initializes the new source local.
+// This grammar deliberately accepts only fresh getchar() inputs, optionally
+// wrapped in successful putchar() calls. Reading a stale C local would require
+// storage this accumulator-only backend cannot provide.
+#[expect(
+    clippy::too_many_lines,
+    reason = "authenticate full Clang comma ancestry and original C spelling"
+)]
+fn prove_comma_local_declaration<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    source: &[u8],
+) -> Option<(LocalDeclaration<'node>, usize, Vec<CommaEffect<'node>>)> {
+    let [declaration, variable, paren, comma, ..] = nodes else {
+        return None;
+    };
+    let name = variable.name.as_deref()?;
+    if !valid_local_name(name) {
+        return None;
+    }
+    let start = declaration.span.begin.byte;
+    let line = declaration.span.begin.line;
+    let column = declaration.span.begin.column;
+    let name_start = start.checked_add(4)?;
+    let expression_start = name_start
+        .checked_add(u32::try_from(name.len()).ok()?)?
+        .checked_add(3)?;
+    let local_reference = format!("{name}@{name_start}");
+    if start <= previous
+        || start <= body.span.begin.byte
+        || line == 0
+        || column == 0
+        || declaration.parent != parent
+        || declaration.kind != "declaration-statement"
+        || declaration.type_name.is_some()
+        || declaration.reference.is_some()
+        || declaration.operation.is_some()
+        || !metadata_empty(declaration)
+        || paren.id != variable.id.checked_add(1)?
+        || paren.parent != variable.id
+        || paren.kind != "parenthesized-expression"
+        || paren.type_name.as_deref() != Some("i32")
+        || paren.reference.is_some()
+        || paren.operation.is_some()
+        || !metadata_empty(paren)
+        || comma.id != paren.id.checked_add(1)?
+    {
+        return None;
+    }
+    let (comma_width, effects, last_end) = prove_discarded_comma_effects(
+        nodes.get(3..)?,
+        body,
+        previous,
+        comma.id,
+        paren.id,
+        None,
+    )?;
+    let end = last_end.checked_add(1)?;
+    if end >= body.span.end.byte
+        || !source_word(declaration, start, end.checked_add(1)?, line, column)
+        || !valid_local_variable(variable, declaration, &local_reference, end)
+        || !source_word(
+            paren,
+            expression_start,
+            end,
+            line,
+            column.checked_add(expression_start.checked_sub(start)?)?,
+        )
+        || comma.span.begin.byte != expression_start.checked_add(1)?
+        || comma.span.end.byte != last_end
+    {
+        return None;
+    }
+    // The verified source hash alone does not bind a normalized call to the
+    // corresponding C token. Require every comma operand and separator to
+    // have the exact effectful C spelling asserted by the Clang subtree.
+    let operands = effects
+        .iter()
+        .map(|effect| {
+            format!(
+                "{}getchar(){}",
+                "putchar(".repeat(effect.outputs.len()),
+                ")".repeat(effect.outputs.len())
+            )
+        })
+        .collect::<Vec<_>>();
+    let spelling = format!("int {name} = ({});", operands.join(", "));
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+    {
+        return None;
+    }
+    let input = effects.last()?.input;
+    Some((
+        LocalDeclaration {
+            declaration_end: declaration.span.end.byte,
+            input,
+            line,
+            name,
+            variable_reference: local_reference,
+        },
+        comma_width.checked_add(3)?,
+        effects,
+    ))
+}
+
 // A plain C `int alias = live;` copies the currently resident input byte.
 // It creates a new source binding but no guest instruction or host-time byte.
 // Requiring original source bytes prevents a forged normalized AST from
@@ -2617,6 +2728,25 @@ fn prove_static_if_arm<'node>(
             }
             declared_local = Some(alias);
             (4, Vec::new(), end)
+        } else if declares_local
+            && let Some((declaration, width, comma_effects)) =
+                source.and_then(|witness| {
+                    prove_comma_local_declaration(
+                        nodes.get(cursor..)?,
+                        body,
+                        effect_end,
+                        child.id,
+                        witness,
+                    )
+                })
+        {
+            // A comma declaration can consume several independently ordered
+            // guest inputs before exporting only its last value in this scope.
+            let end = declaration.declaration_end;
+            equivalent_locals.clear();
+            declared_local = Some(declaration);
+            local_is_live = true;
+            (width, static_comma_effects(comma_effects, None, None)?, end)
         } else if declares_local {
             // Each source-proven declaration reads a fresh guest byte.
             // Several sequential locals may share this lexical block, but
@@ -4754,6 +4884,60 @@ pub(super) fn canonical_source_byte_echo(
             next_id = next_id
                 .checked_add(4)
                 .ok_or(FrontendJsonError::Unsupported)?;
+            continue;
+        }
+        if first.kind == "declaration-statement"
+            && let Some((local, width, effects)) = source.and_then(|witness| {
+                prove_comma_local_declaration(
+                    rest.get(consumed..)?,
+                    body,
+                    previous,
+                    body.id,
+                    witness,
+                )
+            })
+        {
+            let new_reads = effects.len();
+            let new_writes = effects
+                .iter()
+                .map(|effect| effect.outputs.len())
+                .sum::<usize>();
+            if inputs
+                .checked_add(new_reads)
+                .is_none_or(|total| total > MAX_ECHO_CALLS)
+                || outputs
+                    .checked_add(new_writes)
+                    .is_none_or(|total| total > MAX_SOURCE_OUTPUTS)
+                || declared_locals.len() >= MAX_SOURCE_OUTPUTS
+                || !local_names.insert(local.name)
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            let (value, read_new_input) = emit_comma_effects(
+                &effects,
+                None,
+                &mut inputs,
+                &mut outputs,
+                &mut instructions,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
+            if !read_new_input {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            previous = local.declaration_end;
+            declared_locals.push(local.clone());
+            latest_local = Some((local, value));
+            equivalent_locals.clear();
+            consumed = consumed
+                .checked_add(width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
             continue;
         }
         if first.kind == "declaration-statement"
