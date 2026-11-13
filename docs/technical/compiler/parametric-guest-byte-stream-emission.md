@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Composed C integer identities of a live guest byte (2026-11-13)
+
+An original C stream combining a `getchar()` local, counted induction,
+remainder-selected `continue`, subsequent input and nested arithmetic first
+failed normalized lowering at `putchar((current + 0) ^ 0)`. The adapter now
+proves recursive compositions of the ten exact existing byte identities.
+Only a source-authenticated left operand containing the same live local,
+matching literal right operands, exact Clang ancestry/types/spans and an
+unmodified C witness can reuse the guest SSA byte. Identity subexpressions
+may be parenthesized and remain bounded in depth and total source length.
+No runtime arithmetic is evaluated by the compiler.
+
+The original C program now compiles through actual layout and emits four
+copies of its first binary input plus its second in eight normative VM steps.
+Two boundary and twelve seeded streams match an independent oracle. Three
+additional compositions spanning masks, modulo, arithmetic and bit shifts
+also compile and match the VM. Zero-trip, nonidentity, hidden-effect,
+forged-AST, changed-source and missing-source cases fail safely. This is
+byte-preserving expression composition, not guest-dependent control,
+general arithmetic, memory, EOF handling or output failure. P0 remains open.
+
 ### Exact integer identities preserve successful runtime bytes (2026-11-13)
 
 A full C source with a live `getchar()` local, counted induction/remainder

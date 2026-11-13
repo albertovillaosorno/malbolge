@@ -47,6 +47,8 @@ use super::{
 const MAX_ECHO_CALLS: usize = 128;
 const CALL_NODE_COUNT: usize = 6;
 const MAX_SOURCE_OUTPUTS: usize = 256;
+const MAX_BYTE_IDENTITY_DEPTH: usize = 12;
+const MAX_BYTE_IDENTITY_LENGTH: usize = 160;
 const MAX_NESTED_LOCAL_DEPTH: usize = 16;
 const MAX_STATIC_IF_DEPTH: usize = 4;
 const MAX_STATIC_FOR_DEPTH: usize = 2;
@@ -2466,13 +2468,166 @@ fn prove_unsigned_cast_local_output<'node>(
     Some(output)
 }
 
-// On a successful guest read the resident C `int` lies in [0, 255].
-// These exact integer identities preserve that byte without introducing
-// host-time evaluation or a second guest I/O effect. The source spelling and
-// all seven pinned Clang nodes must agree, including the literal's value.
+// Every admitted operator is an exact integer identity on a successful
+// `getchar()` result in [0, 255]. That range is preserved after *each* step,
+// so finite compositions can reuse the same guest SSA byte without host-time
+// evaluation. Other C operators and effects do not enter this proof.
+fn byte_identity_operator(
+    operation: Option<&str>,
+) -> Option<(&'static str, &'static str)> {
+    match operation? {
+        "&" => Some(("&", "255")),
+        "%" => Some(("%", "256")),
+        "|" => Some(("|", "0")),
+        "^" => Some(("^", "0")),
+        "+" => Some(("+", "0")),
+        "-" => Some(("-", "0")),
+        "*" => Some(("*", "1")),
+        "/" => Some(("/", "1")),
+        "<<" => Some(("<<", "0")),
+        ">>" => Some((">>", "0")),
+        _ => None,
+    }
+}
+
+// Match the *entire* normalized Clang preorder and its exact C source bytes.
+// Recursion is restricted to a live local read, parentheses, and left-nested
+// integer identities with a source-proven right literal. No call, assignment,
+// arbitrary cast or other C side effect is allowed inside the expression.
 #[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_arguments,
     clippy::too_many_lines,
-    reason = "prove source bytes and seven pinned Clang nodes as one unit"
+    reason = "check every Clang node and source byte as one proof"
+)]
+fn prove_byte_identity_expression(
+    nodes: &[Node],
+    local: &LocalDeclaration<'_>,
+    parent: u32,
+    expected_id: u32,
+    depth: usize,
+    source: &[u8],
+) -> Option<(usize, String)> {
+    let root = nodes.first()?;
+    if depth > MAX_BYTE_IDENTITY_DEPTH
+        || root.id != expected_id
+        || root.parent != parent
+        || root.type_name.as_deref() != Some("i32")
+        || root.reference.is_some()
+        || !metadata_empty(root)
+    {
+        return None;
+    }
+    let (width, spelling) = match root.kind.as_str() {
+        "cast-expression"
+            if root.operation.as_deref() == Some("lvalue-to-rvalue") =>
+        {
+            let reference = nodes.get(1)?;
+            if reference.id != root.id.checked_add(1)?
+                || reference.parent != root.id
+                || reference.kind != "declaration-reference-expression"
+                || reference.type_name.as_deref() != Some("i32")
+                || reference.reference.as_deref()
+                    != Some(local.variable_reference.as_str())
+                || reference.operation.is_some()
+                || !metadata_empty(reference)
+                || reference.span != root.span
+            {
+                return None;
+            }
+            (2, local.name.to_owned())
+        },
+        "parenthesized-expression" if root.operation.is_none() => {
+            let (child_width, child) = prove_byte_identity_expression(
+                nodes.get(1..)?,
+                local,
+                root.id,
+                root.id.checked_add(1)?,
+                depth.checked_add(1)?,
+                source,
+            )?;
+            (child_width.checked_add(1)?, format!("({child})"))
+        },
+        "binary-expression" => {
+            let (operator, value) =
+                byte_identity_operator(root.operation.as_deref())?;
+            let (left_width, left) = prove_byte_identity_expression(
+                nodes.get(1..)?,
+                local,
+                root.id,
+                root.id.checked_add(1)?,
+                depth.checked_add(1)?,
+                source,
+            )?;
+            let literal = nodes.get(left_width.checked_add(1)?)?;
+            if literal.id
+                != root
+                    .id
+                    .checked_add(u32::try_from(left_width).ok()?)?
+                    .checked_add(1)?
+                || literal.parent != root.id
+                || literal.kind != "integer-literal"
+                || literal.type_name.as_deref() != Some("i32")
+                || literal.reference.is_some()
+                || literal.operation.is_some()
+                || literal.name.is_some()
+                || literal.definition.is_some()
+                || literal.inline_specified.is_some()
+                || literal.linkage.is_some()
+                || literal.storage_class.is_some()
+                || literal.storage_duration.is_some()
+                || literal.literal.as_deref() != Some(value)
+                || literal.constant_integer.as_deref() != Some(value)
+            {
+                return None;
+            }
+            let literal_start = root.span.begin.byte.checked_add(
+                u32::try_from(
+                    left.len().checked_add(operator.len())?.checked_add(2)?,
+                )
+                .ok()?,
+            )?;
+            if !source_word(
+                literal,
+                literal_start,
+                literal_start.checked_add(u32::try_from(value.len()).ok()?)?,
+                root.span.begin.line,
+                root.span.begin.column.checked_add(
+                    literal_start.checked_sub(root.span.begin.byte)?,
+                )?,
+            ) {
+                return None;
+            }
+            (
+                left_width.checked_add(2)?,
+                format!("{left} {operator} {value}"),
+            )
+        },
+        _ => return None,
+    };
+    if spelling.len() > MAX_BYTE_IDENTITY_LENGTH {
+        return None;
+    }
+    let start = root.span.begin.byte;
+    let end = start.checked_add(u32::try_from(spelling.len()).ok()?)?;
+    let source_start = usize::try_from(start).ok()?;
+    let source_end = usize::try_from(end).ok()?;
+    (source_word(
+        root,
+        start,
+        end,
+        root.span.begin.line,
+        root.span.begin.column,
+    ) && source.get(source_start..source_end) == Some(spelling.as_bytes()))
+    .then_some((width, spelling))
+}
+
+// The call itself is checked separately from the recursive C expression:
+// all argument nodes must belong to this output, and no unproven output or
+// input can be hidden between its callee and the successful-byte expression.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "source proof requires independent Clang and call coordinates"
 )]
 fn prove_identity_binary_local_output<'node>(
     nodes: &'node [Node],
@@ -2482,46 +2637,25 @@ fn prove_identity_binary_local_output<'node>(
     previous: u32,
     parent: u32,
     source: &[u8],
-) -> Option<&'node Node> {
-    let [
-        output,
-        callee_cast,
-        callee,
-        expression,
-        value_cast,
-        value_ref,
-        literal,
-    ] = nodes
-    else {
+) -> Option<(usize, &'node Node)> {
+    let [output, callee_cast, callee, rest @ ..] = nodes else {
         return None;
     };
-    let (operator, value) = match expression.operation.as_deref()? {
-        "&" => ("&", "255"),
-        "%" => ("%", "256"),
-        "|" => ("|", "0"),
-        "^" => ("^", "0"),
-        "+" => ("+", "0"),
-        "-" => ("-", "0"),
-        "*" => ("*", "1"),
-        "/" => ("/", "1"),
-        "<<" => ("<<", "0"),
-        ">>" => (">>", "0"),
-        _ => return None,
-    };
-    let spelling = format!("putchar({} {operator} {value})", local.name);
+    let (expression_width, argument) = prove_byte_identity_expression(
+        rest,
+        local,
+        output.id,
+        output.id.checked_add(3)?,
+        0,
+        source,
+    )?;
     let start = output.span.begin.byte;
     let line = output.span.begin.line;
     let column = output.span.begin.column;
-    let end = start.checked_add(u32::try_from(spelling.len()).ok()?)?;
-    let operand_start = start.checked_add(8)?;
-    let operand_end = end.checked_sub(1)?;
-    let name_end =
-        operand_start.checked_add(u32::try_from(local.name.len()).ok()?)?;
-    let literal_start =
-        operand_end.checked_sub(u32::try_from(value.len()).ok()?)?;
-    let operand_column = column.checked_add(8)?;
-    let literal_column =
-        column.checked_add(literal_start.checked_sub(start)?)?;
+    let end = start
+        .checked_add(u32::try_from(argument.len()).ok()?)?
+        .checked_add(9)?;
+    let spelling = format!("putchar({argument})");
     if start <= previous
         || start <= local.declaration_end
         || line <= local.line
@@ -2552,73 +2686,10 @@ fn prove_identity_binary_local_output<'node>(
         || callee.operation.is_some()
         || !metadata_empty(callee)
         || !source_word(callee, start, start.checked_add(7)?, line, column)
-        || expression.id != callee.id.checked_add(1)?
-        || expression.parent != output.id
-        || expression.kind != "binary-expression"
-        || expression.type_name.as_deref() != Some("i32")
-        || expression.reference.is_some()
-        || !metadata_empty(expression)
-        || !source_word(
-            expression,
-            operand_start,
-            operand_end,
-            line,
-            operand_column,
-        )
-        || value_cast.id != expression.id.checked_add(1)?
-        || value_cast.parent != expression.id
-        || value_cast.kind != "cast-expression"
-        || value_cast.type_name.as_deref() != Some("i32")
-        || value_cast.operation.as_deref() != Some("lvalue-to-rvalue")
-        || value_cast.reference.is_some()
-        || !metadata_empty(value_cast)
-        || !source_word(
-            value_cast,
-            operand_start,
-            name_end,
-            line,
-            operand_column,
-        )
-        || value_ref.id != value_cast.id.checked_add(1)?
-        || value_ref.parent != value_cast.id
-        || value_ref.kind != "declaration-reference-expression"
-        || value_ref.type_name.as_deref() != Some("i32")
-        || value_ref.reference.as_deref()
-            != Some(local.variable_reference.as_str())
-        || value_ref.operation.is_some()
-        || !metadata_empty(value_ref)
-        || !source_word(
-            value_ref,
-            operand_start,
-            name_end,
-            line,
-            operand_column,
-        )
-        || literal.id != value_ref.id.checked_add(1)?
-        || literal.parent != expression.id
-        || literal.kind != "integer-literal"
-        || literal.type_name.as_deref() != Some("i32")
-        || literal.reference.is_some()
-        || literal.operation.is_some()
-        || literal.name.is_some()
-        || literal.definition.is_some()
-        || literal.inline_specified.is_some()
-        || literal.linkage.is_some()
-        || literal.storage_class.is_some()
-        || literal.storage_duration.is_some()
-        || literal.literal.as_deref() != Some(value)
-        || literal.constant_integer.as_deref() != Some(value)
-        || !source_word(
-            literal,
-            literal_start,
-            operand_end,
-            line,
-            literal_column,
-        )
     {
         return None;
     }
-    Some(output)
+    Some((expression_width.checked_add(3)?, output))
 }
 
 #[expect(
@@ -2796,9 +2867,8 @@ fn prove_local_output_chain<'node>(
         return Some((7, vec![call]));
     }
     if let Some(source) = source
-        && let Some(first) = nodes.get(..7)
-        && let Some(call) = prove_identity_binary_local_output(
-            first,
+        && let Some((width, call)) = prove_identity_binary_local_output(
+            nodes,
             body,
             local,
             expected_id,
@@ -2807,7 +2877,7 @@ fn prove_local_output_chain<'node>(
             source,
         )
     {
-        return Some((7, vec![call]));
+        return Some((width, vec![call]));
     }
     prove_nested_local_output(nodes, body, local, expected_id, previous, parent)
 }

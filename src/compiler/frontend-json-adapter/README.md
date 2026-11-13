@@ -11,6 +11,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Composed identities of a successful guest input byte (2026-11-13)
+
+`putchar((current + 0) ^ 0)` now compiles in an original C program with a
+live `getchar()` local, static induction, a selected `continue` branch and
+subsequent real guest input. The adapter recursively checks pinned Clang
+preorder, parentage, types, spans, original C characters and all right-hand
+literals for bounded left-associated identity compositions, including explicit
+parentheses. Each step preserves a successful input byte in `[0, 255]`; the
+actual guest value is reused, never projected from a host-side guess.
+
+The normative guest VM emits five expected bytes in eight steps across two
+binary boundaries and twelve seeded streams. Three more nested arithmetic,
+bitwise and shift compositions also match real guest output. Nonidentity
+operations, hidden effects, forged source/AST evidence and absent source
+fail closed. General C arithmetic, EOF, output failure and runtime-dependent
+branches remain unsupported.
+
 ### Exact identities of one successful runtime byte (2026-11-13)
 
 A proven resident `int` from a successful `getchar()` is in `[0, 255]`.
