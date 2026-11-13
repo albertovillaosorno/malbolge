@@ -152,7 +152,9 @@ class EarlyReturnStaticForCPipelineTests(unittest.TestCase):
                     with self.subTest(predicate=predicate, data=data):
                         result = subprocess.run(
                             [
-                                str(VM), str(target), "--input-stdin",
+                                str(VM),
+                                str(target),
+                                "--input-stdin",
                                 "--report-steps",
                             ],
                             input=data,
@@ -195,7 +197,6 @@ class EarlyReturnStaticForCPipelineTests(unittest.TestCase):
                 self.assertEqual(guest.returncode, 0, guest.stderr)
                 self.assertEqual(guest.stdout, bytes((data[0], data[1], data[1])))
                 self.assertEqual(guest.stderr, b"malbolge-steps-v1:6\n")
-
 
     def test_direct_if_returns_and_unreachable_zero_trip(self) -> None:
         """Return proof respects static top-level arms and zero-trip loops."""
@@ -240,7 +241,9 @@ class EarlyReturnStaticForCPipelineTests(unittest.TestCase):
                     for data in samples:
                         guest = subprocess.run(
                             [
-                                str(VM), str(target), "--input-stdin",
+                                str(VM),
+                                str(target),
+                                "--input-stdin",
                                 "--report-steps",
                             ],
                             input=data,
@@ -264,7 +267,9 @@ class EarlyReturnStaticForCPipelineTests(unittest.TestCase):
             original.replace("return;", "return 3;"),
             original.replace("putchar(getchar());\n}", "putchar(getchar() + 1);\n}"),
             original.replace("return;", "return;\n            getchar();"),
-            original.replace("putchar(current);\n    }", "putchar(current + 1);\n    }"),
+            original.replace(
+                "putchar(current);\n    }", "putchar(current + 1);\n    }"
+            ),
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
