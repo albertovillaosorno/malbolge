@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Proven zero-trip C loops with authenticated dead bodies (2026-11-12)
+
+A complete source-C byte stream begins with a false-entry counted loop
+containing a fresh `getchar()` local, nested output, a branch and
+`continue`; an executed three-trip loop then performs live input,
+branch-selected nested output, `continue`, `break` and final I/O.
+Pinned Clang accepted the source, but normalized admission refused its
+first `for-statement`. Both strict and inclusive increasing conditions
+and strict decreasing conditions can now prove zero trips by their actual
+signed initial comparison, without inventing a guest read or output.
+
+The body and every nested Clang node are independently authenticated once
+even though the execution trace contains no effects from that loop. This
+is not a permissive dead-code omission: unrecognized source statements
+and forged normalized ancestry still fail before publication. Finite
+source-time iteration now admits 0–16 trips; selected zero-trip bodies
+cannot substitute host effects for guest execution. Runtime-dependent
+C loops, arbitrary guest arithmetic, general storage and EOF behavior
+remain outside this proof; P0 remains pending.
+
 ### Finite descending C induction with live byte streams (2026-11-12)
 
 A complete descending `for (int i = 4; i >= 1; i--)` program captures

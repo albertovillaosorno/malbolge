@@ -55,6 +55,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a compound whole C stream with a dead counted loop,
+  nested input and output, `continue`, a second live counted loop,
+  selected `break` and trailing byte I/O first refused the dead
+  `for-statement`. Source-authenticated empty loops now validate every
+  unreachable Clang body node once, but emit no guest effects. Both
+  direction comparisons and inclusive bounds permit 0–16 finite trips.
+  Source and forged-AST refusals prohibit hiding unsupported operations;
+  this does not implement dynamic C loop control or EOF.
+
 - On 2026-11-12 a descending C byte-stream loop with live
   `getchar()` locals, nested branch-selected output and `continue`,
   a later `break` and trailing read first refused normalized `for`.

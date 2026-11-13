@@ -1484,7 +1484,7 @@ struct StaticForProof<'node> {
 //     for (int i = 4; i >= 1; i -= 1) {
 //         <source-proven byte-effect statements>
 //     }
-// Both directions admit only 1–16 nonempty trips. Equal-width `!=` is
+// Both directions admit only 0–16 finite trips. Equal-width `!=` is
 // intentionally refused: its normalized operator alone cannot authenticate
 // the spelling of an inclusive bound.
 // Both the induction arithmetic and all body statements are authenticated
@@ -1722,23 +1722,24 @@ fn prove_static_for<'node>(
         column.checked_add(19 + operator_width)?,
     )?;
     // Include the bound on either signed direction only for <= or >=.
-    // A zero-trip or nonterminating source loop is outside this proof.
+    // A false initial condition is a real, finite zero-trip loop.
     let trip_count = if ascending {
         bound_value.checked_sub(initial_value)?
     } else {
         initial_value.checked_sub(bound_value)?
     }
     .checked_add(i32::from(inclusive))?;
-    let iterations = usize::try_from(trip_count).ok()?;
-    if !(1..=16).contains(&iterations) {
+    let iterations = usize::try_from(trip_count.max(0)).ok()?;
+    if iterations > 16 {
         return None;
     }
-    // Re-evaluate the source-verified body with the actual C induction value
-    // on every static trip. Guest reads remain fresh runtime instructions.
+    // Authenticate the whole body even when the source condition is false
+    // initially. Its Clang nodes cannot be skipped as an untrusted island;
+    // only zero guest effects may be emitted for that validation pass.
     let mut effects = Vec::new();
     let mut arm_width = None;
     let mut arm_end = None;
-    for iteration in 0..iterations {
+    for iteration in 0..iterations.max(1) {
         let arm = prove_static_if_arm(
             rest,
             body,
@@ -1773,6 +1774,9 @@ fn prove_static_for<'node>(
         }
         arm_width = Some(arm.width);
         arm_end = Some(arm.end);
+        if iterations == 0 {
+            continue;
+        }
         // The nearest selected exit decides this trip. A continue skips
         // only this trip's suffix; a break stops all later trips.
         let mut trip = arm.effects;

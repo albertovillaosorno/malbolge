@@ -240,6 +240,23 @@ class DescendingStaticForCPipelineTests(unittest.TestCase):
                 self.assertEqual(guest.stdout, data)
                 self.assertEqual(guest.stderr, b"malbolge-steps-v1:15\n")
 
+    def test_reverse_zero_trip_loops_preserve_trailing_guest_read(self) -> None:
+        """Both strict and inclusive false-entry countdowns skip the body."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, (operator, bound) in enumerate(((">", 4), (">=", 5))):
+                with self.subTest(index=index):
+                    path = root / f"empty-reverse-{index}.c"
+                    target = path.with_suffix(".malbolge")
+                    path.write_text(program(start=4, operator=operator, bound=bound))
+                    compiled = self.compile(path, target)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    for data in (bytes((0, 255)), bytes((128, 1))):
+                        guest = self.run_guest(target, data)
+                        self.assertEqual(guest.returncode, 0, guest.stderr)
+                        self.assertEqual(guest.stdout, data[:1])
+                        self.assertEqual(guest.stderr, b"malbolge-steps-v1:3\n")
+
     def test_unsupported_reverse_loops_do_not_publish(self) -> None:
         """Invalid direction, induction value and strides fail closed."""
         sources = (
@@ -248,8 +265,6 @@ class DescendingStaticForCPipelineTests(unittest.TestCase):
             program(start=4, operator="<", bound=1),
             program(start=4, operator="<=", bound=1),
             program(start=4, operator="!=", bound=1),
-            program(start=4, operator=">", bound=4),
-            program(start=4, operator=">=", bound=5),
             program(step="i++"),
             program(step="--i").replace("--i", "++i"),
             program(step="i -= 2"),

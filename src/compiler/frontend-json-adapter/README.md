@@ -26,6 +26,19 @@ inputs, a nested forward/reverse loop matches two more, and thirteen
 invalid sources plus ten forged metadata changes refuse publication.
 General dynamic C loops, arithmetic, EOF and mutable locals remain open.
 
+### Zero-trip source-C induction (2026-11-12)
+
+Source-verified forward and reverse unit-step `for` loops now accept a
+false initial comparison, with no guest effects from their body. The
+entire body is still authenticated once against Clang's normalized
+source ancestry, including nested input/output and branch control.
+Only 0–16 finite trips may be selected. A complete program with an
+unexecuted branch-and-input loop, a subsequent active `continue`/
+`break` loop and final byte output matches real binary VM oracles;
+nested empty loops also preserve outer I/O. Unsupported dead code
+and forged AST nodes are rejected before output is published.
+Dynamic guest-dependent control, general storage and EOF stay open.
+
 ### One-based and inclusive finite C byte loops (2026-11-12)
 
 A complete C byte stream with `for (int i = 1; i <= 4; i++)`, fresh
@@ -34,8 +47,9 @@ A complete C byte stream with `for (int i = 1; i <= 4; i++)`, fresh
 normalized `for-statement` admission. Its source proof now checks a canonical
 zero- or one-based initial `int i`, either strict `<` or inclusive `<=`,
 the comparison's exact column and byte geometry, a unit-increasing step,
-and the correct C induction value on every source-time trip. Only 1–16
-nonempty trips are admitted; guest input bytes remain runtime values.
+and the correct C induction value on every source-time trip. The original proof admitted 1–16
+nonempty trips; source-authenticated zero-trip loops are now also admitted.
+Guest input bytes remain runtime values.
 
 The original emits seven independently expected binary bytes from six
 actual guest reads in fourteen normative VM steps. Six loop shapes,
