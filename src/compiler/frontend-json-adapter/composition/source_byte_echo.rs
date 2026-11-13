@@ -1991,6 +1991,91 @@ fn prove_induction_comparison(
     Some((4, selected, bound.span.end.byte))
 }
 
+// A C scalar test of the protected loop counter is pure even without an
+// explicit comparison. Only the authenticated induction declaration is known;
+// the latest byte read from the guest is never available to this proof.
+fn prove_induction_truth(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool, u32)> {
+    let [read, variable, ..] = nodes else {
+        return None;
+    };
+    let end = at.start.checked_add(1)?;
+    if read.id != at.id
+        || read.parent != at.parent
+        || read.kind != "cast-expression"
+        || read.type_name.as_deref() != Some("i32")
+        || read.operation.as_deref() != Some("lvalue-to-rvalue")
+        || read.reference.is_some()
+        || !metadata_empty(read)
+        || !source_word(read, at.start, end, at.line, at.column)
+        || variable.id != read.id.checked_add(1)?
+        || variable.parent != read.id
+        || variable.kind != "declaration-reference-expression"
+        || variable.type_name.as_deref() != Some("i32")
+        || variable.reference.as_deref() != Some(induction.reference)
+        || variable.operation.is_some()
+        || !metadata_empty(variable)
+        || !source_word(variable, at.start, end, at.line, at.column)
+    {
+        return None;
+    }
+    Some((2, induction.value != 0, end))
+}
+
+// Parentheses and Boolean negation are checked against their exact Clang
+// child and source extent. Their operand can itself contain induction
+// comparisons; a runtime guest value is never evaluated at compile time.
+fn prove_induction_prefix(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool, u32)> {
+    let node = nodes.first()?;
+    let parenthesized = node.kind == "parenthesized-expression";
+    if !parenthesized
+        && (node.kind != "unary-expression"
+            || node.operation.as_deref() != Some("!"))
+    {
+        return None;
+    }
+    if node.id != at.id
+        || node.parent != at.parent
+        || node.type_name.as_deref() != Some("i32")
+        || node.reference.is_some()
+        || !metadata_empty(node)
+        || (parenthesized && node.operation.is_some())
+    {
+        return None;
+    }
+    let child_at = at.child(
+        at.id.checked_add(1)?,
+        at.start.checked_add(1)?,
+        at.column.checked_add(1)?,
+    )?;
+    let (inner_width, inner_value, inner_end) =
+        prove_induction_value(nodes.get(1..)?, child_at, induction)?;
+    let width = inner_width.checked_add(1)?;
+    let end = if parenthesized {
+        inner_end.checked_add(1)?
+    } else {
+        inner_end
+    };
+    (width <= MAX_STATIC_PREDICATE_NODES
+        && source_word(node, at.start, end, at.line, at.column))
+    .then_some((
+        width,
+        if parenthesized {
+            inner_value
+        } else {
+            !inner_value
+        },
+        end,
+    ))
+}
+
 // Admit only fully proven, pure logical combinations of exact induction
 // comparisons or already-proven source constants. Both sides are authenticated
 // regardless of short-circuit selection, so no effect can hide on an arm.
@@ -2044,8 +2129,17 @@ fn prove_induction_value(
         };
         return Some((width, selected, right_end));
     }
+    if node.kind == "cast-expression" {
+        return prove_induction_truth(nodes, at, induction);
+    }
     if let Some((width, value)) = prove_static_value(nodes, at) {
         return Some((width, value != 0, node.span.end.byte));
+    }
+    if matches!(
+        node.kind.as_str(),
+        "unary-expression" | "parenthesized-expression"
+    ) {
+        return prove_induction_prefix(nodes, at, induction);
     }
     prove_induction_comparison(nodes, at, induction)
 }

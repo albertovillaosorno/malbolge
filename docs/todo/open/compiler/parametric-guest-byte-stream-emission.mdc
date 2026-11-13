@@ -55,6 +55,28 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a full four-trip C program used `i && !(i == 3)` to
+  choose nested byte outputs and `continue`, a later `break`, and final
+  guest input. Pinned Clang accepted it; the adapter rejected the normalized
+  source scalar until a strict induction-cast proof was added. The complete
+  source now reads six binary bytes and outputs seven independent oracle
+  bytes in fourteen normative steps. Four program shapes pass eight binary
+  VM samples, while eight unsupported sources and eight forged casts or
+  references refuse without publishing a guest. Runtime guest-dependent
+  conditions and general C state remain unimplemented; P0 stays pending.
+
+- On 2026-11-12 a complete C byte stream used a four-trip induction loop,
+  `!(i == 1 || (i >= 3 && i < 4))`, branch-selected nested output and
+  `continue`, a later `break`, and a trailing guest input. Pinned Clang
+  accepted the source but the adapter refused the normalized `for`. Exact
+  recursive source proof for `!` and parenthesized induction predicates now
+  admits the whole program. Six actual binary reads produce seven independent
+  oracle bytes in fourteen normative VM steps. Five C program shapes pass
+  ten binary guest comparisons; eight unsupported source forms and twelve
+  forged Clang nodes refuse without publication. Guest-dependent conditions,
+  arithmetic, C storage and EOF remain unsupported; P0 stays pending.
+
+
 - On 2026-11-12 a complete four-trip C function used source-local
   `getchar()` bytes, `if (i >= 1 && i < 3)` with nested outputs and
   `continue`, a later induction-dependent `break`, and a final guest read.

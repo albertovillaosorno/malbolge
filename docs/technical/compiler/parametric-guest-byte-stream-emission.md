@@ -26,6 +26,49 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven scalar induction truth (2026-11-12)
+
+A complete four-trip C stream selected `if (i && !(i == 3))`, emitted
+nested outputs and `continue` on two trips, selected a later `break`, and
+read a final guest input. Pinned Clang accepted the source, but the typed
+adapter initially refused its `for-statement`. A red-first regression led
+to exact proof for `i` as a Boolean scalar: only the current, protected
+induction declaration's `i32` lvalue-to-rvalue cast may select a branch.
+Both Clang nodes, their binding, metadata, parentage and source coordinates
+must match; runtime input locals do not qualify.
+
+The complete source produces seven oracle bytes from six runtime binary
+reads and halts in fourteen normative VM steps. Direct `i`, `!i`, and
+`i && i < 3` also pass on two binary streams each, for four shapes and
+eight guest VM comparisons total. Eight unsupported source mutations and
+eight forged Clang nodes refuse without target publication.
+
+This only strengthens finite source-time loop selection. Runtime C control,
+general C storage, guest arithmetic and EOF remain unsupported here; the
+P0 is not retired.
+
+### Grouped and negated induction predicates (2026-11-12)
+
+A complete C program with a four-trip loop, fresh input locals, a nested
+`!(i == 1 || (i >= 3 && i < 4))` branch, selected `continue`, later
+`break`, and a final live guest read originally refused its normalized
+`for-statement`. A red-first regression reproduced the refusal. The bounded
+induction predicate proof now validates `!` and parenthesized children of
+source-proven comparisons and logical trees, with exact Clang IDs, parents,
+types, metadata, extents, and lexical token positions. Each prefix operand
+is independently authenticated before the induction value selects effects.
+
+The original program emits seven independently expected binary bytes after
+six real guest reads and halts in fourteen normative VM steps on two input
+streams. Four further Boolean shapes, including double negation and grouped
+nested comparisons, pass eight seeded binary VM cases. Eight unsupported
+source mutations and twelve forged normalized nodes reject publication.
+
+This remains source-time proof over a finite induction counter. No runtime
+C control over guest bytes, general storage, arithmetic or EOF is claimed.
+The P0 remains open.
+
+
 ### Pure compound predicates over C induction values (2026-11-12)
 
 A complete four-trip C function with a live `getchar()` local originally

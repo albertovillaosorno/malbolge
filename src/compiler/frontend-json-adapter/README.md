@@ -10,6 +10,35 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Pure C induction scalar truth tests
+
+A bounded source-proven loop can select `if (i)`, `if (!i)` or `i && ...`
+from its protected automatic `int i` induction declaration. The scalar
+`i32` cast and declaration-reference child must have the exact pinned Clang
+ID, parent, binding, type, metadata and source extent. This does not admit
+`getchar()` values, another local or mutations as host-known predicates.
+
+The complete `i && !(i == 3)` program consumes six live binary guest
+bytes and emits seven expected outputs in fourteen VM steps. Four C shapes
+pass eight guest comparisons, and eight source negatives plus eight forged
+Clang nodes reject without artifacts. Dynamic guest control remains open.
+
+### Parentheses and Boolean negation over induction predicates
+
+The finite source-C loop proof accepts `!` and parentheses around the exact
+induction comparisons and `&&` / `||` trees that it already authenticates.
+It checks each unary or grouping Clang node's kind, type, parent, operation,
+source extent, child position and otherwise empty metadata; both logical
+operands must have independently proven, effect-free ancestry. This does
+not turn a guest-dependent predicate into a compile-time constant.
+
+The complete four-trip program under a negated nested logical condition
+reads six binary guest inputs, writes seven oracle bytes and halts in
+fourteen normative VM steps. Five program shapes pass ten binary VM cases;
+eight unsupported source changes and twelve forged Clang nodes reject.
+No general C storage, dynamic branch, arithmetic or EOF behavior is added.
+
+
 ### Compound C induction conditions with real guest byte streams
 
 The bounded counted-loop projection now proves source-ordered logical `&&`
