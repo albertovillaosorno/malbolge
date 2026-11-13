@@ -918,6 +918,72 @@ fn prove_local_input_reassignment<'node>(
     Some(input)
 }
 
+// Assigning the return of a successful putchar(getchar()) writes a real
+// guest input and leaves that exact byte in the named C destination. The
+// supported C byte domain excludes EOF and output failure: this is not a
+// general host-side evaluation of C call results.
+#[expect(
+    clippy::too_many_lines,
+    reason = "verify original source, assignment binding and all six call nodes"
+)]
+fn prove_output_return_reassignment<'node>(
+    nodes: &'node [Node],
+    scope: (&Node, u32, u32),
+    local: &LocalDeclaration<'_>,
+    source: &[u8],
+) -> Option<(&'node Node, &'node Node)> {
+    let (body, previous, parent) = scope;
+    let [assignment, destination, output, _, _, _, _, _] = nodes else {
+        return None;
+    };
+    let start = assignment.span.begin.byte;
+    let line = assignment.span.begin.line;
+    let column = assignment.span.begin.column;
+    let name_end = start.checked_add(u32::try_from(local.name.len()).ok()?)?;
+    let output_start = name_end.checked_add(3)?;
+    let end = output_start.checked_add(18)?;
+    let spelling = format!("{} = putchar(getchar());", local.name);
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+        || start <= previous
+        || start <= local.declaration_end
+        || end >= body.span.end.byte
+        || line <= local.line
+        || column == 0
+        || assignment.parent != parent
+        || assignment.kind != "binary-expression"
+        || assignment.type_name.as_deref() != Some("i32")
+        || assignment.operation.as_deref() != Some("=")
+        || assignment.reference.is_some()
+        || !metadata_empty(assignment)
+        || !source_word(assignment, start, end, line, column)
+        || destination.id != assignment.id.checked_add(1)?
+        || destination.parent != assignment.id
+        || destination.kind != "declaration-reference-expression"
+        || destination.type_name.as_deref() != Some("i32")
+        || destination.reference.as_deref()
+            != Some(local.variable_reference.as_str())
+        || destination.operation.is_some()
+        || !metadata_empty(destination)
+        || !source_word(destination, start, name_end, line, column)
+        || output.id != destination.id.checked_add(1)?
+        || output.span.begin.byte != output_start
+        || output.span.begin.line != line
+        || output.span.begin.column
+            != column.checked_add(output_start.checked_sub(start)?)?
+    {
+        return None;
+    }
+    prove_call(
+        nodes.get(2..8)?,
+        body,
+        destination.span.end.byte,
+        assignment.id,
+    )
+}
+
 // `putchar(name = getchar());` returns and writes the fresh guest byte,
 // *and* rebinds the source-C destination for subsequent source reads. The
 // assignment is an expression inside the output call, not an independent
@@ -1961,6 +2027,29 @@ fn prove_static_if_statement<'node>(
     if let Some((width, comma_effects, output)) = comma_proof {
         let effects = static_comma_effects(comma_effects, Some(output), local)?;
         return Some((width, effects, output.span.end.byte));
+    }
+    if child.kind == "binary-expression"
+        && child.operation.as_deref() == Some("=")
+        && let Some(local) = local
+        && let Some(witness) = source
+        && let Some(candidate) = nodes.get(..8)
+        && let Some((read, output)) = prove_output_return_reassignment(
+            candidate,
+            (body, previous, parent),
+            local,
+            witness,
+        )
+    {
+        return (child.id == expected_id).then_some((
+            8,
+            vec![StaticIfEffect {
+                input: Some(read),
+                assigned_local: Some(local.variable_reference.clone()),
+                outputs: vec![output],
+                loop_exit: None,
+            }],
+            child.span.end.byte,
+        ));
     }
     if child.kind == "binary-expression"
         && child.operation.as_deref() == Some("=")
@@ -4089,6 +4178,53 @@ pub(super) fn canonical_source_byte_echo(
                 .ok_or(FrontendJsonError::Unsupported)?;
             outputs = outputs
                 .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
+        if first.kind == "binary-expression"
+            && first.operation.as_deref() == Some("=")
+            && let Some((destination, read, output)) =
+                source.and_then(|witness| {
+                    let nodes =
+                        rest.get(consumed..consumed.saturating_add(8))?;
+                    declared_locals.iter().find_map(|candidate| {
+                        prove_output_return_reassignment(
+                            nodes,
+                            (body, previous, body.id),
+                            candidate,
+                            witness,
+                        )
+                        .map(|(read, output)| (candidate.clone(), read, output))
+                    })
+                })
+        {
+            if inputs == MAX_ECHO_CALLS || outputs == MAX_SOURCE_OUTPUTS {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            let value = ValueId::new(
+                u32::try_from(inputs)
+                    .map_err(|_| FrontendJsonError::Unsupported)?,
+            );
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: value,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&read.span),
+            ));
+            instructions.push(LocatedInstruction::new(
+                Instruction::ByteOutput { value },
+                typed_span(&output.span),
+            ));
+            latest_local = Some((destination, value));
+            equivalent_locals.clear();
+            inputs += 1;
+            outputs += 1;
+            previous = first.span.end.byte;
+            consumed += 8;
+            next_id = next_id
+                .checked_add(8)
                 .ok_or(FrontendJsonError::Unsupported)?;
             requires_latest = true;
             continue;

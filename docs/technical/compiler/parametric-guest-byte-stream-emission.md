@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Successful output-call return assigned to a C local (2026-11-13)
+
+A complete original C program first reads a runtime byte and writes it,
+then runs a three-trip induction-remainder branch/continue loop whose
+selected arms assign `current = putchar(getchar());` and output the rebound
+`current`. The pinned frontend accepted the program, but the normalized
+projector initially rejected the new assignment. A new eight-node proof
+authenticates the enclosing C assignment, destination identity, nested
+`putchar(getchar())` call, all Clang spans and the exact SHA-checked C
+spelling. Its guest effects are an actual input and actual output, and
+the successful output return rebinds only the proven C name. No host
+substitution, old-value recovery or general C call-result computation
+is involved.
+
+The normative VM matches an independently computed seven-byte output
+from four runtime reads in twelve steps under boundary and twelve seeded
+binary streams. A stale top-level destination rebinds after a new input;
+a zero-trip loop proves but skips the assignment. Seven focused methods
+cover six unlowered expressions, eighteen forged AST/span mutations,
+missing and SHA-adjusted source witnesses, and old-alias rejection.
+Guest EOF, failed output, arbitrary C storage, arithmetic and
+guest-dependent control remain unsupported, so P0 stays pending.
+
 ### Nested assignment-valued source-C byte output (2026-11-13)
 
 A complete original C stream used

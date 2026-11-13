@@ -11,6 +11,27 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Output-return assignment keeps the actual guest byte (2026-11-13)
+
+The exact source-C statement `NAME = putchar(getchar());` now performs a
+fresh guest read and guest write, then makes the successfully written byte
+resident under its original authenticated `int` destination. Unlike
+`putchar(NAME = getchar());`, the assignment surrounds the output call.
+The adapter checks all eight pinned Clang nodes, parent IDs, function
+signatures, reference bindings, extents and SHA-checked original C bytes.
+No previous value of a stale destination is read. A new input invalidates
+other C aliases, while a selected finite branch/loop preserves only the
+proven destination. The successful 0–255 guest domain excludes EOF and
+output failure; these C cases remain unsupported.
+
+The original C branch/three-trip `continue` program emits seven independently
+predicted bytes from four real guest reads in twelve normative VM steps.
+A stale top-level destination and a zero-trip counterpart also match binary
+guest oracles. Forged AST and original-C source, unimplemented expressions,
+and stale old names refuse without guest publication. General C function
+results, mutable storage, runtime-dependent control and arithmetic remain
+P0 gaps.
+
 ### Nested source-proven assignment-valued `putchar` (2026-11-13)
 
 The exact expression `putchar(putchar(NAME = getchar()));` and

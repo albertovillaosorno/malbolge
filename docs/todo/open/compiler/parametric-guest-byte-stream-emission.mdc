@@ -55,6 +55,23 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 an original complete C three-trip remainder-branch and
+  `continue` loop assigned the successful return of
+  `current = putchar(getchar());` to an existing C local, then read the
+  rebound name. Pinned Clang accepted the program but normalized lowering
+  rejected it. An exact eight-node and original-C source-witness proof
+  now emits a genuine guest read/write and preserves that returned 0–255
+  byte under only the authenticated destination. The normative VM matches
+  seven oracle writes from four input bytes in twelve steps across
+  boundary and twelve seeded streams. Stale top-level rebinding and
+  zero-trip proof also match guest oracles. Seven methods test six
+  unsupported expressions, eighteen forged Clang fields/spans, missing
+  and SHA-adjusted source witnesses and stale aliases. Guest C EOF,
+  output failures, general storage, arithmetic and dependent control
+  remain P0 blockers.
+
+## Evidence
+
 - On 2026-11-13 an original complete source-C program read runtime
   bytes, used `putchar(putchar(current = getchar()));` in selected
   counted-loop `continue` branches, and read the updated local after
