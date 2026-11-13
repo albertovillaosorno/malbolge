@@ -63,8 +63,9 @@ a compiler capability gap, not a reason to return to N+1.
   compound unit-step literal with full Clang ancestry. The normative guest
   reads six independent bytes, writes seven oracle bytes and halts in
   fourteen steps. Six loop-bound shapes each match two binary input
-  streams; five unsupported source steps and twenty forged AST mutations
-  refuse without artifacts. Runtime C control, storage and EOF remain
+  streams; a mixed nested two-by-three loop matches two nine-byte guest
+  streams in nineteen steps. Five unsupported source steps and twenty
+  forged AST mutations refuse without artifacts. Runtime C control, storage and EOF remain
   outside the bounded source-time proof; P0 stays pending.
 
 

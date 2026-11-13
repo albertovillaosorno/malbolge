@@ -2183,6 +2183,7 @@ result. Clang ID, reference, source geometry and operand metadata must
 match. Compound increment must carry a directly proven decimal `i32`
 literal one. A complete branching C stream using each newly supported
 spelling produces six actual guest input reads and seven oracle output
-bytes in fourteen normative VM steps; forged AST and non-unit steps
-refuse without artifacts. Dynamic guest-side C loops and general mutable
-storage remain unsupported.
+bytes in fourteen normative VM steps. A two-level loop also proves
+independent compound outer and postfix inner induction and nine guest
+byte outputs. Forged AST and non-unit steps refuse without artifacts.
+Dynamic guest-side C loops and general mutable storage remain unsupported.

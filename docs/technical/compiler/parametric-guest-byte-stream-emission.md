@@ -42,7 +42,9 @@ bounded (1–16 trips) and protected from unverified mutation.
 For the four-trip program, the real guest reads six independent binary
 bytes, emits seven independent oracle bytes, and halts in fourteen
 normative VM steps. Four postfix loop bounds and two compound bounds
-have two seeded input comparisons each; ten postfix and ten compound
+have two seeded input comparisons each; a shadowed two-by-three loop
+using compound outer and postfix inner steps also matches two nine-byte
+binary VM oracles in nineteen steps. Ten postfix and ten compound
 forged-node mutations reject, as do five unsupported compound source
 steps. No runtime C branch, guest arithmetic, general C storage or EOF
 behavior is claimed. The P0 remains pending.

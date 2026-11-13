@@ -238,6 +238,26 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
                 self.assertEqual(vm.stdout, data)
                 self.assertEqual(vm.stderr, b"malbolge-steps-v1:19\n")
 
+    def test_mixed_unit_steps_keep_nested_shadowed_counters_distinct(self) -> None:
+        source = nested_program().replace(
+            "++i)", "i += 1)", 1
+        ).replace("++i)", "i++)", 1)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            path = root / "mixed-nested.c"
+            target = root / "mixed-nested.malbolge"
+            path.write_text(source, encoding="utf-8")
+            result = self.compile(path, target)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for data in (
+                bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
+                bytes((16, 233, 127, 11, 42, 1, 128, 255, 0)),
+            ):
+                vm = self.vm(target, data)
+                self.assertEqual(vm.returncode, 0, vm.stderr)
+                self.assertEqual(vm.stdout, data)
+                self.assertEqual(vm.stderr, b"malbolge-steps-v1:19\n")
+
     def test_postfix_induction_preserves_branch_exits_and_live_stdin(self) -> None:
         rng = random.Random(0x50F17)
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
