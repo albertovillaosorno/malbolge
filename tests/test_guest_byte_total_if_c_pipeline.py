@@ -35,6 +35,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -259,6 +262,145 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                 self.assertEqual(vm.stdout, bytes((data[0],) * 2 + (data[1],)))
                 self.assertEqual(vm.stderr, b"malbolge-steps-v1:6\n")
 
+    def test_byte_dependent_leaves_can_prove_total_boolean_guard(self) -> None:
+        """Partitioned successful-byte conditions select one static C arm."""
+        guards = (
+            ("current == 0 || current != 0", False),
+            ("current < 128 && current >= 128", True),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, (guard, reverse) in enumerate(guards):
+                with self.subTest(guard=guard):
+                    program = root / f"partition-{index}.c"
+                    guest = root / f"partition-{index}.malbolge"
+                    _ = program.write_text(
+                        source(guard, reverse=reverse), encoding="utf-8"
+                    )
+                    result = COMPILE(program, guest)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    boundaries = (
+                        bytes((0, 255)),
+                        bytes((1, 254)),
+                        bytes((127, 128)),
+                        bytes((128, 127)),
+                        bytes((255, 0)),
+                    )
+                    shake = hashlib.shake_256
+                    inputs = (bytes((251, i)) for i in range(12))
+                    seeded = (shake(data).digest(2) for data in inputs)
+                    for data in (*boundaries, *seeded):
+                        with self.subTest(data=data):
+                            vm = RUN(guest, data)
+                            self.assertEqual(vm.returncode, 0, vm.stderr)
+                            self.assertEqual(
+                                vm.stdout, bytes((data[0],) * 4 + (data[1],))
+                            )
+                            steps = b"malbolge-steps-v1:8\n"
+                            self.assertEqual(vm.stderr, steps)
+
+    def test_other_boolean_partitions_reach_layout_admission(self) -> None:
+        """More pure C tautologies survive front-end proof, without synthesis."""
+        guards = (
+            "current < 128 || current >= 128",
+            "current == 0 || current != 0 && current <= 255",
+            "current >= 0 || current > 0",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, guard in enumerate(guards):
+                with self.subTest(guard=guard):
+                    program = root / f"admitted-{index}.c"
+                    guest = root / f"admitted-{index}.malbolge"
+                    _ = program.write_text(source(guard), encoding="utf-8")
+                    outcome = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            sys.executable,
+                            "--output",
+                            str(guest),
+                            "--source",
+                            str(program),
+                            "--capsule",
+                        ],
+                        input=json.dumps(NORMALIZED(program)).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
+                    )
+                    self.assertEqual(outcome.returncode, 1, outcome.stderr)
+                    self.assertIn(
+                        b"layout backend exited unsuccessfully", outcome.stderr
+                    )
+                    self.assertFalse(guest.exists())
+
+    def test_partitioned_non_total_and_effectful_guards_refuse(self) -> None:
+        """One uncovered byte or hidden short-circuit read defeats proof."""
+        invalid = (
+            "current == 0 || current == 255",
+            "current < 128 || current > 128",
+            "current < 128 && current >= 127",
+            "current & 1 || current == 0",
+            "current == 0 || getchar() > 0",
+            "current < 128 || getchar() >= 0",
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, guard in enumerate(invalid):
+                with self.subTest(guard=guard):
+                    program = root / f"dependent-{index}.c"
+                    guest = root / f"dependent-{index}.malbolge"
+                    _ = program.write_text(source(guard), encoding="utf-8")
+                    result = COMPILE(program, guest)
+                    self.assertNotEqual(result.returncode, 0, guard)
+                    self.assertFalse(guest.exists())
+
+    def test_forged_dependent_leaf_boundaries_refuse(self) -> None:
+        """Proving a partition requires the original source and Clang spans."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            program = root / "partition.c"
+            original = source("current < 128 || current >= 128")
+            _ = program.write_text(original, encoding="utf-8")
+            normalized = NORMALIZED(program)
+            for field in ("operation", "parent", "literal", "span"):
+                with self.subTest(field=field):
+                    forged = copy.deepcopy(normalized)
+                    nodes = cast("list[dict[str, object]]", forged["nodes"])
+                    if field == "operation":
+                        key = "operation"
+                        operators = (n for n in nodes if n.get(key) == "||")
+                        node = next(operators)
+                        node[field] = "&&"
+                    else:
+                        key = "literal"
+                        literals = (n for n in nodes if n.get(key) == "128")
+                        node = next(literals)
+                        if field == "parent":
+                            node[field] = 0
+                        elif field == "literal":
+                            node[field] = "127"
+                        else:
+                            value = node[field]
+                            extent = cast("dict[str, dict[str, int]]", value)
+                            extent["begin"]["column"] += 1
+                    guest = root / f"forged-partition-{field}.malbolge"
+                    result = PROJECT(forged, guest, program)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(guest.exists())
+            changed = root / "changed-partition.c"
+            _ = changed.write_text(
+                original.replace("current >= 128", "current >= 127"),
+                encoding="utf-8",
+            )
+            forged = copy.deepcopy(normalized)
+            record = cast("dict[str, object]", forged["source"])
+            record["sha256"] = hashlib.sha256(changed.read_bytes()).hexdigest()
+            guest = root / "changed-partition.malbolge"
+            self.assertNotEqual(PROJECT(forged, guest, changed).returncode, 0)
+            self.assertFalse(guest.exists())
+
     def test_non_total_and_effectful_compound_guards_refuse(self) -> None:
         """No host-side optimization may discard impure short circuits."""
         invalid = (
@@ -268,7 +410,6 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
             "current >= 0 && getchar() >= 0",
             "current < 0 && getchar() >= 0",
             "putchar(current) >= 0 || current <= 255",
-            "current >= 0 || current > 0",
             "current >= 0 & current <= 255",
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:

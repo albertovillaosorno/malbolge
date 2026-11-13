@@ -80,7 +80,9 @@ struct CommaEffect<'node> {
 
 type OutputCallProof<'node> = (usize, Vec<&'node Node>);
 type PureTernaryArmProof = (usize, String, String);
-type TotalByteGuardProof = (usize, String, bool);
+// One bit for each possible successful guest input byte, including zero.
+type ByteTruthSet = [u64; 4];
+type TotalByteGuardProof = (usize, String, ByteTruthSet);
 
 // The nested successful-byte return is not recomputed: every write uses the
 // same already-read guest SSA identity, in innermost-first C evaluation order.
@@ -5549,14 +5551,12 @@ fn prove_static_predicate(
     Some((width, value != 0))
 }
 
-// A successful getchar/putchar byte is in [0, 255]. When a pure,
-// source-authenticated comparison has the same truth value at zero as at
-// every positive byte, an if-statement can select its effects without
-// reading or predicting the guest value on the host. An inconclusive
-// condition must still refuse, even when its arms happen to look alike.
-// Prove every evaluated and short-circuited operand independently pure and
-// invariant over successful [0, 255] guest bytes. The source must match the
-// pinned Clang tree exactly; a host-side guessed guest value is never used.
+// Successful getchar/putchar returns are in [0, 255]. Prove a pure
+// predicate's complete truth set over that finite domain, then select a
+// statement only if all bytes agree. This includes tautologies whose leaves
+// individually depend on the guest input. Neither the byte's actual value
+// nor a guest conditional is predicted at compile time. Even short-circuited
+// operands must be proven pure and source-authenticated.
 #[expect(
     clippy::too_many_arguments,
     reason = "verify each Clang parent and source-backed byte-range predicate"
@@ -5643,15 +5643,17 @@ fn prove_total_byte_logical(
     let spelling = format!("{left} {operator} {right}");
     pure_expression_source(root, &spelling, source)?;
     let truth = match operator {
-        "&&" => left_truth && right_truth,
-        "||" => left_truth || right_truth,
+        "&&" => std::array::from_fn(|i| left_truth[i] & right_truth[i]),
+        "||" => std::array::from_fn(|i| left_truth[i] | right_truth[i]),
         _ => return None,
     };
     Some((width, spelling, truth))
 }
 
-// An individual leaf is constant only if both zero and the full positive
-// byte interval yield the same result. No C expression is evaluated here.
+// Every leaf is an exact pure Clang/source predicate of the same resident
+// byte. Enumerate the entire 256-value successful-input domain, rather than
+// approximating with independently constant leaves. A bitmap keeps logical
+// composition exact even when each leaf changes truth over that domain.
 #[expect(
     clippy::too_many_arguments,
     reason = "bind the leaf's source, operand and Clang parent provenance"
@@ -5677,25 +5679,31 @@ fn prove_total_byte_leaf(
         depth.checked_add(1)?,
         source,
     )?;
-    let positive = proven_positive_byte_range_truth(nodes, width)?;
     let literal = nodes
         .get(width.checked_sub(1)?)?
         .literal
         .as_deref()?
         .parse::<i32>()
         .ok()?;
-    let zero = match root.operation.as_deref()? {
-        "<" => 0i32 < literal,
-        "<=" => 0i32 <= literal,
-        ">" => 0i32 > literal,
-        ">=" => 0i32 >= literal,
-        "==" => literal == 0i32,
-        "!=" => literal != 0i32,
-        "&" => false,
-        _ => return None,
-    };
-    (width <= MAX_STATIC_PREDICATE_NODES && zero == positive)
-        .then_some((width, spelling, positive))
+    let operation = root.operation.as_deref()?;
+    let mut truth = [0u64; 4];
+    for byte in 0i32..=255 {
+        let selected = match operation {
+            "<" => byte < literal,
+            "<=" => byte <= literal,
+            ">" => byte > literal,
+            ">=" => byte >= literal,
+            "==" => byte == literal,
+            "!=" => byte != literal,
+            "&" => byte & literal != 0,
+            _ => return None,
+        };
+        if selected {
+            let index = usize::try_from(byte).ok()?;
+            truth[index / 64] |= 1u64 << (index % 64);
+        }
+    }
+    (width <= MAX_STATIC_PREDICATE_NODES).then_some((width, spelling, truth))
 }
 
 #[expect(
@@ -5720,7 +5728,13 @@ fn prove_total_byte_if_predicate(
         0,
         source?,
     )?;
-    Some((width, truth))
+    if truth == [u64::MAX; 4] {
+        Some((width, true))
+    } else if truth == [0u64; 4] {
+        Some((width, false))
+    } else {
+        None
+    }
 }
 
 // Exact folded source-C predicates. Each bounded C call in both arms

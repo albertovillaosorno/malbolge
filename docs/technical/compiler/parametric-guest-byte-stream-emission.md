@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Boolean-complete guest-byte partitions (2026-11-13)
+
+A complete C program with input, three-trip induction, static `continue`,
+nested `if` and trailing byte I/O first refused a pure dynamic partition:
+`if (current == 0 || current != 0)`. A bounded source-/Clang-authenticated
+proof now enumerates the 256 successful input bytes into four `u64` words.
+It composes exact comparison and bit-mask truth sets with set intersection
+for `&&` and union for `||`. Only an empty or complete final truth set can
+select a whole statement arm. A dependent leaf is therefore admissible if
+its logical combination is byte-total. The proof authenticates all leaves,
+including inactive short-circuit operands, and does not evaluate real guest
+input or introduce runtime branching. Non-total/effectful forms reject.
+Two full counted programs pass 17 binary input pairs each in the
+normative Malbolge VM, producing five bytes in eight steps for both
+true and false partitions. Three more guards reach layout admission;
+six dependent/effectful guards and five source/Clang forgeries refuse.
+
+Successful `getchar()` bytes exclude EOF; general guest-dependent branches,
+storage, arithmetic and failed I/O remain outside the supported slice.
+
 ### Pure compound successful-byte predicates select C arms
 
 An original C program with an input local, three-trip induction loop,

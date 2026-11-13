@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Exact pure Boolean partitions of guest bytes (2026-11-13)
+
+The original full counted C stream with input, nested branches, selected
+`continue`, and output initially refused `current == 0 || current != 0`.
+The bounded source-/pinned-Clang-authenticated proof now computes a 256-bit
+truth set for each pure comparison or bitmask leaf of the same live input.
+`&&` intersects the sets, and `||` unions them. Only an empty or complete
+final set selects an entire C statement arm; dependent leaves are safe when
+their *composition* is invariant across `[0, 255]`. Every leaf is checked,
+including those short-circuited at runtime, so no unknown effect disappears.
+Two complete source-C programs match 17 binary input pairs each in the
+normative VM (five output bytes, eight steps). Three additional forms
+reach layout admission; six non-total/effectful and five forged cases
+refuse without guest publication.
+
+The proof enumerates all possible successful input bytes, never the actual
+guest byte or an EOF value. This remains static C arm selection rather than
+guest-side dynamic branching, integer computation, memory or failed I/O.
+
 ### Proven compound successful-byte C conditions (2026-11-13)
 
 A complete C stream with a live `getchar()` local, three-trip induction,

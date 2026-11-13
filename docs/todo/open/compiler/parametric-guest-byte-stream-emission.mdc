@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C induction/continue program with binary
+  input and nested `if` first refused `current == 0 || current != 0`.
+  Source-/Clang-proven 256-bit Boolean truth sets now compose pure
+  byte-dependent comparison/mask leaves with `&&`/`||`; the full guard
+  must be true or false for all successful input bytes. Source and
+  parent/coordinate verification includes every short-circuited operand.
+  Two actual guest programs match 17 independent binary streams each
+  (five outputs in eight VM steps); three more guards reach frontend
+  layout admission. Six dependent/effectful and five forged cases refuse.
+  The actual input remains unknown until runtime. Dynamic branching,
+  arbitrary C arithmetic/storage and EOF are not yet implemented.
+
+
 - On 2026-11-13 a complete C input-local, three-trip induction,
   remainder/continue and nested-if program first refused the live
   `current >= 0 && current <= 255` guard at normalized projection.
