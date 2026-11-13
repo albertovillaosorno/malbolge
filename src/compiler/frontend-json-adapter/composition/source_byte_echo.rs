@@ -836,6 +836,140 @@ fn prove_local_output<'node>(
     source_ok.then_some(output)
 }
 
+// A successful getchar() returns a byte in [0, 255]. C's explicit
+// `(unsigned char)` narrowing and integer promotion therefore preserve the
+// exact runtime byte: the guest must not synthesize a second read or
+// arithmetic. Authenticate both conversion nodes and the underlying live local
+// read.
+#[expect(
+    clippy::too_many_lines,
+    reason = "seven source-ordered Clang nodes constitute one cast proof"
+)]
+fn prove_unsigned_cast_local_output<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    local: &LocalDeclaration<'_>,
+    expected_id: u32,
+    previous: u32,
+    parent: u32,
+) -> Option<&'node Node> {
+    let [
+        output,
+        output_cast,
+        output_callee,
+        promoted,
+        narrowed,
+        value_cast,
+        value_reference,
+    ] = nodes
+    else {
+        return None;
+    };
+    let name_len = u32::try_from(local.name.len()).ok()?;
+    let start = output.span.begin.byte;
+    let line = output.span.begin.line;
+    let column = output.span.begin.column;
+    let argument_start = start.checked_add(8)?;
+    let value_start = argument_start.checked_add(15)?;
+    let argument_end = value_start.checked_add(name_len)?;
+    let end = argument_end.checked_add(1)?;
+    if start <= previous
+        || start <= local.declaration_end
+        || line <= local.line
+        || end >= body.span.end.byte
+        || output.id != expected_id
+        || output.parent != parent
+        || output.kind != "call-expression"
+        || output.type_name.as_deref() != Some("i32")
+        || output.reference.as_deref() != Some("external:putchar")
+        || output.operation.is_some()
+        || !metadata_empty(output)
+        || !source_word(output, start, end, line, column)
+        || output_cast.id != output.id.checked_add(1)?
+        || output_cast.parent != output.id
+        || output_cast.kind != "cast-expression"
+        || output_cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+        || output_cast.operation.as_deref() != Some("function-to-pointer")
+        || output_cast.reference.is_some()
+        || !metadata_empty(output_cast)
+        || !source_word(output_cast, start, start.checked_add(7)?, line, column)
+        || output_callee.id != output_cast.id.checked_add(1)?
+        || output_callee.parent != output_cast.id
+        || output_callee.kind != "declaration-reference-expression"
+        || output_callee.type_name.as_deref() != Some("fn(i32)->i32")
+        || output_callee.reference.as_deref() != Some("external:putchar")
+        || output_callee.operation.is_some()
+        || !metadata_empty(output_callee)
+        || !source_word(
+            output_callee,
+            start,
+            start.checked_add(7)?,
+            line,
+            column,
+        )
+        || promoted.id != output_callee.id.checked_add(1)?
+        || promoted.parent != output.id
+        || promoted.kind != "cast-expression"
+        || promoted.type_name.as_deref() != Some("i32")
+        || promoted.operation.as_deref() != Some("integral-cast")
+        || promoted.reference.is_some()
+        || !metadata_empty(promoted)
+        || !source_word(
+            promoted,
+            argument_start,
+            argument_end,
+            line,
+            column.checked_add(8)?,
+        )
+        || narrowed.id != promoted.id.checked_add(1)?
+        || narrowed.parent != promoted.id
+        || narrowed.kind != "cast-expression"
+        || narrowed.type_name.as_deref() != Some("u8")
+        || narrowed.operation.as_deref() != Some("integral-cast")
+        || narrowed.reference.is_some()
+        || !metadata_empty(narrowed)
+        || !source_word(
+            narrowed,
+            argument_start,
+            argument_end,
+            line,
+            column.checked_add(8)?,
+        )
+        || value_cast.id != narrowed.id.checked_add(1)?
+        || value_cast.parent != narrowed.id
+        || value_cast.kind != "cast-expression"
+        || value_cast.type_name.as_deref() != Some("i32")
+        || value_cast.operation.as_deref() != Some("lvalue-to-rvalue")
+        || value_cast.reference.is_some()
+        || !metadata_empty(value_cast)
+        || !source_word(
+            value_cast,
+            value_start,
+            argument_end,
+            line,
+            column.checked_add(23)?,
+        )
+        || value_reference.id != value_cast.id.checked_add(1)?
+        || value_reference.parent != value_cast.id
+        || value_reference.kind != "declaration-reference-expression"
+        || value_reference.type_name.as_deref() != Some("i32")
+        || value_reference.reference.as_deref()
+            != Some(local.variable_reference.as_str())
+        || value_reference.operation.is_some()
+        || !metadata_empty(value_reference)
+        || !source_word(
+            value_reference,
+            value_start,
+            argument_end,
+            line,
+            column.checked_add(23)?,
+        )
+    {
+        return None;
+    }
+    Some(output)
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "check nested source coordinates and ancestry together"
@@ -996,6 +1130,18 @@ fn prove_local_output_chain<'node>(
         )
     {
         return Some((5, vec![call]));
+    }
+    if let Some(first) = nodes.get(..7)
+        && let Some(call) = prove_unsigned_cast_local_output(
+            first,
+            body,
+            local,
+            expected_id,
+            previous,
+            parent,
+        )
+    {
+        return Some((7, vec![call]));
     }
     prove_nested_local_output(nodes, body, local, expected_id, previous, parent)
 }
@@ -2733,6 +2879,7 @@ fn valid_envelope(input: &Artifact, function: &Node, body: &Node) -> bool {
 )]
 pub(super) fn canonical_source_byte_echo(
     bytes: &[u8],
+    source: Option<&[u8]>,
 ) -> Result<super::CanonicalGuestProjection, FrontendJsonError> {
     if bytes.is_empty() || bytes.len() > super::MAX_FRONTEND_JSON_BYTES {
         return Err(FrontendJsonError::Malformed);
@@ -2744,6 +2891,26 @@ pub(super) fn canonical_source_byte_echo(
     };
     if !valid_envelope(&input, function, body) || rest.is_empty() {
         return Err(FrontendJsonError::Unsupported);
+    }
+    // A forged signed-char Clang node can have exactly the same extent as
+    // `(unsigned char)`. The typed AST alone cannot prove the source token.
+    // Require an explicitly supplied source witness for every narrowed u8
+    // cast, and verify its literal spelling at the actual byte offset.
+    let casts = input.nodes.iter().filter(|node| {
+        node.kind == "cast-expression"
+            && node.type_name.as_deref() == Some("u8")
+    });
+    for cast in casts {
+        let start = usize::try_from(cast.span.begin.byte)
+            .map_err(|_| FrontendJsonError::Unsupported)?;
+        let end = start
+            .checked_add(15)
+            .ok_or(FrontendJsonError::Unsupported)?;
+        if source.and_then(|bytes| bytes.get(start..end))
+            != Some(b"(unsigned char)")
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
     }
     let mut previous = body.span.begin.byte;
     let mut next_id = 3u32;

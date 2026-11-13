@@ -10,6 +10,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-witnessed unsigned-byte casts in finite C streams (2026-11-13)
+
+A complete four-trip source-C program reads fresh `getchar()` locals,
+branches on authenticated induction remainders, emits
+`putchar((unsigned char)current)`, selects `continue` and writes a final
+runtime input. The pinned frontend accepted the program, but normalized
+loop admission initially rejected the unsigned narrowing. The compiler now
+checks both `integral-cast` nodes, all declaration-reference ancestry,
+source coordinates and the exact `(unsigned char)` bytes at the cast span.
+The driver supplies the original C file to the JSON adapter after SHA-256
+identity checks; JSON-only callers cannot assert this cast without a source
+witness. Signed narrowing, hidden arithmetic and forged equal-width signed
+cast metadata fail closed, without a guest artifact.
+
+Under successful byte input, narrowing to unsigned char and promoting back
+to int preserve each 0–255 value; the emitted Malbolge still executes all
+five independent input and output effects. Two binary VM oracle streams
+(including zero, 128 and 255) match in eleven steps. This is not dynamic C
+arithmetic, arbitrary casts, EOF behavior or guest-dependent control.
+
 ### Authenticated early void-return in finite C guest streams (2026-11-12)
 
 An exact pinned Clang `return;` node may terminate a void C function from

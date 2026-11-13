@@ -336,6 +336,9 @@ def compile_source(arguments: Arguments) -> None:
             "--output",
             str(staged),
         ]
+        # The JSON adapter needs the original lexer bytes to distinguish an
+        # unsigned-byte cast from an equal-width forged signed cast.
+        command.extend(("--source", arguments.source))
         if arguments.capsule:
             command.append("--capsule")
         try:

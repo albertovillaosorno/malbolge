@@ -2872,7 +2872,22 @@ fn canonical_literal_output_typed_ir(
 pub fn canonical_guest_typed_ir(
     bytes: &[u8],
 ) -> Result<CanonicalGuestProjection, FrontendJsonError> {
-    if let Ok(projection) = source_byte_echo::canonical_source_byte_echo(bytes) {
+    canonical_guest_typed_ir_with_source(bytes, None)
+}
+
+/// Admit source-checked byte casts only when the caller supplies the original
+/// C bytes; other existing JSON-only projection families remain unchanged.
+///
+/// # Errors
+///
+/// Rejects unsupported normalized source, cast spelling and invalid typed IR.
+pub fn canonical_guest_typed_ir_with_source(
+    bytes: &[u8],
+    source: Option<&[u8]>,
+) -> Result<CanonicalGuestProjection, FrontendJsonError> {
+    if let Ok(projection) =
+        source_byte_echo::canonical_source_byte_echo(bytes, source)
+    {
         return Ok(projection);
     }
     if let Ok(projection) = nested_byte_echo::canonical_nested_byte_echo(bytes) {

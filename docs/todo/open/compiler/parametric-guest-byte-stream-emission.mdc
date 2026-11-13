@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a full four-trip C stream with live `getchar` locals,
+  induction-dependent branch and `continue`, explicit
+  `putchar((unsigned char)current)` and trailing runtime I/O initially
+  refused normalized `for` admission. The adapter now authenticates both
+  Clang integral casts, exact source spelling and local binding against
+  the caller-supplied original C source, which the driver SHA-256 checks.
+  The actual Malbolge guest matches two independent five-byte binary input
+  oracles in eleven steps. Signed narrowing, hidden runtime arithmetic,
+  forged cast nodes and an equal-length signed-token AST spoof refuse.
+  EOF, dynamic guest control, general byte arithmetic and storage remain
+  unsupported, so P0 remains open.
+
 - On 2026-11-12 a complete C loop with live `getchar` locals, selected
   nested output and `return;`, and a trailing dead guest read first
   rejected normalized `for` admission. Exact pinned Clang source proof

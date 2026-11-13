@@ -34,57 +34,105 @@
 
 use std::env;
 use std::ffi::{OsStr, OsString};
+use std::fs::File;
 use std::io::{self, Read as _, Write as _};
+use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
 #[cfg(test)]
 use malbolge as _;
 use malbolge_c_frontend_json_adapter::{
-    FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir,
+    FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
     first_unlowered_c_node,
 };
 use serde as _;
 use serde_json as _;
 
+const USAGE: &str = concat!(
+    "expected --layout-backend BIN --output FILE ",
+    "[--source C] [--capsule]",
+);
 const MAX_JSON_BYTES: u64 = 1_048_576;
+const MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
 
 struct Arguments {
     backend: OsString,
     capsule: bool,
     output: OsString,
+    source: Option<OsString>,
 }
 
 fn parse_args() -> Result<Arguments, &'static str> {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
-    match args.as_slice() {
-        [backend_arg, backend, output_arg, output]
-            if backend_arg == OsStr::new("--layout-backend")
-                && output_arg == OsStr::new("--output") =>
-        {
-            Ok(Arguments {
-                backend: backend.clone(),
-                capsule: false,
-                output: output.clone(),
-            })
+    let [backend_arg, backend, output_arg, output, rest @ ..] = args.as_slice()
+    else {
+        return Err(USAGE);
+    };
+    if backend_arg != OsStr::new("--layout-backend")
+        || output_arg != OsStr::new("--output")
+    {
+        return Err(USAGE);
+    }
+    let (source, capsule) = match rest {
+        [] => (None, false),
+        [flag] if flag == OsStr::new("--capsule") => (None, true),
+        [flag, name] if flag == OsStr::new("--source") => {
+            (Some(name.clone()), false)
         },
-        [backend_arg, backend, output_arg, output, capsule]
-            if backend_arg == OsStr::new("--layout-backend")
-                && output_arg == OsStr::new("--output")
+        [flag, name, capsule]
+            if flag == OsStr::new("--source")
                 && capsule == OsStr::new("--capsule") =>
         {
-            Ok(Arguments {
-                backend: backend.clone(),
-                capsule: true,
-                output: output.clone(),
-            })
+            (Some(name.clone()), true)
         },
-        _ => Err("expected --layout-backend BIN --output FILE [--capsule]"),
+        _ => {
+            return Err(USAGE);
+        },
+    };
+    Ok(Arguments {
+        backend: backend.clone(),
+        capsule,
+        output: output.clone(),
+        source,
+    })
+}
+
+fn read_source_witness(
+    name: Option<&OsString>,
+) -> Result<Option<Vec<u8>>, String> {
+    let Some(name) = name else {
+        return Ok(None);
+    };
+    let path = Path::new(name);
+    let file = File::open(path)
+        .map_err(|error| format!("cannot open C source witness: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("cannot inspect C source witness: {error}"))?;
+    if !metadata.is_file() || metadata.len() > MAX_SOURCE_BYTES {
+        return Err(
+            "C source witness must be a regular file of at most 64 MiB"
+                .to_owned(),
+        );
     }
+    let mut bytes = Vec::new();
+    let _read = file
+        .take(MAX_SOURCE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("cannot read C source witness: {error}"))?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_SOURCE_BYTES {
+        return Err("C source witness exceeds the 64 MiB bound".to_owned());
+    }
+    Ok(Some(bytes))
 }
 
 fn execute() -> Result<(), String> {
-    let Arguments { backend, capsule, output } =
-        parse_args().map_err(str::to_owned)?;
+    let Arguments {
+        backend,
+        capsule,
+        output,
+        source,
+    } = parse_args().map_err(str::to_owned)?;
     let mut input = Vec::new();
     let _read = io::stdin()
         .lock()
@@ -93,20 +141,23 @@ fn execute() -> Result<(), String> {
         .map_err(|error| {
             format!("cannot read normalized JSON stdin: {error}")
         })?;
-    let (typed, mode) = canonical_guest_typed_ir(&input).map_err(|error| {
-        if error == FrontendJsonError::Unsupported
-            && let Some(node) = first_unlowered_c_node(&input)
-        {
-            return format!(
-                concat!(
-                    "normalized frontend rejected: {:?}; ",
-                    "unlowered C {} at {}:{} (node {})"
-                ),
-                error, node.kind, node.line, node.column, node.id
-            );
-        }
-        format!("normalized frontend rejected: {error:?}")
-    })?;
+    let source_witness = read_source_witness(source.as_ref())?;
+    let (typed, mode) =
+        canonical_guest_typed_ir_with_source(&input, source_witness.as_deref())
+            .map_err(|error| {
+                if error == FrontendJsonError::Unsupported
+                    && let Some(node) = first_unlowered_c_node(&input)
+                {
+                    return format!(
+                        concat!(
+                            "normalized frontend rejected: {:?}; ",
+                            "unlowered C {} at {}:{} (node {})"
+                        ),
+                        error, node.kind, node.line, node.column, node.id
+                    );
+                }
+                format!("normalized frontend rejected: {error:?}")
+            })?;
     let mut command = Command::new(backend);
     let _arguments = command.args([
         OsStr::new("--profile"),
