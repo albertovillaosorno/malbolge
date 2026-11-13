@@ -11,6 +11,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Nested output assignment inside a C comma expression (2026-11-13)
+
+A `putchar(NAME = getchar())` comma operand can now rebind an already proven
+source-C local and output the new guest byte before following comma operands
+use its value. The same eight-node call/assignment/input proof authenticates
+the pinned Clang ancestry and exact SHA-checked C spelling; an operand followed
+by either a comma separator or a closing parenthesis is supported.
+
+A full three-trip loop with a remainder-selected `continue` branch now
+reads six real guest bytes, emits seven, and halts in fourteen normative VM
+steps on fourteen independent binary streams. Invalid assignments, stale
+reads, changed Clang parents/spans, and source forgeries refuse without
+guest publication. Output failure, EOF, guest-dependent C control and
+general C storage remain unsupported.
+
+
 ### Comma assignments from successful output returns (2026-11-13)
 
 An original complete C branch/continue loop first refused a comma

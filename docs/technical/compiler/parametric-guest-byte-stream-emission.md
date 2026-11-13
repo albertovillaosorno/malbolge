@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### A comma output operand can assign the fresh guest byte (2026-11-13)
+
+An original complete C program with a live local, counted induction,
+remainder-selected branch, `continue`, and real binary input/output tried
+`putchar((current = getchar(), putchar(current = getchar()), current));`.
+Pinned Clang admitted the source but normalized lowering originally refused
+the program. A bounded proof now authenticates the nested output's assignment,
+Clang parent/type/span sequence, the exact original C tokens, and the comma
+separator. That nested effect performs one real guest read and output while
+rebinding the only resident C byte for later comma operands. The same proof
+admits a final nested output operand followed by the closing parenthesis.
+
+The original entire source now emits seven bytes from six binary reads in
+fourteen normative guest steps, matching two boundary and twelve seeded
+independent streams. Source and normalized-node forgery regressions remain
+fail-closed. This does not implement general C expression values, EOF,
+failed output, guest-dependent branching, or arbitrary storage; P0 remains
+open.
+
+
 ### Rebinding a comma operand from a successful output return (2026-11-13)
 
 An original complete C program with a local, counted remainder branch,

@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete original C stream with local state, a three-trip
+  induction/remainder branch, selected `continue`, and nested I/O in a comma
+  argument first refused at normalized lowering. The now source-proven
+  `putchar(current = getchar())` comma operand performs actual guest input
+  and output while rebinding the local for later uses. The normative VM
+  matches two boundary and twelve seeded binary oracles at six reads,
+  seven writes and fourteen steps. Closing-parenthesis and chained-output
+  variants, skipped-loop behavior, unsupported expressions and source/Clang
+  forgeries are covered by regressions. EOF, failed output, runtime C control,
+  arithmetic and arbitrary storage remain unimplemented; P0 stays open.
+
+
 - On 2026-11-13 a complete C source-local loop with induction,
   remainder-selected continue and nested guest input/output assigned
   the successful return of putchar(getchar()) inside a comma argument.

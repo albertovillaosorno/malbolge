@@ -720,7 +720,27 @@ fn prove_discarded_comma_effects<'node>(
                 local_is_live = true;
                 (width, read, outputs, leaf, false, true)
             } else if leaf.reference.as_deref() == Some("external:putchar") {
-                if local_is_live
+                if let Some(current_local) = local
+                    && let Some(witness) = source
+                    && let Some(slice) =
+                        nodes.get(cursor..cursor.checked_add(8)?)
+                    && let Some((read, output)) = prove_output_input_assignment(
+                        slice,
+                        (body, last_end, parent),
+                        current_local,
+                        witness,
+                        if index.checked_add(1)? == operand_count {
+                            b')'
+                        } else {
+                            b','
+                        },
+                    )
+                {
+                    // This putchar consumes a fresh byte via assignment,
+                    // writes it, and rebinds the C local for later operands.
+                    local_is_live = true;
+                    (8, read, vec![output], output, false, true)
+                } else if local_is_live
                     && let Some(current_local) = local
                     && let Some((width, calls)) = prove_local_output_chain(
                         nodes.get(cursor..)?,
@@ -1768,7 +1788,7 @@ fn prove_output_input_assignment<'node>(
     terminator: u8,
 ) -> Option<(&'node Node, &'node Node)> {
     let (body, previous, parent) = scope;
-    if !matches!(terminator, b';' | b')') {
+    if !matches!(terminator, b';' | b')' | b',') {
         return None;
     }
     let [
