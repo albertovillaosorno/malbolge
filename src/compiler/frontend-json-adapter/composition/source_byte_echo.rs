@@ -2079,6 +2079,125 @@ fn prove_static_value(
     .then_some((width, value))
 }
 
+// An authenticated remainder of the protected induction counter is a pure
+// source-time value. The full pinned Clang subtree must spell `i % N`, with a
+// nonzero canonical decimal N; no guest byte may participate in its value.
+fn prove_induction_remainder(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, i32, u32)> {
+    let [remainder, cast, variable, divisor, ..] = nodes else {
+        return None;
+    };
+    let rhs_start = at.start.checked_add(4)?;
+    let rhs_column = at.column.checked_add(4)?;
+    if remainder.id != at.id
+        || remainder.parent != at.parent
+        || remainder.kind != "binary-expression"
+        || remainder.type_name.as_deref() != Some("i32")
+        || remainder.operation.as_deref() != Some("%")
+        || remainder.reference.is_some()
+        || !metadata_empty(remainder)
+        || cast.id != remainder.id.checked_add(1)?
+        || cast.parent != remainder.id
+        || cast.kind != "cast-expression"
+        || cast.type_name.as_deref() != Some("i32")
+        || cast.operation.as_deref() != Some("lvalue-to-rvalue")
+        || cast.reference.is_some()
+        || !metadata_empty(cast)
+        || !source_word(
+            cast,
+            at.start,
+            at.start.checked_add(1)?,
+            at.line,
+            at.column,
+        )
+        || variable.id != cast.id.checked_add(1)?
+        || variable.parent != cast.id
+        || variable.kind != "declaration-reference-expression"
+        || variable.type_name.as_deref() != Some("i32")
+        || variable.reference.as_deref() != Some(induction.reference)
+        || variable.operation.is_some()
+        || !metadata_empty(variable)
+        || variable.span != cast.span
+    {
+        return None;
+    }
+    let divisor_value = prove_decimal_condition_operand(
+        divisor,
+        variable.id.checked_add(1)?,
+        remainder.id,
+        rhs_start,
+        at.line,
+        rhs_column,
+    )?;
+    let end = divisor.span.end.byte;
+    if divisor_value == 0
+        || !source_word(remainder, at.start, end, at.line, at.column)
+    {
+        return None;
+    }
+    Some((4, induction.value.checked_rem(divisor_value)?, end))
+}
+
+// Compare an independently authenticated counter remainder with a canonical
+// decimal integer. Every child, offset, type and declaration binding is
+// checked before its source-time result selects real guest I/O effects.
+fn prove_induction_remainder_comparison(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool, u32)> {
+    let comparison = nodes.first()?;
+    let operator = comparison.operation.as_deref()?;
+    if !matches!(operator, "==" | "!=" | "<" | "<=" | ">" | ">=")
+        || comparison.id != at.id
+        || comparison.parent != at.parent
+        || comparison.kind != "binary-expression"
+        || comparison.type_name.as_deref() != Some("i32")
+        || comparison.reference.is_some()
+        || !metadata_empty(comparison)
+    {
+        return None;
+    }
+    let remainder_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
+    let (left_width, value, left_end) =
+        prove_induction_remainder(nodes.get(1..)?, remainder_at, induction)?;
+    let right_index = left_width.checked_add(1)?;
+    let right = nodes.get(right_index)?;
+    let right_offset = u32::try_from(operator.len()).ok()?.checked_add(2)?;
+    let rhs = prove_decimal_condition_operand(
+        right,
+        at.id.checked_add(u32::try_from(right_index).ok()?)?,
+        comparison.id,
+        left_end.checked_add(right_offset)?,
+        at.line,
+        at.column
+            .checked_add(left_end.checked_sub(at.start)?)?
+            .checked_add(right_offset)?,
+    )?;
+    if !source_word(
+        comparison,
+        at.start,
+        right.span.end.byte,
+        at.line,
+        at.column,
+    ) {
+        return None;
+    }
+    let selected = match operator {
+        "==" => value == rhs,
+        "!=" => value != rhs,
+        "<" => value < rhs,
+        "<=" => value <= rhs,
+        ">" => value > rhs,
+        ">=" => value >= rhs,
+        _ => return None,
+    };
+    Some((right_index.checked_add(1)?, selected, right.span.end.byte))
+}
+
 // This is source-time C induction, not a guest read. A leaf comparison
 // must prove the same loop-local declaration, canonical token geometry and
 // Clang ancestry on every unrolled trip. No C storage is projected.
@@ -2298,6 +2417,13 @@ fn prove_induction_value(
     if node.kind == "cast-expression" {
         return prove_induction_truth(nodes, at, induction);
     }
+    if node.kind == "binary-expression"
+        && node.operation.as_deref() == Some("%")
+    {
+        let (width, value, end) =
+            prove_induction_remainder(nodes, at, induction)?;
+        return Some((width, value != 0, end));
+    }
     if let Some((width, value)) = prove_static_value(nodes, at) {
         return Some((width, value != 0, node.span.end.byte));
     }
@@ -2307,7 +2433,8 @@ fn prove_induction_value(
     ) {
         return prove_induction_prefix(nodes, at, induction);
     }
-    prove_induction_comparison(nodes, at, induction)
+    prove_induction_remainder_comparison(nodes, at, induction)
+        .or_else(|| prove_induction_comparison(nodes, at, induction))
 }
 
 fn prove_induction_predicate(

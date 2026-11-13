@@ -10,6 +10,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Counter remainder predicates over source-proven finite C loops
+
+Canonical `i % N` with positive decimal `N` now selects source-time C
+branches when `i` is the authenticated finite loop induction counter.
+Truth tests, Boolean negation, grouping, and comparisons against canonical
+decimal integers are admitted, including bounded logical combinations.
+The exact Clang remainder/cast/reference/literal ancestry and coordinates
+are independently checked. Fresh guest `getchar` and `putchar` effects
+remain actual Malbolge instructions; a complete descending stream with
+modulo-selected `continue` and `break` emits seven independently predicted
+bytes from six live inputs in fourteen VM steps. Zero-trip validation and
+nested counter shadowing preserve their existing guarantees.
+Six complete source shapes match twelve binary VM oracles, with four more
+nested/empty-loop VM checks and eleven invalid-source/forged-AST refusals
+each.
+
+Guest-dependent remainders, zero or noncanonical divisors, dynamic C state,
+EOF behavior and general guest arithmetic remain unsupported.
+
+
 ### Two-digit canonical C induction starts (2026-11-12)
 
 Bounded source-time `for (int i = N; ...)` proof now supports canonical

@@ -55,6 +55,22 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-12 a complete descending C loop used source induction
+  remainders to choose a nested `putchar` and `continue`, a later `break`,
+  and a final live `getchar`. Pinned Clang accepted the whole source, but
+  the normalized adapter initially refused its `for` statement. A strict
+  counter-bound `i % N` proof now authenticates the complete Clang subtree,
+  decimal nonzero divisor and source geometry before selecting effects.
+  The original 1,159-byte capsule executes six actual binary reads and
+  seven independent oracle writes `00 00 ff 80 01 01 09` in fourteen
+  normative VM steps. Zero-trip validation and nested shadowed counters
+  preserve fresh guest effects; unsupported guest-dependent conditions,
+  zero/signed divisors and forged AST children refuse. This remains bounded
+  source-time evaluation, not dynamic guest modulo or general C state.
+  Six predicate shapes pass twelve binary VM oracles; nested and zero-trip
+  behavior adds four more, with eleven source and eleven forged-AST refusals.
+
+
 - On 2026-11-12 a complete descending C loop starting at `12` mixed fresh
   guest `getchar` bytes, nested `putchar`, a selected `continue`, a later
   `break` and a trailing input. The pinned frontend accepted it, but the

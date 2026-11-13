@@ -26,6 +26,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven remainder predicates in finite C loops (2026-11-12)
+
+A complete descending `for (int i = 12; i >= 8; i -= 1)` C program reads
+fresh `getchar` bytes, selects a nested output and `continue` using
+`i % 2 == 0`, takes a later `break` on `i % 3 == 0`, and performs one
+trailing guest read. Pinned Clang accepted the program; the normalized
+adapter initially rejected its `for` statement. The corrected source-time
+predicate proof authenticates the entire `i % N` subtree: the protected
+induction declaration, `i32` lvalue cast, canonical nonzero decimal
+literal, operation, parent IDs, types, and source coordinates.
+
+A remainder may select a Boolean arm directly, under `!` or parentheses,
+or when compared with a canonical decimal integer using an existing
+comparison operator. These expressions can be combined with the already
+bounded logical predicate proof. Each admitted source-time branch still
+emits real guest input and output, and all unselected Clang descendants
+must authenticate. The original source emits a 1,159-byte capsule; its
+normative VM consumes six runtime bytes and outputs the independent
+`00 00 ff 80 01 01 09` oracle in fourteen steps. Nested shadowed
+induction retains the correct lexical declaration, and false-entry loops
+validate the unreachable remainder body without guest effects.
+Six complete predicate shapes match twelve binary VM oracles, and nested
+shadowing plus zero-trip execution match four additional VM oracles.
+Eleven unsupported source changes and eleven forged Clang node mutations
+refuse guest artifact publication.
+
+This is not guest-side modulo execution or runtime C control. Divisor zero,
+noncanonical/signed source literals, guest-dependent operands and
+unrecognized arithmetic fail without an artifact. The P0 remains open.
+
+
 ### Two-digit finite induction starts (2026-11-12)
 
 The exact pinned Clang `for (int i = N; ...)` proof now derives the
