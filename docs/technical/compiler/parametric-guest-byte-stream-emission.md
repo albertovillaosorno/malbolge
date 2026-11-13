@@ -26,6 +26,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Lexically scoped C byte aliases and fresh shadows (2026-11-13)
+
+An original complete C program copied a live `getchar()` value into a
+block-local `int scoped = current;` inside a source-selected top-level `if`,
+then emitted through both names and ran a three-trip loop with fresh input,
+induction-selected output and `continue`. The pinned Clang frontend accepted
+it, but the source JSON adapter rejected the entire program because top-level
+branches were forbidden from introducing scoped aliases. The bounded branch
+proof now admits a source-authenticated identity declaration in either arm
+without exporting its C name or synthesizing another guest read. The normative
+VM consumes five bytes, emits seven independent oracle bytes and halts after
+thirteen steps; the skipped-branch variant emits six in twelve steps.
+
+A second whole C program declared a new `int current = getchar();` inside a
+selected `if`, shadowing an outer live local. The branch proof now permits one
+fresh, source-witnessed nested input per lexical block, invalidating the
+older guest byte rather than assuming C memory can recover it. The normative
+VM consumes seven binary bytes and emits six source-predicted bytes in
+fourteen steps. The unselected shadow preserves the outer value and emits
+five bytes in eleven steps. Boundary and seeded binary streams, unsupported
+source expressions, forged Clang ancestry, a forged C constant masquerading
+as an input initializer, absent source proof and stale outer-byte reads
+all refuse or match as appropriate. This is finite source-C branch replay,
+not dynamic guest C scope, mutable storage, arbitrary arithmetic or EOF.
+The P0 remains open.
+
 ### Selected C branch retains authenticated guest input (2026-11-13)
 
 An original C program initializes and aliases a live guest byte, assigns a

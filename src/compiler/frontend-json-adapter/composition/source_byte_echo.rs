@@ -1838,10 +1838,11 @@ fn prove_static_if_arm<'node>(
             declared_local = Some(alias);
             (4, Vec::new(), end)
         } else if declares_local {
-            // One new automatic local is initialized by an actual guest
-            // input on every loop iteration, never once at compile time.
-            // It is valid only until a later input overwrites the guest A.
-            if local.is_some() || declared_local.is_some() {
+            // A newly scoped local may shadow the outer C byte binding.
+            // Its fresh guest read replaces the resident accumulator, so
+            // the previous outer byte must not be recovered afterward.
+            // Accept only one new initialized local in this lexical block.
+            if declared_local.is_some() {
                 return None;
             }
             let declaration = prove_local_declaration(
@@ -1850,6 +1851,19 @@ fn prove_static_if_arm<'node>(
                 effect_end,
                 child.id,
             )?;
+            // When an outer byte is still resident, a nested C declaration
+            // can shadow it only through its exact authenticated new read.
+            // Clang-shaped nodes alone must not turn a constant initializer
+            // into a guest input after a forged source digest is supplied.
+            if local.is_some() {
+                let witness = source?;
+                let begin = usize::try_from(statement.span.begin.byte).ok()?;
+                let end = usize::try_from(declaration.declaration_end).ok()?;
+                let spelling = format!("int {} = getchar();", declaration.name);
+                if witness.get(begin..end) != Some(spelling.as_bytes()) {
+                    return None;
+                }
+            }
             if declaration.input.id != statement.id.checked_add(2)? {
                 return None;
             }
@@ -3412,7 +3426,9 @@ pub(super) fn canonical_source_byte_echo(
                 body.id,
                 latest_local.as_ref().map(|(local, _)| local),
                 0,
-                false,
+                // Block-local identity aliases cannot leave this C arm.
+                // Each declaration is still bound to source-proven live SSA.
+                true,
                 0,
                 None,
                 source,

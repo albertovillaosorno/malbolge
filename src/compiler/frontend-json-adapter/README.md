@@ -11,6 +11,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Scoped C branch aliases and input shadows (2026-11-13)
+
+The normalized adapter now authenticates a block-local alias of the resident
+guest byte inside a source-selected `if`, including skipped arms. It keeps the
+outer C name live after a pure alias and never exports the scoped name. A
+selected arm may also initialize one scoped local from fresh guest `getchar()`
+input, even when an outer C local is live and shadowed. That read invalidates
+the previous accumulator byte; using the stale outer C value refuses. Such
+nested input requires exact `int NAME = getchar();` source bytes as well as
+the five Clang nodes, so forged constant initializers and absent source
+witnesses cannot manufacture guest reads.
+
+Two original complete source-C programs with counted loops and branches
+reach actual Malbolge VM parity on boundary and deterministic seeded binary
+inputs: alias/loop performs five reads and seven writes in thirteen steps;
+shadow/loop performs seven reads and six writes in fourteen steps. Unselected
+branch variants, source edits, forged AST nodes and stale-value reads are
+checked separately. Runtime C-dependent control, arbitrary storage and EOF
+remain unsupported.
+
 ### Selected branch exports a verified live local (2026-11-13)
 
 A source-time-selected `if` may assign fresh `getchar()` input to the

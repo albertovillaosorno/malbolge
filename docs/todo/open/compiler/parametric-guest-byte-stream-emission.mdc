@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 two complete C streams introduced a source-local alias
+  and a fresh shadowing input declaration in top-level `if` arms before a
+  counted loop with guest I/O, induction branches and `continue`. The pinned
+  Clang frontend accepted both, but the normalized adapter first refused
+  each branch-local declaration. Scoped alias proof now preserves the outer
+  byte without an input effect; a fresh scoped `getchar()` replaces it and
+  cannot export an inner C binding. Normative VM and independent boundary /
+  seeded binary oracles agree at five reads/seven writes/thirteen steps and
+  seven reads/six writes/fourteen steps, plus skipped-arm variants. Forged
+  AST references, unsupported C, stale outer reads and an AST/source mismatch
+  that turns a literal initializer into `getchar()` all fail closed. Dynamic
+  guest C state, control flow, arithmetic and EOF remain P0 blockers.
+
 - On 2026-11-13 a complete source-C stream assigned fresh input to a
   live alias inside a selected `if`, then read the alias after the
   branch and ran a counted loop with a conditional `continue`.
