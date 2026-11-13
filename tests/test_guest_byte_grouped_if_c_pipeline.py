@@ -56,6 +56,7 @@ PROJECT = previous.PROJECT
 UNARY_OPERATION = "!"
 OPERATION_FIELD = "operation"
 PARENT_FIELD = "parent"
+GROUPING_KIND = "parenthesized-expression"
 SIX_STEPS = b"malbolge-steps-v1:6\n"
 EIGHT_STEPS = b"malbolge-steps-v1:8\n"
 
@@ -191,6 +192,32 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
                 result = COMPILE(program, guest)
                 assert result.returncode != 0, text
                 assert not guest.exists()
+
+    @staticmethod
+    def test_forged_parenthesized_clang_nodes_refuse() -> None:
+        """A grouping wrapper needs exact original-source ancestry."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            program = root / "grouping.c"
+            _ = program.write_text(previous.source("(current >= 128)"))
+            normalized = NORMALIZED(program)
+            for field in (OPERATION_FIELD, PARENT_FIELD, "span"):
+                forged = copy.deepcopy(normalized)
+                nodes = cast("list[dict[str, object]]", forged["nodes"])
+                wrapper = next(
+                    node for node in nodes if node["kind"] == GROUPING_KIND
+                )
+                if field == OPERATION_FIELD:
+                    wrapper[field] = "!"
+                elif field == PARENT_FIELD:
+                    wrapper[field] = 0
+                else:
+                    span = cast("dict[str, dict[str, int]]", wrapper[field])
+                    span["end"]["column"] += 1
+                guest = root / f"grouped-forged-{field}.malbolge"
+                result = PROJECT(forged, guest, program)
+                assert result.returncode != 0, field
+                assert not guest.exists(), field
 
     @staticmethod
     def test_forged_negated_clang_nodes_refuse() -> None:
