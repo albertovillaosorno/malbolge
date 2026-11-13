@@ -953,6 +953,105 @@ fn prove_comma_local_declaration<'node>(
     ))
 }
 
+// An assignment into an already authenticated C local may discard several
+// ordered guest inputs/writes before retaining only its last comma operand.
+// Prove every node and the exact original C expression: a fresh guest read
+// cannot reconstruct old C storage, and the destination may previously be
+// stale.
+#[expect(
+    clippy::too_many_lines,
+    reason = "authenticate the entire comma assignment and each guest effect"
+)]
+fn prove_comma_local_reassignment<'node>(
+    nodes: &'node [Node],
+    scope: (&Node, u32, u32),
+    local: &LocalDeclaration<'_>,
+    source: &[u8],
+) -> Option<(usize, Vec<CommaEffect<'node>>, u32)> {
+    let (body, previous, parent) = scope;
+    let [assignment, destination, paren, comma, ..] = nodes else {
+        return None;
+    };
+    let start = assignment.span.begin.byte;
+    let line = assignment.span.begin.line;
+    let column = assignment.span.begin.column;
+    let name_end = start.checked_add(u32::try_from(local.name.len()).ok()?)?;
+    let expression_start = name_end.checked_add(3)?;
+    if start <= previous
+        || start <= local.declaration_end
+        || start <= body.span.begin.byte
+        || line <= local.line
+        || column == 0
+        || assignment.parent != parent
+        || assignment.kind != "binary-expression"
+        || assignment.type_name.as_deref() != Some("i32")
+        || assignment.operation.as_deref() != Some("=")
+        || assignment.reference.is_some()
+        || !metadata_empty(assignment)
+        || destination.id != assignment.id.checked_add(1)?
+        || destination.parent != assignment.id
+        || destination.kind != "declaration-reference-expression"
+        || destination.type_name.as_deref() != Some("i32")
+        || destination.reference.as_deref()
+            != Some(local.variable_reference.as_str())
+        || destination.operation.is_some()
+        || !metadata_empty(destination)
+        || !source_word(destination, start, name_end, line, column)
+        || paren.id != destination.id.checked_add(1)?
+        || paren.parent != assignment.id
+        || paren.kind != "parenthesized-expression"
+        || paren.type_name.as_deref() != Some("i32")
+        || paren.reference.is_some()
+        || paren.operation.is_some()
+        || !metadata_empty(paren)
+        || comma.id != paren.id.checked_add(1)?
+    {
+        return None;
+    }
+    let (comma_width, effects, last_end) = prove_discarded_comma_effects(
+        nodes.get(3..)?,
+        body,
+        previous,
+        comma.id,
+        paren.id,
+        None,
+    )?;
+    let end = last_end.checked_add(1)?;
+    if end >= body.span.end.byte
+        || !source_word(assignment, start, end, line, column)
+        || !source_word(
+            paren,
+            expression_start,
+            end,
+            line,
+            column.checked_add(expression_start.checked_sub(start)?)?,
+        )
+        || comma.span.begin.byte != expression_start.checked_add(1)?
+        || comma.span.end.byte != last_end
+    {
+        return None;
+    }
+    let operands = effects
+        .iter()
+        .map(|effect| {
+            format!(
+                "{}getchar(){}",
+                "putchar(".repeat(effect.outputs.len()),
+                ")".repeat(effect.outputs.len())
+            )
+        })
+        .collect::<Vec<_>>();
+    let spelling = format!("{} = ({});", local.name, operands.join(", "));
+    if source.get(
+        usize::try_from(start).ok()?
+            ..usize::try_from(end.checked_add(1)?).ok()?,
+    ) != Some(spelling.as_bytes())
+    {
+        return None;
+    }
+    Some((comma_width.checked_add(3)?, effects, end))
+}
+
 // A plain C `int alias = live;` copies the currently resident input byte.
 // It creates a new source binding but no guest instruction or host-time byte.
 // Requiring original source bytes prevents a forged normalized AST from
@@ -2464,6 +2563,24 @@ fn prove_static_if_statement<'node>(
     if let Some((width, comma_effects, output)) = comma_proof {
         let effects = static_comma_effects(comma_effects, Some(output), local)?;
         return Some((width, effects, output.span.end.byte));
+    }
+    // The final read of a proven comma assignment rebinds this C local.
+    // Earlier comma reads/writes still occur, but cannot export an old alias.
+    if child.kind == "binary-expression"
+        && child.operation.as_deref() == Some("=")
+        && let Some(bound) = local
+        && let Some(witness) = source
+        && let Some((width, effects, end)) = prove_comma_local_reassignment(
+            nodes,
+            (body, previous, parent),
+            bound,
+            witness,
+        )
+    {
+        let mut ordered = static_comma_effects(effects, None, None)?;
+        ordered.last_mut()?.assigned_local =
+            Some(bound.variable_reference.clone());
+        return (child.id == expected_id).then_some((width, ordered, end));
     }
     if child.kind == "binary-expression"
         && child.operation.as_deref() == Some("=")
@@ -4652,6 +4769,49 @@ pub(super) fn canonical_source_byte_echo(
                 .ok_or(FrontendJsonError::Unsupported)?;
             outputs = outputs
                 .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            requires_latest = true;
+            continue;
+        }
+        if first.kind == "binary-expression"
+            && first.operation.as_deref() == Some("=")
+            && let Some((destination, width, effects, end)) =
+                source.and_then(|witness| {
+                    let nodes = rest.get(consumed..)?;
+                    declared_locals.iter().find_map(|candidate| {
+                        let (width, effects, end) =
+                            prove_comma_local_reassignment(
+                                nodes,
+                                (body, previous, body.id),
+                                candidate,
+                                witness,
+                            )?;
+                        Some((candidate.clone(), width, effects, end))
+                    })
+                })
+        {
+            let (value, read_new_input) = emit_comma_effects(
+                &effects,
+                None,
+                &mut inputs,
+                &mut outputs,
+                &mut instructions,
+            )
+            .ok_or(FrontendJsonError::Unsupported)?;
+            if !read_new_input {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            latest_local = Some((destination, value));
+            equivalent_locals.clear();
+            previous = end;
+            consumed = consumed
+                .checked_add(width)
+                .ok_or(FrontendJsonError::Unsupported)?;
+            next_id = next_id
+                .checked_add(
+                    u32::try_from(width)
+                        .map_err(|_| FrontendJsonError::Unsupported)?,
+                )
                 .ok_or(FrontendJsonError::Unsupported)?;
             requires_latest = true;
             continue;

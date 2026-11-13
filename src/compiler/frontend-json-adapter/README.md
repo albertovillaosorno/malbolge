@@ -11,6 +11,27 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Comma-valued source-C reassignment (2026-11-13)
+
+An existing authenticated C local may be rebound by a canonical
+NAME = (EXPR, EXPR, ...); expression with two to sixteen fresh
+getchar() operands, each optionally nested inside successful putchar()
+calls. The pinned Clang assignment, destination, parentheses, comma ancestry,
+source coordinates and original SHA-checked C spelling must all agree.
+Earlier operands perform real guest input/output in order; only the final
+operand's byte rebinds the named local. An older alias cannot be recovered
+after a fresh read.
+
+A complete source-C program with a selected branch, a three-trip induction
+remainder/continue loop and trailing guest I/O emits six oracle bytes from
+four binary inputs in eleven normative VM steps. An unselected branch and
+a stale destination with three comma operands also match independent guest
+oracles. Seven unsupported C expressions, twelve forged Clang ancestry edits,
+missing source and SHA-adjusted source spoofing refuse without publication.
+Loop-local comma rebinding, general C memory, arithmetic, EOF, output
+failure and guest-dependent control remain unsupported.
+
+
 ### Ordered C comma initializers retain only the final guest byte (2026-11-13)
 
 A canonical `int NAME = (EXPR, EXPR, ...);` declaration may sequence two to

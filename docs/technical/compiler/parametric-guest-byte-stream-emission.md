@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Ordered C comma-valued assignment into a proven local (2026-11-13)
+
+A complete source-C byte stream assigned a parenthesized comma expression
+to an existing C local in a selected if branch before a counted loop with
+a remainder-selected continue. The pinned Clang frontend accepted the
+whole program, but normalized lowering initially refused the assignment.
+A bounded proof now authenticates assignment/destination/comma ancestry,
+every nested byte-effect call, complete same-line extents and exact
+SHA-checked original C token spelling. Earlier reads and writes execute in
+order in the guest; the final successful byte alone rebinds the destination.
+
+The normative guest VM matches an independent oracle on boundary and twelve
+seeded binary streams: four actual inputs, six outputs and eleven steps.
+A skipped branch preserves its original local with two reads and four writes
+in seven steps. A stale top-level destination with three comma operands
+matches six reads, four writes and eleven steps. Unsupported arithmetic,
+stale C value operands, forged AST ancestry, absent source and SHA-adjusted
+spoofed C source all refuse without publication. The originally attempted
+loop-local rebinding variant remains unsupported. EOF, failed putchar,
+general C storage and guest-dependent conditions also remain P0 blockers.
+
+
 ### Ordered source-C comma initializers (2026-11-13)
 
 A complete C program used `int seen = (putchar(getchar()), getchar());`

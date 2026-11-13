@@ -55,6 +55,23 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C program used a comma-valued assignment
+  to rebind a live local before a three-trip induction/continue loop and
+  a final guest input/output. Pinned Clang admitted the source while the
+  normalized adapter first refused the assignment. The new source-proven
+  Clang ancestry and original-C token proof emits every genuine comma
+  read/write, retains only the final byte, and forbids stale aliases.
+  The normative VM matches independent boundary and twelve seeded
+  binary streams: four reads, six writes and eleven steps. A skipped
+  branch matches two reads/four writes/seven steps; a stale destination
+  and triple comma chain match six reads/four writes/eleven steps.
+  Seven unsupported expressions, twelve forged Clang nodes, missing
+  source and SHA-adjusted source spoofing refuse. The first attempted
+  version with a fresh comma assignment inside each loop iteration
+  still rejects, as do EOF, output failure, general guest storage and
+  guest-dependent control. P0 stays pending.
+
+
 - On 2026-11-13 a complete C stream initialized a local from
   `(putchar(getchar()), getchar())`, then selected `continue` branches in a
   three-trip counted loop, and performed a final real guest I/O effect.
