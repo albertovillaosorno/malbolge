@@ -5618,7 +5618,7 @@ fn prove_total_byte_guard(
             let mut results = [0i32; 256];
             for (result, value) in results.iter_mut().zip(child_values) {
                 *result = match operator? {
-                    "!" => i32::from(value == 0),
+                    "!" => i32::from(value == 0i32),
                     "+" => value,
                     "-" => value.checked_neg()?,
                     "~" => !value,
