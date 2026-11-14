@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated finite inequality loops (2026-11-13)
+
+A complete source-C program with an initial `getchar` local, counted loop,
+remainder-selected `continue`, a nested signed-unary guard, and trailing
+fresh input first refused `for (int i = 0; i != 3; ++i)` at normalized
+lowering. The static induction proof now admits source-spelled `!=` for
+canonical unit steps in either direction, but only if the exact bound is
+reachable within sixteen trips or initially equal (zero trips). The original
+C comparator, decimal initializer/bound, and prefix/postfix/compound/assigned
+unit-step spellings are checked against source bytes as well as pinned Clang
+parent/span/type/operator ancestry. Opposite-direction and oversized loops,
+and same-width Clang comparator, literal and step forgeries, refuse.
+
+The original complete program emits four copies of its actual first byte
+and a second fresh input in eight normative Malbolge VM steps on boundary
+and seeded binary streams. A descending branch/`continue` loop emits three
+fresh bytes in seven steps; zero-trip execution still emits its two trailing
+bytes in five steps. Seven further increment forms reach frontend layout
+admission without spending guest-search budgets. This is source-proven static
+induction, not general runtime C control, arithmetic, storage, EOF or failed
+output; the P0 remains pending.
+
 ### Signed unary C arithmetic in source-proven live-byte guards (2026-11-13)
 
 A full counted C source program with local state, remainder-selected

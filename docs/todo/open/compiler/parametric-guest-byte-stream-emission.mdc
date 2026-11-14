@@ -55,6 +55,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C input-local/loop/nested-if/continue and
+  trailing stream first refused `for (int i = 0; i != 3; ++i)`. The
+  source-/pinned-Clang-authenticated induction proof now admits only
+  zero-trip or reachable finite inequality bounds, with exact source
+  comparator, initializer, bound and step verification. The original C
+  program emits four first-byte copies and one fresh second byte in eight
+  normative VM steps across binary boundaries and seeded inputs; a reverse
+  loop emits three actual input bytes in seven steps and zero-trip preserves
+  its trailing reads. Seven more unit-step shapes reach layout admission.
+  Divergent directions, oversized loops, and forged Clang comparison,
+  numeric and increment evidence refuse without publication. General guest
+  runtime arithmetic/control, storage, EOF and failed output remain open.
+
+
 - On 2026-11-13, a complete source-C counted loop with local state,
   `continue`, real binary I/O and `((~current) ^ current) == -1` first
   refused at normalized lowering. Source-/pinned-Clang-authenticated

@@ -4492,9 +4492,8 @@ struct StaticForProof<'node> {
 //     }
 // Ascending starts may be 0–99; descending starts remain 1–99.
 // Both directions admit 0–16 finite trips.
-// Equal-width `!=` is
-// intentionally refused: its normalized operator alone cannot authenticate
-// the spelling of an inclusive bound.
+// Source-spelled `!=` is safe only when the unit step reaches the bound
+// before signed overflow; the original source must authenticate its operator.
 // Both the induction arithmetic and all body statements are authenticated
 // against the pinned Clang preorder before any target instructions exist.
 #[expect(
@@ -4544,13 +4543,43 @@ fn prove_static_for<'node>(
     let condition_column =
         column.checked_add(15)?.checked_add(initial_width)?;
     let condition_operator = condition.operation.as_deref()?;
-    let (ascending, inclusive, operator_width) = match condition_operator {
-        "<" => (true, false, 1u32),
-        "<=" => (true, true, 2u32),
-        ">" => (false, false, 1u32),
-        ">=" => (false, true, 2u32),
-        _ => return None,
-    };
+    let (ascending, inclusive, operator_width, inequality) =
+        match condition_operator {
+            "<" => (true, false, 1u32, false),
+            "<=" => (true, true, 2u32, false),
+            ">" => (false, false, 1u32, false),
+            ">=" => (false, true, 2u32, false),
+            "!=" => {
+                // For equality termination, direction comes from the
+                // independently authenticated step, not the comparator.
+                let step = if increment.operation.as_deref() == Some("=") {
+                    nodes.get(10)?.operation.as_deref()?
+                } else {
+                    increment.operation.as_deref()?
+                };
+                let ascending = match step {
+                    "++" | "+=" | "+" => true,
+                    "--" | "-=" | "-" => false,
+                    _ => return None,
+                };
+                (ascending, false, 2u32, true)
+            },
+            _ => return None,
+        };
+    // Even a same-width forged `<=` AST must not reinterpret source `!=`.
+    // Require original C bytes for the inequality case; also check any
+    // supplied source for other comparison operators.
+    let operator_start =
+        usize::try_from(condition_start.checked_add(2)?).ok()?;
+    let operator_end = operator_start.checked_add(condition_operator.len())?;
+    if inequality && source.is_none()
+        || source.is_some_and(|witness| {
+            witness.get(operator_start..operator_end)
+                != Some(condition_operator.as_bytes())
+        })
+    {
+        return None;
+    }
     let bound_start = condition_start.checked_add(3 + operator_width)?;
     let increment_start = bound.span.end.byte.checked_add(2)?;
     let compound_increment = increment.kind == "compound-assignment-expression";
@@ -4812,6 +4841,64 @@ fn prove_static_for<'node>(
         line,
         condition_column.checked_add(3 + operator_width)?,
     )?;
+    // Same-width numeric forgeries can otherwise turn a terminating loop
+    // into a different number of guest effects. Compare both Clang decimal
+    // leaves with their original source, not only each node's own metadata.
+    if let Some(witness) = source {
+        for literal in [initial, bound] {
+            let begin = usize::try_from(literal.span.begin.byte).ok()?;
+            let text = literal.literal.as_deref()?;
+            if witness.get(begin..begin.checked_add(text.len())?)
+                != Some(text.as_bytes())
+            {
+                return None;
+            }
+        }
+    }
+    // An inequality condition does not become false merely because the
+    // iteration moves past its bound. Refuse the divergent direction, even
+    // if a source break might happen to terminate earlier.
+    if inequality
+        && (ascending && bound_value < initial_value
+            || !ascending && bound_value > initial_value)
+    {
+        return None;
+    }
+    // Authentication of the `!=` branch requires the original C step too:
+    // forged plus/minus arithmetic nodes could otherwise reverse an actual
+    // divergent loop. Re-check the same fixed-shape source step for every
+    // loop whose original bytes are available.
+    if let Some(witness) = source {
+        let spelling = if assigned_increment {
+            if ascending {
+                "i = i + 1"
+            } else {
+                "i = i - 1"
+            }
+        } else if compound_increment {
+            if ascending {
+                "i += 1"
+            } else {
+                "i -= 1"
+            }
+        } else if increment_variable.span.begin.byte == increment_start {
+            if ascending {
+                "i++"
+            } else {
+                "i--"
+            }
+        } else if ascending {
+            "++i"
+        } else {
+            "--i"
+        };
+        let begin = usize::try_from(increment_start).ok()?;
+        if witness.get(begin..begin.checked_add(spelling.len())?)
+            != Some(spelling.as_bytes())
+        {
+            return None;
+        }
+    }
     // Include the bound on either signed direction only for <= or >=.
     // A false initial condition is a real, finite zero-trip loop.
     let trip_count = if ascending {

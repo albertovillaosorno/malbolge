@@ -11,6 +11,19 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-proven terminating `!=` induction (2026-11-13)
+
+The pinned C/Clang adapter accepts canonical `i != N` counted `for` loops
+only when an authenticated unit step reaches `N` in 0–16 trips. Both
+ascending and descending source-local induction, prefix/postfix increments,
+compound steps, and explicit `i = i +/- 1` are supported. The comparator,
+initializer, bound and complete step spelling must match actual C source;
+Clang operator and coordinate evidence alone cannot turn an infinite loop
+into a finite guest trace. A complete input/branch/`continue`/output C
+program and a descending loop run in the normative VM on binary streams.
+Divergent directions, oversized bounds, source/AST forgery, and unsupported
+runtime control remain refused without publishing a guest artifact.
+
 ### Checked unary C integer guards (2026-11-13)
 
 A complete counted C induction/branch/`continue` program first refused

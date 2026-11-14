@@ -189,23 +189,20 @@ class StaticForCPipelineTests(unittest.TestCase):
             self.assertEqual(guest.stderr, b"malbolge-steps-v1:35\n")
 
     def test_unsupported_loop_shapes_do_not_publish(self) -> None:
+        # Starts, inclusive bounds, postfix/compound increments and selected
+        # break/continue already have independent positive compiler tests.
+        # Keep only genuinely unproved source and effect shapes here.
         bad_headers = (
-            "for (int i = 1; i < 3; ++i)",
-            "for (int i = 0; i <= 3; ++i)",
             "for (int i = 0; i < 17; ++i)",
-            "for (int i = 0; i < 3; i++)",
-            "for (int i = 0; i < 3; i += 1)",
             "for (int i=0; i<3; ++i)",
             "for (int i = 0; i < 3; --i)",
             "for (int i = 0; i < 3; ++i, ++i)",
-            "for (int i = 0; i != 3; ++i)",
+            "for (int i = 4; i != 3; ++i)",
         )
         bad_bodies = (
             "        putchar(i);\n",
             "        putchar(getchar() + 1);\n",
             "        ++i;\n        putchar(getchar());\n",
-            "        break;\n",
-            "        continue;\n",
             "        if (getchar()) putchar(getchar());\n",
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
