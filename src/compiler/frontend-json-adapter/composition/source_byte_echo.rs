@@ -4482,7 +4482,7 @@ struct StaticForProof<'node> {
     end: u32,
 }
 
-// A closed, unit-step for loop with a fresh automatic `i`:
+// A closed, finite single-digit-step for loop with an automatic `i`:
 //     for (int i = 0; i < N; ++i) {
 //     for (int i = 1; i <= N; i++) {
 //     for (int i = 4; i >= 1; i--) {
@@ -4492,7 +4492,7 @@ struct StaticForProof<'node> {
 //     }
 // Ascending starts may be 0–99; descending starts remain 1–99.
 // Both directions admit 0–16 finite trips.
-// Source-spelled `!=` is safe only when the unit step reaches the bound
+// Source-spelled `!=` is safe only when the exact step reaches the bound
 // before signed overflow; the original source must authenticate its operator.
 // Both the induction arithmetic and all body statements are authenticated
 // against the pinned Clang preorder before any target instructions exist.
@@ -4602,8 +4602,8 @@ fn prove_static_for<'node>(
         line,
         column.checked_add(13)?,
     )?;
-    // Only source-shaped unit steps in the comparison's direction are
-    // admitted: ++i, i++, i += 1, i = i + 1 and their reverse forms.
+    // Only source-authenticated steps in the comparison's direction are
+    // admitted: unary unit steps or single-digit compound/assigned strides.
     if start <= previous
         || start <= body.span.begin.byte
         || line == 0
@@ -4755,7 +4755,7 @@ fn prove_static_for<'node>(
     // For `i = i + 1`, authenticate every child of the assignment and
     // arithmetic subtree: neither an unrelated local nor a hidden effect
     // can supply the right-hand side. Guest values remain runtime bytes.
-    let (rest, arm_id_offset) = if assigned_increment {
+    let (rest, arm_id_offset, stride) = if assigned_increment {
         let [arithmetic, read, variable, one, tail @ ..] = rest else {
             return None;
         };
@@ -4803,36 +4803,38 @@ fn prove_static_for<'node>(
             || variable.operation.is_some()
             || !metadata_empty(variable)
             || variable.span != read.span
-            || prove_decimal_condition_operand(
-                one,
-                expected_id.checked_add(13)?,
-                arithmetic.id,
-                increment_start.checked_add(8)?,
-                line,
-                bound.span.end.column.checked_add(10)?,
-            )? != 1
         {
             return None;
         }
-        (tail, 14)
+        let stride = prove_decimal_condition_operand(
+            one,
+            expected_id.checked_add(13)?,
+            arithmetic.id,
+            increment_start.checked_add(8)?,
+            line,
+            bound.span.end.column.checked_add(10)?,
+        )?;
+        (tail, 14, stride)
     } else if compound_increment {
         // The additional compound-assignment child must be exactly one.
         let (one, tail) = rest.split_first()?;
-        if prove_decimal_condition_operand(
+        let stride = prove_decimal_condition_operand(
             one,
             expected_id.checked_add(10)?,
             increment.id,
             increment_start.checked_add(5)?,
             line,
             bound.span.end.column.checked_add(7)?,
-        )? != 1
-        {
-            return None;
-        }
-        (tail, 11)
+        )?;
+        (tail, 11, stride)
     } else {
-        (rest, 10)
+        (rest, 10, 1)
     };
+    // A larger or zero stride needs a different source grammar and proof.
+    // Never trust an unverified Clang numeric annotation for a non-unit step.
+    if !(1..=9).contains(&stride) || (stride != 1 && source.is_none()) {
+        return None;
+    }
     let bound_value = prove_decimal_condition_operand(
         bound,
         expected_id.checked_add(7)?,
@@ -4870,27 +4872,37 @@ fn prove_static_for<'node>(
     // loop whose original bytes are available.
     if let Some(witness) = source {
         let spelling = if assigned_increment {
-            if ascending {
-                "i = i + 1"
-            } else {
-                "i = i - 1"
-            }
+            format!(
+                "i = i {} {stride}",
+                if ascending {
+                    "+"
+                } else {
+                    "-"
+                }
+            )
         } else if compound_increment {
-            if ascending {
-                "i += 1"
-            } else {
-                "i -= 1"
-            }
+            format!(
+                "i {}= {stride}",
+                if ascending {
+                    "+"
+                } else {
+                    "-"
+                }
+            )
         } else if increment_variable.span.begin.byte == increment_start {
             if ascending {
                 "i++"
             } else {
                 "i--"
             }
-        } else if ascending {
-            "++i"
+            .to_owned()
         } else {
-            "--i"
+            if ascending {
+                "++i"
+            } else {
+                "--i"
+            }
+            .to_owned()
         };
         let begin = usize::try_from(increment_start).ok()?;
         if witness.get(begin..begin.checked_add(spelling.len())?)
@@ -4901,13 +4913,29 @@ fn prove_static_for<'node>(
     }
     // Include the bound on either signed direction only for <= or >=.
     // A false initial condition is a real, finite zero-trip loop.
-    let trip_count = if ascending {
+    let distance = if ascending {
         bound_value.checked_sub(initial_value)?
     } else {
         initial_value.checked_sub(bound_value)?
-    }
-    .checked_add(i32::from(inclusive))?;
-    let iterations = usize::try_from(trip_count.max(0)).ok()?;
+    };
+    let trip_count = if inequality {
+        // Crossing the endpoint is not equivalent to reaching it in C.
+        if distance < 0 || distance % stride != 0 {
+            return None;
+        }
+        distance / stride
+    } else if inclusive {
+        if distance < 0 {
+            0
+        } else {
+            distance / stride + 1
+        }
+    } else if distance <= 0 {
+        0
+    } else {
+        (distance - 1) / stride + 1
+    };
+    let iterations = usize::try_from(trip_count).ok()?;
     if iterations > 16 {
         return None;
     }
@@ -4932,9 +4960,13 @@ fn prove_static_for<'node>(
             Some(StaticInduction {
                 reference: &variable_reference,
                 value: if ascending {
-                    initial_value.checked_add(i32::try_from(iteration).ok()?)?
+                    initial_value.checked_add(
+                        stride.checked_mul(i32::try_from(iteration).ok()?)?,
+                    )?
                 } else {
-                    initial_value.checked_sub(i32::try_from(iteration).ok()?)?
+                    initial_value.checked_sub(
+                        stride.checked_mul(i32::try_from(iteration).ok()?)?,
+                    )?
                 },
             }),
             source,

@@ -3258,3 +3258,16 @@ a compiler capability gap, not a reason to return to N+1.
   stdin in 47 steps. Seven unsupported C changes and nine forged Clang AST
   nodes fail closed. General guest C loops and unmasked Fibonacci remain
   P0 work, not established by this source-state proof.
+
+- On 2026-11-13 a whole C guest-input/loop/continue/nested-if program
+  first refused `for (int i = 0; i != 6; i += 2)` at normalized lowering.
+  Source- and Clang-authenticated single-digit signed strides now prove
+  exact finite trip counts for strict, inclusive and reachable `!=` bounds,
+  with compound or assigned steps in either direction. The original and a
+  descending program each execute under the normative guest VM, emitting
+  four copies of the first actual binary input plus a fresh second byte;
+  ordered and zero-trip variants reach layout admission. Unreachable `!=`
+  endpoints, wrong directions, zero/oversized strides, over-budget loops
+  and forged Clang operator, parent and literal evidence refuse without
+  publication. All induction is still compile-time C replay; guest runtime
+  C state and general byte-stream synthesis remain P0 work.

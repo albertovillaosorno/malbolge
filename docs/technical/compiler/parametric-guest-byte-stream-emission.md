@@ -26,6 +26,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Proven single-digit non-unit induction with live guest bytes (2026-11-13)
+
+A whole source-C program with an initial guest input, counted `for` loop,
+induction-dependent `continue`, nested integer guard, and trailing fresh
+read first refused `for (int i = 0; i != 6; i += 2)` at normalized
+lowering. The frontend projector now accepts source- and Clang-authenticated
+positive single-digit strides (1–9) for compound `i += N`/`i -= N` and
+assignment `i = i + N`/`i = i - N` with exact original spelling. The
+signed `i32` comparator and initializer/bound leaves remain checked.
+
+Ordered `<`, `<=`, `>` and `>=` use source-time stepped trip counts;
+`!=` additionally requires the bound to be *exactly reachable*. All
+branches require the step direction to match the comparison, at most
+sixteen trips, a bounded initializer, and no change to guest effect
+ordering. Skipped or overshot inequalities never become a guessed finite
+trace. The adapter refuses zero/two-digit strides, divergent directions,
+more than sixteen trips, and forged Clang stride values or ancestry.
+
+The original ascending and a descending complete C program now emit four
+actual copies of the first binary input byte plus one fresh second input
+through the normative Malbolge VM. The ordered and zero-trip forms reach
+layout admission under an isolated rejecting stub. This proves finite
+*compile-time* induction over source-authenticated C, not guest runtime
+C arithmetic, storage, EOF, arbitrary strides or dynamic C control.
+The unmasked twelve-output Fibonacci layout and P0 remain pending.
+
 ### Source-authenticated finite inequality loops (2026-11-13)
 
 A complete source-C program with an initial `getchar` local, counted loop,

@@ -11,6 +11,19 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-proven non-unit finite C induction (2026-11-13)
+
+An original complete C stream with a local guest byte, counted loop,
+`continue`, nested guard and trailing fresh input now admits verified
+`i += N`/`i -= N` or `i = i +/- N`, for a single digit `N` from 1–9.
+Source spelling, pinned Clang numeric/AST ancestry and signed direction
+are checked. Strict/inclusive comparisons use stepped trip counts;
+`!=` requires the endpoint to be reached exactly within sixteen trips.
+Two ascending/descending C programs match independent binary input oracles
+in the real guest VM. Zero strides, skipped endpoints, divergent directions,
+forged AST literals and long loops fail closed. This is bounded C replay,
+not guest-side runtime loop execution or general C support.
+
 ### Source-proven terminating `!=` induction (2026-11-13)
 
 The pinned C/Clang adapter accepts canonical `i != N` counted `for` loops
