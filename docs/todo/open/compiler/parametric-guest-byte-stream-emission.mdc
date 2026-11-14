@@ -55,6 +55,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, variable source-scratch search also discarded all later
+  complete states after choosing the shortest path if guest admission
+  refused it. A separate red-first regression and a four-check cap now
+  retain deterministic alternate complete paths, with unchanged independent
+  positional, write-footprint and two-input normative VM checks. Both new
+  callback tests and all 14 source-scratch bridge tests pass, including the
+  existing twelve-byte masked Fibonacci guest. The pinned C frontend is
+  still absent; arbitrary streams and dynamic C execution remain open.
+
 - On 2026-11-14, the full conditional Fibonacci C source again refused at
   the missing pinned frontend preflight without guest publication. A red-first
   forward-jump source-scratch regression exposed another complete-path false

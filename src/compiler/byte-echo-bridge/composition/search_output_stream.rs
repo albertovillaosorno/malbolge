@@ -1476,12 +1476,13 @@ pub(super) fn verified_variable_source_scratch_layout<const N: usize>(
     })
 }
 
-fn verified_variable_source_scratch_at_jump<const N: usize>(
+fn proposed_variable_source_scratch_at_jump_with_checker<const N: usize, T>(
     profile: &'static ProfileDescriptor,
     expected: [u8; N],
     jump_position: usize,
     prefix_outputs: usize,
-) -> Option<LinearLayout> {
+    mut admit: impl FnMut(&[LinearOpcode]) -> Option<T>,
+) -> Option<T> {
     if prefix_outputs > jump_position
         || expected
             .get(..prefix_outputs)?
@@ -1638,54 +1639,80 @@ fn verified_variable_source_scratch_at_jump<const N: usize>(
         }
         states = finished;
     }
-    let (_, &last) = states.iter().min_by_key(|(key, _)| key.0)?;
-    let mut cursor = last;
-    let mut path = Vec::new();
-    while cursor != 0 {
-        let link = links.get(cursor)?;
-        path.push((link.operation, link.operand));
-        cursor = link.predecessor;
-    }
-    path.reverse();
-    let mut operations = vec![LinearOpcode::NoOperation; target];
-    for operation in operations.iter_mut().take(prefix_outputs) {
-        *operation = LinearOpcode::OutputByte;
-    }
-    *operations.get_mut(jump_position)? = LinearOpcode::JumpForward {
-        target: u32::try_from(target).ok()?,
-    };
-    for (index, (_, byte)) in path.iter().enumerate() {
-        if let Some(byte) = byte {
-            let address = jump_position.checked_add(index)?.checked_add(1)?;
-            *operations.get_mut(address)? =
-                LinearOpcode::SkippedDataByte { byte: u32::from(*byte) };
+    for (_, &last) in states.iter().take(MAX_COMPLETION_CHECKS_PER_GEOMETRY) {
+        let mut cursor = last;
+        let mut path = Vec::new();
+        while cursor != 0 {
+            let link = links.get(cursor)?;
+            path.push((link.operation, link.operand));
+            cursor = link.predecessor;
+        }
+        path.reverse();
+        let mut operations = vec![LinearOpcode::NoOperation; target];
+        for operation in operations.iter_mut().take(prefix_outputs) {
+            *operation = LinearOpcode::OutputByte;
+        }
+        *operations.get_mut(jump_position)? = LinearOpcode::JumpForward {
+            target: u32::try_from(target).ok()?,
+        };
+        for (index, (_, byte)) in path.iter().enumerate() {
+            if let Some(byte) = byte {
+                let address =
+                    jump_position.checked_add(index)?.checked_add(1)?;
+                *operations.get_mut(address)? =
+                    LinearOpcode::SkippedDataByte { byte: u32::from(*byte) };
+            }
+        }
+        operations.extend(path.into_iter().map(|(operation, _)| operation));
+        operations.push(LinearOpcode::Halt);
+        if let Some(accepted) = admit(&operations) {
+            return Some(accepted);
         }
     }
-    operations.extend(path.into_iter().map(|(operation, _)| operation));
-    operations.push(LinearOpcode::Halt);
-    let layout = super::encode_linear_layout(profile, &operations).ok()?;
-    if layout
-        .data_write_positions()
-        .iter()
-        .flatten()
-        .any(|&write| write >= layout.source().len() as u32)
-    {
-        return None;
-    }
-    for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm =
-            super::ProfileMachine::from_source(profile, layout.source(), input)
+    None
+}
+
+fn verified_variable_source_scratch_at_jump<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    jump_position: usize,
+    prefix_outputs: usize,
+) -> Option<LinearLayout> {
+    proposed_variable_source_scratch_at_jump_with_checker(
+        profile,
+        expected,
+        jump_position,
+        prefix_outputs,
+        |operations| {
+            let layout =
+                super::encode_linear_layout(profile, operations).ok()?;
+            if layout
+                .data_write_positions()
+                .iter()
+                .flatten()
+                .any(|&write| write >= layout.source().len() as u32)
+            {
+                return None;
+            }
+            for input in [Vec::new(), vec![255, 0, 128]] {
+                let mut vm = super::ProfileMachine::from_source(
+                    profile,
+                    layout.source(),
+                    input,
+                )
                 .ok()?;
-        if !matches!(vm.run(layout.executed_code_positions().len()),
-            Ok(super::RunOutcome::Terminated { steps, .. })
-                if steps == layout.executed_code_positions().len())
-            || vm.input_consumed() != 0
-            || vm.output() != expected
-        {
-            return None;
-        }
-    }
-    Some(layout)
+                if !matches!(vm.run(layout.executed_code_positions().len()),
+                Ok(super::RunOutcome::Terminated { steps, .. })
+                    if steps == layout.executed_code_positions().len())
+                    || vm.input_consumed() != 0
+                    || vm.output() != expected
+                {
+                    return None;
+                }
+            }
+            Some(layout)
+        },
+    )
 }
 
 /// Revisit one previously skipped source word after two real byte effects.

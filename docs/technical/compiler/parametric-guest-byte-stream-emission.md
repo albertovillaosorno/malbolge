@@ -26,6 +26,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Verified variable source-scratch completion retries (2026-11-14)
+
+The variable-operand forward-jump search had a related false negative:
+after building all complete progress states, it reconstructed only the
+shortest state and discarded the entire jump geometry if the positional
+encoder, write-footprint checker or normative VM rejected that candidate.
+The solver now checks up to four deterministic complete paths without
+changing its bounded five-step-per-byte proposal grammar or source proof.
+Accepted code still passes the same two-input independent guest replay.
+
+Two red-first callback regressions prove rejection followed by a distinct
+completion and the four-check all-rejected limit. The 14 source-scratch
+bridge tests pass, including the real twelve-byte masked Fibonacci guest.
+This does not prove search completeness, source-C runtime state, or general
+byte-stream emission. The pinned C frontend remains absent.
+
 ### Verified forward-jump source-scratch completion retries (2026-11-14)
 
 A complete 12-trip conditional Fibonacci C program was retried through the

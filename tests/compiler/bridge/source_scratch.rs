@@ -71,6 +71,53 @@ fn source_scratch_rejects_all_unverified_completions_with_bounded_work()
 }
 
 #[test]
+fn variable_scratch_retries_rejected_completed_path() -> Result<(), String> {
+    // Two distinct full traces can have the same observable output.
+    // A failed positional encoding is not a proof against the next trace.
+    let profile = malbolge::current_profile();
+    let mut first = None;
+    let mut attempts = 0;
+    let second = proposed_variable_source_scratch_at_jump_with_checker(
+        profile,
+        [0],
+        0,
+        0,
+        |operations| {
+            attempts += 1;
+            if first.is_none() {
+                first = Some(operations.to_vec());
+                None
+            } else {
+                Some(operations.to_vec())
+            }
+        },
+    )
+    .ok_or("lost alternate source-scratch proposal")?;
+    assert_eq!(attempts, 2);
+    assert_ne!(first.ok_or("missing rejected proposal")?, second);
+    Ok(())
+}
+
+#[test]
+fn variable_scratch_all_rejected_completions_are_bounded() {
+    let profile = malbolge::current_profile();
+    let mut attempts = 0;
+    let rejected: Option<Vec<LinearOpcode>> =
+        proposed_variable_source_scratch_at_jump_with_checker(
+            profile,
+            [0],
+            0,
+            0,
+            |_| {
+                attempts += 1;
+                None
+            },
+        );
+    assert!(rejected.is_none());
+    assert_eq!(attempts, MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+}
+
+#[test]
 fn fibonacci_prefix_uses_source_scratch_not_host_output() -> Result<(), String>
 {
     let mut previous = 1u32;

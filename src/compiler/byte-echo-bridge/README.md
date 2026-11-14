@@ -904,6 +904,14 @@ reject. This is a finite proof, not C-source admission or arbitrary output.
 
 ### Expanded loader-valid source scratch and six-bit recurrence
 
+The variable source-scratch search likewise no longer equates the
+shortest completed byte path with a verified guest. It tries up to four
+deterministic complete path candidates when positional encoding, write
+footprint or VM replay refuses an earlier path. Two retry/cap tests and
+all real source-scratch guest witnesses pass, including twelve masked
+Fibonacci bytes. The variable-byte proposal grammar and separate guest
+semantic checks are unchanged.
+
 Forward-jump source-scratch search now checks completed output paths as
 untrusted proposals instead of halting after the first complete accumulator
 state. A rejected positional encoder, source-write check or real VM replay
