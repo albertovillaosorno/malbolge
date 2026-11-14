@@ -904,6 +904,15 @@ reject. This is a finite proof, not C-source admission or arbitrary output.
 
 ### Expanded loader-valid source scratch and six-bit recurrence
 
+Forward-jump source-scratch search now checks completed output paths as
+untrusted proposals instead of halting after the first complete accumulator
+state. A rejected positional encoder, source-write check or real VM replay
+allows subsequent paths or later source lengths, with at most four
+completion attempts per source geometry. Red-first callback tests establish
+rejected-first/accepted-next and the all-rejected cap; existing Fibonacci
+source-scratch guests still execute under normative VM verification. This
+recovers bounded proposal coverage, not arbitrary stream synthesis.
+
 The bounded forward-jump source-scratch proposal now retains predecessor
 links instead of copying full candidate paths. Its skipped-data operands
 include both the canonical input and jump graphical code cells, in addition

@@ -30,6 +30,47 @@ type GraphicalScratchStates = BTreeSet<(usize, u32)>;
 type GraphicalScratchResult = (GraphicalScratchStates, BTreeSet<u8>);
 
 #[test]
+fn source_scratch_retries_rejected_completion() -> Result<(), String> {
+    // A complete accumulator/output trace is a proposal, not a guest proof.
+    // The first terminal geometry can fail positional decoding while a later
+    // source length gives a distinct candidate for the checker to admit.
+    let cells = pair_source_cells(malbolge::current_profile())
+        .ok_or("missing decoder phases")?;
+    let mut rejected = None;
+    let mut checks = 0;
+    let accepted = proposed_source_scratch_with_checker(&cells, [0], |ops| {
+        checks += 1;
+        if rejected.is_none() {
+            rejected = Some(ops.to_vec());
+            None
+        } else {
+            Some(ops.to_vec())
+        }
+    })
+    .ok_or("second completed source-scratch path was abandoned")?;
+    assert_eq!(checks, 2);
+    assert_ne!(rejected.ok_or("no rejected candidate")?, accepted);
+    assert!(matches!(accepted.last(), Some(LinearOpcode::Halt)));
+    Ok(())
+}
+
+#[test]
+fn source_scratch_rejects_all_unverified_completions_with_bounded_work()
+-> Result<(), String> {
+    let cells = pair_source_cells(malbolge::current_profile())
+        .ok_or("missing decoder phases")?;
+    let mut checks = 0;
+    let rejected: Option<Vec<LinearOpcode>> =
+        proposed_source_scratch_with_checker(&cells, [0], |_| {
+            checks += 1;
+            None
+        });
+    assert!(rejected.is_none());
+    assert_eq!(checks, MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+    Ok(())
+}
+
+#[test]
 fn fibonacci_prefix_uses_source_scratch_not_host_output() -> Result<(), String>
 {
     let mut previous = 1u32;

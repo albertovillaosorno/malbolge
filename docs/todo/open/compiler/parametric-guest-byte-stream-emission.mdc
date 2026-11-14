@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, the full conditional Fibonacci C source again refused at
+  the missing pinned frontend preflight without guest publication. A red-first
+  forward-jump source-scratch regression exposed another complete-path false
+  negative: the first rejected positional/VM proposal ended the entire
+  search. The corrected proposal passes complete paths through unchanged
+  independent encoding, source-write and two-input VM checks, retrying later
+  candidates with at most four completion checks. Rejected-first/accepted-
+  second and all-rejected-cap tests pass, as do existing real scratch guest
+  witnesses. This does not add dynamic guest-side C state/control or general
+  byte-stream synthesis; P0 remains pending.
+
 - On 2026-11-14, the complete conditional Fibonacci C program was retried
   and refused at environment preflight: the repository-pinned LLVM 22
   frontend executable is absent. A separate red-first regression found that

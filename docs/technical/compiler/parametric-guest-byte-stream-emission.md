@@ -26,6 +26,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Verified forward-jump source-scratch completion retries (2026-11-14)
+
+A complete 12-trip conditional Fibonacci C program was retried through the
+production CLI. It again stopped before compilation because the repository-
+pinned LLVM 22 C frontend is absent; no guest artifact was published.
+
+The separate forward-jump source-scratch solver stopped on its first complete
+accumulator/output path even when the positional encoder or normative VM
+rejected that path. It now proposes multiple full-word completions or later
+source-length candidates under a fixed four-check budget. Each candidate
+still passes the original independent positional encoding, source-disjoint
+write checks and empty/binary-input normative VM replays before acceptance.
+
+Two red-first tests establish rejected-first/accepted-next proposal handling
+and the all-rejected four-check cap. Existing real source-scratch Fibonacci
+and skipped-source-byte guest tests continue to pass. These tests prove
+bounded search recovery and refusal behavior, not generalized guest C
+arithmetic, storage, dynamic control flow, or arbitrary stream synthesis.
+
 ### Verified completion retries after multiple guest relocations (2026-11-14)
 
 The production two-, three-, and four-relocation search previously returned

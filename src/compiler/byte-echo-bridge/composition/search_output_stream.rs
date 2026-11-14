@@ -1319,14 +1319,11 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
 /// padding word strictly behind C. The positional inverse decoder fixes each
 /// operand, but the guest performs all crazy/rotate arithmetic itself. This
 /// remains a bounded proposal; independent layout and VM checks decide.
-pub(super) fn verified_source_scratch_output_layout<const N: usize>(
-    profile: &'static ProfileDescriptor,
-    expected: [u8; N],
+fn proposed_source_scratch_with_checker<const N: usize, T>(
     source_cells: &[[u8; 6]],
-) -> Option<LinearLayout> {
-    if N == 0 || N > 12 || profile.id() != malbolge::current_profile().id() {
-        return None;
-    }
+    expected: [u8; N],
+    mut admit: impl FnMut(&[LinearOpcode]) -> Option<T>,
+) -> Option<T> {
     let jump_cell = (33u8..=126).find(|&byte| {
         malbolge::decode_profile_instruction(u32::from(byte), 0) == Some(b'i')
     })?;
@@ -1342,6 +1339,7 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
         operation: LinearOpcode::NoOperation,
         predecessor: 0,
     }];
+    let mut completion_checks = 0usize;
     for index in 0..body_limit {
         let address = index.checked_add(1)?;
         let word = |offset: usize| {
@@ -1367,7 +1365,13 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
             },
             expected,
         );
-        if let Some((_, &last)) = states.iter().find(|(key, _)| key.0 == N) {
+        // Full output progress alone does not prove a positional guest.
+        // Try other complete full-word paths or later source lengths after
+        // the checker refuses one, without unbounded verifier work.
+        for (&(emitted, _), &last) in &states {
+            if emitted != N {
+                continue;
+            }
             let mut body = Vec::new();
             let mut cursor = last;
             while cursor != 0 {
@@ -1382,37 +1386,13 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
             };
             operations.extend(body);
             operations.push(LinearOpcode::Halt);
-            let layout =
-                super::encode_linear_layout(profile, &operations).ok()?;
-            // Scratch writes must be strictly behind the active code cell.
-            for (code, write) in layout
-                .executed_code_positions()
-                .iter()
-                .zip(layout.data_write_positions())
-            {
-                if write.is_some_and(|address| {
-                    address >= *code || address >= layout.source().len() as u32
-                }) {
-                    return None;
-                }
+            if let Some(verified) = admit(&operations) {
+                return Some(verified);
             }
-            for input in [Vec::new(), vec![255, 0, 128]] {
-                let mut vm = super::ProfileMachine::from_source(
-                    profile,
-                    layout.source(),
-                    input,
-                )
-                .ok()?;
-                if !matches!(vm.run(layout.executed_code_positions().len()),
-                    Ok(super::RunOutcome::Terminated { steps, .. })
-                        if steps == layout.executed_code_positions().len())
-                    || vm.input_consumed() != 0
-                    || vm.output() != expected
-                {
-                    return None;
-                }
+            completion_checks += 1;
+            if completion_checks >= MAX_COMPLETION_CHECKS_PER_GEOMETRY {
+                return None;
             }
-            return Some(layout);
         }
         if states.is_empty()
             || states.len() > MAX_STATES_PER_POSITION
@@ -1422,6 +1402,48 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
         }
     }
     None
+}
+
+pub(super) fn verified_source_scratch_output_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if profile.id() != malbolge::current_profile().id() {
+        return None;
+    }
+    proposed_source_scratch_with_checker(source_cells, expected, |operations| {
+        let layout = super::encode_linear_layout(profile, operations).ok()?;
+        // Scratch writes must be strictly behind the active code cell.
+        for (code, write) in layout
+            .executed_code_positions()
+            .iter()
+            .zip(layout.data_write_positions())
+        {
+            if write.is_some_and(|address| {
+                address >= *code || address >= layout.source().len() as u32
+            }) {
+                return None;
+            }
+        }
+        for input in [Vec::new(), vec![255, 0, 128]] {
+            let mut vm = super::ProfileMachine::from_source(
+                profile,
+                layout.source(),
+                input,
+            )
+            .ok()?;
+            if !matches!(vm.run(layout.executed_code_positions().len()),
+                Ok(super::RunOutcome::Terminated { steps, .. })
+                    if steps == layout.executed_code_positions().len())
+                || vm.input_consumed() != 0
+                || vm.output() != expected
+            {
+                return None;
+            }
+        }
+        Some(layout)
+    })
 }
 
 /// Give skipped forward-jump cells independent graphical data bytes.
