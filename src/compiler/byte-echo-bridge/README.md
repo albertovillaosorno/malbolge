@@ -1174,3 +1174,25 @@ source geometries; it does not change the minimum searched source length,
 relocation phases or verified candidate ordering. The independently decoded
 five-byte nonfixture guest with a leading zero and the historical five-byte
 canonical bridge still execute and match the normative VM.
+
+### Fourth-loader-cell dense-frontier continuation (2026-11-14)
+
+A bounded eight-output guest-search experiment exposed a distinct false
+negative under the 16,384-state frontier threshold. All 8,192 candidate
+accumulator words in the seed share low byte `3`. After one output,
+the non-extreme full word `259` can reach byte `1` through two genuine
+crazy writes with future loader words `[0, 0, 0, 2]`; the previous
+three-cell beam lookahead discarded it in the dense case even though
+an exact sparse frontier kept it.
+
+The beam now considers a fourth *proven* future word, retaining up to two
+additional full-word representatives per output-progress/byte class.
+Missing future words never become guessed zero operands, and the extra
+lookahead still reserves one instruction for the pending output. The
+red-first regression checks the dense survivor, the independent scalar
+crazy result, the changed-fourth-word negative case and insufficient
+instruction capacity. Focused prior beam regressions retain their earlier
+behavior. This only widens bounded candidate search; source encoding,
+independent layout admission and normative VM replay remain the sole
+publication gate. General byte-stream synthesis and dynamic C guest
+arithmetic/control are still unsupported.

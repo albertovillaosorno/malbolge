@@ -77,13 +77,14 @@ struct SearchWord {
     next_value: u32,
     next_next_value: u32,
     next_next_next_value: u32,
+    fourth_future_value: Option<u32>,
 }
 
 type ReachablePair = Option<(u32, u32)>;
 
 struct BeamRepresentatives {
     largest: u32,
-    reachable: [ReachablePair; 3],
+    reachable: [ReachablePair; 4],
     smallest: u32,
 }
 
@@ -99,20 +100,20 @@ impl BeamRepresentatives {
 
 /// The only instructions that distinguish full accumulator words are p and
 /// no-op: * replaces the accumulator with a value independent of its past.
-/// Look ahead through real future loader words, bounded to three cells and
+/// Look ahead through real future loader words, bounded to four cells and
 /// leaving one cell for the pending output instruction. These are beam hints,
 /// not a claim that words with the same low byte are equivalent.
 fn reachable_next_byte(
     accumulator: u32,
-    future: [u32; 3],
+    future: &[u32],
     remaining: usize,
     target: u8,
 ) -> Option<usize> {
-    let mut words = [accumulator; 8];
+    let mut words = [accumulator; 16];
     let mut count = 1usize;
-    for (offset, data) in future
-        .into_iter()
-        .take(remaining.saturating_sub(1).min(3))
+    for (offset, &data) in future
+        .iter()
+        .take(remaining.saturating_sub(1).min(4))
         .enumerate()
     {
         for index in 0..count {
@@ -200,6 +201,7 @@ fn append_successors<const N: usize>(
         next_value,
         next_next_value,
         next_next_next_value,
+        fourth_future_value,
         remaining,
         target_emitted,
     } = word;
@@ -256,7 +258,7 @@ fn append_successors<const N: usize>(
             let group = representatives.entry((emitted, byte)).or_insert(
                 BeamRepresentatives {
                     largest: accumulator,
-                    reachable: [None; 3],
+                    reachable: [None; 4],
                     smallest: accumulator,
                 },
             );
@@ -272,9 +274,20 @@ fn append_successors<const N: usize>(
             else {
                 continue;
             };
+            let future = [
+                next_value,
+                next_next_value,
+                next_next_next_value,
+                fourth_future_value.unwrap_or_default(),
+            ];
+            let proven_future = if fourth_future_value.is_some() {
+                &future[..4]
+            } else {
+                &future[..3]
+            };
             let Some(distance) = reachable_next_byte(
                 accumulator,
-                [next_value, next_next_value, next_next_next_value],
+                proven_future,
                 remaining,
                 target,
             ) else {
@@ -388,6 +401,9 @@ fn proposed_geometry_with_budget<const N: usize>(
                 next_value: *memory.get(address.checked_add(1)?)?,
                 next_next_value: *memory.get(address.checked_add(2)?)?,
                 next_next_next_value: *memory.get(address.checked_add(3)?)?,
+                fourth_future_value: memory
+                    .get(address.checked_add(4)?)
+                    .copied(),
             },
             expected,
         );
@@ -590,6 +606,7 @@ fn proposed_split_geometry_with_budget<const N: usize>(
                 next_value: word(1)?,
                 next_next_value: word(2)?,
                 next_next_next_value: word(3)?,
+                fourth_future_value: word(4),
             },
             expected,
         );
@@ -1260,6 +1277,7 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
                 next_value: word(1)?,
                 next_next_value: word(2)?,
                 next_next_next_value: word(3)?,
+                fourth_future_value: word(4),
             },
             expected,
         );

@@ -39,6 +39,7 @@ fn short_streams_drop_states_with_insufficient_remaining_instructions() {
         next_value: 0,
         next_next_value: 0,
         next_next_next_value: 0,
+        fourth_future_value: None,
     };
     // Five output instructions and at least four arithmetic changes are
     // required. An output at this position still cannot fit the suffix.
@@ -63,6 +64,7 @@ fn short_streams_retain_output_only_paths_at_the_exact_lower_bound() {
         next_value: 0,
         next_next_value: 0,
         next_next_next_value: 0,
+        fourth_future_value: None,
     };
     let next = append_successors(&states, &mut steps, word, [0, 0, 0, 0]);
     assert!(
