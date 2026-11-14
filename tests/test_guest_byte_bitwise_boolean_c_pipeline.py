@@ -35,6 +35,9 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -122,11 +125,11 @@ class GuestByteBitwiseBooleanCPipelineTests(unittest.TestCase):
                     self.assertEqual(actual.returncode, 0, actual.stderr)
                     self.assertEqual(actual.stdout, bytes((data[0],) * 4 + (data[1],)))
 
-    def test_impure_and_arbitrary_integer_xor_do_not_fold(self) -> None:
-        """The truth-value XOR law is invalid for non-Boolean operands."""
+    def test_impure_or_unproven_integer_xor_do_not_fold(self) -> None:
+        """Effectful and unsupported integer operands cannot be erased."""
         invalid = (
-            "(current & 1) ^ (current & 2)",
-            "current ^ current",
+            "current ^ (current >> 1)",
+            "current ^ (current + 1)",
             "((current & 1) != 0) ^ getchar()",
             "((current & 1) != 0) ^ putchar(65)",
         )
@@ -138,6 +141,36 @@ class GuestByteBitwiseBooleanCPipelineTests(unittest.TestCase):
                 _ = source.write_text(equivalent.source(guard))
                 result = COMPILE(source, guest)
                 self.assertNotEqual(result.returncode, 0, guard)
+                self.assertFalse(guest.exists(), guard)
+
+    def test_pure_integer_xor_is_no_longer_boolean_only(self) -> None:
+        """Authenticate new integer guards without rerunning guest synthesis."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            root = Path(directory)
+            for index, guard in enumerate(
+                ("(current & 1) ^ (current & 2)", "current ^ current")
+            ):
+                program = root / f"integer-{index}.c"
+                guest = program.with_suffix(".malbolge")
+                _ = program.write_text(equivalent.source(guard), encoding="utf-8")
+                result = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        sys.executable,
+                        "--output",
+                        str(guest),
+                        "--source",
+                        str(program),
+                        "--capsule",
+                    ],
+                    input=json.dumps(NORMALIZED(program)).encode(),
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+                self.assertEqual(result.returncode, 1, (guard, result.stderr))
+                self.assertIn(b"layout backend exited unsuccessfully", result.stderr)
                 self.assertFalse(guest.exists(), guard)
 
     def test_forged_boolean_operators_are_not_admitted(self) -> None:
