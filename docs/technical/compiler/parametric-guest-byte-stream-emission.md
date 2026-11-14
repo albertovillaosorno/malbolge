@@ -26,6 +26,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Wider finite C steps and protected-counter arithmetic (2026-11-13)
+
+A complete C source with a named `position` counter, two-digit
+`position += 12` induction, real binary `getchar`, nested conditional,
+`continue` and trailing fresh read originally refused at normalized
+lowering. Exact 1–99 decimal source/Clang-backed stride geometry now
+admits the three-trip loop and a reverse `position -= 12` loop. Both
+execute genuine binary guest I/O, emitting four copies of the initial
+byte and a fresh byte in eight normative VM steps. Assigned strides,
+zero-trip and boundary forms reach isolated layout admission; skipped
+`!=` endpoints, divergent steps and forged source/AST fail closed.
+
+A separate complete C program first refused its protected-counter
+`position / 12 == 1` predicate. Bounded signed `i32` induction
+arithmetic now proves source- and Clang-authenticated `+`, `-`, `*`,
+`/`, and `%` with a positive denominator for division/remainder and
+checked overflow for all operators. The program's second-trip `break`
+changes its guest effect trace: it emits three real copies of the
+initial input and a fresh second byte in seven VM steps, not the five
+bytes/eight steps of the unbroken loop. Multiplication selects the
+same guest-visible exit; other operations reach frontend admission.
+Same-width source comparator and number forgeries (including direct
+counter comparisons), altered operators/AST ancestry, zero divisors
+and reachable overflow refuse before guest publication. These proofs
+replay bounded source-local C induction only; guest runtime arithmetic,
+branching, storage, EOF, and generalized streams remain unsupported.
+
 ### Source-authenticated named C induction counters (2026-11-13)
 
 A complete C program with a live `getchar` local, a step-by-two finite

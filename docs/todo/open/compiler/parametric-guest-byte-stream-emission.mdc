@@ -55,6 +55,23 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C live-byte/nested-if/continue loop first
+  refused a named `position += 12` induction. Exact original source and
+  pinned-Clang two-digit step geometry now proves the finite C loop;
+  ascending and descending streams emit four genuine input copies and
+  a fresh second byte in eight normative VM steps. Assignment forms,
+  zero trips and strict endpoint refusal retain the source proof. A
+  second full C program initially refused `position / 12 == 1` and now
+  uses checked pure induction arithmetic to select a second-trip
+  `break`, producing three first-byte copies and one fresh byte in seven
+  real VM steps. Multiplication also reaches VM parity; other
+  arithmetic shapes reach frontend admission. Forged source/Clang
+  operators, literals and counter comparisons, zero division and
+  reachable overflow fail without guest publication. No guest runtime
+  C arithmetic, control, storage, EOF or arbitrary stream synthesis has
+  been implemented; P0 stays pending.
+
+
 - On 2026-11-13 a full input-local/loop/nested-branch/`continue`
   C stream first refused when its counter was renamed to `index`. The
   source-/pinned-Clang-backed induction proof now authenticates a bounded

@@ -11,6 +11,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Two-digit finite strides and pure induction arithmetic (2026-11-13)
+
+An original complete C stream with a named `position` counter, real
+`getchar` local, `position += 12`, nested conditional, `continue` and
+trailing output now emits four copies of the input byte and a second
+fresh byte in eight normative guest VM steps. Exact 1–99 compound and
+assignment strides preserve canonical source/Clang geometry in both
+signed directions, bounded to sixteen proved trips. Zero, skipped
+`!=` endpoints and forged source/AST strides still fail closed.
+
+A second source-backed C program first refused the pure predicate
+`position / 12 == 1` with a selected `break`. Its protected counter
+now supports checked source-time `+`, `-`, `*`, `/`, `%` with a canonical
+nonnegative decimal operand; the complete C program emits three copies
+of real input and a fresh byte in seven guest steps. Comparison operators
+and numbers are matched against the original source, not merely Clang
+spans. Division by zero, reachable overflow, altered source tokens and
+Clang bindings refuse before layout. This does not introduce guest
+runtime arithmetic, induction, storage, arbitrary branching or EOF.
+
 ### Named C loop counters (2026-11-13)
 
 A complete source-backed `for (int index = 0; index != 6; index += 2)`

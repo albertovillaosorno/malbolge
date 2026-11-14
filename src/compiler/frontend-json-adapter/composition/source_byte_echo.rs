@@ -4502,7 +4502,7 @@ struct StaticForProof<'node> {
     end: u32,
 }
 
-// A closed, finite single-digit-step for loop with a verified i32 counter:
+// A closed, finite one- or two-digit-step for loop with a verified i32 counter:
 //     for (int i = 0; i < N; ++i) {
 //     for (int i = 1; i <= N; i++) {
 //     for (int i = 4; i >= 1; i--) {
@@ -4623,13 +4623,27 @@ fn prove_static_for<'node>(
     let increment_start = bound.span.end.byte.checked_add(2)?;
     let compound_increment = increment.kind == "compound-assignment-expression";
     let assigned_increment = increment.kind == "binary-expression";
-    let increment_length = if assigned_increment {
+    // The pinned Clang preorder supplies the increment literal at a fixed
+    // child offset. Its source width extends the exact header geometry; the
+    // later leaf proof binds every digit to the original C and its parent.
+    let stride_width = if assigned_increment {
+        u32::try_from(rest.get(3)?.literal.as_deref()?.len()).ok()?
+    } else if compound_increment {
+        u32::try_from(rest.first()?.literal.as_deref()?.len()).ok()?
+    } else {
+        1
+    };
+    if !(1..=2).contains(&stride_width) {
+        return None;
+    }
+    let increment_length = (if assigned_increment {
         name_width.checked_mul(2)?.checked_add(7)?
     } else if compound_increment {
         name_width.checked_add(5)?
     } else {
         name_width.checked_add(2)?
-    };
+    })
+    .checked_add(stride_width.checked_sub(1)?)?;
     let increment_end = increment_start.checked_add(increment_length)?;
     let arm_start = increment_end.checked_add(2)?;
     let variable_reference =
@@ -4653,7 +4667,7 @@ fn prove_static_for<'node>(
         column.checked_add(initial_start.checked_sub(start)?)?,
     )?;
     // Only source-authenticated steps in the comparison's direction are
-    // admitted: unary unit steps or single-digit compound/assigned strides.
+    // admitted: unary unit steps or 1–99 compound/assigned strides.
     if start <= previous
         || start <= body.span.begin.byte
         || line == 0
@@ -4900,9 +4914,9 @@ fn prove_static_for<'node>(
     } else {
         (rest, 10, 1)
     };
-    // A larger or zero stride needs a different source grammar and proof.
+    // Reject noncanonical or out-of-range steps before calculating trips.
     // Never trust an unverified Clang numeric annotation for a non-unit step.
-    if !(1..=9).contains(&stride) || (stride != 1 && source.is_none()) {
+    if !(1..=99).contains(&stride) || (stride != 1 && source.is_none()) {
         return None;
     }
     let bound_value = prove_decimal_condition_operand(
@@ -5305,10 +5319,10 @@ fn induction_identifier_end(
     Some(end)
 }
 
-// An authenticated remainder of the protected induction counter is a pure
-// source-time value. The full pinned Clang subtree must spell `name % N`,
-// with a nonzero canonical decimal N; no guest byte may participate.
-fn prove_induction_remainder(
+// Pure arithmetic on a protected induction counter is a source-time value.
+// Authenticate the complete `name op N` Clang subtree, source operator and
+// canonical decimal operand; a live guest byte never enters this proof.
+fn prove_induction_arithmetic(
     nodes: &[Node],
     at: StaticValueLocation,
     induction: StaticInduction<'_>,
@@ -5319,11 +5333,19 @@ fn prove_induction_remainder(
     let name_end = induction_identifier_end(induction, at)?;
     let rhs_start = name_end.checked_add(3)?;
     let rhs_column = at.column.checked_add(rhs_start.checked_sub(at.start)?)?;
-    if remainder.id != at.id
+    let operator = remainder.operation.as_deref()?;
+    let operator_start = usize::try_from(name_end.checked_add(1)?).ok()?;
+    let operator_end = operator_start.checked_add(operator.len())?;
+    if !matches!(operator, "%" | "/" | "+" | "-" | "*")
+        || (induction.source.is_none() && operator != "%")
+        || induction.source.is_some_and(|witness| {
+            witness.get(operator_start..operator_end)
+                != Some(operator.as_bytes())
+        })
+        || remainder.id != at.id
         || remainder.parent != at.parent
         || remainder.kind != "binary-expression"
         || remainder.type_name.as_deref() != Some("i32")
-        || remainder.operation.as_deref() != Some("%")
         || remainder.reference.is_some()
         || !metadata_empty(remainder)
         || cast.id != remainder.id.checked_add(1)?
@@ -5354,18 +5376,30 @@ fn prove_induction_remainder(
         rhs_column,
     )?;
     let end = divisor.span.end.byte;
-    if divisor_value == 0
-        || !source_word(remainder, at.start, end, at.line, at.column)
+    let divisor_start = usize::try_from(divisor.span.begin.byte).ok()?;
+    let spelling = divisor.literal.as_deref()?;
+    let divisor_end = divisor_start.checked_add(spelling.len())?;
+    if induction.source.is_some_and(|witness| {
+        witness.get(divisor_start..divisor_end) != Some(spelling.as_bytes())
+    }) || !source_word(remainder, at.start, end, at.line, at.column)
     {
         return None;
     }
-    Some((4, induction.value.checked_rem(divisor_value)?, end))
+    let value = match operator {
+        "%" => induction.value.checked_rem(divisor_value),
+        "/" => induction.value.checked_div(divisor_value),
+        "+" => induction.value.checked_add(divisor_value),
+        "-" => induction.value.checked_sub(divisor_value),
+        "*" => induction.value.checked_mul(divisor_value),
+        _ => None,
+    }?;
+    Some((4, value, end))
 }
 
-// Compare an independently authenticated counter remainder with a canonical
-// decimal integer. Every child, offset, type and declaration binding is
-// checked before its source-time result selects real guest I/O effects.
-fn prove_induction_remainder_comparison(
+// Compare source-proven induction arithmetic with a canonical decimal value.
+// Every child, offset, type and declaration binding is checked before its
+// source-time result selects genuine guest I/O effects.
+fn prove_induction_arithmetic_comparison(
     nodes: &[Node],
     at: StaticValueLocation,
     induction: StaticInduction<'_>,
@@ -5384,7 +5418,7 @@ fn prove_induction_remainder_comparison(
     }
     let remainder_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
     let (left_width, value, left_end) =
-        prove_induction_remainder(nodes.get(1..)?, remainder_at, induction)?;
+        prove_induction_arithmetic(nodes.get(1..)?, remainder_at, induction)?;
     let right_index = left_width.checked_add(1)?;
     let right = nodes.get(right_index)?;
     let right_offset = u32::try_from(operator.len()).ok()?.checked_add(2)?;
@@ -5398,7 +5432,17 @@ fn prove_induction_remainder_comparison(
             .checked_add(left_end.checked_sub(at.start)?)?
             .checked_add(right_offset)?,
     )?;
-    if !source_word(
+    let comparison_operator = usize::try_from(left_end.checked_add(1)?).ok()?;
+    let comparison_operator_end =
+        comparison_operator.checked_add(operator.len())?;
+    let rhs_start = usize::try_from(right.span.begin.byte).ok()?;
+    let rhs_text = right.literal.as_deref()?;
+    let rhs_end = rhs_start.checked_add(rhs_text.len())?;
+    if induction.source.is_some_and(|witness| {
+        witness.get(comparison_operator..comparison_operator_end)
+            != Some(operator.as_bytes())
+            || witness.get(rhs_start..rhs_end) != Some(rhs_text.as_bytes())
+    }) || !source_word(
         comparison,
         at.start,
         right.span.end.byte,
@@ -5473,7 +5517,15 @@ fn prove_induction_comparison(
         at.line,
         right_column,
     )?;
-    if !source_word(
+    let operator_start = usize::try_from(name_end.checked_add(1)?).ok()?;
+    let operator_end = operator_start.checked_add(operator.len())?;
+    let rhs_start = usize::try_from(bound.span.begin.byte).ok()?;
+    let rhs_text = bound.literal.as_deref()?;
+    let rhs_end = rhs_start.checked_add(rhs_text.len())?;
+    if induction.source.is_some_and(|witness| {
+        witness.get(operator_start..operator_end) != Some(operator.as_bytes())
+            || witness.get(rhs_start..rhs_end) != Some(rhs_text.as_bytes())
+    }) || !source_word(
         comparison,
         at.start,
         bound.span.end.byte,
@@ -5694,10 +5746,13 @@ fn prove_induction_value(
         return prove_induction_truth(nodes, at, induction);
     }
     if node.kind == "binary-expression"
-        && node.operation.as_deref() == Some("%")
+        && matches!(
+            node.operation.as_deref(),
+            Some("%" | "/" | "+" | "-" | "*")
+        )
     {
         let (width, value, end) =
-            prove_induction_remainder(nodes, at, induction)?;
+            prove_induction_arithmetic(nodes, at, induction)?;
         return Some((width, value != 0, end));
     }
     if let Some((width, value)) = prove_static_value(nodes, at) {
@@ -5709,7 +5764,7 @@ fn prove_induction_value(
     ) {
         return prove_induction_prefix(nodes, at, induction);
     }
-    prove_induction_remainder_comparison(nodes, at, induction)
+    prove_induction_arithmetic_comparison(nodes, at, induction)
         .or_else(|| prove_induction_comparison(nodes, at, induction))
 }
 
