@@ -1162,3 +1162,15 @@ exactly sufficient repeated outputs remain. This change improves proposal
 pruning; it does not prove completeness, runtime C arithmetic or general
 source-independent byte-stream synthesis. The seeded C variant remains
 unwitnessed under the experiment budget.
+
+### Short-stream source-geometry capacity preflight (2026-11-13)
+
+The same necessary output/write bound now applies before source-tail
+reconstruction for every prefix geometry, including streams shorter than
+eight effects. Both the maximal initial-zero prefix and each actual
+prefix-output choice must leave enough body instruction cells for remaining
+outputs and byte transitions. This only rejects mathematically insufficient
+source geometries; it does not change the minimum searched source length,
+relocation phases or verified candidate ordering. The independently decoded
+five-byte nonfixture guest with a leading zero and the historical five-byte
+canonical bridge still execute and match the normative VM.

@@ -691,13 +691,11 @@ fn verified_terminal_layout_range<const N: usize>(
             let target_emitted = terminal.emitted_before_tail(N);
             let max_prefix_outputs =
                 leading_zeros.min(prefix).min(target_emitted);
-            if N >= 8
-                && !can_fit_effects(
-                    body_slots,
-                    0,
-                    &expected[max_prefix_outputs..target_emitted],
-                )
-            {
+            if !can_fit_effects(
+                body_slots,
+                0,
+                &expected[max_prefix_outputs..target_emitted],
+            ) {
                 continue;
             }
             let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
@@ -716,13 +714,11 @@ fn verified_terminal_layout_range<const N: usize>(
             // the historical all-no-op prefix as the last candidate.
             let verified =
                 (0..=max_prefix_outputs).rev().find_map(|prefix_outputs| {
-                    if N >= 8
-                        && !can_fit_effects(
-                            body_slots,
-                            0,
-                            &expected[prefix_outputs..target_emitted],
-                        )
-                    {
+                    if !can_fit_effects(
+                        body_slots,
+                        0,
+                        &expected[prefix_outputs..target_emitted],
+                    ) {
                         return None;
                     }
                     let geometry = SearchGeometry {
