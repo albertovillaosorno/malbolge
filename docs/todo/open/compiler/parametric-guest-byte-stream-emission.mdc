@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, the whole conditional Fibonacci C probe again failed
+  before lowering at absent pinned LLVM 22 frontend preflight, without
+  publishing a guest. Independently, a red-first fixed source-scratch
+  regression reproduced four verification checks consumed at the first
+  graphical source phases (lengths 101-102), hiding a later final-body
+  byte output. The same four-check budget now spends three slots early
+  and reserves the last for the latest completion, favoring newly emitted
+  output at equal phase. The recovered source independently encodes and
+  emits a real zero byte under the normative VM with empty/binary stdin.
+  Previous refusal limits and proof rules remain; source-C dynamic state,
+  arbitrary streams and general guest C operations are still pending.
+
 - On 2026-11-14, two red-first completion-selection regressions exposed
   four-verification-slot exhaustion at early source positions, dropping
   a later final-body candidate after one or two guest relocations. The

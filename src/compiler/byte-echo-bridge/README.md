@@ -927,6 +927,16 @@ rejected-first/accepted-next and the all-rejected cap; existing Fibonacci
 source-scratch guests still execute under normative VM verification. This
 recovers bounded proposal coverage, not arbitrary stream synthesis.
 
+The fixed graphical forward-jump scratch path had a different late-source
+false negative: four admission attempts were spent at source lengths 101-102,
+leaving no check for a later phase that genuinely emits the last byte. A
+red-first callback regression now reserves one of the same four checks for
+the latest completed source position, preferring a newly emitted byte to
+padding at equal position. The selected late guest is independently encoded,
+then executes an actual final-cell zero output under empty and binary input.
+This improves finite proposal coverage; it does not widen source C or guest
+runtime semantics and cannot bypass positional/VM admission.
+
 The bounded forward-jump source-scratch proposal now retains predecessor
 links instead of copying full candidate paths. Its skipped-data operands
 include both the canonical input and jump graphical code cells, in addition

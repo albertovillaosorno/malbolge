@@ -71,6 +71,59 @@ fn source_scratch_rejects_all_unverified_completions_with_bounded_work()
 }
 
 #[test]
+fn source_scratch_reserves_late_completed_output_phase() -> Result<(), String> {
+    // Each early candidate can fail positional decoding, but the same
+    // source-scratch grammar can emit its final byte at a later code phase.
+    // Keep one of the four verifier slots for that later full trace.
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing decoder phases")?;
+    let jump = (33u8..=126)
+        .find(|&byte| {
+            malbolge::decode_profile_instruction(u32::from(byte), 0)
+                == Some(b'i')
+        })
+        .ok_or("missing graphical jump")?;
+    let target = usize::from(jump).saturating_add(1);
+    let late_cutoff = target.saturating_add(12);
+    let mut checked = Vec::new();
+    let accepted = proposed_source_scratch_with_checker(&cells, [0], |ops| {
+        let last_output =
+            ops.iter().rposition(|op| *op == LinearOpcode::OutputByte);
+        checked.push((ops.len(), last_output));
+        (ops.len() > late_cutoff && last_output == ops.len().checked_sub(2))
+            .then(|| ops.to_vec())
+    })
+    .ok_or_else(|| format!("late scratch verifier was starved: {checked:?}"))?;
+    let (last_check, early) = checked
+        .split_last()
+        .ok_or("no completed candidates were verified")?;
+    if checked.len() != MAX_COMPLETION_CHECKS_PER_GEOMETRY
+        || early.iter().any(|&(len, _)| len > late_cutoff)
+        || last_check.0 <= late_cutoff
+        || last_check.1 != accepted.len().checked_sub(2)
+    {
+        return Err(format!("wrong late scratch sampling: {checked:?}"));
+    }
+    let layout = super::super::encode_linear_layout(profile, &accepted)
+        .map_err(|error| format!("late scratch layout: {error:?}"))?;
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|error| format!("late scratch load: {error:?}"))?;
+        let steps = layout.executed_code_positions().len();
+        if !matches!(vm.run(steps),
+            Ok(RunOutcome::Terminated { steps: executed, .. })
+                if executed == steps)
+            || vm.output() != [0]
+            || vm.input_consumed() != 0
+        {
+            return Err(String::from("late scratch guest VM replay differs"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn variable_scratch_retries_rejected_completed_path() -> Result<(), String> {
     // Two distinct full traces can have the same observable output.
     // A failed positional encoding is not a proof against the next trace.

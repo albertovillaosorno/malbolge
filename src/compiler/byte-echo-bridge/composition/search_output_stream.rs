@@ -1366,6 +1366,28 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
     None
 }
 
+fn reconstruct_source_scratch_path(
+    steps: &[SearchStep],
+    target: usize,
+    last: usize,
+) -> Option<Vec<LinearOpcode>> {
+    let mut body = Vec::new();
+    let mut cursor = last;
+    while cursor != 0 {
+        let step = steps.get(cursor)?;
+        body.push(step.operation);
+        cursor = step.predecessor;
+    }
+    body.reverse();
+    let mut operations = vec![LinearOpcode::NoOperation; target];
+    *operations.first_mut()? = LinearOpcode::JumpForward {
+        target: u32::try_from(target).ok()?,
+    };
+    operations.extend(body);
+    operations.push(LinearOpcode::Halt);
+    Some(operations)
+}
+
 /// Search an acyclic source-scratch geometry after one forward code jump.
 ///
 /// The initial `i` jumps over graphical no-op source cells. Before D reaches
@@ -1393,13 +1415,38 @@ fn proposed_source_scratch_with_checker<const N: usize, T>(
         operation: LinearOpcode::NoOperation,
         predecessor: 0,
     }];
-    let mut completion_checks = 0usize;
+    let mut early_checks = 0usize;
+    // Preserve one independent-admission slot for a later source phase.
+    // At equal phase, a fresh final output is more useful than padding
+    // an already-complete trace with a no-op.
+    type DeferredCompletion = (usize, bool, usize);
+    let mut deferred: Option<DeferredCompletion> = None;
+    let mut check_completion = |phase, last, history: &[SearchStep]| {
+        if early_checks < MAX_COMPLETION_CHECKS_PER_GEOMETRY - 1 {
+            let operations =
+                reconstruct_source_scratch_path(history, target, last)?;
+            if let Some(verified) = admit(&operations) {
+                return Some(Some(verified));
+            }
+            early_checks = early_checks.saturating_add(1);
+        } else {
+            let just_emitted = history
+                .get(last)
+                .is_some_and(|step| step.operation == LinearOpcode::OutputByte);
+            if deferred.as_ref().is_none_or(|&(latest, output, _)| {
+                phase > latest || (phase == latest && just_emitted && !output)
+            }) {
+                deferred = Some((phase, just_emitted, last));
+            }
+        }
+        Some(None)
+    };
     for index in 0..body_limit {
         let address = index.checked_add(1)?;
         let word = |offset: usize| {
             let at = address.checked_add(offset)?;
             let value = u32::from(*source_cells.get(at)?.first()?);
-            if at == target - 1 {
+            if at == body_limit {
                 malbolge::encrypt_profile_cell(value)
             } else {
                 Some(value)
@@ -1426,26 +1473,8 @@ fn proposed_source_scratch_with_checker<const N: usize, T>(
             if emitted != N {
                 continue;
             }
-            let mut body = Vec::new();
-            let mut cursor = last;
-            while cursor != 0 {
-                let step = steps.get(cursor)?;
-                body.push(step.operation);
-                cursor = step.predecessor;
-            }
-            body.reverse();
-            let mut operations = vec![LinearOpcode::NoOperation; target];
-            *operations.first_mut()? = LinearOpcode::JumpForward {
-                target: u32::try_from(target).ok()?,
-            };
-            operations.extend(body);
-            operations.push(LinearOpcode::Halt);
-            if let Some(verified) = admit(&operations) {
+            if let Some(verified) = check_completion(index, last, &steps)? {
                 return Some(verified);
-            }
-            completion_checks += 1;
-            if completion_checks >= MAX_COMPLETION_CHECKS_PER_GEOMETRY {
-                return None;
             }
         }
         if states.is_empty()
@@ -1455,7 +1484,9 @@ fn proposed_source_scratch_with_checker<const N: usize, T>(
             return None;
         }
     }
-    None
+    let (_, _, last) = deferred?;
+    let operations = reconstruct_source_scratch_path(&steps, target, last)?;
+    admit(&operations)
 }
 
 pub(super) fn verified_source_scratch_output_layout<const N: usize>(

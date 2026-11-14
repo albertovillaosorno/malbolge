@@ -26,6 +26,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Late graphical source-scratch output completion (2026-11-14)
+
+The fixed forward-jump graphical source-scratch solver could spend its four
+independent-admission checks at source lengths 101-102, before any later
+source phase emitted the final output. A red-first completion callback
+reproduces this with one actual zero-byte guest effect. The solver still
+checks three early candidates, but reserves its final check for a later
+completed phase, preferring a just-emitted output over padding when tied.
+The selected graphical source is independently encoded and runs in the
+normative VM with the intended zero byte under empty and binary input.
+All prior step/history caps and source write/positional/VM proof rules remain.
+The complete conditional Fibonacci C program was retried but stopped at
+missing pinned LLVM 22 frontend preflight, so dynamic C arithmetic/control,
+EOF and arbitrary byte streams remain unsupported.
+
 ### Late source-phase completion after bounded verification (2026-11-14)
 
 The straight-through and repeated-relocation proposal grammars could consume
