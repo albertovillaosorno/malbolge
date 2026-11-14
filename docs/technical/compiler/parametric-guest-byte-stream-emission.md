@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Variable source-scratch late-geometry admission (2026-11-14)
+
+The complete twelve-trip conditional Fibonacci C program was attempted again,
+but the repository-pinned LLVM 22 frontend executable is absent. Its source
+still cannot pass the production frontend preflight, and no artifact was
+published. The matching system Clang version is not a replacement for the
+pinned normalized frontend binary.
+
+The variable source-scratch proposal previously exhausted all four independent
+verification slots on the shortest completed source lengths. If those
+positional proposals failed, a later graphical source phase could not be
+checked even when the bounded search had already discovered it. A red-first
+two-byte guest regression selects only a later completion; the solver now
+checks the three earliest candidates and reserves the fourth slot for the
+longest completed source. The source still requires the unchanged positional
+encoder, disjoint source-write policy, and normative VM checks before
+publication. Both bridge entrypoints pass the late-candidate regression, and
+the selected longer guest actually emits two zero bytes under binary stdin.
+The prior rejected-first/accepted-second and all-rejected four-check tests
+remain active. This is finite search coverage, not general guest streams,
+dynamic source-C state/control, or proof of full P0 acceptance.
+
 ### Verified variable source-scratch completion retries (2026-11-14)
 
 The variable-operand forward-jump search had a related false negative:

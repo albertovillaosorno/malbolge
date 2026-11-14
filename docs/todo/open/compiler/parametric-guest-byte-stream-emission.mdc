@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, a red-first variable source-scratch regression exposed
+  four-check verification starvation: shorter complete guest paths consumed
+  every admission slot before a later, source-phase-distinct completion.
+  Reserving the fourth slot for the latest complete source length now
+  recovers a genuinely encoded two-output zero guest; the normative VM
+  executes it under nonempty binary input. Prior early-retry and rejection
+  caps remain, with no relaxation of positional or VM verification. The
+  original full conditional Fibonacci C again stops at the missing pinned
+  frontend, so dynamic guest C operations and arbitrary streams remain open.
+
 - On 2026-11-14, variable source-scratch search also discarded all later
   complete states after choosing the shortest path if guest admission
   refused it. A separate red-first regression and a four-check cap now

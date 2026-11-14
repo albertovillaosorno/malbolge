@@ -910,7 +910,13 @@ deterministic complete path candidates when positional encoding, write
 footprint or VM replay refuses an earlier path. Two retry/cap tests and
 all real source-scratch guest witnesses pass, including twelve masked
 Fibonacci bytes. The variable-byte proposal grammar and separate guest
-semantic checks are unchanged.
+semantic checks are unchanged. A later source-phase completion can be
+missed when all four checks are spent on the shortest source lengths. The
+same bounded solver now checks the three shortest completions and reserves
+the fourth check for its longest completed source geometry. An independent
+positional encoding and normative guest VM run verify that the later
+zero-byte-pair candidate really emits both bytes. Rejected proposals still
+never publish guest output; this changes sampling, not the four-check cap.
 
 Forward-jump source-scratch search now checks completed output paths as
 untrusted proposals instead of halting after the first complete accumulator

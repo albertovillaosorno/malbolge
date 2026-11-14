@@ -118,6 +118,48 @@ fn variable_scratch_all_rejected_completions_are_bounded() {
 }
 
 #[test]
+fn variable_scratch_reserves_a_late_source_length() -> Result<(), String> {
+    // Four checks at the shortest four source lengths miss a later completed
+    // guest candidate. Bounded search should sample a late source geometry
+    // without increasing the independent verifier's total work allowance.
+    let mut examined = Vec::new();
+    let accepted = proposed_variable_source_scratch_at_jump_with_checker(
+        malbolge::current_profile(),
+        [0, 0],
+        0,
+        0,
+        |operations| {
+            examined.push(operations.len());
+            (operations.len() > 105).then(|| operations.to_vec())
+        },
+    )
+    .ok_or("no later source-scratch completion received a verifier slot")?;
+    assert_eq!(examined.len(), MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+    assert!(examined[..3].iter().all(|&length| length <= 105));
+    assert!(examined[3] > 105, "examined {examined:?}");
+    assert_eq!(accepted.len(), examined[3]);
+    assert_eq!(
+        accepted
+            .iter()
+            .filter(|op| **op == LinearOpcode::OutputByte)
+            .count(),
+        2
+    );
+    let profile = malbolge::current_profile();
+    let layout = super::super::encode_linear_layout(profile, &accepted)
+        .map_err(|error| format!("late positional layout: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, layout.source(), vec![255])
+            .map_err(|error| format!("late source load: {error:?}"))?;
+    let result = vm.run(layout.executed_code_positions().len());
+    assert!(matches!(result, Ok(RunOutcome::Terminated { steps, .. })
+        if steps == layout.executed_code_positions().len()));
+    assert_eq!(vm.output(), &[0, 0]);
+    assert_eq!(vm.input_consumed(), 0);
+    Ok(())
+}
+
+#[test]
 fn fibonacci_prefix_uses_source_scratch_not_host_output() -> Result<(), String>
 {
     let mut previous = 1u32;

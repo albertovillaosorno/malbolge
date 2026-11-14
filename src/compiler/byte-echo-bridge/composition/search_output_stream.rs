@@ -1639,7 +1639,7 @@ fn proposed_variable_source_scratch_at_jump_with_checker<const N: usize, T>(
         }
         states = finished;
     }
-    for (_, &last) in states.iter().take(MAX_COMPLETION_CHECKS_PER_GEOMETRY) {
+    let reconstruct = |last: usize| -> Option<Vec<LinearOpcode>> {
         let mut cursor = last;
         let mut path = Vec::new();
         while cursor != 0 {
@@ -1665,9 +1665,28 @@ fn proposed_variable_source_scratch_at_jump_with_checker<const N: usize, T>(
         }
         operations.extend(path.into_iter().map(|(operation, _)| operation));
         operations.push(LinearOpcode::Halt);
+        Some(operations)
+    };
+    // Spend the first three slots on short traces and reserve the fourth
+    // for the furthest completed source length. If those early positional
+    // proposals all fail, later graphical source phases deserve a bounded
+    // independent verifier attempt rather than a premature refusal.
+    let mut early_checks = 0usize;
+    let mut latest = None;
+    for (_, &last) in &states {
+        if early_checks == MAX_COMPLETION_CHECKS_PER_GEOMETRY - 1 {
+            latest = Some(last);
+            continue;
+        }
+        let operations = reconstruct(last)?;
         if let Some(accepted) = admit(&operations) {
             return Some(accepted);
         }
+        early_checks += 1;
+    }
+    let operations = reconstruct(latest?)?;
+    if let Some(accepted) = admit(&operations) {
+        return Some(accepted);
     }
     None
 }
