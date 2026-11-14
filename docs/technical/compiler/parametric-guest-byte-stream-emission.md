@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated named C induction counters (2026-11-13)
+
+A complete C program with a live `getchar` local, a step-by-two finite
+`for` loop, a nested input-dependent branch, induction-selected `continue`,
+and trailing fresh I/O first failed in the JSON adapter when the counter was
+spelled `index` instead of `i`. The induction proof now binds an ASCII C
+identifier of 1–32 bytes to the pinned Clang declaration reference and exact
+source tokens in the declaration, condition, increment and all proven body
+predicates. It derives expression geometry from the identifier width rather
+than assuming one-byte counter names. Longer names and absent original source
+for non-`i` names remain unsupported and fail closed.
+
+The unchanged complete program emits four copies of its actual first guest
+input byte followed by the next input byte in eight normative VM steps,
+across binary boundaries and seeded inputs. A descending `position -= 2`
+program, and a direct `index == 2` conditional, also emit exact independent
+byte oracles. Nine further name/step/predicate shapes reach layout admission
+under an intentionally rejecting backend stub. Forged source token prefixes,
+header bindings, Clang declaration names and step operators refuse without
+publishing a guest artifact. All induction values remain bounded C
+compile-time replay, not guest runtime C control, arithmetic, storage or EOF.
+The unmasked twelve-output Fibonacci layout and P0 remain pending.
+
 ### Proven single-digit non-unit induction with live guest bytes (2026-11-13)
 
 A whole source-C program with an initial guest input, counted `for` loop,

@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a full input-local/loop/nested-branch/`continue`
+  C stream first refused when its counter was renamed to `index`. The
+  source-/pinned-Clang-backed induction proof now authenticates a bounded
+  1–32 byte C identifier across the declaration, comparison, increment and
+  body predicates. The original step-by-two and a descending `position`
+  program emit four copies of the live first byte plus the fresh second
+  byte in eight real guest VM steps; a direct `index == 2` guard also
+  matches independently derived binary output. Nine further step/guard
+  shapes reach isolated layout admission, while source/AST mutations and
+  identifier-prefix forgeries refuse without publication. C induction is
+  still compiler-time, and general runtime control, EOF, and the original
+  twelve-output Fibonacci layout remain open.
+
 - On 2026-11-13 a complete C input-local/loop/nested-if/continue and
   trailing stream first refused `for (int i = 0; i != 3; ++i)`. The
   source-/pinned-Clang-authenticated induction proof now admits only

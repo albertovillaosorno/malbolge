@@ -11,6 +11,18 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Named C loop counters (2026-11-13)
+
+A complete source-backed `for (int index = 0; index != 6; index += 2)`
+program now retains a real guest byte, selects nested branches and `continue`,
+then reads a fresh byte. The finite induction checker authenticates a 1–32
+byte ASCII C identifier in each Clang/source counter occurrence, including
+remainder, direct comparison and bare integer predicates. A descending
+`position -= 2` loop and a direct `index == 2` guard also reach exact binary
+VM parity. Prefix-token confusion, counter-binding forgeries and divergent
+steps refuse without an artifact. This generalizes source-time C replay;
+actual guest loop execution, arbitrary C variables and EOF remain open.
+
 ### Source-proven non-unit finite C induction (2026-11-13)
 
 An original complete C stream with a local guest byte, counted loop,
