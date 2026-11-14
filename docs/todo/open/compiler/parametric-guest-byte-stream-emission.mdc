@@ -55,6 +55,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, the full conditional Fibonacci and a separate
+  signed-induction/branch C program again stopped at missing pinned LLVM 22
+  preflight without guest publication. The latter independently emits `AB`
+  under host C23 UBSan at O0/O2, not the guest. Red-first synthetic AST tests
+  exposed eager overflow from a pure right operand skipped by `||` or `&&`,
+  and from either unselected `?:` arm. Bounded shadow-induction witnesses now
+  authenticate skipped pure source/Clang subtrees while discarding their
+  substituted truth values; selected overflow still refuses. Four tests
+  cover lazy selection, forged references and source operator punctuation;
+  eleven existing normalized-loop tests and all-target Rust check pass.
+  Broader adapter tests report seventeen inspector failures from absent pinned
+  Python, with seventeen other unit tests passing. No new normalized frontend
+  golden or guest VM parity is claimed; P0 dynamic C state/control, EOF and
+  general byte streams remain open.
+
 - On 2026-11-14, the full conditional Fibonacci C probe again stopped
   before lowering at missing pinned LLVM 22 frontend preflight. Separate
   red-first pure predicate AST tests showed that the successful-byte checker

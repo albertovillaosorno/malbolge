@@ -35,6 +35,10 @@
 #[path = "../../../../tests/compiler/lazy_byte_predicate.rs"]
 mod lazy_byte_predicate_tests;
 
+#[cfg(test)]
+#[path = "../../../../tests/compiler/induction_lazy_predicate.rs"]
+mod induction_lazy_predicate_tests;
+
 use std::collections::HashSet;
 
 use super::typed::{
@@ -93,6 +97,7 @@ type PureTernaryArmProof = (usize, String, String);
 // stack-frame budget, even when nested conditional subtrees overlap.
 type BytePredicateValues = Box<[Option<i32>; 256]>;
 type TotalByteGuardProof = (usize, String, BytePredicateValues);
+type InductionArmProof = (usize, Option<bool>, u32);
 
 // The nested successful-byte return is not recomputed: every write uses the
 // same already-read guest SSA identity, in innermost-first C evaluation order.
@@ -5639,6 +5644,62 @@ fn prove_induction_prefix(
     ))
 }
 
+// The original C spelling must bind each logical or ternary operator. Span
+// length alone cannot distinguish equal-width tokens such as && and ||.
+fn source_induction_operator(
+    induction: StaticInduction<'_>,
+    preceding_end: u32,
+    spelling: &str,
+) -> Option<()> {
+    if let Some(source) = induction.source {
+        let start = usize::try_from(preceding_end.checked_add(1)?).ok()?;
+        (source.get(start..start.checked_add(spelling.len())?)
+            == Some(spelling.as_bytes()))
+        .then_some(())?;
+    }
+    Some(())
+}
+
+// Source and Clang shape checks for unexecuted induction expressions must
+// still reject calls, unrelated locals and forged operators. A defined
+// evaluation at a different bounded counter value proves that this exact
+// subtree is pure and authenticated; its resulting truth value is discarded.
+// No substituted value may select a guest effect or certify the skipped
+// expression as defined at the actual induction value. This deliberately
+// refuses pure subtrees for which none of these witnesses is defined.
+fn prove_skipped_induction_shape(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, u32)> {
+    induction.source.is_some().then_some(())?;
+    [0i32, 1i32, -1i32].into_iter().find_map(|value| {
+        prove_induction_value(nodes, at, StaticInduction { value, ..induction })
+            .map(|(width, _, end)| (width, end))
+    })
+}
+
+// A selected C operand needs its actual value. An unselected operand still
+// needs a complete independent pure/source/Clang proof, but its actual C
+// arithmetic may be undefined without affecting the enclosing expression.
+fn prove_induction_arm(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+    selected: bool,
+) -> Option<InductionArmProof> {
+    match prove_induction_value(nodes, at, induction) {
+        Some((width, value, end)) => {
+            Some((width, selected.then_some(value), end))
+        },
+        None if !selected => {
+            prove_skipped_induction_shape(nodes, at, induction)
+                .map(|(width, end)| (width, None, end))
+        },
+        None => None,
+    }
+}
+
 // Clang's conditional-expression has three direct subtrees in preorder.
 // Every arm must be independently source-proven even if that arm is never
 // selected by the finite induction value. ` ? ` and ` : ` are exact token
@@ -5662,6 +5723,7 @@ fn prove_induction_ternary(
     let condition_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
     let (condition_width, condition, condition_end) =
         prove_induction_value(nodes.get(1..)?, condition_at, induction)?;
+    source_induction_operator(induction, condition_end, "?")?;
     let true_index = condition_width.checked_add(1)?;
     let true_start = condition_end.checked_add(3)?;
     let true_at = at.child(
@@ -5669,8 +5731,13 @@ fn prove_induction_ternary(
         true_start,
         at.column.checked_add(true_start.checked_sub(at.start)?)?,
     )?;
-    let (true_width, true_value, true_end) =
-        prove_induction_value(nodes.get(true_index..)?, true_at, induction)?;
+    let (true_width, true_value, true_end) = prove_induction_arm(
+        nodes.get(true_index..)?,
+        true_at,
+        induction,
+        condition,
+    )?;
+    source_induction_operator(induction, true_end, ":")?;
     let false_index = true_index.checked_add(true_width)?;
     let false_start = true_end.checked_add(3)?;
     let false_at = at.child(
@@ -5678,20 +5745,79 @@ fn prove_induction_ternary(
         false_start,
         at.column.checked_add(false_start.checked_sub(at.start)?)?,
     )?;
-    let (false_width, false_value, false_end) =
-        prove_induction_value(nodes.get(false_index..)?, false_at, induction)?;
+    let (false_width, false_value, false_end) = prove_induction_arm(
+        nodes.get(false_index..)?,
+        false_at,
+        induction,
+        !condition,
+    )?;
     let width = false_index.checked_add(false_width)?;
     (width <= MAX_STATIC_PREDICATE_NODES
         && source_word(ternary, at.start, false_end, at.line, at.column))
     .then_some((
         width,
         if condition {
-            true_value
+            true_value?
         } else {
-            false_value
+            false_value?
         },
         false_end,
     ))
+}
+
+// Short-circuit only the integer value: validate the entire C source and
+// pinned AST, even for a branch whose arithmetic need not be defined.
+fn prove_induction_logical(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool, u32)> {
+    let node = nodes.first()?;
+    if node.id != at.id
+        || node.parent != at.parent
+        || node.type_name.as_deref() != Some("i32")
+        || node.reference.is_some()
+        || !metadata_empty(node)
+    {
+        return None;
+    }
+    let operator = node.operation.as_deref()?;
+    let left_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
+    let (left_width, left, left_end) =
+        prove_induction_value(nodes.get(1..)?, left_at, induction)?;
+    let right_index = left_width.checked_add(1)?;
+    source_induction_operator(induction, left_end, operator)?;
+    let right_start = left_end.checked_add(4)?;
+    let right_at = at.child(
+        at.id.checked_add(u32::try_from(right_index).ok()?)?,
+        right_start,
+        at.column
+            .checked_add(left_end.checked_sub(at.start)?)?
+            .checked_add(4)?,
+    )?;
+    let short_circuited = if operator == "&&" {
+        !left
+    } else {
+        left
+    };
+    let (right_width, right, right_end) = prove_induction_arm(
+        nodes.get(right_index..)?,
+        right_at,
+        induction,
+        !short_circuited,
+    )?;
+    let width = right_index.checked_add(right_width)?;
+    if width > MAX_STATIC_PREDICATE_NODES
+        || !source_word(node, at.start, right_end, at.line, at.column)
+    {
+        return None;
+    }
+    let selected = if short_circuited {
+        left
+    } else {
+        right?
+    };
+    Some((width, selected, right_end))
 }
 
 // Admit only fully proven, pure logical combinations of exact induction
@@ -5709,43 +5835,7 @@ fn prove_induction_value(
     if node.kind == "binary-expression"
         && matches!(node.operation.as_deref(), Some("&&" | "||"))
     {
-        if node.id != at.id
-            || node.parent != at.parent
-            || node.type_name.as_deref() != Some("i32")
-            || node.reference.is_some()
-            || !metadata_empty(node)
-        {
-            return None;
-        }
-        let left_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
-        let (left_width, left, left_end) =
-            prove_induction_value(nodes.get(1..)?, left_at, induction)?;
-        let right_index = left_width.checked_add(1)?;
-        let gap = 4;
-        let right_at = at.child(
-            at.id.checked_add(u32::try_from(right_index).ok()?)?,
-            left_end.checked_add(gap)?,
-            at.column
-                .checked_add(left_end.checked_sub(at.start)?)?
-                .checked_add(gap)?,
-        )?;
-        let (right_width, right, right_end) = prove_induction_value(
-            nodes.get(right_index..)?,
-            right_at,
-            induction,
-        )?;
-        let width = right_index.checked_add(right_width)?;
-        if width > MAX_STATIC_PREDICATE_NODES
-            || !source_word(node, at.start, right_end, at.line, at.column)
-        {
-            return None;
-        }
-        let selected = if node.operation.as_deref() == Some("&&") {
-            left && right
-        } else {
-            left || right
-        };
-        return Some((width, selected, right_end));
+        return prove_induction_logical(nodes, at, induction);
     }
     if node.kind == "conditional-expression" {
         return prove_induction_ternary(nodes, at, induction);

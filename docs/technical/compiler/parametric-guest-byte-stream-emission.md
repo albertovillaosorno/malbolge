@@ -26,6 +26,36 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-bound lazy C induction arithmetic (2026-11-14)
+
+The production CLI retried the complete conditional Fibonacci source and a
+separate two-trip signed-C induction/branch/putchar program. Both refused at
+repository-pinned LLVM 22 frontend preflight because the executable is absent;
+no guest artifact was emitted. Host C23 at O0 and O2, with undefined-behavior
+sanitization, independently executed the smaller source and emitted `41 42`.
+This is a host oracle, **not** guest execution or frontend admission evidence.
+
+A red-first source/Clang-preorder proof found that source-time induction
+predicates eagerly evaluated both operands of `&&`/`||` and both arms of `?:`.
+For `i != 0 || i + 2147483647 == 2147483647` at `i = 1`, C skips an
+otherwise overflowing pure right operand, but the adapter rejected the valid
+predicate. The bounded adapter now requires actual definedness only for the
+selected operand. For a skipped subtree it still proves purity and exact
+source/Clang shape using defined witness induction values `0`, `1`, or `-1`;
+those substituted truth values are discarded and cannot select guest effects.
+If no witness proves the subtree, admission still refuses conservatively.
+
+Four focused synthetic-AST tests cover both logical operators, both ternary
+arm positions, defined/executed overflow, forged local references, changed
+arithmetic, and same-width logical/conditional source operator forgeries.
+The unchanged eleven normalized-loop integration tests and workspace all-target
+Rust check pass. The broad adapter library suite fails seventeen unrelated
+inspector-transport tests because the pinned Python inspector is absent; its
+seventeen remaining tests pass. Neither these synthetic ASTs nor host Clang
+replace pinned normalized ASTs or normative guest VM parity. P0 guest dynamic
+state/control, arbitrary byte streams, EOF and the original full C proof
+remain unfinished.
+
 ### Definedness of lazy live-byte predicates (2026-11-14)
 
 The complete conditional Fibonacci C source was retried through the production
