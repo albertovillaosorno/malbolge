@@ -143,6 +143,36 @@ fn revisited_frontier_history_keeps_only_surviving_predecessors() {
 }
 
 #[test]
+fn completed_revisit_stream_survives_dense_beam_for_later_halt() {
+    // All outputs can precede the first position-encodable final halt.
+    // A failed early layout must not discard completed search states.
+    let candidates = (3usize..=9)
+        .flat_map(|emitted| {
+            (0u32..4_096)
+                .map(move |high| ((emitted, high * 256 + 3), high as usize))
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert!(candidates.len() > 16_384);
+    let mut history = vec![usize::MAX];
+    let retained = append_revisit_links(&mut history, candidates, 3, 9, 16_384);
+    assert_eq!(retained.len(), 16_384);
+    for accumulator in [3, 259, 4_095 * 256 + 3] {
+        assert!(
+            retained.contains_key(&(9, accumulator)),
+            "lost completed guest accumulator {accumulator}",
+        );
+    }
+    // A padding no-op must retain the completed path and its predecessor.
+    let next = retained
+        .iter()
+        .map(|(&key, &predecessor)| (key, predecessor))
+        .collect::<BTreeMap<_, _>>();
+    let padded = append_revisit_links(&mut history, next, 3, 9, 16_384);
+    let link = padded[&(9, 259)];
+    assert_eq!(history[link], retained[&(9, 259)]);
+}
+
+#[test]
 fn dense_revisited_frontier_retains_middle_word_at_earlier_progress() {
     // The real crazy transition from high word 259 to byte 53 remains
     // useful even when other paths have already emitted more bytes.

@@ -1307,6 +1307,20 @@ twelve-byte Fibonacci guest and canonical typed publisher pass normative
 VM replay. This does not establish complete search, guest C arithmetic,
 or pinned-Clang C-to-VM acceptance; the exact frontend binary was absent.
 
+### Completed source-revisit paths survive dense pruning (2026-11-14)
+
+The source-revisit search formerly omitted exact complete-output states from
+its dense-beam selection. If the first candidate halt failed positional
+admission, the next source-cell iteration could no longer retry the same
+accumulator with added no-op padding. A red-first 28,672-candidate case now
+retains completed full-width words within the unchanged 16,384-state cap and
+proves their predecessor links remain live through a second search layer.
+
+The original complete twelve-byte Fibonacci guest passes normative VM
+replay with and without binary input in both bridge entrypoints. The pinned
+Clang C frontend remains absent, and this correction does not provide
+general C runtime arithmetic, control flow, or arbitrary byte synthesis.
+
 ### Retained-only source-revisit histories (2026-11-14)
 
 The source-revisit continuation previously appended a reconstruction record

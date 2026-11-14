@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, a red-first dense source-revisit regression exposed
+  loss of already-completed output paths after an unsuccessful early
+  candidate halt. Exact full-word states at the final progress count now
+  survive bounded selection for subsequent source-cell padding and their
+  predecessor chains remain valid. The 28,672-candidate two-layer test,
+  six prior dense-frontier checks, and the complete twelve-byte Fibonacci
+  guest pass in both bridge entrypoints, with normative VM parity under
+  empty and binary stdin. The pinned C frontend is absent, so source-C
+  end-to-end parity and general dynamic C semantics remain open.
+
 - On 2026-11-14 the source-revisit guest search stopped committing
   reconstruction records for candidates discarded by its bounded beam.
   A two-layer dense regression selects exactly 16,384 of 24,576

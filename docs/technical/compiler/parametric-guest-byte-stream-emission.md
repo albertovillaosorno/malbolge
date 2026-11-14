@@ -26,6 +26,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Completed source-revisit progress after bounded pruning (2026-11-14)
+
+A dense source-revisit frontier formerly discarded states whose output count
+already equaled the requested byte count. The search tests a complete trace at
+each source position, but an unsuccessful early positional encoding does not
+prove a valid halt cannot follow additional no-op source cells. Dropping the
+completed state after that unsuccessful attempt prevented all later retries.
+
+The beam now retains completed output counts along with incomplete progress,
+under the same 16,384-state limit and full-accumulator keys. A red-first
+28,672-candidate regression proves both completed high-word diversity and
+two-layer reconstruction linkage in both bridge entrypoints. The independent
+twelve-byte original Fibonacci guest still executes on the normative profile
+VM with empty and binary input. The pinned Clang 22 frontend executable is
+absent locally, so the complete source-C pipeline remains unverified.
+This is a bounded proposal-search correction, not generalized dynamic C
+arithmetic/control, arbitrary guest streams, or P0 acceptance.
+
 ### Retained-only source-revisit reconstruction history (2026-11-14)
 
 The bounded source-revisit search formerly allocated permanent predecessor

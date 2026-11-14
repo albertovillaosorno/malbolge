@@ -1848,8 +1848,10 @@ pub(super) fn verified_revisited_source_scratch_triple(
 // Revisited source operands may vary with the path, so there is no sound
 // fixed-word lookahead for this grammar. Before spending the rest of the
 // frontier budget on the most advanced output count, retain both extremes
-// of every achieved output-progress/low-byte group. The full accumulator
-// remains in the search key and every proposed source is verified later.
+// of every achieved output-progress/low-byte group, including streams
+// that already emitted their final byte. A completed stream may need further
+// no-op padding before a position-encoded halt passes independent admission.
+// The full accumulator remains in the key; guest verification is unchanged.
 fn bounded_revisit_states<T: Copy>(
     states: &BTreeMap<(usize, u32), T>,
     minimum_emitted: usize,
@@ -1858,7 +1860,7 @@ fn bounded_revisit_states<T: Copy>(
 ) -> BTreeMap<(usize, u32), T> {
     let mut extremes = BTreeMap::<(usize, u8), (u32, u32)>::new();
     for &(emitted, accumulator) in states.keys() {
-        if !(minimum_emitted..maximum_emitted).contains(&emitted) {
+        if emitted < minimum_emitted || emitted > maximum_emitted {
             continue;
         }
         let group = extremes
