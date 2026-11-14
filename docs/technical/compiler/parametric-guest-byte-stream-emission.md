@@ -26,6 +26,40 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-checked unsigned guest-input induction (2026-11-14)
+
+The complete Fibonacci-with-live-input C probe still refuses its first
+compile-time `unsigned` local declaration, so source-C runtime recurrence
+and dynamic C branching remain unsupported. A smaller actual source-C
+program exposed a separate capability gap: `for (unsigned i = 0U;
+i < 4U; ++i) { putchar(getchar()); }` was refused even though the same
+bounded loop with a signed counter emitted genuine guest input/output.
+
+The source-checked finite-loop projector now admits Clang `u32` induction
+only when the original C spells `unsigned`, each initial/bound literal
+has an exact authenticated `U` suffix, and the variable references,
+C positions, and step are unchanged. Unsigned counters are restricted
+to unary increments or decrements and existing small iteration bounds;
+compound/assigned unsigned steps are still refused rather than guessed.
+An independently normalized negative fixture proves that `unsigned i >=
+0U` with `--i` must refuse: an unsigned zero decrements to a wrapped
+value and cannot be treated as loop termination.
+
+The pinned LLVM 22.1.8 Clang JSON/source fixtures, positive and negative
+source mutations, and three focused Rust tests pass. The unmodified
+accepted C file compiled with pinned native frontend, source-aware typed
+bridge, and independently verifying layout to a 1,119-byte current-profile
+Malbolge capsule. Normative VM replay with explicit `--input-stdin` emits
+`41 42 43 44`, `31 32 33 34`, `78 79 7a 57`, and `00 ff 80 01` for the
+four corresponding four-byte inputs, respectively, in nine steps each.
+The VM requires `--input-stdin` to receive piped input; without it, the
+runner intentionally supplies empty stdin and cannot prove input parity.
+The direct driver experiment used host Python 3.15 because repository-
+pinned Python 3.14 is missing; the native Clang and Rust guest stages are
+repository-built. This is real guest I/O parity for a bounded loop, not
+general C guest-side arithmetic/control, EOF handling, or unrestricted
+input streams. The P0 task remains open.
+
 ### Source-bound C scalar token verification (2026-11-14)
 
 A second complete C probe with a live `getchar()` byte, unsigned Fibonacci

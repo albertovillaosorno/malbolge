@@ -55,6 +55,22 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, a second live-input Fibonacci C probe still refused
+  its first source-local declaration. A smaller actual unsigned four-trip
+  C `getchar`/`putchar` loop initially refused a `for` projection while its
+  signed counterpart reached real guest I/O parity. Source-backed `u32`
+  counter type, name, literal suffix and step authentication now admit
+  bounded unsigned unary-induction loops. A red-first pinned-Clang
+  regression also exposed incorrect finite-unroll admission of
+  `unsigned i >= 0U; --i`, which now refuses before guest emission.
+  Three focused Rust regressions and four real input vectors pass. The
+  1,119-byte Malbolge capsule echoes `ABCD`, `1234`, `xyzW`, and binary
+  `00 ff 80 01` in nine normative VM steps each with explicit
+  `--input-stdin`. Source-C runtime arithmetic/control, EOF, arbitrary
+  input streams and the full live-input Fibonacci program remain unbuilt;
+  P0 is still pending. The direct driver used host Python 3.15 because
+  pinned Python 3.14 is absent; no other frontend/VM substitution occurred.
+
 - On 2026-11-14, a full live-input/conditional Fibonacci C program
   refused at its first `int current = getchar();` declaration; the compiler
   cannot yet mix guest runtime input with compile-time local recurrence.

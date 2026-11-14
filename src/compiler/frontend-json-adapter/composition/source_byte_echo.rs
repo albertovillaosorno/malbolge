@@ -32,6 +32,10 @@
 //! Closed dynamic-byte input provenance from normalized source C to typed IR.
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
+mod unsigned_input_loop_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/lazy_byte_predicate.rs"]
 mod lazy_byte_predicate_tests;
 
@@ -4563,6 +4567,27 @@ fn prove_static_for<'node>(
     let line = loop_node.span.begin.line;
     let column = loop_node.span.begin.column;
     let declaration_start = start.checked_add(5)?;
+    let unsigned = variable.type_name.as_deref() == Some("u32");
+    let counter_type = if unsigned {
+        "u32"
+    } else {
+        "i32"
+    };
+    let prefix = if unsigned {
+        b"unsigned ".as_slice()
+    } else {
+        b"int ".as_slice()
+    };
+    let prefix_width = u32::try_from(prefix.len()).ok()?;
+    let counter_start = declaration_start.checked_add(prefix_width)?;
+    if unsigned {
+        let witness = source?;
+        let begin = usize::try_from(declaration_start).ok()?;
+        if witness.get(begin..begin.checked_add(prefix.len())?) != Some(prefix)
+        {
+            return None;
+        }
+    }
     // Authenticate the C identifier against the original source and Clang
     // declaration binding instead of assuming the spelling `i`.
     let name = variable.name.as_deref()?;
@@ -4578,12 +4603,16 @@ fn prove_static_for<'node>(
         return None;
     }
     let name_width = u32::try_from(name_bytes.len()).ok()?;
-    let initial_width =
-        u32::try_from(initial.literal.as_deref()?.len()).ok()?;
-    if !(1..=2).contains(&initial_width) {
+    let initial_width = u32::try_from(initial.literal.as_deref()?.len())
+        .ok()?
+        .checked_add(u32::from(unsigned))?;
+    if !(1..=3).contains(&initial_width) {
         return None;
     }
-    let initial_start = start.checked_add(12)?.checked_add(name_width)?;
+    let initial_start = start
+        .checked_add(8)?
+        .checked_add(prefix_width)?
+        .checked_add(name_width)?;
     let declaration_end =
         initial_start.checked_add(initial_width)?.checked_add(1)?;
     let variable_end = declaration_end.checked_sub(1)?;
@@ -4636,6 +4665,9 @@ fn prove_static_for<'node>(
     let increment_start = bound.span.end.byte.checked_add(2)?;
     let compound_increment = increment.kind == "compound-assignment-expression";
     let assigned_increment = increment.kind == "binary-expression";
+    if unsigned && (compound_increment || assigned_increment) {
+        return None;
+    }
     // The pinned Clang preorder supplies the increment literal at a fixed
     // child offset. Its source width extends the exact header geometry; the
     // later leaf proof binds every digit to the original C and its parent.
@@ -4659,25 +4691,23 @@ fn prove_static_for<'node>(
     .checked_add(stride_width.checked_sub(1)?)?;
     let increment_end = increment_start.checked_add(increment_length)?;
     let arm_start = increment_end.checked_add(2)?;
-    let variable_reference =
-        format!("{name}@{}", declaration_start.checked_add(4)?);
+    let variable_reference = format!("{name}@{counter_start}");
     if let Some(witness) = source {
-        if !source_counter_identifier(
-            witness,
-            declaration_start.checked_add(4)?,
-            name,
-        )? || !source_counter_identifier(witness, condition_start, name)?
+        if !source_counter_identifier(witness, counter_start, name)?
+            || !source_counter_identifier(witness, condition_start, name)?
         {
             return None;
         }
     }
-    let initial_value = prove_decimal_condition_operand(
+    let initial_value = prove_for_decimal_operand(
         initial,
         expected_id.checked_add(3)?,
         variable.id,
         initial_start,
         line,
         column.checked_add(initial_start.checked_sub(start)?)?,
+        unsigned,
+        source,
     )?;
     // Only source-authenticated steps in the comparison's direction are
     // admitted: unary unit steps or 1–99 compound/assigned strides.
@@ -4712,7 +4742,7 @@ fn prove_static_for<'node>(
         || variable.parent != declaration.id
         || variable.kind != "variable-declaration"
         || variable.name.as_deref() != Some(name)
-        || variable.type_name.as_deref() != Some("i32")
+        || variable.type_name.as_deref() != Some(counter_type)
         || variable.reference.as_deref() != Some(variable_reference.as_str())
         || variable.definition.as_deref() != Some("definition")
         || variable.linkage.as_deref() != Some("none")
@@ -4752,7 +4782,7 @@ fn prove_static_for<'node>(
         || read_cast.id != expected_id.checked_add(5)?
         || read_cast.parent != condition.id
         || read_cast.kind != "cast-expression"
-        || read_cast.type_name.as_deref() != Some("i32")
+        || read_cast.type_name.as_deref() != Some(counter_type)
         || read_cast.operation.as_deref() != Some("lvalue-to-rvalue")
         || !metadata_empty(read_cast)
         || !source_word(
@@ -4765,7 +4795,7 @@ fn prove_static_for<'node>(
         || read_variable.id != expected_id.checked_add(6)?
         || read_variable.parent != read_cast.id
         || read_variable.kind != "declaration-reference-expression"
-        || read_variable.type_name.as_deref() != Some("i32")
+        || read_variable.type_name.as_deref() != Some(counter_type)
         || read_variable.reference.as_deref()
             != Some(variable_reference.as_str())
         || read_variable.operation.is_some()
@@ -4786,7 +4816,7 @@ fn prove_static_for<'node>(
             } else {
                 "unary-expression"
             }
-        || increment.type_name.as_deref() != Some("i32")
+        || increment.type_name.as_deref() != Some(counter_type)
         || increment.operation.as_deref()
             != Some(if assigned_increment {
                 "="
@@ -4809,7 +4839,7 @@ fn prove_static_for<'node>(
         || increment_variable.id != expected_id.checked_add(9)?
         || increment_variable.parent != increment.id
         || increment_variable.kind != "declaration-reference-expression"
-        || increment_variable.type_name.as_deref() != Some("i32")
+        || increment_variable.type_name.as_deref() != Some(counter_type)
         || increment_variable.reference.as_deref()
             != Some(variable_reference.as_str())
         || increment_variable.operation.is_some()
@@ -4882,7 +4912,7 @@ fn prove_static_for<'node>(
             || variable.id != expected_id.checked_add(12)?
             || variable.parent != read.id
             || variable.kind != "declaration-reference-expression"
-            || variable.type_name.as_deref() != Some("i32")
+            || variable.type_name.as_deref() != Some(counter_type)
             || variable.reference.as_deref()
                 != Some(variable_reference.as_str())
             || variable.operation.is_some()
@@ -4932,7 +4962,7 @@ fn prove_static_for<'node>(
     if !(1..=99).contains(&stride) || (stride != 1 && source.is_none()) {
         return None;
     }
-    let bound_value = prove_decimal_condition_operand(
+    let bound_value = prove_for_decimal_operand(
         bound,
         expected_id.checked_add(7)?,
         condition.id,
@@ -4941,6 +4971,8 @@ fn prove_static_for<'node>(
         condition_column
             .checked_add(name_width)?
             .checked_add(2 + operator_width)?,
+        unsigned,
+        source,
     )?;
     // Same-width numeric forgeries can otherwise turn a terminating loop
     // into a different number of guest effects. Compare both Clang decimal
@@ -5005,6 +5037,11 @@ fn prove_static_for<'node>(
         {
             return None;
         }
+    }
+    // Unlike signed decrement, an unsigned value wraps after zero: `i >= 0U`
+    // remains true forever, so it cannot be statically unrolled to `i == 0`.
+    if unsigned && !ascending && inclusive && bound_value == 0 {
+        return None;
     }
     // Include the bound on either signed direction only for <= or >=.
     // A false initial condition is a real, finite zero-trip loop.
@@ -5127,6 +5164,59 @@ struct StaticIfProof<'node> {
     selected: bool,
     effects: Vec<StaticIfEffect<'node>>,
     end: u32,
+}
+
+// The signed witness remains compatible with AST-only tests; an unsigned
+// counter requires a source-backed exact `U` suffix on each bounded literal.
+fn prove_for_decimal_operand(
+    node: &Node,
+    expected_id: u32,
+    parent: u32,
+    start: u32,
+    line: u32,
+    column: u32,
+    unsigned: bool,
+    source: Option<&[u8]>,
+) -> Option<i32> {
+    if !unsigned {
+        return prove_decimal_condition_operand(
+            node,
+            expected_id,
+            parent,
+            start,
+            line,
+            column,
+        );
+    }
+    let digits = node.literal.as_deref()?;
+    let value = digits.parse::<i32>().ok()?;
+    let end = start
+        .checked_add(u32::try_from(digits.len()).ok()?)?
+        .checked_add(1)?;
+    let witness = source?;
+    let begin = usize::try_from(start).ok()?;
+    let source_end = usize::try_from(end).ok()?;
+    let (suffix, source_digits) =
+        witness.get(begin..source_end)?.split_last()?;
+    (value >= 0
+        && value.to_string() == digits
+        && *suffix == b'U'
+        && source_digits == digits.as_bytes()
+        && node.id == expected_id
+        && node.parent == parent
+        && node.kind == "integer-literal"
+        && node.type_name.as_deref() == Some("u32")
+        && node.operation.is_none()
+        && node.reference.is_none()
+        && node.name.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+        && node.constant_integer.as_deref() == Some(digits)
+        && source_word(node, start, end, line, column))
+    .then_some(value)
 }
 
 // Match a source-spelled nonnegative decimal i32 operand, rather than
