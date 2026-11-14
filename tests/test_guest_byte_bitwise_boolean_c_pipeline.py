@@ -126,10 +126,10 @@ class GuestByteBitwiseBooleanCPipelineTests(unittest.TestCase):
                     self.assertEqual(actual.stdout, bytes((data[0],) * 4 + (data[1],)))
 
     def test_impure_or_unproven_integer_xor_do_not_fold(self) -> None:
-        """Effectful and unsupported integer operands cannot be erased."""
+        """Effectful and undefined integer operands cannot be erased."""
         invalid = (
-            "current ^ (current >> 1)",
-            "current ^ (current + 1)",
+            "current ^ (current >> 32)",
+            "current ^ (current + 2147483647)",
             "((current & 1) != 0) ^ getchar()",
             "((current & 1) != 0) ^ putchar(65)",
         )

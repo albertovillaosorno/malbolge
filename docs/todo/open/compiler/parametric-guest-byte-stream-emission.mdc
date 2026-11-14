@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a three-trip C loop/continue/conditional with a real
+  `getchar` local first refused `((current * 3 + 1) % 3) == 1` at the
+  normalized adapter. Source- and pinned-Clang-authenticated exact `i32`
+  guards now compose checked arithmetic, shifts and arbitrary pure integer
+  comparisons across all 256 successful guest bytes, rejecting overflow,
+  zero division, invalid shifts, effectful operands and forged source/AST.
+  The original program now executes four copies of a real input followed by
+  a fresh input in eight normative VM steps; a dependent modulus guard with
+  equivalent effects and additional pure arithmetic shapes also admit.
+  This proves static branch-effect equivalence, not guest runtime arithmetic,
+  dynamic unequal-arm branching, storage, EOF or failed I/O. P0 stays open.
+
 - On 2026-11-13 a complete counted/continued C binary stream first
   refused `((current & 2) ^ (current & 2)) == 0` at normalized
   lowering. Its 256-input source-/pinned-Clang-backed predicate proof

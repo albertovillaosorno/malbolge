@@ -149,7 +149,7 @@ class GuestByteExactIntegerCPipelineTests(unittest.TestCase):
             total.source("(current & 2) ^ (current & 4)"),
             equivalent.source("(current & 2) ^ getchar()"),
             equivalent.source("(current & 2) & putchar(65)"),
-            equivalent.source("(current & 2) ^ (current >> 1)"),
+            equivalent.source("(current & 2) ^ (current >> 32)"),
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             for index, program in enumerate(invalid):

@@ -5623,11 +5623,31 @@ fn prove_total_byte_guard(
             source,
         );
     }
-    if matches!(
-        root.operation.as_deref(),
-        Some("&&" | "||" | "^" | "&" | "|")
-    ) {
-        let compound = prove_total_byte_logical(
+    if root.kind == "binary-expression"
+        && matches!(
+            root.operation.as_deref(),
+            Some(
+                "&&" | "||"
+                    | "^"
+                    | "&"
+                    | "|"
+                    | "+"
+                    | "-"
+                    | "*"
+                    | "/"
+                    | "%"
+                    | "<<"
+                    | ">>"
+                    | "=="
+                    | "!="
+                    | "<"
+                    | "<="
+                    | ">"
+                    | ">="
+            )
+        )
+    {
+        let compound = prove_total_byte_binary(
             nodes,
             body,
             previous,
@@ -5637,12 +5657,11 @@ fn prove_total_byte_guard(
             depth,
             source,
         );
-        if compound.is_some()
-            || matches!(root.operation.as_deref(), Some("&&" | "||" | "^"))
-        {
+        if compound.is_some() {
             return compound;
         }
-        // A non-Boolean `current & 2` is an ordinary masked-byte leaf.
+        // Keep the older source-checked byte/mask and zero-test leaf path;
+        // arithmetic remains closed if its complete proof cannot be made.
     }
     if matches!(root.operation.as_deref(), Some("==" | "!="))
         && let Some(proof) = prove_total_byte_zero_comparison(
@@ -5720,13 +5739,57 @@ fn prove_total_byte_zero_comparison(
     (width <= MAX_STATIC_PREDICATE_NODES).then_some((width, spelling, values))
 }
 
+// Reconstruct both pure integer operands in Clang preorder, then verify the
+// original C spelling and i32 parent. Every successful byte must have a
+// well-defined result; overflow, invalid shifts and zero divisors reject.
+fn checked_c_byte_guard_binary(
+    operator: &str,
+    left: i32,
+    right: i32,
+) -> Option<i32> {
+    match operator {
+        "+" => left.checked_add(right),
+        "-" => left.checked_sub(right),
+        "*" => left.checked_mul(right),
+        "/" => left.checked_div(right),
+        "%" => left.checked_rem(right),
+        "<<" => {
+            // Signed left shifts must have a nonnegative operand and a
+            // representable result in signed 32-bit C int.
+            (left >= 0).then_some(())?;
+            let shift = u32::try_from(right).ok()?;
+            (shift < 32).then_some(())?;
+            i32::try_from(i64::from(left).checked_shl(shift)?).ok()
+        },
+        ">>" => {
+            // Right shift of a negative signed value is implementation-
+            // defined; this proof only admits portable positive shifts.
+            (left >= 0).then_some(())?;
+            let shift = u32::try_from(right).ok()?;
+            (shift < 32).then_some(left >> shift)
+        },
+        "^" => Some(left ^ right),
+        "&" => Some(left & right),
+        "|" => Some(left | right),
+        "==" => Some(i32::from(left == right)),
+        "!=" => Some(i32::from(left != right)),
+        "<" => Some(i32::from(left < right)),
+        "<=" => Some(i32::from(left <= right)),
+        ">" => Some(i32::from(left > right)),
+        ">=" => Some(i32::from(left >= right)),
+        "&&" => Some(i32::from(left != 0 && right != 0)),
+        "||" => Some(i32::from(left != 0 || right != 0)),
+        _ => None,
+    }
+}
+
 // Reconstruct both pure operands in Clang preorder, then verify the exact
 // original C spelling and i32 parent before selecting either statement arm.
 #[expect(
     clippy::too_many_arguments,
     reason = "retain both operand contexts and exact parent/source evidence"
 )]
-fn prove_total_byte_logical(
+fn prove_total_byte_binary(
     nodes: &[Node],
     body: &Node,
     previous: u32,
@@ -5765,20 +5828,14 @@ fn prove_total_byte_logical(
     (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
     let spelling = format!("{left} {operator} {right}");
     pure_expression_source(root, &spelling, source)?;
-    // C bitwise operations preserve the actual integer value; logical
-    // operations first convert each operand to its C truth value.
-    let values = match operator {
-        "^" => std::array::from_fn(|i| left_values[i] ^ right_values[i]),
-        "&" => std::array::from_fn(|i| left_values[i] & right_values[i]),
-        "|" => std::array::from_fn(|i| left_values[i] | right_values[i]),
-        "&&" => std::array::from_fn(|i| {
-            i32::from(left_values[i] != 0 && right_values[i] != 0)
-        }),
-        "||" => std::array::from_fn(|i| {
-            i32::from(left_values[i] != 0 || right_values[i] != 0)
-        }),
-        _ => return None,
-    };
+    let mut values = [0i32; 256];
+    for (index, value) in values.iter_mut().enumerate() {
+        *value = checked_c_byte_guard_binary(
+            operator,
+            left_values[index],
+            right_values[index],
+        )?;
+    }
     Some((width, spelling, values))
 }
 

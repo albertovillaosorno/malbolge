@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Checked arithmetic for pure live-byte C guards (2026-11-13)
+
+A complete three-trip source-C program with local state, induction,
+remainder-selected `continue`, a nested conditional, and two real guest reads
+first refused `((current * 3 + 1) % 3) == 1` at normalized lowering. The
+source-/pinned-Clang-authenticated 256-value `i32` proof now composes pure
+binary `+`, `-`, `*`, `/`, `%`, `<<`, `>>` and general comparisons in addition
+to Boolean/bitwise operators. Checked signed overflow, division by zero,
+negative or out-of-range shifts, and nonrepresentable signed left shifts
+reject; there is no wrapping or guessed guest input. All operands require
+exact original-source spelling, Clang parent IDs, spans and integer types.
+
+The original C program now executes in the normative guest VM with four
+copies of its first actual input followed by a new input, in eight guest
+steps. A guest-dependent modulus guard with independently equivalent
+output-only arms also preserves genuine binary I/O. Bounded boundary,
+stratified and seeded oracle streams, additional arithmetic admission
+shapes, effectful/unequal branches, undefined arithmetic and forged AST
+all have regression coverage. Arithmetic is proven only to decide whether
+C branch effects are invariant over successful byte reads: guest-side
+arithmetic, dynamic unequal-arm branching, EOF, storage and failed output
+remain unsupported. The P0 contract is still pending.
+
 ### Exact non-Boolean integer predicate values (2026-11-13)
 
 A complete counted C stream with a live binary input, local state,

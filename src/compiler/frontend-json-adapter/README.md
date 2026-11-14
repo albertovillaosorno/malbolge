@@ -11,6 +11,21 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Checked arithmetic in source-proven live-byte predicates
+
+The exact successful-byte integer guard proof now includes source- and
+pinned-Clang-authenticated `+`, `-`, `*`, `/`, `%`, signed `<<`/`>>`, and
+comparisons of recursively proven pure `i32` operands. It enumerates all
+256 possible successful `getchar` bytes and rejects division by zero,
+signed overflow, negative or out-of-range shifts, and undefined signed
+left shifts. The whole C three-trip loop/conditional/`continue` program
+`((current * 3 + 1) % 3) == 1` emits four live input copies and a second
+fresh byte through the normative Malbolge VM. Dependent pure arithmetic
+guards remain admissible only with equivalent full output-only branches.
+This is bounded compile-time proof of branch-effect invariance, not guest
+runtime arithmetic or dynamic branching; EOF and failed output are not
+modeled.
+
 ### Exact integer truth for pure guest-byte guards (2026-11-13)
 
 The source-/Clang-authenticated 256-byte proof now preserves exact signed

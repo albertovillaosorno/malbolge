@@ -99,12 +99,12 @@ class GuestByteIntegerOrCPipelineTests(unittest.TestCase):
 
     @staticmethod
     def test_unknown_integer_effects_refuse() -> None:
-        """Unproven or effectful operands remain rejected."""
+        """Undefined arithmetic and effectful operands remain rejected."""
         invalid = (
             "(current & 2) | getchar()",
             "(current & 2) | putchar(65)",
-            "(current & 2) | (current >> 1)",
-            "(current & 2) | (current + 1)",
+            "(current & 2) | (current >> 32)",
+            "(current & 2) | (current + 2147483647)",
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
