@@ -32,7 +32,9 @@
 use serde_json::json;
 
 use super::{
-    Node, StaticInduction, prove_induction_predicate, prove_static_predicate,
+    MAX_STATIC_PREDICATE_DEPTH, Node, StaticInduction, StaticValueLocation,
+    prove_induction_predicate, prove_skipped_induction_shape,
+    prove_static_predicate,
 };
 
 fn node(
@@ -608,4 +610,68 @@ fn skipped_comparison_with_zero_divisor_does_not_require_a_value() {
     assert_eq!(guard(source, &nodes, 0), Some((8, true)));
     assert_eq!(guard(&source.replace(" || ", " && "), &nodes, 0), None);
     assert_eq!(guard(&source.replace(" == ", " != "), &nodes, 0), None);
+}
+
+#[test]
+fn skipped_grouped_comparison_still_authenticates_parentheses() {
+    let source = "if (1 || (i / 0 == 1))";
+    let nodes = vec![
+        node(2, 1, "binary-expression", 4, 21, Some("||"), None, None),
+        literal(3, 2, 4, "1"),
+        node(4, 2, "parenthesized-expression", 9, 21, None, None, None),
+        node(5, 4, "binary-expression", 10, 20, Some("=="), None, None),
+        node(6, 5, "binary-expression", 10, 15, Some("/"), None, None),
+        counter_cast(7, 6, 10),
+        counter_reference(8, 7, 10),
+        literal(9, 6, 14, "0"),
+        literal(10, 5, 19, "1"),
+    ];
+    assert_eq!(guard(source, &nodes, 0), Some((9, true)));
+    assert_eq!(guard(&source.replace("(i /", "[i /"), &nodes, 0), None);
+    assert_eq!(guard(&source.replace("1))", "1])"), &nodes, 0), None);
+    assert_eq!(guard(&source.replace(" || ", " && "), &nodes, 0), None);
+}
+
+#[test]
+fn skipped_negation_and_grouping_validate_both_source_delimiters() {
+    let source = "if (1 || !(i / 0 == 1))";
+    let nodes = vec![
+        node(2, 1, "binary-expression", 4, 22, Some("||"), None, None),
+        literal(3, 2, 4, "1"),
+        node(4, 2, "unary-expression", 9, 22, Some("!"), None, None),
+        node(5, 4, "parenthesized-expression", 10, 22, None, None, None),
+        node(6, 5, "binary-expression", 11, 21, Some("=="), None, None),
+        node(7, 6, "binary-expression", 11, 16, Some("/"), None, None),
+        counter_cast(8, 7, 11),
+        counter_reference(9, 8, 11),
+        literal(10, 7, 15, "0"),
+        literal(11, 6, 20, "1"),
+    ];
+    assert_eq!(guard(source, &nodes, 0), Some((10, true)));
+    assert_eq!(guard(&source.replace("!(i", "+(i"), &nodes, 0), None);
+    assert_eq!(guard(&source.replace("1))", "1])"), &nodes, 0), None);
+    assert_eq!(guard(&source.replace(" || ", " && "), &nodes, 0), None);
+}
+
+#[test]
+fn skipped_shape_keeps_the_induction_expression_depth_budget() {
+    let (source, nodes) = zero_divisor_logical_guard("1", "||");
+    let location = StaticValueLocation {
+        id: 4,
+        parent: 2,
+        start: 9,
+        line: 1,
+        column: 10,
+        depth: MAX_STATIC_PREDICATE_DEPTH,
+    };
+    let induction = StaticInduction {
+        reference: "i@0",
+        name: "i",
+        source: Some(source.as_bytes()),
+        value: 0,
+    };
+    assert_eq!(
+        prove_skipped_induction_shape(&nodes[2..], location, induction),
+        None
+    );
 }

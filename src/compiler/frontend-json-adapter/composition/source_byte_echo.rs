@@ -5332,6 +5332,23 @@ fn induction_identifier_end(
     Some(end)
 }
 
+// C signed induction arithmetic is checked only on a selected evaluation
+// path. A separate source-shape proof can authenticate an unexecuted path.
+fn checked_induction_arithmetic(
+    operator: &str,
+    counter: i32,
+    operand: i32,
+) -> Option<i32> {
+    match operator {
+        "%" => counter.checked_rem(operand),
+        "/" => counter.checked_div(operand),
+        "+" => counter.checked_add(operand),
+        "-" => counter.checked_sub(operand),
+        "*" => counter.checked_mul(operand),
+        _ => None,
+    }
+}
+
 // Pure arithmetic on a protected induction counter is a source-time value.
 // Authenticate the complete `name op N` Clang subtree, source operator and
 // canonical decimal operand; a live guest byte never enters this proof.
@@ -5398,14 +5415,8 @@ fn prove_induction_arithmetic_shape(
     {
         return None;
     }
-    let value = match operator {
-        "%" => induction.value.checked_rem(divisor_value),
-        "/" => induction.value.checked_div(divisor_value),
-        "+" => induction.value.checked_add(divisor_value),
-        "-" => induction.value.checked_sub(divisor_value),
-        "*" => induction.value.checked_mul(divisor_value),
-        _ => None,
-    };
+    let value =
+        checked_induction_arithmetic(operator, induction.value, divisor_value);
     Some((4, value, end))
 }
 
@@ -5708,19 +5719,74 @@ fn source_induction_operator(
     source_induction_bytes(induction, preceding_end.checked_add(1)?, spelling)
 }
 
-// Source and Clang shape checks for unexecuted induction expressions must
-// still reject calls, unrelated locals and forged operators. A defined
-// evaluation at a different bounded counter value proves that this exact
-// subtree is pure and authenticated; its resulting truth value is discarded.
-// No substituted value may select a guest effect or certify the skipped
-// expression as defined at the actual induction value. This deliberately
-// refuses pure subtrees for which none of these witnesses is defined.
+// Grouping and logical negation remain pure when the child is pure, even if
+// the child's evaluation would be undefined. Verify original punctuation,
+// preorder, source coordinates and the entire skipped child before accepting
+// the shape. No unchecked value may escape this proof.
+fn prove_skipped_induction_prefix_shape(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, u32)> {
+    let node = nodes.first()?;
+    let grouped = node.kind == "parenthesized-expression";
+    if !grouped
+        && (node.kind != "unary-expression"
+            || node.operation.as_deref() != Some("!"))
+    {
+        return None;
+    }
+    if node.id != at.id
+        || node.parent != at.parent
+        || node.type_name.as_deref() != Some("i32")
+        || node.reference.is_some()
+        || !metadata_empty(node)
+        || (grouped && node.operation.is_some())
+    {
+        return None;
+    }
+    source_induction_bytes(
+        induction,
+        at.start,
+        if grouped {
+            "("
+        } else {
+            "!"
+        },
+    )?;
+    let inner_at = at.child(
+        at.id.checked_add(1)?,
+        at.start.checked_add(1)?,
+        at.column.checked_add(1)?,
+    )?;
+    let (inner_width, inner_end) =
+        prove_skipped_induction_shape(nodes.get(1..)?, inner_at, induction)?;
+    if grouped {
+        source_induction_bytes(induction, inner_end, ")")?;
+    }
+    let end = if grouped {
+        inner_end.checked_add(1)?
+    } else {
+        inner_end
+    };
+    let width = inner_width.checked_add(1)?;
+    (width <= MAX_STATIC_PREDICATE_NODES
+        && source_word(node, at.start, end, at.line, at.column))
+    .then_some((width, end))
+}
+
+// Every skipped C expression must retain pure source/Clang ancestry. Basic
+// arithmetic, comparisons and grouping have direct shape-only proofs. Other
+// supported expressions may use a different defined counter witness, but
+// that witness value is always discarded, never used to select guest effects.
+// Unsupported or effectful expressions still refuse conservatively.
 fn prove_skipped_induction_shape(
     nodes: &[Node],
     at: StaticValueLocation,
     induction: StaticInduction<'_>,
 ) -> Option<(usize, u32)> {
-    induction.source.is_some().then_some(())?;
+    (at.depth < MAX_STATIC_PREDICATE_DEPTH && induction.source.is_some())
+        .then_some(())?;
     // The same source- and Clang-authenticated primitive induction arithmetic
     // remains pure even if its actual evaluation would be undefined. Do not
     // invent a substitute value: the caller can use this shape only for a C
@@ -5732,6 +5798,11 @@ fn prove_skipped_induction_shape(
     }
     if let Some((width, _, end)) =
         prove_induction_arithmetic_comparison_shape(nodes, at, induction)
+    {
+        return Some((width, end));
+    }
+    if let Some((width, end)) =
+        prove_skipped_induction_prefix_shape(nodes, at, induction)
     {
         return Some((width, end));
     }

@@ -24,7 +24,11 @@ forgeries is distinct from evaluating division by zero; reachable undefined
 arithmetic still refuses guest effect selection.
 
 Thirteen focused synthetic-AST checks and eleven existing normalized-loop
-tests pass. A separate complete C23 loop with branches and selected output
+tests pass. A subsequent red-first follow-up also handles nested parentheses
+and source-spelled logical negation around undefined but skipped operands,
+while enforcing the existing proof-depth budget. Sixteen focused induction
+tests now pass; no unselected arithmetic value or hidden effect is projected.
+A separate complete C23 loop with branches and selected output
 executes under host Clang 22 UBSan at O0/O2 and emits `41 42` (hex); this is
 an independent *host* oracle, not pinned frontend normalization or guest VM
 parity. The repository-local pinned LLVM 22 executable is absent, so the

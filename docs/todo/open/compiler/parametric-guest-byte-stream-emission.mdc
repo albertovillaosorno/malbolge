@@ -55,6 +55,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, red-first follow-up source-predicate tests exposed that
+  grouping and `!` around skipped `i / 0 == 1` still demanded an evaluated
+  value. Recursive shape-only proof now authenticates both grouping delimiters
+  and prefix tokens without evaluating the skipped child; the original
+  induction depth cap also applies to these shape-only paths. Sixteen focused
+  synthetic induction checks and eleven normalized-loop tests pass. These
+  changes do not restore the missing pinned LLVM 22 frontend or establish new
+  guest-VM parity; P0 runtime control and general byte streams remain open.
+
 - On 2026-11-14, the complete conditional Fibonacci C probe again
   refused at missing repository-local pinned LLVM 22 frontend preflight,
   without guest publication. A separate red-first source/Clang proof exposed
