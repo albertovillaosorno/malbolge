@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, a red-first 552,960-state dense guest-output frontier
+  exposed an over-budget beam after per-progress/byte reachability pruning:
+  16,442 survivors exceeded the 16,384 global cap, aborting an otherwise
+  selectable source geometry. A secondary balanced selection now enforces
+  the same cap while retaining every active output-progress count and only
+  committing retained predecessor links. Positional and VM admission remain
+  unchanged. The complete conditional Fibonacci C attempt still stops at
+  missing pinned LLVM 22 frontend preflight without artifact publication;
+  runtime C state and general stream synthesis remain P0 work.
+
 - On 2026-11-14, a red-first variable source-scratch regression exposed
   four-check verification starvation: shorter complete guest paths consumed
   every admission slot before a later, source-phase-distinct completion.

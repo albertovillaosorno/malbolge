@@ -26,6 +26,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Dense output-beam total capacity (2026-11-14)
+
+The source-independent output search first retained minimum, maximum, and
+up-to-four-step-reachable full accumulator words per output-progress/byte
+class. Each class obeyed its local representative bound, but twelve distinct
+progress counts across 256 byte classes could still retain **16,442**
+proposals, beyond the **16,384** global source-position cap. The search then
+refused the entire geometry despite having bounded, viable proposal subsets.
+
+A red-first 552,960-state synthetic frontier reproduces this overflow with
+real current-profile crazy transitions and loader-word lookahead. A second,
+progress-balanced beam pass now enforces the global cap after the reachability
+hints, retaining representatives for every active output count and appending
+reconstruction links only for survivors. All accepted proposals continue
+through independent positional, source-write, and normative VM verification.
+This repairs a bounded search false negative, not guest-side C execution or
+arbitrary stream completeness. The pinned C frontend remains unavailable.
+
 ### Variable source-scratch late-geometry admission (2026-11-14)
 
 The complete twelve-trip conditional Fibonacci C program was attempted again,

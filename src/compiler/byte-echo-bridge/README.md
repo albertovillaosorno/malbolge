@@ -1387,3 +1387,15 @@ twelve-output original Fibonacci byte stream and canonical typed publisher
 still replay correctly on the normative VM. Missing pinned native Clang
 prevents a full source-C pipeline claim; this change does not implement guest
 C arithmetic, runtime control flow, or arbitrary byte-stream synthesis.
+
+### Bounded dense guest-output beams (2026-11-14)
+
+The source-independent candidate search can retain more than 16,384 states
+when each progress/low-byte group protects its own full-word reachability
+hints. A red-first 12-progress, 256-byte-class frontier exposed 16,442
+survivors after the original pruning pass. A second balanced pass selects at
+most 16,384 candidates, keeps each active output count represented, and
+stores predecessor records only for survivors. Sparse frontiers are unchanged.
+The output candidate still requires independent positional encoding, source
+write checks and actual VM replay before acceptance. This is not runtime C
+arithmetic or a general byte-stream synthesizer.

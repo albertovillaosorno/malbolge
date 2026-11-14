@@ -50,6 +50,7 @@ const MAX_COMPLETION_CHECKS_PER_GEOMETRY: usize = 4;
 /// Every step owns one already-synthesized instruction and its predecessor.
 /// A per-position state retains only one path for each output index and exact
 /// accumulator word; no source bytes are admitted by this proposal structure.
+#[derive(Clone, Copy)]
 struct SearchStep {
     operation: LinearOpcode,
     predecessor: usize,
@@ -310,6 +311,18 @@ fn append_successors<const N: usize>(
                 .get(&(emitted, malbolge::profile_low_byte(accumulator)))
                 .is_some_and(|group| group.retains(accumulator))
         });
+        // Different progress/byte classes can each retain up to ten
+        // full-word hints. Their combined size may still exceed the global
+        // beam cap, which would otherwise abort an otherwise viable source
+        // geometry. Preserve a bounded, progress-balanced subset instead.
+        if proposals.len() > MAX_STATES_PER_POSITION {
+            proposals = bounded_revisit_states(
+                &proposals,
+                0,
+                target_emitted,
+                MAX_STATES_PER_POSITION,
+            );
+        }
     }
     // Record only retained paths: candidate fan-out is not a completed
     // search step, and discards must not exhaust the history budget.
@@ -3149,3 +3162,7 @@ pub(super) fn verified_four_relocation_write_layout<const N: usize>(
 ) -> Option<LinearLayout> {
     verified_relocated_write_layout(profile, expected, source_cells, 4)
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/search_state_budget.rs"]
+mod search_state_budget_tests;
