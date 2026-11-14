@@ -314,3 +314,52 @@ fn induction_ternary_can_skip_overflow_in_first_arm_too() {
     let (source, nodes) = ternary_true_arm_guard("!=");
     assert_eq!(guard(&source, &nodes, 1), None);
 }
+
+fn prefix_guard(grouped: bool) -> (String, Vec<Node>) {
+    let source = if grouped {
+        "if ((i))"
+    } else {
+        "if (!i)"
+    };
+    let kind = if grouped {
+        "parenthesized-expression"
+    } else {
+        "unary-expression"
+    };
+    let end = if grouped {
+        7
+    } else {
+        6
+    };
+    let operation = if grouped {
+        None
+    } else {
+        Some("!")
+    };
+    let nodes = vec![
+        node(2, 1, kind, 4, end, operation, None, None),
+        counter_cast(3, 2, 5),
+        counter_reference(4, 3, 5),
+    ];
+    (String::from(source), nodes)
+}
+
+#[test]
+fn induction_prefix_proofs_bind_source_punctuation() {
+    let (not_source, not_nodes) = prefix_guard(false);
+    assert_eq!(guard(&not_source, &not_nodes, 0), Some((3, true)));
+    assert_eq!(guard(&not_source, &not_nodes, 1), Some((3, false)));
+    // A valid same-width C unary plus cannot inherit the Clang ! decision.
+    assert_eq!(guard(&not_source.replace('!', "+"), &not_nodes, 0), None);
+    let (group_source, group_nodes) = prefix_guard(true);
+    assert_eq!(guard(&group_source, &group_nodes, 0), Some((3, false)));
+    assert_eq!(guard(&group_source, &group_nodes, 1), Some((3, true)));
+    assert_eq!(
+        guard(&group_source.replace("((", "(["), &group_nodes, 1),
+        None
+    );
+    assert_eq!(
+        guard(&group_source.replace("))", "])"), &group_nodes, 1),
+        None
+    );
+}

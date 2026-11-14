@@ -68,7 +68,11 @@ a compiler capability gap, not a reason to return to N+1.
   Broader adapter tests report seventeen inspector failures from absent pinned
   Python, with seventeen other unit tests passing. No new normalized frontend
   golden or guest VM parity is claimed; P0 dynamic C state/control, EOF and
-  general byte streams remain open.
+  general byte streams remain open. A further red-first proof detects forged
+  unary `+` posing as `!`, and malformed same-span parentheses in induction
+  predicates. Exact source token checks now reject these while keeping valid
+  group/negation behavior. Five focused synthetic AST tests pass. Pinned Clang
+  and guest VM proof remain pending.
 
 - On 2026-11-14, the full conditional Fibonacci C probe again stopped
   before lowering at missing pinned LLVM 22 frontend preflight. Separate

@@ -5618,6 +5618,15 @@ fn prove_induction_prefix(
     {
         return None;
     }
+    source_induction_bytes(
+        induction,
+        at.start,
+        if parenthesized {
+            "("
+        } else {
+            "!"
+        },
+    )?;
     let child_at = at.child(
         at.id.checked_add(1)?,
         at.start.checked_add(1)?,
@@ -5625,6 +5634,9 @@ fn prove_induction_prefix(
     )?;
     let (inner_width, inner_value, inner_end) =
         prove_induction_value(nodes.get(1..)?, child_at, induction)?;
+    if parenthesized {
+        source_induction_bytes(induction, inner_end, ")")?;
+    }
     let width = inner_width.checked_add(1)?;
     let end = if parenthesized {
         inner_end.checked_add(1)?
@@ -5644,20 +5656,28 @@ fn prove_induction_prefix(
     ))
 }
 
-// The original C spelling must bind each logical or ternary operator. Span
-// length alone cannot distinguish equal-width tokens such as && and ||.
-fn source_induction_operator(
+// The original C spelling must bind every induction predicate operator and
+// grouping delimiter. Span length cannot distinguish && from || or ! from +.
+fn source_induction_bytes(
     induction: StaticInduction<'_>,
-    preceding_end: u32,
+    start: u32,
     spelling: &str,
 ) -> Option<()> {
     if let Some(source) = induction.source {
-        let start = usize::try_from(preceding_end.checked_add(1)?).ok()?;
+        let start = usize::try_from(start).ok()?;
         (source.get(start..start.checked_add(spelling.len())?)
             == Some(spelling.as_bytes()))
         .then_some(())?;
     }
     Some(())
+}
+
+fn source_induction_operator(
+    induction: StaticInduction<'_>,
+    preceding_end: u32,
+    spelling: &str,
+) -> Option<()> {
+    source_induction_bytes(induction, preceding_end.checked_add(1)?, spelling)
 }
 
 // Source and Clang shape checks for unexecuted induction expressions must

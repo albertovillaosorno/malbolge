@@ -56,6 +56,15 @@ replace pinned normalized ASTs or normative guest VM parity. P0 guest dynamic
 state/control, arbitrary byte streams, EOF and the original full C proof
 remain unfinished.
 
+A second red-first source-authentication regression found that the same
+induction proof checked AST/spans but not the actual `!` or `(`/`)` C source
+bytes. A valid same-width unary `+` could impersonate a normalized `!` and
+reverse a branch decision. Both the prefix token and closing grouping token
+are now checked against original source; equal-span forgeries refuse. Five
+focused source-backed synthetic AST tests pass, including these punctuation
+mutations. The limitations above on pinned frontend and guest execution are
+unchanged.
+
 ### Definedness of lazy live-byte predicates (2026-11-14)
 
 The complete conditional Fibonacci C source was retried through the production
