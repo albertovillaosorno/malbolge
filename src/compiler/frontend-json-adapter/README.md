@@ -11,6 +11,25 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Bitwise Boolean partitions over live bytes (2026-11-13)
+
+A complete source-C stream with local state, a counted loop, a remainder
+branch, `continue`, nested `if` and two real binary reads initially refused
+`((current & 1) != 0) ^ ((current & 2) != 0)` at normalized lowering.
+The bounded predicate proof now distinguishes an exact C result of `0` or
+`1` from a merely truthy integer. It authenticates all operands against
+original source bytes and pinned Clang ancestry, then composes `^`, `&`,
+and `|` as bitwise truth sets only when both operands are proven Boolean.
+A nested equality/inequality with literal zero can convert a source-proven
+mask into a Boolean, without treating `current & 2` as `0` or `1`.
+
+The original compound program reaches real guest execution and matches an
+independent binary-stream oracle in eight VM steps across boundary inputs.
+The proof cannot predict the guest byte or implement a runtime branch:
+dependent guards are erased only when both full source-proven output traces
+are equivalent. General arithmetic and guest control flow, EOF, and failed
+I/O remain unsupported; P0 stays pending.
+
 ### Pure ternary C statement guards over real input bytes (2026-11-13)
 
 A full counted C stream with a live binary input, static remainder branch,

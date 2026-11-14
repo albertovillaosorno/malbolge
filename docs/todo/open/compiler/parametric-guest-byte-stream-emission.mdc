@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13, a complete counted C program with local state, a
+  remainder/`continue` branch, live input and nested `if` refused a
+  two-bit XOR Boolean guard at normalized lowering. Source-/pinned-
+  Clang-backed Boolean provenance now composes `^`, `&` and `|` only for
+  operands proven to yield exact `0` or `1`, and authenticates nested
+  zero tests of non-Boolean masks. The actual guest VM emits four
+  copies of the first input and a fresh second byte in eight steps on
+  binary boundary streams. Arbitrary integer XOR, hidden effects and
+  forged AST refuse. Dynamic guest C branching and general arithmetic
+  remain unimplemented; P0 is pending.
+
 - On 2026-11-13, a complete source-C induction/continue program with a
   live binary input and nested `if` first refused a ternary Boolean guard
   at normalized lowering. A bounded source-/pinned-Clang-backed proof now
