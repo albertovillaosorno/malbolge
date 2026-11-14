@@ -5772,9 +5772,10 @@ fn prove_total_byte_logical(
     (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
     let spelling = format!("{left} {operator} {right}");
     pure_expression_source(root, &spelling, source)?;
-    // Only 0/1 C values admit bitwise Boolean truth-set arithmetic.
-    // For example, (1 ^ 2) is true although (true ^ true) is false.
-    if matches!(operator, "^" | "&" | "|") && !(left_bool && right_bool) {
+    // XOR and AND require exact Boolean operands to combine truth sets.
+    // Bitwise OR is nonzero iff either C integer operand is nonzero,
+    // even when the original values contain different non-Boolean bits.
+    if matches!(operator, "^" | "&") && !(left_bool && right_bool) {
         return None;
     }
     let truth = match operator {
@@ -5785,7 +5786,12 @@ fn prove_total_byte_logical(
         "||" => std::array::from_fn(|i| left_truth[i] | right_truth[i]),
         _ => return None,
     };
-    Some((width, spelling, truth, true))
+    // Only logical operators produce 0/1 from arbitrary integer operands.
+    // Integer OR retains an exact Boolean result only when both operands
+    // themselves have separately proven exact 0/1 values.
+    let boolean_result =
+        matches!(operator, "&&" | "||") || (left_bool && right_bool);
+    Some((width, spelling, truth, boolean_result))
 }
 
 // C's conditional expression chooses its second or third operand separately

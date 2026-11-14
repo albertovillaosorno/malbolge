@@ -26,6 +26,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Integer bitwise OR truth over successful guest bytes (2026-11-13)
+
+A complete source-C stream with a local guest input, counted induction,
+remainder-selected `continue`, a byte-dependent `if`, and two real guest
+reads initially refused `(current & 2) | (current & 4)` at normalized
+lowering. C integer bitwise OR is zero exactly when both operands are zero,
+regardless of their nonzero bit patterns. The bounded source-/pinned-Clang
+proof now composes each pure operand's finite successful-byte truth set
+under `|`, without falsely treating either integer mask as an exact 0/1
+Boolean. Its result remains non-Boolean for subsequent XOR/AND proof unless
+both operands are exact Booleans. Dynamic branches can be erased only if
+both entire source-proven output traces are identical. Three nested
+bitmask, zero-test and logical-OR variants each match 15 independent
+binary streams in the normative VM, with five output bytes and eight
+steps per run. Non-Boolean XOR/AND, hidden effects, unequal arms and
+forged Clang ancestry refuse without publishing an artifact. This does
+not add guest arithmetic, guest-dependent control flow, EOF, or failed I/O.
+
+
 ### Bitwise Boolean partitions over live bytes (2026-11-13)
 
 A complete source-C stream with local state, a counted loop, a remainder

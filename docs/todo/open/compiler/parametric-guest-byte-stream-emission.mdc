@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete C induction/continue binary stream first
+  refused a non-Boolean bitwise OR of two pure live-byte masks. The
+  source-/pinned-Clang-authenticated finite truth-set proof now composes
+  integer OR using its exact zero/nonzero law without assuming either
+  operand equals 0 or 1. Three original guarded C programs execute
+  in the normative guest VM on 15 independent binary streams each, with
+  five output bytes and eight steps per run. Integer XOR/AND, effectful
+  predicates, unequal C arm effects and forged Clang ancestry refuse
+  without artifact publication. Guest-dependent branching, arithmetic,
+  storage, EOF and failed output remain open; P0 is pending.
+
 - On 2026-11-13, a complete counted C program with local state, a
   remainder/`continue` branch, live input and nested `if` refused a
   two-bit XOR Boolean guard at normalized lowering. Source-/pinned-

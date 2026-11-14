@@ -11,6 +11,20 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Non-Boolean integer bitwise OR guards (2026-11-13)
+
+The source-/Clang-authenticated finite guest-byte truth proof permits
+`(current & 2) | (current & 4)` without an unsound Boolean cast:
+`a | b` is zero exactly when both C integer operands are zero. This
+property does not hold for integer XOR or AND, which remain restricted
+to exact 0/1 operands in the recursive truth-set proof. Effect-equivalent
+branches may share the same verified output trace; different effects,
+unknown input and forged source/AST evidence still refuse publication.
+Three original counted C streams pass 15 independent binary VM inputs
+each, emitting five source-expected bytes in eight guest steps. The actual
+guest byte is never computed on the host.
+
+
 ### Bitwise Boolean partitions over live bytes (2026-11-13)
 
 A complete source-C stream with local state, a counted loop, a remainder
