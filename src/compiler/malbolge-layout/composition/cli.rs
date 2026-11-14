@@ -3673,7 +3673,12 @@ fn verify_source_scratch_literal_stream<const N: usize>(
             .filter(|&&opcode| opcode == profile.output_instruction())
             .count()
             == N.saturating_sub(2 + usize::from(relocations.len() == 2));
-    if !relocations.is_empty() && !revisits_source {
+    // A single source-backed j may also move to untouched graphical scratch
+    // without revisiting a prior write. The previous twelve-output grammar
+    // required two relocations even when one was independently sufficient.
+    // Prove the disjoint case against the admitted D trace below.
+    let disjoint_relocation = N == 12 && relocations.len() == 1;
+    if !relocations.is_empty() && !revisits_source && !disjoint_relocation {
         return Err(String::from("source-scratch relocation shape disagrees"));
     }
     if decoded.first() != Some(&b'i')
@@ -3682,7 +3687,7 @@ fn verify_source_scratch_literal_stream<const N: usize>(
         || decoded[target..decoded.len() - 1].iter().any(|&opcode| {
             !matches!(opcode, b'o' | b'p' | b'*')
                 && opcode != profile.output_instruction()
-                && !(revisits_source && opcode == b'j')
+                && !((revisits_source || disjoint_relocation) && opcode == b'j')
         })
         || decoded[target..]
             .iter()
@@ -3707,7 +3712,9 @@ fn verify_source_scratch_literal_stream<const N: usize>(
             b'o' => Some(LinearOpcode::NoOperation),
             b'p' => Some(LinearOpcode::CrazyData),
             b'*' => Some(LinearOpcode::RotateData),
-            b'j' if revisits_source => Some(LinearOpcode::RelocateDataPointer),
+            b'j' if revisits_source || disjoint_relocation => {
+                Some(LinearOpcode::RelocateDataPointer)
+            },
             b'v' => Some(LinearOpcode::Halt),
             output if output == profile.output_instruction() => {
                 Some(LinearOpcode::OutputByte)
@@ -3779,6 +3786,42 @@ fn verify_source_scratch_literal_stream<const N: usize>(
     } else {
         unique_writes.len() == writes.len()
     };
+    // Unlike the source-revisit grammar, an acyclic relocation cannot read
+    // an already-written data operand or write to any earlier data address.
+    // Positional layout admission has independently established the exact
+    // pointer sequence and encrypted source bytes at each reached opcode.
+    let valid_disjoint_relocation = if disjoint_relocation {
+        let relocation_code = target
+            .checked_add(relocations[0])
+            .and_then(|at| u32::try_from(at).ok());
+        let step = relocation_code.and_then(|code| {
+            layout
+                .executed_code_positions()
+                .iter()
+                .position(|&at| at == code)
+        });
+        step.is_some_and(|step| {
+            let pointer = layout.data_pointer_positions();
+            let operand = pointer.get(step).copied();
+            let destination = pointer.get(step + 1).copied();
+            match (operand, destination) {
+                (Some(operand), Some(destination)) => {
+                    operand > 0
+                        && operand < target as u32
+                        && destination > 0
+                        && destination < target as u32
+                        && layout.data_write_positions()[..step]
+                            .iter()
+                            .any(Option::is_some)
+                        && !layout.data_write_positions()[..step]
+                            .contains(&Some(operand))
+                },
+                _ => false,
+            }
+        }) && unique_writes.len() == writes.len()
+    } else {
+        true
+    };
     if writes.len()
         < usize::from(expected[0] != 0)
             + expected
@@ -3786,6 +3829,7 @@ fn verify_source_scratch_literal_stream<const N: usize>(
                 .filter(|pair| pair[0] != pair[1])
                 .count()
         || !valid_revisit
+        || !valid_disjoint_relocation
         || writes
             .iter()
             .any(|&address| address >= layout.source().len() as u32)

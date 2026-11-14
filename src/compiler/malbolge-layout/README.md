@@ -816,6 +816,22 @@ source-bound outputs and input independence before publication. Other
 byte sequences, incomplete prefixes, and forged SSA are not admitted;
 this is not general binary-stream lowering.
 
+The separately selected twelve-byte source-scratch verifier also admits a
+single **source-backed** data-pointer relocation after a proven guest
+arithmetic write, without requiring the two-relocation source-revisit
+pattern. It independently re-decodes the forward code jump and skipped
+source, checks the exact data-pointer trace (including the j operand and
+landing strictly inside past graphical scratch), rejects j operands touched
+by earlier writes, and requires distinct data-write addresses strictly
+behind reached code. A red-first guest test rotates one skipped source byte,
+outputs it, relocates to a fresh source operand, rotates a second byte, and
+outputs it eleven more times. Both binary-input and empty-input VM replays
+agree with the independent scalar-byte oracle. A one-j trace without a
+preceding arithmetic write still refuses. This is only an added *publisher
+admission* for source-backed, write-disjoint twelve-byte traces, not a new
+arbitrary C guest compiler, a claim that all source streams fit, or an
+independent proof that arbitrary VM self-modification is safe.
+
 The `--distinct-literal-thirteen` C path admits only the exact thirteen
 source-ordered bytes `42 43 30 16 54 09 bf c6 c8 87 e3 ab a4` (hex).
 One reached no-op and a data-pointer relocation precede twelve disjoint
