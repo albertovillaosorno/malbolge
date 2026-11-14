@@ -1234,3 +1234,18 @@ corrects heuristic retention only: independently admitted positional code,
 write-disjointness and normative VM execution still govern publication.
 The checkout used for this regression lacked the pinned C frontend binary,
 so it does not establish new end-to-end C compilation or retire P0.
+
+### Short dense guest-search frontiers (2026-11-14)
+
+A red-first seven-output search case exceeded the 16,384-state frontier
+budget even though the existing high-word beam could retain its real next-byte
+continuation. The old beam gate applied only to streams of eight or more
+outputs, so this shorter shape abandoned the whole geometry without trying
+a possible guest continuation. Dense frontiers now use the same
+bounded, full-word-aware beam at any output count; sparse frontiers remain
+exact. The test preserves accumulator `259` through an actual `p(0, 259)`
+change from byte `3` to `53`, the subsequent output step, and an unknown-word
+negative control. This is a search-budget repair, not a new C language
+feature, a promise of search completeness, or a relaxation of the positional
+layout and normative VM acceptance gates. The pinned frontend remains absent
+from this checkout, so no new end-to-end C result is asserted.

@@ -229,7 +229,7 @@ fn append_successors<const N: usize>(
             {
                 continue;
             }
-            // For long streams, every remaining output costs one instruction;
+            // Every remaining output costs one instruction;
             // each byte transition costs an additional p/* write.
             // A shortage is impossible to repair with padding or high trits.
             let pending = &expected[count..target_emitted];
@@ -250,7 +250,7 @@ fn append_successors<const N: usize>(
     // loader words, and the lookahead below cannot prove it unreachable.
     // Use bounded representatives only when the full frontier exceeds the
     // per-position budget; every resulting proposal is verified later.
-    if target_emitted >= 8 && proposals.len() > MAX_STATES_PER_POSITION {
+    if proposals.len() > MAX_STATES_PER_POSITION {
         let mut representatives =
             BTreeMap::<(usize, u8), BeamRepresentatives>::new();
         for &(emitted, accumulator) in proposals.keys() {

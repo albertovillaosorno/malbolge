@@ -1291,6 +1291,85 @@ fn dense_guest_frontier_still_prunes_to_a_bounded_budget() {
 }
 
 #[test]
+fn seven_output_dense_frontier_retains_full_word_continuations() {
+    // A short guest can still have a huge exact accumulator frontier.
+    // Rejecting it solely because the beam was reserved for N >= 8
+    // misses the real p(0, 259) -> 53 continuation.
+    let states = (0u32..8_192)
+        .map(|high| ((0usize, high * 256 + 3), 0usize))
+        .collect::<BTreeMap<_, _>>();
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let expected = [3, 53, 53, 53, 53, 53, 53];
+    let survivors = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
+            fourth_future_value: None,
+            remaining: 22,
+            target_emitted: expected.len(),
+        },
+        expected,
+    );
+    assert!(survivors.len() < MAX_STATES_PER_POSITION);
+    assert!(survivors.contains_key(&(1, 259)));
+    assert_eq!(steps.len(), survivors.len() + 1);
+
+    // The kept word has a real continuation: p(0, 259) then <.
+    let changed = malbolge::profile_crazy(0, 259, 15);
+    assert_eq!(changed & 255, 53);
+    let mut current = BTreeMap::from([(
+        (1usize, 259u32),
+        *survivors.get(&(1, 259)).expect("retained high word"),
+    )]);
+    for (index, word) in [0u32, 0].into_iter().enumerate() {
+        current = append_successors(
+            &current,
+            &mut steps,
+            SearchWord {
+                value: word,
+                next_value: Some(0),
+                next_next_value: Some(0),
+                next_next_next_value: Some(0),
+                fourth_future_value: None,
+                remaining: 21 - index,
+                target_emitted: expected.len(),
+            },
+            expected,
+        );
+        assert!(current.contains_key(&(index + 1, changed)));
+        // Keep only the path under examination, not alternatives that
+        // happen to produce the same output at another accumulator word.
+        current.retain(|&(emitted, accumulator), _| {
+            emitted == index + 1 && accumulator == changed
+        });
+    }
+
+    // An unproven loader operand must not create a false beam hint.
+    let unknown = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: None,
+            next_next_value: None,
+            next_next_next_value: None,
+            fourth_future_value: None,
+            remaining: 22,
+            target_emitted: expected.len(),
+        },
+        expected,
+    );
+    assert!(!unknown.contains_key(&(1, 259)));
+}
+
+#[test]
 fn dense_guest_frontier_retains_future_change_after_repeated_output() {
     // Every candidate begins with byte 3; the next output repeats it.
     // Accumulator 259 is necessary for a later p(0, A) to emit 53,

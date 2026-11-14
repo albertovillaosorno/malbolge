@@ -3301,3 +3301,13 @@ a compiler capability gap, not a reason to return to N+1.
   and forged Clang operator, parent and literal evidence refuse without
   publication. All induction is still compile-time C replay; guest runtime
   C state and general byte-stream synthesis remain P0 work.
+
+- A red-first seven-output dense guest-search frontier exposed an artificial
+  eight-output prerequisite for high-word beam pruning: a valid full-word
+  accumulator `259` continuation through real crazy arithmetic to byte `53`
+  was lost when a shorter search exceeded 16,384 states. Beam pruning now
+  applies to any over-budget output count, while sparse search stays exact;
+  the real-zero and unknown-loader-word controls both pass. Independent
+  layout and normative VM verification still gate guest publication. No
+  end-to-end C path was newly established without the pinned frontend, and
+  generalized P0 remains open.
