@@ -1196,3 +1196,21 @@ behavior. This only widens bounded candidate search; source encoding,
 independent layout admission and normative VM replay remain the sole
 publication gate. General byte-stream synthesis and dynamic C guest
 arithmetic/control are still unsupported.
+
+### Relocation-aware dense-beam future operands (2026-11-14)
+
+The bounded multi-region proposal previously predicted all future crazy
+operands from consecutive loader addresses in the current region. A later
+real `j` relocates D, so these hints could favor the wrong high-word
+accumulator and discard a viable continuation when the frontier exceeded
+16,384 states. The proposal now follows the independently derived sequence
+of data addresses across each live relocation, skipping `j` instruction
+positions; absent future operands do not become invented reachable paths.
+
+A red-first focused regression exercises the actual two-relocation geometry,
+confirms the second region's source-independent loader word rather than the
+old region's sequential word, and checks that the remaining future operand
+slots are absent. Existing repeated-relocation guest and normative-VM tests
+remain the independent acceptance boundary. This repairs a bounded search
+heuristic, not general synthesis, dynamic C state, or a semantic proof of
+search completeness.

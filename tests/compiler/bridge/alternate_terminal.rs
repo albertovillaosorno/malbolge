@@ -2103,3 +2103,51 @@ fn long_noop_tail_reconstructs_twelve_byte_guest() -> Result<(), String> {
     );
     Ok(())
 }
+
+#[test]
+fn split_search_looks_past_live_relocations_for_future_writes()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional decoder"))?;
+    let geometry = SearchGeometry {
+        memory: &[],
+        prefix: 8,
+        prefix_outputs: 0,
+        source_length: 15,
+    };
+    let spec = SplitSearchSpec {
+        geometry: &geometry,
+        additional_relocations: &[11],
+        terminal: TerminalSuffix::Output,
+        step_budget: 1_000,
+    };
+    let (addresses, source) =
+        split_unwritten_addresses(profile, &cells, &spec, [0x36, 0x08])
+            .ok_or_else(|| String::from("missing real second-j geometry"))?;
+    assert_eq!(addresses[11], None);
+    let first_region =
+        addresses[9].ok_or_else(|| String::from("missing first region"))?;
+    let second_region =
+        addresses[12].ok_or_else(|| String::from("missing second region"))?;
+    assert_ne!(second_region, first_region + 3);
+    let next = future_split_words(&addresses, &source, profile, 9);
+    let first = super::super::layout::unwritten_loader_word(
+        &source,
+        first_region + 1,
+        profile,
+    )
+    .map_err(|error| format!("first future word: {error:?}"))?;
+    let relocated = super::super::layout::unwritten_loader_word(
+        &source,
+        second_region,
+        profile,
+    )
+    .map_err(|error| format!("relocated future word: {error:?}"))?;
+    assert_eq!(next[0], Some(first));
+    assert_eq!(next[1], Some(relocated));
+    assert_eq!(next[2], None);
+    assert_eq!(next[3], None);
+
+    Ok(())
+}

@@ -528,6 +528,24 @@ fn split_unwritten_addresses<const N: usize>(
     Some((addresses, source))
 }
 
+// A later j changes D without changing A. Future crazy writes after that
+// instruction consume the *relocated* loader words, not successive words
+// from the preceding region. Skip j-only positions when forming beam hints.
+// This is proposal guidance: the verifier still checks the complete guest.
+fn future_split_words(
+    addresses: &[Option<usize>],
+    source: &[u8],
+    profile: &ProfileDescriptor,
+    position: usize,
+) -> [Option<u32>; 4] {
+    let mut future_addresses =
+        addresses.iter().skip(position.saturating_add(1)).flatten();
+    std::array::from_fn(|_| {
+        let address = *future_addresses.next()?;
+        super::layout::unwritten_loader_word(source, address, profile).ok()
+    })
+}
+
 fn append_relocation_states(
     states: &SearchStates,
     steps: &mut Vec<SearchStep>,
@@ -588,25 +606,21 @@ fn proposed_split_geometry_with_budget<const N: usize>(
                     .filter(|&&future| future > position)
                     .count(),
             );
-        let word = |offset: usize| {
-            super::layout::unwritten_loader_word(
-                &source,
-                address.checked_add(offset)?,
-                profile,
-            )
-            .ok()
-        };
+        let current =
+            super::layout::unwritten_loader_word(&source, address, profile)
+                .ok()?;
+        let future = future_split_words(&addresses, &source, profile, position);
         states = append_successors(
             &states,
             &mut steps,
             SearchWord {
                 remaining,
                 target_emitted,
-                value: word(0)?,
-                next_value: word(1)?,
-                next_next_value: word(2)?,
-                next_next_next_value: word(3)?,
-                fourth_future_value: word(4),
+                value: current,
+                next_value: future[0].unwrap_or_default(),
+                next_next_value: future[1].unwrap_or_default(),
+                next_next_next_value: future[2].unwrap_or_default(),
+                fourth_future_value: future[3],
             },
             expected,
         );
