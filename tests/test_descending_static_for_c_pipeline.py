@@ -261,10 +261,10 @@ class DescendingStaticForCPipelineTests(unittest.TestCase):
         """Invalid direction, induction value and strides fail closed."""
         sources = (
             program(start=0),
-            program(start=10),
+            program(start=100),
             program(start=4, operator="<", bound=1),
             program(start=4, operator="<=", bound=1),
-            program(start=4, operator="!=", bound=1),
+            program(start=1, operator="!=", bound=4),
             program(step="i++"),
             program(step="--i").replace("--i", "++i"),
             program(step="i -= 2"),

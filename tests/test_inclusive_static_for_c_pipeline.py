@@ -30,21 +30,23 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
-from typing import TYPE_CHECKING
 import unittest
+from pathlib import Path
+from typing import TYPE_CHECKING
 
-from tests.test_induction_static_for_c_pipeline import ADAPTER
-from tests.test_induction_static_for_c_pipeline import DRIVER
-from tests.test_induction_static_for_c_pipeline import FRONTEND
-from tests.test_induction_static_for_c_pipeline import INCLUDE
-from tests.test_induction_static_for_c_pipeline import LAYOUT
-from tests.test_induction_static_for_c_pipeline import RESOURCE
-from tests.test_induction_static_for_c_pipeline import ROOT
-from tests.test_induction_static_for_c_pipeline import VM
+from tests.test_induction_static_for_c_pipeline import (
+    ADAPTER,
+    DRIVER,
+    FRONTEND,
+    INCLUDE,
+    LAYOUT,
+    RESOURCE,
+    ROOT,
+    VM,
+)
 
 if TYPE_CHECKING:
     from subprocess import CompletedProcess
@@ -86,9 +88,7 @@ def program(start: int = 1, operator: str = "<=", bound: int = 4) -> str:
     )
 
 
-def oracle(
-    start: int, operator: str, bound: int, *, data: bytes
-) -> tuple[bytes, int]:
+def oracle(start: int, operator: str, bound: int, *, data: bytes) -> tuple[bytes, int]:
     """Compute C control flow independently of the normalized Clang tree.
 
     Returns:
@@ -179,9 +179,7 @@ class InclusiveStaticForCPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         """Skip on hosts without the pinned compiler chain and guest VM."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
-            self.skipTest(
-                "pinned source-C compiler and normative guest VM needed"
-            )
+            self.skipTest("pinned source-C compiler and normative guest VM needed")
 
     @staticmethod
     def compile(path: Path, target: Path) -> CompletedProcess[bytes]:
@@ -233,9 +231,7 @@ class InclusiveStaticForCPipelineTests(unittest.TestCase):
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)
 
-    def assert_guest_parity(
-        self, cases: tuple[tuple[int, str, int], ...]
-    ) -> None:
+    def assert_guest_parity(self, cases: tuple[tuple[int, str, int], ...]) -> None:
         """Compare compiled guest traces to a separate bounded C oracle."""
         streams = (
             bytes((0, 255, 128, 1, 42, 9, 27, 45, 200, 7)),
@@ -244,20 +240,13 @@ class InclusiveStaticForCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
             for start, operator, bound in cases:
-                path = (
-                    root
-                    / f"start-{start}-{operator.replace("=", "e")}-{bound}.c"
-                )
+                path = root / f"start-{start}-{operator.replace('=', 'e')}-{bound}.c"
                 target = path.with_suffix(".malbolge")
-                path.write_text(
-                    program(start, operator, bound), encoding="utf-8"
-                )
+                path.write_text(program(start, operator, bound), encoding="utf-8")
                 result = self.compile(path, target)
                 assert result.returncode == 0, result.stderr
                 for stream in streams:
-                    expected, reads = oracle(
-                        start, operator, bound, data=stream
-                    )
+                    expected, reads = oracle(start, operator, bound, data=stream)
                     vm = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
                         [
                             str(VM),
@@ -273,10 +262,7 @@ class InclusiveStaticForCPipelineTests(unittest.TestCase):
                     assert vm.returncode == 0, vm.stderr
                     assert vm.stdout == expected
                     expected_steps = reads + len(expected) + 1
-                    assert (
-                        vm.stderr
-                        == f"malbolge-steps-v1:{expected_steps}\n".encode()
-                    )
+                    assert vm.stderr == f"malbolge-steps-v1:{expected_steps}\n".encode()
 
     def test_one_based_c_bounds_match_guest_vm(self) -> None:
         """Prove one-based inclusive and strict comparisons."""
@@ -293,12 +279,12 @@ class InclusiveStaticForCPipelineTests(unittest.TestCase):
     def test_unproved_loop_bounds_refuse_publication(self) -> None:
         """Refuse unknown, nonterminating, and over-budget C loops."""
         sources = (
-            program(start=2),
+            program(start=100),
             program(start=1, operator=">=", bound=4),
             program(start=1, operator="<=", bound=17),
             program(start=0, operator="<=", bound=16),
-            program(start=1, operator="!=", bound=5),
-            program(start=1, operator="<=", bound=0),
+            program(start=5, operator="!=", bound=1),
+            program(start=1, operator="!=", bound=0),
             program().replace("i++)", "i += 2)"),
             program().replace("i <= 4", "getchar() <= 4"),
             program().replace("int i = 1", "int i = getchar()"),
