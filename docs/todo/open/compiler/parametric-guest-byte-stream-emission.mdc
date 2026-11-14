@@ -55,6 +55,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, the straight-line guest search was found to abandon
+  each source geometry after the first complete byte count even when the
+  positional/VM checker refused that candidate. Independent admission
+  now runs within the bounded proposal search, so later complete paths
+  can be considered, with at most four completion checks per geometry.
+  A two-entrypoint regression proves rejected-first/accepted-next and
+  all-rejected limits; the existing real no-op terminal guest still
+  passes normative VM parity. The pinned C frontend remains absent;
+  general runtime C semantics and P0 acceptance remain open.
+
 - On 2026-11-14, a red-first dense source-revisit regression exposed
   loss of already-completed output paths after an unsuccessful early
   candidate halt. Exact full-word states at the final progress count now

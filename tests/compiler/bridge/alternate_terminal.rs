@@ -181,6 +181,55 @@ fn post_output_arithmetic_terminals_have_independent_guest_witnesses()
 }
 
 #[test]
+fn completed_source_geometry_retries_after_rejected_layout()
+-> Result<(), String> {
+    // The first matching output state is only a proposal. It may fail
+    // positional admission, while a later padded complete path succeeds.
+    let cells = pair_source_cells(malbolge::current_profile())
+        .ok_or_else(|| String::from("missing position encodings"))?;
+    let memory = vec![0u32; 256];
+    let geometry = SearchGeometry {
+        memory: &memory,
+        prefix: 0,
+        prefix_outputs: 0,
+        source_length: 12,
+    };
+    let mut examined = Vec::new();
+    let accepted = proposed_geometry_with_budget_checked(
+        &cells,
+        &geometry,
+        [0],
+        TerminalSuffix::Noop,
+        MAX_STEPS_PER_GEOMETRY,
+        |operations| {
+            examined.push(operations.to_vec());
+            (examined.len() == 2).then(|| operations.to_vec())
+        },
+    )
+    .ok_or_else(|| String::from("first rejected proposal stopped search"))?;
+    assert_eq!(examined.len(), 2);
+    assert_ne!(examined[0], examined[1]);
+    assert_eq!(accepted, examined[1]);
+    // Four failed independent admission attempts are a hard search budget,
+    // not permission to publish a speculative guest transcript.
+    let mut rejected = 0;
+    let no_guest = proposed_geometry_with_budget_checked(
+        &cells,
+        &geometry,
+        [0],
+        TerminalSuffix::Noop,
+        MAX_STEPS_PER_GEOMETRY,
+        |_| {
+            rejected += 1;
+            None::<Vec<LinearOpcode>>
+        },
+    );
+    assert!(no_guest.is_none());
+    assert_eq!(rejected, MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+    Ok(())
+}
+
+#[test]
 fn early_completion_can_pad_before_terminal() -> Result<(), String> {
     let steps = [
         SearchStep {

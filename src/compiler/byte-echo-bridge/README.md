@@ -1307,6 +1307,19 @@ twelve-byte Fibonacci guest and canonical typed publisher pass normative
 VM replay. This does not establish complete search, guest C arithmetic,
 or pinned-Clang C-to-VM acceptance; the exact frontend binary was absent.
 
+### Independently verified completion retries (2026-11-14)
+
+A complete byte count in the straight-line candidate map is not yet a
+verified program. The former search returned its first complete path and
+discarded the remaining source geometry if independent admission failed.
+The new callback checks each completed proposal, trying later candidates
+under a fixed four-completion budget. Rejected candidates cannot publish.
+
+A two-entrypoint regression demonstrates rejection followed by acceptance
+and exhaustion after exactly four unsuccessful attempts. The previously
+verified no-op terminal guest still executes under the normative VM. The
+pinned Clang source frontend remains unavailable and P0 is pending.
+
 ### Completed source-revisit paths survive dense pruning (2026-11-14)
 
 The source-revisit search formerly omitted exact complete-output states from

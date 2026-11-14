@@ -26,6 +26,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Verified retry of complete output proposals (2026-11-14)
+
+The straight-line guest search previously stopped at the first state with
+all requested outputs, before checking whether its positional encoding could
+pass independent layout admission. If that proposal failed, the rest of the
+same source geometry was discarded even though subsequent source cells and
+different accumulator paths might yield a valid guest.
+
+The completion callback now checks each proposal before search success, and
+continues after rejection with at most four completion checks per geometry.
+A focused two-entrypoint regression verifies a rejected first completion,
+accepted later completion, and the hard all-rejected budget. The unchanged
+alternate no-op terminal guest still passes real VM replay in both
+entrypoints. This is bounded search coverage, not a completeness proof or
+implementation of guest-side C runtime arithmetic and branching. The
+pinned C frontend executable is unavailable locally.
+
 ### Completed source-revisit progress after bounded pruning (2026-11-14)
 
 A dense source-revisit frontier formerly discarded states whose output count

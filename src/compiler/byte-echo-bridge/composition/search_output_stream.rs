@@ -43,6 +43,9 @@ use super::{
 const MAX_SOURCE_LENGTH: usize = 126;
 const MAX_STATES_PER_POSITION: usize = 16_384;
 const MAX_STEPS_PER_GEOMETRY: usize = 700_000;
+// A rejected completion may still succeed with later source-cell padding.
+// Bound verifier work spent on complete proposals in each source geometry.
+const MAX_COMPLETION_CHECKS_PER_GEOMETRY: usize = 4;
 
 /// Every step owns one already-synthesized instruction and its predecessor.
 /// A per-position state retains only one path for each output index and exact
@@ -352,13 +355,14 @@ fn reconstruct_path(
     (operations.len() == geometry.source_length).then_some(operations)
 }
 
-fn proposed_geometry_with_budget<const N: usize>(
+fn proposed_geometry_with_budget_checked<const N: usize, T>(
     source_cells: &[[u8; 6]],
     geometry: &SearchGeometry<'_>,
     expected: [u8; N],
     terminal: TerminalSuffix,
     step_budget: usize,
-) -> Option<Vec<LinearOpcode>> {
+    mut admit: impl FnMut(&[LinearOpcode]) -> Option<T>,
+) -> Option<T> {
     let SearchGeometry {
         memory,
         prefix,
@@ -386,6 +390,7 @@ fn proposed_geometry_with_budget<const N: usize>(
     let mut states = BTreeMap::from([((prefix_outputs, 0u32), 0usize)]);
     // The chosen terminal/halt pair fixes the expanded memory tail.
     let target = expected.last().copied()?;
+    let mut completion_checks = 0usize;
     for position in prefix.saturating_add(1)..source_length.saturating_sub(2) {
         let address =
             relocation.saturating_add(position).saturating_sub(prefix);
@@ -413,12 +418,22 @@ fn proposed_geometry_with_budget<const N: usize>(
         // after the output target is complete. No-op padding preserves both
         // guest bytes and the terminal source seed, and is independently
         // decoded and replayed before a candidate can be admitted.
-        if let Some((_, &last_index)) = states.iter().find(|(key, _)| {
-            key.0 == target_emitted
-                && (!matches!(terminal, TerminalSuffix::Output)
-                    || matches_byte(key.1, target))
-        }) {
-            return reconstruct_path(&steps, last_index, geometry, terminal);
+        for (&(emitted, accumulator), &last_index) in &states {
+            if emitted != target_emitted
+                || (matches!(terminal, TerminalSuffix::Output)
+                    && !matches_byte(accumulator, target))
+            {
+                continue;
+            }
+            let operations =
+                reconstruct_path(&steps, last_index, geometry, terminal)?;
+            if let Some(verified) = admit(&operations) {
+                return Some(verified);
+            }
+            completion_checks += 1;
+            if completion_checks >= MAX_COMPLETION_CHECKS_PER_GEOMETRY {
+                return None;
+            }
         }
         if states.is_empty()
             || states.len() > MAX_STATES_PER_POSITION
@@ -428,6 +443,24 @@ fn proposed_geometry_with_budget<const N: usize>(
         }
     }
     None
+}
+
+#[cfg(test)]
+fn proposed_geometry_with_budget<const N: usize>(
+    source_cells: &[[u8; 6]],
+    geometry: &SearchGeometry<'_>,
+    expected: [u8; N],
+    terminal: TerminalSuffix,
+    step_budget: usize,
+) -> Option<Vec<LinearOpcode>> {
+    proposed_geometry_with_budget_checked(
+        source_cells,
+        geometry,
+        expected,
+        terminal,
+        step_budget,
+        |operations| Some(operations.to_vec()),
+    )
 }
 
 #[cfg(test)]
@@ -760,18 +793,20 @@ fn verified_terminal_layout_range<const N: usize>(
                         prefix_outputs,
                         source_length: length,
                     };
-                    let operations = proposed_geometry_with_budget(
+                    proposed_geometry_with_budget_checked(
                         source_cells,
                         &geometry,
                         expected,
                         terminal,
                         step_budget,
-                    )?;
-                    verified_output_stream_layout(
-                        profile,
-                        &operations,
-                        expected,
-                        source_cells,
+                        |operations| {
+                            verified_output_stream_layout(
+                                profile,
+                                operations,
+                                expected,
+                                source_cells,
+                            )
+                        },
                     )
                 });
             if verified.is_some() {
