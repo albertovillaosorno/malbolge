@@ -55,6 +55,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14 the source-revisit guest search stopped committing
+  reconstruction records for candidates discarded by its bounded beam.
+  A two-layer dense regression selects exactly 16,384 of 24,576
+  speculative states, preserves all surviving predecessor references,
+  and keeps sparse exact selection. The complete twelve-byte Fibonacci
+  guest and canonical typed publisher still pass normative VM parity
+  under empty/nonempty stdin. The pinned LLVM 22 C frontend is missing
+  locally, so source-C end-to-end parity was not rerun. Dynamic guest
+  state/control and arbitrary stream synthesis remain open; P0 stays
+  pending.
+
 - On 2026-11-13 a complete C live-byte/nested-if/continue loop first
   refused a named `position += 12` induction. Exact original source and
   pinned-Clang two-digit step geometry now proves the finite C loop;

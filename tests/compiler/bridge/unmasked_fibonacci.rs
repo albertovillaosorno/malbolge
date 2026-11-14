@@ -110,6 +110,39 @@ fn dense_revisited_source_frontier_preserves_early_progress_and_high_words() {
 }
 
 #[test]
+fn revisited_frontier_history_keeps_only_surviving_predecessors() {
+    // The first speculative layer has more than the 16,384-state beam cap.
+    // Discarded candidates must not accumulate permanent history entries,
+    // nor may a second layer lose its retained predecessor indices.
+    let candidates = (3usize..9)
+        .flat_map(|emitted| {
+            (0u32..4_096)
+                .map(move |high| ((emitted, high * 256 + 3), high as usize))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut history = vec![usize::MAX];
+    let first = append_revisit_links(&mut history, candidates, 3, 9, 16_384);
+    assert_eq!(first.len(), 16_384);
+    assert_eq!(history.len(), 1 + 16_384);
+    for (&(_, accumulator), &link) in &first {
+        assert_eq!(history[link], (accumulator / 256) as usize);
+    }
+
+    let next = first
+        .iter()
+        .map(|(&key, &predecessor)| (key, predecessor))
+        .collect::<BTreeMap<_, _>>();
+    let second = append_revisit_links(&mut history, next, 3, 9, 16_384);
+    assert_eq!(second.len(), 16_384);
+    assert_eq!(history.len(), 1 + 2 * 16_384);
+    let first_links = first.values().copied().collect::<BTreeSet<_>>();
+    for &link in second.values() {
+        let predecessor = history[link];
+        assert!(first_links.contains(&predecessor));
+    }
+}
+
+#[test]
 fn dense_revisited_frontier_retains_middle_word_at_earlier_progress() {
     // The real crazy transition from high word 259 to byte 53 remains
     // useful even when other paths have already emitted more bytes.

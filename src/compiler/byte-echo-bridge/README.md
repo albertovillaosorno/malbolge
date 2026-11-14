@@ -1306,3 +1306,21 @@ frontiers remain exact. The red-first boundary test and the existing full
 twelve-byte Fibonacci guest and canonical typed publisher pass normative
 VM replay. This does not establish complete search, guest C arithmetic,
 or pinned-Clang C-to-VM acceptance; the exact frontend binary was absent.
+
+### Retained-only source-revisit histories (2026-11-14)
+
+The source-revisit continuation previously appended a reconstruction record
+for every distinct proposed full-word state before beam pruning. A dense
+frontier could discard thousands of those records per source cell but still
+retain their memory, despite the intended 16,384-state frontier cap. The
+search now keeps candidate links temporary and appends permanent predecessor
+records only for surviving states. Full-word keys, source-memory constraints,
+beam ordering, sparse exact frontiers and independent layout/VM proof remain
+unchanged.
+
+A two-layer regression with 24,576 first-layer candidates checks the exact
+16,384-record retention and all second-layer parent pointers. The complete
+twelve-output original Fibonacci byte stream and canonical typed publisher
+still replay correctly on the normative VM. Missing pinned native Clang
+prevents a full source-C pipeline claim; this change does not implement guest
+C arithmetic, runtime control flow, or arbitrary byte-stream synthesis.

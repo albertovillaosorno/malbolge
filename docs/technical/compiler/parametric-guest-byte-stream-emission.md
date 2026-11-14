@@ -26,6 +26,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Retained-only source-revisit reconstruction history (2026-11-14)
+
+The bounded source-revisit search formerly allocated permanent predecessor
+records for every speculative successor, even when a 16,384-state beam
+discarded thousands of them at each source cell. The successor map now
+temporarily stores complete links and appends only retained paths to history;
+the full accumulator keys, progress-balanced beam, exact sparse behavior,
+independent positional verification, and normative VM admission are unchanged.
+
+A two-layer dense regression constructs 24,576 initial candidates and proves
+the first layer retains exactly 16,384 links, with all second-layer parents
+pointing into that retained layer. The original twelve-output Fibonacci guest
+and its canonical typed trace still reproduce
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23` on the normative VM with no input
+consumption. The pinned LLVM 22 source-C frontend is absent on this host,
+so these runs do not establish end-to-end source-C compilation. Guest runtime
+C state, arbitrary byte-stream synthesis, and P0 acceptance remain open.
+
 ### Source-revisit progress quotas and twelve-byte typed trace (2026-11-14)
 
 A source-revisit beam with six populated output counts had been spending

@@ -1850,12 +1850,12 @@ pub(super) fn verified_revisited_source_scratch_triple(
 // frontier budget on the most advanced output count, retain both extremes
 // of every achieved output-progress/low-byte group. The full accumulator
 // remains in the search key and every proposed source is verified later.
-fn bounded_revisit_states(
-    states: &SearchStates,
+fn bounded_revisit_states<T: Copy>(
+    states: &BTreeMap<(usize, u32), T>,
     minimum_emitted: usize,
     maximum_emitted: usize,
     limit: usize,
-) -> SearchStates {
+) -> BTreeMap<(usize, u32), T> {
     let mut extremes = BTreeMap::<(usize, u8), (u32, u32)>::new();
     for &(emitted, accumulator) in states.keys() {
         if !(minimum_emitted..maximum_emitted).contains(&emitted) {
@@ -1931,6 +1931,34 @@ fn bounded_revisit_states(
         }
     }
     bounded
+}
+
+// Speculative successors are not reconstruction records. Discarded links
+// otherwise accumulate at every searched source cell, even after beam pruning.
+fn append_revisit_links<T: Copy>(
+    links: &mut Vec<T>,
+    candidates: BTreeMap<(usize, u32), T>,
+    minimum_emitted: usize,
+    maximum_emitted: usize,
+    limit: usize,
+) -> SearchStates {
+    let retained = if candidates.len() > limit {
+        bounded_revisit_states(
+            &candidates,
+            minimum_emitted,
+            maximum_emitted,
+            limit,
+        )
+    } else {
+        candidates
+    };
+    let mut states = SearchStates::new();
+    for (key, link) in retained {
+        let index = links.len();
+        links.push(link);
+        let _prior = states.insert(key, index);
+    }
+    states
 }
 
 /// Explore one acyclic continuation after a proven source-cell revisit.
@@ -2094,13 +2122,11 @@ pub(super) fn verified_revisited_source_scratch_stream<const N: usize>(
                     {
                         return;
                     }
-                    let index = links.len();
-                    links.push(Link {
+                    let _ = next.insert((new_emitted, value), Link {
                         predecessor: previous,
                         operation,
                         operand,
                     });
-                    let _ = next.insert((new_emitted, value), index);
                 };
                 insert(LinearOpcode::NoOperation, accumulator, None);
                 if emitted < N && matches_byte(accumulator, expected[emitted]) {
@@ -2148,11 +2174,13 @@ pub(super) fn verified_revisited_source_scratch_stream<const N: usize>(
                     continue;
                 }
                 let mut suffix = Vec::new();
-                let mut cursor = last;
-                while cursor != 0 {
-                    let link = links.get(cursor)?;
+                let mut link = last;
+                loop {
                     suffix.push((link.operation, link.operand));
-                    cursor = link.predecessor;
+                    if link.predecessor == 0 {
+                        break;
+                    }
+                    link = *links.get(link.predecessor)?;
                 }
                 suffix.reverse();
                 let mut operations = starting_operations.clone();
@@ -2187,14 +2215,10 @@ pub(super) fn verified_revisited_source_scratch_stream<const N: usize>(
                     return Some(layout);
                 }
             }
-            if next.len() > 16_384 {
-                // Exact high words at multiple output counts matter to
-                // later crazy writes; state pruning is never a proof that
-                // a guest stream is impossible.
-                states = bounded_revisit_states(&next, 3, N, 16_384);
-            } else {
-                states = next;
-            }
+            // Exact high words at multiple output counts matter to later
+            // crazy writes. Pruning is never an impossibility proof, and
+            // only retained links consume permanent reconstruction history.
+            states = append_revisit_links(&mut links, next, 3, N, 16_384);
             if states.is_empty() {
                 break;
             }
