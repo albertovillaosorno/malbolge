@@ -1866,13 +1866,33 @@ fn bounded_revisit_states(
             .or_insert((accumulator, accumulator));
         group.1 = accumulator;
     }
+    // A future crazy write can distinguish full words sharing an output
+    // byte. Protect one word near the middle of each class's available
+    // full-word range, before the per-progress quota fills with low words.
+    let mut middles = extremes
+        .iter()
+        .map(|(&group, &(smallest, largest))| {
+            (group, (smallest + (largest - smallest) / 2, smallest))
+        })
+        .collect::<BTreeMap<_, _>>();
+    for &(emitted, accumulator) in states.keys() {
+        let group = (emitted, malbolge::profile_low_byte(accumulator));
+        if let Some((target, selected)) = middles.get_mut(&group) {
+            if accumulator.abs_diff(*target) < selected.abs_diff(*target) {
+                *selected = accumulator;
+            }
+        }
+    }
     let active_counts = extremes
         .keys()
         .map(|&(emitted, _)| emitted)
         .collect::<BTreeSet<_>>();
     let mut bounded = BTreeMap::new();
-    for ((emitted, _byte), (smallest, largest)) in extremes.into_iter().rev() {
-        for accumulator in [smallest, largest] {
+    for ((emitted, byte), (smallest, largest)) in extremes.into_iter().rev() {
+        let middle = middles
+            .get(&(emitted, byte))
+            .map_or(smallest, |&(_, value)| value);
+        for accumulator in [smallest, middle, largest] {
             if bounded.len() >= limit {
                 return bounded;
             }

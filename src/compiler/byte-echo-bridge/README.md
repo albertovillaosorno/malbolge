@@ -1287,3 +1287,22 @@ These results are bounded guest layout/typed-lowering evidence, **not** a
 new pinned-Clang C-to-VM compilation or guest-side C arithmetic. The pinned
 C frontend was absent in this checkout, so full source-C parity and P0
 acceptance remain unverified.
+
+### Middle full-word diversity across byte classes (2026-11-14)
+
+A red-first six-progress frontier with all 256 low-byte classes exposed
+another bounded-revisit search loss. The old per-progress quota protected
+each class's smallest and largest full accumulator word, but filled its
+remaining space with low numerical words. It discarded `8195`, whose real
+`p(0, 8195)` transition emits byte `93`, unlike the same-low-byte extremes
+`3` (byte `50`) and `16387` (byte `223`).
+
+Each active progress/low-byte class now also reserves its available
+full-word representative nearest the numerical midpoint before the
+per-progress quota and advanced-first fallback. This stays under the same
+16,384-state cap: at most nine progress counts and 256 low bytes create
+6,912 protected candidates, including all three representatives. Sparse
+frontiers remain exact. The red-first boundary test and the existing full
+twelve-byte Fibonacci guest and canonical typed publisher pass normative
+VM replay. This does not establish complete search, guest C arithmetic,
+or pinned-Clang C-to-VM acceptance; the exact frontend binary was absent.

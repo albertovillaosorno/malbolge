@@ -3333,3 +3333,16 @@ a compiler capability gap, not a reason to return to N+1.
   expected rejection with VM parity evidence. The pinned C frontend was
   missing, and complete original source-C acceptance is not demonstrated.
   General guest C arithmetic/control and P0 remain open.
+
+- A red-first six-progress, 256-low-byte-class source-revisit frontier
+  found that per-progress quotas still dropped a middle accumulator word
+  under a dense mixed-byte distribution. Actual Malbolge crazy arithmetic
+  distinguishes full words `3`, `8195`, and `16387`: with operand zero
+  they produce bytes `50`, `93`, and `223`, despite all three emitting
+  byte `3` before the write. The bounded selection now retains a
+  near-midpoint full word per active progress/byte class before quota
+  filling, without exceeding 16,384 states or pruning sparse frontiers.
+  The original twelve-byte Fibonacci source-scratch VM guest and canonical
+  typed publisher still pass. The full pinned C frontend test skips
+  because its exact binary is missing, so full source-C parity and P0
+  remain unverified; guest-side C runtime arithmetic/control is still open.

@@ -6420,3 +6420,25 @@ C arithmetic rejects and the original twelve-trip program still refuses
 without publication. This search costs roughly two minutes through the full
 pipeline; dynamic guest C control, longer full-width streams and faster
 reusable block synthesis remain open.
+
+### Mixed-byte dense source-revisit search (2026-11-14)
+
+A red-first bounded search regression combined six output-progress counts
+with every possible low accumulator byte and 65 distinct high-word
+representatives. Prior per-progress quotas retained each class's minimum
+and maximum full words but discarded its middle candidate `8195`.
+With the same guest operand zero, a real `p` step maps the words
+`3`, `8195`, and `16387` to distinct low bytes `50`, `93`,
+and `223`. Therefore equality of a pending output byte does not justify
+discarding this full-word continuation.
+
+The bounded source-revisit beam now keeps an existing word nearest the
+midpoint of each active progress/low-byte range in addition to its
+extremes. Even the maximum nine progress counts and 256 byte groups use
+at most 6,912 protected representatives, below the existing 16,384
+state cap; unused capacity remains shared among progress counts. All
+candidate sources still require independent positional/layout admission
+and normative VM replay. The red-first regression, twelve-byte real
+Fibonacci guest and canonical typed publisher pass; the pinned frontend
+was unavailable, so no original full source-C pipeline parity or
+generalized P0 acceptance is established.

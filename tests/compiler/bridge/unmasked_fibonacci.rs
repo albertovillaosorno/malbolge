@@ -378,3 +378,38 @@ fn original_fibonacci_complete_stream_from_relocated_source_scratch()
     }
     Ok(())
 }
+
+#[test]
+fn dense_revisited_frontier_preserves_middle_words_across_byte_classes() {
+    // With many output-byte classes, the per-count quota fills with low
+    // accumulator words. A middle full word from a later class can be the
+    // only one of its three representatives that reaches the next byte.
+    let middle = 32 * 256 + 3;
+    assert_eq!(malbolge::profile_crazy(0, 3, 15) & 255, 50);
+    assert_eq!(malbolge::profile_crazy(0, middle, 15) & 255, 93);
+    assert_eq!(malbolge::profile_crazy(0, 64 * 256 + 3, 15) & 255, 223);
+    let states = (3usize..9)
+        .flat_map(|emitted| {
+            (0u32..=64).flat_map(move |high| {
+                (0u32..=255).map(move |byte| {
+                    ((emitted, high * 256 + byte), high as usize)
+                })
+            })
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert!(states.len() > 16_384);
+    let bounded = bounded_revisit_states(&states, 3, 9, 16_384);
+    assert_eq!(bounded.len(), 16_384);
+    for emitted in 3..9 {
+        assert!(
+            bounded.contains_key(&(emitted, middle)),
+            "lost full-word crazy continuation at output count {emitted}",
+        );
+        for byte in 0..=255 {
+            assert!(
+                bounded.contains_key(&(emitted, 32 * 256 + byte)),
+                "lost midpoint for progress/byte {emitted}/{byte}",
+            );
+        }
+    }
+}
