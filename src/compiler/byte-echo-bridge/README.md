@@ -1249,3 +1249,20 @@ negative control. This is a search-budget repair, not a new C language
 feature, a promise of search completeness, or a relaxation of the positional
 layout and normative VM acceptance gates. The pinned frontend remains absent
 from this checkout, so no new end-to-end C result is asserted.
+
+### Balanced dense source-revisit frontiers (2026-11-14)
+
+The source-revisit continuation search previously spent its entire
+16,384-state cap on the highest output-progress counts. A dense six-count
+regression showed that this could discard *every* less advanced path even
+when its full accumulator word might be needed for later crazy arithmetic.
+The bounded continuation now reserves minimum and maximum full-word states
+per output-progress/low-byte group before filling remaining capacity with
+advanced states. Small frontiers remain exact and every recovered guest
+still requires independent positional admission and normative VM replay.
+
+The focused beam regression passes, as does the unchanged independently
+verified three- and four-byte Fibonacci source-scratch guests in both
+bridge entrypoints. This run does not establish a complete twelve-byte
+unmasked Fibonacci guest, any new end-to-end C compile, or completeness of
+bounded proposal search.

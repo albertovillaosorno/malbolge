@@ -1845,6 +1845,53 @@ pub(super) fn verified_revisited_source_scratch_triple(
     None
 }
 
+// Revisited source operands may vary with the path, so there is no sound
+// fixed-word lookahead for this grammar. Before spending the rest of the
+// frontier budget on the most advanced output count, retain both extremes
+// of every achieved output-progress/low-byte group. The full accumulator
+// remains in the search key and every proposed source is verified later.
+fn bounded_revisit_states(
+    states: &SearchStates,
+    minimum_emitted: usize,
+    maximum_emitted: usize,
+    limit: usize,
+) -> SearchStates {
+    let mut extremes = BTreeMap::<(usize, u8), (u32, u32)>::new();
+    for &(emitted, accumulator) in states.keys() {
+        if !(minimum_emitted..maximum_emitted).contains(&emitted) {
+            continue;
+        }
+        let group = extremes
+            .entry((emitted, malbolge::profile_low_byte(accumulator)))
+            .or_insert((accumulator, accumulator));
+        group.1 = accumulator;
+    }
+    let mut bounded = BTreeMap::new();
+    for ((emitted, _byte), (smallest, largest)) in extremes.into_iter().rev() {
+        for accumulator in [smallest, largest] {
+            if bounded.len() >= limit {
+                return bounded;
+            }
+            if let Some(&index) = states.get(&(emitted, accumulator)) {
+                let _prior = bounded.insert((emitted, accumulator), index);
+            }
+        }
+    }
+    // Fill remaining space in the established advanced-progress-first,
+    // ascending-full-word order, without starving lower counts entirely.
+    for emitted in (minimum_emitted..maximum_emitted).rev() {
+        for (&(count, accumulator), &index) in
+            states.range((emitted, 0)..=(emitted, u32::MAX))
+        {
+            if bounded.len() >= limit {
+                return bounded;
+            }
+            let _prior = bounded.entry((count, accumulator)).or_insert(index);
+        }
+    }
+    bounded
+}
+
 /// Explore one acyclic continuation after a proven source-cell revisit.
 ///
 /// Every state carries the complete guest accumulator, rather than only its
@@ -2100,23 +2147,10 @@ pub(super) fn verified_revisited_source_scratch_stream<const N: usize>(
                 }
             }
             if next.len() > 16_384 {
-                // Retain exact full words across every achieved output count,
-                // not only the most advanced prefix. A
-                // discarded state never proves impossibility,
-                // so exhausted search must fail closed.
-                let mut bounded = BTreeMap::new();
-                for count in (3..N).rev() {
-                    for (&(emitted, accumulator), &index) in &next {
-                        if emitted != count {
-                            continue;
-                        }
-                        if bounded.len() >= 16_384 {
-                            break;
-                        }
-                        let _ = bounded.insert((emitted, accumulator), index);
-                    }
-                }
-                states = bounded;
+                // Exact high words at multiple output counts matter to
+                // later crazy writes; state pruning is never a proof that
+                // a guest stream is impossible.
+                states = bounded_revisit_states(&next, 3, N, 16_384);
             } else {
                 states = next;
             }

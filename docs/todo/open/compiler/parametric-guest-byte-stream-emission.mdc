@@ -3311,3 +3311,12 @@ a compiler capability gap, not a reason to return to N+1.
   layout and normative VM verification still gate guest publication. No
   end-to-end C path was newly established without the pinned frontend, and
   generalized P0 remains open.
+
+- A dense source-revisit search frontier with six distinct output-progress
+  counts exposed the old advanced-first cap's starvation of every earlier
+  count. A bounded per-count/per-byte minimum/maximum accumulator selection
+  now protects high-word diversity and early progress before filling the
+  remaining budget. Focused search tests and existing three- and four-byte
+  source-scratch guest/VM proofs pass. No complete unmasked Fibonacci or new
+  pinned-Clang C compilation was established, and the independent verifier
+  remains mandatory. P0 stays open.
