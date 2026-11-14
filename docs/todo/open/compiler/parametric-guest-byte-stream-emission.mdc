@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13, a complete source-C induction/continue program with a
+  live binary input and nested `if` first refused a ternary Boolean guard
+  at normalized lowering. A bounded source-/pinned-Clang-backed proof now
+  composes all three pure ternary operand truth sets at every successful
+  input byte. Canonical decimal integer predicate leaves are also proven
+  against the original source. Three total/false/nested and one dependent
+  equivalent-arm guard, plus three literal-arm programs, reach real guest
+  execution with an independent binary oracle. Effectful or unequal arms
+  and altered Clang parents/spans/literals refuse without an artifact.
+  This proves static effect equivalence, not guest runtime branches,
+  dynamic arithmetic/storage, EOF or failed I/O; P0 stays pending.
+
+
 - On 2026-11-13, a complete counted/continue C program with binary input
   initially refused `if (!(current & 1))` despite both arms writing the
   same live byte. Source- and pinned-Clang-backed parentheses and logical

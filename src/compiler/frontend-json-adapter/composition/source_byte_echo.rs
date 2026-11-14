@@ -5609,6 +5609,18 @@ fn prove_total_byte_guard(
         };
         return Some((child_width.checked_add(1)?, spelling, truth));
     }
+    if root.kind == "conditional-expression" {
+        return prove_total_byte_ternary(
+            nodes,
+            body,
+            previous,
+            parent,
+            expected_id,
+            local,
+            depth,
+            source,
+        );
+    }
     if matches!(root.operation.as_deref(), Some("&&" | "||")) {
         return prove_total_byte_logical(
             nodes,
@@ -5686,6 +5698,71 @@ fn prove_total_byte_logical(
     Some((width, spelling, truth))
 }
 
+// C's conditional expression chooses its second or third operand separately
+// for every successful guest byte. Each subtree must be pure and independently
+// source-proven, including the arm that a particular byte would not execute.
+// The compiler only folds the finite predicate truth set, never a guest value.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "verify each conditional subtree against its source and parent"
+)]
+fn prove_total_byte_ternary(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    local: Option<&LocalDeclaration<'_>>,
+    depth: usize,
+    source: &[u8],
+) -> Option<TotalByteGuardProof> {
+    let root = nodes.first()?;
+    (pure_integer_root(root, "conditional-expression", parent, expected_id)
+        && root.operation.is_none())
+    .then_some(())?;
+    let (condition_width, condition, condition_truth) = prove_total_byte_guard(
+        nodes.get(1..)?,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(1)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let true_index = condition_width.checked_add(1)?;
+    let (true_width, when_true, true_truth) = prove_total_byte_guard(
+        nodes.get(true_index..)?,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(u32::try_from(true_index).ok()?)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let false_index = true_index.checked_add(true_width)?;
+    let (false_width, when_false, false_truth) = prove_total_byte_guard(
+        nodes.get(false_index..)?,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(u32::try_from(false_index).ok()?)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let width = false_index.checked_add(false_width)?;
+    (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
+    let spelling = format!("{condition} ? {when_true} : {when_false}");
+    pure_expression_source(root, &spelling, source)?;
+    let truth = std::array::from_fn(|index| {
+        (condition_truth[index] & true_truth[index])
+            | (!condition_truth[index] & false_truth[index])
+    });
+    Some((width, spelling, truth))
+}
+
 // Every leaf is an exact pure Clang/source predicate of the same resident
 // byte. Enumerate the entire 256-value successful-input domain, rather than
 // approximating with independently constant leaves. A bitmap keeps logical
@@ -5704,6 +5781,31 @@ fn prove_total_byte_leaf(
     depth: usize,
     source: &[u8],
 ) -> Option<TotalByteGuardProof> {
+    // A canonical C integer literal has one truth value for every successful
+    // guest byte. Recover its exact original spelling and pinned Clang node,
+    // rather than trusting a host-calculated constant detached from source.
+    let root = nodes.first()?;
+    if root.kind == "integer-literal" {
+        let value = prove_decimal_condition_operand(
+            root,
+            expected_id,
+            parent,
+            root.span.begin.byte,
+            root.span.begin.line,
+            root.span.begin.column,
+        )?;
+        let spelling = value.to_string();
+        pure_expression_source(root, &spelling, source)?;
+        return Some((
+            1,
+            spelling,
+            if value == 0 {
+                [0; 4]
+            } else {
+                [u64::MAX; 4]
+            },
+        ));
+    }
     // A source-authenticated identity is true for precisely the nonzero
     // successful bytes. Its proven zero test has the complementary set.
     // This admits `current || !current` without inventing guest control.

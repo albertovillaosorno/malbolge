@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Byte-dependent ternary statement guards (2026-11-13)
+
+An original C program with binary `getchar`, three-trip induction, a static
+remainder/`continue` branch, nested `if` and trailing output first refused
+`(current & 1) ? (current >= 0) : (current <= 255)` during normalized
+lowering. The source-/Clang-authenticated adapter now composes a pure
+conditional expression's three truth sets over **all** successful bytes,
+including both branches that C would skip for a particular runtime byte.
+The selector chooses one arm's truth independently at each byte; only a
+complete/empty result or equivalent nonempty output-only statement effects
+can eliminate the guard without predicting the actual guest byte. Source-
+checked canonical nonnegative `i32` literal arms, including zero, compose
+with the same proof.
+
+Whole C programs with true, false, nested and dependent guards execute on
+the normative guest VM with independent binary-input oracles and explicit
+step counts. Inactive effects, live input in a predicate, unequal effects,
+forged Clang ancestry/spans/operators/literals and changed source reject
+without publication. The 256-value proof excludes EOF and failed I/O and
+does not implement runtime guest branching, arbitrary state or arithmetic.
+
+
 ### Grouping, negation, and direct-byte Boolean partitions (2026-11-13)
 
 A full C program with live binary input, counted induction, `continue`, and

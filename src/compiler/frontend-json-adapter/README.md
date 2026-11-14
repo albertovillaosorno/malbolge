@@ -11,6 +11,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Pure ternary C statement guards over real input bytes (2026-11-13)
+
+A full counted C stream with a live binary input, static remainder branch,
+`continue`, nested `if` and trailing I/O first refused a ternary guard:
+`(current & 1) ? (current >= 0) : (current <= 255)`.
+The normalized adapter now proves all three source-/pinned-Clang-authenticated
+pure operand trees over the entire successful-input interval `[0, 255]`.
+At each byte the selector truth chooses the corresponding arm truth; only a
+total result or identical output-only effects may eliminate the statement
+branch. Literal decimal `i32` predicate arms are authenticated against the
+same source bytes and treated as byte-independent truth values.
+
+Three total true/false and nested ternary streams, a dependent identical-arm
+stream and three ordinary-integer-arm streams match independent binary-input
+oracles in the normative guest VM. Impure selectors/arms, unequal output
+traces, forged Clang nodes and literals fail without guest publication. This
+is not runtime guest C branching, arbitrary arithmetic/storage, EOF or
+failed I/O; generalized P0 compilation remains pending.
+
+
 ### Authenticated grouped, negated, and bare-byte C guards (2026-11-13)
 
 A complete source-C induction/continue program initially refused
