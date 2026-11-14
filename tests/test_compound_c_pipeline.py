@@ -39,6 +39,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from random import Random
 from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7616,64 +7617,58 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertEqual(replay.stdout, expected)
                 self.assertRegex(replay.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
 
-    def test_whole_program_rejection_or_guest_parity(self) -> None:
+    def test_whole_program_guest_parity(self) -> None:
+        """Whole C recurrence must emit the independent twelve-byte oracle."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         if not RESOURCE.is_dir() or not GUEST_INCLUDE.is_dir():
             self.skipTest("pinned Clang resources or includes are absent")
+        self.assertEqual(reference_bytes(), EXPECTED)
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             guest = Path(scratch) / "fibonacci.malbolge"
-            process = subprocess.run(
-                [
-                    sys.executable,
-                    "-B",
-                    str(DRIVER),
-                    "--frontend",
-                    str(FRONTEND),
-                    "--json-adapter",
-                    str(ADAPTER),
-                    "--layout-backend",
-                    str(LAYOUT),
-                    "--guest-include",
-                    str(GUEST_INCLUDE),
-                    "--resource-dir",
-                    str(RESOURCE),
-                    "--source-id",
-                    "tests/conditional-fibonacci-v1",
-                    "--capsule",
-                    "--output",
-                    str(guest),
-                    str(SOURCE),
-                ],
-                check=False,
-                capture_output=True,
-                timeout=20,
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/conditional-fibonacci-v1",
+                 "--capsule", "--output", str(guest), str(SOURCE)],
+                check=False, capture_output=True, timeout=180,
             )
-            if process.returncode == 0:
-                # Future implementation must pass an actual normative VM
-                # replay. The host oracle never substitutes for guest output.
-                self.assertTrue(guest.is_file())
-                execution = subprocess.run(
-                    [str(VM), str(guest), "--report-steps"],
-                    check=False,
-                    capture_output=True,
-                    timeout=30,
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            seeded = Random(20261114)
+            inputs = (
+                b"",
+                bytes((0, 255, 128, 1)),
+                bytes(range(32)),
+                bytes(seeded.getrandbits(8) for _ in range(256)),
+            )
+            for supplied in inputs:
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=supplied, check=False, capture_output=True, timeout=30,
                 )
-                self.assertEqual(execution.returncode, 0, execution.stderr)
-                self.assertEqual(execution.stdout, reference_bytes())
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, EXPECTED)
                 self.assertRegex(
-                    execution.stderr,
-                    rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
                 )
-                return
-            # Typed constant/SSA admission succeeds for the full C loop;
-            # only the positional guest byte-stream layout lacks a witness.
-            self.assertIn(
-                b"canonical typed byte bridge rejected: Layout(UnsupportedEffectTrace)",
-                process.stderr,
+
+            # A reachable undefined C arithmetic arm must not inherit the
+            # verified guest trace or publish any partial capsule.
+            original = SOURCE.read_text()
+            self.assertEqual(original.count("next ^ 0x5AU"), 1)
+            invalid = Path(scratch) / "fibonacci-selected-div-zero.c"
+            invalid.write_text(
+                original.replace("next ^ 0x5AU", "next / 0U")
             )
-            self.assertNotIn(b"normalized frontend rejected", process.stderr)
-            self.assertFalse(guest.exists(), "unwitnessed C published a guest")
+            refused_guest = Path(scratch) / "fibonacci-invalid.malbolge"
+            rejected = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/fibonacci-div-zero-refusal-v1",
+                 "--capsule", "--output", str(refused_guest), str(invalid)],
+                check=False, capture_output=True, timeout=30,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertFalse(refused_guest.exists())
 
     def test_three_iteration_branch_uses_guest_source_scratch(self) -> None:
         """Closed C state selects three bytes, guest computes their output."""

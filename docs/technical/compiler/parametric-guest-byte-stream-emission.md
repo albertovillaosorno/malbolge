@@ -26,6 +26,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Original complete C-to-Malbolge parity (2026-11-14)
+
+The repository-local LLVM 22.1.8 runtime was imported from the exact-version
+host tools using the documented bootstrap with `/usr/bin` first in `PATH`;
+the matching development kit was provisioned with verified RPM identities,
+and the native normalized frontend was built with the repository build gate.
+No compiled frontend binary or private toolchain state was checked into Git.
+
+The **unmodified** `tests/compiler/c-frontend/accepted/conditional_fibonacci.c`
+(SHA-256
+`b9e3e143d44d187f0569c4ef1809c373256f1795172eb1a43086fdfcae5a94c0`)
+then compiled through the pinned Clang frontend, source-bound JSON adapter,
+typed/ternary bridge and independently verifying layout publisher. The
+compiler emitted a 2,767-byte current-profile capsule. The normative VM
+executed 117 steps and emitted exactly the independently calculated twelve
+bytes `02 59 5f 08 57 4f 22 6d 03 90 b3 23`, both with empty input and with
+binary stdin `00 ff 80 01`. This finally supplies complete source-C-to-guest
+parity evidence for the original compound program, rather than only typed
+publisher parity or a host C oracle.
+
+The C locals, loop and branch are still source-proven and folded **at compile
+time**; Malbolge executes the admitted low-level arithmetic and output trace,
+not a dynamic C control-flow machine. EOF, dynamic C guest arithmetic/control,
+other arbitrary byte streams and the broad seeded semantic matrix remain
+outside this bounded result. The P0 generalized compiler work is not closed.
+
 ### Authenticated static C induction subtrees (2026-11-14)
 
 The production CLI retried the complete conditional Fibonacci C source but

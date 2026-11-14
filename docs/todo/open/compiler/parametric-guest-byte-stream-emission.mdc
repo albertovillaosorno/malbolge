@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, exact-version LLVM 22.1.8 bootstrap and the native
+  C frontend build restored the missing repository-pinned compiler preflight.
+  The **unmodified** full twelve-iteration conditional Fibonacci C compiled
+  through normalized Clang, source-bound adapter, typed bridge and verified
+  layout to a 2,767-byte guest capsule. The normative VM executed 117 steps
+  and emitted the independent `02 59 5f 08 57 4f 22 6d 03 90 b3 23` oracle
+  on both empty and binary `00 ff 80 01` stdin. This is real end-to-end
+  source-C guest parity, not host-output substitution. The previous regression
+  allowed layout refusal and only 20 seconds; it now requires parity within
+  a bounded 180-second compilation. C control/locals are still evaluated at
+  compile time. Arbitrary streams, guest runtime C state/control and EOF
+  remain unfinished, so generalized P0 stays open.
+
 - On 2026-11-14, red-first follow-up source-predicate tests exposed that
   grouping and `!` around skipped `i / 0 == 1` still demanded an evaluated
   value. Recursive shape-only proof now authenticates both grouping delimiters
