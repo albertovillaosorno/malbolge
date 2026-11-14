@@ -31,7 +31,9 @@
 
 use serde_json::json;
 
-use super::{Node, StaticInduction, prove_induction_predicate};
+use super::{
+    Node, StaticInduction, prove_induction_predicate, prove_static_predicate,
+};
 
 fn node(
     id: u32,
@@ -362,4 +364,100 @@ fn induction_prefix_proofs_bind_source_punctuation() {
         guard(&group_source.replace("))", "])"), &group_nodes, 1),
         None
     );
+}
+
+#[test]
+fn induction_constant_subtrees_must_match_original_source_bytes() {
+    let integer = vec![literal(2, 1, 4, "1")];
+    assert_eq!(guard("if (1)", &integer, 0), Some((1, true)));
+    assert_eq!(guard("if (0)", &integer, 0), None);
+
+    let mut comparison_node =
+        node(2, 1, "binary-expression", 4, 10, Some("=="), None, None);
+    comparison_node.constant_integer = Some(String::from("1"));
+    let comparison_tree = vec![
+        comparison_node,
+        literal(3, 2, 4, "1"),
+        literal(4, 2, 9, "1"),
+    ];
+    assert_eq!(guard("if (1 == 1)", &comparison_tree, 0), Some((3, true)));
+    assert_eq!(guard("if (1 != 1)", &comparison_tree, 0), None);
+    assert_eq!(guard("if (0 == 1)", &comparison_tree, 0), None);
+}
+
+#[test]
+fn induction_nested_static_subtrees_reject_source_forgery() {
+    let mut not_node =
+        node(2, 1, "unary-expression", 4, 6, Some("!"), None, None);
+    not_node.constant_integer = Some(String::from("0"));
+    let not_tree = vec![not_node, literal(3, 2, 5, "1")];
+    assert_eq!(guard("if (!1)", &not_tree, 0), Some((2, false)));
+    assert_eq!(guard("if (+1)", &not_tree, 0), None);
+
+    let mut outer_node =
+        node(2, 1, "binary-expression", 4, 15, Some("=="), None, None);
+    outer_node.constant_integer = Some(String::from("1"));
+    let mut nested_node =
+        node(3, 2, "binary-expression", 4, 10, Some("=="), None, None);
+    nested_node.constant_integer = Some(String::from("1"));
+    let nested_tree = vec![
+        outer_node,
+        nested_node,
+        literal(4, 3, 4, "1"),
+        literal(5, 3, 9, "1"),
+        literal(6, 2, 14, "1"),
+    ];
+    assert_eq!(guard("if (1 == 1 == 1)", &nested_tree, 0), Some((5, true)));
+    assert_eq!(guard("if (1 == 1 == 0)", &nested_tree, 0), None);
+    assert_eq!(guard("if (1 != 1 == 1)", &nested_tree, 0), None);
+    assert_eq!(guard("if (1 == 1 && 1)", &nested_tree, 0), None);
+}
+
+#[test]
+fn source_backed_static_if_must_not_fall_back_to_unchecked_ast() {
+    let conditional = node(1, 0, "if-statement", 0, 6, None, None, None);
+    let integer = vec![literal(2, 1, 4, "1")];
+    for (source, expected) in [("if (1)", Some((1, true))), ("if (0)", None)] {
+        assert_eq!(
+            prove_static_predicate(
+                &integer,
+                &conditional,
+                Some(StaticInduction {
+                    reference: "i@0",
+                    name: "i",
+                    source: Some(source.as_bytes()),
+                    value: 0,
+                }),
+            ),
+            expected,
+        );
+    }
+}
+
+#[test]
+fn source_backed_static_logical_keeps_a_proven_constant_fallback() {
+    let conditional = node(1, 0, "if-statement", 0, 11, None, None, None);
+    let mut logical =
+        node(2, 1, "binary-expression", 4, 10, Some("&&"), None, None);
+    logical.constant_integer = Some(String::from("1"));
+    let nodes = vec![logical, literal(3, 2, 4, "1"), literal(4, 2, 9, "1")];
+    for (source, expected) in [
+        ("if (1 && 1)", Some((3, true))),
+        ("if (1 || 1)", None),
+        ("if (1 && 0)", None),
+    ] {
+        assert_eq!(
+            prove_static_predicate(
+                &nodes,
+                &conditional,
+                Some(StaticInduction {
+                    reference: "i@0",
+                    name: "i",
+                    source: Some(source.as_bytes()),
+                    value: 0,
+                }),
+            ),
+            expected,
+        );
+    }
 }

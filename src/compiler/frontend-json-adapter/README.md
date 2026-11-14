@@ -11,6 +11,24 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-authenticated static induction subexpressions (2026-11-14)
+
+A source-backed C induction predicate previously trusted constant-only
+normalized AST subtrees without comparing their literal and operator tokens
+against the original C. A same-width `if (1)` to `if (0)` substitution could
+therefore preserve an AST-selected branch despite an inconsistent source.
+Even after refusing that subtree, an AST-only fallback could re-admit it.
+
+The bounded proof now checks every integer, unary prefix, binary operator and
+grouping delimiter recursively against the original C spelling before a
+source-time branch selects guest effects. A failed source-backed induction
+proof cannot fall back to AST-only static selection, while genuinely
+constant logical predicates retain a source-authenticated alternative.
+Four red-first tests cover literal, comparison, negation, nested expression
+and fallback forgeries; existing source-induction regressions remain admitted.
+This protects a compile-time projector, not guest runtime branching. The
+repository-pinned LLVM 22 frontend is still required for end-to-end C proof.
+
 ### Two-digit finite strides and pure induction arithmetic (2026-11-13)
 
 An original complete C stream with a named `position` counter, real

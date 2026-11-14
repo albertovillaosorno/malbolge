@@ -26,6 +26,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Authenticated static C induction subtrees (2026-11-14)
+
+The production CLI retried the complete conditional Fibonacci C source but
+stopped at missing repository-local pinned LLVM 22 frontend preflight without
+publishing a guest. Separately, red-first synthetic normalized AST proofs
+exposed an unsound source-backed induction predicate: a constant-only
+subexpression could retain the Clang `1` while the original C spelled `0`,
+or swap `==` for `!=`. A fallback from failed induction authentication to
+AST-only constant evaluation then restored the forged branch decision.
+
+Static subtree proof now compares every literal, unary, binary and grouping
+token against source bytes; source-backed failure cannot bypass those checks.
+Four new regressions and the five prior induction-lazy tests pass,
+including an authenticated constant-logical fallback that preserves valid
+source expressions. This does not establish pinned frontend parity, dynamic
+C branches, EOF or general guest byte streams. The P0 task remains open.
+
 ### Source-bound lazy C induction arithmetic (2026-11-14)
 
 The production CLI retried the complete conditional Fibonacci source and a

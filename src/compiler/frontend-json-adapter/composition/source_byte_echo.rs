@@ -5699,6 +5699,111 @@ fn prove_skipped_induction_shape(
     })
 }
 
+// Validate source punctuation recursively; complete node shape and values
+// have already passed the independent bounded static-expression evaluator.
+fn authenticate_induction_static_prefix(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+    width: usize,
+) -> Option<()> {
+    let grouped = nodes.first()?.kind == "parenthesized-expression";
+    source_induction_bytes(
+        induction,
+        at.start,
+        if grouped {
+            "("
+        } else {
+            "!"
+        },
+    )?;
+    let child_at = at.child(
+        at.id.checked_add(1)?,
+        at.start.checked_add(1)?,
+        at.column.checked_add(1)?,
+    )?;
+    let (child_width, _) =
+        prove_induction_static_value(nodes.get(1..)?, child_at, induction)?;
+    if grouped {
+        source_induction_bytes(induction, nodes.get(1)?.span.end.byte, ")")?;
+    }
+    (child_width.checked_add(1)? == width).then_some(())
+}
+
+fn induction_static_binary_right_location(
+    at: StaticValueLocation,
+    left: &Node,
+    operator: &str,
+    right_index: usize,
+) -> Option<StaticValueLocation> {
+    let gap = u32::try_from(operator.len()).ok()?.checked_add(2)?;
+    at.child(
+        at.id.checked_add(u32::try_from(right_index).ok()?)?,
+        left.span.end.byte.checked_add(gap)?,
+        left.span.end.column.checked_add(gap)?,
+    )
+}
+
+fn authenticate_induction_static_binary(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+    width: usize,
+) -> Option<()> {
+    let left_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
+    let (left_width, _) =
+        prove_induction_static_value(nodes.get(1..)?, left_at, induction)?;
+    let left = nodes.get(1)?;
+    let operator = nodes.first()?.operation.as_deref()?;
+    source_induction_operator(induction, left.span.end.byte, operator)?;
+    let right_index = left_width.checked_add(1)?;
+    let right_at = induction_static_binary_right_location(
+        at,
+        left,
+        operator,
+        right_index,
+    )?;
+    let (right_width, _) = prove_induction_static_value(
+        nodes.get(right_index..)?,
+        right_at,
+        induction,
+    )?;
+    (right_index.checked_add(right_width)? == width).then_some(())
+}
+
+// Static constants inside source-backed induction predicates must have the
+// same spelling as their original C tokens, not just plausible Clang spans.
+// A forged constant-only subtree can otherwise change a compile-time branch
+// decision while passing the normalized source digest check.
+fn prove_induction_static_value(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, i32)> {
+    let (width, value) = prove_static_value(nodes, at)?;
+    if induction.source.is_none() {
+        return Some((width, value));
+    }
+    let node = nodes.first()?;
+    match node.kind.as_str() {
+        "integer-literal" => {
+            source_induction_bytes(
+                induction,
+                at.start,
+                node.literal.as_deref()?,
+            )?;
+        },
+        "unary-expression" | "parenthesized-expression" => {
+            authenticate_induction_static_prefix(nodes, at, induction, width)?;
+        },
+        "binary-expression" => {
+            authenticate_induction_static_binary(nodes, at, induction, width)?;
+        },
+        _ => return None,
+    }
+    Some((width, value))
+}
+
 // A selected C operand needs its actual value. An unselected operand still
 // needs a complete independent pure/source/Clang proof, but its actual C
 // arithmetic may be undefined without affecting the enclosing expression.
@@ -5873,7 +5978,9 @@ fn prove_induction_value(
             prove_induction_arithmetic(nodes, at, induction)?;
         return Some((width, value != 0, end));
     }
-    if let Some((width, value)) = prove_static_value(nodes, at) {
+    if let Some((width, value)) =
+        prove_induction_static_value(nodes, at, induction)
+    {
         return Some((width, value != 0, node.span.end.byte));
     }
     if matches!(
@@ -5914,11 +6021,31 @@ fn prove_static_predicate(
     conditional: &Node,
     induction: Option<StaticInduction<'_>>,
 ) -> Option<(usize, bool)> {
-    if let Some(induction) = induction
-        && let Some(result) =
-            prove_induction_predicate(nodes, conditional, induction)
-    {
-        return Some(result);
+    if let Some(static_induction) = induction {
+        if let Some(result) =
+            prove_induction_predicate(nodes, conditional, static_induction)
+        {
+            return Some(result);
+        }
+        // Preserve fully constant predicates that the induction-specific
+        // logical grammar does not admit, but never reenter the AST-only
+        // projector after a source-backed proof fails.
+        if static_induction.source.is_some() {
+            let begin = &conditional.span.begin;
+            let (width, value) = prove_induction_static_value(
+                nodes,
+                StaticValueLocation {
+                    id: conditional.id.checked_add(1)?,
+                    parent: conditional.id,
+                    start: begin.byte.checked_add(4)?,
+                    line: begin.line,
+                    column: begin.column.checked_add(4)?,
+                    depth: 0,
+                },
+                static_induction,
+            )?;
+            return Some((width, value != 0));
+        }
     }
     let begin = &conditional.span.begin;
     let (width, value) = prove_static_value(nodes, StaticValueLocation {
