@@ -74,9 +74,9 @@ struct SearchWord {
     remaining: usize,
     target_emitted: usize,
     value: u32,
-    next_value: u32,
-    next_next_value: u32,
-    next_next_next_value: u32,
+    next_value: Option<u32>,
+    next_next_value: Option<u32>,
+    next_next_next_value: Option<u32>,
     fourth_future_value: Option<u32>,
 }
 
@@ -278,13 +278,13 @@ fn append_successors<const N: usize>(
                 next_value,
                 next_next_value,
                 next_next_next_value,
-                fourth_future_value.unwrap_or_default(),
+                fourth_future_value,
             ];
-            let proven_future = if fourth_future_value.is_some() {
-                &future[..4]
-            } else {
-                &future[..3]
-            };
+            // Missing operands are not zero-valued loader words. Stop at
+            // the first unproven address rather than inventing a path.
+            let known = future.iter().take_while(|word| word.is_some()).count();
+            let values = future.map(Option::unwrap_or_default);
+            let proven_future = &values[..known];
             let Some(distance) = reachable_next_byte(
                 accumulator,
                 proven_future,
@@ -398,9 +398,11 @@ fn proposed_geometry_with_budget<const N: usize>(
                 remaining,
                 target_emitted,
                 value: *memory.get(address)?,
-                next_value: *memory.get(address.checked_add(1)?)?,
-                next_next_value: *memory.get(address.checked_add(2)?)?,
-                next_next_next_value: *memory.get(address.checked_add(3)?)?,
+                next_value: memory.get(address.checked_add(1)?).copied(),
+                next_next_value: memory.get(address.checked_add(2)?).copied(),
+                next_next_next_value: memory
+                    .get(address.checked_add(3)?)
+                    .copied(),
                 fourth_future_value: memory
                     .get(address.checked_add(4)?)
                     .copied(),
@@ -617,9 +619,9 @@ fn proposed_split_geometry_with_budget<const N: usize>(
                 remaining,
                 target_emitted,
                 value: current,
-                next_value: future[0].unwrap_or_default(),
-                next_next_value: future[1].unwrap_or_default(),
-                next_next_next_value: future[2].unwrap_or_default(),
+                next_value: future[0],
+                next_next_value: future[1],
+                next_next_next_value: future[2],
                 fourth_future_value: future[3],
             },
             expected,
@@ -1288,9 +1290,9 @@ pub(super) fn verified_source_scratch_output_layout<const N: usize>(
                 remaining: body_limit.saturating_sub(index.saturating_add(1)),
                 target_emitted: N,
                 value: word(0)?,
-                next_value: word(1)?,
-                next_next_value: word(2)?,
-                next_next_next_value: word(3)?,
+                next_value: word(1),
+                next_next_value: word(2),
+                next_next_next_value: word(3),
                 fourth_future_value: word(4),
             },
             expected,

@@ -785,9 +785,9 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 14,
             target_emitted: 8,
@@ -801,9 +801,9 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 13,
             target_emitted: 8,
@@ -828,9 +828,9 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -847,9 +847,9 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 21,
             target_emitted: 8,
@@ -865,9 +865,9 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 20,
             target_emitted: 8,
@@ -899,9 +899,9 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -917,9 +917,9 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 2,
-            next_next_value: 2,
-            next_next_next_value: 2,
+            next_value: Some(2),
+            next_next_value: Some(2),
+            next_next_next_value: Some(2),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -933,9 +933,9 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 21,
             target_emitted: 8,
@@ -962,9 +962,9 @@ fn guest_output_beam_records_only_retained_predecessors() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 30,
             target_emitted: 8,
@@ -998,9 +998,9 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 2,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(2),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -1017,9 +1017,9 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
         &mut steps,
         SearchWord {
             value: 2,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 21,
             target_emitted: 8,
@@ -1031,9 +1031,9 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 20,
             target_emitted: 8,
@@ -1051,9 +1051,9 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 2,
-            next_next_value: 2,
-            next_next_next_value: 2,
+            next_value: Some(2),
+            next_next_value: Some(2),
+            next_next_next_value: Some(2),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -1084,9 +1084,9 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 2,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(2),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -1113,9 +1113,9 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
         &mut steps,
         SearchWord {
             value: 2,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 21,
             target_emitted: 8,
@@ -1127,9 +1127,9 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 20,
             target_emitted: 8,
@@ -1145,9 +1145,9 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 2,
-            next_next_value: 2,
-            next_next_next_value: 1,
+            next_value: Some(2),
+            next_next_value: Some(2),
+            next_next_next_value: Some(1),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -1178,9 +1178,9 @@ fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 1,
-            next_next_value: 2,
-            next_next_next_value: 2,
+            next_value: Some(1),
+            next_next_value: Some(2),
+            next_next_next_value: Some(2),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -1197,9 +1197,9 @@ fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
         &mut steps,
         SearchWord {
             value: 1,
-            next_value: 2,
-            next_next_value: 2,
-            next_next_next_value: 0,
+            next_value: Some(2),
+            next_next_value: Some(2),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 21,
             target_emitted: 8,
@@ -1212,9 +1212,9 @@ fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
         &mut steps,
         SearchWord {
             value: 2,
-            next_value: 2,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(2),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 20,
             target_emitted: 8,
@@ -1227,9 +1227,9 @@ fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
         &mut steps,
         SearchWord {
             value: 2,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 19,
             target_emitted: 8,
@@ -1244,9 +1244,9 @@ fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 1,
-            next_next_value: 2,
-            next_next_next_value: 0,
+            next_value: Some(1),
+            next_next_value: Some(2),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -1276,9 +1276,9 @@ fn dense_guest_frontier_still_prunes_to_a_bounded_budget() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 30,
             target_emitted: 8,
@@ -1309,9 +1309,9 @@ fn dense_guest_frontier_retains_future_change_after_repeated_output() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 30,
             target_emitted: 8,
@@ -1328,9 +1328,9 @@ fn dense_guest_frontier_retains_future_change_after_repeated_output() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 29,
             target_emitted: 8,
@@ -1344,9 +1344,9 @@ fn dense_guest_frontier_retains_future_change_after_repeated_output() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 28,
             target_emitted: 8,
@@ -1359,9 +1359,9 @@ fn dense_guest_frontier_retains_future_change_after_repeated_output() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 27,
             target_emitted: 8,
@@ -1378,9 +1378,9 @@ fn dense_guest_frontier_retains_future_change_after_repeated_output() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 2,
-            next_next_value: 2,
-            next_next_next_value: 2,
+            next_value: Some(2),
+            next_next_value: Some(2),
+            next_next_next_value: Some(2),
             fourth_future_value: None,
             remaining: 30,
             target_emitted: 8,
@@ -1408,9 +1408,9 @@ fn dense_guest_frontier_preserves_fourth_word_continuation() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: Some(2),
             remaining: 22,
             target_emitted: 8,
@@ -1440,9 +1440,9 @@ fn dense_guest_frontier_preserves_fourth_word_continuation() {
             &mut steps,
             SearchWord {
                 value: word,
-                next_value: 0,
-                next_next_value: 0,
-                next_next_next_value: 0,
+                next_value: Some(0),
+                next_next_value: Some(0),
+                next_next_next_value: Some(0),
                 fourth_future_value: None,
                 remaining: 21 - index,
                 target_emitted: 8,
@@ -1456,9 +1456,9 @@ fn dense_guest_frontier_preserves_fourth_word_continuation() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 16,
             target_emitted: 8,
@@ -1473,9 +1473,9 @@ fn dense_guest_frontier_preserves_fourth_word_continuation() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: Some(1),
             remaining: 22,
             target_emitted: 8,
@@ -1490,9 +1490,9 @@ fn dense_guest_frontier_preserves_fourth_word_continuation() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: Some(2),
             remaining: 4,
             target_emitted: 8,
@@ -1521,9 +1521,9 @@ fn sparse_guest_frontier_preserves_fourth_word_continuation() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 22,
             target_emitted: 8,
@@ -1541,9 +1541,9 @@ fn sparse_guest_frontier_preserves_fourth_word_continuation() {
             &mut steps,
             SearchWord {
                 value: word,
-                next_value: 0,
-                next_next_value: 0,
-                next_next_next_value: 0,
+                next_value: Some(0),
+                next_next_value: Some(0),
+                next_next_next_value: Some(0),
                 fourth_future_value: None,
                 remaining: 21 - index,
                 target_emitted: 8,
@@ -1560,9 +1560,9 @@ fn sparse_guest_frontier_preserves_fourth_word_continuation() {
         &mut steps,
         SearchWord {
             value: 0,
-            next_value: 0,
-            next_next_value: 0,
-            next_next_next_value: 0,
+            next_value: Some(0),
+            next_next_value: Some(0),
+            next_next_next_value: Some(0),
             fourth_future_value: None,
             remaining: 16,
             target_emitted: 8,
@@ -1579,9 +1579,9 @@ fn sparse_guest_frontier_preserves_fourth_word_continuation() {
             &mut steps,
             SearchWord {
                 value: word,
-                next_value: 0,
-                next_next_value: 0,
-                next_next_next_value: 0,
+                next_value: Some(0),
+                next_next_value: Some(0),
+                next_next_next_value: Some(0),
                 fourth_future_value: None,
                 remaining: 21 - index,
                 target_emitted: 8,
@@ -2150,4 +2150,72 @@ fn split_search_looks_past_live_relocations_for_future_writes()
     assert_eq!(next[3], None);
 
     Ok(())
+}
+
+#[test]
+fn dense_split_beam_does_not_invent_missing_loader_words() {
+    // A relocation can leave fewer provable future operands than the
+    // beam's four-cell lookahead. Unknown cells are not zero data words.
+    let profile = malbolge::current_profile();
+    let future =
+        future_split_words(&[Some(15), None, None, None], &[0; 4], profile, 0);
+    assert_eq!(future, [None; 4]);
+    let states = (0u32..8_192)
+        .map(|high| ((0usize, high * 256 + 3), 0usize))
+        .collect::<BTreeMap<_, _>>();
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let survivors = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: future[0],
+            next_next_value: future[1],
+            next_next_next_value: future[2],
+            fourth_future_value: future[3],
+            remaining: 22,
+            target_emitted: 8,
+        },
+        [3, 53, 53, 53, 53, 53, 53, 53],
+    );
+    assert!(!survivors.is_empty());
+    assert!(
+        !survivors.contains_key(&(1, 259)),
+        "unknown future word was interpreted as a proven zero operand"
+    );
+
+    // With one real future word 2, the middle word needs an additional
+    // real zero word to reach 255 through two consecutive guest p writes.
+    // A missing second word must not be silently supplied as zero.
+    let expected = [3, 255, 255, 255, 255, 255, 255, 255];
+    for (second, should_retain) in [(None, false), (Some(0), true)] {
+        let survivors = append_successors(
+            &states,
+            &mut steps,
+            SearchWord {
+                value: 0,
+                next_value: Some(2),
+                next_next_value: second,
+                next_next_next_value: None,
+                fourth_future_value: None,
+                remaining: 22,
+                target_emitted: 8,
+            },
+            expected,
+        );
+        assert_eq!(
+            survivors.contains_key(&(1, 259)),
+            should_retain,
+            "beam did not distinguish an absent word from an actual zero"
+        );
+    }
+    assert_eq!(malbolge::profile_crazy(0, 259, 15) & 255, 53);
+    assert_eq!(
+        malbolge::profile_crazy(0, malbolge::profile_crazy(2, 259, 15), 15,)
+            & 255,
+        255
+    );
 }

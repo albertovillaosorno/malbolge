@@ -36,9 +36,9 @@ fn short_streams_drop_states_with_insufficient_remaining_instructions() {
         remaining: 4,
         target_emitted: 5,
         value: 0,
-        next_value: 0,
-        next_next_value: 0,
-        next_next_next_value: 0,
+        next_value: Some(0),
+        next_next_value: Some(0),
+        next_next_next_value: Some(0),
         fourth_future_value: None,
     };
     // Five output instructions and at least four arithmetic changes are
@@ -61,9 +61,9 @@ fn short_streams_retain_output_only_paths_at_the_exact_lower_bound() {
         remaining: 3,
         target_emitted: 4,
         value: 0,
-        next_value: 0,
-        next_next_value: 0,
-        next_next_next_value: 0,
+        next_value: Some(0),
+        next_next_value: Some(0),
+        next_next_next_value: Some(0),
         fourth_future_value: None,
     };
     let next = append_successors(&states, &mut steps, word, [0, 0, 0, 0]);

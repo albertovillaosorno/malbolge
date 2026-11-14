@@ -1214,3 +1214,23 @@ slots are absent. Existing repeated-relocation guest and normative-VM tests
 remain the independent acceptance boundary. This repairs a bounded search
 heuristic, not general synthesis, dynamic C state, or a semantic proof of
 search completeness.
+
+### Unknown loader words in bounded beam lookahead (2026-11-14)
+
+A red-first dense-frontier regression found that split-region search converted
+missing first, second or third future loader operands into the integer zero.
+For a middle accumulator word of `259`, that fabricated a `p(0, A)` path to
+byte `53`, or a second `p(0, A)` after a real operand `2` to byte `255`.
+These are valid arithmetic continuations only when the corresponding loader
+word actually exists and equals zero.
+
+The proposal now carries optional loader operands for all four future cells,
+stopping lookahead at the first unknown cell. Ordinary single-relocation,
+repeated-relocation and source-scratch proposals use the same boundary; a
+missing lookahead value is no longer a reason to reject an otherwise valid
+current search position. Real zero operands still retain the necessary
+high-word continuations, as tested by a positive two-write control. This
+corrects heuristic retention only: independently admitted positional code,
+write-disjointness and normative VM execution still govern publication.
+The checkout used for this regression lacked the pinned C frontend binary,
+so it does not establish new end-to-end C compilation or retire P0.
