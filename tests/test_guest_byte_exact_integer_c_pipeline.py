@@ -41,7 +41,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as equivalent
 from tests import test_guest_byte_total_if_c_pipeline as total
@@ -57,6 +57,7 @@ ADAPTER = equivalent.ADAPTER
 class GuestByteExactIntegerCPipelineTests(unittest.TestCase):
     """Run full C streams against an independently computed binary oracle."""
 
+    @override
     def setUp(self) -> None:
         if not all(
             path.is_file()
