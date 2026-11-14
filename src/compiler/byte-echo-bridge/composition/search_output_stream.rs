@@ -3238,3 +3238,7 @@ pub(super) fn verified_four_relocation_write_layout<const N: usize>(
 #[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/search_state_budget.rs"]
 mod search_state_budget_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/search_state_collisions.rs"]
+mod search_state_collision_tests;

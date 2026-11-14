@@ -26,6 +26,26 @@ program, match the profile, and delegate source encoding/admission to
 `malbolge-layout`. They
 emit the actual source code; no host callback performs guest byte I/O.
 
+### Exact-state collisions carry distinct guest effects
+
+The bounded output-state search deduplicates proposals by emitted-byte count
+and *full fifteen-trit accumulator*. A rotation and no-op can reach the same
+key, but they do not necessarily encode the same source or mutate the same
+guest data. The deterministic search retains its first candidate history;
+one must not blindly prefer the no-op merely because its apparent state is
+equal. Such a preference was experimentally shown to break the independently
+VM-admitted last-body zero-output guest.
+
+Two focused collision regressions pin the stable candidate-history rule even
+when a later predecessor reaches the same exact word without a write. A real
+three-cell no-op/output/halt source is separately admitted by the positional
+encoder and the normative VM with zero data writes, while the unrelocated
+rotation fails source-write admission. These tests identify a search-diversity
+limitation, not proof that the merged candidates are interchangeable:
+supporting alternate provenance paths requires independent source/VM checks,
+not an unconditional successor preference. Dynamic C execution and arbitrary
+byte-stream synthesis remain open.
+
 ### Verified side-effect-free void function
 
 `encode_empty_void_function` accepts exactly one canonical current-profile
