@@ -101,8 +101,11 @@ fn later_no_op_does_not_rewrite_existing_candidate() -> Result<(), String> {
                 .ok_or("missing rotated word")?,
         )
         .ok_or("missing path history")?;
-    assert_eq!(step.operation, LinearOpcode::RotateData);
-    assert_eq!(step.predecessor, 0);
+    if step.operation != LinearOpcode::RotateData || step.predecessor != 0 {
+        return Err(String::from(
+            "equal-state collision replaced original path",
+        ));
+    }
     Ok(())
 }
 
@@ -122,14 +125,20 @@ fn no_op_zero_source_runs_without_data_writes() -> Result<(), String> {
     let source =
         verified_output_stream_layout(profile, &unchanged, [0], &cells)
             .ok_or("real zero-output no-op guest was rejected")?;
-    assert!(source.data_write_positions().iter().all(Option::is_none));
+    if source.data_write_positions().iter().any(Option::is_some) {
+        return Err(String::from(
+            "zero-output no-op guest unexpectedly wrote data",
+        ));
+    }
     let writing = [
         LinearOpcode::RotateData,
         LinearOpcode::OutputByte,
         LinearOpcode::Halt,
     ];
-    assert!(
-        verified_output_stream_layout(profile, &writing, [0], &cells).is_none()
-    );
+    if verified_output_stream_layout(profile, &writing, [0], &cells).is_some() {
+        return Err(String::from(
+            "unrelocated rotation passed guest admission",
+        ));
+    }
     Ok(())
 }
