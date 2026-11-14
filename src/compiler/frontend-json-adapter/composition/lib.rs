@@ -51,6 +51,10 @@ mod source_byte_echo;
 mod nested_byte_echo;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/source_literal_auth.rs"]
+mod source_literal_auth_tests;
+
+#[cfg(test)]
 use malbolge as _;
 use serde::Deserialize;
 use std::iter::once;
@@ -2864,6 +2868,98 @@ fn canonical_literal_output_typed_ir(
     Ok((encoded, mode))
 }
 
+// The normalized Clang tree contains semantic integer values, not a proof
+// that those values came from the original token. In source-backed compilation
+// compare every integer literal with the C spelling before any projector can
+// constant-fold it. AST-only callers retain their existing evidence contract.
+fn source_integer_token_value(token: &[u8]) -> Option<u64> {
+    let token = str::from_utf8(token).ok()?;
+    let (radix, prefix) = if token.starts_with("0x") || token.starts_with("0X")
+    {
+        (16, 2)
+    } else if token.starts_with("0b") || token.starts_with("0B") {
+        (2, 2)
+    } else if token.starts_with('0') {
+        (8, 0)
+    } else {
+        (10, 0)
+    };
+    let tail = token.get(prefix..)?;
+    let width = tail
+        .bytes()
+        .take_while(|byte| {
+            *byte == b'\'' || char::from(*byte).to_digit(radix).is_some()
+        })
+        .count();
+    let digits = tail.get(..width)?;
+    let suffix = tail.get(width..)?.to_ascii_lowercase();
+    // C23 unsigned/long suffixes are admitted. Unknown or duplicate suffixes
+    // cannot serve as evidence for a normalized Clang integer constant.
+    if !matches!(
+        suffix.as_str(),
+        "" | "u" | "l" | "ll" | "ul" | "lu" | "ull" | "llu"
+    ) || digits.is_empty()
+        || digits.split('\'').any(str::is_empty)
+    {
+        return None;
+    }
+    let number: String = digits.chars().filter(|ch| *ch != '\'').collect();
+    u64::from_str_radix(&number, radix).ok()
+}
+
+fn source_scalar_tokens_match(bytes: &[u8], source: &[u8]) -> bool {
+    let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
+        return false;
+    };
+    // The source spans of direct Clang operands enclose an operator token.
+    // Authenticate its exact spelling, not merely the normalized operator
+    // selected by an untrusted JSON payload.
+    let mut children = std::collections::BTreeMap::<u32, Vec<&Node>>::new();
+    for node in &artifact.nodes {
+        children.entry(node.parent).or_default().push(node);
+    }
+    artifact.nodes.iter().all(|node| {
+        if matches!(
+            node.kind.as_str(),
+            "binary-expression" | "compound-assignment-expression"
+        ) {
+            let Some([left, right]) = children.get(&node.id).map(Vec::as_slice)
+            else {
+                return false;
+            };
+            let (Ok(begin), Ok(end)) = (
+                usize::try_from(left.span.end.byte),
+                usize::try_from(right.span.begin.byte),
+            ) else {
+                return false;
+            };
+            return node.operation.as_deref().is_some_and(|operator| {
+                source.get(begin..end).is_some_and(|gap| {
+                    str::from_utf8(gap).ok().map(str::trim) == Some(operator)
+                })
+            });
+        }
+        if node.kind != "integer-literal" {
+            return true;
+        }
+        let (Ok(begin), Ok(end)) = (
+            usize::try_from(node.span.begin.byte),
+            usize::try_from(node.span.end.byte),
+        ) else {
+            return false;
+        };
+        node.span.begin.line == node.span.end.line
+            && node.span.end.column.checked_sub(node.span.begin.column)
+                == node.span.end.byte.checked_sub(node.span.begin.byte)
+            && node.literal.as_deref() == node.constant_integer.as_deref()
+            && node
+                .constant_integer
+                .as_deref()
+                .and_then(|literal| literal.parse::<u64>().ok())
+                == source.get(begin..end).and_then(source_integer_token_value)
+    })
+}
+
 /// Project the two supported C families without dropping observable output.
 ///
 /// # Errors
@@ -2885,6 +2981,11 @@ pub fn canonical_guest_typed_ir_with_source(
     bytes: &[u8],
     source: Option<&[u8]>,
 ) -> Result<CanonicalGuestProjection, FrontendJsonError> {
+    if let Some(witness) = source
+        && !source_scalar_tokens_match(bytes, witness)
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
     if let Ok(projection) =
         source_byte_echo::canonical_source_byte_echo(bytes, source)
     {

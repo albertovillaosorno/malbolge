@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, a full live-input/conditional Fibonacci C program
+  refused at its first `int current = getchar();` declaration; the compiler
+  cannot yet mix guest runtime input with compile-time local recurrence.
+  An independent red-first pinned-Clang JSON forgery changed source `60U`
+  to normalized `61`; the unguarded Malbolge guest emitted wrong byte
+  `40` instead of `41`. A same-width `+` to `-` operator forgery
+  also bypassed source validation. Shared source-backed literal/operator
+  authentication now refuses both before typed projection. Four focused
+  tests pass; the original twelve-byte source-C guest still executes
+  with exact oracle parity in 117 normative VM steps. Guest C runtime
+  state/control and arbitrary byte streams remain P0 work.
+
 - On 2026-11-14, exact-version LLVM 22.1.8 bootstrap and the native
   C frontend build restored the missing repository-pinned compiler preflight.
   The **unmodified** full twelve-iteration conditional Fibonacci C compiled

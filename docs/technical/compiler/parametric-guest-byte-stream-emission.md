@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-bound C scalar token verification (2026-11-14)
+
+A second complete C probe with a live `getchar()` byte, unsigned Fibonacci
+recurrence, and conditional `putchar` first refused a mixed runtime-input
+and compile-time-state declaration. Dynamic guest C state and branching are
+still unimplemented; no output was published for that program.
+
+Independently, a red-first pinned-Clang JSON mutation changed an unsigned
+`60U` source literal to normalized `61` without changing the original C
+witness. The unguarded compiler accepted the forgery and the normative VM
+emitted `40` instead of source-correct `41`. A same-width `+` to `-`
+operation forgery also passed typed admission. A common source-backed
+scalar-token gate now checks original C integer spelling, normalized values,
+and binary/compound assignment operators before any projection fallback.
+AST-only projection remains a separate compatibility contract. Four focused
+source-bound tests pass, including alternate C23 integer spellings and
+source mutation; the current pinned Clang fixture hashes exactly to its C
+source. The original twelve-iteration Fibonacci guest still emits
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23` in 117 VM steps with the
+guarded adapter, preserving bounded full-C parity.
+
+This repairs source authentication, **not** dynamic C guest control flow,
+EOF, arbitrary byte-stream generation or the outstanding P0 contract.
+
 ### Original complete C-to-Malbolge parity (2026-11-14)
 
 The repository-local LLVM 22.1.8 runtime was imported from the exact-version
