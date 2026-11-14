@@ -231,12 +231,7 @@ fn append_successors<const N: usize>(
             // each byte transition costs an additional p/* write.
             // A shortage is impossible to repair with padding or high trits.
             let pending = &expected[count..target_emitted];
-            if (target_emitted >= 8
-                && !can_fit_effects(
-                    remaining,
-                    candidate_accumulator as u8,
-                    pending,
-                ))
+            if !can_fit_effects(remaining, candidate_accumulator as u8, pending)
                 || proposals.contains_key(&(count, candidate_accumulator))
             {
                 continue;
@@ -454,7 +449,10 @@ fn split_unwritten_addresses<const N: usize>(
     let target_emitted = terminal.emitted_before_tail(N);
     if prefix_outputs > prefix
         || prefix_outputs > target_emitted
-        || expected.get(..prefix_outputs)?.iter().any(|&byte| byte != 0)
+        || expected
+            .get(..prefix_outputs)?
+            .iter()
+            .any(|&byte| byte != 0)
         || !(1..=3).contains(&additional_relocations.len())
         || additional_relocations
             .first()
@@ -462,9 +460,12 @@ fn split_unwritten_addresses<const N: usize>(
         || additional_relocations
             .last()
             .is_none_or(|&position| position >= source_length.saturating_sub(3))
-        || additional_relocations
-            .windows(2)
-            .any(|pair| matches!(pair, [first, second] if first.saturating_add(1) >= *second))
+        || additional_relocations.windows(2).any(|pair| {
+            matches!(
+                pair,
+                [first, second] if first.saturating_add(1) >= *second
+            )
+        })
     {
         return None;
     }
@@ -2052,7 +2053,9 @@ pub(super) fn verified_revisited_source_scratch_stream<const N: usize>(
                 else {
                     continue;
                 };
-                let accepted = [Vec::new(), vec![255, 0, 128]].into_iter().all(|input| {
+                let accepted = [Vec::new(), vec![255, 0, 128]]
+                    .into_iter()
+                    .all(|input| {
                 let Ok(mut guest) = super::ProfileMachine::from_source(
                     profile, layout.source(), input,
                 ) else { return false; };
@@ -2719,6 +2722,9 @@ mod source_scratch_tests;
 #[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/alternate_terminal.rs"]
 mod alternate_terminal_tests;
+#[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/short_effect_lower_bound.rs"]
+mod short_effect_lower_bound_tests;
 
 #[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/repeated_relocation.rs"]

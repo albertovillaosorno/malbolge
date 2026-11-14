@@ -1143,3 +1143,22 @@ The six-region fallback runs only for twelve-effect streams, after prior
 bounded proposal grammars. This is source-independent guest byte synthesis,
 not general runtime C arithmetic, arbitrary relocations or a solution to
 the unmasked Fibonacci stream `02 59 5f ...`.
+
+### Necessary instruction bound for short output streams (2026-11-13)
+
+A five-output variant of the full C Fibonacci-style recurrence with seeds
+`a = 2U` and `b = 3U` reached the real guest layout stage but did not
+produce an artifact within the bounded experiment. The search previously
+used its necessary output/write instruction bound only for eight or more
+pending effects, leaving impossible shorter frontiers unfiltered.
+
+Every pending output needs a guest `<` instruction. Each transition to a
+different byte needs at least one real `p` or `*` accumulator write; no-op
+and output cannot change the accumulator. The same necessary bound now
+filters all stream lengths without discarding exact accumulator values or
+weakening the independent layout and normative-VM verification gate.
+Red-first short-stream tests prove insufficient body capacity rejects and
+exactly sufficient repeated outputs remain. This change improves proposal
+pruning; it does not prove completeness, runtime C arithmetic or general
+source-independent byte-stream synthesis. The seeded C variant remains
+unwitnessed under the experiment budget.
