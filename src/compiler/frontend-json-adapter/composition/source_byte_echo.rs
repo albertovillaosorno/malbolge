@@ -31,6 +31,10 @@
 
 //! Closed dynamic-byte input provenance from normalized source C to typed IR.
 
+#[cfg(test)]
+#[path = "../../../../tests/compiler/lazy_byte_predicate.rs"]
+mod lazy_byte_predicate_tests;
+
 use std::collections::HashSet;
 
 use super::typed::{
@@ -83,7 +87,9 @@ type PureTernaryArmProof = (usize, String, String);
 // Exact signed C values for every successful resident guest byte, 0..=255.
 // Keeping values rather than truthiness is essential for integer XOR/AND:
 // distinct nonzero masks may cancel or have no bits in common.
-type BytePredicateValues = [i32; 256];
+// None marks undefined arithmetic for one candidate byte; lazy C operators
+// may discard it, but an observed None always refuses final admission.
+type BytePredicateValues = [Option<i32>; 256];
 type TotalByteGuardProof = (usize, String, BytePredicateValues);
 
 // The nested successful-byte return is not recomputed: every write uses the
@@ -5818,8 +5824,8 @@ fn prove_static_predicate(
 // predicate's complete truth set over that finite domain, then select a
 // statement only if all bytes agree. This includes tautologies whose leaves
 // individually depend on the guest input. Neither the byte's actual value
-// nor a guest conditional is predicted at compile time. Even short-circuited
-// operands must be proven pure and source-authenticated.
+// nor a guest conditional is predicted at compile time. Every operand must
+// be pure and source-authenticated; only executed operands must be defined.
 #[expect(
     clippy::too_many_arguments,
     reason = "verify each Clang parent and source-backed byte-range predicate"
@@ -5870,15 +5876,15 @@ fn prove_total_byte_guard(
         let values = if root.kind == "parenthesized-expression" {
             child_values
         } else {
-            let mut results = [0i32; 256];
+            let mut results = [None; 256];
             for (result, value) in results.iter_mut().zip(child_values) {
-                *result = match operator? {
-                    "!" => i32::from(value == 0i32),
-                    "+" => value,
-                    "-" => value.checked_neg()?,
-                    "~" => !value,
-                    _ => return None,
-                };
+                *result = value.and_then(|value| match operator? {
+                    "!" => Some(i32::from(value == 0)),
+                    "+" => Some(value),
+                    "-" => value.checked_neg(),
+                    "~" => Some(!value),
+                    _ => None,
+                });
             }
             results
         };
@@ -5888,7 +5894,9 @@ fn prove_total_byte_guard(
         if let Some(annotation) = root.constant_integer.as_deref() {
             let constant = annotation.parse::<i32>().ok()?;
             (constant.to_string() == annotation
-                && values.iter().all(|value| *value == constant))
+                && values
+                    .iter()
+                    .all(|value| value.is_none_or(|v| v == constant)))
             .then_some(())?;
         }
         let width = child_width.checked_add(1)?;
@@ -6015,8 +6023,8 @@ fn prove_total_byte_zero_comparison(
     let spelling = format!("{left} {operator} 0");
     pure_expression_source(root, &spelling, source)?;
     let values = match operator {
-        "==" => left_values.map(|value| i32::from(value == 0)),
-        "!=" => left_values.map(|value| i32::from(value != 0)),
+        "==" => left_values.map(|value| value.map(|v| i32::from(v == 0))),
+        "!=" => left_values.map(|value| value.map(|v| i32::from(v != 0))),
         _ => return None,
     };
     let width = index.checked_add(1)?;
@@ -6112,13 +6120,16 @@ fn prove_total_byte_binary(
     (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
     let spelling = format!("{left} {operator} {right}");
     pure_expression_source(root, &spelling, source)?;
-    let mut values = [0i32; 256];
+    let mut values = [None; 256];
     for (index, value) in values.iter_mut().enumerate() {
-        *value = checked_c_byte_guard_binary(
-            operator,
-            left_values[index],
-            right_values[index],
-        )?;
+        *value = match left_values[index] {
+            None => None,
+            Some(0) if operator == "&&" => Some(0),
+            Some(left) if operator == "||" && left != 0 => Some(1),
+            Some(left) => right_values[index].and_then(|right| {
+                checked_c_byte_guard_binary(operator, left, right)
+            }),
+        };
     }
     Some((width, spelling, values))
 }
@@ -6182,12 +6193,10 @@ fn prove_total_byte_ternary(
     (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
     let spelling = format!("{condition} ? {when_true} : {when_false}");
     pure_expression_source(root, &spelling, source)?;
-    let values = std::array::from_fn(|index| {
-        if condition_values[index] != 0 {
-            true_values[index]
-        } else {
-            false_values[index]
-        }
+    let values = std::array::from_fn(|index| match condition_values[index] {
+        Some(0) => false_values[index],
+        Some(_) => true_values[index],
+        None => None,
     });
     Some((width, spelling, values))
 }
@@ -6225,7 +6234,7 @@ fn prove_total_byte_leaf(
         )?;
         let spelling = value.to_string();
         pure_expression_source(root, &spelling, source)?;
-        return Some((1, spelling, [value; 256]));
+        return Some((1, spelling, [Some(value); 256]));
     }
     // A source-authenticated identity is true for precisely the nonzero
     // successful bytes. Its proven zero test has the complementary set.
@@ -6240,16 +6249,16 @@ fn prove_total_byte_leaf(
         depth.checked_add(1)?,
         source,
     ) {
-        let mut values = [0i32; 256];
+        let mut values = [None; 256];
         for (byte, value) in values.iter_mut().enumerate() {
             let signed_byte = i32::try_from(byte).ok()?;
-            *value = if root.operation.as_deref() == Some("!=") {
+            *value = Some(if root.operation.as_deref() == Some("!=") {
                 i32::from(signed_byte != 0)
             } else if nonzero {
                 signed_byte
             } else {
                 i32::from(signed_byte == 0)
-            };
+            });
         }
         return (width <= MAX_STATIC_PREDICATE_NODES)
             .then_some((width, spelling, values));
@@ -6272,7 +6281,7 @@ fn prove_total_byte_leaf(
         .parse::<i32>()
         .ok()?;
     let operation = root.operation.as_deref()?;
-    let mut values = [0i32; 256];
+    let mut values = [None; 256];
     for byte in 0i32..=255 {
         let value = match operation {
             "<" => i32::from(byte < literal),
@@ -6284,7 +6293,7 @@ fn prove_total_byte_leaf(
             "&" => byte & literal,
             _ => return None,
         };
-        values[usize::try_from(byte).ok()?] = value;
+        values[usize::try_from(byte).ok()?] = Some(value);
     }
     (width <= MAX_STATIC_PREDICATE_NODES).then_some((width, spelling, values))
 }
@@ -6311,9 +6320,15 @@ fn prove_total_byte_if_predicate(
         0,
         source?,
     )?;
-    let selected = if values.iter().all(|value| *value != 0) {
+    // No successful guest byte may execute an undefined integer operation.
+    // Undefined values in unselected &&, || and ?: arms are harmless only
+    // after the complete source/AST expression has been authenticated.
+    if values.iter().any(Option::is_none) {
+        return None;
+    }
+    let selected = if values.iter().all(|value| value.is_some_and(|v| v != 0)) {
         Some(true)
-    } else if values.iter().all(|value| *value == 0) {
+    } else if values.iter().all(|value| *value == Some(0)) {
         Some(false)
     } else {
         None

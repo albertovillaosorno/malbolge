@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, the full conditional Fibonacci C probe again stopped
+  before lowering at missing pinned LLVM 22 frontend preflight. Separate
+  red-first pure predicate AST tests showed that the successful-byte checker
+  eagerly rejected C short-circuit and ternary expressions with undefined
+  *unselected* operands. The checker now retains per-byte definedness across
+  the 256-input domain and admits source-authenticated `&&`, `||`, and `?:`
+  when every *executed* operand is defined. The eight focused synthetic
+  source/AST checks prove guarded zero divisors, live-byte invariants,
+  reachable rejection and forged source/reference/effect refusals; eleven
+  existing normalized-loop regressions pass. These are not pinned frontend
+  artifacts or guest VM proofs. No dynamic C guest computation, EOF handling
+  or general arbitrary-stream synthesis was added; P0 remains open.
+
 - On 2026-11-14, the whole conditional Fibonacci C probe again failed
   before lowering at absent pinned LLVM 22 frontend preflight, without
   publishing a guest. Independently, a red-first fixed source-scratch

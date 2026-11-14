@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Definedness of lazy live-byte predicates (2026-11-14)
+
+The complete conditional Fibonacci C source was retried through the production
+CLI, but repository-pinned LLVM 22 frontend preflight refused it without
+publishing a guest artifact. A separate red-first source/AST predicate
+regression exposed an over-conservative proof: `1 || 1 / 0`,
+`0 && 1 / 0`, and a selected ternary arm were refused because the checker
+attempted to evaluate pure but unexecuted operands.
+
+The bounded C `i32` predicate evaluator now carries definedness separately
+for all 256 successful input bytes. Source and Clang node structure are still
+checked for every subtree. `&&`, `||`, and `?:` consume only their actually
+selected operand values; each reachable zero divisor, undefined arithmetic,
+impure subtree, altered source spelling, or forged live-local reference still
+refuses. A live-byte tautology `current == 0 || current / current == 1`
+and a zero-safe ternary are proven across the complete 256-byte domain.
+Eight focused synthetic preorder-node tests and eleven existing normalized
+loop regressions pass. These synthetic nodes are **not** pinned Clang golden
+artifacts: no frontend-to-guest or normative VM parity has been established
+for this newly admitted expression. Dynamic guest branching/arithmetic,
+EOF, arbitrary streams, and the original full C P0 remain unfinished.
+
 ### Late graphical source-scratch output completion (2026-11-14)
 
 The fixed forward-jump graphical source-scratch solver could spend its four
