@@ -5335,11 +5335,11 @@ fn induction_identifier_end(
 // Pure arithmetic on a protected induction counter is a source-time value.
 // Authenticate the complete `name op N` Clang subtree, source operator and
 // canonical decimal operand; a live guest byte never enters this proof.
-fn prove_induction_arithmetic(
+fn prove_induction_arithmetic_shape(
     nodes: &[Node],
     at: StaticValueLocation,
     induction: StaticInduction<'_>,
-) -> Option<(usize, i32, u32)> {
+) -> Option<(usize, Option<i32>, u32)> {
     let [remainder, cast, variable, divisor, ..] = nodes else {
         return None;
     };
@@ -5405,18 +5405,31 @@ fn prove_induction_arithmetic(
         "-" => induction.value.checked_sub(divisor_value),
         "*" => induction.value.checked_mul(divisor_value),
         _ => None,
-    }?;
+    };
     Some((4, value, end))
+}
+
+// Require the actual C value for an evaluated induction expression. The
+// shape-only verifier above also serves unexecuted pure C operands, where a
+// division by zero or signed overflow has no observable C effect.
+fn prove_induction_arithmetic(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, i32, u32)> {
+    let (width, value, end) =
+        prove_induction_arithmetic_shape(nodes, at, induction)?;
+    Some((width, value?, end))
 }
 
 // Compare source-proven induction arithmetic with a canonical decimal value.
 // Every child, offset, type and declaration binding is checked before its
 // source-time result selects genuine guest I/O effects.
-fn prove_induction_arithmetic_comparison(
+fn prove_induction_arithmetic_comparison_shape(
     nodes: &[Node],
     at: StaticValueLocation,
     induction: StaticInduction<'_>,
-) -> Option<(usize, bool, u32)> {
+) -> Option<(usize, Option<bool>, u32)> {
     let comparison = nodes.first()?;
     let operator = comparison.operation.as_deref()?;
     if !matches!(operator, "==" | "!=" | "<" | "<=" | ">" | ">=")
@@ -5430,8 +5443,11 @@ fn prove_induction_arithmetic_comparison(
         return None;
     }
     let remainder_at = at.child(at.id.checked_add(1)?, at.start, at.column)?;
-    let (left_width, value, left_end) =
-        prove_induction_arithmetic(nodes.get(1..)?, remainder_at, induction)?;
+    let (left_width, value, left_end) = prove_induction_arithmetic_shape(
+        nodes.get(1..)?,
+        remainder_at,
+        induction,
+    )?;
     let right_index = left_width.checked_add(1)?;
     let right = nodes.get(right_index)?;
     let right_offset = u32::try_from(operator.len()).ok()?.checked_add(2)?;
@@ -5465,15 +5481,27 @@ fn prove_induction_arithmetic_comparison(
         return None;
     }
     let selected = match operator {
-        "==" => value == rhs,
-        "!=" => value != rhs,
-        "<" => value < rhs,
-        "<=" => value <= rhs,
-        ">" => value > rhs,
-        ">=" => value >= rhs,
+        "==" => value.map(|actual| actual == rhs),
+        "!=" => value.map(|actual| actual != rhs),
+        "<" => value.map(|actual| actual < rhs),
+        "<=" => value.map(|actual| actual <= rhs),
+        ">" => value.map(|actual| actual > rhs),
+        ">=" => value.map(|actual| actual >= rhs),
         _ => return None,
     };
     Some((right_index.checked_add(1)?, selected, right.span.end.byte))
+}
+
+// An evaluated C comparison must have a defined arithmetic operand. Unselected
+// expressions use only the authenticated shape, never this missing value.
+fn prove_induction_arithmetic_comparison(
+    nodes: &[Node],
+    at: StaticValueLocation,
+    induction: StaticInduction<'_>,
+) -> Option<(usize, bool, u32)> {
+    let (width, selected, end) =
+        prove_induction_arithmetic_comparison_shape(nodes, at, induction)?;
+    Some((width, selected?, end))
 }
 
 // This is source-time C induction, not a guest read. A leaf comparison
@@ -5693,6 +5721,20 @@ fn prove_skipped_induction_shape(
     induction: StaticInduction<'_>,
 ) -> Option<(usize, u32)> {
     induction.source.is_some().then_some(())?;
+    // The same source- and Clang-authenticated primitive induction arithmetic
+    // remains pure even if its actual evaluation would be undefined. Do not
+    // invent a substitute value: the caller can use this shape only for a C
+    // operand proven not to execute.
+    if let Some((width, _, end)) =
+        prove_induction_arithmetic_shape(nodes, at, induction)
+    {
+        return Some((width, end));
+    }
+    if let Some((width, _, end)) =
+        prove_induction_arithmetic_comparison_shape(nodes, at, induction)
+    {
+        return Some((width, end));
+    }
     [0i32, 1i32, -1i32].into_iter().find_map(|value| {
         prove_induction_value(nodes, at, StaticInduction { value, ..induction })
             .map(|(width, _, end)| (width, end))

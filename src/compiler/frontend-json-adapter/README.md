@@ -11,6 +11,26 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-authenticated shape of skipped signed induction arithmetic
+
+Pure signed loop-counter expressions in short-circuited `&&`/`||` operands
+and unselected `?:` arms no longer require a defined arithmetic value.
+A red-first normalized-AST test showed `1 || i / 0` rejecting even though
+C never evaluates the right operand. The adapter now reuses the complete
+source/Clang shape check for `i op N`, including comparisons with a canonical
+bound, and only requires a checked result when the C operand is executed.
+Authenticating `i / 0`, `i / 0 == 1`, skipped ternary arms and source/operator
+forgeries is distinct from evaluating division by zero; reachable undefined
+arithmetic still refuses guest effect selection.
+
+Thirteen focused synthetic-AST checks and eleven existing normalized-loop
+tests pass. A separate complete C23 loop with branches and selected output
+executes under host Clang 22 UBSan at O0/O2 and emits `41 42` (hex); this is
+an independent *host* oracle, not pinned frontend normalization or guest VM
+parity. The repository-local pinned LLVM 22 executable is absent, so the
+complete conditional Fibonacci C probe refuses preflight without an artifact.
+Runtime C branching, arbitrary byte streams, EOF and P0 acceptance remain open.
+
 ### Source-authenticated static induction subexpressions (2026-11-14)
 
 A source-backed C induction predicate previously trusted constant-only

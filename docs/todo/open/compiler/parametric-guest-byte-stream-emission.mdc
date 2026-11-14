@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, the complete conditional Fibonacci C probe again
+  refused at missing repository-local pinned LLVM 22 frontend preflight,
+  without guest publication. A separate red-first source/Clang proof exposed
+  conservative rejection of pure `i / 0`, `i / 0 == 1` in unexecuted C
+  `&&`/`||` operands and unselected `?:` arms. Source-authenticated shape
+  checking now permits an undefined skipped arithmetic result without
+  selecting that value. Selected division by zero and same-span source or
+  Clang-binding forgeries still refuse; 13 focused synthetic induction tests
+  and 11 normalized-loop regressions pass. A separate complete C23 signed
+  loop/branch/output program emits `41 42` under host Clang 22 UBSan at O0/O2,
+  not the guest. No new pinned frontend or Malbolge VM parity is claimed;
+  dynamic source-C execution, EOF and arbitrary streams remain unfinished.
+
 - On 2026-11-14, the full conditional Fibonacci and a separate
   signed-induction/branch C program again stopped at missing pinned LLVM 22
   preflight without guest publication. The latter independently emits `AB`

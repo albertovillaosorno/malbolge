@@ -461,3 +461,151 @@ fn source_backed_static_logical_keeps_a_proven_constant_fallback() {
         );
     }
 }
+
+// Division by zero is undefined only when this pure C operand executes.
+// All of the node, token, and loop-local bindings still need authentication.
+fn zero_divisor_logical_guard(
+    lhs: &str,
+    operator: &str,
+) -> (String, Vec<Node>) {
+    let source = format!("if ({lhs} {operator} i / 0)");
+    let right_start = 4 + lhs.len() + operator.len() + 2;
+    let end = source.len() - 1;
+    (source, vec![
+        node(
+            2,
+            1,
+            "binary-expression",
+            4,
+            end,
+            Some(operator),
+            None,
+            None,
+        ),
+        literal(3, 2, 4, lhs),
+        node(
+            4,
+            2,
+            "binary-expression",
+            right_start,
+            end,
+            Some("/"),
+            None,
+            None,
+        ),
+        counter_cast(5, 4, right_start),
+        counter_reference(6, 5, right_start),
+        literal(7, 4, right_start + 4, "0"),
+    ])
+}
+
+#[test]
+fn unexecuted_zero_division_is_pure_and_does_not_need_a_value() {
+    for (lhs, operator, expected) in [("1", "||", true), ("0", "&&", false)] {
+        let (source, nodes) = zero_divisor_logical_guard(lhs, operator);
+        for counter in [0, 1, -1, i32::MAX] {
+            assert_eq!(guard(&source, &nodes, counter), Some((6, expected)));
+        }
+        assert_eq!(guard(&source.replace(" / ", " + "), &nodes, 0), None);
+        assert_eq!(guard(&source.replace("i /", "j /"), &nodes, 0), None);
+        let (_, mut forged) = zero_divisor_logical_guard(lhs, operator);
+        forged[4].reference = Some(String::from("foreign@0"));
+        assert_eq!(guard(&source, &forged, 0), None);
+    }
+}
+
+#[test]
+fn executed_zero_division_still_refuses_before_selecting_guest_effects() {
+    for (lhs, operator) in [("0", "||"), ("1", "&&")] {
+        let (source, nodes) = zero_divisor_logical_guard(lhs, operator);
+        for counter in [0, 1, -1] {
+            assert_eq!(guard(&source, &nodes, counter), None);
+        }
+    }
+}
+
+fn zero_divisor_ternary_guard(skip_true: bool) -> (String, Vec<Node>) {
+    let source = if skip_true {
+        String::from("if (0 ? i / 0 : 1)")
+    } else {
+        String::from("if (1 ? 1 : i / 0)")
+    };
+    let end = source.len() - 1;
+    let division_start = source.find("i / 0").unwrap();
+    let division_id = if skip_true {
+        4
+    } else {
+        5
+    };
+    let mut nodes = vec![
+        node(2, 1, "conditional-expression", 4, end, None, None, None),
+        literal(
+            3,
+            2,
+            4,
+            if skip_true {
+                "0"
+            } else {
+                "1"
+            },
+        ),
+    ];
+    if !skip_true {
+        nodes.push(literal(4, 2, 8, "1"));
+    }
+    nodes.extend([
+        node(
+            division_id,
+            2,
+            "binary-expression",
+            division_start,
+            division_start + 5,
+            Some("/"),
+            None,
+            None,
+        ),
+        counter_cast(division_id + 1, division_id, division_start),
+        counter_reference(division_id + 2, division_id + 1, division_start),
+        literal(division_id + 3, division_id, division_start + 4, "0"),
+    ]);
+    if skip_true {
+        nodes.push(literal(8, 2, source.find(": 1").unwrap() + 2, "1"));
+    }
+    (source, nodes)
+}
+
+#[test]
+fn unselected_ternary_arm_allows_pure_undefined_division() {
+    for skip_true in [true, false] {
+        let (source, nodes) = zero_divisor_ternary_guard(skip_true);
+        assert_eq!(guard(&source, &nodes, 0), Some((7, true)));
+        assert_eq!(guard(&source, &nodes, i32::MIN), Some((7, true)));
+        assert_eq!(guard(&source.replace(" / ", " * "), &nodes, 1), None);
+        let (_, mut forged) = zero_divisor_ternary_guard(skip_true);
+        let reference_index = if skip_true {
+            4
+        } else {
+            5
+        };
+        forged[reference_index].reference = Some(String::from("foreign@0"));
+        assert_eq!(guard(&source, &forged, 1), None);
+    }
+}
+
+#[test]
+fn skipped_comparison_with_zero_divisor_does_not_require_a_value() {
+    let source = "if (1 || i / 0 == 1)";
+    let nodes = vec![
+        node(2, 1, "binary-expression", 4, 19, Some("||"), None, None),
+        literal(3, 2, 4, "1"),
+        node(4, 2, "binary-expression", 9, 19, Some("=="), None, None),
+        node(5, 4, "binary-expression", 9, 14, Some("/"), None, None),
+        counter_cast(6, 5, 9),
+        counter_reference(7, 6, 9),
+        literal(8, 5, 13, "0"),
+        literal(9, 4, 18, "1"),
+    ];
+    assert_eq!(guard(source, &nodes, 0), Some((8, true)));
+    assert_eq!(guard(&source.replace(" || ", " && "), &nodes, 0), None);
+    assert_eq!(guard(&source.replace(" == ", " != "), &nodes, 0), None);
+}
