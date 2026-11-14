@@ -11,7 +11,7 @@
 # - Owns:
 #   - Source-proven C integer bitwise OR truth over successful guest bytes.
 # - Must-Not:
-#   - Treat integer XOR/AND as Boolean or run guest computation on host.
+#   - Treat arbitrary integer XOR/AND as Boolean or fake guest output.
 # - Allows:
 #   - Inputs: original C, pinned Clang and binary successful guest reads.
 #   - Outputs: normative VM parity or refusal without guest publication.
@@ -29,17 +29,16 @@
 # - Defaults:
 #   - Reject unproven effects and modified source or Clang evidence.
 
-"""Whole C-to-guest proof of integer bitwise OR truth, not integer XOR."""
+"""Whole C-to-guest proof of integer bitwise OR truth and provenance."""
 
 from __future__ import annotations
 
 import copy
 import hashlib
-from pathlib import Path
 import tempfile
-from typing import cast
-from typing import override
 import unittest
+from pathlib import Path
+from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as previous
 from tests import test_guest_byte_total_if_c_pipeline as total
@@ -99,15 +98,13 @@ class GuestByteIntegerOrCPipelineTests(unittest.TestCase):
                     assert actual.stderr == EIGHT_STEPS
 
     @staticmethod
-    def test_integer_and_xor_and_unknown_effect_refuse() -> None:
-        """The OR zero law does not generalize to AND or XOR."""
+    def test_unknown_integer_effects_refuse() -> None:
+        """Unproven or effectful operands remain rejected."""
         invalid = (
-            "(current & 2) & (current & 4)",
-            "(current & 2) ^ (current & 4)",
-            "((current & 2) | (current & 4)) ^ ((current & 2) != 0)",
-            "((current & 2) | (current & 4)) & ((current & 2) != 0)",
             "(current & 2) | getchar()",
             "(current & 2) | putchar(65)",
+            "(current & 2) | (current >> 1)",
+            "(current & 2) | (current + 1)",
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
@@ -138,9 +135,7 @@ class GuestByteIntegerOrCPipelineTests(unittest.TestCase):
         """Source-backed Clang parent, operator, span and type remain strict."""
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             source = Path(directory) / "original.c"
-            _ = source.write_text(
-                previous.source("(current & 2) | (current & 4)")
-            )
+            _ = source.write_text(previous.source("(current & 2) | (current & 4)"))
             normalized = NORMALIZED(source)
             for field in ("parent", "operation", "type", "span"):
                 forged = copy.deepcopy(normalized)
@@ -148,8 +143,7 @@ class GuestByteIntegerOrCPipelineTests(unittest.TestCase):
                 node = next(
                     item
                     for item in nodes
-                    if item["kind"] == BINARY_KIND
-                    and item["operation"] == BITWISE_OR
+                    if item["kind"] == BINARY_KIND and item["operation"] == BITWISE_OR
                 )
                 match field:
                     case "parent":

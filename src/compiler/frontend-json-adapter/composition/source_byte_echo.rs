@@ -80,11 +80,11 @@ struct CommaEffect<'node> {
 
 type OutputCallProof<'node> = (usize, Vec<&'node Node>);
 type PureTernaryArmProof = (usize, String, String);
-// One bit for each possible successful guest input byte, including zero.
-type ByteTruthSet = [u64; 4];
-// The last flag proves the exact C result is 0 or 1, not merely truthy.
-// C bitwise operators cannot use Boolean truth tables on arbitrary integers.
-type TotalByteGuardProof = (usize, String, ByteTruthSet, bool);
+// Exact signed C values for every successful resident guest byte, 0..=255.
+// Keeping values rather than truthiness is essential for integer XOR/AND:
+// distinct nonzero masks may cancel or have no bits in common.
+type BytePredicateValues = [i32; 256];
+type TotalByteGuardProof = (usize, String, BytePredicateValues);
 
 // The nested successful-byte return is not recomputed: every write uses the
 // same already-read guest SSA identity, in innermost-first C evaluation order.
@@ -5588,34 +5588,28 @@ fn prove_total_byte_guard(
         {
             return None;
         }
-        let (child_width, child, child_truth, child_bool) =
-            prove_total_byte_guard(
-                nodes.get(1..)?,
-                body,
-                previous,
-                root.id,
-                root.id.checked_add(1)?,
-                local,
-                depth.checked_add(1)?,
-                source,
-            )?;
+        let (child_width, child, child_values) = prove_total_byte_guard(
+            nodes.get(1..)?,
+            body,
+            previous,
+            root.id,
+            root.id.checked_add(1)?,
+            local,
+            depth.checked_add(1)?,
+            source,
+        )?;
         let spelling = if root.kind == "parenthesized-expression" {
             format!("({child})")
         } else {
             format!("!{child}")
         };
         pure_expression_source(root, &spelling, source)?;
-        let truth = if root.kind == "parenthesized-expression" {
-            child_truth
+        let values = if root.kind == "parenthesized-expression" {
+            child_values
         } else {
-            child_truth.map(|word| !word)
+            child_values.map(|value| i32::from(value == 0))
         };
-        return Some((
-            child_width.checked_add(1)?,
-            spelling,
-            truth,
-            root.kind == "unary-expression" || child_bool,
-        ));
+        return Some((child_width.checked_add(1)?, spelling, values));
     }
     if root.kind == "conditional-expression" {
         return prove_total_byte_ternary(
@@ -5697,7 +5691,7 @@ fn prove_total_byte_zero_comparison(
     let operator = root.operation.as_deref()?;
     pure_integer_root(root, "binary-expression", parent, expected_id)
         .then_some(())?;
-    let (left_width, left, left_truth, _) = prove_total_byte_guard(
+    let (left_width, left, left_values) = prove_total_byte_guard(
         nodes.get(1..)?,
         body,
         previous,
@@ -5717,14 +5711,13 @@ fn prove_total_byte_zero_comparison(
     (digits == "0").then_some(())?;
     let spelling = format!("{left} {operator} 0");
     pure_expression_source(root, &spelling, source)?;
-    let truth = match operator {
-        "==" => left_truth.map(|word| !word),
-        "!=" => left_truth,
+    let values = match operator {
+        "==" => left_values.map(|value| i32::from(value == 0)),
+        "!=" => left_values.map(|value| i32::from(value != 0)),
         _ => return None,
     };
     let width = index.checked_add(1)?;
-    (width <= MAX_STATIC_PREDICATE_NODES)
-        .then_some((width, spelling, truth, true))
+    (width <= MAX_STATIC_PREDICATE_NODES).then_some((width, spelling, values))
 }
 
 // Reconstruct both pure operands in Clang preorder, then verify the exact
@@ -5747,7 +5740,7 @@ fn prove_total_byte_logical(
     let operator = root.operation.as_deref()?;
     pure_integer_root(root, "binary-expression", parent, expected_id)
         .then_some(())?;
-    let (left_width, left, left_truth, left_bool) = prove_total_byte_guard(
+    let (left_width, left, left_values) = prove_total_byte_guard(
         nodes.get(1..)?,
         body,
         previous,
@@ -5758,7 +5751,7 @@ fn prove_total_byte_logical(
         source,
     )?;
     let right_index = left_width.checked_add(1)?;
-    let (right_width, right, right_truth, right_bool) = prove_total_byte_guard(
+    let (right_width, right, right_values) = prove_total_byte_guard(
         nodes.get(right_index..)?,
         body,
         previous,
@@ -5772,26 +5765,21 @@ fn prove_total_byte_logical(
     (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
     let spelling = format!("{left} {operator} {right}");
     pure_expression_source(root, &spelling, source)?;
-    // XOR and AND require exact Boolean operands to combine truth sets.
-    // Bitwise OR is nonzero iff either C integer operand is nonzero,
-    // even when the original values contain different non-Boolean bits.
-    if matches!(operator, "^" | "&") && !(left_bool && right_bool) {
-        return None;
-    }
-    let truth = match operator {
-        "^" => std::array::from_fn(|i| left_truth[i] ^ right_truth[i]),
-        "&" => std::array::from_fn(|i| left_truth[i] & right_truth[i]),
-        "|" => std::array::from_fn(|i| left_truth[i] | right_truth[i]),
-        "&&" => std::array::from_fn(|i| left_truth[i] & right_truth[i]),
-        "||" => std::array::from_fn(|i| left_truth[i] | right_truth[i]),
+    // C bitwise operations preserve the actual integer value; logical
+    // operations first convert each operand to its C truth value.
+    let values = match operator {
+        "^" => std::array::from_fn(|i| left_values[i] ^ right_values[i]),
+        "&" => std::array::from_fn(|i| left_values[i] & right_values[i]),
+        "|" => std::array::from_fn(|i| left_values[i] | right_values[i]),
+        "&&" => std::array::from_fn(|i| {
+            i32::from(left_values[i] != 0 && right_values[i] != 0)
+        }),
+        "||" => std::array::from_fn(|i| {
+            i32::from(left_values[i] != 0 || right_values[i] != 0)
+        }),
         _ => return None,
     };
-    // Only logical operators produce 0/1 from arbitrary integer operands.
-    // Integer OR retains an exact Boolean result only when both operands
-    // themselves have separately proven exact 0/1 values.
-    let boolean_result =
-        matches!(operator, "&&" | "||") || (left_bool && right_bool);
-    Some((width, spelling, truth, boolean_result))
+    Some((width, spelling, values))
 }
 
 // C's conditional expression chooses its second or third operand separately
@@ -5816,7 +5804,7 @@ fn prove_total_byte_ternary(
     (pure_integer_root(root, "conditional-expression", parent, expected_id)
         && root.operation.is_none())
     .then_some(())?;
-    let (condition_width, condition, condition_truth, _) =
+    let (condition_width, condition, condition_values) =
         prove_total_byte_guard(
             nodes.get(1..)?,
             body,
@@ -5828,38 +5816,39 @@ fn prove_total_byte_ternary(
             source,
         )?;
     let true_index = condition_width.checked_add(1)?;
-    let (true_width, when_true, true_truth, true_bool) =
-        prove_total_byte_guard(
-            nodes.get(true_index..)?,
-            body,
-            previous,
-            root.id,
-            root.id.checked_add(u32::try_from(true_index).ok()?)?,
-            local,
-            depth.checked_add(1)?,
-            source,
-        )?;
+    let (true_width, when_true, true_values) = prove_total_byte_guard(
+        nodes.get(true_index..)?,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(u32::try_from(true_index).ok()?)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
     let false_index = true_index.checked_add(true_width)?;
-    let (false_width, when_false, false_truth, false_bool) =
-        prove_total_byte_guard(
-            nodes.get(false_index..)?,
-            body,
-            previous,
-            root.id,
-            root.id.checked_add(u32::try_from(false_index).ok()?)?,
-            local,
-            depth.checked_add(1)?,
-            source,
-        )?;
+    let (false_width, when_false, false_values) = prove_total_byte_guard(
+        nodes.get(false_index..)?,
+        body,
+        previous,
+        root.id,
+        root.id.checked_add(u32::try_from(false_index).ok()?)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
     let width = false_index.checked_add(false_width)?;
     (width <= MAX_STATIC_PREDICATE_NODES).then_some(())?;
     let spelling = format!("{condition} ? {when_true} : {when_false}");
     pure_expression_source(root, &spelling, source)?;
-    let truth = std::array::from_fn(|index| {
-        (condition_truth[index] & true_truth[index])
-            | (!condition_truth[index] & false_truth[index])
+    let values = std::array::from_fn(|index| {
+        if condition_values[index] != 0 {
+            true_values[index]
+        } else {
+            false_values[index]
+        }
     });
-    Some((width, spelling, truth, true_bool && false_bool))
+    Some((width, spelling, values))
 }
 
 // Every leaf is an exact pure Clang/source predicate of the same resident
@@ -5895,16 +5884,7 @@ fn prove_total_byte_leaf(
         )?;
         let spelling = value.to_string();
         pure_expression_source(root, &spelling, source)?;
-        return Some((
-            1,
-            spelling,
-            if value == 0 {
-                [0; 4]
-            } else {
-                [u64::MAX; 4]
-            },
-            value <= 1_i32,
-        ));
+        return Some((1, spelling, [value; 256]));
     }
     // A source-authenticated identity is true for precisely the nonzero
     // successful bytes. Its proven zero test has the complementary set.
@@ -5919,17 +5899,19 @@ fn prove_total_byte_leaf(
         depth.checked_add(1)?,
         source,
     ) {
-        let truth = if nonzero {
-            [!1u64, u64::MAX, u64::MAX, u64::MAX]
-        } else {
-            [1u64, 0, 0, 0]
-        };
-        return (width <= MAX_STATIC_PREDICATE_NODES).then_some((
-            width,
-            spelling,
-            truth,
-            matches!(root.operation.as_deref(), Some("!" | "==" | "!=")),
-        ));
+        let mut values = [0i32; 256];
+        for (byte, value) in values.iter_mut().enumerate() {
+            let signed_byte = i32::try_from(byte).ok()?;
+            *value = if root.operation.as_deref() == Some("!=") {
+                i32::from(signed_byte != 0)
+            } else if nonzero {
+                signed_byte
+            } else {
+                i32::from(signed_byte == 0)
+            };
+        }
+        return (width <= MAX_STATIC_PREDICATE_NODES)
+            .then_some((width, spelling, values));
     }
     let root = nodes.first()?;
     let (width, spelling) = prove_pure_byte_guard(
@@ -5949,30 +5931,21 @@ fn prove_total_byte_leaf(
         .parse::<i32>()
         .ok()?;
     let operation = root.operation.as_deref()?;
-    let mut truth = [0u64; 4];
+    let mut values = [0i32; 256];
     for byte in 0i32..=255 {
-        let selected = match operation {
-            "<" => byte < literal,
-            "<=" => byte <= literal,
-            ">" => byte > literal,
-            ">=" => byte >= literal,
-            "==" => byte == literal,
-            "!=" => byte != literal,
-            "&" => byte & literal != 0,
+        let value = match operation {
+            "<" => i32::from(byte < literal),
+            "<=" => i32::from(byte <= literal),
+            ">" => i32::from(byte > literal),
+            ">=" => i32::from(byte >= literal),
+            "==" => i32::from(byte == literal),
+            "!=" => i32::from(byte != literal),
+            "&" => byte & literal,
             _ => return None,
         };
-        if selected {
-            let index = usize::try_from(byte).ok()?;
-            truth[index / 64] |= 1u64 << (index % 64);
-        }
+        values[usize::try_from(byte).ok()?] = value;
     }
-    let boolean_result = operation != "&" || literal <= 1_i32;
-    (width <= MAX_STATIC_PREDICATE_NODES).then_some((
-        width,
-        spelling,
-        truth,
-        boolean_result,
-    ))
+    (width <= MAX_STATIC_PREDICATE_NODES).then_some((width, spelling, values))
 }
 
 #[expect(
@@ -5987,7 +5960,7 @@ fn prove_total_byte_if_predicate(
     local: Option<&LocalDeclaration<'_>>,
     source: Option<&[u8]>,
 ) -> Option<(usize, Option<bool>)> {
-    let (width, _, truth, _) = prove_total_byte_guard(
+    let (width, _, values) = prove_total_byte_guard(
         nodes,
         body,
         previous,
@@ -5997,9 +5970,9 @@ fn prove_total_byte_if_predicate(
         0,
         source?,
     )?;
-    let selected = if truth == [u64::MAX; 4] {
+    let selected = if values.iter().all(|value| *value != 0) {
         Some(true)
-    } else if truth == [0; 4] {
+    } else if values.iter().all(|value| *value == 0) {
         Some(false)
     } else {
         None

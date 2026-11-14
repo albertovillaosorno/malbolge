@@ -26,6 +26,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exact non-Boolean integer predicate values (2026-11-13)
+
+A complete counted C stream with a live binary input, local state,
+remainder-selected `continue`, nested conditional, and a trailing read
+first refused `((current & 2) ^ (current & 2)) == 0`. The source- and
+pinned-Clang-authenticated predicate proof previously stored only a
+256-bit truth set with an exact-Boolean flag. That could not distinguish
+different nonzero integer mask values, so XOR/AND had to refuse.
+
+The proof now carries 256 exact `i32` values: direct resident-byte
+identities, pure literal/masked/comparison leaves, grouping, negation,
+zero comparisons, logical and bitwise operators, and pure conditional
+expressions retain C's integer semantics. A predicate arm may be
+selected only when all 256 values agree on zero/nonzero; otherwise
+both complete output-only effect traces must independently agree.
+This still cannot guess runtime input, erase guest reads or writes,
+or implement general dynamic guest C branching.
+
+Two full one-trip counted C programs exercise XOR cancellation
+and disjoint-mask `&` false selection. A third executes a
+byte-dependent non-Boolean XOR guard with equal output effects.
+All three run under the normative guest VM with binary boundary
+inputs and output `current, current, next` in six instructions.
+Three further total guards pass the source-authentication stage
+without repeating equivalent guest layout synthesis. Forged Clang
+ancestors, operators, spans and type, effectful operands, unsupported
+integer expressions and unequal arms fail without publication.
+EOF, failed I/O, guest-side arithmetic/storage and general runtime
+branching remain unsupported. The original three-trip source has not
+yet completed layout, so P0 remains pending.
+
 ### Integer bitwise OR truth over successful guest bytes (2026-11-13)
 
 A complete source-C stream with a local guest input, counted induction,
@@ -35,13 +66,14 @@ lowering. C integer bitwise OR is zero exactly when both operands are zero,
 regardless of their nonzero bit patterns. The bounded source-/pinned-Clang
 proof now composes each pure operand's finite successful-byte truth set
 under `|`, without falsely treating either integer mask as an exact 0/1
-Boolean. Its result remains non-Boolean for subsequent XOR/AND proof unless
-both operands are exact Booleans. Dynamic branches can be erased only if
-both entire source-proven output traces are identical. Three nested
-bitmask, zero-test and logical-OR variants each match 15 independent
-binary streams in the normative VM, with five output bytes and eight
-steps per run. Non-Boolean XOR/AND, hidden effects, unequal arms and
-forged Clang ancestry refuse without publishing an artifact. This does
+Boolean. This older truth-only implementation has been superseded by the
+exact-integer value proof above, including XOR and AND. Dynamic branches
+can still be erased only when proven total or both complete source-proven
+output traces are identical. Three original bitmask, zero-test and
+logical-OR variants each match 15 independent binary streams in the
+normative VM, with five output bytes and eight steps per run. Hidden
+effects, unequal arms and forged Clang ancestry still refuse without
+publishing an artifact. This does
 not add guest arithmetic, guest-dependent control flow, EOF, or failed I/O.
 
 

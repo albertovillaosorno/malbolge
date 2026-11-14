@@ -55,6 +55,22 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13 a complete counted/continued C binary stream first
+  refused `((current & 2) ^ (current & 2)) == 0` at normalized
+  lowering. Its 256-input source-/pinned-Clang-backed predicate proof
+  now preserves exact integer values instead of Boolean truth bits.
+  Real one-trip C programs with XOR cancellation, disjoint-mask AND
+  and a dependent non-Boolean XOR with equivalent output-only arms
+  execute three output bytes from two genuine reads in six normative
+  VM steps. Binary boundary and seeded streams match their independent
+  oracle; three more integer guards reach frontend layout admission.
+  Effectful predicates, unequal arms, unsupported integer arithmetic,
+  and forged parent/operator/type/span reject without artifact
+  publication. The original three-trip layout remains unwitnessed;
+  runtime C branching, storage/arithmetic, EOF and failed I/O remain
+  unsupported, so P0 stays pending.
+
+
 - On 2026-11-13 a complete C induction/continue binary stream first
   refused a non-Boolean bitwise OR of two pure live-byte masks. The
   source-/pinned-Clang-authenticated finite truth-set proof now composes

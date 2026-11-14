@@ -11,14 +11,29 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Exact integer truth for pure guest-byte guards (2026-11-13)
+
+The source-/Clang-authenticated 256-byte proof now preserves exact signed
+C integer results rather than only zero/nonzero bitmap and an exact-
+Boolean flag. Ordinary integer XOR and AND are evaluated bitwise at
+each possible successful input byte, not with Boolean truth tables.
+Grouped, negated, logical, bitwise, comparison, zero-test, literal and
+pure ternary subexpressions compose under their actual C semantics.
+Only total truth or independently equivalent output-only arms can
+avoid a guest runtime branch. The real VM emits two copies of its
+first input plus a second fresh byte in six steps for two total
+XOR/AND guards and a dependent XOR equivalent-arm program.
+Effectful predicates, unequal arms, forged evidence and unproved
+expressions reject. Actual guest control and arithmetic remain open.
+
 ### Non-Boolean integer bitwise OR guards (2026-11-13)
 
 The source-/Clang-authenticated finite guest-byte truth proof permits
 `(current & 2) | (current & 4)` without an unsound Boolean cast:
 `a | b` is zero exactly when both C integer operands are zero. This
-property does not hold for integer XOR or AND, which remain restricted
-to exact 0/1 operands in the recursive truth-set proof. Effect-equivalent
-branches may share the same verified output trace; different effects,
+property does not extend to integer XOR/AND; the newer exact-value
+proof above handles those operators without Boolean substitution.
+Effect-equivalent branches may share the same verified output trace; different effects,
 unknown input and forged source/AST evidence still refuse publication.
 Three original counted C streams pass 15 independent binary VM inputs
 each, emitting five source-expected bytes in eight guest steps. The actual
