@@ -3320,3 +3320,16 @@ a compiler capability gap, not a reason to return to N+1.
   source-scratch guest/VM proofs pass. No complete unmasked Fibonacci or new
   pinned-Clang C compilation was established, and the independent verifier
   remains mandatory. P0 stays open.
+
+- On 2026-11-14 a red-first six-progress dense source-revisit regression
+  showed that protecting only the smallest and largest full accumulator
+  words still discards an earlier-count middle word `259`, whose actual
+  `p(0, 259)` result emits byte `53`. A deterministic per-active-progress
+  quota now preserves middle words before allocating remaining room to
+  advanced states, within the same 16,384-state cap. The independently
+  verified twelve-byte Fibonacci guest also passes on unmodified HEAD,
+  so it is existing capability rather than a new result of this change.
+  The canonical typed publisher accepts the full trace, replacing a stale
+  expected rejection with VM parity evidence. The pinned C frontend was
+  missing, and complete original source-C acceptance is not demonstrated.
+  General guest C arithmetic/control and P0 remain open.

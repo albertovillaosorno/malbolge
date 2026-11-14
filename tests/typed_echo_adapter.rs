@@ -3626,8 +3626,6 @@ fn source_bound_literal_trace(bytes: &[u8]) -> Result<Vec<u8>, String> {
 fn literal_witness_selection_stays_in_guest_layout() -> Result<(), String> {
     const TWELVE_GUEST: &[u8] =
         b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd";
-    const FIBONACCI: &[u8] =
-        &[2, 89, 95, 8, 87, 79, 34, 109, 3, 144, 179, 35];
     for (bytes, twelve) in [
         (b"Q.".as_slice(), false),
         (TWELVE_GUEST, true),
@@ -3659,10 +3657,7 @@ fn literal_witness_selection_stays_in_guest_layout() -> Result<(), String> {
             return Err(String::from("literal VM effect witness drift"));
         }
     }
-    for (bytes, twelve) in [
-        (b"Q/".as_slice(), false),
-        (FIBONACCI, true),
-    ] {
+    for (bytes, twelve) in [(b"Q/".as_slice(), false)] {
         let canonical = source_bound_literal_trace(bytes)?;
         let rejected = if twelve {
             adapter::compile_canonical_typed_distinct_literal_twelve(
@@ -3679,6 +3674,44 @@ fn literal_witness_selection_stays_in_guest_layout() -> Result<(), String> {
             return Err(format!(
                 "unwitnessed trace rejection drift: {rejected:?}"
             ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn original_fibonacci_canonical_typed_trace_runs_on_normative_vm()
+-> Result<(), String> {
+    // The full trace was already admitted by the bounded source-revisit
+    // proposer. Keep its real guest replay separate from the fast negative
+    // shape checks; it requires a substantial deterministic search.
+    let bytes = [2, 89, 95, 8, 87, 79, 34, 109, 3, 144, 179, 35];
+    let canonical = source_bound_literal_trace(&bytes)?;
+    let compiled = adapter::compile_canonical_typed_distinct_literal_twelve(
+        &canonical,
+        current_profile(),
+    )
+    .map_err(|error| format!("full Fibonacci typed trace: {error:?}"))?;
+    let ternary = canonical_ternary_program(compiled.ternary_bytes())
+        .map_err(|error| format!("canonical Fibonacci MCTR: {error:?}"))?;
+    if ternary.source_id != "fixtures/typed-distinct-literal-trace.c" {
+        return Err(String::from("Fibonacci trace lost source identity"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            compiled.layout().source(),
+            input,
+        )
+        .map_err(|error| format!("Fibonacci guest load: {error:?}"))?;
+        let result = vm.run(compiled.layout().executed_code_positions().len())
+            .map_err(|error| format!("Fibonacci guest run: {error:?}"))?;
+        if !matches!(result, RunOutcome::Terminated { steps, .. }
+                if steps == compiled.layout().executed_code_positions().len())
+            || vm.output() != bytes
+            || vm.input_consumed() != 0
+        {
+            return Err(String::from("Fibonacci canonical typed guest parity"));
         }
     }
     Ok(())

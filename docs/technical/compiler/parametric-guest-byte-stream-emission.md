@@ -26,6 +26,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-revisit progress quotas and twelve-byte typed trace (2026-11-14)
+
+A source-revisit beam with six populated output counts had been spending
+all capacity beyond per-byte extremes on its most advanced counts. A new
+red-first dense regression identifies an intermediate full accumulator
+word at an earlier count with a genuine crazy-operation continuation.
+The search now apportions its bounded capacity across active counts before
+redistributing unused slots toward advanced paths. Exact sparse search,
+full-word keys and independent layout/VM acceptance remain unchanged.
+
+The original complete twelve-byte unsigned Fibonacci output has an
+existing **test-only** real guest witness via the source-revisit search;
+its original `HEAD` implementation and the balanced version both pass
+the normative VM replay. The typed canonical publisher can also admit
+that full byte stream, so its obsolete negative expectation is updated.
+This does not prove the pinned C source compilation: the native frontend
+was missing locally, and the three original C-pipeline tests skipped.
+Dynamic runtime C operations, general synthesis and P0 remain open.
+
 ### Wider finite C steps and protected-counter arithmetic (2026-11-13)
 
 A complete C source with a named `position` counter, two-digit

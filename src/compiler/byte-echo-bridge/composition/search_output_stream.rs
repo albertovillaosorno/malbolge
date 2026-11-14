@@ -1866,6 +1866,10 @@ fn bounded_revisit_states(
             .or_insert((accumulator, accumulator));
         group.1 = accumulator;
     }
+    let active_counts = extremes
+        .keys()
+        .map(|&(emitted, _)| emitted)
+        .collect::<BTreeSet<_>>();
     let mut bounded = BTreeMap::new();
     for ((emitted, _byte), (smallest, largest)) in extremes.into_iter().rev() {
         for accumulator in [smallest, largest] {
@@ -1877,16 +1881,33 @@ fn bounded_revisit_states(
             }
         }
     }
-    // Fill remaining space in the established advanced-progress-first,
-    // ascending-full-word order, without starving lower counts entirely.
-    for emitted in (minimum_emitted..maximum_emitted).rev() {
-        for (&(count, accumulator), &index) in
-            states.range((emitted, 0)..=(emitted, u32::MAX))
-        {
+    // Each active output-progress count may need a different full-word
+    // continuation. Reserve a fair share of the remaining beam for middle
+    // words at every count; extremes alone cannot represent them. Redistribute
+    // unused shares in advanced-first order below, without changing the cap.
+    let per_count = limit / active_counts.len().max(1);
+    for &emitted in active_counts.iter().rev() {
+        let already = bounded.range((emitted, 0)..=(emitted, u32::MAX)).count();
+        let mut slots = per_count.saturating_sub(already);
+        for (&key, &index) in states.range((emitted, 0)..=(emitted, u32::MAX)) {
+            if slots == 0 || bounded.len() >= limit {
+                break;
+            }
+            if let std::collections::btree_map::Entry::Vacant(entry) =
+                bounded.entry(key)
+            {
+                let _inserted = entry.insert(index);
+                slots -= 1;
+            }
+        }
+    }
+    // Near-complete paths still have first claim on genuinely unused space.
+    for &emitted in active_counts.iter().rev() {
+        for (&key, &index) in states.range((emitted, 0)..=(emitted, u32::MAX)) {
             if bounded.len() >= limit {
                 return bounded;
             }
-            let _prior = bounded.entry((count, accumulator)).or_insert(index);
+            let _prior = bounded.entry(key).or_insert(index);
         }
     }
     bounded

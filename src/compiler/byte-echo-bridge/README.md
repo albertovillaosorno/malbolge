@@ -1266,3 +1266,24 @@ verified three- and four-byte Fibonacci source-scratch guests in both
 bridge entrypoints. This run does not establish a complete twelve-byte
 unmasked Fibonacci guest, any new end-to-end C compile, or completeness of
 bounded proposal search.
+
+### Fair progress quotas and full-stream typed evidence (2026-11-14)
+
+The source-revisit beam kept two accumulator extremes per output-progress
+and low-byte group, but then filled its entire 16,384-state budget from the
+most advanced counts. A red-first six-count regression showed that this
+removed the intermediate full word `259` at early counts even though a real
+`p(0, 259)` reaches output byte `53`. The new retention pass divides room
+among all active progress counts before advanced-first redistribution. Its
+cap, exact sparse search and full-word identities remain unchanged.
+
+An independent baseline comparison found that the pre-existing full-stream
+source-revisit search *already* generates the original unsigned Fibonacci
+bytes `02 59 5f 08 57 4f 22 6d 03 90 b3 23`. Both old and new search
+passed the existing twelve-byte normative VM replay with a real guest-written
+source revisit and two data relocations. A canonical typed-IR publisher also
+admits this trace, exposing an obsolete negative expectation in its test.
+These results are bounded guest layout/typed-lowering evidence, **not** a
+new pinned-Clang C-to-VM compilation or guest-side C arithmetic. The pinned
+C frontend was absent in this checkout, so full source-C parity and P0
+acceptance remain unverified.

@@ -110,6 +110,30 @@ fn dense_revisited_source_frontier_preserves_early_progress_and_high_words() {
 }
 
 #[test]
+fn dense_revisited_frontier_retains_middle_word_at_earlier_progress() {
+    // The real crazy transition from high word 259 to byte 53 remains
+    // useful even when other paths have already emitted more bytes.
+    // Advanced-first filling formerly left only the extremes at count 3.
+    let states = (3usize..9)
+        .flat_map(|emitted| {
+            (0u32..4_096)
+                .map(move |high| ((emitted, high * 256 + 3), high as usize))
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert!(states.len() > 16_384);
+    let changed = malbolge::profile_crazy(0, 259, 15);
+    assert_eq!(changed & 255, 53);
+    let bounded = bounded_revisit_states(&states, 3, 9, 16_384);
+    assert_eq!(bounded.len(), 16_384);
+    for emitted in 3..9 {
+        assert!(
+            bounded.contains_key(&(emitted, 259)),
+            "lost middle full-word continuation at output count {emitted}",
+        );
+    }
+}
+
+#[test]
 fn original_fibonacci_third_byte_reaches_real_guest_through_written_source()
 -> Result<(), String> {
     let expected = original_fibonacci_bytes();
