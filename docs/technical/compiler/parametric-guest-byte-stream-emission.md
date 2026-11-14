@@ -26,6 +26,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Signed unary C arithmetic in source-proven live-byte guards (2026-11-13)
+
+A full counted C source program with local state, remainder-selected
+`continue`, a nested conditional, and two actual input bytes first rejected
+`((~current) ^ current) == -1` at normalized lowering. The source- and
+pinned-Clang-authenticated finite proof now composes unary `+`, checked
+signed `-`, and bitwise `~` with exact `i32` results across all 256 possible
+successful guest bytes. Clang's constant annotation for a literal `-1` is
+accepted only when it matches every independently proven value; that
+annotation never predicts the guest input or authorizes a side effect.
+
+The original C program emits four copies of its actual first input and a
+fresh second byte in eight steps of the normative Malbolge VM across
+binary boundaries, strata and deterministic seeded streams. Pure negative
+arithmetic forms and a byte-dependent equivalent-output guard also pass
+real guest execution. Signed-negation overflow, implementation-defined
+negative right shifts, effectful operands, unequal arms and forged Clang
+parent/operator/type/span/constant evidence refuse without an artifact.
+No guest runtime integer arithmetic, unequal dynamic branching, storage,
+EOF or failed output is implemented; the P0 remains pending.
+
 ### Checked arithmetic for pure live-byte C guards (2026-11-13)
 
 A complete three-trip source-C program with local state, induction,

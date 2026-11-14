@@ -146,15 +146,19 @@ fn emit_comma_effects(
     Some((selected?, read_new_input, resident.is_some()))
 }
 
-const fn metadata_empty(node: &Node) -> bool {
+const fn metadata_except_integer_constant_empty(node: &Node) -> bool {
     node.name.is_none()
         && node.definition.is_none()
         && node.inline_specified.is_none()
         && node.linkage.is_none()
         && node.storage_class.is_none()
         && node.storage_duration.is_none()
-        && node.constant_integer.is_none()
         && node.literal.is_none()
+}
+
+const fn metadata_empty(node: &Node) -> bool {
+    metadata_except_integer_constant_empty(node)
+        && node.constant_integer.is_none()
 }
 
 // Exact spelling boundaries of `putchar(getchar())` as Clang 22.1.8
@@ -2654,7 +2658,9 @@ fn pure_integer_root(
         && root.kind == kind
         && root.type_name.as_deref() == Some("i32")
         && root.reference.is_none()
-        && metadata_empty(root)
+        && (metadata_empty(root)
+            || (kind == "unary-expression"
+                && metadata_except_integer_constant_empty(root)))
 }
 
 // Independently bind a reconstructed pure expression to the same C source
@@ -5575,12 +5581,13 @@ fn prove_total_byte_guard(
 ) -> Option<TotalByteGuardProof> {
     (depth < MAX_STATIC_PREDICATE_DEPTH).then_some(())?;
     let root = nodes.first()?;
-    // Grouping is truth-preserving, while logical negation complements every
-    // successful byte. Authenticate the entire original spelling and the
-    // pinned Clang parent before reusing the recursively proven truth set.
+    // Grouping preserves an exact i32 value. Signed unary +, -, bitwise ~
+    // and logical ! must also preserve the C integer result, not merely
+    // truthiness. Checked negation rejects INT_MIN at any possible byte.
+    // Neither effects nor source/Clang evidence can be skipped.
     if root.kind == "parenthesized-expression"
         || (root.kind == "unary-expression"
-            && root.operation.as_deref() == Some("!"))
+            && matches!(root.operation.as_deref(), Some("!" | "+" | "-" | "~")))
     {
         if !pure_integer_root(root, &root.kind, parent, expected_id)
             || (root.kind == "parenthesized-expression"
@@ -5598,18 +5605,40 @@ fn prove_total_byte_guard(
             depth.checked_add(1)?,
             source,
         )?;
+        let operator = root.operation.as_deref();
         let spelling = if root.kind == "parenthesized-expression" {
             format!("({child})")
         } else {
-            format!("!{child}")
+            format!("{}{child}", operator?)
         };
         pure_expression_source(root, &spelling, source)?;
         let values = if root.kind == "parenthesized-expression" {
             child_values
         } else {
-            child_values.map(|value| i32::from(value == 0))
+            let mut results = [0i32; 256];
+            for (result, value) in results.iter_mut().zip(child_values) {
+                *result = match operator? {
+                    "!" => i32::from(value == 0),
+                    "+" => value,
+                    "-" => value.checked_neg()?,
+                    "~" => !value,
+                    _ => return None,
+                };
+            }
+            results
         };
-        return Some((child_width.checked_add(1)?, spelling, values));
+        // Clang folds a literal unary expression such as `-1` into an
+        // annotated constant. Treat the annotation as another checkable
+        // claim, never as authority to replace actual guest-byte values.
+        if let Some(annotation) = root.constant_integer.as_deref() {
+            let constant = annotation.parse::<i32>().ok()?;
+            (constant.to_string() == annotation
+                && values.iter().all(|value| *value == constant))
+            .then_some(())?;
+        }
+        let width = child_width.checked_add(1)?;
+        return (width <= MAX_STATIC_PREDICATE_NODES)
+            .then_some((width, spelling, values));
     }
     if root.kind == "conditional-expression" {
         return prove_total_byte_ternary(

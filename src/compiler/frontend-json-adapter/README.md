@@ -11,6 +11,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Checked unary C integer guards (2026-11-13)
+
+A complete counted C induction/branch/`continue` program first refused
+`((~current) ^ current) == -1`. The source-/pinned-Clang-authenticated
+256-byte proof now preserves exact signed `i32` values through unary `+`,
+checked `-`, and bitwise `~` as well as existing logical `!` and grouping.
+An annotated Clang literal such as `-1` is checked against the independently
+computed constant, not trusted as a replacement for runtime input.
+
+The original whole C stream emits four live copies of its first input and a
+fresh second byte in eight normative VM steps. Dependent unary guards remain
+safe only with identical output effects; signed overflow, negative signed
+right shifts, side effects, altered original source or Clang ancestry refuse.
+This is successful-byte static effect selection, not runtime C arithmetic,
+byte-dependent unequal branch effects, EOF, storage or failed output.
+
 ### Checked arithmetic in source-proven live-byte predicates
 
 The exact successful-byte integer guard proof now includes source- and

@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-13, a complete source-C counted loop with local state,
+  `continue`, real binary I/O and `((~current) ^ current) == -1` first
+  refused at normalized lowering. Source-/pinned-Clang-authenticated
+  finite `i32` proof now composes unary `+`, checked `-` and bitwise `~`,
+  and verifies folded Clang literal annotations against exact values.
+  The original source runs under the normative VM, with four first-byte
+  copies and one fresh read in eight steps on binary boundary, stratified
+  and seeded streams. Further signed unary and dependent equal-effect
+  guards execute; overflow, negative shifts, unequal effects and forged
+  Clang ancestry/annotations refuse. Actual runtime C arithmetic,
+  variable unequal-arm branching, storage, EOF and failed I/O remain open.
+
 - On 2026-11-13 a three-trip C loop/continue/conditional with a real
   `getchar` local first refused `((current * 3 + 1) % 3) == 1` at the
   normalized adapter. Source- and pinned-Clang-authenticated exact `i32`
