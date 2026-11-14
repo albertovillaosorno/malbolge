@@ -1307,6 +1307,19 @@ twelve-byte Fibonacci guest and canonical typed publisher pass normative
 VM replay. This does not establish complete search, guest C arithmetic,
 or pinned-Clang C-to-VM acceptance; the exact frontend binary was absent.
 
+### Verified split-relocation completion retries (2026-11-14)
+
+The multi-relocation proposal previously returned the first full output path
+following its last live `j`. Positional encoding or independent VM replay could
+reject that proposal even when later accumulator states or source-cell padding
+in the same geometry would succeed. The two-, three-, and four-relocation
+production paths now invoke independent admission **inside** the search,
+continuing after rejection with at most four checks per geometry. A red-first
+split-geometry regression verifies first-rejected/later-accepted candidates,
+distinct two-relocation paths, and the four-rejection cap. Existing real guest
+relocation witnesses remain the authority for emitted output. The pinned C
+frontend is absent, and this does not prove arbitrary stream synthesis.
+
 ### Independently verified completion retries (2026-11-14)
 
 A complete byte count in the straight-line candidate map is not yet a

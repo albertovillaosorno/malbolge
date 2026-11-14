@@ -600,12 +600,13 @@ fn append_relocation_states(
 // Each extra live relocation re-seeds the next data region from an untouched
 // loader word. Regions may contain no-ops, arithmetic and repeated outputs;
 // the synthesis grammar does not assume one arithmetic write per byte effect.
-fn proposed_split_geometry_with_budget<const N: usize>(
+fn proposed_split_geometry_with_budget_checked<const N: usize, T>(
     profile: &'static ProfileDescriptor,
     source_cells: &[[u8; 6]],
     spec: SplitSearchSpec<'_, '_>,
     expected: [u8; N],
-) -> Option<Vec<LinearOpcode>> {
+    mut admit: impl FnMut(&[LinearOpcode]) -> Option<T>,
+) -> Option<T> {
     let SplitSearchSpec {
         geometry,
         additional_relocations,
@@ -627,6 +628,7 @@ fn proposed_split_geometry_with_budget<const N: usize>(
         predecessor: 0,
     }];
     let mut states = BTreeMap::from([((prefix_outputs, 0u32), 0usize)]);
+    let mut completion_checks = 0usize;
     for position in first_body..source_length.saturating_sub(2) {
         if additional_relocations.binary_search(&position).is_ok() {
             states = append_relocation_states(&states, &mut steps);
@@ -659,14 +661,27 @@ fn proposed_split_geometry_with_budget<const N: usize>(
             },
             expected,
         );
-        if position > *additional_relocations.last()?
-            && let Some((_, &last_index)) = states.iter().find(|(key, _)| {
-                key.0 == target_emitted
-                    && (!matches!(terminal, TerminalSuffix::Output)
-                        || matches_byte(key.1, *expected.last().unwrap_or(&0)))
-            })
-        {
-            return reconstruct_path(&steps, last_index, geometry, terminal);
+        // Full output paths are still speculative: the positional decoder
+        // and normative VM may reject one while accepting a later path.
+        // Retry within this source geometry, with a finite verifier budget.
+        if position > *additional_relocations.last()? {
+            for (&(emitted, accumulator), &last_index) in &states {
+                if emitted != target_emitted
+                    || (matches!(terminal, TerminalSuffix::Output)
+                        && !matches_byte(accumulator, *expected.last()?))
+                {
+                    continue;
+                }
+                let operations =
+                    reconstruct_path(&steps, last_index, geometry, terminal)?;
+                if let Some(verified) = admit(&operations) {
+                    return Some(verified);
+                }
+                completion_checks += 1;
+                if completion_checks >= MAX_COMPLETION_CHECKS_PER_GEOMETRY {
+                    return None;
+                }
+            }
         }
         if states.is_empty()
             || states.len() > MAX_STATES_PER_POSITION
@@ -676,6 +691,22 @@ fn proposed_split_geometry_with_budget<const N: usize>(
         }
     }
     None
+}
+
+#[cfg(test)]
+fn proposed_split_geometry_with_budget<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    source_cells: &[[u8; 6]],
+    spec: SplitSearchSpec<'_, '_>,
+    expected: [u8; N],
+) -> Option<Vec<LinearOpcode>> {
+    proposed_split_geometry_with_budget_checked(
+        profile,
+        source_cells,
+        spec,
+        expected,
+        |operations| Some(operations.to_vec()),
+    )
 }
 
 fn verified_terminal_layout_range<const N: usize>(
@@ -1055,22 +1086,22 @@ fn verified_split_relocation_output_layout<const N: usize>(
                             terminal,
                             step_budget: 16_384,
                         };
-                        let Some(operations) =
-                            proposed_split_geometry_with_budget(
+                        if let Some(layout) =
+                            proposed_split_geometry_with_budget_checked(
                                 profile,
                                 source_cells,
                                 spec,
                                 expected,
+                                |operations| {
+                                    verified_output_stream_layout(
+                                        profile,
+                                        operations,
+                                        expected,
+                                        source_cells,
+                                    )
+                                },
                             )
-                        else {
-                            continue;
-                        };
-                        if let Some(layout) = verified_output_stream_layout(
-                            profile,
-                            &operations,
-                            expected,
-                            source_cells,
-                        ) {
+                        {
                             return Some(layout);
                         }
                     }
@@ -1155,20 +1186,22 @@ fn verified_three_split_relocation_output_layout<const N: usize>(
                         terminal,
                         step_budget: 32_768,
                     };
-                    let Some(operations) = proposed_split_geometry_with_budget(
-                        profile,
-                        source_cells,
-                        spec,
-                        expected,
-                    ) else {
-                        continue;
-                    };
-                    if let Some(layout) = verified_output_stream_layout(
-                        profile,
-                        &operations,
-                        expected,
-                        source_cells,
-                    ) {
+                    if let Some(layout) =
+                        proposed_split_geometry_with_budget_checked(
+                            profile,
+                            source_cells,
+                            spec,
+                            expected,
+                            |operations| {
+                                verified_output_stream_layout(
+                                    profile,
+                                    operations,
+                                    expected,
+                                    source_cells,
+                                )
+                            },
+                        )
+                    {
                         return Some(layout);
                     }
                 }
@@ -1256,17 +1289,19 @@ fn verified_four_split_relocation_output_layout<const N: usize>(
                     step_budget,
                     terminal,
                 };
-                let operations = proposed_split_geometry_with_budget(
+                proposed_split_geometry_with_budget_checked(
                     profile,
                     source_cells,
                     spec,
                     expected,
-                )?;
-                verified_output_stream_layout(
-                    profile,
-                    &operations,
-                    expected,
-                    source_cells,
+                    |operations| {
+                        verified_output_stream_layout(
+                            profile,
+                            operations,
+                            expected,
+                            source_cells,
+                        )
+                    },
                 )
             });
             if layout.is_some() {

@@ -26,6 +26,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Verified completion retries after multiple guest relocations (2026-11-14)
+
+The production two-, three-, and four-relocation search previously returned
+its first complete output proposal before independent positional decoding and
+normative VM replay. A rejected proposal silently abandoned other complete
+paths in the same geometry, unlike the straight-line search. The search now
+checks each candidate through the same independent publisher and retries
+later full-width accumulator paths or padded completions. At most four
+checks per geometry bound verification effort; rejected output cannot publish.
+A red-first two-live-`j` regression checks rejected-first, accepted-second,
+and exact all-rejected bounds; existing multi-relocation VM witnesses still
+execute. The original source-C conditional Fibonacci probe stops at
+repository-pinned LLVM 22 frontend preflight because that executable is
+absent. This repair is bounded proposal coverage, not guest-side runtime C
+arithmetic/control/storage, EOF, or arbitrary byte-stream synthesis.
+
 ### Verified retry of complete output proposals (2026-11-14)
 
 The straight-line guest search previously stopped at the first state with

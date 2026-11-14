@@ -2233,6 +2233,66 @@ fn long_noop_tail_reconstructs_twelve_byte_guest() -> Result<(), String> {
 }
 
 #[test]
+fn completed_split_geometry_retries_rejected_guest_candidates()
+-> Result<(), String> {
+    // The first full trace after a second live j is only a proposal.
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional source cells"))?;
+    let geometry = SearchGeometry {
+        memory: &[],
+        prefix: 8,
+        prefix_outputs: 0,
+        source_length: 20,
+    };
+    let positions = [12];
+    let spec = SplitSearchSpec {
+        geometry: &geometry,
+        additional_relocations: &positions,
+        terminal: TerminalSuffix::Noop,
+        step_budget: 8_192,
+    };
+    let mut examined = Vec::new();
+    let accepted = proposed_split_geometry_with_budget_checked(
+        profile,
+        &cells,
+        spec,
+        [0],
+        |operations| {
+            examined.push(operations.to_vec());
+            (examined.len() == 2).then(|| operations.to_vec())
+        },
+    )
+    .ok_or_else(|| {
+        String::from("first rejected split completion stopped search")
+    })?;
+    assert_eq!(examined.len(), 2);
+    assert_ne!(examined[0], examined[1]);
+    assert_eq!(accepted, examined[1]);
+    assert_eq!(
+        accepted
+            .iter()
+            .filter(|&&op| op == LinearOpcode::RelocateDataPointer)
+            .count(),
+        2,
+    );
+    let mut rejected = 0;
+    let no_guest = proposed_split_geometry_with_budget_checked(
+        profile,
+        &cells,
+        spec,
+        [0],
+        |_| {
+            rejected += 1;
+            None::<Vec<LinearOpcode>>
+        },
+    );
+    assert!(no_guest.is_none());
+    assert_eq!(rejected, MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+    Ok(())
+}
+
+#[test]
 fn split_search_looks_past_live_relocations_for_future_writes()
 -> Result<(), String> {
     let profile = malbolge::current_profile();
