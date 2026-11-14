@@ -230,6 +230,109 @@ fn completed_source_geometry_retries_after_rejected_layout()
 }
 
 #[test]
+fn last_source_cell_completion_gets_a_bounded_verification_slot()
+-> Result<(), String> {
+    // A real output may occur at the last available body cell. Checking
+    // four earlier output-complete paths must not prevent that alternate
+    // source phase from reaching the independent admission callback.
+    let cells = pair_source_cells(malbolge::current_profile())
+        .ok_or_else(|| String::from("missing position encodings"))?;
+    let memory = vec![0u32; 256];
+    let geometry = SearchGeometry {
+        memory: &memory,
+        prefix: 0,
+        prefix_outputs: 0,
+        source_length: 12,
+    };
+    let last_body = geometry.source_length - 3;
+    let mut examined = Vec::new();
+    let accepted = proposed_geometry_with_budget_checked(
+        &cells,
+        &geometry,
+        [0],
+        TerminalSuffix::Noop,
+        MAX_STEPS_PER_GEOMETRY,
+        |operations| {
+            examined.push(operations.to_vec());
+            (operations.get(last_body) == Some(&LinearOpcode::OutputByte))
+                .then(|| operations.to_vec())
+        },
+    )
+    .ok_or_else(|| {
+        String::from("early verification slots starved final body output")
+    })?;
+    assert_eq!(examined.len(), MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+    assert_eq!(accepted[last_body], LinearOpcode::OutputByte);
+    assert!(examined[..examined.len() - 1]
+        .iter()
+        .all(|operations| operations[last_body] != LinearOpcode::OutputByte));
+    Ok(())
+}
+
+#[test]
+fn final_body_output_is_admitted_by_the_normative_guest_vm()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing graphical source cells"))?;
+    let mut original = vec![LinearOpcode::NoOperation; PREFIX];
+    original.push(LinearOpcode::RelocateDataPointer);
+    original.extend([LinearOpcode::NoOperation; 4]);
+    original.extend([
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    let expected = [0];
+    let original_layout =
+        verified_output_stream_layout(profile, &original, expected, &cells)
+            .ok_or_else(|| String::from("last-body zero guest is not real"))?;
+    let relocation = usize::from(cells[PREFIX][1]);
+    let mut previews = cells.clone();
+    for cell in &mut previews {
+        cell[4] = cell[0];
+    }
+    let memory = cached_output_tail(
+        &previews,
+        &mut BTreeMap::new(),
+        original.len(),
+        relocation + original.len(),
+    )
+    .ok_or_else(|| String::from("missing real source memory"))?
+    .to_vec();
+    let geometry = SearchGeometry {
+        memory: &memory,
+        prefix: PREFIX,
+        prefix_outputs: 0,
+        source_length: original.len(),
+    };
+    let last_body = original.len() - 3;
+    let mut checks = 0usize;
+    let recovered = proposed_geometry_with_budget_checked(
+        &cells,
+        &geometry,
+        expected,
+        TerminalSuffix::Noop,
+        MAX_STEPS_PER_GEOMETRY,
+        |proposal| {
+            checks += 1;
+            (proposal.get(last_body) == Some(&LinearOpcode::OutputByte))
+                .then(|| {
+                    verified_output_stream_layout(
+                        profile, proposal, expected, &cells,
+                    )
+                })
+                .flatten()
+        },
+    )
+    .ok_or_else(|| String::from("last-source-byte guest was not verified"))?;
+    assert_eq!(checks, MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+    assert_eq!(recovered.source().len(), original.len());
+    assert_eq!(recovered.source(), original_layout.source());
+    Ok(())
+}
+
+#[test]
 fn early_completion_can_pad_before_terminal() -> Result<(), String> {
     let steps = [
         SearchStep {
@@ -2229,6 +2332,52 @@ fn long_noop_tail_reconstructs_twelve_byte_guest() -> Result<(), String> {
         verified_output_stream_layout(profile, &operations, forged, &cells)
             .is_none()
     );
+    Ok(())
+}
+
+#[test]
+fn last_split_region_completion_gets_a_verification_slot() -> Result<(), String>
+{
+    // Two live relocations can produce matching output only after the
+    // latest body cell. Early complete traces must not consume all four
+    // independent checks before that source phase is explored.
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing graphical source cells"))?;
+    let geometry = SearchGeometry {
+        memory: &[],
+        prefix: 8,
+        prefix_outputs: 0,
+        source_length: 20,
+    };
+    let positions = [12];
+    let spec = SplitSearchSpec {
+        geometry: &geometry,
+        additional_relocations: &positions,
+        terminal: TerminalSuffix::Noop,
+        step_budget: 8_192,
+    };
+    let last_body = geometry.source_length - 3;
+    let mut checked = Vec::new();
+    let accepted = proposed_split_geometry_with_budget_checked(
+        profile,
+        &cells,
+        spec,
+        [0],
+        |operations| {
+            checked.push(operations.to_vec());
+            (operations.get(last_body) == Some(&LinearOpcode::OutputByte))
+                .then(|| operations.to_vec())
+        },
+    )
+    .ok_or_else(|| {
+        String::from("early split completion starved last body output")
+    })?;
+    assert_eq!(checked.len(), MAX_COMPLETION_CHECKS_PER_GEOMETRY);
+    assert_eq!(accepted[last_body], LinearOpcode::OutputByte);
+    assert!(checked[..checked.len() - 1]
+        .iter()
+        .all(|operations| operations[last_body] != LinearOpcode::OutputByte));
     Ok(())
 }
 

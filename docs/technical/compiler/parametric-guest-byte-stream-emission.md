@@ -26,6 +26,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Late source-phase completion after bounded verification (2026-11-14)
+
+The straight-through and repeated-relocation proposal grammars could consume
+all four independent-admission checks on early complete paths. A later body
+cell may emit the final byte with a different positional source phase, but
+that candidate was never checked. Two red-first callbacks reproduce this
+false negative in callback admission for the last source body cell with
+one and two live data relocations, respectively.
+
+Both searches now try up to three early completions and reserve the fourth
+check for the latest viable source phase, favoring a newly emitted final
+byte over a padded complete trace at the same position. The same four-check
+cap, exact accumulator state, source-write restrictions, positional encoder
+and two-input normative VM admission remain in force. A separate 16-step
+source-independent guest emits its zero byte at the final body cell; the
+recovered encoding matches the independently admitted source and runs in
+the normative VM. The original complete conditional Fibonacci C again fails
+before lowering because the pinned LLVM 22 frontend executable is absent.
+Guest runtime C state and generalized byte-stream synthesis remain open.
+
 ### Dense output-beam total capacity (2026-11-14)
 
 The source-independent output search first retained minimum, maximum, and

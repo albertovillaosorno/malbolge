@@ -55,6 +55,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-14, two red-first completion-selection regressions exposed
+  four-verification-slot exhaustion at early source positions, dropping
+  a later final-body candidate after one or two guest relocations. The
+  bounded search now spends three attempts early and one on the latest
+  completed source phase, preferring a new final output over padding at
+  equal position. A separate 16-step zero-byte source was independently
+  encoded, recovered by the revised search and replayed in the normative
+  VM with empty and nonempty input. The same four-check and guest-proof
+  limits hold. The full conditional Fibonacci C probe still stops at the
+  missing pinned LLVM 22 frontend, so source-C runtime state and arbitrary
+  byte-stream synthesis remain unfinished.
+
 - On 2026-11-14, a red-first 552,960-state dense guest-output frontier
   exposed an over-budget beam after per-progress/byte reachability pruning:
   16,442 survivors exceeded the 16,384 global cap, aborting an otherwise

@@ -403,7 +403,11 @@ fn proposed_geometry_with_budget_checked<const N: usize, T>(
     let mut states = BTreeMap::from([((prefix_outputs, 0u32), 0usize)]);
     // The chosen terminal/halt pair fixes the expanded memory tail.
     let target = expected.last().copied()?;
-    let mut completion_checks = 0usize;
+    let mut early_checks = 0usize;
+    // Early complete paths may fail positional decoding while a later
+    // source phase encodes the same output. Reserve the final admission
+    // slot for the latest viable completion in this geometry.
+    let mut deferred: Option<(usize, bool, usize)> = None;
     for position in prefix.saturating_add(1)..source_length.saturating_sub(2) {
         let address =
             relocation.saturating_add(position).saturating_sub(prefix);
@@ -438,24 +442,41 @@ fn proposed_geometry_with_budget_checked<const N: usize, T>(
             {
                 continue;
             }
-            let operations =
-                reconstruct_path(&steps, last_index, geometry, terminal)?;
-            if let Some(verified) = admit(&operations) {
-                return Some(verified);
-            }
-            completion_checks += 1;
-            if completion_checks >= MAX_COMPLETION_CHECKS_PER_GEOMETRY {
-                return None;
+            if early_checks < MAX_COMPLETION_CHECKS_PER_GEOMETRY - 1 {
+                let operations =
+                    reconstruct_path(&steps, last_index, geometry, terminal)?;
+                if let Some(verified) = admit(&operations) {
+                    return Some(verified);
+                }
+                early_checks += 1;
+            } else {
+                // At the same source position, a newly emitted final byte
+                // has priority over a previously completed padded trace.
+                let just_emitted = steps.get(last_index).is_some_and(|step| {
+                    step.operation == LinearOpcode::OutputByte
+                });
+                if deferred.as_ref().is_none_or(
+                    |&(latest, latest_output, _)| {
+                        position > latest
+                            || (position == latest
+                                && just_emitted
+                                && !latest_output)
+                    },
+                ) {
+                    deferred = Some((position, just_emitted, last_index));
+                }
             }
         }
-        if states.is_empty()
-            || states.len() > MAX_STATES_PER_POSITION
-            || steps.len() > step_budget
-        {
+        if states.len() > MAX_STATES_PER_POSITION || steps.len() > step_budget {
             return None;
         }
+        if states.is_empty() {
+            break;
+        }
     }
-    None
+    let (_, _, last_index) = deferred?;
+    let operations = reconstruct_path(&steps, last_index, geometry, terminal)?;
+    admit(&operations)
 }
 
 #[cfg(test)]
@@ -641,7 +662,8 @@ fn proposed_split_geometry_with_budget_checked<const N: usize, T>(
         predecessor: 0,
     }];
     let mut states = BTreeMap::from([((prefix_outputs, 0u32), 0usize)]);
-    let mut completion_checks = 0usize;
+    let mut early_checks = 0usize;
+    let mut deferred: Option<(usize, bool, usize)> = None;
     for position in first_body..source_length.saturating_sub(2) {
         if additional_relocations.binary_search(&position).is_ok() {
             states = append_relocation_states(&states, &mut steps);
@@ -685,25 +707,44 @@ fn proposed_split_geometry_with_budget_checked<const N: usize, T>(
                 {
                     continue;
                 }
-                let operations =
-                    reconstruct_path(&steps, last_index, geometry, terminal)?;
-                if let Some(verified) = admit(&operations) {
-                    return Some(verified);
-                }
-                completion_checks += 1;
-                if completion_checks >= MAX_COMPLETION_CHECKS_PER_GEOMETRY {
-                    return None;
+                if early_checks < MAX_COMPLETION_CHECKS_PER_GEOMETRY - 1 {
+                    let operations = reconstruct_path(
+                        &steps, last_index, geometry, terminal,
+                    )?;
+                    if let Some(verified) = admit(&operations) {
+                        return Some(verified);
+                    }
+                    early_checks += 1;
+                } else {
+                    // Save the final verification slot for a later region
+                    // or source phase, preferring a newly completed output.
+                    let just_emitted =
+                        steps.get(last_index).is_some_and(|step| {
+                            step.operation == LinearOpcode::OutputByte
+                        });
+                    if deferred.as_ref().is_none_or(
+                        |&(latest, latest_output, _)| {
+                            position > latest
+                                || (position == latest
+                                    && just_emitted
+                                    && !latest_output)
+                        },
+                    ) {
+                        deferred = Some((position, just_emitted, last_index));
+                    }
                 }
             }
         }
-        if states.is_empty()
-            || states.len() > MAX_STATES_PER_POSITION
-            || steps.len() > step_budget
-        {
+        if states.len() > MAX_STATES_PER_POSITION || steps.len() > step_budget {
             return None;
         }
+        if states.is_empty() {
+            break;
+        }
     }
-    None
+    let (_, _, last_index) = deferred?;
+    let operations = reconstruct_path(&steps, last_index, geometry, terminal)?;
+    admit(&operations)
 }
 
 #[cfg(test)]

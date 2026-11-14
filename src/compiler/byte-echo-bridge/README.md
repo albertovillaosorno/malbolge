@@ -1330,6 +1330,22 @@ twelve-byte Fibonacci guest and canonical typed publisher pass normative
 VM replay. This does not establish complete search, guest C arithmetic,
 or pinned-Clang C-to-VM acceptance; the exact frontend binary was absent.
 
+### Late positional completion with four verifier checks (2026-11-14)
+
+Complete output counts before the final body cell are not necessarily valid
+positional encodings. Previously the linear and multi-relocation searches
+consumed every one of their four verification slots on early candidates,
+missing a different source phase at the last body cell. Red-first one- and
+two-relocation callback tests now pass after reserving the final slot for
+the latest complete phase, preferring newly emitted output over no-op
+padding at equal phase. All three earlier checks remain available for short
+candidates. A real 16-step relocated guest emits one zero byte from its last
+body cell and is independently replayed on empty and binary stdin. The
+search recovers the same encoded source without enlarging the four-check
+budget or relaxing source-write, positional or VM validation. The full
+conditional Fibonacci C source remains blocked by missing pinned LLVM 22;
+this is not guest runtime C arithmetic or general byte-stream synthesis.
+
 ### Verified split-relocation completion retries (2026-11-14)
 
 The multi-relocation proposal previously returned the first full output path
