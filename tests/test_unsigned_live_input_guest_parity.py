@@ -45,6 +45,7 @@ NESTED_ALIAS_STEM = "unsigned_nested_alias_live_input"
 NESTED_FRESH_STEM = "unsigned_nested_fresh_live_input"
 HEX_STEM = "unsigned_hex_threshold_live_input"
 ALGEBRA_STEM = "unsigned_byte_algebra_live_input"
+MODULAR_STEM = "unsigned_modular_output_live_input"
 DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 DEAD_PURE_STEM = "unsigned_reflexive_dead_pure_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
@@ -62,6 +63,7 @@ CASES = (
     (NESTED_FRESH_STEM, 5, 10),
     (HEX_STEM, 4, 13),
     (ALGEBRA_STEM, 4, 17),
+    (MODULAR_STEM, 4, 25),
     (DEAD_LITERAL_STEM, 4, 17),
     (DEAD_PURE_STEM, 4, 17),
 )
@@ -98,6 +100,9 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
         elif stem == "nested_outer_induction_live_input":
             # Two inner trips per outer row. Only row two repeats its bytes.
             copies = 2 if (counter - 1) // 2 == 1 else 1
+        elif stem == MODULAR_STEM:
+            # Signed negative, multiplication, bitwise and additive modulo.
+            copies = 5
         elif stem in {ALGEBRA_STEM, DEAD_LITERAL_STEM, DEAD_PURE_STEM}:
             # XOR and reflexive predicates select only live byte outputs.
             copies = 3
@@ -578,11 +583,11 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                             self.assertEqual(observed.returncode, 0, observed.stderr)
                             self.assertEqual(observed.stdout, expected)
 
-    def test_dead_pure_c23_oracles(self) -> None:
-        """Cross-check dead pure-C effects with two native C23 optimizers."""
+    def test_pure_output_c23_oracles(self) -> None:
+        """Compare selected pure-C output with two native C23 optimizers."""
         if not CLANG.is_file():
             self.skipTest("repository-pinned native C23 clang missing")
-        for stem in (DEAD_LITERAL_STEM, DEAD_PURE_STEM):
+        for stem in (MODULAR_STEM, DEAD_LITERAL_STEM, DEAD_PURE_STEM):
             source = SOURCES / f"{stem}.c"
             env = dict(os.environ)
             llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
@@ -638,7 +643,10 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
             for kind in ("selected", "dynamic"):
                 for expression in ("literal", "pure"):
-                    source = rejected / f"unsigned_reflexive_{kind}_{expression}_live_input.c"
+                    source = (
+                        rejected
+                        / f"unsigned_reflexive_{kind}_{expression}_live_input.c"
+                    )
                     guest = Path(temporary) / f"{kind}-{expression}.malbolge"
                     attempt = subprocess.run(
                         [
@@ -658,6 +666,35 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                         self.assertNotEqual(attempt.returncode, 0)
                         self.assertIn(UNSUPPORTED_MARKER, attempt.stderr)
                         self.assertFalse(guest.exists())
+
+    def test_unsupported_modular_output_refuses_guest_publication(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("repository-pinned compiler executables missing")
+        rejected = ROOT / "tests/compiler/c-frontend/rejected"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for stem in (
+                "unsigned_nonmodular_output_live_input",
+                "unsigned_overflowing_output_live_input",
+            ):
+                with self.subTest(stem=stem):
+                    guest = Path(temporary) / f"{stem}.malbolge"
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            str(rejected / f"{stem}.c"),
+                            "--output",
+                            str(guest),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=120,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(UNSUPPORTED_MARKER, result.stderr)
+                    self.assertFalse(guest.exists())
 
     def _check_seeded_guest_parity(
         self, cases: tuple[tuple[str, int, int], ...]
@@ -731,7 +768,10 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
         self._check_seeded_guest_parity(CASES[4:8])
 
     def test_seeded_guest_parity_aliases_and_byte_algebra(self) -> None:
-        self._check_seeded_guest_parity(CASES[8:-2])
+        self._check_seeded_guest_parity(CASES[8:-3])
+
+    def test_seeded_guest_parity_modular_output(self) -> None:
+        self._check_seeded_guest_parity(CASES[-3:-2])
 
     def test_seeded_guest_parity_dead_literal(self) -> None:
         self._check_seeded_guest_parity(CASES[-2:-1])

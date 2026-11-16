@@ -26,6 +26,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated modulo-256 C output (2026-11-16)
+
+A fresh complete C23 checksum source with mutable locals, an EOF-driven
+`while`, parity-selected output and arithmetic still stops at its first
+`unsigned checksum = 0U` declaration. No artifact is published. A
+separate bounded four-read C23 program exposed a different admitted-byte
+semantics gap: reachable pure `putchar` arguments can differ as signed
+integers but write the same unsigned byte as the current guest input.
+
+The adapter now reuses its source/Clang-authenticated total byte expression
+proof at the output boundary. It checks all 256 successful input values,
+rejects any undefined arithmetic or different byte after conversion modulo
+256, and retains only the actual guest input/output effects. This supports
+examples including `(current + 256) & 255`, `0 + current`,
+`current ^ 256`, `current - 256`, and `current * 257`, with no guest byte
+prediction and no hidden calls or assignments. Unlike unreachable-arm
+elimination, these are actually executed source-C output expressions.
+
+The pinned C-to-Malbolge pipeline emits a 25-byte raw guest program with
+four live reads, twenty exact writes and 25 VM steps. Twenty-nine seeded
+binary-input VM vectors plus the suite's canonical-width boundary match an
+independent per-byte oracle; two C23 Clang UBSan optimization levels match
+all 29 vectors each. Forged Clang operator, type, literal and local binding
+metadata reject, as do changed-byte C output and signed-overflow controls;
+failed compilation publishes nothing. This is an output-conversion proof,
+not executable guest arithmetic, general mutable C locals, runtime branches,
+or EOF-driven iteration. P0 remains pending.
+
 ### Source-proven dead integer arithmetic (2026-11-16)
 
 A full EOF-driven checksum C program with mutable unsigned state, a dynamic

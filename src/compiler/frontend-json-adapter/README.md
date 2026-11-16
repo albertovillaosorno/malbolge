@@ -11,6 +11,19 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Reachable modulo-256 C output proof (2026-11-16)
+
+A pure signed `int` argument to standalone `putchar` may now be lowered
+without guest arithmetic when the pinned C/Clang syntax is authenticated,
+all 256 successful input byte values are defined, and every result has the
+same low byte as the current resident guest input. The complete four-read
+C23 fixture exercises addition, unsigned-char masking, XOR, signed negative
+subtraction and multiplication. Its actual VM reads four bytes, writes twenty
+bytes in 25 steps, and agrees with 29 binary-vector and independent C23
+oracles. Changed-byte results, signed overflow and forged Clang metadata
+fail closed. EOF, general arithmetic, nested side effects and dynamic C
+branches remain unsupported by this bounded proof.
+
 ### Signed C23 radix threshold on successful live bytes (2026-11-16)
 
 A complete four-trip unsigned loop tests the signed `int` returned by each

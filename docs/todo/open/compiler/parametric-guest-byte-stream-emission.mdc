@@ -57,6 +57,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a new complete EOF-driven checksum with mutable state,
+  parity branch and arithmetic still refused its first `unsigned` local
+  declaration and published no guest artifact. A separate bounded source-C
+  program established reachable modulo-256 C output arithmetic: signed
+  subtraction, addition, XOR, multiplication and masking all preserve the
+  live guest byte after `putchar` conversion. The authenticated 256-value
+  i32 proof admits four real reads and twenty writes in 25 VM steps, with
+  29 seeded binary guest vectors, canonical-width parity and 29-vector
+  native C23 UBSan O0/O2 checks. Forgeries, nonidentity output and signed
+  overflow refuse without publication. This does not implement dynamic
+  guest arithmetic, EOF loops or runtime locals; P0 stays **pending**.
+
 - On 2026-11-16, a fresh whole-C running checksum with mutable locals,
   EOF-driven input and guest-dependent parity still refused at its first
   automatic declaration with no artifact. A distinct four-read source-C

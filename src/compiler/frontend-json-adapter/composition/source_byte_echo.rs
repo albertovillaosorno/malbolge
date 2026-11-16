@@ -3448,7 +3448,34 @@ fn prove_identity_byte_output<'node>(
             output.id.checked_add(3)?,
             0,
             source,
-        )?;
+        )
+        .or_else(|| {
+            // A standalone putchar converts its int argument to an unsigned
+            // char. Authenticate the entire pure C expression and preserve
+            // the resident byte only if every successful stdin value emits
+            // that same byte after the conversion. Do not use this for
+            // nested calls, assignments or EOF-dependent control flow.
+            let bound = local?;
+            let (width, argument, values) = prove_total_byte_guard(
+                rest,
+                body,
+                previous,
+                output.id,
+                output.id.checked_add(3)?,
+                Some(bound),
+                0,
+                source,
+            )?;
+            values
+                .iter()
+                .enumerate()
+                .all(|(byte, value)| {
+                    value.is_some_and(|actual| {
+                        i32::try_from(byte).ok() == Some(actual.rem_euclid(256))
+                    })
+                })
+                .then_some((width, argument, None, Vec::new()))
+        })?;
     let start = output.span.begin.byte;
     let line = output.span.begin.line;
     let column = output.span.begin.column;

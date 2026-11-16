@@ -1788,3 +1788,106 @@ fn source_reflexive_dead_literal_requires_exact_source_and_clang_proof() {
         Err(FrontendJsonError::Unsupported)
     ));
 }
+
+const MODULAR_OUTPUT_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_modular_output_live_input.c");
+const MODULAR_OUTPUT_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_modular_output_live_input.json");
+const NONMODULAR_OUTPUT_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/rejected/unsigned_nonmodular_output_live_input.c"
+);
+const NONMODULAR_OUTPUT_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_nonmodular_output_live_input.json"
+);
+const OVERFLOWING_OUTPUT_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/rejected/unsigned_overflowing_output_live_input.c"
+);
+const OVERFLOWING_OUTPUT_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_overflowing_output_live_input.json"
+);
+
+#[test]
+fn source_proven_modular_c_output_preserves_four_live_guest_bytes() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        MODULAR_OUTPUT_JSON,
+        Some(MODULAR_OUTPUT_SOURCE),
+    )
+    .expect("pure C arithmetic equivalent after putchar conversion");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&wire).expect("canonical typed module");
+    let block = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in block {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 4);
+    assert_eq!(
+        writes,
+        reads
+            .iter()
+            .copied()
+            .flat_map(|v| [v; 5])
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn source_proven_modular_output_rejects_nonidentity_and_forged_ast() {
+    for (json, source) in [
+        (NONMODULAR_OUTPUT_JSON, NONMODULAR_OUTPUT_SOURCE),
+        (OVERFLOWING_OUTPUT_JSON, OVERFLOWING_OUTPUT_SOURCE),
+    ] {
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(json, Some(source)),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+
+    let baseline: serde_json::Value =
+        serde_json::from_slice(MODULAR_OUTPUT_JSON).unwrap();
+    let nodes = baseline["nodes"].as_array().unwrap();
+    let addition = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "+"
+        })
+        .unwrap();
+    let plus_literal = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "integer-literal" && node["literal"] == "256"
+        })
+        .unwrap();
+    let local = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "declaration-reference-expression"
+                && node["reference"]
+                    .as_str()
+                    .is_some_and(|reference| reference.starts_with("current@"))
+        })
+        .unwrap();
+    for (index, field, replacement) in [
+        (addition, "operation", "-"),
+        (addition, "type", "u32"),
+        (plus_literal, "literal", "257"),
+        (plus_literal, "constant_integer", "257"),
+        (local, "reference", "other@0"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][index][field] = serde_json::json!(replacement);
+        let result = canonical_guest_typed_ir_with_source(
+            &serde_json::to_vec(&forged).unwrap(),
+            Some(MODULAR_OUTPUT_SOURCE),
+        );
+        assert!(
+            matches!(result, Err(FrontendJsonError::Unsupported)),
+            "forged {field} at node {index} was admitted"
+        );
+    }
+}
