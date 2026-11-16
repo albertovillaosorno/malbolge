@@ -55,6 +55,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-15, a complete four-trip unsigned C loop using the
+  non-unit `i += 2U` stride first refused before guest emission. A red-first
+  pinned Clang regression now proves both compound and assigned unsigned
+  non-unit steps, complete source tokens and matching `u32` arithmetic;
+  a descending `40U; i > 0U; i -= 10U` loop also reaches guest parity.
+  The final decrement of `9U; i > 0U; i -= 2U` correctly refuses because
+  unsigned wraparound would make the guard stay true. The verified
+  1,127-byte capsules emit `ABCCD` for input `ABCD` and
+  `00 ff 80 80 01` for `00 ff 80 01` in ten normative VM steps.
+  A separate complete program branching on live-byte parity still refuses
+  at source-C `for` admission. Guest runtime C control, EOF and arbitrary
+  streams are unfinished; P0 remains open.
+
 - On 2026-11-15, a four-trip C stream with an unsigned induction counter,
   live automatic `getchar()` byte, and a branch duplicating only the third
   byte initially refused at normalized `for` admission. A red-first pinned

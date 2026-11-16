@@ -4666,9 +4666,8 @@ fn prove_static_for<'node>(
     let increment_start = bound.span.end.byte.checked_add(2)?;
     let compound_increment = increment.kind == "compound-assignment-expression";
     let assigned_increment = increment.kind == "binary-expression";
-    if unsigned && (compound_increment || assigned_increment) {
-        return None;
-    }
+    // Admit unsigned compound or assignment strides only through the exact
+    // same source-backed counter identity and verified integer suffix.
     // The pinned Clang preorder supplies the increment literal at a fixed
     // child offset. Its source width extends the exact header geometry; the
     // later leaf proof binds every digit to the original C and its parent.
@@ -4679,7 +4678,10 @@ fn prove_static_for<'node>(
     } else {
         1
     };
-    if !(1..=2).contains(&stride_width) {
+    let stride_width = stride_width.checked_add(u32::from(
+        unsigned && (compound_increment || assigned_increment),
+    ))?;
+    if !(1..=3).contains(&stride_width) {
         return None;
     }
     let increment_length = (if assigned_increment {
@@ -4880,7 +4882,7 @@ fn prove_static_for<'node>(
         if arithmetic.id != expected_id.checked_add(10)?
             || arithmetic.parent != increment.id
             || arithmetic.kind != "binary-expression"
-            || arithmetic.type_name.as_deref() != Some("i32")
+            || arithmetic.type_name.as_deref() != Some(counter_type)
             || arithmetic.operation.as_deref()
                 != Some(if ascending {
                     "+"
@@ -4899,7 +4901,7 @@ fn prove_static_for<'node>(
             || read.id != expected_id.checked_add(11)?
             || read.parent != arithmetic.id
             || read.kind != "cast-expression"
-            || read.type_name.as_deref() != Some("i32")
+            || read.type_name.as_deref() != Some(counter_type)
             || read.operation.as_deref() != Some("lvalue-to-rvalue")
             || read.reference.is_some()
             || !metadata_empty(read)
@@ -4922,7 +4924,7 @@ fn prove_static_for<'node>(
         {
             return None;
         }
-        let stride = prove_decimal_condition_operand(
+        let stride = prove_for_decimal_operand(
             one,
             expected_id.checked_add(13)?,
             arithmetic.id,
@@ -4936,12 +4938,14 @@ fn prove_static_for<'node>(
                 .column
                 .checked_add(name_width.checked_mul(2)?)?
                 .checked_add(8)?,
+            unsigned,
+            source,
         )?;
         (tail, 14, stride)
     } else if compound_increment {
         // The additional compound-assignment child must be exactly one.
         let (one, tail) = rest.split_first()?;
-        let stride = prove_decimal_condition_operand(
+        let stride = prove_for_decimal_operand(
             one,
             expected_id.checked_add(10)?,
             increment.id,
@@ -4953,6 +4957,8 @@ fn prove_static_for<'node>(
                 .column
                 .checked_add(name_width)?
                 .checked_add(6)?,
+            unsigned,
+            source,
         )?;
         (tail, 11, stride)
     } else {
@@ -5003,9 +5009,14 @@ fn prove_static_for<'node>(
     // divergent loop. Re-check the same fixed-shape source step for every
     // loop whose original bytes are available.
     if let Some(witness) = source {
+        let suffix = if unsigned {
+            "U"
+        } else {
+            ""
+        };
         let spelling = if assigned_increment {
             format!(
-                "{name} = {name} {} {stride}",
+                "{name} = {name} {} {stride}{suffix}",
                 if ascending {
                     "+"
                 } else {
@@ -5014,7 +5025,7 @@ fn prove_static_for<'node>(
             )
         } else if compound_increment {
             format!(
-                "{name} {}= {stride}",
+                "{name} {}= {stride}{suffix}",
                 if ascending {
                     "+"
                 } else {
@@ -5068,6 +5079,16 @@ fn prove_static_for<'node>(
     } else {
         (distance - 1) / stride + 1
     };
+    // A descending unsigned counter wraps at zero. Check the mandatory
+    // post-body update too: `9U; i > 0U; i -= 2U` never terminates,
+    // despite a signed arithmetic model predicting five iterations.
+    if unsigned
+        && !ascending
+        && trip_count > 0
+        && initial_value.checked_sub(trip_count.checked_mul(stride)?)? < 0
+    {
+        return None;
+    }
     let iterations = usize::try_from(trip_count).ok()?;
     if iterations > 16 {
         return None;

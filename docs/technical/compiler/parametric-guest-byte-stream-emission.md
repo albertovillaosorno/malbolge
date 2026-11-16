@@ -26,6 +26,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Non-unit unsigned induction with live guest I/O (2026-11-15)
+
+A complete C parity-branch program with `for (unsigned i = 0U; i < 4U;
+++i)` still refuses when it branches on the parity of the live guest byte.
+No guest runtime C conditional evaluation has been implemented.
+
+The source-authenticated counter capability now also admits the real C forms
+`i += 2U` and `i = i + 2U` in a four-trip unsigned loop with a selected
+`if (i == 4U)` branch. The bounded proof authenticates pinned Clang `u32`
+assignment/arithmetic ancestry, complete original C step spelling, exact `U`
+suffix and the descending post-body update before selecting guest effects.
+Two-digit strides are supported, including an ascending `10U` and descending
+`10U` case with four actual guest reads. An unsigned `9U; i > 0U; i -= 2U`
+loop refuses: its final decrement wraps to `UINT_MAX`, not a false guard.
+
+The pinned C frontend and JSON-to-typed bridge accepted both ascending forms
+and the descending source, with independently verified 1,127-byte Malbolge
+capsules. The normative VM emitted `ABCCD` from `ABCD` for ascending compound
+and descending loops; both ascending compiler forms emitted binary
+`00 ff 80 80 01` from `00 ff 80 01`, consuming four real input bytes in
+10 guest steps. Normalized positive/negative fixtures and Rust regressions
+also check forged types, arithmetic bindings, operators and step literals.
+
+This remains compile-time induction and branch selection with guest runtime
+I/O, not guest-dependent control flow, guest arithmetic, EOF or arbitrary C
+streams. P0 remains pending.
+
 ### Source-checked unsigned byte-branch selection (2026-11-15)
 
 A whole four-trip C function reads each byte into an automatic `int`, then

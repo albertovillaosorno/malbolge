@@ -171,3 +171,139 @@ fn unsigned_branch_rejects_forged_counter_type_and_identity() {
         Err(FrontendJsonError::Unsupported)
     ));
 }
+
+const STRIDE_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/accepted/unsigned_stride_conditional_live_input.c"
+);
+const STRIDE_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_stride_conditional_live_input.json"
+);
+
+#[test]
+fn unsigned_compound_stride_selects_live_third_byte_twice() {
+    let (_typed, mode) =
+        canonical_guest_typed_ir_with_source(STRIDE_JSON, Some(STRIDE_SOURCE))
+            .expect(
+                "source-proven unsigned non-unit stride preserves live input",
+            );
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+}
+
+#[test]
+fn unsigned_compound_stride_must_not_wrap_at_zero() {
+    let json = include_bytes!(
+        "c-frontend/golden/unsigned_wrapping_stride_down_loop.json"
+    );
+    let source = include_bytes!(
+        "c-frontend/rejected/unsigned_wrapping_stride_down_loop.c"
+    );
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(json, Some(source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+#[test]
+fn unsigned_compound_stride_authenticates_literal_and_operator() {
+    for replacement in [51u8, 32, 76] {
+        let mut source = STRIDE_SOURCE.to_vec();
+        let at = source
+            .windows(7)
+            .position(|text| text == b"i += 2U")
+            .unwrap();
+        source[at + 5] = replacement;
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(STRIDE_JSON, Some(&source)),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+
+    let baseline: serde_json::Value =
+        serde_json::from_slice(STRIDE_JSON).unwrap();
+    let increment = baseline["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| node["kind"] == "compound-assignment-expression")
+        .unwrap();
+    for (offset, field, value) in [
+        (0, "operation", "-="),
+        (0, "type", "i32"),
+        (1, "reference", "other@0"),
+        (2, "literal", "3"),
+        (2, "type", "i32"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][increment + offset][field] = serde_json::json!(value);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&forged).unwrap(),
+                Some(STRIDE_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
+const ASSIGNED_STRIDE_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_assigned_stride_live_input.c");
+const ASSIGNED_STRIDE_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_assigned_stride_live_input.json"
+);
+
+#[test]
+fn unsigned_assigned_stride_preserves_live_input() {
+    let (_typed, mode) = canonical_guest_typed_ir_with_source(
+        ASSIGNED_STRIDE_JSON,
+        Some(ASSIGNED_STRIDE_SOURCE),
+    )
+    .expect("source-proven unsigned assignment step preserves live input");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+}
+
+#[test]
+fn unsigned_assigned_stride_authenticates_arithmetic_ancestry() {
+    let baseline: serde_json::Value =
+        serde_json::from_slice(ASSIGNED_STRIDE_JSON).unwrap();
+    let increment = baseline["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "="
+        })
+        .unwrap();
+    for (offset, field, value) in [
+        (0, "type", "i32"),
+        (2, "operation", "-"),
+        (2, "type", "i32"),
+        (3, "type", "i32"),
+        (4, "reference", "other@0"),
+        (5, "literal", "3"),
+        (5, "type", "i32"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][increment + offset][field] = serde_json::json!(value);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&forged).unwrap(),
+                Some(ASSIGNED_STRIDE_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
+#[test]
+fn unsigned_descending_stride_stops_at_zero_before_wrapping() {
+    let json = include_bytes!(
+        "c-frontend/golden/unsigned_descending_stride_live_input.json"
+    );
+    let source = include_bytes!(
+        "c-frontend/accepted/unsigned_descending_stride_live_input.c"
+    );
+    let (_typed, mode) =
+        canonical_guest_typed_ir_with_source(json, Some(source))
+            .expect("40, 30, 20, 10 must terminate at zero after four reads");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+}
