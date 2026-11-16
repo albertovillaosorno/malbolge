@@ -48,8 +48,8 @@ terminator; otherwise its next-statement geometry is wrong.
 
 Both admitted programs emit four real reads and four writes in nine guest VM
 steps, preserving NUL and high-bit bytes rather than assuming host stdin.
-The same-line form passed 29 seeded binary guest vectors and independent
-pinned C23 UBSan `-O0`/`-O2` parity checks for the accepted and rejected
+Both source forms passed 29 seeded binary guest vectors each and independent
+pinned C23 UBSan `-O0`/`-O2` parity checks for accepted and rejected
 changed-byte C programs. This is source-proven elimination of output-
 equivalent branches, not general executable guest arithmetic, storage, EOF,
 or input-dependent branching, and P0 remains **pending**.
