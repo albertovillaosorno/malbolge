@@ -77,6 +77,7 @@ const MAX_C_DEBUG_SOURCE_BYTES: u64 = 67_108_864;
 const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 const INPUT_STDIN_ARGUMENT: &str = "--input-stdin";
+const MAX_STEPS_ARGUMENT: &str = "--max-steps";
 const REPORT_STEPS_ARGUMENT: &str = "--report-steps";
 const RAW_PROFILE_ARGUMENT: &str = "--raw-profile";
 const STEPS_REPORT_PREFIX: &str = "malbolge-steps-v1:";
@@ -102,8 +103,14 @@ enum CDriver {
 #[derive(Clone, Copy, Default)]
 struct GuestOptions {
     input_stdin: bool,
-    report_steps: bool,
+    max_steps: Option<u64>,
     raw_profile: Option<&'static malbolge::ProfileDescriptor>,
+    report_steps: bool,
+}
+
+struct CompilePaths {
+    output: OsString,
+    source: OsString,
 }
 
 type ConfiguredProfileBackend =
@@ -558,9 +565,9 @@ fn run() -> Result<ExitCode, String> {
     dispatch(&canonical, &forwarded)
 }
 
-fn run_compile_command(
+fn compile_command_paths(
     arguments: &mut impl Iterator<Item = OsString>,
-) -> Result<ExitCode, String> {
+) -> Result<CompilePaths, String> {
     let Some(source) = arguments.next() else {
         return Err(String::from(
             "compile requires input.c -o output.malbolge",
@@ -591,20 +598,33 @@ fn run_compile_command(
     if !Path::new(&output)
         .extension()
         .and_then(OsStr::to_str)
-        .is_some_and(|extension| extension.eq_ignore_ascii_case(MALBOLGE_EXTENSION))
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case(MALBOLGE_EXTENSION)
+        })
     {
         return Err(String::from(
             "compile output must have a .malbolge extension",
         ));
     }
+    Ok(CompilePaths { output, source })
+}
+
+fn run_compile_command(
+    arguments: &mut impl Iterator<Item = OsString>,
+) -> Result<ExitCode, String> {
+    let CompilePaths { output, source } = compile_command_paths(arguments)?;
     let root = repository_root().ok_or_else(|| {
-        String::from("cannot locate repository root for C-to-Malbolge compilation")
+        String::from(
+            "cannot locate repository root for C-to-Malbolge compilation",
+        )
     })?;
-    let driver = root.join(
-        "src/interface/command-line/composition/scripts/c2malbolge.py",
-    );
+    let driver = root
+        .join("src/interface/command-line/composition/scripts/c2malbolge.py");
     if !driver.is_file() {
-        return Err(format!("C-to-Malbolge driver is missing: {}", driver.display()));
+        return Err(format!(
+            "C-to-Malbolge driver is missing: {}",
+            driver.display()
+        ));
     }
     let python = if cfg!(windows) {
         root.join(".dependencies/python/3.14.7/python.exe")
@@ -629,7 +649,9 @@ fn run_compile_command(
         .arg(output)
         .arg(source)
         .status()
-        .map_err(|error| format!("cannot start C-to-Malbolge driver: {error}"))?;
+        .map_err(|error| {
+            format!("cannot start C-to-Malbolge driver: {error}")
+        })?;
     Ok(exit_code(status))
 }
 
@@ -781,29 +803,55 @@ fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
 
 fn guest_options(arguments: &[OsString]) -> Result<GuestOptions, String> {
     let mut options = GuestOptions::default();
-    let mut index = 0;
-    while let Some(argument) = arguments.get(index) {
-        if argument == OsStr::new(INPUT_STDIN_ARGUMENT) && !options.input_stdin {
+    let mut remaining = arguments.iter();
+    while let Some(argument) = remaining.next() {
+        if argument == OsStr::new(INPUT_STDIN_ARGUMENT) && !options.input_stdin
+        {
             options.input_stdin = true;
-        } else if argument == OsStr::new(REPORT_STEPS_ARGUMENT) && !options.report_steps {
+        } else if argument == OsStr::new(REPORT_STEPS_ARGUMENT)
+            && !options.report_steps
+        {
             options.report_steps = true;
-        } else if argument == OsStr::new(RAW_PROFILE_ARGUMENT) && options.raw_profile.is_none() {
-            index += 1;
-            let id = arguments
-                .get(index)
+        } else if argument == OsStr::new(MAX_STEPS_ARGUMENT)
+            && options.max_steps.is_none()
+        {
+            let number = remaining
+                .next()
+                .and_then(|count| count.to_str())
+                .ok_or("--max-steps requires a positive decimal count")?;
+            if number.is_empty()
+                || !number.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                return Err(String::from(
+                    "--max-steps requires a positive decimal count",
+                ));
+            }
+            options.max_steps = Some(
+                number
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|count| *count > 0)
+                    .ok_or("--max-steps requires a positive decimal count")?,
+            );
+        } else if argument == OsStr::new(RAW_PROFILE_ARGUMENT)
+            && options.raw_profile.is_none()
+        {
+            let id = remaining
+                .next()
                 .ok_or("--raw-profile requires a canonical profile ID")?
                 .to_str()
                 .ok_or("--raw-profile ID must be UTF-8")?;
-            options.raw_profile = Some(
-                target_profile(id).ok_or_else(|| format!("unknown canonical raw profile: {id}"))?,
-            );
+            options.raw_profile =
+                Some(target_profile(id).ok_or_else(|| {
+                    format!("unknown canonical raw profile: {id}")
+                })?);
         } else {
             return Err(String::from(concat!(
                 "a .malbolge path accepts --input-stdin and --report-steps ",
                 "at most once each, plus --raw-profile ID at most once",
+                "; --max-steps N at most once",
             )));
         }
-        index += 1;
     }
     Ok(options)
 }
@@ -820,6 +868,24 @@ fn add_guest_steps(total: &mut u64, outcome: RunOutcome) -> Result<(), String> {
         .checked_add(value)
         .ok_or("guest step count exceeded u64 capacity")?;
     Ok(())
+}
+
+fn guest_step_chunk(
+    total: u64,
+    max_steps: Option<u64>,
+) -> Result<usize, String> {
+    let Some(limit) = max_steps else {
+        return Ok(RUN_CHUNK_STEPS);
+    };
+    let remaining = limit
+        .checked_sub(total)
+        .filter(|remaining| *remaining != 0)
+        .ok_or_else(|| {
+            format!("--max-steps {limit} exhausted before termination")
+        })?;
+    Ok(usize::try_from(remaining)
+        .unwrap_or(usize::MAX)
+        .min(RUN_CHUNK_STEPS))
 }
 
 fn write_guest_steps(steps: u64) -> Result<(), String> {
@@ -845,7 +911,11 @@ fn read_guest_stdin() -> Result<Vec<u8>, String> {
     Ok(input)
 }
 
-fn run_classic(source: &[u8], input: Vec<u8>) -> Result<u64, String> {
+fn run_classic(
+    source: &[u8],
+    input: Vec<u8>,
+    max_steps: Option<u64>,
+) -> Result<u64, String> {
     let mut machine = ExecutionMachine::from_source(
         source,
         input,
@@ -853,20 +923,18 @@ fn run_classic(source: &[u8], input: Vec<u8>) -> Result<u64, String> {
     )
     .map_err(|error| format!("classic Malbolge load failed: {error}"))?;
     let mut emitted = 0usize;
-    let mut outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
-        format!("classic Malbolge execution failed: {error}")
-    })?;
     let mut steps = 0;
-    add_guest_steps(&mut steps, outcome)?;
-    flush_new_output(machine.output(), &mut emitted)?;
-    while matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
-        outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
+    loop {
+        let chunk = guest_step_chunk(steps, max_steps)?;
+        let outcome = machine.run(chunk).map_err(|error| {
             format!("classic Malbolge execution failed: {error}")
         })?;
         add_guest_steps(&mut steps, outcome)?;
         flush_new_output(machine.output(), &mut emitted)?;
+        if !matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
+            return Ok(steps);
+        }
     }
-    Ok(steps)
 }
 
 // Nonblocking open prevents an unconnected FIFO from stalling the CLI.
@@ -897,7 +965,10 @@ fn open_regular_source(path: &Path, kind: &str) -> Result<File, String> {
 // Revalidate the opened inode and named path after bounded acquisition.
 // Length and nanosecond change-time checks reject partial or rewritten source.
 #[cfg(unix)]
-fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+fn source_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
     use std::os::unix::fs::MetadataExt as _;
 
     before.is_file()
@@ -912,7 +983,10 @@ fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool 
 }
 
 #[cfg(windows)]
-fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+fn source_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
     use std::os::windows::fs::MetadataExt as _;
 
     before.is_file()
@@ -927,7 +1001,10 @@ fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool 
 }
 
 #[cfg(not(any(unix, windows)))]
-fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+fn source_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
     before.is_file()
         && after.is_file()
         && before.len() == after.len()
@@ -939,7 +1016,10 @@ fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool 
 // symlink moves between two hardlinks to the same inode during the read.
 #[cfg(target_os = "linux")]
 fn verify_opened_source_path(
-    file: &File, path: &Path, expected: &Path, kind: &str,
+    file: &File,
+    path: &Path,
+    expected: &Path,
+    kind: &str,
 ) -> Result<(), String> {
     use std::os::fd::AsRawFd as _;
 
@@ -999,10 +1079,17 @@ fn read_regular_source_with_reader(
         return Err(format!("{kind} exceeds {limit}"));
     }
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) != metadata.len()
-        || !source_metadata_matches(&metadata, &file.metadata()
-            .map_err(|error| format!("failed to stat {kind}: {error}"))?)
-        || !source_metadata_matches(&metadata, &fs::metadata(path)
-            .map_err(|error| format!("failed to stat {kind}: {error}"))?)
+        || !source_metadata_matches(
+            &metadata,
+            &file
+                .metadata()
+                .map_err(|error| format!("failed to stat {kind}: {error}"))?,
+        )
+        || !source_metadata_matches(
+            &metadata,
+            &fs::metadata(path)
+                .map_err(|error| format!("failed to stat {kind}: {error}"))?,
+        )
     {
         return Err(format!("{kind} source changed during read"));
     }
@@ -1036,11 +1123,18 @@ fn run_malbolge(
                      capsule profile identity is already authoritative",
                 ));
             }
-            run_profile(capsule.profile(), capsule.payload(), input)?
-        }
+            run_profile(
+                capsule.profile(),
+                capsule.payload(),
+                input,
+                options.max_steps,
+            )?
+        },
         None => match options.raw_profile {
-            Some(profile) => run_profile(profile, &source, input)?,
-            None => run_classic(&source, input)?,
+            Some(profile) => {
+                run_profile(profile, &source, input, options.max_steps)?
+            },
+            None => run_classic(&source, input, options.max_steps)?,
         },
     };
     if options.report_steps {
@@ -1124,6 +1218,7 @@ fn run_profile(
     profile: &'static malbolge::ProfileDescriptor,
     source: &[u8],
     input: Vec<u8>,
+    max_steps: Option<u64>,
 ) -> Result<u64, String> {
     let adaptive_width = configured_adaptive_profile_width(profile)?;
     let machine = if adaptive_width {
@@ -1134,38 +1229,42 @@ fn run_profile(
     .map_err(|error| format!("profile Malbolge load failed: {error}"))?;
     let mut backend = configured_profile_backend(profile)?;
     match backend.as_mut() {
-        Some(selected) => run_profile_with_backend(machine, selected),
-        None => run_profile_direct(machine),
+        Some(selected) => {
+            run_profile_with_backend(machine, selected, max_steps)
+        },
+        None => run_profile_direct(machine, max_steps),
     }
 }
 
-fn run_profile_direct(mut machine: ProfileMachine) -> Result<u64, String> {
+fn run_profile_direct(
+    mut machine: ProfileMachine,
+    max_steps: Option<u64>,
+) -> Result<u64, String> {
     let mut emitted = 0usize;
-    let mut outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
-        format!("profile Malbolge execution failed: {error}")
-    })?;
     let mut steps = 0;
-    add_guest_steps(&mut steps, outcome)?;
-    flush_new_output(machine.output(), &mut emitted)?;
-    while matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
-        outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
+    loop {
+        let chunk = guest_step_chunk(steps, max_steps)?;
+        let outcome = machine.run(chunk).map_err(|error| {
             format!("profile Malbolge execution failed: {error}")
         })?;
         add_guest_steps(&mut steps, outcome)?;
         flush_new_output(machine.output(), &mut emitted)?;
+        if !matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
+            return Ok(steps);
+        }
     }
-    Ok(steps)
 }
 
 fn run_profile_with_backend(
     mut machine: ProfileMachine,
     backend: &mut dyn malbolge::ProfileBatchExecutionBackend,
+    max_steps: Option<u64>,
 ) -> Result<u64, String> {
     let mut emitted = 0usize;
     let mut steps = 0;
     loop {
-        let request =
-            ProfileBatchRequest::from_machine(machine, RUN_CHUNK_STEPS);
+        let chunk = guest_step_chunk(steps, max_steps)?;
+        let request = ProfileBatchRequest::from_machine(machine, chunk);
         let mut results =
             execute_profile_batch_with_backend(vec![request], backend);
         let result = results.pop().ok_or_else(|| {
@@ -1200,7 +1299,8 @@ fn write_diagnostic(message: &str) {
 fn write_usage() -> Result<(), String> {
     let usage = concat!(
         "Usage: malbolge <program.malbolge> ",
-        "[--input-stdin] [--report-steps] [--raw-profile ID]\n",
+        "[--input-stdin] [--report-steps] [--raw-profile ID] ",
+        "[--max-steps N]\n",
         "       malbolge <program.c> [program args...]\n",
         "       malbolge compile <input.c> -o <output.malbolge>\n",
         "       malbolge --checkpoint-info ",
@@ -1215,6 +1315,8 @@ fn write_usage() -> Result<(), String> {
         "until EOF (default: empty).\n",
         "  --report-steps  Emit completed guest instruction count ",
         "to stderr (opt-in).\n",
+        "  --max-steps N  Limit execution to N guest instructions; ",
+        "failure has no completion receipt.\n",
         "  --raw-profile ID  Execute unframed raw source under the named ",
         "canonical profile; capsules select their own profile.\n",
         "  .c         Debug-run C directly on the host via a ",
@@ -1288,13 +1390,16 @@ fn pkg_config_sdl2(mode: &str) -> Result<Vec<OsString>, String> {
 
 #[cfg(test)]
 mod source_read_tests {
-    use super::{SourceReadPolicy, read_regular_source, read_regular_source_with_reader};
     use std::env::temp_dir;
     use std::fs::{self, File};
     use std::io::{Error as IoError, Read as _};
     use std::path::Path;
     use std::process::id;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{
+        SourceReadPolicy, read_regular_source, read_regular_source_with_reader,
+    };
 
     const SOURCE: &[u8] = b"ubO";
 
@@ -1303,7 +1408,8 @@ mod source_read_tests {
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?
             .as_nanos();
-        let path = temp_dir().join(format!("malbolge-source-{label}-{}-{nonce}", id()));
+        let path = temp_dir()
+            .join(format!("malbolge-source-{label}-{}-{nonce}", id()));
         fs::create_dir_all(&path).map_err(|error| error.to_string())?;
         Ok(path)
     }
@@ -1312,43 +1418,57 @@ mod source_read_tests {
         path: &Path,
         mutate: impl FnOnce() -> std::io::Result<()>,
     ) -> Result<Vec<u8>, String> {
-        read_regular_source_with_reader(path, SourceReadPolicy {
-            kind: "Malbolge source", limit: "32 bytes", max_bytes: 32,
-        }, |file, bytes| {
-            let read = file.take(33).read_to_end(bytes)?;
-            mutate()?;
-            Ok(read)
-        })
+        read_regular_source_with_reader(
+            path,
+            SourceReadPolicy {
+                kind: "Malbolge source",
+                limit: "32 bytes",
+                max_bytes: 32,
+            },
+            |file, bytes| {
+                let read = file.take(33).read_to_end(bytes)?;
+                mutate()?;
+                Ok(read)
+            },
+        )
     }
 
     #[test]
-    fn source_read_rejects_same_inode_rewrite_after_read() -> Result<(), String> {
+    fn source_read_rejects_same_inode_rewrite_after_read() -> Result<(), String>
+    {
         let directory = fixture_directory("rewrite")?;
         let source = directory.join("program.malbolge");
         fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
         let result = try_source_read(&source, || {
             fs::write(&source, b"ctO")?;
-            File::open(&source)?.set_times(
-                fs::FileTimes::new().set_modified(UNIX_EPOCH),
-            )
+            File::open(&source)?
+                .set_times(fs::FileTimes::new().set_modified(UNIX_EPOCH))
         });
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
-        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+        if !result
+            .as_ref()
+            .is_err_and(|error| error.contains("source changed during read"))
+        {
             return Err(format!("changed source accepted: {result:?}"));
         }
         Ok(())
     }
 
     #[test]
-    fn source_read_rejects_inode_replacement_after_read() -> Result<(), String> {
+    fn source_read_rejects_inode_replacement_after_read() -> Result<(), String>
+    {
         let directory = fixture_directory("replace")?;
         let source = directory.join("program.malbolge");
         let alternate = directory.join("other.malbolge");
         fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
         fs::write(&alternate, SOURCE).map_err(|error| error.to_string())?;
-        let result = try_source_read(&source, || fs::rename(&alternate, &source));
+        let result =
+            try_source_read(&source, || fs::rename(&alternate, &source));
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
-        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+        if !result
+            .as_ref()
+            .is_err_and(|error| error.contains("source changed during read"))
+        {
             return Err(format!("replaced source accepted: {result:?}"));
         }
         Ok(())
@@ -1361,7 +1481,10 @@ mod source_read_tests {
         fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
         let result = try_source_read(&source, || fs::write(&source, b"u"));
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
-        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+        if !result
+            .as_ref()
+            .is_err_and(|error| error.contains("source changed during read"))
+        {
             return Err(format!("truncated source accepted: {result:?}"));
         }
         Ok(())
@@ -1372,18 +1495,28 @@ mod source_read_tests {
         let directory = fixture_directory("short")?;
         let source = directory.join("program.malbolge");
         fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
-        let result = read_regular_source_with_reader(&source, SourceReadPolicy {
-            kind: "Malbolge source", limit: "32 bytes", max_bytes: 32,
-        }, |file, bytes| file.take(1).read_to_end(bytes));
+        let result = read_regular_source_with_reader(
+            &source,
+            SourceReadPolicy {
+                kind: "Malbolge source",
+                limit: "32 bytes",
+                max_bytes: 32,
+            },
+            |file, bytes| file.take(1).read_to_end(bytes),
+        );
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
-        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+        if !result
+            .as_ref()
+            .is_err_and(|error| error.contains("source changed during read"))
+        {
             return Err(format!("short source read accepted: {result:?}"));
         }
         Ok(())
     }
 
     #[test]
-    fn source_read_rejects_forged_reader_byte_counts_for_both_kinds() -> Result<(), String> {
+    fn source_read_rejects_forged_reader_byte_counts_for_both_kinds()
+    -> Result<(), String> {
         let directory = fixture_directory("read-receipt")?;
         let source = directory.join("program.malbolge");
         fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
@@ -1391,31 +1524,45 @@ mod source_read_tests {
             for reported in [0, 2, 4, usize::MAX] {
                 let result = read_regular_source_with_reader(
                     &source,
-                    SourceReadPolicy { kind, limit: "32 bytes", max_bytes: 32 },
+                    SourceReadPolicy {
+                        kind,
+                        limit: "32 bytes",
+                        max_bytes: 32,
+                    },
                     |file, bytes| {
                         let count = file.take(33).read_to_end(bytes)?;
                         if count != SOURCE.len() {
-                            return Err(IoError::other("fixture read length changed"));
+                            return Err(IoError::other(
+                                "fixture read length changed",
+                            ));
                         }
                         Ok(reported)
                     },
                 );
-                if !result.as_ref().is_err_and(|error| error.contains("read count disagrees")) {
-                    return Err(format!("{kind} accepted forged count {reported}: {result:?}"));
+                if !result
+                    .as_ref()
+                    .is_err_and(|error| error.contains("read count disagrees"))
+                {
+                    return Err(format!(
+                        "{kind} accepted forged count {reported}: {result:?}"
+                    ));
                 }
             }
         }
         let retained = fs::read(&source).map_err(|error| error.to_string())?;
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
         if retained != SOURCE {
-            return Err(String::from("source reader altered the original file"));
+            return Err(String::from(
+                "source reader altered the original file",
+            ));
         }
         Ok(())
     }
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn source_read_rejects_parent_alias_swap_with_same_inode() -> Result<(), String> {
+    fn source_read_rejects_parent_alias_swap_with_same_inode()
+    -> Result<(), String> {
         use std::os::unix::fs::symlink;
 
         let directory = fixture_directory("alias-swap")?;
@@ -1435,7 +1582,10 @@ mod source_read_tests {
             symlink(&second_dir, &alias)
         });
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
-        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+        if !result
+            .as_ref()
+            .is_err_and(|error| error.contains("source changed during read"))
+        {
             return Err(format!("source alias swap accepted: {result:?}"));
         }
         Ok(())
@@ -1451,7 +1601,8 @@ mod source_read_tests {
         let alias = directory.join("alias.malbolge");
         fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
         symlink(&source, &alias).map_err(|error| error.to_string())?;
-        let result = read_regular_source(&alias, 32, "Malbolge source", "32 bytes");
+        let result =
+            read_regular_source(&alias, 32, "Malbolge source", "32 bytes");
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
         if result.as_deref() != Ok(SOURCE) {
             return Err(format!("stable source alias rejected: {result:?}"));
@@ -1464,7 +1615,8 @@ mod source_read_tests {
         let directory = fixture_directory("stable")?;
         let source = directory.join("program.malbolge");
         fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
-        let result = read_regular_source(&source, 32, "Malbolge source", "32 bytes");
+        let result =
+            read_regular_source(&source, 32, "Malbolge source", "32 bytes");
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
         if result.as_deref() != Ok(SOURCE) {
             return Err(format!("stable source rejected: {result:?}"));

@@ -6,7 +6,8 @@
 malbolge <path-to-program.c>
 malbolge <path-to-program.malbolge>
 malbolge --checkpoint-info <path-to-program.malbolge.progress.json>
-malbolge --extract-checkpoint <state-codec> <path-to-program.malbolge.progress.json>
+malbolge --extract-checkpoint <state-codec> \
+  <path-to-program.malbolge.progress.json>
 ```
 
 The two source extensions intentionally mean different things.
@@ -45,9 +46,10 @@ versioned capsule selects the profile carried by that capsule before classic
 fallback is considered. An opt-in `--raw-profile ID` selects one exact
 registered canonical profile for **unframed raw source only**. Without this
 option, the raw classic default remains unchanged. The option composes with
-`--input-stdin` and `--report-steps`, but rejects unknown IDs, missing
-arguments or duplicate flags before execution. A capsule rejects a simultaneous `--raw-profile`: its own
-profile ID and fingerprint always decide VM dispatch, never a caller override.
+`--input-stdin`, `--max-steps N`, and `--report-steps`, but rejects unknown
+IDs, missing arguments, or duplicate flags before execution. A capsule rejects
+a simultaneous `--raw-profile`: its own profile ID and fingerprint always
+decide VM dispatch, never a caller override.
 The option has no special meaning for host-debug `.c` source, whose arguments
 retain their original forwarding contract.
 
@@ -73,6 +75,23 @@ writer between the final check and VM execution.
 The current VM input model is pre-buffered rather than interactive. The CLI does
 not fake real-time input by reading the terminal to EOF before startup.
 Interactive DOOM input belongs to the versioned host-capability runner work.
+
+### Explicit guest step limit
+
+`malbolge program.malbolge --max-steps N` requests a positive unsigned decimal
+`u64` instruction limit. Raw classic, explicitly selected raw profiles, and
+versioned capsules use the same committed-step budget, including through the
+resident worker backend and its canonical safe-Rust fallback. Each VM chunk is
+clamped to the remaining budget, not stopped by an additional host-side guest
+instruction after the budget is spent. A halt on the `N`th step succeeds.
+
+An unfinished VM at its exact budget fails nonzero with a stable diagnostic.
+Previously written guest stdout bytes remain visible, while `--report-steps`
+emits no successful completion count on the failing path. Duplicate, zero,
+nondecimal, overflowing, missing, and non-UTF-8 values fail before execution.
+The option is disabled by default and does not impose a memory, wall-clock,
+compile-time, or input-read limit. Host-debug `.c` arguments remain forwarded
+unchanged. This feature bounds *actual guest execution*, not host-simulated C.
 
 ### Optional current-profile adaptive width and resident worker
 
@@ -152,8 +171,9 @@ development tooling; generated
 When a C file declares the version-one `DoomHost_*` ABI, the CLI links the
 platform host adapter as a separate host-only translation unit: `windows.c` on
 Windows and `linux.c` on Linux. The adapter supplies the debug window,
-keyboard/mouse input, audio, files, and clock. Linux obtains SDL2 compiler/linker
-flags from `pkg-config`. No adapter embeds an IWAD or becomes part of `doom.c` or
+keyboard/mouse input, audio, files, and clock. Linux obtains SDL2 compiler
+and linker flags from `pkg-config`. No adapter embeds an IWAD or becomes part
+of `doom.c` or
 `doom.malbolge`.
 
 When executable C tokens reference the function-like identifiers
@@ -235,8 +255,9 @@ Indexed presentation admits only the logical dimensions established at video
 initialization. The retained 8-bit frame is allocated to that exact logical
 geometry with checked stride/size arithmetic, so documented high-resolution
 rasters such as 2304-by-1080 are not rejected by an obsolete fixed backing-store
-ceiling. Each row is copied with DWORD-aligned DIB stride and zero padding before
-GDI sees the frame. Uncompressed `BI_RGB` publishes `biSizeImage = 0`, as allowed
+ceiling. Each row is copied with DWORD-aligned DIB stride and zero padding
+before GDI sees the frame. Uncompressed `BI_RGB` publishes `biSizeImage = 0`,
+as allowed
 by GDI, rather than narrowing a host-size byte count to `DWORD`. DIB metadata
 owns a real 256-entry palette object whose header/palette layout is asserted
 compatible with the `BITMAPINFO` prefix passed to GDI, so
@@ -244,8 +265,8 @@ compatible with the `BITMAPINFO` prefix passed to GDI, so
 palette access does not depend on over-indexing a one-element C array. The
 hand-declared Win32 structures are compile-time checked against the supported
 64-bit ABI sizes, including the SDK-compatible packed 18-byte `WAVEFORMATEX`.
-Native client/window rectangle spans are widened and validated before subtraction
-so malformed host geometry cannot trigger signed overflow. The
+Native client/window rectangle spans are widened and validated before
+subtraction so malformed host geometry cannot trigger signed overflow. The
 video ABI's borderless request selects a popup window style. Negative minimum
 
 presentation rates are rejected at admission. Optional launcher-side 60 Hz

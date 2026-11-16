@@ -56,12 +56,14 @@ impl TemporarySource {
             .map_err(|error| format!("clock unavailable: {error}"))?
             .as_nanos();
         let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp");
-        create_dir_all(&directory).map_err(|error| format!("prepare test directory: {error}"))?;
+        create_dir_all(&directory)
+            .map_err(|error| format!("prepare test directory: {error}"))?;
         let path = directory.join(format!(
             "cli-raw-profile-{}-{timestamp}-{label}.malbolge",
             id(),
         ));
-        write(&path, bytes).map_err(|error| format!("write {label} test source: {error}"))?;
+        write(&path, bytes)
+            .map_err(|error| format!("write {label} test source: {error}"))?;
         Ok(Self { path })
     }
 }
@@ -72,7 +74,11 @@ impl Drop for TemporarySource {
     }
 }
 
-fn run_guest(path: &Path, args: &[&str], input: &[u8]) -> Result<Output, String> {
+fn run_guest(
+    path: &Path,
+    args: &[&str],
+    input: &[u8],
+) -> Result<Output, String> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .arg(path)
         .args(args)
@@ -92,7 +98,8 @@ fn run_guest(path: &Path, args: &[&str], input: &[u8]) -> Result<Output, String>
 }
 
 #[test]
-fn selected_raw_current_profile_executes_exact_guest_io() -> Result<(), String> {
+fn selected_raw_current_profile_executes_exact_guest_io() -> Result<(), String>
+{
     let raw = TemporarySource::new("current", CURRENT_RAW_SOURCE)?;
     let eof = run_guest(
         &raw.path,
@@ -119,7 +126,51 @@ fn selected_raw_current_profile_executes_exact_guest_io() -> Result<(), String> 
         || binary.stdout != [0xff]
         || binary.stderr != b"malbolge-steps-v1:3\n"
     {
-        return Err(format!("current raw binary dispatch mismatch: {binary:?}"));
+        return Err(format!(
+            "current raw binary dispatch mismatch: {binary:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn selected_raw_profile_budget_preserves_binary_byte_and_exact_halt()
+-> Result<(), String> {
+    let raw = TemporarySource::new("bounded-current", CURRENT_RAW_SOURCE)?;
+    for (limit, expected_output, completed) in [
+        ("1", Vec::new(), false),
+        ("2", vec![0xff], false),
+        ("3", vec![0xff], true),
+        ("4", vec![0xff], true),
+    ] {
+        let output = run_guest(
+            &raw.path,
+            &[
+                "--report-steps",
+                "--max-steps",
+                limit,
+                "--raw-profile",
+                CURRENT_PROFILE_ID,
+                "--input-stdin",
+            ],
+            &[0xff],
+        )?;
+        let expected_stderr = if completed {
+            b"malbolge-steps-v1:3\n".to_vec()
+        } else {
+            format!(
+                "malbolge: --max-steps {limit} exhausted before termination\n"
+            )
+            .into_bytes()
+        };
+        if output.status.success() != completed
+            || output.stdout != expected_output
+            || output.stderr != expected_stderr
+        {
+            return Err(format!(
+                "raw profile step budget {limit} mismatch: {output:?}"
+            ));
+        }
     }
     Ok(())
 }
@@ -136,7 +187,8 @@ fn profile_override_never_reinterprets_a_capsule() -> Result<(), String> {
     {
         return Err(format!("capsule selection regressed: {selected:?}"));
     }
-    let forbidden = run_guest(&capsule.path, &["--raw-profile", CURRENT_PROFILE_ID], &[])?;
+    let forbidden =
+        run_guest(&capsule.path, &["--raw-profile", CURRENT_PROFILE_ID], &[])?;
     if forbidden.status.success()
         || !forbidden.stdout.is_empty()
         || !String::from_utf8_lossy(&forbidden.stderr)
@@ -195,8 +247,9 @@ fn raw_profile_arguments_fail_closed() -> Result<(), String> {
 
 #[test]
 fn named_historical_raw_matches_default_classic_io() -> Result<(), String> {
-    let classic_fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/compatibility/specification/interpreter-io-roundtrip.malbolge");
+    let classic_fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "tests/compatibility/specification/interpreter-io-roundtrip.malbolge",
+    );
     for input in [Vec::new(), vec![0xff]] {
         let classic_args = ["--input-stdin", "--report-steps"];
         let named_args = [
@@ -222,7 +275,8 @@ fn named_historical_raw_matches_default_classic_io() -> Result<(), String> {
 }
 
 #[test]
-fn selected_versioned_raw_matches_immutable_profile_capsule() -> Result<(), String> {
+fn selected_versioned_raw_matches_immutable_profile_capsule()
+-> Result<(), String> {
     let versioned = malbolge::target_profile("malbolge-2026.3")
         .ok_or("missing immutable 2026.3 target profile")?;
     let raw = TemporarySource::new("versioned", CURRENT_RAW_SOURCE)?;
@@ -240,8 +294,11 @@ fn selected_versioned_raw_matches_immutable_profile_capsule() -> Result<(), Stri
             ],
             &input,
         )?;
-        let capsule_result =
-            run_guest(&capsule.path, &["--input-stdin", "--report-steps"], &input)?;
+        let capsule_result = run_guest(
+            &capsule.path,
+            &["--input-stdin", "--report-steps"],
+            &input,
+        )?;
         if !raw_result.status.success()
             || !capsule_result.status.success()
             || raw_result.stdout != capsule_result.stdout
@@ -257,7 +314,8 @@ fn selected_versioned_raw_matches_immutable_profile_capsule() -> Result<(), Stri
 }
 
 #[test]
-fn named_current_raw_observes_adaptive_settings_but_classic_ignores_them() -> Result<(), String> {
+fn named_current_raw_observes_adaptive_settings_but_classic_ignores_them()
+-> Result<(), String> {
     let raw = TemporarySource::new("adaptive-raw", CURRENT_RAW_SOURCE)?;
     for setting in ["0", "1"] {
         let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
@@ -280,7 +338,9 @@ fn named_current_raw_observes_adaptive_settings_but_classic_ignores_them() -> Re
         .args(["--raw-profile", CURRENT_PROFILE_ID])
         .env("MALBOLGE_PROFILE_ADAPTIVE_WIDTH", "invalid")
         .output()
-        .map_err(|error| format!("run invalid raw adaptive setting: {error}"))?;
+        .map_err(|error| {
+            format!("run invalid raw adaptive setting: {error}")
+        })?;
     if invalid.status.success()
         || !invalid.stdout.is_empty()
         || !String::from_utf8_lossy(&invalid.stderr)
@@ -290,14 +350,20 @@ fn named_current_raw_observes_adaptive_settings_but_classic_ignores_them() -> Re
             "invalid current raw adaptive mode admitted: {invalid:?}"
         ));
     }
-    let classic_fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/compatibility/specification/interpreter-io-roundtrip.malbolge");
+    let classic_fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "tests/compatibility/specification/interpreter-io-roundtrip.malbolge",
+    );
     let classic = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .arg(classic_fixture)
         .env("MALBOLGE_PROFILE_ADAPTIVE_WIDTH", "invalid")
         .output()
-        .map_err(|error| format!("run classic under ambient setting: {error}"))?;
-    if !classic.status.success() || classic.stdout != [0xa8] || !classic.stderr.is_empty() {
+        .map_err(|error| {
+            format!("run classic under ambient setting: {error}")
+        })?;
+    if !classic.status.success()
+        || classic.stdout != [0xa8]
+        || !classic.stderr.is_empty()
+    {
         return Err(format!(
             "raw classic was influenced by adaptive setting: {classic:?}"
         ));

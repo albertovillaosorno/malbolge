@@ -56,13 +56,14 @@ malbolge .temp/raw-current.malbolge --raw-profile malbolge-2026 \
   --report-steps
 ```
 
-`--raw-profile ID` selects the exact registered profile with no inference from
-source contents or fallback to a different profile. It supports the same
-`--input-stdin` and `--report-steps` options in any order. Unknown IDs, missing
-values and duplicate flags fail before guest execution. The option **cannot**
-be used with a capsule: capsule identity and fingerprint remain authoritative,
-and attempting to override either fails before guest execution. Prefer capsules
-from `malbolge compile` for self-describing, portable current-profile output.
+`--raw-profile ID` selects the exact registered profile with no inference
+from source contents or fallback to a different profile. It supports the same
+`--input-stdin`, `--max-steps N`, and `--report-steps` options in any order.
+Unknown IDs, missing values and duplicate flags fail before guest execution.
+The option **cannot** be used with a capsule: capsule identity and
+fingerprint remain authoritative, and attempting to override either fails
+before guest execution. Prefer capsules from `malbolge compile` for
+self-describing, portable current-profile output.
 An explicitly selected *current-profile raw* program uses the same opt-in
 adaptive-width and resident-worker settings as a current-profile capsule;
 the default classic raw path remains unaffected. The option does not apply
@@ -85,6 +86,32 @@ This count is observable execution evidence on the selected local VM, not a
 proof of timing precision, host CPU instructions, physical power or a memory
 budget. For long-running or externally interrupted programs, no successful
 terminal count is issued. A failing stderr write reports a nonzero exit.
+
+## Opt-in exact guest instruction budget
+
+`malbolge program.malbolge --max-steps N` executes at most `N` committed guest
+instructions for raw classic source, an explicitly selected raw profile, or a
+versioned capsule. `N` must be a positive unsigned decimal integer fitting in
+64 bits; absent the option, execution retains its existing unbounded behavior.
+
+The VM can still finish successfully if its terminating instruction is the
+`N`th step. Otherwise, the command exits nonzero with a budget diagnostic,
+even when some instructions already wrote guest bytes. Those exact bytes stay
+on stdout, but no successful `--report-steps` receipt is emitted. The limit
+is honored across the VM's execution chunks, including the optional resident
+profile backend and its safe-Rust fallback. It does not limit preparation,
+compilation, input acquisition, memory consumption, or wall-clock time.
+
+For example, to bound execution of an emitted capsule while reporting its
+completed guest instruction count:
+
+```sh
+malbolge program.malbolge --max-steps 100000 --report-steps
+```
+
+The flag may appear alongside `--input-stdin`, `--raw-profile ID` (for raw
+source only), and `--report-steps`, in any order, each at most once. Native
+`.c` debug execution continues forwarding its arguments unchanged.
 
 ## One-command bounded C-to-Malbolge compilation
 

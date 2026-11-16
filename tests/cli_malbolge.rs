@@ -141,6 +141,86 @@ fn run_with_stdin(source: &Path, input: &[u8]) -> Result<Output, String> {
 }
 
 #[test]
+fn explicit_guest_step_budget_preserves_exact_partial_output_and_halt_boundary()
+-> Result<(), String> {
+    let source = TemporarySource::echo_pairs(6)?;
+    for (budget, expected_output, completed) in [
+        (1, vec![], false),
+        (4, vec![EOF_BYTE; 2], false),
+        (12, vec![EOF_BYTE; 6], false),
+        (13, vec![EOF_BYTE; 6], true),
+        (14, vec![EOF_BYTE; 6], true),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&source.path)
+            .args(["--report-steps", "--max-steps"])
+            .arg(budget.to_string())
+            .output()
+            .map_err(|error| format!("run bounded classic VM: {error}"))?;
+        let expected_error = format!(
+            "malbolge: --max-steps {budget} exhausted before termination\n"
+        );
+        let expected_stderr = if completed {
+            b"malbolge-steps-v1:13\n".to_vec()
+        } else {
+            expected_error.into_bytes()
+        };
+        if output.status.success() != completed
+            || output.stdout != expected_output
+            || output.stderr != expected_stderr
+        {
+            return Err(format!(
+                "classic step budget {budget} mismatch: {output:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_or_repeated_guest_step_budget_fails_before_execution()
+-> Result<(), String> {
+    for (args, diagnostic) in [
+        (
+            vec!["--max-steps"],
+            "--max-steps requires a positive decimal count",
+        ),
+        (
+            vec!["--max-steps", "0"],
+            "--max-steps requires a positive decimal count",
+        ),
+        (
+            vec!["--max-steps", "-1"],
+            "--max-steps requires a positive decimal count",
+        ),
+        (
+            vec!["--max-steps", "1.5"],
+            "--max-steps requires a positive decimal count",
+        ),
+        (
+            vec!["--max-steps", "18446744073709551616"],
+            "--max-steps requires a positive decimal count",
+        ),
+        (vec!["--max-steps", "1", "--max-steps", "2"], "at most once"),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(roundtrip_fixture())
+            .args(&args)
+            .output()
+            .map_err(|error| format!("run rejected step budget: {error}"))?;
+        if output.status.success()
+            || !output.stdout.is_empty()
+            || !String::from_utf8_lossy(&output.stderr).contains(diagnostic)
+        {
+            return Err(format!(
+                "step budget {args:?} was admitted: {output:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn explicit_guest_stdin_reads_exact_binary_byte() -> Result<(), String> {
     let output = run_with_stdin(&roundtrip_fixture(), ARBITRARY_INPUT_BYTE)?;
     if !output.status.success()

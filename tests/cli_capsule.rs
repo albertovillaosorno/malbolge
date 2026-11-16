@@ -439,6 +439,71 @@ fn default_current_capsule_ignores_ambient_stdin() -> Result<(), String> {
 }
 
 #[test]
+fn profiled_guest_step_budget_agrees_with_resident_fallback()
+-> Result<(), String> {
+    let source = source_backed_jump_code_io_chain()?;
+    let encoded = build_capsule(current_profile(), &source)
+        .map_err(|error| format!("build bounded capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("bounded-steps", &encoded)?;
+    let baseline = clean_cli_command()
+        .arg(&capsule.path)
+        .arg("--report-steps")
+        .output()
+        .map_err(|error| format!("run baseline capsule: {error}"))?;
+    if !baseline.status.success() {
+        return Err(format!("baseline capsule refused: {baseline:?}"));
+    }
+    let text = String::from_utf8(baseline.stderr.clone())
+        .map_err(|error| format!("baseline step report: {error}"))?;
+    let exact = text
+        .trim_end()
+        .strip_prefix("malbolge-steps-v1:")
+        .ok_or("missing baseline step count")?
+        .parse::<u64>()
+        .map_err(|error| format!("baseline step count: {error}"))?;
+    let early = exact.checked_sub(1).ok_or("empty profiled execution")?;
+    for budget in [early, exact] {
+        let limit = budget.to_string();
+        let direct = clean_cli_command()
+            .arg(&capsule.path)
+            .args(["--max-steps", &limit, "--report-steps"])
+            .output()
+            .map_err(|error| format!("run bounded profile: {error}"))?;
+        let marker = TemporaryMarker::new("bounded-steps");
+        let resident = configured_worker_command(&marker.path)
+            .arg(&capsule.path)
+            .args(["--max-steps", &limit, "--report-steps"])
+            .output()
+            .map_err(|error| {
+                format!("run bounded resident fallback: {error}")
+            })?;
+        if direct.status.success() != (budget == exact)
+            || direct.stdout != resident.stdout
+            || direct.stderr != resident.stderr
+            || direct.status != resident.status
+            || !marker.path.exists()
+        {
+            return Err(format!(
+                "profile step budget {budget} mismatch: {direct:?} {resident:?}"
+            ));
+        }
+        if budget == exact && direct != baseline {
+            return Err(format!("exact-boundary capsule changed: {direct:?}"));
+        }
+        if budget == early
+            && !String::from_utf8_lossy(&direct.stderr).contains(&format!(
+                "--max-steps {early} exhausted before termination"
+            ))
+        {
+            return Err(format!(
+                "early capsule boundary was ignored: {direct:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn resident_backend_fallback_reports_exact_same_guest_steps()
 -> Result<(), String> {
     let source = source_backed_jump_code_io_chain()?;
