@@ -55,6 +55,21 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-15, a complete live-input unsigned descending C program
+  refused before guest emission because the compiler modeled an unsigned
+  post-body underflow that a selected `break` would skip. A red-first pinned
+  Clang regression now admits this exact early exit, plus an inclusive-zero
+  `i >= 0U` loop that breaks at zero; an analogous `continue` still refuses.
+  A separate red-first forged-source regression found that normalized
+  `break` metadata could impersonate original C `false` with the same
+  five-byte span. Source-authenticated `break`/`continue`/`return` tokens
+  now prohibit that false early exit. Both programs emit 1,143-byte guests;
+  the normative VM consumes five live input bytes and emits six in 12 steps:
+  `ABCDZ` becomes `ABCCDZ`, and `00 ff 80 01 7f` becomes
+  `00 ff 80 80 01 7f`. Independent C23 Clang 22.1.8 UBSan executions at
+  O0/O2 match both guest vectors. Live-byte-dependent branches, EOF and
+  arbitrary streams remain unsupported; P0 remains open.
+
 - On 2026-11-15, a complete four-trip unsigned C loop using the
   non-unit `i += 2U` stride first refused before guest emission. A red-first
   pinned Clang regression now proves both compound and assigned unsigned

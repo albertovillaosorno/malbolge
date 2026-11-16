@@ -26,6 +26,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven early unsigned exits before wrap (2026-11-15)
+
+A demanding source-C probe combines unsigned `9U; i > 0U; i -= 2U`,
+a live `getchar()` local, a counter-selected duplication branch and a
+`break` when `i == 1U`. The pinned Clang/JSON adapter originally refused
+its `for` statement because the mathematical fifth post-body decrement
+would underflow, even though C does not execute an update after `break`.
+A red-first normalized regression now moves the unsigned-wrap check after
+source-proven body-exit selection. A normal trip or `continue` still checks
+the update, including the final trip; `break` and `return` skip it.
+
+The related inclusive-zero source `for (unsigned i = 4U; i >= 0U; i--)`
+was also initially refused despite a selected break at zero. The new proof
+accepts this finite case but continues to reject its `continue` counterpart,
+which would execute the underflowing decrement and leave the guard true.
+A second red-first regression detected that a source-backed Clang `break`
+node could be admitted when the five original C keyword bytes were changed
+to `false`. The control-exit proof now authenticates `break`, `continue`,
+and `return` source tokens before selecting their effects.
+
+Both positive complete C programs compile through the pinned native Clang
+22.1.8 frontend and checked JSON, typed IR, layout, and publication stages
+to independently verified 1,143-byte `malbolge-2026` capsules. The
+normative VM executes 12 instructions, consuming five real guest bytes
+and emitting six: `41 42 43 44 5a` yields `41 42 43 43 44 5a`, while
+`00 ff 80 01 7f` yields `00 ff 80 80 01 7f`. Independent native C23
+Clang 22.1.8 with UBSan at O0 and O2 matches both guest input vectors
+for both programs. No host I/O substitutes for guest effects. Runtime
+C branching on input bytes, EOF and arbitrary-length streams remain
+unimplemented, so P0 is still pending.
+
 ### Non-unit unsigned induction with live guest I/O (2026-11-15)
 
 A complete C parity-branch program with `for (unsigned i = 0U; i < 4U;

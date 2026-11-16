@@ -338,3 +338,87 @@ fn unsigned_descending_stride_stops_at_zero_before_wrapping() {
     assert_eq!(mode, FrontendGuestMode::LatestRead);
     assert_four_reads_five_writes(&typed);
 }
+
+fn assert_five_reads_six_writes(wire: &[u8]) {
+    let decoded = canonical_module(wire).expect("canonical typed wire");
+    let block = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for instruction in block {
+        match instruction.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 5);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[2], reads[2], reads[3], reads[4],
+    ]);
+}
+
+const EARLY_BREAK_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/accepted/unsigned_break_before_wrap_live_input.c"
+);
+const EARLY_BREAK_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_break_before_wrap_live_input.json"
+);
+
+#[test]
+fn unsigned_selected_break_prevents_post_body_wrap_and_keeps_guest_bytes() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        EARLY_BREAK_JSON,
+        Some(EARLY_BREAK_SOURCE),
+    )
+    .expect("the selected break must skip the otherwise wrapping decrement");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    assert_five_reads_six_writes(&typed);
+}
+
+#[test]
+fn unsigned_break_exit_requires_original_break_keyword() {
+    let mut altered = EARLY_BREAK_SOURCE.to_vec();
+    let start = altered
+        .windows(6)
+        .position(|fragment| fragment == b"break;")
+        .expect("selected break exists");
+    altered[start..start + 5].copy_from_slice(b"false");
+    // C23 `false;` has no exit effect, so the next unsigned decrement wraps.
+    // The normalized break metadata alone must never manufacture that exit.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(EARLY_BREAK_JSON, Some(&altered)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+const INCLUSIVE_ZERO_BREAK_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/accepted/unsigned_inclusive_zero_break_live_input.c"
+);
+const INCLUSIVE_ZERO_BREAK_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_inclusive_zero_break_live_input.json"
+);
+
+#[test]
+fn unsigned_zero_inclusive_guard_needs_break_before_wrap() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        INCLUSIVE_ZERO_BREAK_JSON,
+        Some(INCLUSIVE_ZERO_BREAK_SOURCE),
+    )
+    .expect("break at zero must make the unsigned >= 0U guard finite");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    assert_five_reads_six_writes(&typed);
+}
+
+#[test]
+fn unsigned_continue_at_zero_must_not_skip_wrapping_decrement() {
+    let json = include_bytes!(
+        "c-frontend/golden/unsigned_inclusive_zero_continue_live_input.json"
+    );
+    let source = include_bytes!(
+        "c-frontend/rejected/unsigned_inclusive_zero_continue_live_input.c"
+    );
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(json, Some(source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}

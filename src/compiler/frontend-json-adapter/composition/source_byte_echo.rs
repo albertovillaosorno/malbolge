@@ -3870,15 +3870,24 @@ fn prove_static_if_statement<'node>(
     ) {
         // The semicolon lies outside the Clang keyword extent. Only a
         // void `return;` can terminate the containing function from any depth.
-        let (keyword_width, exit) = match child.kind.as_str() {
-            "break-statement" => (5, StaticLoopExit::Break),
-            "continue-statement" => (8, StaticLoopExit::Continue),
-            "return-statement" => (6, StaticLoopExit::Return),
+        let (keyword, exit) = match child.kind.as_str() {
+            "break-statement" => ("break", StaticLoopExit::Break),
+            "continue-statement" => ("continue", StaticLoopExit::Continue),
+            "return-statement" => ("return", StaticLoopExit::Return),
             _ => return None,
         };
         let start = child.span.begin.byte;
-        let end = start.checked_add(keyword_width)?;
-        if (for_depth == 0 && exit != StaticLoopExit::Return)
+        let end = start.checked_add(u32::try_from(keyword.len()).ok()?)?;
+        // A same-width C statement may be effect-free even if an untrusted
+        // Clang JSON node claims it is a control-flow exit. With a source
+        // witness, authenticate the actual keyword before selecting an exit.
+        let source_keyword_matches = source.is_none_or(|witness| {
+            usize::try_from(start).ok().and_then(|begin| {
+                witness.get(begin..begin.checked_add(keyword.len())?)
+            }) == Some(keyword.as_bytes())
+        });
+        if !source_keyword_matches
+            || (for_depth == 0 && exit != StaticLoopExit::Return)
             || start <= previous
             || end >= body.span.end.byte
             || child.id != expected_id
@@ -5050,11 +5059,9 @@ fn prove_static_for<'node>(
             return None;
         }
     }
-    // Unlike signed decrement, an unsigned value wraps after zero: `i >= 0U`
-    // remains true forever, so it cannot be statically unrolled to `i == 0`.
-    if unsigned && !ascending && inclusive && bound_value == 0 {
-        return None;
-    }
+    // `i >= 0U` alone is unbounded, but a selected break/return at zero
+    // may make it finite. The loop below must prove that the final step is
+    // skipped; otherwise the per-trip unsigned wrap check still rejects.
     // Include the bound on either signed direction only for <= or >=.
     // A false initial condition is a real, finite zero-trip loop.
     let distance = if ascending {
@@ -5079,16 +5086,9 @@ fn prove_static_for<'node>(
     } else {
         (distance - 1) / stride + 1
     };
-    // A descending unsigned counter wraps at zero. Check the mandatory
-    // post-body update too: `9U; i > 0U; i -= 2U` never terminates,
-    // despite a signed arithmetic model predicting five iterations.
-    if unsigned
-        && !ascending
-        && trip_count > 0
-        && initial_value.checked_sub(trip_count.checked_mul(stride)?)? < 0
-    {
-        return None;
-    }
+    // The final unsigned update may wrap even when a signed distance
+    // calculation predicts termination. Verify it only after selecting the
+    // source-proven body exit: a break/return skips that update entirely.
     let iterations = usize::try_from(trip_count).ok()?;
     if iterations > 16 {
         return None;
@@ -5100,6 +5100,15 @@ fn prove_static_for<'node>(
     let mut arm_width = None;
     let mut arm_end = None;
     for iteration in 0..iterations.max(1) {
+        let counter_value = if ascending {
+            initial_value.checked_add(
+                stride.checked_mul(i32::try_from(iteration).ok()?)?,
+            )?
+        } else {
+            initial_value.checked_sub(
+                stride.checked_mul(i32::try_from(iteration).ok()?)?,
+            )?
+        };
         let arm = prove_static_if_arm(
             rest,
             body,
@@ -5116,15 +5125,7 @@ fn prove_static_for<'node>(
                 name,
                 source,
                 unsigned,
-                value: if ascending {
-                    initial_value.checked_add(
-                        stride.checked_mul(i32::try_from(iteration).ok()?)?,
-                    )?
-                } else {
-                    initial_value.checked_sub(
-                        stride.checked_mul(i32::try_from(iteration).ok()?)?,
-                    )?
-                },
+                value: counter_value,
             }),
             source,
         )?;
@@ -5171,6 +5172,13 @@ fn prove_static_for<'node>(
             Some(StaticLoopExit::Break | StaticLoopExit::Return)
         ) {
             break;
+        }
+        // C executes the increment after a normal trip and after continue,
+        // including the final trip whose following guard would be false.
+        // A selected break/return above skips the increment. Never admit
+        // unsigned wrap as if the mathematical negative counter terminated.
+        if unsigned && !ascending && counter_value.checked_sub(stride)? < 0 {
+            return None;
         }
     }
     Some(StaticForProof {
