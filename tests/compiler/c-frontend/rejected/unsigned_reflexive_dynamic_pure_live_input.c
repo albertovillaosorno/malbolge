@@ -22,7 +22,16 @@
 //   - Total byte predicates share the same source proof lattice.
 // - Summary:
 //   - Prove dead integer arithmetic without executing it in the guest.
+// - Description:
+//   - Authenticates pure expressions only in a statically dead C output arm.
+// - Usage:
+//   - Pinned by the source-to-guest byte parity and mutation regressions.
+// - Defaults:
+//   - Never erase an executable guest C effect.
 //
+
+//! Source-bound four-byte C output branch fixture.
+
 #include <stdio.h>
 
 void emit(void) {
