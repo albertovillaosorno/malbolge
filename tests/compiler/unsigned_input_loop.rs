@@ -422,3 +422,179 @@ fn unsigned_continue_at_zero_must_not_skip_wrapping_decrement() {
         Err(FrontendJsonError::Unsupported)
     ));
 }
+
+const UNSIGNED_MODULO_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_modulo_live_input.c");
+const UNSIGNED_MODULO_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_modulo_live_input.json");
+
+#[test]
+fn unsigned_remainder_branch_repeats_even_input_bytes() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        UNSIGNED_MODULO_JSON,
+        Some(UNSIGNED_MODULO_SOURCE),
+    )
+    .expect("source-proven unsigned remainder must select live byte effects");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&wire).expect("canonical typed module");
+    let block = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in block {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 5);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[1], reads[2], reads[3], reads[3], reads[4],
+    ]);
+}
+
+#[test]
+fn unsigned_remainder_proof_refuses_forged_source_and_clang_types() {
+    for (original, replacement) in [
+        (b"i % 2U".as_slice(), b"i / 2U".as_slice()),
+        (b"i % 2U".as_slice(), b"i % 0U".as_slice()),
+        (b"i % 2U".as_slice(), b"i % 3U".as_slice()),
+        (b"== 0U".as_slice(), b"!= 0U".as_slice()),
+    ] {
+        let mut source = UNSIGNED_MODULO_SOURCE.to_vec();
+        let start = source
+            .windows(original.len())
+            .position(|fragment| fragment == original)
+            .expect("original token in source fixture");
+        source[start..start + replacement.len()].copy_from_slice(replacement);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                UNSIGNED_MODULO_JSON,
+                Some(&source)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+
+    let baseline: serde_json::Value =
+        serde_json::from_slice(UNSIGNED_MODULO_JSON).unwrap();
+    let nodes = baseline["nodes"].as_array().unwrap();
+    let remainder = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "%"
+        })
+        .unwrap();
+    for (offset, field, replacement) in [
+        (0, "type", "i32"),
+        (0, "operation", "/"),
+        (1, "type", "i32"),
+        (2, "reference", "other@0"),
+        (3, "type", "i32"),
+        (3, "literal", "3"),
+        (3, "constant_integer", "3"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][remainder + offset][field] =
+            serde_json::json!(replacement);
+        let wire = serde_json::to_vec(&forged).unwrap();
+        assert!(
+            matches!(
+                canonical_guest_typed_ir_with_source(
+                    &wire,
+                    Some(UNSIGNED_MODULO_SOURCE)
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "forged node {offset} field {field} admitted"
+        );
+    }
+}
+
+const UNSIGNED_WRAP_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/accepted/unsigned_wrapping_predicate_live_input.c"
+);
+const UNSIGNED_WRAP_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_wrapping_predicate_live_input.json"
+);
+
+#[test]
+fn unsigned_subtraction_wraps_before_counter_branch_selection() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        UNSIGNED_WRAP_JSON,
+        Some(UNSIGNED_WRAP_SOURCE),
+    )
+    .expect("unsigned 1U - 2U wraps and selects the first extra output");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&wire).expect("canonical typed module");
+    let block = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in block {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 4);
+    assert_eq!(writes, vec![
+        reads[0], reads[0], reads[1], reads[2], reads[3],
+    ]);
+}
+
+#[test]
+fn unsigned_wrap_guard_authenticates_source_tokens_and_comparison_type() {
+    for (original, replacement) in [
+        (b"i - 2U".as_slice(), b"i + 2U".as_slice()),
+        (b"i - 2U".as_slice(), b"i - 3U".as_slice()),
+        (b"> 99U".as_slice(), b"< 99U".as_slice()),
+    ] {
+        let mut source = UNSIGNED_WRAP_SOURCE.to_vec();
+        let start = source
+            .windows(original.len())
+            .position(|fragment| fragment == original)
+            .unwrap();
+        source[start..start + replacement.len()].copy_from_slice(replacement);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                UNSIGNED_WRAP_JSON,
+                Some(&source)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    let baseline: serde_json::Value =
+        serde_json::from_slice(UNSIGNED_WRAP_JSON).unwrap();
+    let subtraction = baseline["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "-"
+        })
+        .unwrap();
+    for (offset, field, replacement) in [
+        (0, "type", "i32"),
+        (0, "operation", "+"),
+        (1, "type", "i32"),
+        (2, "reference", "other@0"),
+        (3, "type", "i32"),
+        (3, "literal", "3"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][subtraction + offset][field] =
+            serde_json::json!(replacement);
+        let wire = serde_json::to_vec(&forged).unwrap();
+        assert!(
+            matches!(
+                canonical_guest_typed_ir_with_source(
+                    &wire,
+                    Some(UNSIGNED_WRAP_SOURCE)
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "forged node {offset} field {field} admitted"
+        );
+    }
+}

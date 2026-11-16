@@ -5459,15 +5459,33 @@ fn checked_induction_arithmetic(
     operator: &str,
     counter: i32,
     operand: i32,
-) -> Option<i32> {
-    match operator {
+    unsigned: bool,
+) -> Option<i64> {
+    if unsigned {
+        // A finite u32 loop counter is known before guest execution, but C
+        // arithmetic on it still wraps modulo 2^32. Retain the full unsigned
+        // result for a later comparison rather than using signed overflow.
+        let counter = u32::try_from(counter).ok()?;
+        let operand = u32::try_from(operand).ok()?;
+        let value = match operator {
+            "%" => counter.checked_rem(operand)?,
+            "/" => counter.checked_div(operand)?,
+            "+" => counter.wrapping_add(operand),
+            "-" => counter.wrapping_sub(operand),
+            "*" => counter.wrapping_mul(operand),
+            _ => return None,
+        };
+        return Some(i64::from(value));
+    }
+    let value = match operator {
         "%" => counter.checked_rem(operand),
         "/" => counter.checked_div(operand),
         "+" => counter.checked_add(operand),
         "-" => counter.checked_sub(operand),
         "*" => counter.checked_mul(operand),
         _ => None,
-    }
+    }?;
+    Some(i64::from(value))
 }
 
 // Pure arithmetic on a protected induction counter is a source-time value.
@@ -5477,7 +5495,7 @@ fn prove_induction_arithmetic_shape(
     nodes: &[Node],
     at: StaticValueLocation,
     induction: StaticInduction<'_>,
-) -> Option<(usize, Option<i32>, u32)> {
+) -> Option<(usize, Option<i64>, u32)> {
     let [remainder, cast, variable, divisor, ..] = nodes else {
         return None;
     };
@@ -5485,6 +5503,11 @@ fn prove_induction_arithmetic_shape(
     let rhs_start = name_end.checked_add(3)?;
     let rhs_column = at.column.checked_add(rhs_start.checked_sub(at.start)?)?;
     let operator = remainder.operation.as_deref()?;
+    let counter_type = if induction.unsigned {
+        "u32"
+    } else {
+        "i32"
+    };
     let operator_start = usize::try_from(name_end.checked_add(1)?).ok()?;
     let operator_end = operator_start.checked_add(operator.len())?;
     if !matches!(operator, "%" | "/" | "+" | "-" | "*")
@@ -5496,13 +5519,13 @@ fn prove_induction_arithmetic_shape(
         || remainder.id != at.id
         || remainder.parent != at.parent
         || remainder.kind != "binary-expression"
-        || remainder.type_name.as_deref() != Some("i32")
+        || remainder.type_name.as_deref() != Some(counter_type)
         || remainder.reference.is_some()
         || !metadata_empty(remainder)
         || cast.id != remainder.id.checked_add(1)?
         || cast.parent != remainder.id
         || cast.kind != "cast-expression"
-        || cast.type_name.as_deref() != Some("i32")
+        || cast.type_name.as_deref() != Some(counter_type)
         || cast.operation.as_deref() != Some("lvalue-to-rvalue")
         || cast.reference.is_some()
         || !metadata_empty(cast)
@@ -5510,7 +5533,7 @@ fn prove_induction_arithmetic_shape(
         || variable.id != cast.id.checked_add(1)?
         || variable.parent != cast.id
         || variable.kind != "declaration-reference-expression"
-        || variable.type_name.as_deref() != Some("i32")
+        || variable.type_name.as_deref() != Some(counter_type)
         || variable.reference.as_deref() != Some(induction.reference)
         || variable.operation.is_some()
         || !metadata_empty(variable)
@@ -5518,13 +5541,15 @@ fn prove_induction_arithmetic_shape(
     {
         return None;
     }
-    let divisor_value = prove_decimal_condition_operand(
+    let divisor_value = prove_for_decimal_operand(
         divisor,
         variable.id.checked_add(1)?,
         remainder.id,
         rhs_start,
         at.line,
         rhs_column,
+        induction.unsigned,
+        induction.source,
     )?;
     let end = divisor.span.end.byte;
     let divisor_start = usize::try_from(divisor.span.begin.byte).ok()?;
@@ -5536,8 +5561,12 @@ fn prove_induction_arithmetic_shape(
     {
         return None;
     }
-    let value =
-        checked_induction_arithmetic(operator, induction.value, divisor_value);
+    let value = checked_induction_arithmetic(
+        operator,
+        induction.value,
+        divisor_value,
+        induction.unsigned,
+    );
     Some((4, value, end))
 }
 
@@ -5548,7 +5577,7 @@ fn prove_induction_arithmetic(
     nodes: &[Node],
     at: StaticValueLocation,
     induction: StaticInduction<'_>,
-) -> Option<(usize, i32, u32)> {
+) -> Option<(usize, i64, u32)> {
     let (width, value, end) =
         prove_induction_arithmetic_shape(nodes, at, induction)?;
     Some((width, value?, end))
@@ -5583,7 +5612,7 @@ fn prove_induction_arithmetic_comparison_shape(
     let right_index = left_width.checked_add(1)?;
     let right = nodes.get(right_index)?;
     let right_offset = u32::try_from(operator.len()).ok()?.checked_add(2)?;
-    let rhs = prove_decimal_condition_operand(
+    let rhs = i64::from(prove_for_decimal_operand(
         right,
         at.id.checked_add(u32::try_from(right_index).ok()?)?,
         comparison.id,
@@ -5592,7 +5621,9 @@ fn prove_induction_arithmetic_comparison_shape(
         at.column
             .checked_add(left_end.checked_sub(at.start)?)?
             .checked_add(right_offset)?,
-    )?;
+        induction.unsigned,
+        induction.source,
+    )?);
     let comparison_operator = usize::try_from(left_end.checked_add(1)?).ok()?;
     let comparison_operator_end =
         comparison_operator.checked_add(operator.len())?;

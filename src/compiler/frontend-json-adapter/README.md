@@ -11,6 +11,17 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-proven unsigned induction arithmetic (2026-11-15)
+
+Finite source-C loops may now select guest byte effects using authenticated
+`u32` arithmetic comparisons such as `i % 2U == 0U` and `i - 2U > 99U`.
+Arithmetic is evaluated over the protected induction value with C unsigned
+wraparound, complete Clang ancestry and exact source tokens; `getchar()`
+bytes remain guest runtime effects. Whole C programs with five or four live
+reads, source-selected duplication, `continue` and `break` reach normative
+VM parity and a seeded two-program guest replay matrix. Dynamic branches on
+the actual input byte, EOF and general runtime arithmetic remain unsupported.
+
 ### Source-checked unsigned loop-counter branch (2026-11-15)
 
 A complete four-trip C program initializes a fresh `int` from `getchar()`

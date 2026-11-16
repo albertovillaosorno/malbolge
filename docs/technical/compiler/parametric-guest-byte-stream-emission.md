@@ -26,6 +26,39 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Unsigned arithmetic predicates with live guest bytes (2026-11-15)
+
+The complete five-trip C program
+`tests/compiler/c-frontend/accepted/unsigned_modulo_live_input.c` combines an
+unsigned induction counter, a new runtime `getchar()` byte on each trip,
+`i % 2U == 0U`, double `putchar()` on even trips, `continue` and a selected
+final `break`. The pinned Clang frontend initially rejected its `for` node;
+a simpler signed-style comparison with the same control effects succeeded.
+A red-first normalized regression isolated the missing `u32` arithmetic
+predicate proof. The adapter now checks unsigned operation/cast/reference
+ancestry, the exact `U`-suffixed decimal operand and original C tokens before
+selecting output effects. These are source-time counter calculations, not
+host-time folding of the live input byte.
+
+The unsigned intermediate remains an exact 32-bit value for `+`, `-`, `*`,
+`/` and `%`; addition, subtraction and multiplication use C's unsigned
+modulo-2^32 semantics, and division/remainder by zero never supply a value.
+The second whole C program
+`tests/compiler/c-frontend/accepted/unsigned_wrapping_predicate_live_input.c`
+proves `i - 2U > 99U` at `i == 1U`: `1U - 2U` is `UINT_MAX`, so the first
+live byte is doubled. Signed arithmetic would choose the wrong guest trace.
+Source and pinned-Clang operator, literal, binding and type forgeries refuse.
+
+The real `malbolge-2026` VM emits `ABBCDDE` for `ABCDE` in 13 steps and
+`AABCD` for `ABCD` in 10 steps; binary witnesses `00 ff 80 01 7f` and
+`00 ff 80 01` respectively emit `00 ff ff 80 01 01 7f` and
+`00 00 ff 80 01`. C23 Clang 22.1.8 with UBSan at O0 and O2 independently
+agrees. An automated, seeded 29-vector input matrix per source recompiles the
+original C through all pinned stages and compares real VM stdout with an
+independent modulo-2^32 C oracle, including NUL and high-bit bytes.
+Unsuccessful reads, input-dependent branch effects, arbitrary streams and
+general guest runtime C arithmetic/control remain unsupported; P0 is open.
+
 ### Source-proven early unsigned exits before wrap (2026-11-15)
 
 A demanding source-C probe combines unsigned `9U; i > 0U; i -= 2U`,

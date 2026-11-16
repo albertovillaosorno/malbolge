@@ -15,10 +15,12 @@ scope:
   - "docs/technical/examples/"
   - "src/compiler/"
   - "tests/test_versioned_example_corpus.py"
+  - "tests/test_unsigned_live_input_guest_parity.py"
   - "tests/compiler/"
 validation:
   - "jig check --root ."
   - "python3.14 -B -m unittest tests.test_versioned_example_corpus -v"
+  - "python3.14 -B -m unittest tests.test_unsigned_live_input_guest_parity -v"
 ---
 
 # Generalize guest byte-stream emission instead of emit-N fixtures
@@ -54,6 +56,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 
 ## Evidence
+
+- On 2026-11-15, a complete five-trip live-input C program with
+  unsigned `i % 2U == 0U`, duplicated output, `continue` and `break`
+  initially refused its `for` node. A red-first pinned Clang test now proves
+  the unsigned arithmetic type, source tokens and bound operand, using
+  modulo-2^32 arithmetic when needed instead of signed C. A second complete
+  program proves `i - 2U > 99U` is true at `i == 1U`, so a wrapped
+  subtraction duplicates the first guest byte. The normative VM consumes
+  the live input and emits `ABBCDDE` in 13 steps or `AABCD` in ten steps;
+  binary inputs including `00` and `ff` also match C23 Clang 22.1.8 UBSan
+  at O0/O2. A 29-vector seeded matrix per source (58 guest executions)
+  recompiles pinned C and checks real VM parity against an independent C
+  oracle. Source/Clang forgeries refuse. Live-byte-dependent branches, EOF,
+  runtime arithmetic and unbounded streams remain unfinished; P0 stays open.
 
 - On 2026-11-15, a complete live-input unsigned descending C program
   refused before guest emission because the compiler modeled an unsigned
