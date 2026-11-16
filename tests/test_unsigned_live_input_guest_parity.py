@@ -736,6 +736,63 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                             self.assertEqual(observed.returncode, 0, observed.stderr)
                             self.assertEqual(observed.stdout, expected)
 
+    def test_multiple_guarded_unequal_effects_refuse_guest(self) -> None:
+        """Never erase an unbalanced branch or an extra runtime read."""
+        prerequisites = (FRONTEND, ADAPTER, LAYOUT)
+        if not all(path.is_file() for path in prerequisites):
+            self.skipTest("pinned compiler tools missing")
+        original = (SOURCES / f"{MULTI_GUARDED_STEM}.c").read_bytes()
+        odd_output = b"putchar(current | 1);"
+        even_output = b"putchar(current & -2);"
+        self.assertEqual(original.count(odd_output), 2)
+        self.assertEqual(original.count(even_output), 2)
+        controls = (
+            # The true branch would consume another guest byte and write it.
+            (
+                "hidden-read",
+                original.replace(
+                    odd_output,
+                    b"putchar(getchar());",
+                    1,
+                ),
+            ),
+            # Both arms are individually byte-preserving, but their ordered
+            # output counts differ for odd and even inputs.
+            (
+                "unequal-count",
+                original.replace(
+                    even_output + b"\n",
+                    b"",
+                    1,
+                ),
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            folder = Path(temporary)
+            for stem, source_bytes in controls:
+                source = folder / f"{stem}.c"
+                _ = source.write_bytes(source_bytes)
+                guest = folder / f"{stem}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--capsule",
+                        str(source),
+                        "--output",
+                        str(guest),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=120,
+                )
+                with self.subTest(control=stem):
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertIn(UNSUPPORTED_MARKER, compiled.stderr)
+                    self.assertFalse(guest.exists())
+
     def test_unbraced_guarded_c23_native_and_guest_parity(self) -> None:
         """Replay source-proven same-line odd/even C output arms."""
         self._check_unbraced_guarded_c23_native_and_guest_parity(UNBRACED_GUARDED_STEM)
