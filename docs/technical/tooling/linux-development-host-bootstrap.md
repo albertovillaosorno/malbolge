@@ -14,9 +14,10 @@ authority.
 ## Scope
 
 This contract covers checkout bootstrap for Python validation launchers, Git,
-Rust stable/nightly validation toolchains, Cargo home, and the Linux host-linker
-adapter used by Rust. CUDA runtime loading, CUDA package acquisition, LLVM, and
-fully hermetic Linux linker/sysroot packaging remain outside this P0 slice.
+Rust product and lint-validation toolchains, nightly validation tools, Cargo
+home, and the Linux host-linker adapter used by Rust. CUDA runtime loading,
+CUDA package acquisition, LLVM, and fully hermetic Linux linker/sysroot
+packaging remain outside this P0 slice.
 
 ## Current Behavior
 
@@ -247,8 +248,11 @@ writing either script and preserving platform-specific newlines/modes. Preflight
 alone does not guarantee atomicity against arbitrary concurrent ancestor swaps.
 
 Matching Git and already-installed Rustup channels are imported below
-repository-local versioned roots. Missing Rustup channels are observations only;
-bootstrap does not download them.
+repository-local versioned roots. Bootstrap imports the product stable channel
+from `rust-toolchain.toml`, the distinct `rustc-lints.stable` channel from
+`versions.toml`, and the pinned nightly validation tools. A lint channel that
+shares the product stable or nightly channel reuses that import. Missing Rustup
+channels are observations only; bootstrap does not download them.
 
 Optional host Git version/helper-path queries
 and Rustup list/which queries each have a 15-second bound. Only an exact native
@@ -441,8 +445,9 @@ Linux host linker to hermetic package authority.
 
 Focused bootstrap tests cover platform IDs, Windows/POSIX Python launchers,
 neutral validation aliases, exact fast-version output, non-version delegation,
-Git distribution-version suffixes, Rustup no-download admission, stable/nightly
-imports, explicit Linux linker adapters, and idempotent local-state creation.
+Git distribution-version suffixes, Rustup no-download admission, product,
+lint-validation and nightly imports, explicit Linux linker adapters, and
+idempotent local-state creation.
 
 The UV archive and Jig alias negative regressions also cover suppressed
 stream reads, rejected archive metadata, redirected context-entry objects,

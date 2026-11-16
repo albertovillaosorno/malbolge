@@ -3654,3 +3654,15 @@ a compiler capability gap, not a reason to return to N+1.
   typed publisher still pass. The full pinned C frontend test skips
   because its exact binary is missing, so full source-C parity and P0
   remain unverified; guest-side C runtime arithmetic/control is still open.
+
+- On 2026-11-15 a complete C probe combined four live `getchar` reads,
+  an unsigned loop counter, a parity predicate on the current input byte,
+  and conditional one- or two-byte output. Pinned Clang accepted it, but
+  the actual pipeline rejected the enclosing `for` at source line 4 with
+  `Unsupported; unlowered C for-statement`; no guest artifact was published.
+  The body is not a compile-time effect trace: `(current & 1)` varies over
+  the byte domain and the two arms emit different output counts. Runtime
+  Boolean/branch lowering belongs to the P2
+  `ternary-machine-lowering.mdc` task, with guest control-flow realization
+  in `malbolge-layout-and-encoding-backend.mdc`. Expanding the induction
+  whitelist or choosing an arm on the host would be unsound. P0 remains open.

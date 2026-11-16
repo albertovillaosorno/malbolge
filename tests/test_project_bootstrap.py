@@ -78,6 +78,7 @@ LINUX_PLATFORM = "linux-x86_64"
 LLVM_DEVELOPMENT_COMPONENT = "llvm-development"
 CAPTURED_BOOTSTRAP_ARGUMENTS = "captured bootstrap arguments"
 RUST_CHANNEL = "1.98.1"
+RUST_LINTS_CHANNEL = "1.97.1"
 RUST_NIGHTLY_CHANNEL = "nightly-2026-07-14"
 RUST_CARGO_BYTES = b"cargo-1.98.1"
 RUST_LINUX_CARGO_WRAPPER_BYTES = (
@@ -534,6 +535,20 @@ def _write_platform_cuda_manifest(
     return manifest
 
 
+def _write_rust_lints_authority(
+    root: Path,
+    *,
+    current: str = RUST_LINTS_CHANNEL,
+    stable: str = RUST_LINTS_CHANNEL,
+) -> Path:
+    settings = root / ".jig/settings"
+    settings.mkdir(parents=True, exist_ok=True)
+    path = settings / "versions.toml"
+    contents = f'[authority.rustc-lints]\ncurrent = "{current}"\nstable = "{stable}"\n'
+    _ = path.write_text(contents, encoding="utf-8", newline="\n")
+    return path
+
+
 def _write_rust_manifest(root: Path, channel: str = RUST_CHANNEL) -> Path:
     manifest = root / ".jig/version/rust-toolchain.toml"
     manifest.parent.mkdir(parents=True)
@@ -542,6 +557,7 @@ def _write_rust_manifest(root: Path, channel: str = RUST_CHANNEL) -> Path:
         encoding="utf-8",
         newline="\n",
     )
+    _ = _write_rust_lints_authority(root)
     return manifest
 
 
@@ -4947,11 +4963,71 @@ def test_rustup_executable_finds_home_cargo_bin_without_path(
     assert resolved == rustup
 
 
-def test_rust_import_orchestration_materializes_stable_and_nightly(
+def test_rust_lints_channel_uses_stable_authority(tmp_path: Path) -> None:
+    """Rust lint bootstrap follows the stable pin, not a newer current value."""
+    _ = _write_rust_manifest(tmp_path)
+    _ = _write_rust_lints_authority(
+        tmp_path,
+        current=RUST_CHANNEL,
+        stable=RUST_LINTS_CHANNEL,
+    )
+
+    assert (
+        project._rust_lints_channel(tmp_path)  # pyright: ignore[reportPrivateUsage]
+        == RUST_LINTS_CHANNEL
+    )
+
+
+def test_rust_lints_channel_requires_version_authority(tmp_path: Path) -> None:
+    """Bootstrap never substitutes product Rust when lint authority is absent."""
+    _ = _write_rust_manifest(tmp_path)
+    authority = tmp_path / ".jig/settings/versions.toml"
+    _ = authority.write_text(
+        '[authority.git]\ncurrent = "2.55.0"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(project.InitializationError, match="rustc-lints"):
+        _ = project._rust_lints_channel(  # pyright: ignore[reportPrivateUsage]
+            tmp_path
+        )
+
+
+def test_rust_lints_channel_requires_current_and_stable_versions(
     tmp_path: Path,
 ) -> None:
-    """One host resolver imports the pinned stable and validation channels."""
+    """Both version fields must be present even when they differ."""
     _ = _write_rust_manifest(tmp_path)
+    _ = _write_rust_lints_authority(tmp_path, current="", stable=RUST_LINTS_CHANNEL)
+
+    with pytest.raises(project.InitializationError, match="rustc-lints.current"):
+        _ = project._rust_lints_channel(  # pyright: ignore[reportPrivateUsage]
+            tmp_path
+        )
+
+
+def test_rust_lints_channel_rejects_path_traversal(tmp_path: Path) -> None:
+    """A version authority cannot redirect the imported lint toolchain."""
+    _ = _write_rust_manifest(tmp_path)
+    _ = _write_rust_lints_authority(tmp_path, stable="../escape")
+
+    with pytest.raises(project.InitializationError, match="repository-local path segment"):
+        _ = project._rust_lints_channel(  # pyright: ignore[reportPrivateUsage]
+            tmp_path
+        )
+
+
+def test_rust_import_orchestration_reuses_product_channel_for_lints(
+    tmp_path: Path,
+) -> None:
+    """A shared product/lint channel is imported only once."""
+    _ = _write_rust_manifest(tmp_path)
+    _ = _write_rust_lints_authority(
+        tmp_path,
+        current=RUST_LINTS_CHANNEL,
+        stable=RUST_CHANNEL,
+    )
     sources = tmp_path / "host-rustup"
     stable = sources / RUST_CHANNEL
     nightly = sources / RUST_NIGHTLY_CHANNEL
@@ -4967,9 +5043,54 @@ def test_rust_import_orchestration_materializes_stable_and_nightly(
             _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
         (source / "lib/rustlib").mkdir(parents=True)
 
+    calls: list[str] = []
+
+    def resolve(channel: str) -> Path | None:
+        calls.append(channel)
+        return {
+            RUST_CHANNEL: stable,
+            RUST_NIGHTLY_CHANNEL: nightly,
+        }.get(channel)
+
+    imported = project.import_installed_rust_toolchains(
+        tmp_path,
+        LINUX_PLATFORM,
+        resolver=resolve,
+    )
+
+    assert calls == [RUST_CHANNEL, RUST_NIGHTLY_CHANNEL]
+    assert imported == (
+        tmp_path / ".dependencies/rust" / RUST_CHANNEL,
+        tmp_path / ".dependencies/rust" / RUST_NIGHTLY_CHANNEL,
+    )
+
+
+def test_rust_import_orchestration_materializes_product_lints_and_nightly(
+    tmp_path: Path,
+) -> None:
+    """One resolver imports product, lint-validation, and nightly channels."""
+    _ = _write_rust_manifest(tmp_path)
+    sources = tmp_path / "host-rustup"
+    stable = sources / RUST_CHANNEL
+    lints = sources / RUST_LINTS_CHANNEL
+    nightly = sources / RUST_NIGHTLY_CHANNEL
+    for source, tools in (
+        (stable, ("cargo", "rustc")),
+        (lints, ("cargo",)),
+        (nightly, ("cargo-clippy", "cargo-fmt", "rustc")),
+    ):
+        source_bin = source / "bin"
+        source_bin.mkdir(parents=True)
+        for tool in tools:
+            path = source_bin / tool
+            _ = path.write_text(tool, encoding="ascii")
+            _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        (source / "lib/rustlib").mkdir(parents=True)
+
     def resolve(channel: str) -> Path | None:
         sources_by_channel = {
             RUST_CHANNEL: stable,
+            RUST_LINTS_CHANNEL: lints,
             RUST_NIGHTLY_CHANNEL: nightly,
         }
         return sources_by_channel.get(channel)
@@ -4981,13 +5102,17 @@ def test_rust_import_orchestration_materializes_stable_and_nightly(
     )
 
     stable_root = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    lints_root = tmp_path / ".dependencies/rust" / RUST_LINTS_CHANNEL
     nightly_root = tmp_path / ".dependencies/rust" / RUST_NIGHTLY_CHANNEL
-    assert imported == (stable_root, nightly_root)
+    assert imported == (stable_root, lints_root, nightly_root)
     assert (stable_root / "bin/cargo.bin").is_file()
     assert (stable_root / "bin/rustc.bin").is_file()
+    assert (lints_root / "bin/cargo.bin").is_file()
+    assert not (lints_root / "bin/rustc.bin").exists()
     assert (nightly_root / "bin/cargo-clippy.bin").is_file()
     assert (nightly_root / "bin/cargo-fmt.bin").is_file()
     assert project.rust_toolchain_import_complete(stable_root)
+    assert project.rust_toolchain_import_complete(lints_root)
     assert project.rust_toolchain_import_complete(nightly_root)
 
 
@@ -5010,7 +5135,7 @@ def test_rust_import_orchestration_backfills_stable_rustc_alias(
     )
 
     def resolve(channel: str) -> Path | None:
-        assert channel == RUST_NIGHTLY_CHANNEL
+        assert channel in {RUST_LINTS_CHANNEL, RUST_NIGHTLY_CHANNEL}
         return None
 
     imported = project.import_installed_rust_toolchains(

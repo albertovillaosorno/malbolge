@@ -2991,23 +2991,53 @@ def _rust_channel(root: Path) -> str:
     )
 
 
+def _rust_lints_channel(root: Path) -> str:
+    """Return the stable Rust channel reserved for lint validation."""
+    path = root / ".jig/settings/versions.toml"
+    document = _toml_document(path, "version authority")
+    authority = _mapping(
+        document.get("authority"),
+        "version authority.authority",
+    )
+    lints = _mapping(
+        authority.get("rustc-lints"),
+        "version authority.authority.rustc-lints",
+    )
+    label = "version authority.authority.rustc-lints"
+    _ = _path_segment(
+        _required_string(lints, "current", label),
+        f"{label}.current",
+    )
+    return _path_segment(
+        _required_string(lints, "stable", label),
+        f"{label}.stable",
+    )
+
+
 def import_installed_rust_toolchains(
     root: Path,
     platform_id: str,
     *,
     resolver: RustToolchainResolver,
 ) -> tuple[Path, ...]:
-    """Import available pinned stable and nightly Rust trees.
+    """Import pinned product, lint-validation, and nightly Rust trees.
 
     Returns:
         Completed repository-local toolchain roots in stable order.
 
     """
     windows = _platform_family(platform_id, WINDOWS_SYSTEM)
-    requests = (
-        (_rust_channel(root), ("cargo", "rustc")),
-        (RUST_NIGHTLY_CHANNEL, ("cargo-clippy", "cargo-fmt")),
-    )
+    stable_channel = _rust_channel(root)
+    lints_channel = _rust_lints_channel(root)
+    requests: list[tuple[str, tuple[str, ...]]] = [
+        (stable_channel, ("cargo", "rustc")),
+    ]
+    if lints_channel not in {stable_channel, RUST_NIGHTLY_CHANNEL}:
+        requests.append((lints_channel, ("cargo",)))
+    nightly_tools = ("cargo-clippy", "cargo-fmt")
+    if lints_channel == RUST_NIGHTLY_CHANNEL:
+        nightly_tools = ("cargo", *nightly_tools)
+    requests.append((RUST_NIGHTLY_CHANNEL, nightly_tools))
     imported: list[Path] = []
     for channel, tool_ids in requests:
         destination = root / ".dependencies" / "rust" / channel
@@ -3038,7 +3068,7 @@ def import_host_rust_toolchains(
     root: Path,
     platform_id: str,
 ) -> tuple[Path, ...]:
-    """Import already-installed pinned Rustup channels into the repository.
+    """Import pinned product, lint, and nightly Rustup channels locally.
 
     Returns:
         Completed repository-local imports, or empty when Rustup is absent.
