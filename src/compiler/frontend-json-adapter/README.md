@@ -11,6 +11,16 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Unbraced C byte identity branches (2026-11-16)
+
+A source/Clang-authenticated dynamic byte guard can select one unbraced
+`putchar` call per path, including canonical indented multiline C syntax,
+provided each pure expression preserves the resident byte on its own
+reachable domain. No unverified semicolon, newline, indentation or `else`
+token may occur between verified spans. The compiler retains four actual
+reads and writes in nine normative guest steps, without computing stdin
+or implementing general guest branching and arithmetic.
+
 ### Nested path-sensitive C output domains (2026-11-16)
 
 Nested source/Clang-authenticated C byte guards intersect their exact

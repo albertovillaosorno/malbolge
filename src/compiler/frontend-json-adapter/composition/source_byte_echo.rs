@@ -40,6 +40,10 @@ mod guarded_byte_output_tests;
 mod nested_guarded_byte_output_tests;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/unbraced_guarded_byte_output.rs"]
+mod unbraced_guarded_byte_output_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
 mod unsigned_input_loop_tests;
 
@@ -4360,6 +4364,46 @@ fn prove_static_if_arm<'node>(
         });
     }
     if child.kind != "compound-statement" {
+        // A C if arm need not contain braces. Prove the exact call and its
+        // signed arithmetic under this source-authenticated byte domain;
+        // neither the predicate nor the output may sample stdin at compile
+        // time. Other direct statement forms retain their existing proofs.
+        if child.kind == "call-expression"
+            && let Some(domain) = active_domain
+            && let Some(bound) = local
+            && let Some(witness) = source
+            && let Some((width, call, None, nested)) =
+                prove_identity_byte_output(
+                    nodes,
+                    body,
+                    Some(bound),
+                    expected_id,
+                    previous,
+                    parent,
+                    witness,
+                    Some(domain),
+                )
+            && nested.is_empty()
+            && witness.get(usize::try_from(call.span.end.byte).ok()?)
+                == Some(&b';')
+        {
+            return Some(StaticIfArm {
+                width,
+                effects: vec![StaticIfEffect {
+                    input: None,
+                    assigned_local: None,
+                    outputs: vec![call],
+                    loop_exit: None,
+                }],
+                begin: child.span.begin.byte,
+                begin_line: child.span.begin.line,
+                begin_column: child.span.begin.column,
+                end: call.span.end.byte,
+                end_line: child.span.end.line,
+                end_column: child.span.end.column,
+                braced: false,
+            });
+        }
         if allow_unreachable_pure
             && let Some((width, end)) = source.and_then(|witness| {
                 prove_unreachable_pure_output(
@@ -4718,7 +4762,14 @@ fn prove_static_if_arm<'node>(
             || (matches!(
                 statement.kind.as_str(),
                 "if-statement" | "for-statement"
-            ) && statement.span.end.line > statement.span.begin.line);
+            ) && statement.span.end.line > statement.span.begin.line
+                && source.is_none_or(|witness| {
+                    usize::try_from(statement_end)
+                        .ok()
+                        .and_then(|end| end.checked_sub(1))
+                        .and_then(|at| witness.get(at))
+                        == Some(&b'}')
+                }));
         expected_line = statement.span.end.line.checked_add(1)?;
         if statement_effects
             .iter()
@@ -7391,11 +7442,37 @@ fn prove_static_if<'node>(
         restricted.then_some(&then_domain),
         source,
     )?;
-    if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
-        || then_arm.begin_line != line
-        || then_arm.begin_column
-            != predicate_root.span.end.column.checked_add(2)?
-    {
+    let then_inline = then_arm.begin
+        == predicate_root.span.end.byte.checked_add(2)?
+        && then_arm.begin_line == line
+        && then_arm.begin_column
+            == predicate_root.span.end.column.checked_add(2)?;
+    // A direct (unbraced) C statement may follow on the next indented
+    // line. The original bytes must be precisely `)`, LF and the four-space
+    // deeper statement indentation; AST coordinates alone are insufficient.
+    let then_multiline = !then_arm.braced
+        && then_arm.begin_line == line.checked_add(1)?
+        && then_arm.begin_column == column.checked_add(4)?
+        && source.is_some_and(|witness| {
+            let Some(indent) =
+                usize::try_from(column.checked_add(3).unwrap_or(0))
+                    .ok()
+                    .filter(|amount| *amount <= 256)
+            else {
+                return false;
+            };
+            let expected = format!(")\n{}", " ".repeat(indent));
+            match (
+                usize::try_from(predicate_root.span.end.byte),
+                usize::try_from(then_arm.begin),
+            ) {
+                (Ok(from), Ok(to)) => {
+                    witness.get(from..to) == Some(expected.as_bytes())
+                },
+                _ => false,
+            }
+        });
+    if !then_inline && !then_multiline {
         return None;
     }
     let mut width = arm_offset.checked_add(then_arm.width)?;
@@ -7427,7 +7504,38 @@ fn prove_static_if<'node>(
         } else {
             7
         };
-        if else_arm.begin != then_arm.end.checked_add(else_gap)? {
+        let else_inline =
+            else_arm.begin == then_arm.end.checked_add(else_gap)?;
+        // The canonical unbraced multi-line spelling includes the first
+        // call's semicolon, a same-indent `else`, and the indented call.
+        // No unexamined C statement or token may hide between these spans.
+        let else_multiline = !then_arm.braced
+            && else_arm.begin_line == then_arm.end_line.checked_add(2)?
+            && else_arm.begin_column == column.checked_add(4)?
+            && source.is_some_and(|witness| {
+                let Some(indent) =
+                    usize::try_from(column.checked_sub(1).unwrap_or(0))
+                        .ok()
+                        .filter(|amount| *amount <= 256)
+                else {
+                    return false;
+                };
+                let expected = format!(
+                    ";\n{}else\n{}",
+                    " ".repeat(indent),
+                    " ".repeat(indent + 4),
+                );
+                match (
+                    usize::try_from(then_arm.end),
+                    usize::try_from(else_arm.begin),
+                ) {
+                    (Ok(from), Ok(to)) => {
+                        witness.get(from..to) == Some(expected.as_bytes())
+                    },
+                    _ => false,
+                }
+            });
+        if !else_inline && !else_multiline {
             return None;
         }
         width = width.checked_add(else_arm.width)?;

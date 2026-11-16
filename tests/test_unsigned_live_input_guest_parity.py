@@ -48,6 +48,8 @@ ALGEBRA_STEM = "unsigned_byte_algebra_live_input"
 MODULAR_STEM = "unsigned_modular_output_live_input"
 GUARDED_STEM = "unsigned_guarded_modular_output_live_input"
 NESTED_GUARDED_STEM = "unsigned_nested_guarded_live_input"
+UNBRACED_GUARDED_STEM = "unsigned_unbraced_guarded_live_input"
+UNBRACED_MULTILINE_STEM = "unsigned_multiline_guarded_live_input"
 DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 DEAD_PURE_STEM = "unsigned_reflexive_dead_pure_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
@@ -68,6 +70,8 @@ CASES = (
     (MODULAR_STEM, 4, 25),
     (GUARDED_STEM, 4, 9),
     (NESTED_GUARDED_STEM, 4, 9),
+    (UNBRACED_GUARDED_STEM, 4, 9),
+    (UNBRACED_MULTILINE_STEM, 4, 9),
     (DEAD_LITERAL_STEM, 4, 17),
     (DEAD_PURE_STEM, 4, 17),
 )
@@ -104,7 +108,12 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
         elif stem == "nested_outer_induction_live_input":
             # Two inner trips per outer row. Only row two repeats its bytes.
             copies = 2 if (counter - 1) // 2 == 1 else 1
-        elif stem in {GUARDED_STEM, NESTED_GUARDED_STEM}:
+        elif stem in {
+            GUARDED_STEM,
+            NESTED_GUARDED_STEM,
+            UNBRACED_GUARDED_STEM,
+            UNBRACED_MULTILINE_STEM,
+        }:
             # Every nested byte guard preserves the live byte on the active
             # source-C path, including NUL and high-bit inputs.
             copies = 1
@@ -587,6 +596,139 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                             native=is_dynamic,
                             optimization=optimization,
                             data=data.hex(),
+                        ):
+                            self.assertEqual(observed.returncode, 0, observed.stderr)
+                            self.assertEqual(observed.stdout, expected)
+
+    def test_unbraced_guarded_c23_native_and_guest_parity(self) -> None:
+        """Replay source-proven same-line odd/even C output arms."""
+        self._check_unbraced_guarded_c23_native_and_guest_parity(UNBRACED_GUARDED_STEM)
+
+    def test_multiline_guarded_c23_native_and_guest_parity(self) -> None:
+        """Replay source-proven multiline odd/even C output arms."""
+        self._check_unbraced_guarded_c23_native_and_guest_parity(
+            UNBRACED_MULTILINE_STEM
+        )
+
+    def _check_unbraced_guarded_c23_native_and_guest_parity(self, stem: str) -> None:
+        """C unbraced arms preserve the live byte only on their own paths."""
+        prerequisites = (FRONTEND, ADAPTER, LAYOUT, VM, CLANG)
+        if not all(path.is_file() for path in prerequisites):
+            self.skipTest("pinned compiler, Clang or VM executable missing")
+        original = SOURCES / f"{stem}.c"
+        changed = original.read_bytes()
+        needle = b"current | 1"
+        self.assertEqual(changed.count(needle), 1)
+        # The changed C is valid but every odd byte now loses its low bit.
+        changed = changed.replace(needle, b"current ^ 1", 1)
+        cases = cases_for_length(4)
+        env = dict(os.environ)
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            folder = Path(temporary)
+            changed_source = folder / "changed-unbraced.c"
+            _ = changed_source.write_bytes(changed)
+            for source, accepted in ((original, True), (changed_source, False)):
+                guest = folder / f"{source.stem}.malbolge"
+                built = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--capsule",
+                        str(source),
+                        "--output",
+                        str(guest),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=120,
+                )
+                with self.subTest(source=source.stem):
+                    self.assertEqual(built.returncode == 0, accepted, built.stderr)
+                    self.assertEqual(guest.is_file(), accepted)
+                    if not accepted:
+                        self.assertIn(UNSUPPORTED_MARKER, built.stderr)
+                if accepted:
+
+                    def run_guest(
+                        data: bytes, artifact: Path = guest
+                    ) -> subprocess.CompletedProcess[bytes]:
+                        return subprocess.run(
+                            [
+                                str(VM),
+                                str(artifact),
+                                "--input-stdin",
+                                "--max-steps",
+                                "9",
+                                "--report-steps",
+                            ],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+
+                    with ThreadPoolExecutor(max_workers=4) as executor:
+                        for data, observed in zip(
+                            cases, executor.map(run_guest, cases), strict=True
+                        ):
+                            with self.subTest(guest=data.hex()):
+                                self.assertEqual(
+                                    observed.returncode, 0, observed.stderr
+                                )
+                                self.assertEqual(
+                                    observed.stdout,
+                                    independent_c_oracle(stem, data),
+                                )
+                                self.assertEqual(
+                                    observed.stderr, b"malbolge-steps-v1:9\n"
+                                )
+                wrapper = folder / "oracle.c"
+                _ = wrapper.write_text(
+                    f'#include "{source}"\nint main(void) {{ emit(); return 0; }}\n',
+                    encoding="utf-8",
+                )
+                for optimization in ("-O0", "-O2"):
+                    native = folder / f"native-{source.stem}-{optimization[2:]}"
+                    compiled = subprocess.run(
+                        [
+                            str(CLANG),
+                            "-std=c23",
+                            optimization,
+                            "-fsanitize=undefined",
+                            "-fno-sanitize-recover=all",
+                            str(wrapper),
+                            "-o",
+                            str(native),
+                        ],
+                        env=env,
+                        capture_output=True,
+                        check=False,
+                        timeout=45,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    for data in cases:
+                        observed = subprocess.run(
+                            [str(native)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        expected = (
+                            data
+                            if accepted
+                            else bytes(byte & ~1 if byte & 1 else byte for byte in data)
+                        )
+                        with self.subTest(
+                            source=source.stem,
+                            optimization=optimization,
+                            stdin=data.hex(),
                         ):
                             self.assertEqual(observed.returncode, 0, observed.stderr)
                             self.assertEqual(observed.stdout, expected)

@@ -57,6 +57,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a complete EOF-driven C checksum again refused at its
+  first mutable `unsigned` declaration without publishing a guest. A distinct
+  four-read C23 source exposed unbraced parity-selected `putchar` expressions
+  that preserve bytes only on their active odd/even domains. Red-first typed
+  tests and source-authenticated lowering now preserve four actual guest
+  reads/writes; both inline and multiline source forms emit 1,119-byte
+  capsules executing nine guest VM steps. The inline form passed 29 seeded
+  binary guest vectors and independent C23 UBSan O0/O2 positive and changed-
+  byte negative controls. General C runtime arithmetic, branches, mutable
+  state, and EOF streams remain unsupported; P0 stays **pending**.
+
 - On 2026-11-16, a complete mutable checksum/EOF source still refused
   at `unsigned checksum = 0U` with no guest artifact. A red-first distinct
   C23 experiment demonstrated **nested path-sensitive byte identities**:

@@ -26,6 +26,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Unbraced C guard-domain output (2026-11-16)
+
+The complete EOF-driven checksum program still refuses its first mutable
+`unsigned` local without publishing a guest. A separate complete four-read
+C23 experiment exposed a source statement-form gap: when the odd input arm
+writes `current | 1` and the even arm writes `current & -2`, neither
+expression preserves all possible bytes, but each preserves the byte on its
+own authenticated path. The initial compiler refused the whole `for` loop
+solely because neither output arm used braces.
+
+The finite source/Clang proof now admits these direct `putchar` calls, checks
+all 256 successful input values for definedness, and restricts byte identity
+to the source-proven branch domain. Both same-line `if`/`else` and canonical
+four-space-indented multiline C arms retain actual guest I/O. Multiline
+separators are verified against exact original source bytes: the predicate's
+`)`, a newline, the statement indentation, the first call's semicolon, and
+the independently indented `else` and second call. The enclosing compound
+statement must distinguish an unbraced call's semicolon from a braced `if`
+terminator; otherwise its next-statement geometry is wrong.
+
+Both admitted programs emit four real reads and four writes in nine guest VM
+steps, preserving NUL and high-bit bytes rather than assuming host stdin.
+The same-line form passed 29 seeded binary guest vectors and independent
+pinned C23 UBSan `-O0`/`-O2` parity checks for the accepted and rejected
+changed-byte C programs. This is source-proven elimination of output-
+equivalent branches, not general executable guest arithmetic, storage, EOF,
+or input-dependent branching, and P0 remains **pending**.
+
 ### Nested C byte-guard intersections (2026-11-16)
 
 A complete EOF-driven checksum with mutable unsigned locals, an input-driven
