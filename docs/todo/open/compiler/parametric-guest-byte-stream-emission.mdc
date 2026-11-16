@@ -57,6 +57,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-15, a six-read nested unsigned C program rejected an inner
+  branch on its still-in-scope outer counter while the same program's inner
+  counter succeeded. Source- and Clang-authenticated outer induction is now
+  retained when unrolling the inner loop. A second red-first program with
+  `row == 2U && col == 1U` required per-leaf selection between the two
+  independently proven counter values. Both programs produce real guest
+  effects, with six reads and respectively eight or seven writes in fifteen
+  or fourteen VM steps. Independent Clang C23 UBSan O0/O2 binary oracles
+  agree, and the seeded six-source matrix passes 174 normative VM vectors.
+  Original-source and Clang-reference forgeries refuse; runtime guest-
+  dependent control and general streams remain open.
+
 - On 2026-11-15, a complete five-trip live-input C program with
   unsigned `i % 2U == 0U`, duplicated output, `continue` and `break`
   initially refused its `for` node. A red-first pinned Clang test now proves

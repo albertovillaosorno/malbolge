@@ -1075,6 +1075,19 @@ without a source-token witness a forged `!=` cannot be distinguished from
 arithmetic, EOF, and general mutable guest storage remain outside the
 bounded proof; P0 stays pending.
 
+### Nested unsigned induction scope (2026-11-15)
+
+A source-C six-read program with `for (unsigned row...)` around
+`for (unsigned col...)` initially refused when an inner conditional tested
+`row`, despite succeeding with `col`. The bounded nested-loop proof now
+retains the source-authenticated enclosing counter and verifies every leaf
+against the matching Clang declaration binding. A second complete program
+selects its branch with `row == 2U && col == 1U`, requiring both counters
+inside a single pure predicate. The normative VM guests consume six real
+input bytes and produce `ABCCDDEF` (15 steps) or `ABCCDEF` (14 steps)
+for `ABCDEF`; original-source and forged-Clang counter mutations refuse.
+No guest branch on input bytes, arbitrary C local storage or EOF is admitted.
+
 ### Pure C induction scalar truth tests
 
 A bounded source-proven loop can select `if (i)`, `if (!i)` or `i && ...`

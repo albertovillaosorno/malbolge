@@ -26,6 +26,35 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested unsigned counter predicates with live guest I/O (2026-11-15)
+
+A complete six-read C program with nested unsigned `for` loops initially
+compiled when an inner `if` tested its own induction counter, but rejected
+when the same branch tested the still-in-scope enclosing `row` counter.
+A red-first pinned-Clang regression exposed the missing source-time counter
+scope. The finite induction proof now carries the immediately enclosing
+counter through a nested loop and re-authenticates its exact source name,
+Clang declaration reference, type and predicate before selecting output.
+A second red-first whole program required both counters in the same Boolean
+expression, `row == 2U && col == 1U`. The recursive predicate walker now
+proves each comparison against its own counter instead of assuming all
+leaves refer to the nearest loop.
+
+`nested_outer_induction_live_input.c` reads six actual guest bytes and writes
+eight, duplicating the third and fourth bytes. Its real Malbolge program
+executes fifteen VM steps; `ABCDEF` becomes `ABCCDDEF`. The mixed-counter
+program reads six and writes seven, duplicating only the third byte; its
+guest requires fourteen steps and produces `ABCCDEF`. Both behaviors depend
+on source-time finite induction selection, not guest-input prediction.
+Pinned Clang 22.1.8 C23 UBSan at O0 and O2 agrees on the binary input
+`00 ff 80 01 7f 32`. The six-source seeded integration suite recompiles
+pinned C and passes 174 actual VM input vectors, each against an independent
+oracle; its reachable-undefined-arithmetic negative also refuses publication.
+Source operator and Clang counter-identity forgeries refuse before guest
+publication. These checks extend only the already bounded two-level finite
+loop grammar. Guest-dependent branch selection, EOF and general runtime C
+state remain unimplemented; the P0 stays open.
+
 ### Unsigned arithmetic predicates with live guest bytes (2026-11-15)
 
 The complete five-trip C program

@@ -3713,12 +3713,22 @@ fn prove_local_output_chain<'node>(
 // A constant arm can contain several ordered, independently authenticated
 // byte effects. A successful read invalidates any preceding guest-local alias.
 #[derive(Clone, Copy)]
+struct StaticCounter<'name> {
+    reference: &'name str,
+    name: &'name str,
+    unsigned: bool,
+    value: i32,
+}
+
+#[derive(Clone, Copy)]
 struct StaticInduction<'name> {
     reference: &'name str,
     name: &'name str,
     source: Option<&'name [u8]>,
     unsigned: bool,
     value: i32,
+    // Bound to the immediately enclosing finite loop, never guest stdin.
+    outer: Option<StaticCounter<'name>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -3832,6 +3842,7 @@ fn prove_static_if_statement<'node>(
             parent,
             None,
             for_depth.checked_add(1)?,
+            induction,
             source,
         )
         .or_else(|| {
@@ -3848,6 +3859,7 @@ fn prove_static_if_statement<'node>(
                 parent,
                 Some(live),
                 for_depth.checked_add(1)?,
+                induction,
                 source,
             )?;
             (outer_loop_byte_after_effects(
@@ -4555,6 +4567,7 @@ fn prove_static_for<'node>(
     parent: u32,
     outer_local: Option<&LocalDeclaration<'node>>,
     for_depth: usize,
+    outer_induction: Option<StaticInduction<'_>>,
     source: Option<&[u8]>,
 ) -> Option<StaticForProof<'node>> {
     let [
@@ -5141,6 +5154,12 @@ fn prove_static_for<'node>(
                 source,
                 unsigned,
                 value: counter_value,
+                outer: outer_induction.map(|enclosing| StaticCounter {
+                    reference: enclosing.reference,
+                    name: enclosing.name,
+                    unsigned: enclosing.unsigned,
+                    value: enclosing.value,
+                }),
             }),
             source,
         )?;
@@ -6223,6 +6242,22 @@ fn prove_induction_logical(
     Some((width, selected, right_end))
 }
 
+// Select only the immediate enclosing counter. Its original source token,
+// declaration binding and C value remain checked at every predicate leaf.
+fn enclosing_induction(
+    induction: StaticInduction<'_>,
+) -> Option<StaticInduction<'_>> {
+    let counter = induction.outer?;
+    Some(StaticInduction {
+        reference: counter.reference,
+        name: counter.name,
+        source: induction.source,
+        unsigned: counter.unsigned,
+        value: counter.value,
+        outer: None,
+    })
+}
+
 // Admit only fully proven, pure logical combinations of exact induction
 // comparisons or already-proven source constants. Both sides are authenticated
 // regardless of short-circuit selection, so no effect can hide on an arm.
@@ -6244,7 +6279,9 @@ fn prove_induction_value(
         return prove_induction_ternary(nodes, at, induction);
     }
     if node.kind == "cast-expression" {
-        return prove_induction_truth(nodes, at, induction);
+        return prove_induction_truth(nodes, at, induction).or_else(|| {
+            prove_induction_truth(nodes, at, enclosing_induction(induction)?)
+        });
     }
     if node.kind == "binary-expression"
         && matches!(
@@ -6253,7 +6290,13 @@ fn prove_induction_value(
         )
     {
         let (width, value, end) =
-            prove_induction_arithmetic(nodes, at, induction)?;
+            prove_induction_arithmetic(nodes, at, induction).or_else(|| {
+                prove_induction_arithmetic(
+                    nodes,
+                    at,
+                    enclosing_induction(induction)?,
+                )
+            })?;
         return Some((width, value != 0, end));
     }
     if let Some((width, value)) =
@@ -6269,6 +6312,11 @@ fn prove_induction_value(
     }
     prove_induction_arithmetic_comparison(nodes, at, induction)
         .or_else(|| prove_induction_comparison(nodes, at, induction))
+        .or_else(|| {
+            let enclosing = enclosing_induction(induction)?;
+            prove_induction_arithmetic_comparison(nodes, at, enclosing)
+                .or_else(|| prove_induction_comparison(nodes, at, enclosing))
+        })
 }
 
 fn prove_induction_predicate(
@@ -6302,6 +6350,15 @@ fn prove_static_predicate(
     if let Some(static_induction) = induction {
         if let Some(result) =
             prove_induction_predicate(nodes, conditional, static_induction)
+        {
+            return Some(result);
+        }
+        // The entire branch may refer to the enclosing finite loop instead
+        // of the nearest induction. Bind its original C name and Clang
+        // declaration reference again, with no guessed guest byte values.
+        if let Some(enclosing) = enclosing_induction(static_induction)
+            && let Some(result) =
+                prove_induction_predicate(nodes, conditional, enclosing)
         {
             return Some(result);
         }
@@ -7204,7 +7261,8 @@ pub(super) fn canonical_source_byte_echo(
             let remaining =
                 rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?;
             let proof = prove_static_for(
-                remaining, body, previous, next_id, body.id, None, 1, source,
+                remaining, body, previous, next_id, body.id, None, 1, None,
+                source,
             )
             .or_else(|| {
                 // The selected trace may have discarded inputs, but the outer
@@ -7222,6 +7280,7 @@ pub(super) fn canonical_source_byte_echo(
                             body.id,
                             Some(candidate),
                             1,
+                            None,
                             source,
                         )?;
                         (outer_loop_byte_after_effects(

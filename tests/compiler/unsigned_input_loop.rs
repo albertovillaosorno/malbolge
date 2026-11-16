@@ -785,3 +785,148 @@ fn skipped_unsigned_zero_divisor_still_checks_source_and_clang() {
         );
     }
 }
+
+const NESTED_OUTER_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/nested_outer_induction_live_input.c");
+const NESTED_OUTER_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/nested_outer_induction_live_input.json");
+
+#[test]
+fn nested_unsigned_loop_can_select_outer_counter_without_folding_input() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        NESTED_OUTER_JSON,
+        Some(NESTED_OUTER_SOURCE),
+    )
+    .expect("inner loop should preserve authenticated enclosing induction");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&typed).unwrap();
+    let effects = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in effects {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 6);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[2], reads[2], reads[3], reads[3], reads[4],
+        reads[5]
+    ]);
+}
+
+#[test]
+fn nested_outer_guard_refuses_source_and_clang_counter_forgeries() {
+    // `row` and `col` have the same width. A source-only rewrite of the
+    // selected predicate changes C behavior without changing Clang metadata.
+    let mut source = NESTED_OUTER_SOURCE.to_vec();
+    let at = source
+        .windows(11)
+        .position(|part| part == b"row == 2U) ")
+        .unwrap();
+    source[at..at + 3].copy_from_slice(b"col");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(NESTED_OUTER_JSON, Some(&source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+
+    let mut forged: serde_json::Value =
+        serde_json::from_slice(NESTED_OUTER_JSON).unwrap();
+    let reference = forged["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| {
+            node["kind"] == "declaration-reference-expression"
+                && node["reference"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("row@"))
+                && node["span"]["begin"]["line"] == 31
+        })
+        .unwrap();
+    forged["nodes"][reference]["reference"] = serde_json::json!("col@0");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            &serde_json::to_vec(&forged).unwrap(),
+            Some(NESTED_OUTER_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+const NESTED_MIXED_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/nested_mixed_induction_live_input.c");
+const NESTED_MIXED_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/nested_mixed_induction_live_input.json");
+
+#[test]
+fn nested_unsigned_mixed_counter_guard_uses_two_source_bound_values() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        NESTED_MIXED_JSON,
+        Some(NESTED_MIXED_SOURCE),
+    )
+    .expect("both nested counters must be source and Clang authenticated");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&typed).unwrap();
+    let effects = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in effects {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 6);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[2], reads[2], reads[3], reads[4], reads[5]
+    ]);
+}
+
+#[test]
+fn nested_mixed_counter_guard_refuses_forged_source_and_ast() {
+    let mut source = NESTED_MIXED_SOURCE.to_vec();
+    let at = source.windows(2).position(|part| part == b"&&").unwrap();
+    source[at..at + 2].copy_from_slice(b"||");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(NESTED_MIXED_JSON, Some(&source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+    let baseline: serde_json::Value =
+        serde_json::from_slice(NESTED_MIXED_JSON).unwrap();
+    let nodes = baseline["nodes"].as_array().unwrap();
+    let combined = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "&&"
+        })
+        .unwrap();
+    let child = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "declaration-reference-expression"
+                && node["reference"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("col@"))
+                && node["span"]["begin"]["line"] == 31
+        })
+        .unwrap();
+    for (index, field, value) in [
+        (combined, "operation", "||"),
+        (child, "reference", "row@0"),
+        (child, "type", "i32"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][index][field] = serde_json::json!(value);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&forged).unwrap(),
+                Some(NESTED_MIXED_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}

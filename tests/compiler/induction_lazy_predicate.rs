@@ -111,6 +111,7 @@ fn guard(source: &str, nodes: &[Node], counter: i32) -> Option<(usize, bool)> {
         source: Some(source.as_bytes()),
         unsigned: false,
         value: counter,
+        outer: None,
     })
 }
 
@@ -431,6 +432,7 @@ fn source_backed_static_if_must_not_fall_back_to_unchecked_ast() {
                     source: Some(source.as_bytes()),
                     unsigned: false,
                     value: 0,
+                    outer: None,
                 }),
             ),
             expected,
@@ -460,6 +462,7 @@ fn source_backed_static_logical_keeps_a_proven_constant_fallback() {
                     source: Some(source.as_bytes()),
                     unsigned: false,
                     value: 0,
+                    outer: None,
                 }),
             ),
             expected,
@@ -673,6 +676,7 @@ fn skipped_shape_keeps_the_induction_expression_depth_budget() {
         source: Some(source.as_bytes()),
         unsigned: false,
         value: 0,
+        outer: None,
     };
     assert_eq!(
         prove_skipped_induction_shape(&nodes[2..], location, induction),
