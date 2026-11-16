@@ -598,3 +598,102 @@ fn unsigned_wrap_guard_authenticates_source_tokens_and_comparison_type() {
         );
     }
 }
+
+const UNSIGNED_SKIPPED_DIVISION_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_short_circuit_zero_divisor.c");
+const UNSIGNED_SKIPPED_DIVISION_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_short_circuit_zero_divisor.json"
+);
+
+#[test]
+fn unsigned_short_circuit_skips_unreachable_zero_divisor() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        UNSIGNED_SKIPPED_DIVISION_JSON,
+        Some(UNSIGNED_SKIPPED_DIVISION_SOURCE),
+    )
+    .expect("source-proven break skips undefined unsigned division");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&wire).expect("canonical typed module");
+    let block = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in block {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 1);
+    assert_eq!(writes, reads);
+}
+
+#[test]
+fn unsigned_reachable_zero_divisor_refuses_without_guest_artifact() {
+    let json = include_bytes!(
+        "c-frontend/golden/unsigned_reachable_zero_divisor.json"
+    );
+    let source =
+        include_bytes!("c-frontend/rejected/unsigned_reachable_zero_divisor.c");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(json, Some(source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+#[test]
+fn skipped_unsigned_zero_divisor_still_checks_source_and_clang() {
+    for (original, replacement) in [
+        (b"i / 0U".as_slice(), b"i % 0U".as_slice()),
+        (b"i / 0U".as_slice(), b"i / 1U".as_slice()),
+        (b"i == 1U".as_slice(), b"i == 2U".as_slice()),
+        (b"1U ||".as_slice(), b"1U &&".as_slice()),
+    ] {
+        let mut source = UNSIGNED_SKIPPED_DIVISION_SOURCE.to_vec();
+        let start = source
+            .windows(original.len())
+            .position(|part| part == original)
+            .unwrap();
+        source[start..start + replacement.len()].copy_from_slice(replacement);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                UNSIGNED_SKIPPED_DIVISION_JSON,
+                Some(&source)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    let baseline: serde_json::Value =
+        serde_json::from_slice(UNSIGNED_SKIPPED_DIVISION_JSON).unwrap();
+    let division = baseline["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "/"
+        })
+        .unwrap();
+    for (offset, field, replacement) in [
+        (0, "type", "i32"),
+        (0, "operation", "%"),
+        (1, "type", "i32"),
+        (2, "reference", "other@0"),
+        (3, "type", "i32"),
+        (3, "literal", "1"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][division + offset][field] =
+            serde_json::json!(replacement);
+        let wire = serde_json::to_vec(&forged).unwrap();
+        assert!(
+            matches!(
+                canonical_guest_typed_ir_with_source(
+                    &wire,
+                    Some(UNSIGNED_SKIPPED_DIVISION_SOURCE)
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "skipped forged node {offset} field {field} admitted"
+        );
+    }
+}

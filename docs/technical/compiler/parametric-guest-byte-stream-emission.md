@@ -59,6 +59,15 @@ independent modulo-2^32 C oracle, including NUL and high-bit bytes.
 Unsuccessful reads, input-dependent branch effects, arbitrary streams and
 general guest runtime C arithmetic/control remain unsupported; P0 is open.
 
+An additional source-proven unsigned short-circuit probe validates that
+`i == 1U || i / 0U == 1U` skips its undefined divisor, then a selected
+`break` ends the loop before any later evaluation. The real guest VM emits
+one live byte in three steps. The counterpart `i == 2U || i / 0U == 1U`
+would evaluate a zero divisor and is rejected without a guest artifact.
+Clang/source forgeries inside the skipped arithmetic subtree also refuse.
+The seeded matrix includes this third C program and a negative publication
+check, for 87 real guest input vectors across three programs.
+
 ### Source-proven early unsigned exits before wrap (2026-11-15)
 
 A demanding source-C probe combines unsigned `9U; i > 0U; i -= 2U`,

@@ -22,6 +22,12 @@ reads, source-selected duplication, `continue` and `break` reach normative
 VM parity and a seeded two-program guest replay matrix. Dynamic branches on
 the actual input byte, EOF and general runtime arithmetic remain unsupported.
 
+Unsigned `i / 0U` is also admitted only as a source-authenticated,
+short-circuited expression whose value is never evaluated. A reachable
+zero divisor must refuse guest publication. The third complete C regression
+executes one live input/output in three VM steps and rejects forged dead
+subtree types and operators.
+
 ### Source-checked unsigned loop-counter branch (2026-11-15)
 
 A complete four-trip C program initializes a fresh `int` from `getchar()`

@@ -71,6 +71,13 @@ a compiler capability gap, not a reason to return to N+1.
   oracle. Source/Clang forgeries refuse. Live-byte-dependent branches, EOF,
   runtime arithmetic and unbounded streams remain unfinished; P0 stays open.
 
+  A follow-up unsigned C short-circuit program proves that `i / 0U`
+  remains an authenticated but unexecuted operand under `i == 1U ||`,
+  with a selected `break` before a later evaluation. Its guest outputs one
+  live byte in three steps. A reachable zero-divisor counterpart and forged
+  source/Clang arithmetic refuse. The seeded integration matrix now checks
+  87 VM input vectors and negative nonpublication across three C programs.
+
 - On 2026-11-15, a complete live-input unsigned descending C program
   refused before guest emission because the compiler modeled an unsigned
   post-body underflow that a selected `break` would skip. A red-first pinned

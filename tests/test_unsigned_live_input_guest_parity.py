@@ -13,7 +13,7 @@
 # - Must-Not:
 #   - Replace guest execution with host stdout or claim EOF semantics.
 # - Allows:
-#   - Inputs: pinned C compiler tools and deterministic five/four-byte streams.
+#   - Inputs: pinned compiler tools and deterministic finite guest byte streams.
 #   - Outputs: actual guest stdout against independent bounded C oracles.
 #   - Side effects: ignored temporary files and local compiler subprocesses.
 # - Split-When:
@@ -41,6 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CASES = (
     ("unsigned_modulo_live_input", 5, 13),
     ("unsigned_wrapping_predicate_live_input", 4, 10),
+    ("unsigned_short_circuit_zero_divisor", 1, 3),
 )
 NATIVE_TOOL_ROOT = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin"
 FRONTEND = NATIVE_TOOL_ROOT / "malbolge-c-frontend"
@@ -58,7 +59,10 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
     """Only successful getchar bytes; C unsigned operations use 32 bits."""
     output = bytearray()
     for counter, byte in enumerate(data, start=1):
-        if stem == "unsigned_modulo_live_input":
+        if stem == "unsigned_short_circuit_zero_divisor":
+            # i == 1U makes the RHS undefined division unreachable.
+            copies = 1
+        elif stem == "unsigned_modulo_live_input":
             copies = 2 if counter % 2 == 0 else 1
         else:
             # C's subtraction converts to u32 before the > 99U comparison.
@@ -93,6 +97,30 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                     hashlib.sha256(source.read_bytes()).hexdigest(),
                 )
                 self.assertEqual(parsed["clang"]["version"], "22.1.8")
+
+    def test_reachable_zero_division_refuses_publication(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("repository-pinned compiler executables missing")
+        source = ROOT / "tests/compiler/c-frontend/rejected"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            output = Path(directory) / "unreachable-division.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    str(source / "unsigned_reachable_zero_divisor.c"),
+                    "--output",
+                    str(output),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"Unsupported", compiled.stderr)
+            self.assertFalse(output.exists())
 
     def test_seeded_guest_parity(self) -> None:
         prerequisites = (FRONTEND, ADAPTER, LAYOUT, VM)
