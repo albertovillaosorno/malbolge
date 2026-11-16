@@ -26,6 +26,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven dead integer arithmetic (2026-11-16)
+
+A full EOF-driven checksum C program with mutable unsigned state, a dynamic
+parity branch, arithmetic, and output was attempted first. Its initial
+`unsigned total = 0U` declaration still refuses before typed lowering, and
+no Malbolge guest is published. General dynamic state, EOF loops, and guest
+branching remain outstanding.
+
+A separate four-read C program exposed a narrower supported-behavior gap:
+inside a proven unreachable arm it called
+`putchar((current + 1) * 2)`. Previously this pure arithmetic expression
+stopped the frontend's finite-loop proof. The source-authenticated lowerer
+now reconstructs the exact pinned-Clang integer expression, verifies every
+operand and result across all 256 successful guest input bytes, and drops
+only the unreachable effect. It does not evaluate reachable C arithmetic in
+the host or synthesize a guest arithmetic instruction.
+
+The 1,183-byte capsule produces twelve exact guest output bytes in 17 VM
+steps. Twenty-nine seeded binary guest vectors plus a canonical-width
+boundary match an independent oracle, including NUL and high-bit bytes.
+Pinned C23 Clang at `-O0` and `-O2` with UBSan independently matches both
+the older dead-literal and new dead-arithmetic sources on 29 vectors each.
+Modified C operators, operand values, and normalized AST ancestry refuse;
+the equivalent C programs with a reachable or input-dependent arithmetic
+arm also refuse publication. The P0 remains pending on general guest state,
+input-dependent control flow, and EOF-driven iteration.
+
 ### Reflexive live guest SSA predicates (2026-11-16)
 
 A complete four-trip source-C probe with a live `getchar()` and a self-

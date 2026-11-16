@@ -1545,6 +1545,118 @@ fn source_byte_algebra_never_folds_guest_dependent_parity() {
     ));
 }
 
+const REFLEXIVE_DEAD_PURE_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/accepted/unsigned_reflexive_dead_pure_live_input.c"
+);
+const REFLEXIVE_DEAD_PURE_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_reflexive_dead_pure_live_input.json"
+);
+const REFLEXIVE_DYNAMIC_PURE_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/rejected/unsigned_reflexive_dynamic_pure_live_input.c"
+);
+const REFLEXIVE_DYNAMIC_PURE_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_reflexive_dynamic_pure_live_input.json"
+);
+const REFLEXIVE_SELECTED_PURE_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/rejected/unsigned_reflexive_selected_pure_live_input.c"
+);
+const REFLEXIVE_SELECTED_PURE_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_reflexive_selected_pure_live_input.json"
+);
+
+#[test]
+fn source_dead_pure_arithmetic_cannot_change_guest_input_or_output_counts() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        REFLEXIVE_DEAD_PURE_JSON,
+        Some(REFLEXIVE_DEAD_PURE_SOURCE),
+    )
+    .expect("source-proven dead arithmetic may be discarded, not executed");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let module = canonical_module(&wire).expect("typed guest I/O proof");
+    let mut latest = None;
+    let mut reads = 0;
+    let mut writes = 0;
+    for effect in module.functions()[0].blocks()[0].instructions() {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => {
+                latest = Some(*result);
+                reads += 1;
+            },
+            Instruction::ByteOutput { value } => {
+                assert_eq!(Some(*value), latest);
+                writes += 1;
+            },
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads, 4);
+    assert_eq!(writes, 12);
+}
+
+#[test]
+fn source_dead_pure_arithmetic_requires_original_source_and_clang_nodes() {
+    let old = b"(current + 1) * 2";
+    for (offset, replacement) in [(9, b'-'), (11, b'2'), (16, b'3')] {
+        let mut forged = REFLEXIVE_DEAD_PURE_SOURCE.to_vec();
+        let at = forged
+            .windows(old.len())
+            .position(|part| part == old)
+            .expect("source witness for dead arithmetic");
+        forged[at + offset] = replacement;
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                REFLEXIVE_DEAD_PURE_JSON,
+                Some(&forged)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    let original: serde_json::Value =
+        serde_json::from_slice(REFLEXIVE_DEAD_PURE_JSON).unwrap();
+    let nodes = original["nodes"].as_array().unwrap();
+    let multiply = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "*"
+        })
+        .expect("normalized multiplication in dead C arm");
+    let literal = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "integer-literal" && node["literal"] == "2"
+        })
+        .expect("source-anchored dead expression multiplier");
+    for (index, field, forged_value) in [
+        (multiply, "operation", serde_json::json!("+")),
+        (multiply, "type", serde_json::json!("u32")),
+        (literal, "literal", serde_json::json!("3")),
+        (literal, "constant_integer", serde_json::json!("3")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][index][field] = forged_value;
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&changed).unwrap(),
+                Some(REFLEXIVE_DEAD_PURE_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
+#[test]
+fn source_dead_pure_arithmetic_refuses_live_or_selected_effects() {
+    for (json, source) in [
+        (REFLEXIVE_DYNAMIC_PURE_JSON, REFLEXIVE_DYNAMIC_PURE_SOURCE),
+        (REFLEXIVE_SELECTED_PURE_JSON, REFLEXIVE_SELECTED_PURE_SOURCE),
+    ] {
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(json, Some(source)),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
 const REFLEXIVE_DEAD_LITERAL_SOURCE: &[u8] = include_bytes!(
     "c-frontend/accepted/unsigned_reflexive_dead_literal_live_input.c"
 );

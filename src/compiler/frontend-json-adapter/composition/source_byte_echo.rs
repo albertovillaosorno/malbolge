@@ -4185,15 +4185,18 @@ fn prove_static_if_statement<'node>(
     ))
 }
 
-// An unreachable literal output is still a real C effect and must be fully
-// authenticated. It may only be discarded after a source-proven total guard
-// selects the other arm; it must never become a resident-byte output.
-fn prove_unreachable_literal_output(
+// An unreachable pure output expression remains a source-C effect. Prove
+// every operand against the pinned Clang tree and original source bytes, and
+// reject any undefined arithmetic over the successful guest-byte domain.
+// Only a separately proven unreachable arm may drop the call; no guest
+// arithmetic is evaluated or substituted for a reachable output.
+fn prove_unreachable_pure_output(
     nodes: &[Node],
     body: &Node,
     previous: u32,
     expected_id: u32,
     parent: u32,
+    local: Option<&LocalDeclaration<'_>>,
     source: &[u8],
 ) -> Option<(usize, u32)> {
     let [call, cast, callee, argument, ..] = nodes else {
@@ -4202,14 +4205,18 @@ fn prove_unreachable_literal_output(
     let start = call.span.begin.byte;
     let line = call.span.begin.line;
     let column = call.span.begin.column;
-    let (value, literal) = source_proven_byte_guard_literal(
-        argument,
-        expected_id.checked_add(3)?,
+    let (argument_width, expression, values) = prove_total_byte_guard(
+        nodes.get(3..)?,
+        body,
+        previous,
         call.id,
+        expected_id.checked_add(3)?,
+        local,
+        0,
         source,
     )?;
-    (0_i32..=255_i32).contains(&value).then_some(())?;
-    let spelling = format!("putchar({literal});");
+    values.iter().all(Option::is_some).then_some(())?;
+    let spelling = format!("putchar({expression});");
     let end = start
         .checked_add(u32::try_from(spelling.len().checked_sub(1)?).ok()?)?;
     let from = usize::try_from(start).ok()?;
@@ -4241,13 +4248,10 @@ fn prove_unreachable_literal_output(
         && callee.reference.as_deref() == Some("external:putchar")
         && callee.operation.is_none()
         && metadata_empty(callee)
-        && source_word(callee, start, start.checked_add(7)?, line, column)
         && argument.id == expected_id.checked_add(3)?
         && argument.parent == call.id
-        && argument.kind == "integer-literal"
         && argument.type_name.as_deref() == Some("i32")
-        && argument.reference.is_none()
-        && argument.operation.is_none()
+        && source_word(callee, start, start.checked_add(7)?, line, column)
         && source_word(
             argument,
             start.checked_add(8)?,
@@ -4255,7 +4259,7 @@ fn prove_unreachable_literal_output(
             line,
             column.checked_add(8)?,
         ))
-    .then_some((4, end))
+    .then_some((3usize.checked_add(argument_width)?, end))
 }
 
 // Source-authenticate both one-line and canonical one-statement-per-line
@@ -4274,7 +4278,7 @@ fn prove_static_if_arm<'node>(
     allow_new_local: bool,
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
-    allow_unreachable_literal: bool,
+    allow_unreachable_pure: bool,
     source: Option<&[u8]>,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
@@ -4310,14 +4314,15 @@ fn prove_static_if_arm<'node>(
         });
     }
     if child.kind != "compound-statement" {
-        if allow_unreachable_literal
+        if allow_unreachable_pure
             && let Some((width, end)) = source.and_then(|witness| {
-                prove_unreachable_literal_output(
+                prove_unreachable_pure_output(
                     nodes,
                     body,
                     previous,
                     expected_id,
                     parent,
+                    local,
                     witness,
                 )
             })
@@ -4437,14 +4442,15 @@ fn prove_static_if_arm<'node>(
         } else {
             None
         };
-        let unreachable_literal =
-            allow_unreachable_literal.then_some(()).and_then(|()| {
-                prove_unreachable_literal_output(
+        let unreachable_pure =
+            allow_unreachable_pure.then_some(()).and_then(|()| {
+                prove_unreachable_pure_output(
                     nodes.get(cursor..)?,
                     body,
                     effect_end,
                     expected_id.checked_add(u32::try_from(cursor).ok()?)?,
                     child.id,
+                    declared_local.as_ref().or(local),
                     source?,
                 )
             });
@@ -4526,7 +4532,7 @@ fn prove_static_if_arm<'node>(
                 }],
                 end,
             )
-        } else if let Some((width, end)) = unreachable_literal {
+        } else if let Some((width, end)) = unreachable_pure {
             (width, Vec::new(), end)
         } else {
             // Every candidate is tied to this same live guest SSA

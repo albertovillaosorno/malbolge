@@ -57,6 +57,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a fresh whole-C running checksum with mutable locals,
+  EOF-driven input and guest-dependent parity still refused at its first
+  automatic declaration with no artifact. A distinct four-read source-C
+  experiment exposed an unreachable pure `putchar((current + 1) * 2)` arm:
+  before repair the authenticated loop refused; afterward all original
+  source and Clang argument nodes are proven across all 256 guest byte
+  values and dropped only after the branch is known dead. The 1,183-byte
+  capsule passes 29 real binary guest VM vectors plus a canonical-width
+  boundary (17 steps, twelve exact outputs); two pinned C23 UBSan native
+  optimization levels agree on 29 vectors each. Source/AST mutation and
+  reachable/dynamic arithmetic arms refuse without publication. This is
+  dead-arm elimination, not guest arithmetic or EOF/state control; P0
+  remains **pending**.
+
 - On 2026-11-16, a fresh four-read source-C guest self-comparison probe
   still refused when its unreachable arm wrote a constant byte; the adapter
   did not publish an artifact. The equivalent-output-arm control compiled
