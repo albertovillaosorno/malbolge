@@ -36,6 +36,10 @@
 mod guarded_byte_output_tests;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/nested_guarded_byte_output.rs"]
+mod nested_guarded_byte_output_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
 mod unsigned_input_loop_tests;
 
@@ -3438,7 +3442,7 @@ fn prove_identity_byte_output<'node>(
     previous: u32,
     parent: u32,
     source: &[u8],
-    active_domain: Option<(&[Option<i32>; 256], bool)>,
+    active_domain: Option<&[bool; 256]>,
 ) -> Option<(usize, &'node Node, Option<&'node Node>, Vec<&'node Node>)> {
     let [output, callee_cast, callee, rest @ ..] = nodes else {
         return None;
@@ -3480,15 +3484,10 @@ fn prove_identity_byte_output<'node>(
                     let same_byte = value.is_some_and(|actual| {
                         i32::try_from(byte).ok() == Some(actual.rem_euclid(256))
                     });
-                    match active_domain {
-                        Some((predicate, arm)) => {
-                            value.is_some()
-                                && predicate[byte].is_some_and(|truth| {
-                                    (truth != 0) != arm || same_byte
-                                })
-                        },
-                        None => same_byte,
-                    }
+                    value.is_some()
+                        && active_domain.map_or(same_byte, |active| {
+                            !active[byte] || same_byte
+                        })
                 })
                 .then_some((width, argument, None, Vec::new()))
         })?;
@@ -3990,6 +3989,7 @@ fn prove_static_if_statement<'node>(
             allow_new_local,
             for_depth,
             induction,
+            None,
             source,
         )?;
         return Some((
@@ -4323,7 +4323,7 @@ fn prove_static_if_arm<'node>(
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
     allow_unreachable_pure: bool,
-    active_domain: Option<(&[Option<i32>; 256], bool)>,
+    active_domain: Option<&[bool; 256]>,
     source: Option<&[u8]>,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
@@ -4340,6 +4340,7 @@ fn prove_static_if_arm<'node>(
             allow_new_local,
             for_depth,
             induction,
+            active_domain,
             source,
         )?;
         return Some(StaticIfArm {
@@ -4532,9 +4533,40 @@ fn prove_static_if_arm<'node>(
         } else {
             None
         };
-        let (width, statement_effects, statement_end) = if let Some(alias) =
-            alias
+        let nested_if = if statement.kind == "if-statement"
+            && let Some(domain) = active_domain
         {
+            prove_static_if(
+                nodes.get(cursor..)?,
+                body,
+                effect_end,
+                expected_id.checked_add(u32::try_from(cursor).ok()?)?,
+                child.id,
+                declared_local.as_ref().or(local),
+                outer_aliases,
+                depth.checked_add(1)?,
+                allow_new_local,
+                for_depth,
+                induction,
+                Some(domain),
+                source,
+            )
+        } else {
+            None
+        };
+        let (width, statement_effects, statement_end) = if let Some(proof) =
+            nested_if
+        {
+            (
+                proof.width,
+                if proof.selected {
+                    proof.effects
+                } else {
+                    Vec::new()
+                },
+                proof.end,
+            )
+        } else if let Some(alias) = alias {
             let end = alias.declaration_end;
             if let Some(live) = declared_local.as_ref().or(local) {
                 equivalent_locals.push(live.clone());
@@ -7282,6 +7314,7 @@ fn prove_static_if<'node>(
     allow_new_local: bool,
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
+    active_domain: Option<&[bool; 256]>,
     source: Option<&[u8]>,
 ) -> Option<StaticIfProof<'node>> {
     let [conditional, ..] = nodes else {
@@ -7321,6 +7354,22 @@ fn prove_static_if<'node>(
                     (width, selected, Some(values))
                 })
             })?;
+    // Each C arm inherits its enclosing byte constraints. Evaluating the
+    // authenticated predicate for all 256 successful inputs prevents an
+    // inactive nested arm from proving arithmetic on a reachable byte.
+    let mut then_domain = [false; 256];
+    let mut else_domain = [false; 256];
+    for byte in 0..256 {
+        if active_domain.is_none_or(|active| active[byte]) {
+            let truth = match &domain {
+                Some(values) => values[byte].is_some_and(|value| value != 0),
+                None => condition_true?,
+            };
+            then_domain[byte] = truth;
+            else_domain[byte] = !truth;
+        }
+    }
+    let restricted = active_domain.is_some() || domain.is_some();
     let predicate_root = nodes.get(1)?;
     let predicate_last = nodes.get(predicate_width)?;
     let arm_offset = 1usize.checked_add(predicate_width)?;
@@ -7339,9 +7388,7 @@ fn prove_static_if<'node>(
         for_depth,
         induction,
         condition_true == Some(false),
-        domain.as_deref().and_then(|values| {
-            condition_true.is_none().then_some((values, true))
-        }),
+        restricted.then_some(&then_domain),
         source,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
@@ -7372,9 +7419,7 @@ fn prove_static_if<'node>(
             for_depth,
             induction,
             condition_true == Some(true),
-            domain.as_deref().and_then(|values| {
-                condition_true.is_none().then_some((values, false))
-            }),
+            restricted.then_some(&else_domain),
             source,
         )?;
         let else_gap = if then_arm.braced {
@@ -7698,6 +7743,7 @@ pub(super) fn canonical_source_byte_echo(
                 // Each declaration is still bound to source-proven live SSA.
                 true,
                 0,
+                None,
                 None,
                 source,
             )

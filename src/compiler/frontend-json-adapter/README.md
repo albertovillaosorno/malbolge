@@ -11,6 +11,19 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Nested path-sensitive C output domains (2026-11-16)
+
+Nested source/Clang-authenticated C byte guards intersect their exact
+256-value truth sets. Each pure output expression must preserve the current
+input byte modulo 256 only where all enclosing conditions make its arm
+reachable; undefined arithmetic still refuses on any successful byte.
+A complete four-read C program with distinct arithmetic for low-bit cases
+`11`, `01` and even emits a 1,119-byte capsule, matches 29 actual binary
+VM input vectors in nine steps and agrees with independent Clang C23 UBSan
+`-O0`/`-O2` positive and rejected changed-byte controls. This proves only
+output-equivalent branch removal, not executable dynamic guest C control,
+EOF, arithmetic or persistent local storage.
+
 ### Guarded byte-preserving C output (2026-11-16)
 
 A source- and Clang-authenticated C23 parity branch may choose different

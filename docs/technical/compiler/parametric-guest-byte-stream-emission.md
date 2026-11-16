@@ -26,6 +26,36 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested C byte-guard intersections (2026-11-16)
+
+A complete EOF-driven checksum with mutable unsigned locals, an input-driven
+`while` loop and parity-selected arithmetic still refuses at its first
+`unsigned checksum = 0U` declaration. No guest artifact is published.
+The next red-first complete C experiment isolates an additional boundary:
+a four-read finite `for` loop with two nested input-dependent `if` statements.
+The inner true arm preserves the input only where its low two bits are `11`;
+the false arm preserves it only where they are `01`. The outer false arm
+preserves every even byte. These three arithmetic expressions are not all
+identities outside their individually reachable source-C paths.
+
+The source/Clang-authenticated proof now intersects each verified C guard's
+complete 256-value truth set with its ancestors' active input domain.
+Nested statement arms inherit those constraints, and each reachable pure
+`putchar` expression must return the original byte modulo 256 on its active
+set. Undefined C arithmetic still refuses even on inactive branches;
+additional reads, writes and mutations cannot be erased by this proof.
+
+The pinned frontend, typed lowering, layout emitter and normative guest VM
+admit a 1,119-byte capsule with four actual reads, four writes and nine VM
+steps. A reproducible 29-vector binary guest suite passes, including NUL and
+high-bit inputs. Native C23 Clang UBSan at `-O0` and `-O2` independently
+agrees for all 29 vectors. A valid-C single-arm mutation changes the byte
+where the low two bits are `11`, matches both native controls, and is
+rejected before guest publication. Modified source and normalized Clang
+operators also refuse. This proves only byte-preserving output identities;
+execution of general runtime C branches, arithmetic, storage and EOF loops
+remain unsupported, so P0 is still pending.
+
 ### Path-sensitive C output byte identities (2026-11-16)
 
 A complete four-read C23 program uses `if (current & 1)` to choose signed

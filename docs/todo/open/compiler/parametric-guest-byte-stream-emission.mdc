@@ -57,6 +57,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a complete mutable checksum/EOF source still refused
+  at `unsigned checksum = 0U` with no guest artifact. A red-first distinct
+  C23 experiment demonstrated **nested path-sensitive byte identities**:
+  three signed arithmetic output arms preserve the input only on their
+  intersected C guard domains (`11`, `01` and even low bits). The source-
+  authenticated 256-byte proof now propagates active domains through nested
+  statements without predicting stdin. The 1,119-byte capsule executes four
+  guest reads and writes in nine steps and passes 29 seeded binary VM inputs.
+  Independent C23 UBSan O0/O2 agrees on 29 positive and 29 changed-byte
+  negative vectors each; the changed C arm and forged source/Clang refuse
+  publication. Dynamic runtime branches, arbitrary C storage and EOF-driven
+  loops remain missing. P0 is **pending**.
+
 - On 2026-11-16, a complete EOF-driven checksum with mutable state,
   guest-dependent branches and arithmetic still refused its first
   unsigned local with no guest artifact. A distinct four-read C23 probe
