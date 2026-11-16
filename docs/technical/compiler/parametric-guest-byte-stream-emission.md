@@ -28,10 +28,10 @@ or hundreds of individual documentation pages.
 
 ### Path-sensitive C output byte identities (2026-11-16)
 
-A complete four-read C23 program uses \`if (current & 1)\` to choose signed
+A complete four-read C23 program uses `if (current & 1)` to choose signed
 arithmetic output expressions that each preserve the live input byte **only
 within the branch where the C expression executes**. The previous
-source-to-typed adapter refused the complete source \`for\` body. The revised
+source-to-typed adapter refused the complete source `for` body. The revised
 projection authenticates the pinned Clang predicate and both pure output
 expressions against the original C bytes, retains the exact truth set over
 all 256 successful input values, and checks defined integer arithmetic
@@ -45,7 +45,7 @@ emit and execute a 1,119-byte capsule in nine guest instructions. A fixed
 29-vector binary-input suite matches an independent four-byte oracle,
 including NUL and high-bit bytes. The same source and its valid-C control
 that changes every even input byte match separately compiled C23 UBSan
-\`-O0\` and \`-O2\` oracles for all 29 vectors. The nonidentity C control,
+`-O0` and `-O2` oracles for all 29 vectors. The nonidentity C control,
 modified source/Clang operator evidence, and unsupported effects refuse
 rather than publishing a guest. This is a total-domain proof of
 byte-preserving *output* in existing finite I/O loops, not general
