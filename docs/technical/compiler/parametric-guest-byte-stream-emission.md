@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven unsigned-byte conversion on guarded live input (2026-11-16)
+
+The complete EOF-driven checksum with mutable state, input-dependent control,
+and integer arithmetic still refuses at the first C declaration; no guest
+artifact is published. A distinct complete four-read C23 program isolated a
+valid output conversion absent from the source-to-typed adapter: the odd C
+branch writes `(unsigned char)(current + 256)` and the even branch writes
+`(unsigned char)(current - 256)`. Both offset expressions are defined signed
+`int` arithmetic for every successful `getchar` byte, and C unsigned-char
+conversion reduces either value modulo 256 to the original input byte.
+
+The new bounded proof authenticates both exact Clang cast nodes, the original
+`(unsigned char)` spelling, the nested pure signed arithmetic and each guarded
+branch's 256-byte active domain. It retains four real VM input instructions
+and four corresponding output instructions instead of substituting host data.
+An independently verified 1,119-byte capsule executes nine normative guest
+steps. All 29 deterministic binary guest inputs, including zero and high-bit
+bytes, match the independent byte oracle. Pinned C23 UBSan `-O0` and `-O2`
+confirm both the accepted source and a valid changed-offset negative source
+across the same 29 vectors. The changed source and forged Clang narrowing
+refuse without publishing a guest artifact. This is a finite byte-equivalence
+proof, not runtime guest arithmetic, general integer conversions, mutable
+storage, dynamic guest branching or EOF iteration. P0 remains pending.
+
 ### Multiple ordered guarded C outputs (2026-11-16)
 
 A complete mutable, EOF-driven checksum still refuses its first C local;

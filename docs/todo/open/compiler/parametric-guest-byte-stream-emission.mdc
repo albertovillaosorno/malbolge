@@ -57,6 +57,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a complete mutable EOF checksum still refused its first
+  declaration without a guest artifact. A distinct four-read C23 program
+  exposed previously unsupported signed offsets followed by explicit
+  `(unsigned char)` conversion in opposite live-input byte-guard arms.
+  Source- and Clang-authenticated narrowing now retains four real VM reads
+  and writes (nine steps in a 1,119-byte capsule), passing 29 seeded binary
+  VM inputs and pinned C23 UBSan `-O0`/`-O2` native controls for both the
+  accepted source and a nonidentity changed-offset rejection. Forged casts
+  and source mutations fail closed. Guest C arithmetic, dynamic branches,
+  mutable storage and EOF loops remain unsupported; P0 is **pending**.
+
 - On 2026-11-16, a full EOF-driven checksum with mutable locals
   still refused its initial declaration without a guest artifact. A
   distinct four-read C23 experiment proved **two source-ordered writes

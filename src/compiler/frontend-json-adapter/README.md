@@ -3359,6 +3359,19 @@ both empty and binary input. Six unsupported source variants and eight forged
 ASTs reject without guest artifacts. Runtime C loops and the original
 unmasked Fibonacci output layout remain unsupported.
 
+### Authenticated unsigned-byte narrowing on live guest input
+
+A direct `putchar((unsigned char)EXPRESSION)` may preserve the resident guest
+byte even when `EXPRESSION` has a signed value outside `[0, 255]`.
+The bounded source-C guard proof authenticates the pinned Clang `u8` cast,
+its enclosing `i32` promotion, exact original cast spelling and fully pure
+`i32` expression, then checks unsigned modulo-256 conversion on all 256
+possible successful byte inputs. Any undefined signed arithmetic or changed
+output byte is rejected. The finite four-input C23 guarded experiment emits
+four exact guest bytes in nine normative VM steps and agrees with a 29-vector
+native UBSan O0/O2 matrix. Runtime integer arithmetic and general casts are
+not thereby supported.
+
 ### Mixed unsigned-scalar logical conditions in bounded C
 
 A source-proven C logical `&&` or `||` may now combine one pure `u32`

@@ -52,6 +52,7 @@ UNBRACED_GUARDED_STEM = "unsigned_unbraced_guarded_live_input"
 UNBRACED_MULTILINE_STEM = "unsigned_multiline_guarded_live_input"
 ELSE_IF_STEM = "unsigned_else_if_guarded_live_input"
 MULTI_GUARDED_STEM = "unsigned_multiple_guarded_live_input"
+NARROWED_STEM = "unsigned_narrowed_guarded_live_input"
 DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 DEAD_PURE_STEM = "unsigned_reflexive_dead_pure_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
@@ -76,6 +77,7 @@ CASES = (
     (UNBRACED_MULTILINE_STEM, 4, 9),
     (ELSE_IF_STEM, 4, 9),
     (MULTI_GUARDED_STEM, 4, 13),
+    (NARROWED_STEM, 4, 9),
     (DEAD_LITERAL_STEM, 4, 17),
     (DEAD_PURE_STEM, 4, 17),
 )
@@ -118,6 +120,7 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
             UNBRACED_GUARDED_STEM,
             UNBRACED_MULTILINE_STEM,
             ELSE_IF_STEM,
+            NARROWED_STEM,
         }:
             # Every nested byte guard preserves the live byte on the active
             # source-C path, including NUL and high-bit inputs.
@@ -1270,6 +1273,140 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                             stdin=data.hex(),
                         ):
                             self.assertEqual(observed.returncode, 0, observed.stderr)
+                            self.assertEqual(observed.stdout, expected)
+
+    def test_narrowed_guarded_c23_native_and_guest_parity(self) -> None:
+        """Unsigned narrowing retains real bytes, unlike a changed C offset."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM, CLANG)):
+            self.skipTest("pinned C23 Clang, adapter or guest VM missing")
+        source = SOURCES / f"{NARROWED_STEM}.c"
+        cases = cases_for_length(4)
+        env = dict(os.environ)
+        library = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (library, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            folder = Path(directory)
+            changed = folder / "changed.c"
+            original = source.read_text(encoding="utf-8")
+            self.assertEqual(original.count("current - 256"), 1)
+            changed.write_text(
+                original.replace("current - 256", "current - 255"),
+                encoding="utf-8",
+            )
+            guest = folder / "narrowed.malbolge"
+            accepted = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    str(source),
+                    "--output",
+                    str(guest),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertTrue(guest.is_file())
+            refusal = folder / "changed.malbolge"
+            rejected = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    str(changed),
+                    "--output",
+                    str(refusal),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(UNSUPPORTED_MARKER, rejected.stderr)
+            self.assertFalse(refusal.exists())
+
+            def run_guest(data: bytes) -> subprocess.CompletedProcess[bytes]:
+                return subprocess.run(
+                    [
+                        str(VM),
+                        str(guest),
+                        "--input-stdin",
+                        "--max-steps",
+                        "9",
+                        "--report-steps",
+                    ],
+                    input=data,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+
+            step_report = b"malbolge-steps-v1:9\n"
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                for data, observed in zip(
+                    cases, executor.map(run_guest, cases), strict=True
+                ):
+                    with self.subTest(guest=data.hex()):
+                        exit_code = observed.returncode
+                        self.assertEqual(exit_code, 0, observed.stderr)
+                        expected = independent_c_oracle(NARROWED_STEM, data)
+                        self.assertEqual(observed.stdout, expected)
+                        self.assertEqual(observed.stderr, step_report)
+            for candidate, nonidentity in ((source, False), (changed, True)):
+                wrapper = folder / "oracle.c"
+                entrypoint = f'#include "{candidate}"\n'
+                entrypoint += "int main(void) { emit(); return 0; }\n"
+                wrapper.write_text(entrypoint, encoding="utf-8")
+                for optimization in ("-O0", "-O2"):
+                    native = folder / f"native-{nonidentity}-{optimization[2:]}"
+                    built = subprocess.run(
+                        [
+                            str(CLANG),
+                            "-std=c23",
+                            optimization,
+                            "-fsanitize=undefined",
+                            "-fno-sanitize-recover=all",
+                            str(wrapper),
+                            "-o",
+                            str(native),
+                        ],
+                        env=env,
+                        capture_output=True,
+                        check=False,
+                        timeout=45,
+                    )
+                    self.assertEqual(built.returncode, 0, built.stderr)
+                    for data in cases:
+                        observed = subprocess.run(
+                            [str(native)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        expected = (
+                            bytes(
+                                (byte + 1) & 255 if byte & 1 == 0 else byte
+                                for byte in data
+                            )
+                            if nonidentity
+                            else independent_c_oracle(NARROWED_STEM, data)
+                        )
+                        with self.subTest(
+                            optimization=optimization,
+                            nonidentity=nonidentity,
+                            stdin=data.hex(),
+                        ):
+                            exit_code = observed.returncode
+                            self.assertEqual(exit_code, 0, observed.stderr)
                             self.assertEqual(observed.stdout, expected)
 
     def test_pure_output_c23_oracles(self) -> None:

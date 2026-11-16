@@ -52,6 +52,10 @@ mod else_if_guarded_byte_output_tests;
 mod multiple_guarded_byte_output_tests;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/narrowed_byte_output.rs"]
+mod narrowed_byte_output_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
 mod unsigned_input_loop_tests;
 
@@ -6743,6 +6747,66 @@ fn prove_static_predicate(
     Some((width, value != 0))
 }
 
+// C converts a signed int to unsigned char modulo 256, then promotes the
+// resulting u8 back to signed int at putchar's call boundary. The two cast
+// nodes must cover the *same* original `(unsigned char)` source expression;
+// no source-independent AST cast annotation is sufficient. The nested
+// expression may perform checked signed arithmetic, but never guest I/O.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "authenticate both Clang casts and the nested C byte expression"
+)]
+fn prove_total_byte_narrowing(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    parent: u32,
+    expected_id: u32,
+    local: Option<&LocalDeclaration<'_>>,
+    depth: usize,
+    source: &[u8],
+) -> Option<TotalByteGuardProof> {
+    let [promoted, narrowed, rest @ ..] = nodes else {
+        return None;
+    };
+    if !pure_integer_root(promoted, "cast-expression", parent, expected_id)
+        || promoted.operation.as_deref() != Some("integral-cast")
+        || narrowed.id != promoted.id.checked_add(1)?
+        || narrowed.parent != promoted.id
+        || narrowed.kind != "cast-expression"
+        || narrowed.type_name.as_deref() != Some("u8")
+        || narrowed.operation.as_deref() != Some("integral-cast")
+        || narrowed.reference.is_some()
+        || !metadata_empty(narrowed)
+        || narrowed.span != promoted.span
+    {
+        return None;
+    }
+    let (child_width, child, values) = prove_total_byte_guard(
+        rest,
+        body,
+        previous,
+        narrowed.id,
+        narrowed.id.checked_add(1)?,
+        local,
+        depth.checked_add(1)?,
+        source,
+    )?;
+    let spelling = format!("(unsigned char){child}");
+    pure_expression_source(promoted, &spelling, source)?;
+    pure_expression_source(narrowed, &spelling, source)?;
+    let mut narrowed_values = Box::new([None; 256]);
+    for (result, value) in narrowed_values.iter_mut().zip(values.iter()) {
+        *result = value.map(|signed| signed.rem_euclid(256));
+    }
+    let width = child_width.checked_add(2)?;
+    (width <= MAX_STATIC_PREDICATE_NODES).then_some((
+        width,
+        spelling,
+        narrowed_values,
+    ))
+}
+
 // Successful getchar/putchar returns are in [0, 255]. Prove a pure
 // predicate's complete truth set over that finite domain, then select a
 // statement only if all bytes agree. This includes tautologies whose leaves
@@ -6828,6 +6892,20 @@ fn prove_total_byte_guard(
         let width = child_width.checked_add(1)?;
         return (width <= MAX_STATIC_PREDICATE_NODES)
             .then_some((width, spelling, values));
+    }
+    if root.kind == "cast-expression"
+        && root.operation.as_deref() == Some("integral-cast")
+    {
+        return prove_total_byte_narrowing(
+            nodes,
+            body,
+            previous,
+            parent,
+            expected_id,
+            local,
+            depth,
+            source,
+        );
     }
     if root.kind == "conditional-expression" {
         return prove_total_byte_ternary(
