@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Reflexive live guest SSA predicates (2026-11-16)
+
+A complete four-trip source-C probe with a live `getchar()` and a self-
+comparison was attempted before typed-IR changes. A source branch whose
+unselected arm calls `putchar(0)` still fails normalization at its enclosing
+`for` (a reduced no-loop source fails at the local declaration), and no guest
+artifact is published. The same source with independently authenticated,
+identical byte-output arms compiled to 1,119 guest bytes and produced four
+correct outputs in nine normative VM steps for three binary vectors, including
+NUL and high-bit input. That C success uses existing pure-arm equivalence,
+not the new typed-IR proof.
+
+The typed CFG lowerer now proves signed and unsigned 32-bit comparisons of
+**the same live SSA word** to itself: `==` and `<=` select true, `!=` and `<`
+select false. Eight positive typed-IR cases preserve a guest byte read,
+conversion and comparison operations, canonical typed/ternary wires, selected
+output effects, and source-bound checkpoint identity. Eight independently
+read, well-typed operand pairs still refuse effect-divergent control; they are
+not assumed equal even if some input vectors happen to match. Runtime guest
+branches, source-C dead-arm constant emission, persistent mutable locals and
+EOF loops remain outside this proof. P0 stays pending.
+
 ### Source-authenticated live-byte algebra (2026-11-16)
 
 The complete `unsigned_byte_algebra_live_input.c` program combines XOR

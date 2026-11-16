@@ -441,6 +441,55 @@ fn proven_literal_integer(
     Some((*result, *type_kind, bits))
 }
 
+// Integer comparison is reflexive for one *identical SSA word*, even if
+// that word comes from a live guest input. This is not a proof that two
+// separately read bytes coincide, nor a reason to erase the guest comparison.
+// The ordinary lowerer subsequently validates its operand's definition and
+// exact signed/unsigned type before publishing the selected target stream.
+const fn proven_reflexive_comparison(
+    instruction: &InputInstruction,
+) -> Option<(u32, bool)> {
+    let (left, right, result, chosen) = match instruction {
+        InputInstruction::CompareEqual {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => (left, right, result, true),
+        InputInstruction::CompareNotEqual {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => (left, right, result, false),
+        InputInstruction::CompareOrdered {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            operation,
+            ..
+        } => (
+            left,
+            right,
+            result,
+            matches!(
+                operation,
+                InputOrderedComparison::SignedEqual
+                    | InputOrderedComparison::UnsignedEqual
+            ),
+        ),
+        _ => return None,
+    };
+    if *left == *right {
+        Some((*result, chosen))
+    } else {
+        None
+    }
+}
+
 fn proven_literal_comparison(
     instruction: &InputInstruction,
     words: &BTreeMap<u32, (InputScalarType, u32)>,
@@ -964,7 +1013,9 @@ pub(super) fn selected_function_blocks(
                 _ = literal_words.insert(result, (kind, bits));
             }
             if let Some((result, value)) =
-                proven_literal_comparison(instruction, &literal_words)
+                proven_reflexive_comparison(instruction).or_else(|| {
+                    proven_literal_comparison(instruction, &literal_words)
+                })
             {
                 _ = constants.insert(result, value);
             }

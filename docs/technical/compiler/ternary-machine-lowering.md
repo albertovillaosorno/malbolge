@@ -114,6 +114,19 @@ refuse fresh lowering. This is limited literal comparison selection, not
 general arithmetic constant propagation, guest branching, or a source-C
 runtime state model.
 
+The same static CFG selector also proves reflexive comparisons of one
+**identical live integer SSA operand** without computing its byte value:
+`x == x` and `x <= x` are always true; `x != x` and `x < x` are always
+false. This applies to signed and unsigned 32-bit operands, including words
+widened from actual guest `ByteInput`. All eight signed/unsigned operator
+cases preserve the guest input, casts, comparison instruction, selected byte
+outputs, both canonical wires, and source-bound progress restoration. Eight
+separate well-typed CFGs compare two independent guest reads instead: all
+refuse effect-divergent selection even though individual input vectors could
+make the values equal. An undefined or mistyped SSA operand still fails in
+the ordinary target lowerer. This proves a universal integer identity, not
+general runtime guest branching or erased target computation.
+
 An exact unsigned-32 expression chain now also supplies static CFG choices:
 `And`, `Or`, `Xor`, `Add`, `Subtract`, and `Multiply` consume two previously
 proven `u32` words, and record their result as another proven `u32` word.

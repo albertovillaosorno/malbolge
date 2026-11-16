@@ -25263,3 +25263,311 @@ fn comparison_proven_boolean_survives_signed_roundtrip_and_checkpoint()
     );
     Ok(())
 }
+
+// A live guest byte widened to a word is not a compile-time constant, but
+// comparison of the very same SSA word with itself has an exact Boolean
+// result for every possible successful input. Preserve the comparison and
+// both signed/unsigned cast operations in the emitted guest target stream.
+fn guest_reflexive_comparison_branch_module(
+    operation: CompareOp,
+    signed: bool,
+) -> Module {
+    let original = literal_comparison_branch_module(13, 9, operation, !signed);
+    let function = &original.functions()[0];
+    let mut blocks = function.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    let unsigned_type = TypeId::new(4);
+    instructions[1] = LocatedInstruction::new(
+        Instruction::Cast {
+            operation: CastOp::ZeroExtend,
+            result: ValueId::new(1),
+            type_id: unsigned_type,
+            value: ValueId::new(0),
+        },
+        fixture_span(1, 2),
+    );
+    if signed {
+        instructions[2] = LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerBitcast,
+                result: ValueId::new(2),
+                type_id: TypeId::new(1),
+                value: ValueId::new(1),
+            },
+            fixture_span(1, 2),
+        );
+    }
+    let operand = if signed {
+        2
+    } else {
+        1
+    };
+    instructions[3] = LocatedInstruction::new(
+        Instruction::Compare {
+            left: ValueId::new(operand),
+            operation,
+            result: ValueId::new(3),
+            right: ValueId::new(operand),
+            type_id: TypeId::new(3),
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: entry.terminator().clone(),
+        terminator_span: entry.terminator_span(),
+    });
+    let mut types = original.types().to_vec();
+    if signed {
+        types.push(TypeEntry::new(unsigned_type, TypeDef::U32));
+    }
+    let rebuilt = Function::new(FunctionSpec {
+        blocks,
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(function.name()),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(original.abi_id()),
+        format_version: original.format_version(),
+        functions: vec![rebuilt],
+        globals: original.globals().to_vec(),
+        proof_obligations: original.proof_obligations().to_vec(),
+        source_id: String::from(original.source_id()),
+        source_sha256: *original.source_sha256(),
+        target_profile: String::from(original.target_profile()),
+        types,
+    })
+}
+
+#[test]
+fn guest_reflexive_comparisons_choose_only_proven_branches()
+-> Result<(), String> {
+    for (operation, signed, selected) in [
+        (CompareOp::Equal, false, true),
+        (CompareOp::NotEqual, false, false),
+        (CompareOp::LessUnsigned, false, false),
+        (CompareOp::LessUnsignedEqual, false, true),
+        (CompareOp::Equal, true, true),
+        (CompareOp::NotEqual, true, false),
+        (CompareOp::LessSigned, true, false),
+        (CompareOp::LessSignedEqual, true, true),
+    ] {
+        let source =
+            guest_reflexive_comparison_branch_module(operation, signed);
+        validate_module(&source)
+            .map_err(|error| format!("admit self-compare: {error:?}"))?;
+        let encoded = canonical_bytes(&source)
+            .map_err(|error| format!("encode self-compare: {error:?}"))?;
+        assert_eq!(canonical_module(&encoded), Ok(source));
+        let restored = canonical_module(&encoded)
+            .map_err(|error| format!("decode self-compare: {error:?}"))?;
+        let projected = project_typed_ir(&restored)?;
+        let target = lower_typed_ir(&projected)
+            .map_err(|error| format!("lower {operation:?}: {error:?}"))?;
+        let effects = &target.functions[0].operations;
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|effect| matches!(
+                    effect,
+                    TernaryOperation::ByteInput { .. }
+                ))
+                .count(),
+            1
+        );
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|effect| matches!(
+                    effect,
+                    TernaryOperation::ByteOutput { .. }
+                ))
+                .count(),
+            if selected {
+                2
+            } else {
+                1
+            }
+        );
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            TernaryOperation::ZeroExtendU8ToU32 { .. }
+        )));
+        let wire = canonical_ternary_bytes(&target).map_err(|error| {
+            format!("encode self-compare target: {error:?}")
+        })?;
+        assert_eq!(canonical_ternary_program(&wire), Ok(target.clone()));
+        let label = format!("guest-self-compare-{operation:?}-{signed}");
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &wire)?;
+        let checked = (|| {
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &projected,
+                ),
+                Ok(target.clone())
+            );
+            let mut distinct = projected.clone();
+            let comparison =
+                &mut distinct.functions[0].blocks[0].instructions[3];
+            match comparison {
+                InputInstruction::CompareEqual { right, .. }
+                | InputInstruction::CompareNotEqual { right, .. }
+                | InputInstruction::CompareOrdered { right, .. } => *right = 0,
+                _ => return Err(String::from("missing self-comparison")),
+            }
+            assert_eq!(
+                lower_typed_ir(&distinct),
+                Err(TernaryLoweringError::UnsupportedTerminator)
+            );
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &distinct,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch)
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean self-compare: {error}"));
+        checked?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+// Two independent guest input instructions are never interchangeable just
+// because a particular test vector might feed them equal byte values.
+fn guest_independent_input_comparison_branch_module(
+    operation: CompareOp,
+    signed: bool,
+) -> Module {
+    let original = guest_reflexive_comparison_branch_module(operation, signed);
+    let function = &original.functions()[0];
+    let mut blocks = function.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    let mut second = vec![
+        LocatedInstruction::new(
+            Instruction::ByteInput {
+                result: ValueId::new(5),
+                type_id: TypeId::new(0),
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::ZeroExtend,
+                result: ValueId::new(6),
+                type_id: TypeId::new(4),
+                value: ValueId::new(5),
+            },
+            fixture_span(1, 2),
+        ),
+    ];
+    if signed {
+        second.push(LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerBitcast,
+                result: ValueId::new(7),
+                type_id: TypeId::new(1),
+                value: ValueId::new(6),
+            },
+            fixture_span(1, 2),
+        ));
+    }
+    let operand = if signed {
+        2
+    } else {
+        1
+    };
+    let second_operand = if signed {
+        7
+    } else {
+        6
+    };
+    drop(instructions.splice(3..3, second));
+    let comparison_index = instructions.len() - 1;
+    instructions[comparison_index] = LocatedInstruction::new(
+        Instruction::Compare {
+            left: ValueId::new(operand),
+            operation,
+            result: ValueId::new(3),
+            right: ValueId::new(second_operand),
+            type_id: TypeId::new(3),
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: entry.terminator().clone(),
+        terminator_span: entry.terminator_span(),
+    });
+    let rebuilt = Function::new(FunctionSpec {
+        blocks,
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(function.name()),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(original.abi_id()),
+        format_version: original.format_version(),
+        functions: vec![rebuilt],
+        globals: original.globals().to_vec(),
+        proof_obligations: original.proof_obligations().to_vec(),
+        source_id: String::from(original.source_id()),
+        source_sha256: *original.source_sha256(),
+        target_profile: String::from(original.target_profile()),
+        types: original.types().to_vec(),
+    })
+}
+
+#[test]
+fn independent_live_input_comparisons_require_runtime_guest_branching()
+-> Result<(), String> {
+    for (operation, signed) in [
+        (CompareOp::Equal, false),
+        (CompareOp::NotEqual, false),
+        (CompareOp::LessUnsigned, false),
+        (CompareOp::LessUnsignedEqual, false),
+        (CompareOp::Equal, true),
+        (CompareOp::NotEqual, true),
+        (CompareOp::LessSigned, true),
+        (CompareOp::LessSignedEqual, true),
+    ] {
+        let source =
+            guest_independent_input_comparison_branch_module(operation, signed);
+        validate_module(&source)
+            .map_err(|error| format!("admit independent reads: {error:?}"))?;
+        let wire = canonical_bytes(&source)
+            .map_err(|error| format!("encode independent reads: {error:?}"))?;
+        assert_eq!(canonical_module(&wire), Ok(source.clone()));
+        let projection = project_typed_ir(&source)?;
+        assert_eq!(
+            lower_typed_ir(&projection),
+            Err(TernaryLoweringError::UnsupportedTerminator),
+            "{operation:?}, signed={signed}"
+        );
+    }
+    Ok(())
+}

@@ -57,6 +57,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a fresh four-read source-C guest self-comparison probe
+  still refused when its unreachable arm wrote a constant byte; the adapter
+  did not publish an artifact. The equivalent-output-arm control compiled
+  and ran three real binary guest vectors (`9` steps, four exact writes).
+  Red-first typed-IR lowering now proves reflexive signed/unsigned 32-bit
+  comparisons of one live SSA input word, not of two independent reads.
+  Eight selected cases retain the guest comparison and complete canonical
+  wire and checkpoint identities; eight well-typed independent-read CFGs
+  reject. This advances static identity selection only, not source-C
+  generalization or executable guest branching, so P0 remains **pending**.
+
 - On 2026-11-16, a complete four-read C23 compound-byte probe adds
   source-bound XOR cancellation, signed addition, logical conjunction, and
   two successive output-selecting branches. Its 1,183-byte capsule emits
