@@ -44,6 +44,10 @@ mod nested_guarded_byte_output_tests;
 mod unbraced_guarded_byte_output_tests;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/else_if_guarded_byte_output.rs"]
+mod else_if_guarded_byte_output_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
 mod unsigned_input_loop_tests;
 
@@ -7389,6 +7393,21 @@ fn prove_static_if<'node>(
     {
         return None;
     }
+    // Clang locates an `else if` at its `if`, five columns after the
+    // source's `else `. The nested unbraced calls and final `else` align
+    // with the outer `else`, not with that inner `if` token. Accept the
+    // deduction only from the original source bytes and exact coordinates.
+    let alignment_column = if source.is_some_and(|witness| {
+        let Ok(at) = usize::try_from(start) else {
+            return false;
+        };
+        at.checked_sub(5).and_then(|begin| witness.get(begin..at))
+            == Some(b"else ")
+    }) {
+        column.checked_sub(5)?
+    } else {
+        column
+    };
     let (predicate_width, condition_true, domain) =
         prove_static_predicate(nodes.get(1..)?, conditional, induction)
             .map(|(width, selected)| (width, Some(selected), None))
@@ -7452,10 +7471,10 @@ fn prove_static_if<'node>(
     // deeper statement indentation; AST coordinates alone are insufficient.
     let then_multiline = !then_arm.braced
         && then_arm.begin_line == line.checked_add(1)?
-        && then_arm.begin_column == column.checked_add(4)?
+        && then_arm.begin_column == alignment_column.checked_add(4)?
         && source.is_some_and(|witness| {
             let Some(indent) =
-                usize::try_from(column.checked_add(3).unwrap_or(0))
+                usize::try_from(alignment_column.checked_add(3).unwrap_or(0))
                     .ok()
                     .filter(|amount| *amount <= 256)
             else {
@@ -7509,21 +7528,47 @@ fn prove_static_if<'node>(
         // The canonical unbraced multi-line spelling includes the first
         // call's semicolon, a same-indent `else`, and the indented call.
         // No unexamined C statement or token may hide between these spans.
+        let else_if_multiline = !then_arm.braced
+            && nodes.get(width)?.kind == "if-statement"
+            && else_arm.begin_line == then_arm.end_line.checked_add(1)?
+            && else_arm.begin_column == alignment_column.checked_add(5)?
+            && source.is_some_and(|witness| {
+                let Some(indent) = alignment_column
+                    .checked_sub(1)
+                    .and_then(|column| usize::try_from(column).ok())
+                    .filter(|amount| *amount <= 256)
+                else {
+                    return false;
+                };
+                let expected = format!(";\n{}else ", " ".repeat(indent));
+                match (
+                    usize::try_from(then_arm.end),
+                    usize::try_from(else_arm.begin),
+                ) {
+                    (Ok(from), Ok(to)) => {
+                        witness.get(from..to) == Some(expected.as_bytes())
+                    },
+                    _ => false,
+                }
+            });
         let else_multiline = !then_arm.braced
             && else_arm.begin_line == then_arm.end_line.checked_add(2)?
-            && else_arm.begin_column == column.checked_add(4)?
+            && else_arm.begin_column == alignment_column.checked_add(4)?
             && source.is_some_and(|witness| {
-                let Some(indent) =
-                    usize::try_from(column.checked_sub(1).unwrap_or(0))
-                        .ok()
-                        .filter(|amount| *amount <= 256)
+                let Some(indent) = alignment_column
+                    .checked_sub(1)
+                    .and_then(|column| usize::try_from(column).ok())
+                    .filter(|amount| *amount <= 256)
                 else {
+                    return false;
+                };
+                let Some(call_indent) = indent.checked_add(4) else {
                     return false;
                 };
                 let expected = format!(
                     ";\n{}else\n{}",
                     " ".repeat(indent),
-                    " ".repeat(indent + 4),
+                    " ".repeat(call_indent),
                 );
                 match (
                     usize::try_from(then_arm.end),
@@ -7535,7 +7580,7 @@ fn prove_static_if<'node>(
                     _ => false,
                 }
             });
-        if !else_inline && !else_multiline {
+        if !else_inline && !else_if_multiline && !else_multiline {
             return None;
         }
         width = width.checked_add(else_arm.width)?;

@@ -50,6 +50,7 @@ GUARDED_STEM = "unsigned_guarded_modular_output_live_input"
 NESTED_GUARDED_STEM = "unsigned_nested_guarded_live_input"
 UNBRACED_GUARDED_STEM = "unsigned_unbraced_guarded_live_input"
 UNBRACED_MULTILINE_STEM = "unsigned_multiline_guarded_live_input"
+ELSE_IF_STEM = "unsigned_else_if_guarded_live_input"
 DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 DEAD_PURE_STEM = "unsigned_reflexive_dead_pure_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
@@ -72,6 +73,7 @@ CASES = (
     (NESTED_GUARDED_STEM, 4, 9),
     (UNBRACED_GUARDED_STEM, 4, 9),
     (UNBRACED_MULTILINE_STEM, 4, 9),
+    (ELSE_IF_STEM, 4, 9),
     (DEAD_LITERAL_STEM, 4, 17),
     (DEAD_PURE_STEM, 4, 17),
 )
@@ -113,6 +115,7 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
             NESTED_GUARDED_STEM,
             UNBRACED_GUARDED_STEM,
             UNBRACED_MULTILINE_STEM,
+            ELSE_IF_STEM,
         }:
             # Every nested byte guard preserves the live byte on the active
             # source-C path, including NUL and high-bit inputs.
@@ -610,8 +613,89 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
             UNBRACED_MULTILINE_STEM
         )
 
+    def test_else_if_guarded_c23_native_and_guest_parity(self) -> None:
+        """Replay three path-sensitive C arms from a multiline else-if."""
+        self._check_unbraced_guarded_c23_native_and_guest_parity(ELSE_IF_STEM)
+
+    def test_else_if_inner_arm_nonidentity_refuses_guest(self) -> None:
+        """The second guarded C path cannot change bytes without guest ALU."""
+        prerequisites = (FRONTEND, ADAPTER, LAYOUT, CLANG)
+        if not all(path.is_file() for path in prerequisites):
+            self.skipTest("pinned native and guest compiler tools missing")
+        source = SOURCES / f"{ELSE_IF_STEM}.c"
+        original = source.read_bytes()
+        self.assertEqual(original.count(b"current | 2"), 1)
+        changed = original.replace(b"current | 2", b"current ^ 2", 1)
+        env = dict(os.environ)
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            folder = Path(temporary)
+            mutated = folder / "changed-inner.c"
+            _ = mutated.write_bytes(changed)
+            guest = folder / "changed-inner.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    str(mutated),
+                    "--output",
+                    str(guest),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(UNSUPPORTED_MARKER, compiled.stderr)
+            self.assertFalse(guest.exists())
+            wrapper = folder / "oracle.c"
+            _ = wrapper.write_text(
+                f'#include "{mutated}"\nint main(void) {{ emit(); return 0; }}\n',
+                encoding="utf-8",
+            )
+            for optimization in ("-O0", "-O2"):
+                native = folder / f"native-{optimization[2:]}"
+                built = subprocess.run(
+                    [
+                        str(CLANG),
+                        "-std=c23",
+                        optimization,
+                        "-fsanitize=undefined",
+                        "-fno-sanitize-recover=all",
+                        str(wrapper),
+                        "-o",
+                        str(native),
+                    ],
+                    env=env,
+                    capture_output=True,
+                    check=False,
+                    timeout=45,
+                )
+                self.assertEqual(built.returncode, 0, built.stderr)
+                for data in cases_for_length(4):
+                    observed = subprocess.run(
+                        [str(native)],
+                        input=data,
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    expected = bytes(
+                        (byte & ~2) if byte & 2 and not byte & 1 else byte
+                        for byte in data
+                    )
+                    with self.subTest(optimization=optimization, data=data.hex()):
+                        self.assertEqual(observed.returncode, 0, observed.stderr)
+                        self.assertEqual(observed.stdout, expected)
+
     def _check_unbraced_guarded_c23_native_and_guest_parity(self, stem: str) -> None:
-        """C unbraced arms preserve the live byte only on their own paths."""
+        """C unbraced and else-if arms prove their own byte identities."""
         prerequisites = (FRONTEND, ADAPTER, LAYOUT, VM, CLANG)
         if not all(path.is_file() for path in prerequisites):
             self.skipTest("pinned compiler, Clang or VM executable missing")

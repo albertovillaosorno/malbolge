@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Authenticated multiline `else if` byte domains (2026-11-16)
+
+The full source-C EOF checksum, with mutable `unsigned` state, a `while`
+and parity-dependent arithmetic, again stopped at its first declaration
+without publishing a guest artifact. A separate complete four-read C23
+program exposed a source statement-form gap: chained `if` / `else if` /
+`else` conditions branch over disjoint low-bit input domains. The three
+unbraced C expressions (`current | 1`, `current | 2`, `current & -4`)
+preserve their resident input only on their own reachable branches.
+
+The Clang `else if` child starts five columns after the indentation of
+`else`; its child `putchar` and terminal `else` align with the outer
+conditional, not the child `if` token. The source-bound verifier now
+checks this exact byte/column geometry and carries each 256-byte active
+domain through the entire chain before proving output equivalence. The
+normative VM executes four real reads and four writes in nine steps from
+a 1,119-byte capsule. Twenty-nine seeded binary guest vectors match the
+independent identity oracle, and pinned C23 UBSan `-O0`/`-O2` verifies
+the admitted source and two changed-byte rejected controls over those
+29 inputs each. This remains source-proven removal of equivalent arms,
+not runtime guest C branching, storage, arithmetic or EOF iteration. The
+P0 contract stays pending.
+
 ### Unbraced C guard-domain output (2026-11-16)
 
 The complete EOF-driven checksum program still refuses its first mutable

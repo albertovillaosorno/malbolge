@@ -57,6 +57,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a full mutable, EOF-driven C checksum still refused
+  its first `unsigned` declaration without a guest artifact. A distinct
+  four-read C23 program exposed an indented `else if` chain whose three
+  byte-output expressions preserve the live input only on their disjoint
+  low-bit domains. Red-first typed proof now authenticates nested Clang
+  and original C indentation, retaining four real reads/writes in a
+  1,119-byte capsule and nine normative VM steps. Twenty-nine seeded
+  binary guest vectors match an independent oracle; the same 29 vectors
+  match pinned C23 UBSan `-O0`/`-O2` for admitted and two changed-byte
+  rejected C sources. General dynamic guest branches, mutable C state
+  and EOF iteration remain unimplemented; P0 stays **pending**.
+
 - On 2026-11-16, a complete EOF-driven C checksum again refused at its
   first mutable `unsigned` declaration without publishing a guest. A distinct
   four-read C23 source exposed unbraced parity-selected `putchar` expressions

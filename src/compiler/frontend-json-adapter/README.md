@@ -11,6 +11,19 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Multiline C `else if` byte identities (2026-11-16)
+
+A source/Clang-authenticated three-way `if` / `else if` / `else` can
+preserve a successful live guest byte with expressions that are identities
+only on their own low-bit input domains. Clang spans the inner `if` five
+columns after `else `; checked original source bytes establish the actual
+indentation of the inner branch calls and terminal `else`. No unproven
+statement, read, write or mutable local is erased. A complete four-read C23
+program emits four actual bytes in nine normative guest steps. Twenty-nine
+binary VM vectors and native C23 UBSan `-O0`/`-O2` controls match; two
+valid changed-byte C programs refuse publication. General guest-executed C
+branches, mutable state and EOF-driven iteration remain unsupported.
+
 ### Unbraced C byte identity branches (2026-11-16)
 
 A source/Clang-authenticated dynamic byte guard can select one unbraced
