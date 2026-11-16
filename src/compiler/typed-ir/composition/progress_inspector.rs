@@ -244,9 +244,18 @@ fn extract_with_limits_and_capacity(
     if request.inspector == Path::new("-") {
         return Err(InspectorFailure::Rejected);
     }
+    let interpreter = if request.interpreter.is_absolute() {
+        request.interpreter.to_path_buf()
+    } else {
+        // Normalize relative argv[0] before Python discovers its venv prefix.
+        request
+            .interpreter
+            .canonicalize()
+            .map_err(|_error| InspectorFailure::Launch)?
+    };
     let permit = Arc::new(InspectorPipePermit::acquire(counter, capacity)?);
     let started = Instant::now();
-    let mut command = Command::new(request.interpreter);
+    let mut command = Command::new(interpreter);
     let _configured = command
         .arg("-I")
         .arg("--")

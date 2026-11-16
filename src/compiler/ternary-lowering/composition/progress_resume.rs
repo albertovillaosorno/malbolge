@@ -41,15 +41,22 @@ use std::path::Path;
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
 use super::input::{
-    InputFunction, InputInstruction, InputOrderedComparison, InputScalarType, InputSourceSpan,
-    InputTerminator, TypedIrInput,
+    InputFunction, InputInstruction, InputOrderedComparison, InputScalarType,
+    InputSourceSpan, InputTerminator, TypedIrInput,
 };
-use super::lower::{projected_instruction_span, validate_projection_spans};
-use super::model::{TernaryFunction, TernaryOperation, TernaryProgram, TernarySourceSpan};
+use super::lower::{
+    projected_instruction_span, selected_function_blocks,
+    validate_projection_spans,
+};
+use super::model::{
+    TernaryFunction, TernaryOperation, TernaryProgram, TernarySourceSpan,
+};
 use super::program_codec::{TERNARY_PROGRAM_CODEC_ID, operation_span};
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
 
 type BinaryValues = (u32, u32, u32);
+type SelectedInstructions<'input> =
+    (Vec<&'input InputInstruction>, InputSourceSpan, Option<u32>);
 
 /// Product compiler selection for entering the ternary-lowering stage.
 #[derive(Clone, Copy, Debug)]
@@ -149,15 +156,34 @@ fn matches_expected_return(
     last: Option<&TernaryOperation>,
 ) -> bool {
     let observed_value = match (expected, last) {
-        (InputScalarType::Bool, Some(TernaryOperation::ReturnBool { value, .. }))
-        | (InputScalarType::I8, Some(TernaryOperation::ReturnI8 { value, .. }))
-        | (InputScalarType::I16, Some(TernaryOperation::ReturnI16 { value, .. }))
-        | (InputScalarType::I32, Some(TernaryOperation::Return { value, .. }))
-        | (InputScalarType::U8, Some(TernaryOperation::ReturnU8 { value, .. }))
-        | (InputScalarType::U16, Some(TernaryOperation::ReturnU16 { value, .. }))
-        | (InputScalarType::U32, Some(TernaryOperation::ReturnU32 { value, .. })) => {
-            Some(*value)
-        },
+        (
+            InputScalarType::Bool,
+            Some(TernaryOperation::ReturnBool { value, .. }),
+        )
+        | (
+            InputScalarType::I8,
+            Some(TernaryOperation::ReturnI8 { value, .. }),
+        )
+        | (
+            InputScalarType::I16,
+            Some(TernaryOperation::ReturnI16 { value, .. }),
+        )
+        | (
+            InputScalarType::I32,
+            Some(TernaryOperation::Return { value, .. }),
+        )
+        | (
+            InputScalarType::U8,
+            Some(TernaryOperation::ReturnU8 { value, .. }),
+        )
+        | (
+            InputScalarType::U16,
+            Some(TernaryOperation::ReturnU16 { value, .. }),
+        )
+        | (
+            InputScalarType::U32,
+            Some(TernaryOperation::ReturnU32 { value, .. }),
+        ) => Some(*value),
         (InputScalarType::Void, Some(TernaryOperation::ReturnVoid { .. })) => {
             None
         },
@@ -166,40 +192,45 @@ fn matches_expected_return(
     observed_value == expected_value
 }
 
-// Source-bound resume must not accept an expected function shape that fresh
-// lowering cannot represent. Fresh lowering emits one operation per projected
-// instruction plus a return; this count and control-flow envelope do not redo
-// typed instruction lowering stored in the checkpoint. The explicit upstream
-// Unsupported sentinel is not an executable projected instruction.
+// Fresh lowering and source-bound resume must select the same proven CFG
+// path. Literal comparisons may settle static choices; a guest-dependent
+// choice can flatten only when both paths have control-only equivalence or
+// their successors coincide.
+fn selected_function_instructions(
+    function: &InputFunction,
+) -> Option<SelectedInstructions<'_>> {
+    let selected = selected_function_blocks(function).ok()?;
+    let mut instructions = Vec::new();
+    for block in &selected {
+        if block.instructions.iter().any(|instruction| {
+            matches!(instruction, InputInstruction::Unsupported)
+        }) {
+            return None;
+        }
+        instructions.extend(block.instructions.iter());
+    }
+    let InputTerminator::Return { span, value } = selected.last()?.terminator
+    else {
+        return None;
+    };
+    Some((instructions, span, value))
+}
+
 fn matches_supported_function_shape(
     function: &InputFunction,
     saved_operation_count: usize,
 ) -> bool {
-    let [block] = function.blocks.as_slice() else {
-        return false;
-    };
-    let Some(saved_instruction_count) = saved_operation_count.checked_sub(1)
+    let Some((instructions, _, value)) =
+        selected_function_instructions(function)
     else {
         return false;
     };
-    if function.parameter_count != 0
-        || block.id != function.entry
-        || block.phi_count != 0
-        || saved_instruction_count != block.instructions.len()
-        || block.instructions.iter().any(
-            |instruction| matches!(instruction, InputInstruction::Unsupported)
-        )
-    {
-        return false;
-    }
-    match (function.return_kind, block.terminator) {
-        (InputScalarType::Void, InputTerminator::Return { value: None, .. }) => {
-            true
-        },
-        (InputScalarType::Void, _) => false,
-        (_, InputTerminator::Return { value: Some(_), .. }) => true,
-        _ => false,
-    }
+    saved_operation_count == instructions.len().saturating_add(1)
+        && match (function.return_kind, value) {
+            (InputScalarType::Void, None) => true,
+            (InputScalarType::Void, Some(_)) | (_, None) => false,
+            (_, Some(_)) => true,
+        }
 }
 
 // The source map is part of source-bound checkpoint identity, even when the
@@ -227,43 +258,76 @@ fn matches_expected_constant(
     saved: &TernaryOperation,
 ) -> bool {
     let InputInstruction::ConstantInteger {
-        bit_width, little_endian, result, type_kind, ..
-    } = instruction else {
+        bit_width,
+        little_endian,
+        result,
+        type_kind,
+        ..
+    } = instruction
+    else {
         return true;
     };
     match (*bit_width, *type_kind, saved) {
-        (1, InputScalarType::Bool,
+        (
+            1,
+            InputScalarType::Bool,
             TernaryOperation::MaterializeBool {
                 result: observed, value, ..
-            }) => *observed == *result
-                && little_endian.as_slice() == [u8::from(*value)],
-        (8, InputScalarType::I8,
+            },
+        ) => {
+            *observed == *result
+                && little_endian.as_slice() == [u8::from(*value)]
+        },
+        (
+            8,
+            InputScalarType::I8,
             TernaryOperation::MaterializeI8 {
                 result: observed, scalar, ..
-            })
-        | (8, InputScalarType::U8,
+            },
+        )
+        | (
+            8,
+            InputScalarType::U8,
             TernaryOperation::MaterializeU8 {
                 result: observed, scalar, ..
-            }) => *observed == *result
-                && little_endian.as_slice() == [scalar.bits()],
-        (16, InputScalarType::I16,
+            },
+        ) => {
+            *observed == *result && little_endian.as_slice() == [scalar.bits()]
+        },
+        (
+            16,
+            InputScalarType::I16,
             TernaryOperation::MaterializeI16 {
                 result: observed, scalar, ..
-            })
-        | (16, InputScalarType::U16,
+            },
+        )
+        | (
+            16,
+            InputScalarType::U16,
             TernaryOperation::MaterializeU16 {
                 result: observed, scalar, ..
-            }) => *observed == *result
-                && little_endian.as_slice() == scalar.bits().to_le_bytes(),
-        (32, InputScalarType::I32,
+            },
+        ) => {
+            *observed == *result
+                && little_endian.as_slice() == scalar.bits().to_le_bytes()
+        },
+        (
+            32,
+            InputScalarType::I32,
             TernaryOperation::MaterializeI32 {
                 result: observed, scalar, ..
-            })
-        | (32, InputScalarType::U32,
+            },
+        )
+        | (
+            32,
+            InputScalarType::U32,
             TernaryOperation::MaterializeU32 {
                 result: observed, scalar, ..
-            }) => *observed == *result
-                && little_endian.as_slice() == scalar.bits().to_le_bytes(),
+            },
+        ) => {
+            *observed == *result
+                && little_endian.as_slice() == scalar.bits().to_le_bytes()
+        },
         _ => false,
     }
 }
@@ -271,48 +335,69 @@ fn matches_expected_constant(
 // Bind projected binary semantics without re-running SSA lowering. The
 // independently admitted checkpoint already proves each operand is defined;
 // exact operation kind, signedness, and SSA identities remain source-bound.
-const fn expected_binary_values(instruction: &InputInstruction) -> Option<BinaryValues> {
-    let (
-        InputInstruction::BinaryAdd { left, result, right, .. }
-        | InputInstruction::BinaryAnd { left, result, right, .. }
-        | InputInstruction::BinaryDivideSigned { left, result, right, .. }
-        | InputInstruction::BinaryDivideUnsigned { left, result, right, .. }
-        | InputInstruction::BinaryMultiply { left, result, right, .. }
-        | InputInstruction::BinaryOr { left, result, right, .. }
-        | InputInstruction::BinaryRemainderSigned { left, result, right, .. }
-        | InputInstruction::BinaryRemainderUnsigned { left, result, right, .. }
-        | InputInstruction::BinaryShiftLeft { left, result, right, .. }
-        | InputInstruction::BinaryShiftRightArithmetic { left, result, right, .. }
-        | InputInstruction::BinaryShiftRightLogical { left, result, right, .. }
-        | InputInstruction::BinarySubtract { left, result, right, .. }
-        | InputInstruction::BinaryXor { left, result, right, .. }) = instruction else {
+const fn expected_binary_values(
+    instruction: &InputInstruction,
+) -> Option<BinaryValues> {
+    let (InputInstruction::BinaryAdd { left, result, right, .. }
+    | InputInstruction::BinaryAnd { left, result, right, .. }
+    | InputInstruction::BinaryDivideSigned { left, result, right, .. }
+    | InputInstruction::BinaryDivideUnsigned {
+        left, result, right, ..
+    }
+    | InputInstruction::BinaryMultiply { left, result, right, .. }
+    | InputInstruction::BinaryOr { left, result, right, .. }
+    | InputInstruction::BinaryRemainderSigned {
+        left, result, right, ..
+    }
+    | InputInstruction::BinaryRemainderUnsigned {
+        left, result, right, ..
+    }
+    | InputInstruction::BinaryShiftLeft { left, result, right, .. }
+    | InputInstruction::BinaryShiftRightArithmetic {
+        left,
+        result,
+        right,
+        ..
+    }
+    | InputInstruction::BinaryShiftRightLogical {
+        left, result, right, ..
+    }
+    | InputInstruction::BinarySubtract { left, result, right, .. }
+    | InputInstruction::BinaryXor { left, result, right, .. }) = instruction
+    else {
         return None;
     };
     Some((*left, *result, *right))
 }
 
-const fn saved_binary_values(operation: &TernaryOperation) -> Option<BinaryValues> {
-    let (
-        TernaryOperation::AddI32 { left, result, right, .. }
-        | TernaryOperation::AddU32 { left, result, right, .. }
-        | TernaryOperation::AndI32 { left, result, right, .. }
-        | TernaryOperation::AndU32 { left, result, right, .. }
-        | TernaryOperation::DivideI32 { left, result, right, .. }
-        | TernaryOperation::DivideU32 { left, result, right, .. }
-        | TernaryOperation::MultiplyI32 { left, result, right, .. }
-        | TernaryOperation::MultiplyU32 { left, result, right, .. }
-        | TernaryOperation::OrI32 { left, result, right, .. }
-        | TernaryOperation::OrU32 { left, result, right, .. }
-        | TernaryOperation::RemainderI32 { left, result, right, .. }
-        | TernaryOperation::RemainderU32 { left, result, right, .. }
-        | TernaryOperation::ShiftLeftI32 { left, result, right, .. }
-        | TernaryOperation::ShiftLeftU32 { left, result, right, .. }
-        | TernaryOperation::ShiftRightArithmeticI32 { left, result, right, .. }
-        | TernaryOperation::ShiftRightLogicalU32 { left, result, right, .. }
-        | TernaryOperation::SubtractI32 { left, result, right, .. }
-        | TernaryOperation::SubtractU32 { left, result, right, .. }
-        | TernaryOperation::XorI32 { left, result, right, .. }
-        | TernaryOperation::XorU32 { left, result, right, .. }) = operation else {
+const fn saved_binary_values(
+    operation: &TernaryOperation,
+) -> Option<BinaryValues> {
+    let (TernaryOperation::AddI32 { left, result, right, .. }
+    | TernaryOperation::AddU32 { left, result, right, .. }
+    | TernaryOperation::AndI32 { left, result, right, .. }
+    | TernaryOperation::AndU32 { left, result, right, .. }
+    | TernaryOperation::DivideI32 { left, result, right, .. }
+    | TernaryOperation::DivideU32 { left, result, right, .. }
+    | TernaryOperation::MultiplyI32 { left, result, right, .. }
+    | TernaryOperation::MultiplyU32 { left, result, right, .. }
+    | TernaryOperation::OrI32 { left, result, right, .. }
+    | TernaryOperation::OrU32 { left, result, right, .. }
+    | TernaryOperation::RemainderI32 { left, result, right, .. }
+    | TernaryOperation::RemainderU32 { left, result, right, .. }
+    | TernaryOperation::ShiftLeftI32 { left, result, right, .. }
+    | TernaryOperation::ShiftLeftU32 { left, result, right, .. }
+    | TernaryOperation::ShiftRightArithmeticI32 {
+        left, result, right, ..
+    }
+    | TernaryOperation::ShiftRightLogicalU32 {
+        left, result, right, ..
+    }
+    | TernaryOperation::SubtractI32 { left, result, right, .. }
+    | TernaryOperation::SubtractU32 { left, result, right, .. }
+    | TernaryOperation::XorI32 { left, result, right, .. }
+    | TernaryOperation::XorU32 { left, result, right, .. }) = operation
+    else {
         return None;
     };
     Some((*left, *result, *right))
@@ -325,47 +410,129 @@ fn matches_expected_binary(
     let Some(expected) = expected_binary_values(instruction) else {
         return true;
     };
-    matches!((instruction, saved),
-        (InputInstruction::BinaryAdd { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::AddI32 { .. })
-        | (InputInstruction::BinaryAdd { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::AddU32 { .. })
-        | (InputInstruction::BinaryAnd { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::AndI32 { .. })
-        | (InputInstruction::BinaryAnd { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::AndU32 { .. })
-        | (InputInstruction::BinaryDivideSigned { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::DivideI32 { .. })
-        | (InputInstruction::BinaryDivideUnsigned { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::DivideU32 { .. })
-        | (InputInstruction::BinaryMultiply { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::MultiplyI32 { .. })
-        | (InputInstruction::BinaryMultiply { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::MultiplyU32 { .. })
-        | (InputInstruction::BinaryOr { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::OrI32 { .. })
-        | (InputInstruction::BinaryOr { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::OrU32 { .. })
-        | (InputInstruction::BinaryRemainderSigned { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::RemainderI32 { .. })
-        | (InputInstruction::BinaryRemainderUnsigned { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::RemainderU32 { .. })
-        | (InputInstruction::BinaryShiftLeft { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::ShiftLeftI32 { .. })
-        | (InputInstruction::BinaryShiftLeft { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::ShiftLeftU32 { .. })
-        | (InputInstruction::BinaryShiftRightArithmetic { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::ShiftRightArithmeticI32 { .. })
-        | (InputInstruction::BinaryShiftRightLogical { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::ShiftRightLogicalU32 { .. })
-        | (InputInstruction::BinarySubtract { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::SubtractI32 { .. })
-        | (InputInstruction::BinarySubtract { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::SubtractU32 { .. })
-        | (InputInstruction::BinaryXor { type_kind: InputScalarType::I32, .. },
-            TernaryOperation::XorI32 { .. })
-        | (InputInstruction::BinaryXor { type_kind: InputScalarType::U32, .. },
-            TernaryOperation::XorU32 { .. })
+    matches!(
+        (instruction, saved),
+        (
+            InputInstruction::BinaryAdd {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::AddI32 { .. }
+        ) | (
+            InputInstruction::BinaryAdd {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::AddU32 { .. }
+        ) | (
+            InputInstruction::BinaryAnd {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::AndI32 { .. }
+        ) | (
+            InputInstruction::BinaryAnd {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::AndU32 { .. }
+        ) | (
+            InputInstruction::BinaryDivideSigned {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::DivideI32 { .. }
+        ) | (
+            InputInstruction::BinaryDivideUnsigned {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::DivideU32 { .. }
+        ) | (
+            InputInstruction::BinaryMultiply {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::MultiplyI32 { .. }
+        ) | (
+            InputInstruction::BinaryMultiply {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::MultiplyU32 { .. }
+        ) | (
+            InputInstruction::BinaryOr {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::OrI32 { .. }
+        ) | (
+            InputInstruction::BinaryOr {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::OrU32 { .. }
+        ) | (
+            InputInstruction::BinaryRemainderSigned {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::RemainderI32 { .. }
+        ) | (
+            InputInstruction::BinaryRemainderUnsigned {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::RemainderU32 { .. }
+        ) | (
+            InputInstruction::BinaryShiftLeft {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::ShiftLeftI32 { .. }
+        ) | (
+            InputInstruction::BinaryShiftLeft {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::ShiftLeftU32 { .. }
+        ) | (
+            InputInstruction::BinaryShiftRightArithmetic {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::ShiftRightArithmeticI32 { .. }
+        ) | (
+            InputInstruction::BinaryShiftRightLogical {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::ShiftRightLogicalU32 { .. }
+        ) | (
+            InputInstruction::BinarySubtract {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::SubtractI32 { .. }
+        ) | (
+            InputInstruction::BinarySubtract {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::SubtractU32 { .. }
+        ) | (
+            InputInstruction::BinaryXor {
+                type_kind: InputScalarType::I32,
+                ..
+            },
+            TernaryOperation::XorI32 { .. }
+        ) | (
+            InputInstruction::BinaryXor {
+                type_kind: InputScalarType::U32,
+                ..
+            },
+            TernaryOperation::XorU32 { .. }
+        )
     ) && saved_binary_values(saved) == Some(expected)
 }
 
@@ -376,9 +543,7 @@ const fn matches_expected_byte_effect(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
 ) -> bool {
-    if let InputInstruction::ByteInput {
-        result, type_kind, ..
-    } = instruction {
+    if let InputInstruction::ByteInput { result, type_kind, .. } = instruction {
         matches!(type_kind, InputScalarType::U8)
             && matches!(saved, TernaryOperation::ByteInput {
                 result: observed, ..
@@ -399,8 +564,9 @@ const fn expected_comparison_values(
     instruction: &InputInstruction,
 ) -> Option<BinaryValues> {
     let (InputInstruction::CompareEqual { left, result, right, .. }
-        | InputInstruction::CompareNotEqual { left, result, right, .. }
-        | InputInstruction::CompareOrdered { left, result, right, .. }) = instruction
+    | InputInstruction::CompareNotEqual { left, result, right, .. }
+    | InputInstruction::CompareOrdered { left, result, right, .. }) =
+        instruction
     else {
         return None;
     };
@@ -411,13 +577,15 @@ const fn saved_comparison_values(
     saved: &TernaryOperation,
 ) -> Option<BinaryValues> {
     let (TernaryOperation::EqualI32 { left, result, right, .. }
-        | TernaryOperation::EqualU32 { left, result, right, .. }
-        | TernaryOperation::NotEqualI32 { left, result, right, .. }
-        | TernaryOperation::NotEqualU32 { left, result, right, .. }
-        | TernaryOperation::LessSignedI32 { left, result, right, .. }
-        | TernaryOperation::LessSignedEqualI32 { left, result, right, .. }
-        | TernaryOperation::LessUnsignedU32 { left, result, right, .. }
-        | TernaryOperation::LessUnsignedEqualU32 { left, result, right, .. }) = saved
+    | TernaryOperation::EqualU32 { left, result, right, .. }
+    | TernaryOperation::NotEqualI32 { left, result, right, .. }
+    | TernaryOperation::NotEqualU32 { left, result, right, .. }
+    | TernaryOperation::LessSignedI32 { left, result, right, .. }
+    | TernaryOperation::LessSignedEqualI32 { left, result, right, .. }
+    | TernaryOperation::LessUnsignedU32 { left, result, right, .. }
+    | TernaryOperation::LessUnsignedEqualU32 {
+        left, result, right, ..
+    }) = saved
     else {
         return None;
     };
@@ -431,27 +599,51 @@ fn matches_expected_comparison(
     let Some(expected) = expected_comparison_values(instruction) else {
         return true;
     };
-    matches!((instruction, saved),
-        (InputInstruction::CompareEqual { type_kind: InputScalarType::Bool, .. },
-            TernaryOperation::EqualI32 { .. } | TernaryOperation::EqualU32 { .. })
-        | (InputInstruction::CompareNotEqual { type_kind: InputScalarType::Bool, .. },
-            TernaryOperation::NotEqualI32 { .. } | TernaryOperation::NotEqualU32 { .. })
-        | (InputInstruction::CompareOrdered {
+    matches!(
+        (instruction, saved),
+        (
+            InputInstruction::CompareEqual {
+                type_kind: InputScalarType::Bool,
+                ..
+            },
+            TernaryOperation::EqualI32 { .. }
+                | TernaryOperation::EqualU32 { .. }
+        ) | (
+            InputInstruction::CompareNotEqual {
+                type_kind: InputScalarType::Bool,
+                ..
+            },
+            TernaryOperation::NotEqualI32 { .. }
+                | TernaryOperation::NotEqualU32 { .. }
+        ) | (
+            InputInstruction::CompareOrdered {
                 operation: InputOrderedComparison::Signed,
-                type_kind: InputScalarType::Bool, ..
-            }, TernaryOperation::LessSignedI32 { .. })
-        | (InputInstruction::CompareOrdered {
+                type_kind: InputScalarType::Bool,
+                ..
+            },
+            TernaryOperation::LessSignedI32 { .. }
+        ) | (
+            InputInstruction::CompareOrdered {
                 operation: InputOrderedComparison::SignedEqual,
-                type_kind: InputScalarType::Bool, ..
-            }, TernaryOperation::LessSignedEqualI32 { .. })
-        | (InputInstruction::CompareOrdered {
+                type_kind: InputScalarType::Bool,
+                ..
+            },
+            TernaryOperation::LessSignedEqualI32 { .. }
+        ) | (
+            InputInstruction::CompareOrdered {
                 operation: InputOrderedComparison::Unsigned,
-                type_kind: InputScalarType::Bool, ..
-            }, TernaryOperation::LessUnsignedU32 { .. })
-        | (InputInstruction::CompareOrdered {
+                type_kind: InputScalarType::Bool,
+                ..
+            },
+            TernaryOperation::LessUnsignedU32 { .. }
+        ) | (
+            InputInstruction::CompareOrdered {
                 operation: InputOrderedComparison::UnsignedEqual,
-                type_kind: InputScalarType::Bool, ..
-            }, TernaryOperation::LessUnsignedEqualU32 { .. })
+                type_kind: InputScalarType::Bool,
+                ..
+            },
+            TernaryOperation::LessUnsignedEqualU32 { .. }
+        )
     ) && saved_comparison_values(saved) == Some(expected)
 }
 
@@ -463,13 +655,12 @@ const fn expected_cast_values(
     instruction: &InputInstruction,
 ) -> Option<(u32, u32)> {
     let (InputInstruction::BoolToSigned { result, value, .. }
-        | InputInstruction::IntegerBitcast { result, value, .. }
-        | InputInstruction::IntegerToBool { result, value, .. }
-        | InputInstruction::SignExtendI8ToI32 { result, value, .. }
-        | InputInstruction::TruncateInteger { result, value, .. }
-        | InputInstruction::ZeroExtendInteger {
-            result, value, ..
-        }) = instruction else {
+    | InputInstruction::IntegerBitcast { result, value, .. }
+    | InputInstruction::IntegerToBool { result, value, .. }
+    | InputInstruction::SignExtendI8ToI32 { result, value, .. }
+    | InputInstruction::TruncateInteger { result, value, .. }
+    | InputInstruction::ZeroExtendInteger { result, value, .. }) = instruction
+    else {
         return None;
     };
     Some((*result, *value))
@@ -477,46 +668,45 @@ const fn expected_cast_values(
 
 const fn saved_cast_values(operation: &TernaryOperation) -> Option<(u32, u32)> {
     let (TernaryOperation::BoolToI8 { result, value, .. }
-        | TernaryOperation::BoolToI16 { result, value, .. }
-        | TernaryOperation::BoolToI32 { result, value, .. }
-        | TernaryOperation::BitcastI8ToI8 { result, value, .. }
-        | TernaryOperation::BitcastI8ToU8 { result, value, .. }
-        | TernaryOperation::BitcastU8ToI8 { result, value, .. }
-        | TernaryOperation::BitcastU8ToU8 { result, value, .. }
-        | TernaryOperation::BitcastI16ToI16 { result, value, .. }
-        | TernaryOperation::BitcastI16ToU16 { result, value, .. }
-        | TernaryOperation::BitcastU16ToI16 { result, value, .. }
-        | TernaryOperation::BitcastU16ToU16 { result, value, .. }
-        | TernaryOperation::BitcastI32ToI32 { result, value, .. }
-        | TernaryOperation::BitcastI32ToU32 { result, value, .. }
-        | TernaryOperation::BitcastU32ToI32 { result, value, .. }
-        | TernaryOperation::BitcastU32ToU32 { result, value, .. }
-        | TernaryOperation::I8ToBool { result, value, .. }
-        | TernaryOperation::U8ToBool { result, value, .. }
-        | TernaryOperation::I16ToBool { result, value, .. }
-        | TernaryOperation::U16ToBool { result, value, .. }
-        | TernaryOperation::I32ToBool { result, value, .. }
-        | TernaryOperation::U32ToBool { result, value, .. }
-        | TernaryOperation::SignExtendI8ToI16 { result, value, .. }
-        | TernaryOperation::SignExtendI8ToI32 { result, value, .. }
-        | TernaryOperation::SignExtendI16ToI32 { result, value, .. }
-        | TernaryOperation::TruncateI16ToI8 { result, value, .. }
-        | TernaryOperation::TruncateI16ToU8 { result, value, .. }
-        | TernaryOperation::TruncateI32ToI8 { result, value, .. }
-        | TernaryOperation::TruncateI32ToU8 { result, value, .. }
-        | TernaryOperation::TruncateU16ToI8 { result, value, .. }
-        | TernaryOperation::TruncateU16ToU8 { result, value, .. }
-        | TernaryOperation::TruncateU32ToI8 { result, value, .. }
-        | TernaryOperation::TruncateU32ToU8 { result, value, .. }
-        | TernaryOperation::TruncateI32ToI16 { result, value, .. }
-        | TernaryOperation::TruncateI32ToU16 { result, value, .. }
-        | TernaryOperation::TruncateU32ToI16 { result, value, .. }
-        | TernaryOperation::TruncateU32ToU16 { result, value, .. }
-        | TernaryOperation::ZeroExtendU8ToU16 { result, value, .. }
-        | TernaryOperation::ZeroExtendU8ToU32 { result, value, .. }
-        | TernaryOperation::ZeroExtendU16ToU32 {
-            result, value, ..
-        }) = operation else {
+    | TernaryOperation::BoolToI16 { result, value, .. }
+    | TernaryOperation::BoolToI32 { result, value, .. }
+    | TernaryOperation::BitcastI8ToI8 { result, value, .. }
+    | TernaryOperation::BitcastI8ToU8 { result, value, .. }
+    | TernaryOperation::BitcastU8ToI8 { result, value, .. }
+    | TernaryOperation::BitcastU8ToU8 { result, value, .. }
+    | TernaryOperation::BitcastI16ToI16 { result, value, .. }
+    | TernaryOperation::BitcastI16ToU16 { result, value, .. }
+    | TernaryOperation::BitcastU16ToI16 { result, value, .. }
+    | TernaryOperation::BitcastU16ToU16 { result, value, .. }
+    | TernaryOperation::BitcastI32ToI32 { result, value, .. }
+    | TernaryOperation::BitcastI32ToU32 { result, value, .. }
+    | TernaryOperation::BitcastU32ToI32 { result, value, .. }
+    | TernaryOperation::BitcastU32ToU32 { result, value, .. }
+    | TernaryOperation::I8ToBool { result, value, .. }
+    | TernaryOperation::U8ToBool { result, value, .. }
+    | TernaryOperation::I16ToBool { result, value, .. }
+    | TernaryOperation::U16ToBool { result, value, .. }
+    | TernaryOperation::I32ToBool { result, value, .. }
+    | TernaryOperation::U32ToBool { result, value, .. }
+    | TernaryOperation::SignExtendI8ToI16 { result, value, .. }
+    | TernaryOperation::SignExtendI8ToI32 { result, value, .. }
+    | TernaryOperation::SignExtendI16ToI32 { result, value, .. }
+    | TernaryOperation::TruncateI16ToI8 { result, value, .. }
+    | TernaryOperation::TruncateI16ToU8 { result, value, .. }
+    | TernaryOperation::TruncateI32ToI8 { result, value, .. }
+    | TernaryOperation::TruncateI32ToU8 { result, value, .. }
+    | TernaryOperation::TruncateU16ToI8 { result, value, .. }
+    | TernaryOperation::TruncateU16ToU8 { result, value, .. }
+    | TernaryOperation::TruncateU32ToI8 { result, value, .. }
+    | TernaryOperation::TruncateU32ToU8 { result, value, .. }
+    | TernaryOperation::TruncateI32ToI16 { result, value, .. }
+    | TernaryOperation::TruncateI32ToU16 { result, value, .. }
+    | TernaryOperation::TruncateU32ToI16 { result, value, .. }
+    | TernaryOperation::TruncateU32ToU16 { result, value, .. }
+    | TernaryOperation::ZeroExtendU8ToU16 { result, value, .. }
+    | TernaryOperation::ZeroExtendU8ToU32 { result, value, .. }
+    | TernaryOperation::ZeroExtendU16ToU32 { result, value, .. }) = operation
+    else {
         return None;
     };
     Some((*result, *value))
@@ -526,22 +716,24 @@ const fn matches_cast_bool_to_signed(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
 ) -> bool {
-    matches!((instruction, saved),
+    matches!(
+        (instruction, saved),
         (
             InputInstruction::BoolToSigned {
-                type_kind: InputScalarType::I8, ..
+                type_kind: InputScalarType::I8,
+                ..
             },
             TernaryOperation::BoolToI8 { .. },
-        )
-        |         (
+        ) | (
             InputInstruction::BoolToSigned {
-                type_kind: InputScalarType::I16, ..
+                type_kind: InputScalarType::I16,
+                ..
             },
             TernaryOperation::BoolToI16 { .. },
-        )
-        |         (
+        ) | (
             InputInstruction::BoolToSigned {
-                type_kind: InputScalarType::I32, ..
+                type_kind: InputScalarType::I32,
+                ..
             },
             TernaryOperation::BoolToI32 { .. },
         )
@@ -552,48 +744,50 @@ const fn matches_cast_integer_bitcast(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
 ) -> bool {
-    matches!((instruction, saved),
+    matches!(
+        (instruction, saved),
         (
             InputInstruction::IntegerBitcast {
-                type_kind: InputScalarType::I8, ..
+                type_kind: InputScalarType::I8,
+                ..
             },
             TernaryOperation::BitcastI8ToI8 { .. }
-            | TernaryOperation::BitcastU8ToI8 { .. },
-        )
-        |         (
+                | TernaryOperation::BitcastU8ToI8 { .. },
+        ) | (
             InputInstruction::IntegerBitcast {
-                type_kind: InputScalarType::U8, ..
+                type_kind: InputScalarType::U8,
+                ..
             },
             TernaryOperation::BitcastI8ToU8 { .. }
-            | TernaryOperation::BitcastU8ToU8 { .. },
-        )
-        |         (
+                | TernaryOperation::BitcastU8ToU8 { .. },
+        ) | (
             InputInstruction::IntegerBitcast {
-                type_kind: InputScalarType::I16, ..
+                type_kind: InputScalarType::I16,
+                ..
             },
             TernaryOperation::BitcastI16ToI16 { .. }
-            | TernaryOperation::BitcastU16ToI16 { .. },
-        )
-        |         (
+                | TernaryOperation::BitcastU16ToI16 { .. },
+        ) | (
             InputInstruction::IntegerBitcast {
-                type_kind: InputScalarType::U16, ..
+                type_kind: InputScalarType::U16,
+                ..
             },
             TernaryOperation::BitcastI16ToU16 { .. }
-            | TernaryOperation::BitcastU16ToU16 { .. },
-        )
-        |         (
+                | TernaryOperation::BitcastU16ToU16 { .. },
+        ) | (
             InputInstruction::IntegerBitcast {
-                type_kind: InputScalarType::I32, ..
+                type_kind: InputScalarType::I32,
+                ..
             },
             TernaryOperation::BitcastI32ToI32 { .. }
-            | TernaryOperation::BitcastU32ToI32 { .. },
-        )
-        |         (
+                | TernaryOperation::BitcastU32ToI32 { .. },
+        ) | (
             InputInstruction::IntegerBitcast {
-                type_kind: InputScalarType::U32, ..
+                type_kind: InputScalarType::U32,
+                ..
             },
             TernaryOperation::BitcastI32ToU32 { .. }
-            | TernaryOperation::BitcastU32ToU32 { .. },
+                | TernaryOperation::BitcastU32ToU32 { .. },
         )
     )
 }
@@ -602,17 +796,19 @@ const fn matches_cast_integer_to_bool(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
 ) -> bool {
-    matches!((instruction, saved),
+    matches!(
+        (instruction, saved),
         (
             InputInstruction::IntegerToBool {
-                type_kind: InputScalarType::Bool, ..
+                type_kind: InputScalarType::Bool,
+                ..
             },
             TernaryOperation::I8ToBool { .. }
-            | TernaryOperation::U8ToBool { .. }
-            | TernaryOperation::I16ToBool { .. }
-            | TernaryOperation::U16ToBool { .. }
-            | TernaryOperation::I32ToBool { .. }
-            | TernaryOperation::U32ToBool { .. },
+                | TernaryOperation::U8ToBool { .. }
+                | TernaryOperation::I16ToBool { .. }
+                | TernaryOperation::U16ToBool { .. }
+                | TernaryOperation::I32ToBool { .. }
+                | TernaryOperation::U32ToBool { .. },
         )
     )
 }
@@ -621,19 +817,21 @@ const fn matches_cast_sign_extend_i8_to_i32(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
 ) -> bool {
-    matches!((instruction, saved),
+    matches!(
+        (instruction, saved),
         (
             InputInstruction::SignExtendI8ToI32 {
-                type_kind: InputScalarType::I16, ..
+                type_kind: InputScalarType::I16,
+                ..
             },
             TernaryOperation::SignExtendI8ToI16 { .. },
-        )
-        |         (
+        ) | (
             InputInstruction::SignExtendI8ToI32 {
-                type_kind: InputScalarType::I32, ..
+                type_kind: InputScalarType::I32,
+                ..
             },
             TernaryOperation::SignExtendI8ToI32 { .. }
-            | TernaryOperation::SignExtendI16ToI32 { .. },
+                | TernaryOperation::SignExtendI16ToI32 { .. },
         )
     )
 }
@@ -642,38 +840,40 @@ const fn matches_cast_truncate_integer(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
 ) -> bool {
-    matches!((instruction, saved),
+    matches!(
+        (instruction, saved),
         (
             InputInstruction::TruncateInteger {
-                type_kind: InputScalarType::I8, ..
+                type_kind: InputScalarType::I8,
+                ..
             },
             TernaryOperation::TruncateI16ToI8 { .. }
-            | TernaryOperation::TruncateI32ToI8 { .. }
-            | TernaryOperation::TruncateU16ToI8 { .. }
-            | TernaryOperation::TruncateU32ToI8 { .. },
-        )
-        |         (
+                | TernaryOperation::TruncateI32ToI8 { .. }
+                | TernaryOperation::TruncateU16ToI8 { .. }
+                | TernaryOperation::TruncateU32ToI8 { .. },
+        ) | (
             InputInstruction::TruncateInteger {
-                type_kind: InputScalarType::U8, ..
+                type_kind: InputScalarType::U8,
+                ..
             },
             TernaryOperation::TruncateI16ToU8 { .. }
-            | TernaryOperation::TruncateI32ToU8 { .. }
-            | TernaryOperation::TruncateU16ToU8 { .. }
-            | TernaryOperation::TruncateU32ToU8 { .. },
-        )
-        |         (
+                | TernaryOperation::TruncateI32ToU8 { .. }
+                | TernaryOperation::TruncateU16ToU8 { .. }
+                | TernaryOperation::TruncateU32ToU8 { .. },
+        ) | (
             InputInstruction::TruncateInteger {
-                type_kind: InputScalarType::I16, ..
+                type_kind: InputScalarType::I16,
+                ..
             },
             TernaryOperation::TruncateI32ToI16 { .. }
-            | TernaryOperation::TruncateU32ToI16 { .. },
-        )
-        |         (
+                | TernaryOperation::TruncateU32ToI16 { .. },
+        ) | (
             InputInstruction::TruncateInteger {
-                type_kind: InputScalarType::U16, ..
+                type_kind: InputScalarType::U16,
+                ..
             },
             TernaryOperation::TruncateI32ToU16 { .. }
-            | TernaryOperation::TruncateU32ToU16 { .. },
+                | TernaryOperation::TruncateU32ToU16 { .. },
         )
     )
 }
@@ -682,19 +882,21 @@ const fn matches_cast_zero_extend_integer(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
 ) -> bool {
-    matches!((instruction, saved),
+    matches!(
+        (instruction, saved),
         (
             InputInstruction::ZeroExtendInteger {
-                type_kind: InputScalarType::U16, ..
+                type_kind: InputScalarType::U16,
+                ..
             },
             TernaryOperation::ZeroExtendU8ToU16 { .. },
-        )
-        |         (
+        ) | (
             InputInstruction::ZeroExtendInteger {
-                type_kind: InputScalarType::U32, ..
+                type_kind: InputScalarType::U32,
+                ..
             },
             TernaryOperation::ZeroExtendU8ToU32 { .. }
-            | TernaryOperation::ZeroExtendU16ToU32 { .. },
+                | TernaryOperation::ZeroExtendU16ToU32 { .. },
         )
     )
 }
@@ -711,27 +913,26 @@ fn matches_expected_cast(
         || matches_cast_integer_to_bool(instruction, saved)
         || matches_cast_sign_extend_i8_to_i32(instruction, saved)
         || matches_cast_truncate_integer(instruction, saved)
-        || matches_cast_zero_extend_integer(instruction, saved)
-    ) && saved_cast_values(saved) == Some(expected)
+        || matches_cast_zero_extend_integer(instruction, saved))
+        && saved_cast_values(saved) == Some(expected)
 }
 
 fn matches_expected_operation_spans(
     current: &InputFunction,
     saved: &TernaryFunction,
 ) -> bool {
-    let [block] = current.blocks.as_slice() else {
-        return false;
-    };
-    let Some((saved_return, saved_instructions)) = saved.operations.split_last()
+    let Some((instructions, return_span, _)) =
+        selected_function_instructions(current)
     else {
         return false;
     };
-    let InputTerminator::Return { span: return_span, .. } = block.terminator
+    let Some((saved_return, saved_instructions)) =
+        saved.operations.split_last()
     else {
         return false;
     };
-    saved_instructions.len() == block.instructions.len()
-        && saved_instructions.iter().zip(&block.instructions).all(
+    saved_instructions.len() == instructions.len()
+        && saved_instructions.iter().zip(instructions).all(
             |(saved_op, current_op)| {
                 matches_expected_constant(current_op, saved_op)
                     && matches_expected_binary(current_op, saved_op)
@@ -739,7 +940,9 @@ fn matches_expected_operation_spans(
                     && matches_expected_comparison(current_op, saved_op)
                     && matches_expected_cast(current_op, saved_op)
                     && projected_instruction_span(current_op).is_some_and(
-                        |span| matches_source_span(span, operation_span(*saved_op)),
+                        |span| {
+                            matches_source_span(span, operation_span(*saved_op))
+                        },
                     )
             },
         )
@@ -756,8 +959,10 @@ fn matches_expected_functions(
     program.functions.len() == expected.functions.len()
         && program.functions.iter().zip(&expected.functions).all(
             |(saved, current)| {
-                matches_supported_function_shape(current, saved.operations.len())
-                    && validate_projection_spans(current).is_ok()
+                matches_supported_function_shape(
+                    current,
+                    saved.operations.len(),
+                ) && validate_projection_spans(current).is_ok()
                     && saved.id == current.id
                     && saved.name == current.name
                     && saved.span.begin.byte == current.span.begin.byte
@@ -766,18 +971,15 @@ fn matches_expected_functions(
                     && saved.span.end.byte == current.span.end.byte
                     && saved.span.end.column == current.span.end.column
                     && saved.span.end.line == current.span.end.line
-                    && current.blocks.first().is_some_and(|block| {
-                        match block.terminator {
-                            InputTerminator::Return { value, .. } => {
-                                matches_expected_return(
-                                    current.return_kind,
-                                    value,
-                                    saved.operations.last(),
-                                )
-                            },
-                            InputTerminator::Unsupported => false,
-                        }
-                    })
+                    && selected_function_instructions(current).is_some_and(
+                        |(_, _, value)| {
+                            matches_expected_return(
+                                current.return_kind,
+                                value,
+                                saved.operations.last(),
+                            )
+                        },
+                    )
                     && matches_expected_operation_spans(current, saved)
             },
         )
@@ -844,7 +1046,10 @@ pub fn enter_ternary_compiler_stage(
             interpreter,
             progress,
         } => resume_ternary_from_progress_for_source(
-            interpreter, inspector, progress, expected,
+            interpreter,
+            inspector,
+            progress,
+            expected,
         )
         .map_err(TernaryCompilerStageError::Progress),
     }

@@ -55,22 +55,21 @@ use ternary_lowering::{
     ByteStreamWrapperPlanningError, ByteStreamWrapperRealizationError,
     ByteStreamWrapperRequest, ByteStreamWrapperReturn, FrameCodecExecutionStep,
     FrameField, FrameFieldLayout, FrameHelperExecutionPlan,
-    FrameHelperLoweringError, FrameHelperOperation, FrameHelperRealizationError,
-    FrameHelperRequest,
-    FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
-    HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
-    HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperLoweringError,
-    HeapHelperOperation, HeapHelperRealizationError, HeapHelperRequest,
-    HeapInitSemantics, HeapInitStep,
-    HeapReleaseSemantics, HeapReleaseStep, I32_TERNARY_TRITS, InputBlock,
-    InputDecodeArm, InputDecodeCondition, InputDecodeResult, InputFunction,
-    InputInstruction, InputOrderedComparison, InputScalarType,
+    FrameHelperLoweringError, FrameHelperOperation,
+    FrameHelperRealizationError, FrameHelperRequest, FrameValidationArm,
+    FrameValidationCondition, FrameValidationSemantics, HeapAllocateSemantics,
+    HeapAllocateStep, HeapAllocateZeroedSemantics, HeapAllocateZeroedStep,
+    HeapHelperExecutionPlan, HeapHelperLoweringError, HeapHelperOperation,
+    HeapHelperRealizationError, HeapHelperRequest, HeapInitSemantics,
+    HeapInitStep, HeapReleaseSemantics, HeapReleaseStep, I32_TERNARY_TRITS,
+    InputBlock, InputDecodeArm, InputDecodeCondition, InputDecodeResult,
+    InputFunction, InputInstruction, InputOrderedComparison, InputScalarType,
     InputSourcePosition, InputSourceSpan, InputTerminator,
     InputWordDecodeControlFlow, InputWordDecodeSemantics,
     MachineIoEncodingError, MachineIoKind, MachineIoOperation,
     ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
-    RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRealizationError,
-    RuntimeHelperRequest,
+    RuntimeHelperLoweringError, RuntimeHelperOperation,
+    RuntimeHelperRealizationError, RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
     StartupPlanningError, StartupRequest, TERNARY_PROGRAM_CODEC_ID,
@@ -82,10 +81,9 @@ use ternary_lowering::{
     enter_ternary_compiler_stage, enter_ternary_stage, lower_frame_helper,
     lower_heap_helper, lower_runtime_helper, lower_runtime_intrinsic,
     lower_typed_ir, plan_byte_stream_wrapper, plan_startup,
-    plan_startup_for_program,
-    realize_byte_stream_control_flow, realize_byte_stream_wrapper,
-    realize_frame_helper, realize_heap_helper, realize_runtime_helper,
-    realize_runtime_io, resume_ternary_from_progress,
+    plan_startup_for_program, realize_byte_stream_control_flow,
+    realize_byte_stream_wrapper, realize_frame_helper, realize_heap_helper,
+    realize_runtime_helper, realize_runtime_io, resume_ternary_from_progress,
     resume_ternary_from_progress_for_source,
 };
 use typed_ir::{
@@ -95,7 +93,6 @@ use typed_ir::{
     Terminator, TypeDef, TypeEntry, TypeId, ValueId, canonical_bytes,
     canonical_module, validate_module,
 };
-
 
 const RETURN_GOLDEN: &str =
     "tests/compiler/typed-ir/golden/ir-return-constant.hex";
@@ -475,9 +472,9 @@ impl ProfileInstructionDecoder for MissingInstructionDecoder {
 fn repository_python() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.7/venv/Scripts/python.exe")
+        root.join(".dependencies/python/3.14.7/Scripts/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.7/venv/bin/python")
+        root.join(".dependencies/python/3.14.7/bin/python")
     }
 }
 
@@ -3067,7 +3064,9 @@ fn forge_input_subspan_coordinates(
     projection: &mut TypedIrInput,
     mutation: u8,
 ) -> Result<(), String> {
-    let block = projection.functions.first_mut()
+    let block = projection
+        .functions
+        .first_mut()
         .and_then(|function| function.blocks.first_mut())
         .ok_or_else(|| String::from("source block missing"))?;
     let span: &mut InputSourceSpan = match mutation {
@@ -3112,7 +3111,9 @@ fn forge_target_subspan_coordinates(
     program: &mut ternary_lowering::TernaryProgram,
     mutation: u8,
 ) -> Result<(), String> {
-    let function = program.functions.first_mut()
+    let function = program
+        .functions
+        .first_mut()
         .ok_or_else(|| String::from("ternary function missing"))?;
     let span: &mut ternary_lowering::TernarySourceSpan = match mutation {
         0 | 1 => {
@@ -3263,8 +3264,9 @@ fn ternary_source_subspans_reject_forged_line_column_coordinates()
     let original = project_typed_ir(&byte_io_module())?;
     let admitted = lower_typed_ir(&original)
         .map_err(|error| format!("lower original source spans: {error:?}"))?;
-    ternary_lowering::validate_ternary_program(&admitted)
-        .map_err(|error| format!("validate original source spans: {error:?}"))?;
+    ternary_lowering::validate_ternary_program(&admitted).map_err(|error| {
+        format!("validate original source spans: {error:?}")
+    })?;
 
     // Byte offsets and local span order remain valid, but source coordinates
     // either escape the function or contradict an identical boundary byte.
@@ -3284,7 +3286,7 @@ fn ternary_source_subspans_reject_forged_line_column_coordinates()
             != Err(TernaryProgramValidationError::SourceProvenance)
         {
             return Err(format!(
-                "canonical ternary validator admitted forged coordinates {mutation}"
+                "validator admitted forged coordinates {mutation}"
             ));
         }
     }
@@ -3299,7 +3301,9 @@ fn ternary_shared_source_offsets_reject_conflicting_coordinates()
         .map_err(|error| format!("lower shared-source fixture: {error:?}"))?;
     for endpoint in 0u8..2 {
         let mut projection = original.clone();
-        let block = projection.functions.first_mut()
+        let block = projection
+            .functions
+            .first_mut()
             .and_then(|function| function.blocks.first_mut())
             .ok_or_else(|| String::from("source block missing"))?;
         let Some(InputInstruction::ByteOutput { span, .. }) =
@@ -3315,11 +3319,15 @@ fn ternary_shared_source_offsets_reject_conflicting_coordinates()
         if lower_typed_ir(&projection)
             != Err(TernaryLoweringError::InvalidProjection)
         {
-            return Err(format!("shared input source offset {endpoint} was ambiguous"));
+            return Err(format!(
+                "shared input source offset {endpoint} was ambiguous"
+            ));
         }
 
         let mut program = admitted.clone();
-        let function = program.functions.first_mut()
+        let function = program
+            .functions
+            .first_mut()
             .ok_or_else(|| String::from("ternary function missing"))?;
         let Some(TernaryOperation::ByteOutput { span: target_span, .. }) =
             function.operations.get_mut(1)
@@ -3327,14 +3335,17 @@ fn ternary_shared_source_offsets_reject_conflicting_coordinates()
             return Err(String::from("ternary output missing"));
         };
         if endpoint == 0 {
-            target_span.begin.column = target_span.begin.column.saturating_add(1);
+            target_span.begin.column =
+                target_span.begin.column.saturating_add(1);
         } else {
             target_span.end.column = target_span.end.column.saturating_add(1);
         }
         if ternary_lowering::validate_ternary_program(&program)
             != Err(TernaryProgramValidationError::SourceProvenance)
         {
-            return Err(format!("shared ternary source offset {endpoint} was ambiguous"));
+            return Err(format!(
+                "shared ternary source offset {endpoint} was ambiguous"
+            ));
         }
     }
     Ok(())
@@ -3348,20 +3359,26 @@ fn ternary_source_bound_inspector_rejects_shared_offset_forgery()
         .map_err(|error| format!("lower matched source: {error:?}"))?;
     let bytes = canonical_ternary_bytes(&saved)
         .map_err(|error| format!("encode matched source: {error:?}"))?;
-    let (progress, directory) = publish_ternary_progress_fixture(
-        "conflicting-shared-offset", &bytes,
-    )?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("conflicting-shared-offset", &bytes)?;
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
         assert_source_matched_ternary_success(
-            &original, &saved, &inspector, (&interpreter, &progress),
+            &original,
+            &saved,
+            &inspector,
+            (&interpreter, &progress),
         )?;
         for endpoint in 0u8..2 {
             let mut foreign = original.clone();
-            let block = foreign.functions.first_mut()
+            let block = foreign
+                .functions
+                .first_mut()
                 .and_then(|function| function.blocks.first_mut())
-                .ok_or_else(|| String::from("expected byte-I/O block missing"))?;
+                .ok_or_else(|| {
+                    String::from("expected byte-I/O block missing")
+                })?;
             let Some(InputInstruction::ByteOutput { span, .. }) =
                 block.instructions.get_mut(1)
             else {
@@ -3373,7 +3390,9 @@ fn ternary_source_bound_inspector_rejects_shared_offset_forgery()
                 span.end.column = span.end.column.saturating_add(1);
             }
             assert_source_matched_ternary_failure(
-                &foreign, &inspector, (&interpreter, &progress),
+                &foreign,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )?;
         }
@@ -9183,13 +9202,28 @@ const fn input_span(span: SourceSpan) -> InputSourceSpan {
 }
 
 fn input_terminator(block: &BasicBlock) -> InputTerminator {
-    if let Terminator::Return { value } = block.terminator() {
-        return InputTerminator::Return {
-            span: input_span(block.terminator_span()),
+    let span = input_span(block.terminator_span());
+    match block.terminator() {
+        Terminator::Return { value } => InputTerminator::Return {
+            span,
             value: (*value).map(ValueId::value),
-        };
+        },
+        Terminator::Jump { target } => InputTerminator::Jump {
+            span,
+            target: target.value(),
+        },
+        Terminator::Branch {
+            condition,
+            false_target,
+            true_target,
+        } => InputTerminator::Branch {
+            condition: condition.value(),
+            false_target: false_target.value(),
+            span,
+            true_target: true_target.value(),
+        },
+        Terminator::Switch { .. } => InputTerminator::Unsupported,
     }
-    InputTerminator::Unsupported
 }
 
 fn project_typed_ir(module: &Module) -> Result<TypedIrInput, String> {
@@ -9311,7 +9345,7 @@ fn sparse_projection_value_ids_fail_before_emitting_target_ir()
             != Err(TernaryLoweringError::InvalidProjection)
         {
             return Err(format!(
-                "sparse projection SSA admitted (first ID forged: {forged_first})"
+                "sparse SSA admitted forged first ID: {forged_first}"
             ));
         }
     }
@@ -12004,7 +12038,10 @@ fn ternary_progress_inspector_admits_freshly_republished_source_provenance()
 fn ternary_fresh_stage_independently_admits_multiple_typed_semantics()
 -> Result<(), String> {
     let projections = [
-        ("signed-return", project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?),
+        (
+            "signed-return",
+            project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?,
+        ),
         ("byte-io", projected_byte_io_fixture()?),
         ("low-byte", projected_low_byte_fixture()?),
     ];
@@ -12029,7 +12066,9 @@ fn ternary_fresh_stage_independently_admits_multiple_typed_semantics()
         }
     }
     let mut invalid = projected_byte_io_fixture()?;
-    invalid.functions.first_mut()
+    invalid
+        .functions
+        .first_mut()
         .ok_or_else(|| String::from("invalid fixture has no functions"))?
         .id = u32::MAX;
     if enter_ternary_stage(TernaryStageInput::Projection(&invalid))
@@ -12108,12 +12147,15 @@ fn assert_foreign_progress_source_rejected(
             _ => return Err(String::from("unknown identity field")),
         }
         let strict = resume_ternary_from_progress_for_source(
-            interpreter, inspector, progress, &foreign,
+            interpreter,
+            inspector,
+            progress,
+            &foreign,
         );
         if strict != Err(TernaryProgressCheckpointError::IdentityMismatch) {
-            return Err(format!(
-                "foreign source {field} accepted: {strict:?}",
-            ));
+            return Err(
+                format!("foreign source {field} accepted: {strict:?}",),
+            );
         }
         let product = enter_ternary_compiler_stage(
             TernaryCompilerStageInput::ProgressForSource {
@@ -12123,9 +12165,11 @@ fn assert_foreign_progress_source_rejected(
                 progress,
             },
         );
-        if product != Err(TernaryCompilerStageError::Progress(
-            TernaryProgressCheckpointError::IdentityMismatch,
-        )) {
+        if product
+            != Err(TernaryCompilerStageError::Progress(
+                TernaryProgressCheckpointError::IdentityMismatch,
+            ))
+        {
             return Err(format!(
                 "product accepted foreign field {field}: {product:?}",
             ));
@@ -12140,66 +12184,74 @@ fn assert_foreign_progress_function_rejected(
     inspector: &Path,
     progress: &Path,
 ) -> Result<(), String> {
-        for field in 0u8..4u8 {
-            let mut changed = expected.clone();
-            match field {
-                0 | 1 => {
-                    let function = changed.functions.first_mut().ok_or_else(
-                        || String::from("source has no function"),
-                    )?;
-                    if field == 0 {
-                        function.name.push_str("-renamed");
-                    } else {
-                        function.span.end.column = function.span.end.column
-                            .checked_add(1)
-                            .ok_or_else(|| String::from("span overflow"))?;
-                    }
-                },
-                2 => changed.functions.clear(),
-                3 => {
-                    changed.functions.first_mut()
-                        .ok_or_else(|| String::from("source has no function"))?
-                        .return_kind = InputScalarType::U32;
-                },
-                _ => return Err(String::from("unknown function mutation")),
-            }
-            let observed = resume_ternary_from_progress_for_source(
-                interpreter, inspector, progress, &changed,
-            );
-            if observed
-                != Err(TernaryProgressCheckpointError::IdentityMismatch)
-            {
-                return Err(format!(
-                    "function drift {field} admitted: {observed:?}"
-                ));
-            }
-            let selected_foreign = enter_ternary_compiler_stage(
-                TernaryCompilerStageInput::ProgressForSource {
-                    expected: &changed,
-                    inspector,
-                    interpreter,
-                    progress,
-                },
-            );
-            if selected_foreign != Err(TernaryCompilerStageError::Progress(
-                TernaryProgressCheckpointError::IdentityMismatch,
-            )) {
-                return Err(format!(
-                    "product function drift {field}: {selected_foreign:?}"
-                ));
-            }
+    for field in 0u8..4u8 {
+        let mut changed = expected.clone();
+        match field {
+            0 | 1 => {
+                let function = changed
+                    .functions
+                    .first_mut()
+                    .ok_or_else(|| String::from("source has no function"))?;
+                if field == 0 {
+                    function.name.push_str("-renamed");
+                } else {
+                    function.span.end.column = function
+                        .span
+                        .end
+                        .column
+                        .checked_add(1)
+                        .ok_or_else(|| String::from("span overflow"))?;
+                }
+            },
+            2 => changed.functions.clear(),
+            3 => {
+                changed
+                    .functions
+                    .first_mut()
+                    .ok_or_else(|| String::from("source has no function"))?
+                    .return_kind = InputScalarType::U32;
+            },
+            _ => return Err(String::from("unknown function mutation")),
         }
+        let observed = resume_ternary_from_progress_for_source(
+            interpreter,
+            inspector,
+            progress,
+            &changed,
+        );
+        if observed != Err(TernaryProgressCheckpointError::IdentityMismatch) {
+            return Err(format!(
+                "function drift {field} admitted: {observed:?}"
+            ));
+        }
+        let selected_foreign = enter_ternary_compiler_stage(
+            TernaryCompilerStageInput::ProgressForSource {
+                expected: &changed,
+                inspector,
+                interpreter,
+                progress,
+            },
+        );
+        if selected_foreign
+            != Err(TernaryCompilerStageError::Progress(
+                TernaryProgressCheckpointError::IdentityMismatch,
+            ))
+        {
+            return Err(format!(
+                "product function drift {field}: {selected_foreign:?}"
+            ));
+        }
+    }
     Ok(())
 }
 
 #[test]
-fn progress_resume_for_source_binds_caller_identity()
--> Result<(), String> {
+fn progress_resume_for_source_binds_caller_identity() -> Result<(), String> {
     let module = admitted_golden(RETURN_GOLDEN)?;
     let expected = project_typed_ir(&module)?;
-    let fresh = enter_ternary_compiler_stage(
-        TernaryCompilerStageInput::Fresh(&expected),
-    )
+    let fresh = enter_ternary_compiler_stage(TernaryCompilerStageInput::Fresh(
+        &expected,
+    ))
     .map_err(|error| format!("select current source: {error:?}"))?;
     let bytes = canonical_ternary_bytes(&fresh)
         .map_err(|error| format!("encode source-bound state: {error:?}"))?;
@@ -12209,7 +12261,10 @@ fn progress_resume_for_source_binds_caller_identity()
         let interpreter = repository_python();
         let inspector = progress_inspector();
         let restored = resume_ternary_from_progress_for_source(
-            &interpreter, &inspector, &progress, &expected,
+            &interpreter,
+            &inspector,
+            &progress,
+            &expected,
         );
         if restored != Ok(fresh.clone()) {
             return Err(format!("matched source resume failed: {restored:?}"));
@@ -12226,10 +12281,16 @@ fn progress_resume_for_source_binds_caller_identity()
             return Err(format!("matched product resume failed: {selected:?}"));
         }
         assert_foreign_progress_source_rejected(
-            &expected, &interpreter, &inspector, &progress,
+            &expected,
+            &interpreter,
+            &inspector,
+            &progress,
         )?;
         assert_foreign_progress_function_rejected(
-            &expected, &interpreter, &inspector, &progress,
+            &expected,
+            &interpreter,
+            &inspector,
+            &progress,
         )?;
         Ok(())
     })();
@@ -12247,7 +12308,10 @@ fn assert_source_matched_ternary_failure(
 ) -> Result<(), String> {
     let (interpreter, progress) = paths;
     let direct = resume_ternary_from_progress_for_source(
-        interpreter, inspector, progress, expected,
+        interpreter,
+        inspector,
+        progress,
+        expected,
     );
     if direct != Err(wanted) {
         return Err(format!("source-bound direct error: {direct:?}"));
@@ -12271,17 +12335,21 @@ fn ternary_progress_for_source_preserves_inspector_and_codec_failures()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
     let interpreter = repository_python();
-    let progress =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join(RETURN_GOLDEN);
+    let progress = Path::new(env!("CARGO_MANIFEST_DIR")).join(RETURN_GOLDEN);
     let missing = temp_dir().join(format!(
-        "malbolge-missing-ternary-source-inspector-{}", id(),
+        "malbolge-missing-ternary-source-inspector-{}",
+        id(),
     ));
     assert_source_matched_ternary_failure(
-        &expected, &missing, (&missing, &progress),
+        &expected,
+        &missing,
+        (&missing, &progress),
         TernaryProgressCheckpointError::InspectorLaunch,
     )?;
     assert_source_matched_ternary_failure(
-        &expected, &missing, (&interpreter, &progress),
+        &expected,
+        &missing,
+        (&interpreter, &progress),
         TernaryProgressCheckpointError::InspectorRejected,
     )?;
     for (label, script, wanted) in [
@@ -12300,10 +12368,12 @@ fn ternary_progress_for_source_preserves_inspector_and_codec_failures()
             ),
         ),
     ] {
-        let inspector =
-            temporary_ternary_file(label, "py", script.as_bytes())?;
+        let inspector = temporary_ternary_file(label, "py", script.as_bytes())?;
         let outcome = assert_source_matched_ternary_failure(
-            &expected, &inspector, (&interpreter, &progress), wanted,
+            &expected,
+            &inspector,
+            (&interpreter, &progress),
+            wanted,
         );
         let cleanup = remove_file(&inspector)
             .map_err(|error| format!("remove {label} inspector: {error}"));
@@ -12319,9 +12389,8 @@ fn check_source_matched_ternary_crash_boundary(
     matching: &ternary_lowering::TernaryProgram,
     foreign: &ternary_lowering::TernaryProgram,
 ) -> Result<(), String> {
-    let directory = ternary_crash_directory(
-        &format!("source-bound-{boundary}"),
-    )?;
+    let directory =
+        ternary_crash_directory(&format!("source-bound-{boundary}"))?;
     let paths = write_ternary_crash_states(directory, matching, foreign)?;
     let result = (|| {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -12329,10 +12398,14 @@ fn check_source_matched_ternary_crash_boundary(
         let interpreter = repository_python();
         let inspector = progress_inspector();
         let direct = resume_ternary_from_progress_for_source(
-            &interpreter, &inspector, &progress, expected,
+            &interpreter,
+            &inspector,
+            &progress,
+            expected,
         );
         let wanted = if matches!(
-            boundary, "after-sidecar-replace" | "after-sidecar-sync"
+            boundary,
+            "after-sidecar-replace" | "after-sidecar-sync"
         ) {
             Err(TernaryProgressCheckpointError::IdentityMismatch)
         } else {
@@ -12368,8 +12441,10 @@ fn check_source_matched_ternary_crash_boundary(
 fn ternary_progress_for_source_survives_all_crash_boundaries()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
-    let matching = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower matching ternary source: {error:?}"))?;
+    let matching = enter_ternary_stage(TernaryStageInput::Projection(
+        &expected,
+    ))
+    .map_err(|error| format!("lower matching ternary source: {error:?}"))?;
     let foreign_source = projected_byte_io_fixture()?;
     let foreign =
         enter_ternary_stage(TernaryStageInput::Projection(&foreign_source))
@@ -12391,12 +12466,16 @@ fn ternary_progress_for_source_survives_all_crash_boundaries()
 fn progress_resume_rejects_forged_function_provenance_with_same_digest()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
-    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower original source: {error:?}"))?;
+    let original =
+        enter_ternary_stage(TernaryStageInput::Projection(&expected))
+            .map_err(|error| format!("lower original source: {error:?}"))?;
     let mut forged = original.clone();
-    forged.functions.first_mut()
+    forged
+        .functions
+        .first_mut()
         .ok_or_else(|| String::from("forged program has no function"))?
-        .name.push_str("-foreign");
+        .name
+        .push_str("-foreign");
     ternary_lowering::validate_ternary_program(&forged)
         .map_err(|error| format!("admit forged function: {error:?}"))?;
     let bytes = canonical_ternary_bytes(&forged)
@@ -12406,9 +12485,8 @@ fn progress_resume_rejects_forged_function_provenance_with_same_digest()
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
-        let unrestricted = resume_ternary_from_progress(
-            &interpreter, &inspector, &progress,
-        );
+        let unrestricted =
+            resume_ternary_from_progress(&interpreter, &inspector, &progress);
         if unrestricted != Ok(forged.clone()) {
             return Err(format!(
                 "valid foreign function rejected: {unrestricted:?}"
@@ -12418,7 +12496,10 @@ fn progress_resume_rejects_forged_function_provenance_with_same_digest()
             return Err(String::from("forgery changed the source digest"));
         }
         let checked = resume_ternary_from_progress_for_source(
-            &interpreter, &inspector, &progress, &expected,
+            &interpreter,
+            &inspector,
+            &progress,
+            &expected,
         );
         if checked != Err(TernaryProgressCheckpointError::IdentityMismatch) {
             return Err(format!("foreign function admitted: {checked:?}"));
@@ -12439,7 +12520,10 @@ fn assert_source_matched_ternary_success(
 ) -> Result<(), String> {
     let (interpreter, progress) = paths;
     let checked = resume_ternary_from_progress_for_source(
-        interpreter, inspector, progress, expected,
+        interpreter,
+        inspector,
+        progress,
+        expected,
     );
     let selected = enter_ternary_compiler_stage(
         TernaryCompilerStageInput::ProgressForSource {
@@ -12472,9 +12556,12 @@ fn ternary_progress_for_source_checks_every_saved_function()
     ] {
         let mut program = original.clone();
         if let Some(position) = index {
-            program.functions.get_mut(position)
+            program
+                .functions
+                .get_mut(position)
                 .ok_or_else(|| String::from("missing function"))?
-                .name.push_str("-foreign");
+                .name
+                .push_str("-foreign");
         }
         if program.source_sha256 != original.source_sha256 {
             return Err(String::from("function forgery altered module digest"));
@@ -12489,19 +12576,23 @@ fn ternary_progress_for_source_checks_every_saved_function()
         let result = (|| {
             let interpreter = repository_python();
             let inspector = progress_inspector();
-            if resume_ternary_from_progress(
-                &interpreter, &inspector, &progress,
-            ) != Ok(program.clone()) {
+            if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+                != Ok(program.clone())
+            {
                 return Err(format!("{label} unrestricted state was rejected"));
             }
             if index.is_some() {
                 assert_source_matched_ternary_failure(
-                    &expected, &inspector, (&interpreter, &progress),
+                    &expected,
+                    &inspector,
+                    (&interpreter, &progress),
                     TernaryProgressCheckpointError::IdentityMismatch,
                 )?;
             } else {
                 assert_source_matched_ternary_success(
-                    &expected, &original, &inspector,
+                    &expected,
+                    &original,
+                    &inspector,
                     (&interpreter, &progress),
                 )?;
             }
@@ -12528,13 +12619,16 @@ fn ternary_progress_for_source_rejects_unsupported_expected_module()
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
-        if resume_ternary_from_progress(
-            &interpreter, &inspector, &progress,
-        ) != Ok(saved.clone()) {
+        if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+            != Ok(saved.clone())
+        {
             return Err(String::from("valid baseline checkpoint rejected"));
         }
         assert_source_matched_ternary_success(
-            &expected, &saved, &inspector, (&interpreter, &progress),
+            &expected,
+            &saved,
+            &inspector,
+            (&interpreter, &progress),
         )?;
         for field in 0u8..2 {
             let mut changed = expected.clone();
@@ -12548,7 +12642,9 @@ fn ternary_progress_for_source_rejects_unsupported_expected_module()
                 return Err(format!("unsupported {field} lowered: {fresh:?}"));
             }
             assert_source_matched_ternary_failure(
-                &changed, &inspector, (&interpreter, &progress),
+                &changed,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )?;
         }
@@ -12564,8 +12660,9 @@ fn ternary_progress_for_source_rejects_unsupported_expected_module()
 fn ternary_progress_for_source_rejects_unsupported_expected_function_shape()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
-    let saved = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower supported source: {error:?}"))?;
+    let saved =
+        enter_ternary_stage(TernaryStageInput::Projection(&expected))
+            .map_err(|error| format!("lower supported source: {error:?}"))?;
     let bytes = canonical_ternary_bytes(&saved)
         .map_err(|error| format!("encode supported source: {error:?}"))?;
     let (progress, directory) =
@@ -12579,35 +12676,58 @@ fn ternary_progress_for_source_rejects_unsupported_expected_function_shape()
             return Err(String::from("supported checkpoint not admitted"));
         }
         assert_source_matched_ternary_success(
-            &expected, &saved, &inspector, (&interpreter, &progress),
+            &expected,
+            &saved,
+            &inspector,
+            (&interpreter, &progress),
         )?;
         for field in 0u8..6 {
             let mut changed = expected.clone();
-            let function = changed.functions.first_mut()
+            let function = changed
+                .functions
+                .first_mut()
                 .ok_or_else(|| String::from("expected function missing"))?;
             match field {
                 0 => function.parameter_count = 1,
                 1 => function.blocks.clear(),
                 2 => {
-                    let block = function.blocks.first()
+                    let block = function
+                        .blocks
+                        .first()
                         .ok_or_else(|| String::from("source block missing"))?
                         .clone();
                     function.blocks.push(block);
                 },
                 3 => function.entry = u32::MAX,
-                4 => function.blocks.first_mut()
-                    .ok_or_else(|| String::from("source block missing"))?
-                    .phi_count = 1,
-                5 => function.blocks.first_mut()
-                    .ok_or_else(|| String::from("source block missing"))?
-                    .terminator = InputTerminator::Unsupported,
-                _ => return Err(String::from("unknown function-shape mutation")),
+                4 => {
+                    function
+                        .blocks
+                        .first_mut()
+                        .ok_or_else(|| String::from("source block missing"))?
+                        .phi_count = 1
+                },
+                5 => {
+                    function
+                        .blocks
+                        .first_mut()
+                        .ok_or_else(|| String::from("source block missing"))?
+                        .terminator = InputTerminator::Unsupported
+                },
+                _ => {
+                    return Err(String::from(
+                        "unknown function-shape mutation",
+                    ));
+                },
             }
             if lower_typed_ir(&changed).is_ok() {
-                return Err(format!("unsupported function shape {field} lowered"));
+                return Err(format!(
+                    "unsupported function shape {field} lowered"
+                ));
             }
             assert_source_matched_ternary_failure(
-                &changed, &inspector, (&interpreter, &progress),
+                &changed,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )?;
         }
@@ -12623,14 +12743,17 @@ fn invalidate_expected_projection_span(
     expected: &mut TypedIrInput,
     field: u8,
 ) -> Result<(), String> {
-    let function = expected.functions.first_mut()
+    let function = expected
+        .functions
+        .first_mut()
         .ok_or_else(|| String::from("source function missing"))?;
     let after_function_line = function.span.end.line.saturating_add(1);
-    let block = function.blocks.first_mut()
+    let block = function
+        .blocks
+        .first_mut()
         .ok_or_else(|| String::from("source entry block missing"))?;
     if matches!(field, 0 | 1 | 4) {
-        let InputTerminator::Return { span, .. } = &mut block.terminator
-        else {
+        let InputTerminator::Return { span, .. } = &mut block.terminator else {
             return Err(String::from("expected return missing"));
         };
         match field {
@@ -12655,7 +12778,9 @@ fn invalidate_expected_projection_span(
                 span.begin.line = after_function_line;
                 span.end.line = after_function_line;
             },
-            _ => return Err(String::from("unknown expected constant mutation")),
+            _ => {
+                return Err(String::from("unknown expected constant mutation"));
+            },
         }
     }
     Ok(())
@@ -12666,7 +12791,9 @@ fn ternary_progress_for_source_rejects_invalid_expected_operation_spans()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
     let saved = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower source for span check: {error:?}"))?;
+        .map_err(|error| {
+        format!("lower source for span check: {error:?}")
+    })?;
     let bytes = canonical_ternary_bytes(&saved)
         .map_err(|error| format!("encode source for span check: {error:?}"))?;
     let (progress, directory) =
@@ -12680,7 +12807,10 @@ fn ternary_progress_for_source_rejects_invalid_expected_operation_spans()
             return Err(String::from("valid span checkpoint not admitted"));
         }
         assert_source_matched_ternary_success(
-            &expected, &saved, &inspector, (&interpreter, &progress),
+            &expected,
+            &saved,
+            &inspector,
+            (&interpreter, &progress),
         )?;
         for field in 0u8..6 {
             let mut changed = expected.clone();
@@ -12691,7 +12821,9 @@ fn ternary_progress_for_source_rejects_invalid_expected_operation_spans()
                 return Err(format!("invalid expected span {field} lowered"));
             }
             assert_source_matched_ternary_failure(
-                &changed, &inspector, (&interpreter, &progress),
+                &changed,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )?;
         }
@@ -12707,26 +12839,35 @@ fn ternary_progress_for_source_rejects_invalid_expected_operation_spans()
 fn ternary_progress_for_source_binds_operation_count_without_relowering()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
-    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower count source: {error:?}"))?;
+    let original =
+        enter_ternary_stage(TernaryStageInput::Projection(&expected))
+            .map_err(|error| format!("lower count source: {error:?}"))?;
     let mut foreign = original.clone();
-    let operations = &mut foreign.functions.first_mut()
+    let operations = &mut foreign
+        .functions
+        .first_mut()
         .ok_or_else(|| String::from("count function missing"))?
         .operations;
     let Some(&TernaryOperation::MaterializeI32 { scalar, span, .. }) =
-        operations.first() else {
+        operations.first()
+    else {
         return Err(String::from("count fixture lost its materialization"));
     };
     operations.insert(1, TernaryOperation::MaterializeI32 {
-        result: 1, scalar, span,
+        result: 1,
+        scalar,
+        span,
     });
     ternary_lowering::validate_ternary_program(&foreign)
         .map_err(|error| format!("admit foreign count: {error:?}"))?;
     if original.source_sha256 != foreign.source_sha256
         || original.functions.len() != foreign.functions.len()
         || original.functions.iter().zip(&foreign.functions).any(
-            |(left, right)| left.span != right.span
-                || left.name != right.name || left.id != right.id,
+            |(left, right)| {
+                left.span != right.span
+                    || left.name != right.name
+                    || left.id != right.id
+            },
         )
     {
         return Err(String::from("count forgery changed provenance"));
@@ -12744,7 +12885,9 @@ fn ternary_progress_for_source_binds_operation_count_without_relowering()
             return Err(String::from("valid extra operation was rejected"));
         }
         assert_source_matched_ternary_failure(
-            &expected, &inspector, (&interpreter, &progress),
+            &expected,
+            &inspector,
+            (&interpreter, &progress),
             TernaryProgressCheckpointError::IdentityMismatch,
         )
     })();
@@ -12759,18 +12902,27 @@ fn ternary_progress_for_source_rejects_unsupported_expected_instruction()
 -> Result<(), String> {
     let mut expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
     let saved = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower supported instruction: {error:?}"))?;
+        .map_err(|error| {
+        format!("lower supported instruction: {error:?}")
+    })?;
     let bytes = canonical_ternary_bytes(&saved)
         .map_err(|error| format!("encode supported instruction: {error:?}"))?;
-    let (progress, directory) =
-        publish_ternary_progress_fixture("unsupported-expected-instruction", &bytes)?;
+    let (progress, directory) = publish_ternary_progress_fixture(
+        "unsupported-expected-instruction",
+        &bytes,
+    )?;
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
         assert_source_matched_ternary_success(
-            &expected, &saved, &inspector, (&interpreter, &progress),
+            &expected,
+            &saved,
+            &inspector,
+            (&interpreter, &progress),
         )?;
-        let instruction = expected.functions.first_mut()
+        let instruction = expected
+            .functions
+            .first_mut()
             .and_then(|function| function.blocks.first_mut())
             .and_then(|block| block.instructions.first_mut())
             .ok_or_else(|| String::from("supported instruction missing"))?;
@@ -12778,15 +12930,20 @@ fn ternary_progress_for_source_rejects_unsupported_expected_instruction()
         if lower_typed_ir(&expected)
             != Err(TernaryLoweringError::UnsupportedInstruction)
         {
-            return Err(String::from("unsupported expected instruction lowered"));
+            return Err(String::from(
+                "unsupported expected instruction lowered",
+            ));
         }
         assert_source_matched_ternary_failure(
-            &expected, &inspector, (&interpreter, &progress),
+            &expected,
+            &inspector,
+            (&interpreter, &progress),
             TernaryProgressCheckpointError::IdentityMismatch,
         )
     })();
-    let cleanup = remove_dir_all(&directory)
-        .map_err(|error| format!("clean unsupported-instruction fixture: {error}"));
+    let cleanup = remove_dir_all(&directory).map_err(|error| {
+        format!("clean unsupported-instruction fixture: {error}")
+    });
     result?;
     cleanup
 }
@@ -12795,7 +12952,9 @@ fn change_saved_ternary_span(
     program: &mut ternary_lowering::TernaryProgram,
     position: usize,
 ) -> Result<(), String> {
-    let operation = program.functions.first_mut()
+    let operation = program
+        .functions
+        .first_mut()
         .and_then(|function| function.operations.get_mut(position))
         .ok_or_else(|| String::from("saved operation missing"))?;
     if let TernaryOperation::MaterializeI32 { result, scalar, mut span } =
@@ -12816,8 +12975,9 @@ fn change_saved_ternary_span(
 fn ternary_progress_for_source_checks_each_saved_operation_span()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
-    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower span source: {error:?}"))?;
+    let original =
+        enter_ternary_stage(TernaryStageInput::Projection(&expected))
+            .map_err(|error| format!("lower span source: {error:?}"))?;
     for index in 0usize..2 {
         let mut foreign = original.clone();
         change_saved_ternary_span(&mut foreign, index)?;
@@ -12829,7 +12989,8 @@ fn ternary_progress_for_source_checks_each_saved_operation_span()
         let bytes = canonical_ternary_bytes(&foreign)
             .map_err(|error| format!("encode span forgery: {error:?}"))?;
         let (progress, directory) = publish_ternary_progress_fixture(
-            &format!("foreign-operation-span-{index}"), &bytes,
+            &format!("foreign-operation-span-{index}"),
+            &bytes,
         )?;
         let result = (|| {
             let interpreter = repository_python();
@@ -12840,7 +13001,9 @@ fn ternary_progress_for_source_checks_each_saved_operation_span()
                 return Err(String::from("valid changed span was rejected"));
             }
             assert_source_matched_ternary_failure(
-                &expected, &inspector, (&interpreter, &progress),
+                &expected,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )
         })();
@@ -12857,27 +13020,33 @@ fn ternary_progress_for_source_rejects_valid_changed_return_category()
 -> Result<(), String> {
     let (original, expected) = lowered_unsigned_return_fixture(u32::MAX)?;
     let mut foreign = original.clone();
-    let operations = &mut foreign.functions
-        .first_mut().ok_or_else(|| String::from("missing function"))?
+    let operations = &mut foreign
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("missing function"))?
         .operations;
     if operations.len() != 2 {
         return Err(String::from("unsigned source shape changed"));
     }
     for operation in operations {
-        *operation = if let TernaryOperation::MaterializeU32 {
-            result, scalar, span,
-        } = *operation {
-            TernaryOperation::MaterializeI32 { result, scalar, span }
-        } else if let TernaryOperation::ReturnU32 { value, span } = *operation {
-            TernaryOperation::Return { value, span }
-        } else {
-            return Err(String::from("unexpected unsigned operation"));
-        };
+        *operation =
+            if let TernaryOperation::MaterializeU32 { result, scalar, span } =
+                *operation
+            {
+                TernaryOperation::MaterializeI32 { result, scalar, span }
+            } else if let TernaryOperation::ReturnU32 { value, span } =
+                *operation
+            {
+                TernaryOperation::Return { value, span }
+            } else {
+                return Err(String::from("unexpected unsigned operation"));
+            };
     }
     if foreign.source_sha256 != original.source_sha256
         || foreign.functions.iter().zip(&original.functions).any(
-            |(changed, source)| changed.span != source.span
-                || changed.name != source.name,
+            |(changed, source)| {
+                changed.span != source.span || changed.name != source.name
+            },
         )
     {
         return Err(String::from("return forgery changed provenance"));
@@ -12891,16 +13060,17 @@ fn ternary_progress_for_source_rejects_valid_changed_return_category()
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
-        let unrestricted = resume_ternary_from_progress(
-            &interpreter, &inspector, &progress,
-        );
+        let unrestricted =
+            resume_ternary_from_progress(&interpreter, &inspector, &progress);
         if unrestricted != Ok(foreign) {
             return Err(format!(
-                "independently valid signed checkpoint rejected: {unrestricted:?}",
+                "valid signed checkpoint rejected: {unrestricted:?}",
             ));
         }
         assert_source_matched_ternary_failure(
-            &expected, &inspector, (&interpreter, &progress),
+            &expected,
+            &inspector,
+            (&interpreter, &progress),
             TernaryProgressCheckpointError::IdentityMismatch,
         )
     })();
@@ -12915,27 +13085,36 @@ fn ternary_progress_for_source_binds_return_value_identity()
 -> Result<(), String> {
     let u32_type = TypeId::new(0);
     let module = unsigned_module(
-        [0u32, 1u32].into_iter().map(|index| {
-            LocatedInstruction::new(
-                Instruction::ConstantInteger {
-                    constant: IntegerConstant::new(
-                        32, (index + 7).to_le_bytes().to_vec(),
-                    ),
-                    result: ValueId::new(index),
-                    type_id: u32_type,
-                },
-                fixture_span(index, index + 1),
-            )
-        }).collect(),
-        1, 3,
+        [0u32, 1u32]
+            .into_iter()
+            .map(|index| {
+                LocatedInstruction::new(
+                    Instruction::ConstantInteger {
+                        constant: IntegerConstant::new(
+                            32,
+                            (index + 7).to_le_bytes().to_vec(),
+                        ),
+                        result: ValueId::new(index),
+                        type_id: u32_type,
+                    },
+                    fixture_span(index, index + 1),
+                )
+            })
+            .collect(),
+        1,
+        3,
     );
     validate_module(&module)
         .map_err(|error| format!("validate two-return-source: {error:?}"))?;
     let expected = project_typed_ir(&module)?;
-    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
-        .map_err(|error| format!("lower return identity source: {error:?}"))?;
+    let original = enter_ternary_stage(TernaryStageInput::Projection(
+        &expected,
+    ))
+    .map_err(|error| format!("lower return identity source: {error:?}"))?;
     let mut foreign = original.clone();
-    let last = foreign.functions.first_mut()
+    let last = foreign
+        .functions
+        .first_mut()
         .and_then(|function| function.operations.last_mut())
         .ok_or_else(|| String::from("missing return operation"))?;
     let TernaryOperation::ReturnU32 { span, value: 1 } = *last else {
@@ -12957,13 +13136,15 @@ fn ternary_progress_for_source_binds_return_value_identity()
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
-        if resume_ternary_from_progress(
-            &interpreter, &inspector, &progress,
-        ) != Ok(foreign.clone()) {
+        if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+            != Ok(foreign.clone())
+        {
             return Err(String::from("independently valid return rejected"));
         }
         assert_source_matched_ternary_failure(
-            &expected, &inspector, (&interpreter, &progress),
+            &expected,
+            &inspector,
+            (&interpreter, &progress),
             TernaryProgressCheckpointError::IdentityMismatch,
         )
     })();
@@ -12973,45 +13154,74 @@ fn ternary_progress_for_source_binds_return_value_identity()
     cleanup
 }
 
-fn flipped_scalar_bits(operation: TernaryOperation) -> Option<TernaryOperation> {
-    if let TernaryOperation::MaterializeBool { result, value, span } = operation {
+fn flipped_scalar_bits(
+    operation: TernaryOperation,
+) -> Option<TernaryOperation> {
+    if let TernaryOperation::MaterializeBool { result, value, span } = operation
+    {
         Some(TernaryOperation::MaterializeBool {
-            result, value: !value, span,
+            result,
+            value: !value,
+            span,
         })
-    } else if let TernaryOperation::MaterializeI8 { result, scalar, span } = operation {
+    } else if let TernaryOperation::MaterializeI8 { result, scalar, span } =
+        operation
+    {
         Some(TernaryOperation::MaterializeI8 {
             result,
-            scalar: ternary_lowering::TernaryU8Scalar::from_bits(scalar.bits() ^ 1),
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
             span,
         })
-    } else if let TernaryOperation::MaterializeU8 { result, scalar, span } = operation {
+    } else if let TernaryOperation::MaterializeU8 { result, scalar, span } =
+        operation
+    {
         Some(TernaryOperation::MaterializeU8 {
             result,
-            scalar: ternary_lowering::TernaryU8Scalar::from_bits(scalar.bits() ^ 1),
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
             span,
         })
-    } else if let TernaryOperation::MaterializeI16 { result, scalar, span } = operation {
+    } else if let TernaryOperation::MaterializeI16 { result, scalar, span } =
+        operation
+    {
         Some(TernaryOperation::MaterializeI16 {
             result,
-            scalar: ternary_lowering::TernaryU16Scalar::from_bits(scalar.bits() ^ 1),
+            scalar: ternary_lowering::TernaryU16Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
             span,
         })
-    } else if let TernaryOperation::MaterializeU16 { result, scalar, span } = operation {
+    } else if let TernaryOperation::MaterializeU16 { result, scalar, span } =
+        operation
+    {
         Some(TernaryOperation::MaterializeU16 {
             result,
-            scalar: ternary_lowering::TernaryU16Scalar::from_bits(scalar.bits() ^ 1),
+            scalar: ternary_lowering::TernaryU16Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
             span,
         })
-    } else if let TernaryOperation::MaterializeI32 { result, scalar, span } = operation {
+    } else if let TernaryOperation::MaterializeI32 { result, scalar, span } =
+        operation
+    {
         Some(TernaryOperation::MaterializeI32 {
             result,
-            scalar: ternary_lowering::TernaryI32Scalar::from_bits(scalar.bits() ^ 1),
+            scalar: ternary_lowering::TernaryI32Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
             span,
         })
-    } else if let TernaryOperation::MaterializeU32 { result, scalar, span } = operation {
+    } else if let TernaryOperation::MaterializeU32 { result, scalar, span } =
+        operation
+    {
         Some(TernaryOperation::MaterializeU32 {
             result,
-            scalar: ternary_lowering::TernaryI32Scalar::from_bits(scalar.bits() ^ 1),
+            scalar: ternary_lowering::TernaryI32Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
             span,
         })
     } else {
@@ -13027,10 +13237,13 @@ fn assert_source_bound_program_roundtrip(
     let bytes = canonical_ternary_bytes(original)
         .map_err(|error| format!("encode {label} scalar: {error:?}"))?;
     let (progress, directory) = publish_ternary_progress_fixture(
-        &format!("matched-{label}-source"), &bytes,
+        &format!("matched-{label}-source"),
+        &bytes,
     )?;
     let result = assert_source_matched_ternary_success(
-        expected, original, &progress_inspector(),
+        expected,
+        original,
+        &progress_inspector(),
         (&repository_python(), &progress),
     );
     let cleanup = remove_dir_all(&directory)
@@ -13051,19 +13264,41 @@ fn source_bound_cast_instruction(
     let span = input_span(fixture_span(2, 3));
     let type_kind = result_kind;
     Ok(match family {
-        0 => InputInstruction::BoolToSigned { result, span, type_kind, value },
-        1 => InputInstruction::IntegerBitcast {
-            result, span, type_kind, value,
+        0 => InputInstruction::BoolToSigned {
+            result,
+            span,
+            type_kind,
+            value,
         },
-        2 => InputInstruction::IntegerToBool { result, span, type_kind, value },
+        1 => InputInstruction::IntegerBitcast {
+            result,
+            span,
+            type_kind,
+            value,
+        },
+        2 => InputInstruction::IntegerToBool {
+            result,
+            span,
+            type_kind,
+            value,
+        },
         3 => InputInstruction::SignExtendI8ToI32 {
-            result, span, type_kind, value,
+            result,
+            span,
+            type_kind,
+            value,
         },
         4 => InputInstruction::TruncateInteger {
-            result, span, type_kind, value,
+            result,
+            span,
+            type_kind,
+            value,
         },
         5 => InputInstruction::ZeroExtendInteger {
-            result, span, type_kind, value,
+            result,
+            span,
+            type_kind,
+            value,
         },
         _ => return Err(String::from("unknown source-bound cast")),
     })
@@ -13085,20 +13320,26 @@ fn source_bound_cast_projection(
         },
     };
     let mut expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
-    let function = expected.functions.first_mut()
+    let function = expected
+        .functions
+        .first_mut()
         .ok_or_else(|| String::from("missing cast test function"))?;
-    function.name = format!(
-        "source_bound_cast_{family}_{source_kind:?}_{result_kind:?}"
-    );
+    function.name =
+        format!("source_bound_cast_{family}_{source_kind:?}_{result_kind:?}");
     function.span = input_span(fixture_span(0, 4));
     function.return_kind = result_kind;
-    let block = function.blocks.first_mut()
+    let block = function
+        .blocks
+        .first_mut()
         .ok_or_else(|| String::from("missing cast test block"))?;
     let constant = |value: u8, result: u32, span: InputSourceSpan| {
         let mut little_endian = vec![value];
         little_endian.resize(bytes, 0);
         InputInstruction::ConstantInteger {
-            bit_width: bits, little_endian, result, span,
+            bit_width: bits,
+            little_endian,
+            result,
+            span,
             type_kind: source_kind,
         }
     };
@@ -13108,7 +13349,8 @@ fn source_bound_cast_projection(
         source_bound_cast_instruction(family, result_kind, cast_operand)?,
     ];
     block.terminator = InputTerminator::Return {
-        span: input_span(fixture_span(3, 4)), value: Some(2),
+        span: input_span(fixture_span(3, 4)),
+        value: Some(2),
     };
     Ok(expected)
 }
@@ -13163,19 +13405,17 @@ fn ternary_progress_for_source_binds_all_cast_operand_identities()
 -> Result<(), String> {
     for (family, source_kind, result_kind) in source_bound_cast_cases() {
         let label = format!("cast-{family}-{source_kind:?}-{result_kind:?}");
-        let expected = source_bound_cast_projection(
-            family, source_kind, result_kind, 0,
-        )?;
-        let original = enter_ternary_stage(
-            TernaryStageInput::Projection(&expected),
-        ).map_err(|error| format!("lower {label}: {error:?}"))?;
+        let expected =
+            source_bound_cast_projection(family, source_kind, result_kind, 0)?;
+        let original =
+            enter_ternary_stage(TernaryStageInput::Projection(&expected))
+                .map_err(|error| format!("lower {label}: {error:?}"))?;
         assert_source_bound_program_roundtrip(&label, &expected, &original)?;
-        let foreign_input = source_bound_cast_projection(
-            family, source_kind, result_kind, 1,
-        )?;
-        let foreign = enter_ternary_stage(
-            TernaryStageInput::Projection(&foreign_input),
-        ).map_err(|error| format!("lower foreign {label}: {error:?}"))?;
+        let foreign_input =
+            source_bound_cast_projection(family, source_kind, result_kind, 1)?;
+        let foreign =
+            enter_ternary_stage(TernaryStageInput::Projection(&foreign_input))
+                .map_err(|error| format!("lower foreign {label}: {error:?}"))?;
         if original == foreign
             || original.source_sha256 != foreign.source_sha256
         {
@@ -13184,18 +13424,21 @@ fn ternary_progress_for_source_binds_all_cast_operand_identities()
         let bytes = canonical_ternary_bytes(&foreign)
             .map_err(|error| format!("encode foreign {label}: {error:?}"))?;
         let (progress, directory) = publish_ternary_progress_fixture(
-            &format!("source-foreign-{label}"), &bytes,
+            &format!("source-foreign-{label}"),
+            &bytes,
         )?;
         let checked = (|| {
             let interpreter = repository_python();
             let inspector = progress_inspector();
-            if resume_ternary_from_progress(
-                &interpreter, &inspector, &progress,
-            ) != Ok(foreign) {
+            if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+                != Ok(foreign)
+            {
                 return Err(format!("unrestricted {label} rejected"));
             }
             assert_source_matched_ternary_failure(
-                &expected, &inspector, (&interpreter, &progress),
+                &expected,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )
         })();
@@ -13208,8 +13451,7 @@ fn ternary_progress_for_source_binds_all_cast_operand_identities()
 }
 
 #[test]
-fn ternary_progress_for_source_binds_constant_scalar_bits()
--> Result<(), String> {
+fn ternary_progress_binds_constant_scalar_bits() -> Result<(), String> {
     let modules = [
         ("bool", boolean_constant_module(1, false)),
         ("i8", typed_i8_return_module(0x80)),
@@ -13223,36 +13465,45 @@ fn ternary_progress_for_source_binds_constant_scalar_bits()
         validate_module(&module)
             .map_err(|error| format!("admit {label} scalar: {error:?}"))?;
         let expected = project_typed_ir(&module)?;
-        let original = enter_ternary_stage(
-            TernaryStageInput::Projection(&expected),
-        ).map_err(|error| format!("lower {label} scalar: {error:?}"))?;
+        let original =
+            enter_ternary_stage(TernaryStageInput::Projection(&expected))
+                .map_err(|error| format!("lower {label} scalar: {error:?}"))?;
         assert_source_bound_program_roundtrip(label, &expected, &original)?;
         let mut foreign = original.clone();
-        let first = foreign.functions.first_mut()
+        let first = foreign
+            .functions
+            .first_mut()
             .and_then(|function| function.operations.first_mut())
             .ok_or_else(|| format!("missing {label} scalar"))?;
         *first = flipped_scalar_bits(*first)
             .ok_or_else(|| format!("{label} first operation is not scalar"))?;
         if foreign.source_sha256 != original.source_sha256 {
-            return Err(format!("{label} scalar forgery altered source digest"));
+            return Err(format!(
+                "{label} scalar forgery altered source digest"
+            ));
         }
-        ternary_lowering::validate_ternary_program(&foreign)
-            .map_err(|error| format!("admit {label} scalar forgery: {error:?}"))?;
-        let bytes = canonical_ternary_bytes(&foreign)
-            .map_err(|error| format!("encode {label} scalar forgery: {error:?}"))?;
+        ternary_lowering::validate_ternary_program(&foreign).map_err(
+            |error| format!("admit {label} scalar forgery: {error:?}"),
+        )?;
+        let bytes = canonical_ternary_bytes(&foreign).map_err(|error| {
+            format!("encode {label} scalar forgery: {error:?}")
+        })?;
         let (progress, directory) = publish_ternary_progress_fixture(
-            &format!("foreign-{label}-scalar-bits"), &bytes,
+            &format!("foreign-{label}-scalar-bits"),
+            &bytes,
         )?;
         let result = (|| {
             let interpreter = repository_python();
             let inspector = progress_inspector();
-            if resume_ternary_from_progress(
-                &interpreter, &inspector, &progress,
-            ) != Ok(foreign) {
+            if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+                != Ok(foreign)
+            {
                 return Err(format!("valid {label} scalar was not restored"));
             }
             assert_source_matched_ternary_failure(
-                &expected, &inspector, (&interpreter, &progress),
+                &expected,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )
         })();
@@ -13269,23 +13520,39 @@ fn ternary_progress_for_source_binds_binary_opcode_and_ssa_operands()
 -> Result<(), String> {
     let (original, expected) =
         lowered_arithmetic_fixture(false, BinaryOp::Add)?;
-    let op = original.functions.first()
+    let op = original
+        .functions
+        .first()
         .and_then(|function| function.operations.get(2))
         .ok_or_else(|| String::from("missing unsigned binary operation"))?;
-    let TernaryOperation::AddU32 { left, result: ssa_result, right, span } = *op else {
+    let TernaryOperation::AddU32 {
+        left,
+        result: ssa_result,
+        right,
+        span,
+    } = *op
+    else {
         return Err(String::from("expected unsigned source addition"));
     };
     let changes = [
         ("changed-binary-opcode", TernaryOperation::SubtractU32 {
-            left, result: ssa_result, right, span,
+            left,
+            result: ssa_result,
+            right,
+            span,
         }),
         ("changed-binary-operand", TernaryOperation::AddU32 {
-            left: right, result: ssa_result, right, span,
+            left: right,
+            result: ssa_result,
+            right,
+            span,
         }),
     ];
     for (label, changed) in changes {
         let mut foreign = original.clone();
-        let operation = foreign.functions.first_mut()
+        let operation = foreign
+            .functions
+            .first_mut()
             .and_then(|function| function.operations.get_mut(2))
             .ok_or_else(|| String::from("missing saved binary operation"))?;
         *operation = changed;
@@ -13301,13 +13568,15 @@ fn ternary_progress_for_source_binds_binary_opcode_and_ssa_operands()
         let result = (|| {
             let interpreter = repository_python();
             let inspector = progress_inspector();
-            if resume_ternary_from_progress(
-                &interpreter, &inspector, &progress,
-            ) != Ok(foreign) {
+            if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+                != Ok(foreign)
+            {
                 return Err(format!("valid {label} was not restored"));
             }
             assert_source_matched_ternary_failure(
-                &expected, &inspector, (&interpreter, &progress),
+                &expected,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )
         })();
@@ -13327,14 +13596,16 @@ fn ternary_progress_for_source_accepts_all_supported_binary_kinds()
             lowered_arithmetic_fixture(signed, operation)?;
         assert_source_bound_program_roundtrip(
             &format!("arithmetic-{signed}-{operation:?}"),
-            &expected, &original,
+            &expected,
+            &original,
         )?;
     }
     for (signed, operation) in shift_cases() {
         let (original, expected) = lowered_shift_fixture(signed, operation)?;
         assert_source_bound_program_roundtrip(
             &format!("shift-{signed}-{operation:?}"),
-            &expected, &original,
+            &expected,
+            &original,
         )?;
     }
     for signed in [true, false] {
@@ -13343,7 +13614,8 @@ fn ternary_progress_for_source_accepts_all_supported_binary_kinds()
                 lowered_arithmetic_fixture(signed, operation)?;
             assert_source_bound_program_roundtrip(
                 &format!("bitwise-{signed}-{operation:?}"),
-                &expected, &original,
+                &expected,
+                &original,
             )?;
         }
     }
@@ -13364,16 +13636,22 @@ fn ternary_progress_for_source_binds_byte_effect_kind_and_ssa_values()
             .map_err(|error| format!("lower byte source: {error:?}"))?;
         assert_source_bound_program_roundtrip(
             &format!("unchanged-byte-effect-{change_output}"),
-            &expected, &original,
+            &expected,
+            &original,
         )?;
         let mut foreign = original.clone();
-        let operations = &mut foreign.functions.first_mut()
+        let operations = &mut foreign
+            .functions
+            .first_mut()
             .ok_or_else(|| String::from("missing byte function"))?
             .operations;
         let changed = usize::from(change_output);
-        let operation = operations.get_mut(changed)
+        let operation = operations
+            .get_mut(changed)
             .ok_or_else(|| String::from("missing byte effect"))?;
-        *operation = if let TernaryOperation::ByteInput { result, span } = *operation {
+        *operation = if let TernaryOperation::ByteInput { result, span } =
+            *operation
+        {
             TernaryOperation::MaterializeU8 {
                 result,
                 scalar: ternary_lowering::TernaryU8Scalar::from_bits(0x7a),
@@ -13386,22 +13664,29 @@ fn ternary_progress_for_source_binds_byte_effect_kind_and_ssa_values()
         };
         ternary_lowering::validate_ternary_program(&foreign)
             .map_err(|error| format!("admit changed byte effect: {error:?}"))?;
-        let bytes = canonical_ternary_bytes(&foreign)
-            .map_err(|error| format!("encode changed byte effect: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&foreign).map_err(|error| {
+            format!("encode changed byte effect: {error:?}")
+        })?;
         let (progress, directory) = publish_ternary_progress_fixture(
-            if change_output { "altered-byte-output" } else { "altered-byte-input" },
+            if change_output {
+                "altered-byte-output"
+            } else {
+                "altered-byte-input"
+            },
             &bytes,
         )?;
         let result = (|| {
             let interpreter = repository_python();
             let inspector = progress_inspector();
-            if resume_ternary_from_progress(
-                &interpreter, &inspector, &progress,
-            ) != Ok(foreign) {
+            if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+                != Ok(foreign)
+            {
                 return Err(String::from("valid changed byte effect rejected"));
             }
             assert_source_matched_ternary_failure(
-                &expected, &inspector, (&interpreter, &progress),
+                &expected,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )
         })();
@@ -13425,13 +13710,15 @@ fn two_byte_inputs_void_module() -> Module {
                 instructions: vec![
                     LocatedInstruction::new(
                         Instruction::ByteInput {
-                            result: ValueId::new(0), type_id: byte_type,
+                            result: ValueId::new(0),
+                            type_id: byte_type,
                         },
                         fixture_span(0, 1),
                     ),
                     LocatedInstruction::new(
                         Instruction::ByteInput {
-                            result: ValueId::new(1), type_id: byte_type,
+                            result: ValueId::new(1),
+                            type_id: byte_type,
                         },
                         fixture_span(1, 2),
                     ),
@@ -13459,15 +13746,17 @@ fn two_byte_inputs_void_module() -> Module {
         target_profile: String::from("malbolge-2026"),
         types: vec![
             TypeEntry::new(byte_type, TypeDef::U8),
-            TypeEntry::new(signature,
-                TypeDef::function(Vec::new(), None, false)),
+            TypeEntry::new(
+                signature,
+                TypeDef::function(Vec::new(), None, false),
+            ),
         ],
     })
 }
 
 #[test]
-fn ternary_progress_for_source_binds_byte_output_operand()
--> Result<(), String> {
+fn ternary_progress_for_source_binds_byte_output_operand() -> Result<(), String>
+{
     let module = two_byte_inputs_void_module();
     validate_module(&module)
         .map_err(|error| format!("admit two input source: {error:?}"))?;
@@ -13475,10 +13764,14 @@ fn ternary_progress_for_source_binds_byte_output_operand()
     let original = lower_typed_ir(&expected)
         .map_err(|error| format!("lower two input source: {error:?}"))?;
     assert_source_bound_program_roundtrip(
-        "two-inputs-original-output", &expected, &original,
+        "two-inputs-original-output",
+        &expected,
+        &original,
     )?;
     let mut foreign = original;
-    let operation = foreign.functions.first_mut()
+    let operation = foreign
+        .functions
+        .first_mut()
         .and_then(|function| function.operations.get_mut(2))
         .ok_or_else(|| String::from("missing byte output"))?;
     let TernaryOperation::ByteOutput { span, value: 0 } = *operation else {
@@ -13494,13 +13787,15 @@ fn ternary_progress_for_source_binds_byte_output_operand()
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
-        if resume_ternary_from_progress(
-            &interpreter, &inspector, &progress,
-        ) != Ok(foreign) {
+        if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+            != Ok(foreign)
+        {
             return Err(String::from("valid altered output was rejected"));
         }
         assert_source_matched_ternary_failure(
-            &expected, &inspector, (&interpreter, &progress),
+            &expected,
+            &inspector,
+            (&interpreter, &progress),
             TernaryProgressCheckpointError::IdentityMismatch,
         )
     })();
@@ -13513,35 +13808,58 @@ fn ternary_progress_for_source_binds_byte_output_operand()
 #[test]
 fn ternary_progress_for_source_binds_comparison_predicate_and_operands()
 -> Result<(), String> {
-    let (original, expected) = lowered_integer_comparison_fixture(
-        ComparisonFixture {
-            alias: false, left: 0x8000_0000,
+    let (original, expected) =
+        lowered_integer_comparison_fixture(ComparisonFixture {
+            alias: false,
+            left: 0x8000_0000,
             operation: CompareOp::LessUnsigned,
-            right: u32::MAX, signed: false,
-        },
-    )?;
+            right: u32::MAX,
+            signed: false,
+        })?;
     assert_source_bound_program_roundtrip(
-        "unchanged-unsigned-comparison", &expected, &original,
+        "unchanged-unsigned-comparison",
+        &expected,
+        &original,
     )?;
-    let operation = original.functions.first()
+    let operation = original
+        .functions
+        .first()
         .and_then(|function| function.operations.get(2))
         .ok_or_else(|| String::from("missing comparison"))?;
     let TernaryOperation::LessUnsignedU32 {
-        left, result: ssa_result, right, span,
-    } = *operation else {
+        left,
+        result: ssa_result,
+        right,
+        span,
+    } = *operation
+    else {
         return Err(String::from("original unsigned comparison drifted"));
     };
     let changes = [
-        ("changed-comparison-predicate", TernaryOperation::LessUnsignedEqualU32 {
-            left, result: ssa_result, right, span,
-        }),
-        ("changed-comparison-operand", TernaryOperation::LessUnsignedU32 {
-            left: right, result: ssa_result, right, span,
-        }),
+        (
+            "changed-comparison-predicate",
+            TernaryOperation::LessUnsignedEqualU32 {
+                left,
+                result: ssa_result,
+                right,
+                span,
+            },
+        ),
+        (
+            "changed-comparison-operand",
+            TernaryOperation::LessUnsignedU32 {
+                left: right,
+                result: ssa_result,
+                right,
+                span,
+            },
+        ),
     ];
     for (label, changed) in changes {
         let mut foreign = original.clone();
-        let changed_operation = foreign.functions.first_mut()
+        let changed_operation = foreign
+            .functions
+            .first_mut()
             .and_then(|function| function.operations.get_mut(2))
             .ok_or_else(|| String::from("missing restored comparison"))?;
         *changed_operation = changed;
@@ -13549,17 +13867,20 @@ fn ternary_progress_for_source_binds_comparison_predicate_and_operands()
             .map_err(|error| format!("admit {label}: {error:?}"))?;
         let bytes = canonical_ternary_bytes(&foreign)
             .map_err(|error| format!("encode {label}: {error:?}"))?;
-        let (progress, directory) = publish_ternary_progress_fixture(label, &bytes)?;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
         let checked = (|| {
             let interpreter = repository_python();
             let inspector = progress_inspector();
-            if resume_ternary_from_progress(
-                &interpreter, &inspector, &progress,
-            ) != Ok(foreign) {
+            if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+                != Ok(foreign)
+            {
                 return Err(format!("valid {label} was not restored"));
             }
             assert_source_matched_ternary_failure(
-                &expected, &inspector, (&interpreter, &progress),
+                &expected,
+                &inspector,
+                (&interpreter, &progress),
                 TernaryProgressCheckpointError::IdentityMismatch,
             )
         })();
@@ -13584,15 +13905,18 @@ fn ternary_progress_for_source_accepts_all_comparison_predicates()
         (false, CompareOp::LessUnsigned),
         (false, CompareOp::LessUnsignedEqual),
     ] {
-        let (program, expected) = lowered_integer_comparison_fixture(
-            ComparisonFixture {
-                alias: false, left: 0x8000_0000, operation,
-                right: u32::MAX, signed,
-            },
-        )?;
+        let (program, expected) =
+            lowered_integer_comparison_fixture(ComparisonFixture {
+                alias: false,
+                left: 0x8000_0000,
+                operation,
+                right: u32::MAX,
+                signed,
+            })?;
         assert_source_bound_program_roundtrip(
             &format!("comparison-{signed}-{operation:?}"),
-            &expected, &program,
+            &expected,
+            &program,
         )?;
     }
     Ok(())
@@ -13615,14 +13939,16 @@ fn progress_resume_for_source_rejects_other_valid_checkpoint()
     let result = (|| {
         let interpreter = repository_python();
         let inspector = progress_inspector();
-        let unrestricted = resume_ternary_from_progress(
-            &interpreter, &inspector, &progress,
-        );
+        let unrestricted =
+            resume_ternary_from_progress(&interpreter, &inspector, &progress);
         if unrestricted != Ok(program) {
             return Err(String::from("foreign checkpoint itself was invalid"));
         }
         let checked = resume_ternary_from_progress_for_source(
-            &interpreter, &inspector, &progress, &expected,
+            &interpreter,
+            &inspector,
+            &progress,
+            &expected,
         );
         if checked != Err(TernaryProgressCheckpointError::IdentityMismatch) {
             return Err(format!("foreign checkpoint admitted: {checked:?}"));
@@ -19886,8 +20212,8 @@ fn startup_entry_must_exist_in_independently_admitted_program()
 }
 
 #[test]
-fn startup_entry_binding_revalidates_program_and_request()
--> Result<(), String> {
+fn startup_entry_binding_revalidates_program_and_request() -> Result<(), String>
+{
     let module = admitted_golden(RETURN_GOLDEN)?;
     let program = lower_typed_ir(&project_typed_ir(&module)?)
         .map_err(|error| format!("lower entry fixture: {error:?}"))?;
@@ -19920,9 +20246,12 @@ fn startup_entry_binding_revalidates_program_and_request()
         return Err(String::from("forged program function was accepted"));
     }
     let mut missing_terminator = program.clone();
-    missing_terminator.functions.first_mut()
+    missing_terminator
+        .functions
+        .first_mut()
         .ok_or_else(|| String::from("entry fixture has no functions"))?
-        .operations.clear();
+        .operations
+        .clear();
     if plan_startup_for_program(&request, &missing_terminator)
         != Err(StartupPlanningError::InvalidProgram(
             TernaryProgramValidationError::Terminator,
@@ -20230,7 +20559,9 @@ fn frame_decode_defers_publication_until_validation() -> Result<(), String> {
     Ok(())
 }
 
-fn canonical_frame_helper(identity: &str) -> Result<FrameHelperOperation, String> {
+fn canonical_frame_helper(
+    identity: &str,
+) -> Result<FrameHelperOperation, String> {
     lower_frame_helper(&FrameHelperRequest {
         abi_id: String::from("malbolge-c32-v1"),
         identity: String::from(identity),
@@ -20249,7 +20580,9 @@ fn frame_realizer_rejects_forged_validation_semantics() -> Result<(), String> {
     for mutate in [
         |value: &mut FrameValidationSemantics| value.alignment = 8,
         |value: &mut FrameValidationSemantics| value.header_bytes = 16,
-        |value: &mut FrameValidationSemantics| value.invalid_argument_status = 0,
+        |value: &mut FrameValidationSemantics| {
+            value.invalid_argument_status = 0
+        },
         |value: &mut FrameValidationSemantics| value.invalid_frame_status = 1,
         |value: &mut FrameValidationSemantics| value.required_flags = 1,
         |value: &mut FrameValidationSemantics| value.valid_status = 1,
@@ -20267,11 +20600,16 @@ fn frame_realizer_rejects_forged_validation_semantics() -> Result<(), String> {
 
 #[test]
 fn frame_realizer_rejects_forged_codec_layouts() -> Result<(), String> {
-    for identity in ["malbolge_guest_frame_encode", "malbolge_guest_frame_decode"] {
+    for identity in
+        ["malbolge_guest_frame_encode", "malbolge_guest_frame_decode"]
+    {
         let canonical = canonical_frame_helper(identity)?;
         let semantics = match canonical {
-            FrameHelperOperation::Encode(value) | FrameHelperOperation::Decode(value) => value,
-            FrameHelperOperation::Validate(_) => return Err(String::from("codec identity changed")),
+            FrameHelperOperation::Encode(value)
+            | FrameHelperOperation::Decode(value) => value,
+            FrameHelperOperation::Validate(_) => {
+                return Err(String::from("codec identity changed"));
+            },
         };
         let mut altered = semantics;
         altered.fields[1].offset = 0;
@@ -20285,8 +20623,12 @@ fn frame_realizer_rejects_forged_codec_layouts() -> Result<(), String> {
             } else {
                 FrameHelperOperation::Decode(forged)
             };
-            if realize_frame_helper(operation) != Err(FrameHelperRealizationError::InvalidPlan) {
-                return Err(format!("forged {identity} codec layout was realized"));
+            if realize_frame_helper(operation)
+                != Err(FrameHelperRealizationError::InvalidPlan)
+            {
+                return Err(format!(
+                    "forged {identity} codec layout was realized"
+                ));
             }
         }
     }
@@ -20685,7 +21027,9 @@ fn heap_release_authority_matches_runtime_source() -> Result<(), String> {
     Ok(())
 }
 
-fn canonical_heap_helper(identity: &str) -> Result<HeapHelperOperation, String> {
+fn canonical_heap_helper(
+    identity: &str,
+) -> Result<HeapHelperOperation, String> {
     lower_heap_helper(&HeapHelperRequest {
         abi_id: String::from("malbolge-c32-v1"),
         identity: String::from(identity),
@@ -20695,29 +21039,35 @@ fn canonical_heap_helper(identity: &str) -> Result<HeapHelperOperation, String> 
 }
 
 #[test]
-fn heap_realizer_rejects_forged_semantics_for_all_helpers() -> Result<(), String> {
+fn heap_realizer_rejects_forged_helper_semantics() -> Result<(), String> {
     let mut init = canonical_heap_helper("malbolge_guest_heap_init")?;
     let HeapHelperOperation::Initialize(ref mut init_semantics) = init else {
         return Err(String::from("heap initialization identity changed"));
     };
     init_semantics.alignment = 8;
     let mut allocate = canonical_heap_helper("malbolge_guest_heap_allocate")?;
-    let HeapHelperOperation::Allocate(ref mut allocate_semantics) = allocate else {
+    let HeapHelperOperation::Allocate(ref mut allocate_semantics) = allocate
+    else {
         return Err(String::from("heap allocation identity changed"));
     };
     allocate_semantics.minimum_block_span = 16;
-    let mut zeroed = canonical_heap_helper("malbolge_guest_heap_allocate_zeroed")?;
-    let HeapHelperOperation::AllocateZeroed(ref mut zeroed_semantics) = zeroed else {
+    let mut zeroed =
+        canonical_heap_helper("malbolge_guest_heap_allocate_zeroed")?;
+    let HeapHelperOperation::AllocateZeroed(ref mut zeroed_semantics) = zeroed
+    else {
         return Err(String::from("zeroed allocation identity changed"));
     };
     zeroed_semantics.allocation.corrupt_state_status = 0;
     let mut release = canonical_heap_helper("malbolge_guest_heap_release")?;
-    let HeapHelperOperation::Release(ref mut release_semantics) = release else {
+    let HeapHelperOperation::Release(ref mut release_semantics) = release
+    else {
         return Err(String::from("heap release identity changed"));
     };
     release_semantics.free_state = release_semantics.allocated_state;
     for forged in [init, allocate, zeroed, release] {
-        if realize_heap_helper(forged) != Err(HeapHelperRealizationError::InvalidPlan) {
+        if realize_heap_helper(forged)
+            != Err(HeapHelperRealizationError::InvalidPlan)
+        {
             return Err(format!("forged heap {forged:?} was realized"));
         }
     }
@@ -20900,7 +21250,9 @@ fn runtime_helper_realization_rejects_forged_semantics() -> Result<(), String> {
         |value: &mut InputWordDecodeSemantics| value.byte_max = 256,
         |value: &mut InputWordDecodeSemantics| value.eof_value_bits = 0,
         |value: &mut InputWordDecodeSemantics| value.eof_word = 255,
-        |value: &mut InputWordDecodeSemantics| value.invalid_argument_status = 0,
+        |value: &mut InputWordDecodeSemantics| {
+            value.invalid_argument_status = 0
+        },
         |value: &mut InputWordDecodeSemantics| value.invalid_input_status = 1,
         |value: &mut InputWordDecodeSemantics| value.valid_status = 4,
     ] {
@@ -21009,7 +21361,8 @@ fn runtime_helper_identity_or_profile_drift_fails_closed() -> Result<(), String>
 }
 
 #[test]
-fn pure_runtime_helpers_reject_colliding_profile_io_opcodes() -> Result<(), String> {
+fn pure_runtime_helpers_reject_colliding_profile_io_opcodes()
+-> Result<(), String> {
     let original = current_profile_io();
     let mut forged = original.clone();
     forged.output_instruction = forged.input_instruction;
@@ -21024,21 +21377,28 @@ fn pure_runtime_helpers_reject_colliding_profile_io_opcodes() -> Result<(), Stri
         if lower_runtime_helper(&request, &forged)
             != Err(RuntimeHelperLoweringError::UnsupportedProfile)
         {
-            return Err(format!("colliding raw I/O opcodes reached {identity}"));
+            return Err(format!(
+                "colliding raw I/O opcodes reached {identity}"
+            ));
         }
-        let canonical = lower_runtime_helper(&request, &original)
-            .map_err(|error| format!("canonical helper admission: {error:?}"))?;
+        let canonical =
+            lower_runtime_helper(&request, &original).map_err(|error| {
+                format!("canonical helper admission: {error:?}")
+            })?;
         if realize_runtime_helper(&canonical, &forged)
             != Err(RuntimeHelperRealizationError::InvalidProfile)
         {
-            return Err(format!("colliding raw I/O opcodes realized {identity}"));
+            return Err(format!(
+                "colliding raw I/O opcodes realized {identity}"
+            ));
         }
     }
     Ok(())
 }
 
 #[test]
-fn pure_runtime_helpers_reject_non_ternary_eof_word_geometry() -> Result<(), String> {
+fn pure_runtime_helpers_reject_non_ternary_eof_word_geometry()
+-> Result<(), String> {
     let baseline = current_profile_io();
     for eof_word in [
         256u32,
@@ -21065,13 +21425,15 @@ fn pure_runtime_helpers_reject_non_ternary_eof_word_geometry() -> Result<(), Str
                     "malformed EOF word {eof_word} reached {identity} semantics"
                 ));
             }
-            let canonical = lower_runtime_helper(&request, &baseline)
-                .map_err(|error| format!("lower canonical helper: {error:?}"))?;
+            let canonical =
+                lower_runtime_helper(&request, &baseline).map_err(|error| {
+                    format!("lower canonical helper: {error:?}")
+                })?;
             if realize_runtime_helper(&canonical, &projected)
                 != Err(RuntimeHelperRealizationError::InvalidProfile)
             {
                 return Err(format!(
-                    "malformed EOF word {eof_word} reached {identity} control flow"
+                    "malformed EOF {eof_word} reached {identity} control flow"
                 ));
             }
         }
@@ -21084,7 +21446,7 @@ fn pure_runtime_helpers_reject_non_ternary_eof_word_geometry() -> Result<(), Str
                 != Err(ByteStreamWrapperPlanningError::InvalidProfileProjection)
             {
                 return Err(format!(
-                    "malformed EOF word {eof_word} reached {identity} wrapper plan"
+                    "malformed EOF {eof_word} reached {identity} wrapper plan"
                 ));
             }
         }
@@ -21207,7 +21569,8 @@ fn byte_stream_wrapper_plan_rejects_drift() -> Result<(), String> {
 }
 
 #[test]
-fn byte_stream_wrappers_reject_colliding_profile_io_opcodes() -> Result<(), String> {
+fn byte_stream_wrappers_reject_colliding_profile_io_opcodes()
+-> Result<(), String> {
     let original = current_profile_io();
     let mut forged = original.clone();
     forged.input_instruction = forged.output_instruction;
@@ -21219,7 +21582,9 @@ fn byte_stream_wrappers_reject_colliding_profile_io_opcodes() -> Result<(), Stri
         let canonical = plan_byte_stream_wrapper(&request, &original)
             .map_err(|error| format!("canonical {identity} plan: {error:?}"))?;
         let machine = realize_byte_stream_wrapper(&canonical, &original)
-            .map_err(|error| format!("canonical {identity} machine: {error:?}"))?;
+            .map_err(|error| {
+                format!("canonical {identity} machine: {error:?}")
+            })?;
         if plan_byte_stream_wrapper(&request, &forged)
             != Err(ByteStreamWrapperPlanningError::InvalidProfileProjection)
             || realize_byte_stream_wrapper(&canonical, &forged)
@@ -21450,8 +21815,13 @@ fn machine_io_cells_round_trip_every_decode_phase() -> Result<(), String> {
         ] {
             let operation = realize_runtime_io(semantic, &projection)
                 .map_err(|error| format!("realize machine I/O: {error:?}"))?;
-            let encoded = encode_machine_io(operation, code_pointer, &decoder, &projection)
-                .map_err(|error| format!("encode machine I/O: {error:?}"))?;
+            let encoded = encode_machine_io(
+                operation,
+                code_pointer,
+                &decoder,
+                &projection,
+            )
+            .map_err(|error| format!("encode machine I/O: {error:?}"))?;
             if !(33..=126).contains(&encoded.source_cell)
                 || encoded.code_pointer != code_pointer
                 || encoded.operation != operation
@@ -21468,7 +21838,8 @@ fn machine_io_cells_round_trip_every_decode_phase() -> Result<(), String> {
 }
 
 #[test]
-fn machine_io_encoder_rejects_out_of_profile_code_addresses() -> Result<(), String> {
+fn machine_io_encoder_rejects_out_of_profile_code_addresses()
+-> Result<(), String> {
     let profile = current_profile();
     let projection = current_profile_io();
     let decoder = VmProfileInstructionDecoder;
@@ -21483,12 +21854,16 @@ fn machine_io_encoder_rejects_out_of_profile_code_addresses() -> Result<(), Stri
         let operation = realize_runtime_io(semantic, &projection)
             .map_err(|error| format!("realize machine I/O: {error:?}"))?;
         let encoded = encode_machine_io(operation, last, &decoder, &projection)
-            .map_err(|error| format!("encode final profile address: {error:?}"))?;
+            .map_err(|error| {
+                format!("encode final profile address: {error:?}")
+            })?;
         if encoded.code_pointer != last
             || decoder.decode(u32::from(encoded.source_cell), last)
                 != Some(operation.instruction)
         {
-            return Err(String::from("last profile code cell did not round trip"));
+            return Err(String::from(
+                "last profile code cell did not round trip",
+            ));
         }
         for impossible in [profile.memory_words(), u32::MAX] {
             if encode_machine_io(operation, impossible, &decoder, &projection)
@@ -21510,13 +21885,21 @@ fn machine_io_encoder_rejects_broken_decoder_ports() -> Result<(), String> {
         &current_profile_io(),
     )
     .map_err(|error| format!("realize machine I/O: {error:?}"))?;
-    if encode_machine_io(operation, 0, &MissingInstructionDecoder, &current_profile_io())
-        != Err(MachineIoEncodingError::MissingEncoding)
+    if encode_machine_io(
+        operation,
+        0,
+        &MissingInstructionDecoder,
+        &current_profile_io(),
+    ) != Err(MachineIoEncodingError::MissingEncoding)
     {
         return Err(String::from("missing inverse encoding was not rejected"));
     }
-    if encode_machine_io(operation, 0, &AmbiguousInstructionDecoder, &current_profile_io())
-        != Err(MachineIoEncodingError::AmbiguousEncoding)
+    if encode_machine_io(
+        operation,
+        0,
+        &AmbiguousInstructionDecoder,
+        &current_profile_io(),
+    ) != Err(MachineIoEncodingError::AmbiguousEncoding)
     {
         return Err(String::from(
             "ambiguous inverse encoding was not rejected",
@@ -21529,20 +21912,33 @@ fn machine_io_encoder_rejects_broken_decoder_ports() -> Result<(), String> {
 fn machine_io_encoder_rejects_forged_realization() -> Result<(), String> {
     let projection = current_profile_io();
     let decoder = VmProfileInstructionDecoder;
-    let input = realize_runtime_io(RuntimeIntrinsicOperation::InputWord, &projection)
-        .map_err(|error| format!("realize input: {error:?}"))?;
-    let output = realize_runtime_io(RuntimeIntrinsicOperation::OutputByte, &projection)
-        .map_err(|error| format!("realize output: {error:?}"))?;
+    let input =
+        realize_runtime_io(RuntimeIntrinsicOperation::InputWord, &projection)
+            .map_err(|error| format!("realize input: {error:?}"))?;
+    let output =
+        realize_runtime_io(RuntimeIntrinsicOperation::OutputByte, &projection)
+            .map_err(|error| format!("realize output: {error:?}"))?;
     for forged in [
         MachineIoOperation { eof_word: None, ..input },
-        MachineIoOperation { instruction: output.instruction, ..input },
-        MachineIoOperation { kind: MachineIoKind::OutputByte, ..input },
-        MachineIoOperation { eof_word: Some(projection.eof_word), ..output },
+        MachineIoOperation {
+            instruction: output.instruction,
+            ..input
+        },
+        MachineIoOperation {
+            kind: MachineIoKind::OutputByte,
+            ..input
+        },
+        MachineIoOperation {
+            eof_word: Some(projection.eof_word),
+            ..output
+        },
     ] {
         if encode_machine_io(forged, 0, &decoder, &projection)
             != Err(MachineIoEncodingError::InvalidOperation)
         {
-            return Err(format!("forged machine-I/O operation {forged:?} encoded"));
+            return Err(format!(
+                "forged machine-I/O operation {forged:?} encoded"
+            ));
         }
     }
     let mut foreign = projection.clone();
@@ -21563,7 +21959,8 @@ fn machine_io_encoder_rejects_forged_realization() -> Result<(), String> {
 }
 
 #[test]
-fn raw_machine_io_rejects_eof_sentinel_overlapping_successful_bytes() -> Result<(), String> {
+fn raw_machine_io_rejects_eof_sentinel_overlapping_successful_bytes()
+-> Result<(), String> {
     let original = current_profile_io();
     let decoder = VmProfileInstructionDecoder;
     for eof_word in [0u32, 1, 127, 255] {
@@ -21576,7 +21973,7 @@ fn raw_machine_io_rejects_eof_sentinel_overlapping_successful_bytes() -> Result<
             let result = realize_runtime_io(intrinsic, &projected);
             if result != Err(RuntimeIoRealizationError::InvalidProjection) {
                 return Err(format!(
-                    "overlapping EOF word {eof_word} admitted for {intrinsic:?}: {result:?}"
+                    "EOF {eof_word} admitted: {intrinsic:?}: {result:?}"
                 ));
             }
             let valid = realize_runtime_io(intrinsic, &original)
@@ -21585,7 +21982,7 @@ fn raw_machine_io_rejects_eof_sentinel_overlapping_successful_bytes() -> Result<
                 != Err(MachineIoEncodingError::InvalidProfile)
             {
                 return Err(format!(
-                    "overlapping EOF word {eof_word} reached source-cell encoding"
+                    "overlapping EOF {eof_word} reached source-cell encoding"
                 ));
             }
         }
@@ -21594,7 +21991,8 @@ fn raw_machine_io_rejects_eof_sentinel_overlapping_successful_bytes() -> Result<
 }
 
 #[test]
-fn raw_machine_io_rejects_non_ternary_eof_word_geometry() -> Result<(), String> {
+fn raw_machine_io_rejects_non_ternary_eof_word_geometry() -> Result<(), String>
+{
     let original = current_profile_io();
     let decoder = VmProfileInstructionDecoder;
     // The raw EOF marker is the all-two-trit word for a target memory width.
@@ -21628,7 +22026,7 @@ fn raw_machine_io_rejects_non_ternary_eof_word_geometry() -> Result<(), String> 
                 != Err(MachineIoEncodingError::InvalidProfile)
             {
                 return Err(format!(
-                    "non-ternary EOF word {eof_word} reached source-cell encoding"
+                    "non-ternary EOF {eof_word} reached source-cell encoding"
                 ));
             }
         }
@@ -21637,7 +22035,7 @@ fn raw_machine_io_rejects_non_ternary_eof_word_geometry() -> Result<(), String> 
 }
 
 #[test]
-fn current_profile_io_rejects_foreign_all_two_trit_widths() -> Result<(), String> {
+fn current_io_rejects_foreign_two_trit_widths() -> Result<(), String> {
     let original = current_profile_io();
     let decoder = VmProfileInstructionDecoder;
     let canonical_input =
@@ -21660,7 +22058,7 @@ fn current_profile_io_rejects_foreign_all_two_trit_widths() -> Result<(), String
                 != Err(RuntimeHelperLoweringError::UnsupportedProfile)
         {
             return Err(format!(
-                "foreign base-three EOF width {eof_word} admitted as current profile"
+                "foreign EOF width {eof_word} admitted as current profile"
             ));
         }
     }
@@ -21679,7 +22077,7 @@ fn current_profile_io_rejects_foreign_all_two_trit_widths() -> Result<(), String
                 != Err(RuntimeHelperLoweringError::UnsupportedProfile)
         {
             return Err(format!(
-                "foreign current-profile memory word count {memory_words} admitted"
+                "foreign current-profile memory count {memory_words} admitted"
             ));
         }
     }
@@ -21809,11 +22207,3059 @@ fn unsupported_typed_ir_shape_fails_closed() -> Result<(), String> {
         observed,
         Err(TernaryLoweringError::UnsupportedFunction
             | TernaryLoweringError::UnsupportedInstruction
-            | TernaryLoweringError::UnsupportedModule)
+            | TernaryLoweringError::UnsupportedModule
+            | TernaryLoweringError::UnsupportedTerminator)
     ) {
         return Err(format!(
             "unsupported typed IR was not rejected: {observed:?}"
         ));
     }
+    Ok(())
+}
+
+#[test]
+fn validated_typed_cfg_projection_preserves_branch_and_jump_edges()
+-> Result<(), String> {
+    let module = admitted_golden(SELECT_GOLDEN)?;
+    let projection = project_typed_ir(&module)?;
+    let function = module
+        .functions()
+        .first()
+        .ok_or_else(|| String::from("missing select function"))?;
+    let copied = projection
+        .functions
+        .first()
+        .ok_or_else(|| String::from("missing copied select function"))?;
+    let mut branches = 0;
+    let mut jumps = 0;
+    for (original, projected) in function.blocks().iter().zip(&copied.blocks) {
+        match (original.terminator(), projected.terminator) {
+            (
+                Terminator::Jump { target },
+                InputTerminator::Jump {
+                    target: copied_target,
+                    span,
+                },
+            ) => {
+                assert_eq!(copied_target, target.value());
+                assert_eq!(span, input_span(original.terminator_span()));
+                jumps += 1;
+            },
+            (
+                Terminator::Branch {
+                    condition,
+                    false_target,
+                    true_target,
+                },
+                InputTerminator::Branch {
+                    condition: copied_condition,
+                    false_target: copied_false,
+                    true_target: copied_true,
+                    span,
+                },
+            ) => {
+                assert_eq!(copied_condition, condition.value());
+                assert_eq!(copied_false, false_target.value());
+                assert_eq!(copied_true, true_target.value());
+                assert_eq!(span, input_span(original.terminator_span()));
+                branches += 1;
+            },
+            (
+                Terminator::Return { value },
+                InputTerminator::Return {
+                    value: copied_value,
+                    span,
+                },
+            ) => {
+                assert_eq!(copied_value, (*value).map(ValueId::value));
+                assert_eq!(span, input_span(original.terminator_span()));
+            },
+            _ => {
+                return Err(String::from("typed CFG terminator identity lost"));
+            },
+        }
+    }
+    assert!(branches > 0 && jumps > 0);
+    // The validated select fixture contains phi merges, which this stage
+    // cannot flatten even though it preserves both conditional edges.
+    assert_eq!(
+        lower_typed_ir(&projection),
+        Err(TernaryLoweringError::UnsupportedFunction)
+    );
+    Ok(())
+}
+
+#[test]
+fn linear_jump_chain_lowers_without_inventing_guest_branch()
+-> Result<(), String> {
+    let baseline = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let original =
+        enter_ternary_stage(TernaryStageInput::Projection(&baseline))
+            .map_err(|error| format!("lower original return: {error:?}"))?;
+    let mut linear = baseline.clone();
+    let function = linear
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("missing return function"))?;
+    let block = function
+        .blocks
+        .first_mut()
+        .ok_or_else(|| String::from("missing return block"))?;
+    let saved_return = block.terminator;
+    let return_span = match saved_return {
+        InputTerminator::Return { span, .. } => span,
+        _ => return Err(String::from("fixture lacks return")),
+    };
+    block.terminator = InputTerminator::Jump {
+        span: return_span,
+        target: 1,
+    };
+    function.blocks.push(InputBlock {
+        id: 1,
+        instructions: Vec::new(),
+        phi_count: 0,
+        terminator: saved_return,
+    });
+    let lowered =
+        enter_ternary_stage(TernaryStageInput::Projection(&linear))
+            .map_err(|error| format!("linear jump not lowered: {error:?}"))?;
+    assert_eq!(lowered, original);
+    assert_eq!(
+        canonical_ternary_bytes(&lowered),
+        canonical_ternary_bytes(&original)
+    );
+    Ok(())
+}
+
+#[test]
+fn linear_jump_chain_refuses_cycles_missing_edges_and_branching()
+-> Result<(), String> {
+    let mut input = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let function = input
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("missing return function"))?;
+    let block = function
+        .blocks
+        .first_mut()
+        .ok_or_else(|| String::from("missing return block"))?;
+    let original_return = block.terminator;
+    let span = match original_return {
+        InputTerminator::Return { span, .. } => span,
+        _ => return Err(String::from("fixture lacks return")),
+    };
+    block.terminator = InputTerminator::Jump { span, target: 1 };
+    function.blocks.push(InputBlock {
+        id: 1,
+        instructions: Vec::new(),
+        phi_count: 0,
+        terminator: original_return,
+    });
+    let baseline = input.clone();
+    for case in 0u8..6 {
+        let mut changed = baseline.clone();
+        let blocks = &mut changed
+            .functions
+            .first_mut()
+            .ok_or_else(|| String::from("missing function"))?
+            .blocks;
+        match case {
+            0 => {
+                blocks[0].terminator = InputTerminator::Jump { span, target: 0 }
+            },
+            1 => {
+                blocks[0].terminator =
+                    InputTerminator::Jump { span, target: 99 }
+            },
+            2 => {
+                blocks[0].terminator = InputTerminator::Branch {
+                    condition: 0,
+                    false_target: 1,
+                    true_target: 1,
+                    span,
+                }
+            },
+            3 => blocks[0].terminator = original_return,
+            4 => blocks[1].id = 0,
+            5 => blocks[1].phi_count = 1,
+            _ => return Err(String::from("invalid mutation")),
+        }
+        if lower_typed_ir(&changed).is_ok() {
+            return Err(format!("unsound CFG mutation {case} admitted"));
+        }
+    }
+    Ok(())
+}
+
+fn validated_linear_byte_io_cfg() -> Result<Module, String> {
+    let base = admitted_byte_io_fixture()?;
+    let function = base
+        .functions()
+        .first()
+        .ok_or_else(|| String::from("missing byte-I/O function"))?;
+    let block = function
+        .blocks()
+        .first()
+        .ok_or_else(|| String::from("missing byte-I/O block"))?;
+    let instructions = block.instructions();
+    let original_return = block.terminator().clone();
+    let entry = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: instructions[..2].to_vec(),
+        phis: Vec::new(),
+        span: fixture_span(0, 2),
+        terminator: Terminator::Jump { target: BlockId::new(1) },
+        terminator_span: fixture_span(1, 2),
+    });
+    let exit = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(1),
+        instructions: instructions[2..].to_vec(),
+        phis: Vec::new(),
+        span: fixture_span(2, 4),
+        terminator: original_return,
+        terminator_span: fixture_span(3, 4),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks: vec![entry, exit],
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(function.name()),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![function],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    });
+    validate_module(&module)
+        .map_err(|error| format!("validate linear typed CFG: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode linear typed CFG: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("restore linear typed CFG: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("linear typed CFG canonical drift"));
+    }
+    Ok(restored)
+}
+
+#[test]
+fn verified_linear_cfg_preserves_byte_io_and_checkpoint_source_binding()
+-> Result<(), String> {
+    let module = validated_linear_byte_io_cfg()?;
+    let expected = project_typed_ir(&module)?;
+    let original = project_typed_ir(&admitted_byte_io_fixture()?)?;
+    let flat = enter_ternary_stage(TernaryStageInput::Projection(&original))
+        .map_err(|error| format!("lower baseline byte effects: {error:?}"))?;
+    let linear = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower linear byte effects: {error:?}"))?;
+    assert_eq!(flat, linear, "linear blocks changed guest byte effects");
+    let wire = canonical_ternary_bytes(&linear)
+        .map_err(|error| format!("encode linear target: {error:?}"))?;
+    assert_eq!(canonical_ternary_program(&wire), Ok(linear.clone()));
+    let (progress, directory) =
+        publish_ternary_progress_fixture("linear-cfg-byte-io", &wire)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        let restored = resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &expected,
+        );
+        if restored != Ok(linear.clone()) {
+            return Err(format!("linear source-bound resume: {restored:?}"));
+        }
+        for mutation in 0u8..3 {
+            let mut forged = expected.clone();
+            let blocks = &mut forged
+                .functions
+                .first_mut()
+                .ok_or_else(|| String::from("missing source function"))?
+                .blocks;
+            match mutation {
+                0 => {
+                    blocks[0].terminator = InputTerminator::Jump {
+                        span: input_span(fixture_span(1, 2)),
+                        target: 0,
+                    }
+                },
+                1 => blocks[1].phi_count = 1,
+                2 => blocks[0].id = 1,
+                _ => return Err(String::from("unknown mutation")),
+            }
+            if resume_ternary_from_progress_for_source(
+                &interpreter,
+                &inspector,
+                &progress,
+                &forged,
+            ) != Err(TernaryProgressCheckpointError::IdentityMismatch)
+            {
+                return Err(format!("forged linear CFG {mutation} resumed"));
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean linear CFG checkpoint: {error}"));
+    result?;
+    cleanup
+}
+
+fn nonmonotonic_byte_io_cfg(base: &Module) -> Result<Function, String> {
+    let original = base
+        .functions()
+        .first()
+        .ok_or_else(|| String::from("missing source function"))?;
+    let source = original
+        .blocks()
+        .first()
+        .ok_or_else(|| String::from("missing source block"))?;
+    let instructions = source.instructions();
+    let entry = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: instructions
+            .get(..1)
+            .ok_or_else(|| String::from("missing byte input"))?
+            .to_vec(),
+        phis: Vec::new(),
+        span: fixture_span(0, 1),
+        terminator: Terminator::Jump { target: BlockId::new(2) },
+        terminator_span: fixture_span(0, 1),
+    });
+    let middle = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(2),
+        instructions: instructions
+            .get(1..2)
+            .ok_or_else(|| String::from("missing byte output"))?
+            .to_vec(),
+        phis: Vec::new(),
+        span: fixture_span(1, 2),
+        terminator: Terminator::Jump { target: BlockId::new(1) },
+        terminator_span: fixture_span(1, 2),
+    });
+    let exit = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(1),
+        instructions: instructions
+            .get(2..)
+            .ok_or_else(|| String::from("missing return value"))?
+            .to_vec(),
+        phis: Vec::new(),
+        span: fixture_span(2, 4),
+        terminator: source.terminator().clone(),
+        terminator_span: source.terminator_span(),
+    });
+    let split = Function::new(FunctionSpec {
+        blocks: vec![entry, exit, middle],
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    Ok(split)
+}
+
+fn reject_nonmonotonic_cfg_forgery(
+    projection: &TypedIrInput,
+    interpreter: &Path,
+    inspector: &Path,
+    progress: &Path,
+) -> Result<(), String> {
+    for mutation in 0u8..4 {
+        let mut forged = projection.clone();
+        let blocks = &mut forged
+            .functions
+            .first_mut()
+            .ok_or_else(|| String::from("missing function"))?
+            .blocks;
+        let span = input_span(fixture_span(1, 2));
+        let index = match mutation {
+            0 => 0,
+            1 | 2 => 2,
+            3 => 1,
+            _ => return Err(String::from("invalid mutation")),
+        };
+        let block = blocks
+            .get_mut(index)
+            .ok_or_else(|| String::from("missing mutated block"))?;
+        match mutation {
+            0 => block.terminator = InputTerminator::Jump { span, target: 1 },
+            1 => block.terminator = InputTerminator::Jump { span, target: 0 },
+            2 => {
+                block.terminator = InputTerminator::Branch {
+                    condition: 0,
+                    false_target: 1,
+                    true_target: 1,
+                    span,
+                }
+            },
+            3 => block.phi_count = 1,
+            _ => return Err(String::from("invalid mutation")),
+        }
+        if lower_typed_ir(&forged).is_ok() {
+            return Err(format!("mutated CFG {mutation} was lowered"));
+        }
+        let rejected = resume_ternary_from_progress_for_source(
+            interpreter,
+            inspector,
+            progress,
+            &forged,
+        );
+        if rejected != Err(TernaryProgressCheckpointError::IdentityMismatch) {
+            return Err(format!(
+                "mutated CFG {mutation} resumed: {rejected:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_nonmonotonic_cfg_checkpoint(
+    projection: &TypedIrInput,
+    actual: &ternary_lowering::TernaryProgram,
+    wire: &[u8],
+) -> Result<(), String> {
+    let (progress, directory) =
+        publish_ternary_progress_fixture("nonmonotonic-cfg", wire)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        let restored = resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            projection,
+        );
+        if restored != Ok(actual.clone()) {
+            return Err(format!("nonmonotonic CFG checkpoint: {restored:?}"));
+        }
+        reject_nonmonotonic_cfg_forgery(
+            projection,
+            &interpreter,
+            &inspector,
+            &progress,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean CFG fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn validated_nonmonotonic_linear_cfg_preserves_guest_effect_order()
+-> Result<(), String> {
+    // Block IDs are canonical, but execution order is 0 -> 2 -> 1. A byte
+    // input dominates a later output, then an integer return is defined.
+    let base = admitted_byte_io_fixture()?;
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![nonmonotonic_byte_io_cfg(&base)?],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    });
+    validate_module(&module)
+        .map_err(|error| format!("admit nonmonotonic CFG: {error:?}"))?;
+    let encoded = canonical_bytes(&module)
+        .map_err(|error| format!("encode nonmonotonic CFG: {error:?}"))?;
+    let restored = canonical_module(&encoded)
+        .map_err(|error| format!("restore nonmonotonic CFG: {error:?}"))?;
+    if restored != module {
+        return Err(String::from("canonical nonmonotonic CFG drifted"));
+    }
+    let projection = project_typed_ir(&restored)?;
+    let flat_projection = project_typed_ir(&base)?;
+    let actual = lower_typed_ir(&projection)
+        .map_err(|error| format!("lower nonmonotonic CFG: {error:?}"))?;
+    let flat = lower_typed_ir(&flat_projection)
+        .map_err(|error| format!("lower flat byte I/O: {error:?}"))?;
+    if actual != flat {
+        return Err(String::from("nonmonotonic CFG changed guest effects"));
+    }
+    let wire = canonical_ternary_bytes(&actual)
+        .map_err(|error| format!("encode guest effects: {error:?}"))?;
+    if canonical_ternary_program(&wire) != Ok(actual.clone()) {
+        return Err(String::from("nonmonotonic MCTR canonical drift"));
+    }
+    validate_nonmonotonic_cfg_checkpoint(&projection, &actual, &wire)
+}
+
+fn constant_branch_byte_io_module(
+    selected: bool,
+    runtime_condition: bool,
+) -> Module {
+    let base = byte_io_module();
+    let source = &base.functions()[0].blocks()[0];
+    let bool_definition = if runtime_condition {
+        Instruction::Cast {
+            operation: CastOp::IntegerToBool,
+            result: ValueId::new(1),
+            type_id: TypeId::new(3),
+            value: ValueId::new(0),
+        }
+    } else {
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(1, vec![u8::from(selected)]),
+            result: ValueId::new(1),
+            type_id: TypeId::new(3),
+        }
+    };
+    let entry = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: vec![
+            source.instructions()[0].clone(),
+            LocatedInstruction::new(bool_definition, fixture_span(1, 2)),
+        ],
+        phis: Vec::new(),
+        span: fixture_span(0, 2),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(1),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: fixture_span(1, 2),
+    });
+    let output = |span| {
+        LocatedInstruction::new(
+            Instruction::ByteOutput { value: ValueId::new(0) },
+            span,
+        )
+    };
+    let false_arm = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(1),
+        instructions: vec![output(fixture_span(2, 3))],
+        phis: Vec::new(),
+        span: fixture_span(2, 4),
+        terminator: Terminator::Jump { target: BlockId::new(3) },
+        terminator_span: fixture_span(3, 4),
+    });
+    let true_arm = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(2),
+        instructions: vec![
+            output(fixture_span(2, 3)),
+            output(fixture_span(3, 4)),
+        ],
+        phis: Vec::new(),
+        span: fixture_span(2, 4),
+        terminator: Terminator::Jump { target: BlockId::new(3) },
+        terminator_span: fixture_span(3, 4),
+    });
+    let join = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(3),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(2),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: fixture_span(4, 6),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(2)),
+        },
+        terminator_span: fixture_span(5, 6),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks: vec![entry, false_arm, true_arm, join],
+        entry: BlockId::new(0),
+        id: FunctionId::new(0),
+        name: String::from("byte_round_trip"),
+        parameters: Vec::new(),
+        signature: TypeId::new(2),
+        span: fixture_span(0, 6),
+    });
+    let mut types = byte_function_types(false);
+    types.push(TypeEntry::new(TypeId::new(3), TypeDef::Bool));
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![function],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types,
+    })
+}
+
+#[test]
+fn proven_boolean_cfg_selects_guest_byte_effects_and_resumes()
+-> Result<(), String> {
+    for selected in [false, true] {
+        let source = constant_branch_byte_io_module(selected, false);
+        validate_module(&source)
+            .map_err(|error| format!("admit Boolean CFG: {error:?}"))?;
+        let typed_wire = canonical_bytes(&source)
+            .map_err(|error| format!("encode Boolean CFG: {error:?}"))?;
+        let restored = canonical_module(&typed_wire)
+            .map_err(|error| format!("decode Boolean CFG: {error:?}"))?;
+        assert_eq!(restored, source);
+        let projected = project_typed_ir(&restored)?;
+        let lowered =
+            enter_ternary_stage(TernaryStageInput::Projection(&projected))
+                .map_err(|error| format!("lower Boolean CFG: {error:?}"))?;
+        let effects = &lowered.functions[0].operations;
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|operation| {
+                    matches!(operation, TernaryOperation::ByteInput { .. })
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|operation| {
+                    matches!(operation, TernaryOperation::ByteOutput { .. })
+                })
+                .count(),
+            if selected {
+                2
+            } else {
+                1
+            }
+        );
+        let wire = canonical_ternary_bytes(&lowered)
+            .map_err(|error| format!("encode selected CFG: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&wire), Ok(lowered.clone()));
+        let (progress, directory) = publish_ternary_progress_fixture(
+            if selected {
+                "true-cfg"
+            } else {
+                "false-cfg"
+            },
+            &wire,
+        )?;
+        let result = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &projected,
+                ),
+                Ok(lowered.clone())
+            );
+            let mut switched = projected.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut switched.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing branch literal"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &switched,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch)
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean Boolean CFG progress: {error}"));
+        result?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+fn literal_comparison_branch_module(
+    left: u32,
+    right: u32,
+    operation: CompareOp,
+    unsigned: bool,
+) -> Module {
+    let base = constant_branch_byte_io_module(false, false);
+    let original = &base.functions()[0];
+    let mut blocks = original.blocks().to_vec();
+    let entry = &blocks[0];
+    let operand_type = if unsigned {
+        TypeId::new(4)
+    } else {
+        TypeId::new(1)
+    };
+    let mut instructions = vec![entry.instructions()[0].clone()];
+    for (result, bits) in [(1, left), (2, right)] {
+        instructions.push(LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, bits.to_le_bytes().to_vec()),
+                result: ValueId::new(result),
+                type_id: operand_type,
+            },
+            fixture_span(1, 2),
+        ));
+    }
+    instructions.push(LocatedInstruction::new(
+        Instruction::Compare {
+            left: ValueId::new(1),
+            operation,
+            result: ValueId::new(3),
+            right: ValueId::new(2),
+            type_id: TypeId::new(3),
+        },
+        fixture_span(1, 2),
+    ));
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(3),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let exit = &blocks[3];
+    blocks[3] = BasicBlock::new(BasicBlockSpec {
+        id: exit.id(),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(4),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: exit.span(),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(4)),
+        },
+        terminator_span: exit.terminator_span(),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    let mut types = base.types().to_vec();
+    if unsigned {
+        types.push(TypeEntry::new(TypeId::new(4), TypeDef::U32));
+    }
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![function],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types,
+    })
+}
+
+#[test]
+fn proven_integer_comparison_selects_a_static_branch() -> Result<(), String> {
+    for (left, right, operation, unsigned, selected) in [
+        (0x8000_0000, 7, CompareOp::LessSigned, false, true),
+        (0x8000_0000, 7, CompareOp::LessUnsigned, true, false),
+        (9, 9, CompareOp::Equal, false, true),
+        (9, 9, CompareOp::NotEqual, true, false),
+        (0xffff_ffff, 0, CompareOp::LessUnsignedEqual, true, false),
+        (0xffff_ffff, 0, CompareOp::LessSignedEqual, false, true),
+    ] {
+        let source =
+            literal_comparison_branch_module(left, right, operation, unsigned);
+        validate_module(&source)
+            .map_err(|error| format!("admit static comparison: {error:?}"))?;
+        let typed_wire = canonical_bytes(&source)
+            .map_err(|error| format!("encode static comparison: {error:?}"))?;
+        let restored = canonical_module(&typed_wire)
+            .map_err(|error| format!("decode static comparison: {error:?}"))?;
+        assert_eq!(restored, source);
+        let projection = project_typed_ir(&restored)?;
+        let lowered = lower_typed_ir(&projection)
+            .map_err(|error| format!("lower static comparison: {error:?}"))?;
+        let ops = &lowered.functions[0].operations;
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteInput { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteOutput { .. }))
+                .count(),
+            if selected {
+                2
+            } else {
+                1
+            }
+        );
+        let wire = canonical_ternary_bytes(&lowered)
+            .map_err(|error| format!("encode static selection: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&wire), Ok(lowered.clone()));
+        let label = format!("literal-comparison-{left:x}-{right:x}-{unsigned}");
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &wire)?;
+        let checked = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &projection,
+                ),
+                Ok(lowered.clone()),
+            );
+            let mut changed = projection.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut changed.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing literal comparison operand"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &changed,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch),
+            );
+            let mut guest_condition = projection.clone();
+            let condition =
+                &mut guest_condition.functions[0].blocks[0].instructions[3];
+            match condition {
+                InputInstruction::CompareEqual { left, .. }
+                | InputInstruction::CompareNotEqual { left, .. }
+                | InputInstruction::CompareOrdered { left, .. } => *left = 0,
+                _ => return Err(String::from("missing comparison")),
+            }
+            assert_eq!(
+                lower_typed_ir(&guest_condition),
+                Err(TernaryLoweringError::UnsupportedTerminator),
+            );
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &guest_condition,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch),
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean literal comparison: {error}"));
+        checked?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+// Distinct typed ALU values may settle a CFG branch only when their entire
+// unsigned-32 operand chain is known. The guest target retains all ALU work.
+fn literal_word_alu_branch_module(
+    left: u32,
+    right: u32,
+    operation: BinaryOp,
+    unsigned: bool,
+) -> Module {
+    let base = literal_comparison_branch_module(
+        left,
+        right,
+        CompareOp::NotEqual,
+        unsigned,
+    );
+    let original = &base.functions()[0];
+    let mut blocks = original.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    instructions.insert(
+        3,
+        LocatedInstruction::new(
+            Instruction::Binary {
+                left: ValueId::new(1),
+                operation,
+                result: ValueId::new(3),
+                right: ValueId::new(2),
+                type_id: TypeId::new(if unsigned {
+                    4
+                } else {
+                    1
+                }),
+            },
+            fixture_span(1, 2),
+        ),
+    );
+    instructions[4] = LocatedInstruction::new(
+        Instruction::Compare {
+            left: ValueId::new(3),
+            operation: CompareOp::NotEqual,
+            result: ValueId::new(4),
+            right: ValueId::new(2),
+            type_id: TypeId::new(3),
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(4),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let join = &blocks[3];
+    blocks[3] = BasicBlock::new(BasicBlockSpec {
+        id: join.id(),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(5),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: join.span(),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(5)),
+        },
+        terminator_span: join.terminator_span(),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![function],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    })
+}
+
+fn literal_unsigned_alu_branch_module(
+    left: u32,
+    right: u32,
+    operation: BinaryOp,
+) -> Module {
+    literal_word_alu_branch_module(left, right, operation, true)
+}
+
+#[test]
+fn proven_unsigned_alu_chain_selects_branch_without_erasing_guest_alu()
+-> Result<(), String> {
+    for (left, right, operation, chosen) in [
+        (0xff00_ff00, 0x00ff_00ff, BinaryOp::And, true),
+        (0, 0, BinaryOp::And, false),
+        (0xff, 0xff00, BinaryOp::Or, true),
+        (0, 0xabc, BinaryOp::Or, false),
+        (0x111, 0x222, BinaryOp::Xor, true),
+        (0, 0x222, BinaryOp::Xor, false),
+        (u32::MAX, 1, BinaryOp::Add, true),
+        (0, 7, BinaryOp::Add, false),
+        (0, 1, BinaryOp::Subtract, true),
+        (2, 1, BinaryOp::Subtract, false),
+        (u32::MAX, 2, BinaryOp::Multiply, true),
+        (1, 2, BinaryOp::Multiply, false),
+    ] {
+        let source = literal_unsigned_alu_branch_module(left, right, operation);
+        validate_module(&source)
+            .map_err(|error| format!("admit literal ALU: {error:?}"))?;
+        let wire = canonical_bytes(&source)
+            .map_err(|error| format!("encode literal ALU: {error:?}"))?;
+        let restored = canonical_module(&wire)
+            .map_err(|error| format!("restore literal ALU: {error:?}"))?;
+        assert_eq!(restored, source);
+        let projection = project_typed_ir(&restored)?;
+        let target = lower_typed_ir(&projection)
+            .map_err(|error| format!("lower {operation:?}: {error:?}"))?;
+        let ops = &target.functions[0].operations;
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteInput { .. }))
+                .count(),
+            1,
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteOutput { .. }))
+                .count(),
+            if chosen {
+                2
+            } else {
+                1
+            },
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|op| {
+                    matches!(
+                        op,
+                        TernaryOperation::AndU32 { .. }
+                            | TernaryOperation::OrU32 { .. }
+                            | TernaryOperation::XorU32 { .. }
+                            | TernaryOperation::AddU32 { .. }
+                            | TernaryOperation::SubtractU32 { .. }
+                            | TernaryOperation::MultiplyU32 { .. }
+                    )
+                })
+                .count(),
+            1,
+        );
+        let target_wire = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode literal ALU target: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&target_wire), Ok(target.clone()));
+        let label = format!("unsigned-alu-{left:x}-{right:x}-{operation:?}");
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &target_wire)?;
+        let checked = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &projection,
+                ),
+                Ok(target.clone()),
+            );
+            let mut forged = projection.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut forged.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing unsigned ALU literal"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &forged,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch),
+            );
+            let mut dynamic = projection.clone();
+            dynamic.functions[0].blocks[0].instructions[1] =
+                InputInstruction::ZeroExtendInteger {
+                    result: 1,
+                    span: input_span(fixture_span(1, 2)),
+                    type_kind: InputScalarType::U32,
+                    value: 0, // A valid U32 value, but derived from guest I/O.
+                };
+            assert_eq!(
+                lower_typed_ir(&dynamic),
+                Err(TernaryLoweringError::UnsupportedTerminator),
+            );
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &dynamic,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch),
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean unsigned ALU: {error}"));
+        checked?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+// Defined unsigned division, remainder and shifts may select a static CFG
+// edge, but undefined C operands must never be evaluated by the host proof.
+#[test]
+fn proven_unsigned_divrem_shift_selects_only_defined_literal_branches()
+-> Result<(), String> {
+    for (left, right, operation, chosen) in [
+        (15, 3, BinaryOp::DivideUnsigned, true),
+        (9, 3, BinaryOp::DivideUnsigned, false),
+        (u32::MAX, 1, BinaryOp::DivideUnsigned, true),
+        (10, 3, BinaryOp::RemainderUnsigned, true),
+        (6, 3, BinaryOp::RemainderUnsigned, true),
+        (0, 0, BinaryOp::ShiftLeft, false),
+        (1, 1, BinaryOp::ShiftLeft, true),
+        (0x8000_0000, 1, BinaryOp::ShiftLeft, true),
+        (8, 2, BinaryOp::ShiftRightLogical, false),
+        (u32::MAX, 31, BinaryOp::ShiftRightLogical, true),
+    ] {
+        let source = literal_unsigned_alu_branch_module(left, right, operation);
+        validate_module(&source)
+            .map_err(|error| format!("admit defined arithmetic: {error:?}"))?;
+        let encoded = canonical_bytes(&source)
+            .map_err(|error| format!("encode defined arithmetic: {error:?}"))?;
+        assert_eq!(canonical_module(&encoded), Ok(source.clone()));
+        let projection = project_typed_ir(&source)?;
+        let target = lower_typed_ir(&projection)
+            .map_err(|error| format!("lower {operation:?}: {error:?}"))?;
+        let ops = &target.functions[0].operations;
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteInput { .. }))
+                .count(),
+            1,
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteOutput { .. }))
+                .count(),
+            if chosen {
+                2
+            } else {
+                1
+            },
+            "{left:x} {operation:?} {right:x}",
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(
+                    op,
+                    TernaryOperation::DivideU32 { .. }
+                        | TernaryOperation::RemainderU32 { .. }
+                        | TernaryOperation::ShiftLeftU32 { .. }
+                        | TernaryOperation::ShiftRightLogicalU32 { .. }
+                ))
+                .count(),
+            1,
+        );
+        let target_wire =
+            canonical_ternary_bytes(&target).map_err(|error| {
+                format!("encode unsigned arithmetic: {error:?}")
+            })?;
+        assert_eq!(canonical_ternary_program(&target_wire), Ok(target.clone()));
+        let label =
+            format!("unsigned-defined-{left:x}-{right:x}-{operation:?}");
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &target_wire)?;
+        let checked = (|| {
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &projection,
+                ),
+                Ok(target.clone()),
+            );
+            let mut changed = projection.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut changed.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing defined arithmetic literal"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &changed,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch),
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean arithmetic case: {error}"));
+        checked?;
+        cleanup?;
+    }
+    for (left, right, operation) in [
+        (5, 0, BinaryOp::DivideUnsigned),
+        (5, 0, BinaryOp::RemainderUnsigned),
+        (1, 32, BinaryOp::ShiftLeft),
+        (1, 33, BinaryOp::ShiftRightLogical),
+        (u32::MAX, u32::MAX, BinaryOp::ShiftRightLogical),
+    ] {
+        let source = literal_unsigned_alu_branch_module(left, right, operation);
+        let projection = project_typed_ir(&source)?;
+        assert_eq!(
+            lower_typed_ir(&projection),
+            Err(TernaryLoweringError::UnsupportedTerminator),
+            "invalid C operation {left:x} {operation:?} {right:x}",
+        );
+    }
+    Ok(())
+}
+
+// Interpret C signed constants by their exact two's-complement word bits.
+fn signed_alu_bits(value: i32) -> u32 {
+    u32::from_le_bytes(value.to_le_bytes())
+}
+
+#[test]
+fn proven_signed_alu_selects_only_defined_literal_branches()
+-> Result<(), String> {
+    for (left, right, operation, chosen) in [
+        (0, 2, BinaryOp::Add, false),
+        (signed_alu_bits(i32::MIN), 0, BinaryOp::Add, true),
+        (4, 2, BinaryOp::Subtract, false),
+        (1, 2, BinaryOp::Multiply, false),
+        (signed_alu_bits(-3), 2, BinaryOp::Multiply, true),
+        (9, 3, BinaryOp::DivideSigned, false),
+        (signed_alu_bits(-9), 3, BinaryOp::DivideSigned, true),
+        (10, 3, BinaryOp::RemainderSigned, true),
+        (signed_alu_bits(-10), 3, BinaryOp::RemainderSigned, true),
+        (0, 0, BinaryOp::And, false),
+        (0xffff_0000, 0x0000_ffff, BinaryOp::Or, true),
+        (0x100, 0x200, BinaryOp::Xor, true),
+        (0, 0, BinaryOp::ShiftLeft, false),
+        (1, 1, BinaryOp::ShiftLeft, true),
+        (1, 30, BinaryOp::ShiftLeft, true),
+        (8, 2, BinaryOp::ShiftRightArithmetic, false),
+        (7, 2, BinaryOp::ShiftRightArithmetic, true),
+        (
+            signed_alu_bits(i32::MAX),
+            30,
+            BinaryOp::ShiftRightArithmetic,
+            true,
+        ),
+    ] {
+        let source =
+            literal_word_alu_branch_module(left, right, operation, false);
+        validate_module(&source)
+            .map_err(|error| format!("admit signed ALU: {error:?}"))?;
+        let encoded = canonical_bytes(&source)
+            .map_err(|error| format!("encode signed ALU: {error:?}"))?;
+        assert_eq!(canonical_module(&encoded), Ok(source.clone()));
+        let projection = project_typed_ir(&source)?;
+        let target = lower_typed_ir(&projection)
+            .map_err(|error| format!("lower {operation:?}: {error:?}"))?;
+        let ops = &target.functions[0].operations;
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteInput { .. }))
+                .count(),
+            1,
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteOutput { .. }))
+                .count(),
+            if chosen {
+                2
+            } else {
+                1
+            },
+            "{left:x} {operation:?} {right:x}",
+        );
+        let target_wire = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode signed target: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&target_wire), Ok(target.clone()));
+        if operation == BinaryOp::DivideSigned && chosen {
+            let (progress, directory) = publish_ternary_progress_fixture(
+                "signed-defined-division",
+                &target_wire,
+            )?;
+            let checked = (|| {
+                assert_eq!(
+                    resume_ternary_from_progress_for_source(
+                        &repository_python(),
+                        &progress_inspector(),
+                        &progress,
+                        &projection,
+                    ),
+                    Ok(target.clone()),
+                );
+                let mut forged = projection.clone();
+                let InputInstruction::ConstantInteger { little_endian, .. } =
+                    &mut forged.functions[0].blocks[0].instructions[1]
+                else {
+                    return Err(String::from("missing signed ALU literal"));
+                };
+                little_endian[0] ^= 1;
+                assert_eq!(
+                    resume_ternary_from_progress_for_source(
+                        &repository_python(),
+                        &progress_inspector(),
+                        &progress,
+                        &forged,
+                    ),
+                    Err(TernaryProgressCheckpointError::IdentityMismatch),
+                );
+                Ok(())
+            })();
+            let cleanup = remove_dir_all(&directory)
+                .map_err(|error| format!("clean signed progress: {error}"));
+            checked?;
+            cleanup?;
+        }
+    }
+    for (left, right, operation) in [
+        (signed_alu_bits(i32::MAX), 1, BinaryOp::Add),
+        (signed_alu_bits(i32::MIN), 1, BinaryOp::Subtract),
+        (signed_alu_bits(i32::MAX), 2, BinaryOp::Multiply),
+        (1, 0, BinaryOp::DivideSigned),
+        (1, 0, BinaryOp::RemainderSigned),
+        (
+            signed_alu_bits(i32::MIN),
+            signed_alu_bits(-1),
+            BinaryOp::DivideSigned,
+        ),
+        (
+            signed_alu_bits(i32::MIN),
+            signed_alu_bits(-1),
+            BinaryOp::RemainderSigned,
+        ),
+        (1, 31, BinaryOp::ShiftLeft),
+        (0x4000_0000, 1, BinaryOp::ShiftLeft),
+        (signed_alu_bits(-1), 1, BinaryOp::ShiftLeft),
+        (1, 32, BinaryOp::ShiftLeft),
+        (signed_alu_bits(-8), 2, BinaryOp::ShiftRightArithmetic),
+        (8, signed_alu_bits(-1), BinaryOp::ShiftRightArithmetic),
+        (8, 32, BinaryOp::ShiftRightArithmetic),
+    ] {
+        let source =
+            literal_word_alu_branch_module(left, right, operation, false);
+        let projection = project_typed_ir(&source)?;
+        assert_eq!(
+            lower_typed_ir(&projection),
+            Err(TernaryLoweringError::UnsupportedTerminator),
+            "undefined signed operation {left:x} {operation:?} {right:x}",
+        );
+    }
+    Ok(())
+}
+#[test]
+fn proven_boolean_cfg_refuses_dynamic_conditions_and_hidden_bad_edges()
+-> Result<(), String> {
+    let dynamic = constant_branch_byte_io_module(true, true);
+    validate_module(&dynamic)
+        .map_err(|error| format!("admit dynamic Boolean CFG: {error:?}"))?;
+    let dynamic_projection = project_typed_ir(&dynamic)?;
+    assert_eq!(
+        lower_typed_ir(&dynamic_projection),
+        Err(TernaryLoweringError::UnsupportedTerminator)
+    );
+    let baseline =
+        project_typed_ir(&constant_branch_byte_io_module(true, false))?;
+    for mutation in 0u8..7 {
+        let mut changed = baseline.clone();
+        let blocks = &mut changed.functions[0].blocks;
+        match mutation {
+            0 => {
+                let InputTerminator::Branch { false_target, .. } =
+                    &mut blocks[0].terminator
+                else {
+                    return Err(String::from("missing conditional"));
+                };
+                *false_target = 2;
+            },
+            1 => {
+                let InputTerminator::Branch { true_target, .. } =
+                    &mut blocks[0].terminator
+                else {
+                    return Err(String::from("missing conditional"));
+                };
+                *true_target = 99;
+            },
+            2 => {
+                blocks[1].terminator = InputTerminator::Jump {
+                    span: input_span(fixture_span(3, 4)),
+                    target: 1,
+                }
+            },
+            3 => blocks[1].phi_count = 1,
+            4 => {
+                let InputTerminator::Branch { condition, .. } =
+                    &mut blocks[0].terminator
+                else {
+                    return Err(String::from("missing conditional"));
+                };
+                *condition = 0;
+            },
+            5 => {
+                let InputInstruction::ConstantInteger { little_endian, .. } =
+                    &mut blocks[0].instructions[1]
+                else {
+                    return Err(String::from("missing constant"));
+                };
+                little_endian[0] = 2;
+            },
+            6 => blocks[3].id = 10,
+            _ => return Err(String::from("unknown forged CFG")),
+        }
+        if lower_typed_ir(&changed).is_ok() {
+            return Err(format!("forged static branch {mutation} was lowered"));
+        }
+    }
+    Ok(())
+}
+
+fn convergent_runtime_branch_byte_io_module() -> Result<Module, String> {
+    // Both control edges agree. The Boolean still depends on guest input,
+    // but no guest decision is needed to choose the output block.
+    let source = constant_branch_byte_io_module(true, true);
+    let old = &source.functions()[0];
+    let entry = &old.blocks()[0];
+    let output = &old.blocks()[1];
+    let exit = &old.blocks()[3];
+    let entry = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: entry.instructions().to_vec(),
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(1),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(1),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let output = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(1),
+        instructions: output.instructions().to_vec(),
+        phis: Vec::new(),
+        span: output.span(),
+        terminator: Terminator::Jump { target: BlockId::new(2) },
+        terminator_span: output.terminator_span(),
+    });
+    let exit = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(2),
+        instructions: exit.instructions().to_vec(),
+        phis: Vec::new(),
+        span: exit.span(),
+        terminator: exit.terminator().clone(),
+        terminator_span: exit.terminator_span(),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks: vec![entry, output, exit],
+        entry: old.entry(),
+        id: old.id(),
+        name: String::from(old.name()),
+        parameters: old.parameters().to_vec(),
+        signature: old.signature(),
+        span: old.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(source.abi_id()),
+        format_version: source.format_version(),
+        functions: vec![function],
+        globals: source.globals().to_vec(),
+        proof_obligations: source.proof_obligations().to_vec(),
+        source_id: String::from(source.source_id()),
+        source_sha256: *source.source_sha256(),
+        target_profile: String::from(source.target_profile()),
+        types: source.types().to_vec(),
+    });
+    validate_module(&module)
+        .map_err(|error| format!("validate convergent CFG: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode convergent CFG: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("decode convergent CFG: {error:?}"))?;
+    if restored != module {
+        return Err(String::from(
+            "convergent typed CFG changed after decoding",
+        ));
+    }
+    Ok(restored)
+}
+
+#[test]
+fn convergent_runtime_branch_needs_no_guest_control_decision()
+-> Result<(), String> {
+    let projection =
+        project_typed_ir(&convergent_runtime_branch_byte_io_module()?)?;
+    let lowered = lower_typed_ir(&projection).map_err(|error| {
+        format!("lower convergent runtime branch: {error:?}")
+    })?;
+    let operations = &lowered
+        .functions
+        .first()
+        .ok_or_else(|| String::from("missing convergent function"))?
+        .operations;
+    if operations
+        .iter()
+        .filter(|operation| {
+            matches!(operation, TernaryOperation::ByteInput { .. })
+        })
+        .count()
+        != 1
+    {
+        return Err(String::from("convergent CFG changed guest byte reads"));
+    }
+    if operations
+        .iter()
+        .filter(|operation| {
+            matches!(operation, TernaryOperation::ByteOutput { .. })
+        })
+        .count()
+        != 1
+    {
+        return Err(String::from("convergent CFG changed guest byte writes"));
+    }
+    if !operations
+        .iter()
+        .any(|operation| matches!(operation, TernaryOperation::U8ToBool { .. }))
+    {
+        return Err(String::from("runtime guest Boolean cast was dropped"));
+    }
+    let wire = canonical_ternary_bytes(&lowered)
+        .map_err(|error| format!("encode convergent target: {error:?}"))?;
+    if canonical_ternary_program(&wire) != Ok(lowered.clone()) {
+        return Err(String::from("convergent target checkpoint drifted"));
+    }
+    let (progress, directory) =
+        publish_ternary_progress_fixture("convergent-runtime-cfg", &wire)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &projection,
+        ) != Ok(lowered.clone())
+        {
+            return Err(String::from("convergent source checkpoint mismatch"));
+        }
+        for case in 0u8..3 {
+            let mut changed = projection.clone();
+            let function = changed
+                .functions
+                .first_mut()
+                .ok_or_else(|| String::from("missing changed function"))?;
+            let block = function
+                .blocks
+                .first_mut()
+                .ok_or_else(|| String::from("missing changed entry"))?;
+            let InputTerminator::Branch {
+                condition, true_target, ..
+            } = &mut block.terminator
+            else {
+                return Err(String::from("missing runtime branch"));
+            };
+            match case {
+                0 => *condition = 0,   // Guest byte, not a typed Boolean.
+                1 => *condition = 55,  // Undefined Boolean SSA.
+                2 => *true_target = 2, // Distinct runtime successor.
+                _ => return Err(String::from("invalid branch mutation")),
+            }
+            if lower_typed_ir(&changed)
+                != Err(TernaryLoweringError::UnsupportedTerminator)
+            {
+                return Err(format!("unsafe runtime branch {case} lowered"));
+            }
+            if resume_ternary_from_progress_for_source(
+                &interpreter,
+                &inspector,
+                &progress,
+                &changed,
+            ) != Err(TernaryProgressCheckpointError::IdentityMismatch)
+            {
+                return Err(format!("forged runtime branch {case} resumed"));
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean convergent progress: {error}"));
+    result?;
+    cleanup
+}
+
+fn empty_arm_runtime_diamond_module() -> Result<Module, String> {
+    let source = constant_branch_byte_io_module(true, true);
+    let original = source.functions().first().ok_or("missing function")?;
+    let mut blocks = original.blocks().to_vec();
+    for index in [1usize, 2] {
+        let old = blocks.get(index).ok_or("missing arm")?.clone();
+        let replacement = BasicBlock::new(BasicBlockSpec {
+            id: old.id(),
+            instructions: Vec::new(),
+            phis: Vec::new(),
+            span: old.span(),
+            terminator: old.terminator().clone(),
+            terminator_span: old.terminator_span(),
+        });
+        *blocks.get_mut(index).ok_or("missing mutable arm")? = replacement;
+    }
+    let old_join = blocks.get(3).ok_or("missing join")?.clone();
+    let mut instructions = vec![LocatedInstruction::new(
+        Instruction::ByteOutput { value: ValueId::new(0) },
+        fixture_span(2, 3),
+    )];
+    instructions.extend(old_join.instructions().iter().cloned());
+    *blocks.get_mut(3).ok_or("missing mutable join")? =
+        BasicBlock::new(BasicBlockSpec {
+            id: old_join.id(),
+            instructions,
+            phis: Vec::new(),
+            span: fixture_span(2, 6),
+            terminator: old_join.terminator().clone(),
+            terminator_span: old_join.terminator_span(),
+        });
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(source.abi_id()),
+        format_version: source.format_version(),
+        functions: vec![function],
+        globals: source.globals().to_vec(),
+        proof_obligations: source.proof_obligations().to_vec(),
+        source_id: String::from(source.source_id()),
+        source_sha256: *source.source_sha256(),
+        target_profile: String::from(source.target_profile()),
+        types: source.types().to_vec(),
+    });
+    validate_module(&module)
+        .map_err(|error| format!("admit empty-arm diamond: {error:?}"))?;
+    let wire = canonical_bytes(&module)
+        .map_err(|error| format!("encode empty-arm diamond: {error:?}"))?;
+    if canonical_module(&wire) != Ok(module.clone()) {
+        return Err(String::from("empty-arm typed CFG identity drifted"));
+    }
+    Ok(module)
+}
+
+fn reject_unsafe_empty_diamond_mutations(
+    projection: &TypedIrInput,
+    interpreter: &Path,
+    inspector: &Path,
+    progress: &Path,
+) -> Result<(), String> {
+    for case in 0u8..5 {
+        let mut forged = projection.clone();
+        let blocks = &mut forged
+            .functions
+            .first_mut()
+            .ok_or("missing function")?
+            .blocks;
+        let moved_output = blocks
+            .get(3)
+            .and_then(|join| join.instructions.first())
+            .ok_or("missing join output")?
+            .clone();
+        match case {
+            0 | 1 => blocks
+                .get_mut(usize::from(case) + 1)
+                .ok_or("missing arm")?
+                .instructions
+                .push(moved_output),
+            2 => {
+                blocks.get_mut(2).ok_or("missing true arm")?.terminator =
+                    InputTerminator::Jump {
+                        span: input_span(fixture_span(3, 4)),
+                        target: 2,
+                    };
+            },
+            3 => blocks.get_mut(1).ok_or("missing false arm")?.phi_count = 1,
+            4 => {
+                blocks.get_mut(0).ok_or("missing entry")?.terminator =
+                    InputTerminator::Branch {
+                        condition: 0,
+                        false_target: 1,
+                        true_target: 2,
+                        span: input_span(fixture_span(1, 2)),
+                    };
+            },
+            _ => return Err(String::from("invalid mutation")),
+        }
+        if lower_typed_ir(&forged).is_ok() {
+            return Err(format!("unsafe diamond mutation {case} lowered"));
+        }
+        if resume_ternary_from_progress_for_source(
+            interpreter,
+            inspector,
+            progress,
+            &forged,
+        ) != Err(TernaryProgressCheckpointError::IdentityMismatch)
+        {
+            return Err(format!("unsafe diamond mutation {case} resumed"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn runtime_boolean_empty_diamond_folds_without_guest_branch()
+-> Result<(), String> {
+    let projection = project_typed_ir(&empty_arm_runtime_diamond_module()?)?;
+    let lowered = lower_typed_ir(&projection)
+        .map_err(|error| format!("lower silent runtime diamond: {error:?}"))?;
+    let operations = &lowered
+        .functions
+        .first()
+        .ok_or("missing function")?
+        .operations;
+    for (name, count) in [
+        (
+            "read",
+            operations
+                .iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteInput { .. }))
+                .count(),
+        ),
+        (
+            "write",
+            operations
+                .iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteOutput { .. }))
+                .count(),
+        ),
+        (
+            "cast",
+            operations
+                .iter()
+                .filter(|op| matches!(op, TernaryOperation::U8ToBool { .. }))
+                .count(),
+        ),
+    ] {
+        if count != 1 {
+            return Err(format!("silent diamond {name} count is {count}"));
+        }
+    }
+    let wire = canonical_ternary_bytes(&lowered)
+        .map_err(|error| format!("encode silent diamond: {error:?}"))?;
+    if canonical_ternary_program(&wire) != Ok(lowered.clone()) {
+        return Err(String::from("silent diamond target drifted"));
+    }
+    let (progress, directory) =
+        publish_ternary_progress_fixture("silent-runtime-diamond", &wire)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &projection,
+        ) != Ok(lowered.clone())
+        {
+            return Err(String::from("silent diamond checkpoint mismatch"));
+        }
+        reject_unsafe_empty_diamond_mutations(
+            &projection,
+            &interpreter,
+            &inspector,
+            &progress,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean silent diamond: {error}"));
+    result?;
+    cleanup
+}
+
+fn transitive_empty_branch_module() -> Result<Module, String> {
+    let source = empty_arm_runtime_diamond_module()?;
+    let original = source
+        .functions()
+        .first()
+        .ok_or("missing source function")?;
+    let mut blocks = original.blocks().to_vec();
+    let old_true = blocks.get(2).ok_or("missing true arm")?.clone();
+    *blocks.get_mut(2).ok_or("missing mutable true arm")? =
+        BasicBlock::new(BasicBlockSpec {
+            id: old_true.id(),
+            instructions: Vec::new(),
+            phis: Vec::new(),
+            span: old_true.span(),
+            terminator: Terminator::Jump { target: BlockId::new(4) },
+            terminator_span: old_true.terminator_span(),
+        });
+    blocks.push(BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(4),
+        instructions: Vec::new(),
+        phis: Vec::new(),
+        span: fixture_span(3, 4),
+        terminator: Terminator::Jump { target: BlockId::new(3) },
+        terminator_span: fixture_span(3, 4),
+    }));
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(source.abi_id()),
+        format_version: source.format_version(),
+        functions: vec![function],
+        globals: source.globals().to_vec(),
+        proof_obligations: source.proof_obligations().to_vec(),
+        source_id: String::from(source.source_id()),
+        source_sha256: *source.source_sha256(),
+        target_profile: String::from(source.target_profile()),
+        types: source.types().to_vec(),
+    });
+    validate_module(&module)
+        .map_err(|error| format!("admit transitive diamond: {error:?}"))?;
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("encode transitive diamond: {error:?}"))?;
+    if canonical_module(&bytes) != Ok(module.clone()) {
+        return Err(String::from("transitive typed CFG identity drifted"));
+    }
+    Ok(module)
+}
+
+#[test]
+fn runtime_boolean_transitive_empty_paths_converge() -> Result<(), String> {
+    let projection = project_typed_ir(&transitive_empty_branch_module()?)?;
+    let direct = project_typed_ir(&empty_arm_runtime_diamond_module()?)?;
+    let lowered = lower_typed_ir(&projection)
+        .map_err(|error| format!("lower transitive diamond: {error:?}"))?;
+    if lower_typed_ir(&direct) != Ok(lowered.clone()) {
+        return Err(String::from("empty-path hop changed guest operations"));
+    }
+    let wire = canonical_ternary_bytes(&lowered)
+        .map_err(|error| format!("encode transitive target: {error:?}"))?;
+    if canonical_ternary_program(&wire) != Ok(lowered.clone()) {
+        return Err(String::from("transitive MCTR identity drifted"));
+    }
+    let (progress, directory) =
+        publish_ternary_progress_fixture("transitive-runtime-diamond", &wire)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &projection,
+        ) != Ok(lowered.clone())
+        {
+            return Err(String::from("transitive checkpoint mismatch"));
+        }
+        let mut forged = projection.clone();
+        let join_output = forged
+            .functions
+            .first()
+            .and_then(|f| f.blocks.get(3))
+            .and_then(|b| b.instructions.first())
+            .ok_or("missing join byte effect")?
+            .clone();
+        forged
+            .functions
+            .first_mut()
+            .ok_or("missing function")?
+            .blocks
+            .get_mut(4)
+            .ok_or("missing empty hop")?
+            .instructions
+            .push(join_output);
+        if lower_typed_ir(&forged).is_ok() {
+            return Err(String::from("effectful hop was wrongly elided"));
+        }
+        if resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &forged,
+        ) != Err(TernaryProgressCheckpointError::IdentityMismatch)
+        {
+            return Err(String::from("effectful hop resumed"));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean transitive diamond: {error}"));
+    result?;
+    cleanup
+}
+
+// A nested control-only choice can be erased only when every possible
+// guest-dependent edge reaches the same first instruction-bearing block.
+fn nested_runtime_empty_paths_module(
+    independent_condition: bool,
+) -> Result<Module, String> {
+    let source = transitive_empty_branch_module()?;
+    let original = source
+        .functions()
+        .first()
+        .ok_or("missing source function")?;
+    let mut blocks = original.blocks().to_vec();
+    if independent_condition {
+        // The outer and nested branches must remain independent live guest
+        // conditions, both computed on the common prefix, not host guesses.
+        let old_entry = blocks.first().ok_or("missing entry")?.clone();
+        let mut instructions = old_entry.instructions().to_vec();
+        instructions.extend([
+            LocatedInstruction::new(
+                Instruction::ByteInput {
+                    result: ValueId::new(2),
+                    type_id: TypeId::new(0),
+                },
+                fixture_span(1, 2),
+            ),
+            LocatedInstruction::new(
+                Instruction::Cast {
+                    operation: CastOp::IntegerToBool,
+                    result: ValueId::new(3),
+                    type_id: TypeId::new(3),
+                    value: ValueId::new(2),
+                },
+                fixture_span(1, 2),
+            ),
+        ]);
+        *blocks.first_mut().ok_or("missing mutable entry")? =
+            BasicBlock::new(BasicBlockSpec {
+                id: old_entry.id(),
+                instructions,
+                phis: Vec::new(),
+                span: old_entry.span(),
+                terminator: old_entry.terminator().clone(),
+                terminator_span: old_entry.terminator_span(),
+            });
+        let old_exit = blocks.get(3).ok_or("missing exit")?.clone();
+        let mut instructions = old_exit.instructions().to_vec();
+        let Some(LocatedInstruction { .. }) = instructions.get(1) else {
+            return Err(String::from("missing constant return"));
+        };
+        instructions[1] = LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(4),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        );
+        *blocks.get_mut(3).ok_or("missing mutable exit")? =
+            BasicBlock::new(BasicBlockSpec {
+                id: old_exit.id(),
+                instructions,
+                phis: Vec::new(),
+                span: old_exit.span(),
+                terminator: Terminator::Return {
+                    value: Some(ValueId::new(4)),
+                },
+                terminator_span: old_exit.terminator_span(),
+            });
+    }
+    let old_hop = blocks.get(4).ok_or("missing empty hop")?.clone();
+    *blocks.get_mut(4).ok_or("missing mutable hop")? =
+        BasicBlock::new(BasicBlockSpec {
+            id: old_hop.id(),
+            instructions: Vec::new(),
+            phis: Vec::new(),
+            span: old_hop.span(),
+            terminator: Terminator::Branch {
+                condition: ValueId::new(if independent_condition {
+                    3
+                } else {
+                    1
+                }),
+                false_target: BlockId::new(3),
+                true_target: BlockId::new(5),
+            },
+            terminator_span: old_hop.terminator_span(),
+        });
+    blocks.push(BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(5),
+        instructions: Vec::new(),
+        phis: Vec::new(),
+        span: fixture_span(3, 4),
+        terminator: Terminator::Jump { target: BlockId::new(3) },
+        terminator_span: fixture_span(3, 4),
+    }));
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(source.abi_id()),
+        format_version: source.format_version(),
+        functions: vec![function],
+        globals: source.globals().to_vec(),
+        proof_obligations: source.proof_obligations().to_vec(),
+        source_id: String::from(source.source_id()),
+        source_sha256: *source.source_sha256(),
+        target_profile: String::from(source.target_profile()),
+        types: source.types().to_vec(),
+    });
+    validate_module(&module)
+        .map_err(|error| format!("admit nested empty CFG: {error:?}"))?;
+    let wire = canonical_bytes(&module)
+        .map_err(|error| format!("encode nested empty CFG: {error:?}"))?;
+    if canonical_module(&wire) != Ok(module.clone()) {
+        return Err(String::from("nested empty typed CFG changed on restore"));
+    }
+    Ok(module)
+}
+
+#[test]
+fn nested_runtime_boolean_empty_paths_converge() -> Result<(), String> {
+    let projection =
+        project_typed_ir(&nested_runtime_empty_paths_module(false)?)?;
+    let baseline = project_typed_ir(&empty_arm_runtime_diamond_module()?)?;
+    let lowered = lower_typed_ir(&projection).map_err(|error| {
+        format!("lower nested guest-dependent CFG: {error:?}")
+    })?;
+    if lower_typed_ir(&baseline) != Ok(lowered.clone()) {
+        return Err(String::from("nested control-only branch changed effects"));
+    }
+    let wire = canonical_ternary_bytes(&lowered)
+        .map_err(|error| format!("encode nested convergent CFG: {error:?}"))?;
+    if canonical_ternary_program(&wire) != Ok(lowered.clone()) {
+        return Err(String::from("nested convergent canonical wire drifted"));
+    }
+    let (progress, directory) =
+        publish_ternary_progress_fixture("nested-runtime-diamond", &wire)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &projection,
+        ) != Ok(lowered.clone())
+        {
+            return Err(String::from("nested convergent checkpoint mismatch"));
+        }
+        for mutation in 0u8..6 {
+            let mut forged = projection.clone();
+            let blocks = &mut forged
+                .functions
+                .first_mut()
+                .ok_or("missing function")?
+                .blocks;
+            match mutation {
+                0 | 1 => {
+                    let InputTerminator::Branch { condition, .. } = &mut blocks
+                        .get_mut(4)
+                        .ok_or("missing nested branch")?
+                        .terminator
+                    else {
+                        return Err(String::from("missing nested Boolean"));
+                    };
+                    *condition = if mutation == 0 {
+                        0
+                    } else {
+                        99
+                    };
+                },
+                2 => {
+                    let effect = blocks
+                        .get(3)
+                        .ok_or("missing shared join")?
+                        .instructions
+                        .first()
+                        .ok_or("missing guest effect")?
+                        .clone();
+                    blocks
+                        .get_mut(5)
+                        .ok_or("missing nested arm")?
+                        .instructions
+                        .push(effect);
+                },
+                3 => {
+                    blocks.get_mut(5).ok_or("missing nested arm")?.terminator =
+                        InputTerminator::Jump {
+                            span: input_span(fixture_span(3, 4)),
+                            target: 5,
+                        };
+                },
+                4 => {
+                    blocks.get_mut(5).ok_or("missing nested arm")?.phi_count = 1
+                },
+                5 => {
+                    let InputTerminator::Branch { true_target, .. } =
+                        &mut blocks
+                            .get_mut(4)
+                            .ok_or("missing nested branch")?
+                            .terminator
+                    else {
+                        return Err(String::from("missing nested targets"));
+                    };
+                    *true_target = 99;
+                },
+                _ => return Err(String::from("unrecognized mutation")),
+            }
+            if lower_typed_ir(&forged).is_ok() {
+                return Err(format!(
+                    "unsafe nested CFG mutation {mutation} lowered"
+                ));
+            }
+            if resume_ternary_from_progress_for_source(
+                &interpreter,
+                &inspector,
+                &progress,
+                &forged,
+            ) != Err(TernaryProgressCheckpointError::IdentityMismatch)
+            {
+                return Err(format!(
+                    "forged nested CFG mutation {mutation} resumed"
+                ));
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean nested checkpoint: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn independent_guest_boolean_conditions_converge_without_host_selection()
+-> Result<(), String> {
+    let source = nested_runtime_empty_paths_module(true)?;
+    let projected = project_typed_ir(&source)?;
+    let lowered = lower_typed_ir(&projected)
+        .map_err(|error| format!("lower independent Boolean CFG: {error:?}"))?;
+    let operations = &lowered
+        .functions
+        .first()
+        .ok_or("missing function")?
+        .operations;
+    for (name, actual, expected) in [
+        (
+            "guest reads",
+            operations
+                .iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteInput { .. }))
+                .count(),
+            2,
+        ),
+        (
+            "guest Boolean casts",
+            operations
+                .iter()
+                .filter(|op| matches!(op, TernaryOperation::U8ToBool { .. }))
+                .count(),
+            2,
+        ),
+        (
+            "guest outputs",
+            operations
+                .iter()
+                .filter(|op| matches!(op, TernaryOperation::ByteOutput { .. }))
+                .count(),
+            1,
+        ),
+    ] {
+        if actual != expected {
+            return Err(format!("{name}: expected {expected}, got {actual}"));
+        }
+    }
+    let wire = canonical_ternary_bytes(&lowered).map_err(|error| {
+        format!("encode independent Boolean CFG: {error:?}")
+    })?;
+    if canonical_ternary_program(&wire) != Ok(lowered.clone()) {
+        return Err(String::from("independent Boolean target wire drifted"));
+    }
+    let (progress, directory) = publish_ternary_progress_fixture(
+        "independent-runtime-branches",
+        &wire,
+    )?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &projected,
+        ) != Ok(lowered.clone())
+        {
+            return Err(String::from("independent Boolean checkpoint drifted"));
+        }
+        let mut forged = projected.clone();
+        let InputTerminator::Branch { condition, .. } = &mut forged
+            .functions
+            .first_mut()
+            .ok_or("missing function")?
+            .blocks
+            .get_mut(4)
+            .ok_or("missing inner branch")?
+            .terminator
+        else {
+            return Err(String::from("missing inner branch condition"));
+        };
+        *condition = 4; // The return scalar is not a prior Boolean SSA value.
+        if lower_typed_ir(&forged).is_ok() {
+            return Err(String::from("future SSA accepted as inner condition"));
+        }
+        if resume_ternary_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &forged,
+        ) != Err(TernaryProgressCheckpointError::IdentityMismatch)
+        {
+            return Err(String::from("future Boolean checkpoint was accepted"));
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory).map_err(|error| {
+        format!("clean independent Boolean checkpoint: {error}")
+    });
+    result?;
+    cleanup
+}
+
+// Exact source constants may decide control without host evaluation of a
+// guest-dependent value. The IntegerToBool operation must still be emitted.
+fn literal_integer_truth_branch_module(
+    bits: u32,
+    width: u16,
+    kind: TypeDef,
+) -> Module {
+    let original = constant_branch_byte_io_module(false, false);
+    let function = &original.functions()[0];
+    let mut blocks = function.blocks().to_vec();
+    let entry = &blocks[0];
+    let word_type = match &kind {
+        TypeDef::I32 => TypeId::new(1),
+        TypeDef::U8 => TypeId::new(0),
+        _ => TypeId::new(4),
+    };
+    let instructions = vec![
+        entry.instructions()[0].clone(),
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(
+                    width,
+                    bits.to_le_bytes()[..usize::from(width / 8)].to_vec(),
+                ),
+                result: ValueId::new(1),
+                type_id: word_type,
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation: CastOp::IntegerToBool,
+                result: ValueId::new(2),
+                type_id: TypeId::new(3),
+                value: ValueId::new(1),
+            },
+            fixture_span(1, 2),
+        ),
+    ];
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(2),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let exit = &blocks[3];
+    blocks[3] = BasicBlock::new(BasicBlockSpec {
+        id: exit.id(),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(3),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: exit.span(),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(3)),
+        },
+        terminator_span: exit.terminator_span(),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(function.name()),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    let mut types = original.types().to_vec();
+    if !matches!(kind, TypeDef::I32 | TypeDef::U8) {
+        types.push(TypeEntry::new(TypeId::new(4), kind));
+    }
+    Module::new(ModuleSpec {
+        abi_id: String::from(original.abi_id()),
+        format_version: original.format_version(),
+        functions: vec![function],
+        globals: original.globals().to_vec(),
+        proof_obligations: original.proof_obligations().to_vec(),
+        source_id: String::from(original.source_id()),
+        source_sha256: *original.source_sha256(),
+        target_profile: String::from(original.target_profile()),
+        types,
+    })
+}
+
+#[test]
+fn literal_integer_truth_cast_selects_branch_without_erasing_cast()
+-> Result<(), String> {
+    for (bits, width, kind, truth) in [
+        (0, 8, TypeDef::I8, false),
+        (0x80, 8, TypeDef::I8, true),
+        (0, 8, TypeDef::U8, false),
+        (0xff, 8, TypeDef::U8, true),
+        (0, 16, TypeDef::I16, false),
+        (0x8000, 16, TypeDef::I16, true),
+        (0, 16, TypeDef::U16, false),
+        (0xffff, 16, TypeDef::U16, true),
+        (0, 32, TypeDef::I32, false),
+        (1, 32, TypeDef::I32, true),
+        (0x8000_0000, 32, TypeDef::I32, true),
+        (0, 32, TypeDef::U32, false),
+        (0xffff_ffff, 32, TypeDef::U32, true),
+    ] {
+        let label = format!("integer-truth-{bits:x}-{width}-{kind:?}");
+        let module = literal_integer_truth_branch_module(bits, width, kind);
+        validate_module(&module)
+            .map_err(|error| format!("admit integer truth CFG: {error:?}"))?;
+        let typed_wire = canonical_bytes(&module)
+            .map_err(|error| format!("encode integer truth CFG: {error:?}"))?;
+        let restored = canonical_module(&typed_wire)
+            .map_err(|error| format!("decode integer truth CFG: {error:?}"))?;
+        assert_eq!(module, restored);
+        let projected = project_typed_ir(&restored)?;
+        let lowered = lower_typed_ir(&projected)
+            .map_err(|error| format!("lower integer truth CFG: {error:?}"))?;
+        let effects = &lowered.functions[0].operations;
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|operation| {
+                    matches!(operation, TernaryOperation::ByteInput { .. })
+                })
+                .count(),
+            1,
+        );
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|operation| {
+                    matches!(operation, TernaryOperation::ByteOutput { .. })
+                })
+                .count(),
+            if truth {
+                2
+            } else {
+                1
+            },
+        );
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|operation| {
+                    matches!(
+                        operation,
+                        TernaryOperation::I8ToBool { .. }
+                            | TernaryOperation::U8ToBool { .. }
+                            | TernaryOperation::I16ToBool { .. }
+                            | TernaryOperation::U16ToBool { .. }
+                            | TernaryOperation::I32ToBool { .. }
+                            | TernaryOperation::U32ToBool { .. }
+                    )
+                })
+                .count(),
+            1,
+        );
+        let wire = canonical_ternary_bytes(&lowered)
+            .map_err(|error| format!("encode word truth target: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&wire), Ok(lowered.clone()));
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &wire)?;
+        let check = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &projected,
+                ),
+                Ok(lowered.clone()),
+            );
+            let mut forged = projected.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut forged.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing word truth literal"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &interpreter,
+                    &inspector,
+                    &progress,
+                    &forged,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch),
+            );
+            let mut dynamic = projected.clone();
+            let InputInstruction::IntegerToBool { value, .. } =
+                &mut dynamic.functions[0].blocks[0].instructions[2]
+            else {
+                return Err(String::from("missing word truth cast"));
+            };
+            *value = 0; // The byte comes from the guest input.
+            assert_eq!(
+                lower_typed_ir(&dynamic),
+                Err(TernaryLoweringError::UnsupportedTerminator),
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean integer truth: {error}"));
+        check?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+// Exact integral casts are symbolic target work even when their literal
+// source permits a static control choice. Every variant stays source-bound.
+fn literal_cast_truth_branch_module(
+    bits: u32,
+    width: u16,
+    source_kind: TypeDef,
+    operation: CastOp,
+    target_kind: TypeDef,
+) -> Module {
+    let original =
+        literal_integer_truth_branch_module(bits, width, source_kind);
+    let function = &original.functions()[0];
+    let mut blocks = function.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut types = original.types().to_vec();
+    let destination =
+        TypeId::new(u32::try_from(types.len()).expect("small fixture"));
+    types.push(TypeEntry::new(destination, target_kind));
+    let mut instructions = entry.instructions().to_vec();
+    instructions.insert(
+        2,
+        LocatedInstruction::new(
+            Instruction::Cast {
+                operation,
+                result: ValueId::new(2),
+                type_id: destination,
+                value: ValueId::new(1),
+            },
+            fixture_span(1, 2),
+        ),
+    );
+    instructions[3] = LocatedInstruction::new(
+        Instruction::Cast {
+            operation: CastOp::IntegerToBool,
+            result: ValueId::new(3),
+            type_id: TypeId::new(3),
+            value: ValueId::new(2),
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(3),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let exit = &blocks[3];
+    blocks[3] = BasicBlock::new(BasicBlockSpec {
+        id: exit.id(),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(4),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: exit.span(),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(4)),
+        },
+        terminator_span: exit.terminator_span(),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(function.name()),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(original.abi_id()),
+        format_version: original.format_version(),
+        functions: vec![function],
+        globals: original.globals().to_vec(),
+        proof_obligations: original.proof_obligations().to_vec(),
+        source_id: String::from(original.source_id()),
+        source_sha256: *original.source_sha256(),
+        target_profile: String::from(original.target_profile()),
+        types,
+    })
+}
+
+#[test]
+fn proven_literal_integer_cast_chain_selects_only_static_branches()
+-> Result<(), String> {
+    for (bits, width, source_kind, cast, target_kind, chosen) in [
+        (0x80, 8, TypeDef::I8, CastOp::SignExtend, TypeDef::I32, true),
+        (0, 8, TypeDef::I8, CastOp::SignExtend, TypeDef::I16, false),
+        (
+            0x8000,
+            16,
+            TypeDef::I16,
+            CastOp::SignExtend,
+            TypeDef::I32,
+            true,
+        ),
+        (0xff, 8, TypeDef::U8, CastOp::ZeroExtend, TypeDef::U32, true),
+        (0, 8, TypeDef::U8, CastOp::ZeroExtend, TypeDef::U16, false),
+        (
+            0xffff,
+            16,
+            TypeDef::U16,
+            CastOp::ZeroExtend,
+            TypeDef::U32,
+            true,
+        ),
+        (
+            0x80,
+            8,
+            TypeDef::I8,
+            CastOp::IntegerBitcast,
+            TypeDef::U8,
+            true,
+        ),
+        (
+            0x8000,
+            16,
+            TypeDef::U16,
+            CastOp::IntegerBitcast,
+            TypeDef::I16,
+            true,
+        ),
+        (
+            0,
+            16,
+            TypeDef::I16,
+            CastOp::IntegerBitcast,
+            TypeDef::U16,
+            false,
+        ),
+        (
+            0x8000_0000,
+            32,
+            TypeDef::U32,
+            CastOp::IntegerBitcast,
+            TypeDef::I32,
+            true,
+        ),
+        (
+            0xffff_0000,
+            32,
+            TypeDef::I32,
+            CastOp::Truncate,
+            TypeDef::U8,
+            false,
+        ),
+        (
+            0x1122,
+            32,
+            TypeDef::U32,
+            CastOp::Truncate,
+            TypeDef::U16,
+            true,
+        ),
+        (
+            0xff00,
+            16,
+            TypeDef::U16,
+            CastOp::Truncate,
+            TypeDef::U8,
+            false,
+        ),
+        (
+            0x8000,
+            16,
+            TypeDef::U16,
+            CastOp::Truncate,
+            TypeDef::I8,
+            false,
+        ),
+    ] {
+        let source = literal_cast_truth_branch_module(
+            bits,
+            width,
+            source_kind,
+            cast,
+            target_kind.clone(),
+        );
+        validate_module(&source).map_err(|error| {
+            format!("admit static integral cast: {error:?}")
+        })?;
+        let typed_wire = canonical_bytes(&source).map_err(|error| {
+            format!("encode static integral cast: {error:?}")
+        })?;
+        assert_eq!(canonical_module(&typed_wire), Ok(source.clone()));
+        let projection = project_typed_ir(&source)?;
+        let target = lower_typed_ir(&projection)
+            .map_err(|error| format!("lower {cast:?}: {error:?}"))?;
+        let effects = &target.functions[0].operations;
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|operation| matches!(
+                    operation,
+                    TernaryOperation::ByteOutput { .. }
+                ))
+                .count(),
+            if chosen {
+                2
+            } else {
+                1
+            },
+            "{bits:x} {cast:?}",
+        );
+        let target_wire = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode static cast result: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&target_wire), Ok(target.clone()));
+        let label =
+            format!("literal-cast-{bits:x}-{width}-{cast:?}-{target_kind:?}");
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &target_wire)?;
+        let result = (|| {
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &projection,
+                ),
+                Ok(target.clone())
+            );
+            let mut tampered = projection.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut tampered.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing cast source literal"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &tampered,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch)
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean integral cast: {error}"));
+        result?;
+        cleanup?;
+    }
+    let source = literal_cast_truth_branch_module(
+        0,
+        8,
+        TypeDef::U8,
+        CastOp::ZeroExtend,
+        TypeDef::U32,
+    );
+    let mut dynamic = project_typed_ir(&source)?;
+    let InputInstruction::ZeroExtendInteger { value, .. } =
+        &mut dynamic.functions[0].blocks[0].instructions[2]
+    else {
+        return Err(String::from("missing source extension"));
+    };
+    *value = 0; // Guest ByteInput must never be host-selected.
+    assert_eq!(
+        lower_typed_ir(&dynamic),
+        Err(TernaryLoweringError::UnsupportedTerminator)
+    );
+    Ok(())
+}
+
+// Boolean SSA converted to a signed integer is still guest work. Only an
+// independently proven Boolean literal can settle a later integer truth arm.
+fn signed_roundtrip_with_known_bool(
+    original: Module,
+    known_bool: u32,
+    target_kind: TypeDef,
+) -> Module {
+    let function = &original.functions()[0];
+    let mut blocks = function.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut types = original.types().to_vec();
+    let destination =
+        TypeId::new(u32::try_from(types.len()).expect("small fixture"));
+    types.push(TypeEntry::new(destination, target_kind));
+    let mut instructions = entry.instructions().to_vec();
+    instructions.push(LocatedInstruction::new(
+        Instruction::Cast {
+            operation: CastOp::BoolToSigned,
+            result: ValueId::new(known_bool + 1),
+            type_id: destination,
+            value: ValueId::new(known_bool),
+        },
+        fixture_span(1, 2),
+    ));
+    instructions.push(LocatedInstruction::new(
+        Instruction::Cast {
+            operation: CastOp::IntegerToBool,
+            result: ValueId::new(known_bool + 2),
+            type_id: TypeId::new(3),
+            value: ValueId::new(known_bool + 1),
+        },
+        fixture_span(1, 2),
+    ));
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(known_bool + 2),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let join = &blocks[3];
+    blocks[3] = BasicBlock::new(BasicBlockSpec {
+        id: join.id(),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(known_bool + 3),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: join.span(),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(known_bool + 3)),
+        },
+        terminator_span: join.terminator_span(),
+    });
+    let function = Function::new(FunctionSpec {
+        blocks,
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(function.name()),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(original.abi_id()),
+        format_version: original.format_version(),
+        functions: vec![function],
+        globals: original.globals().to_vec(),
+        proof_obligations: original.proof_obligations().to_vec(),
+        source_id: String::from(original.source_id()),
+        source_sha256: *original.source_sha256(),
+        target_profile: String::from(original.target_profile()),
+        types,
+    })
+}
+
+fn literal_bool_signed_roundtrip_branch_module(
+    bits: u32,
+    source_kind: TypeDef,
+    target_kind: TypeDef,
+) -> Module {
+    let source_width = match source_kind {
+        TypeDef::U8 => 8,
+        TypeDef::I16 => 16,
+        _ => 32,
+    };
+    signed_roundtrip_with_known_bool(
+        literal_integer_truth_branch_module(bits, source_width, source_kind),
+        2,
+        target_kind,
+    )
+}
+
+#[test]
+fn proven_boolean_to_signed_cast_roundtrip_selects_only_static_truth()
+-> Result<(), String> {
+    for (bits, source_kind, destination, selected) in [
+        (0, TypeDef::U8, TypeDef::I8, false),
+        (0xff, TypeDef::U8, TypeDef::I8, true),
+        (0, TypeDef::I16, TypeDef::I16, false),
+        (0x8000, TypeDef::I16, TypeDef::I16, true),
+        (0, TypeDef::I32, TypeDef::I32, false),
+        (0x8000_0000, TypeDef::I32, TypeDef::I32, true),
+    ] {
+        let source = literal_bool_signed_roundtrip_branch_module(
+            bits,
+            source_kind.clone(),
+            destination.clone(),
+        );
+        validate_module(&source).map_err(|error| {
+            format!("admit bool/signed roundtrip: {error:?}")
+        })?;
+        let typed_wire = canonical_bytes(&source)
+            .map_err(|error| format!("encode bool/signed: {error:?}"))?;
+        assert_eq!(canonical_module(&typed_wire), Ok(source.clone()));
+        let projection = project_typed_ir(&source)?;
+        let target = lower_typed_ir(&projection).map_err(|error| {
+            format!("lower {source_kind:?} to {destination:?}: {error:?}")
+        })?;
+        let effects = &target.functions[0].operations;
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|operation| matches!(
+                    operation,
+                    TernaryOperation::ByteOutput { .. }
+                ))
+                .count(),
+            if selected {
+                2
+            } else {
+                1
+            },
+            "source {source_kind:?} destination {destination:?}"
+        );
+        assert!(effects.iter().any(|operation| matches!(
+            operation,
+            TernaryOperation::BoolToI8 { .. }
+                | TernaryOperation::BoolToI16 { .. }
+                | TernaryOperation::BoolToI32 { .. }
+        )));
+        let wire = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode target: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&wire), Ok(target.clone()));
+        let label = format!("bool-signed-{bits:x}-{destination:?}");
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &wire)?;
+        let checked = (|| {
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &projection,
+                ),
+                Ok(target.clone())
+            );
+            let mut changed = projection.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut changed.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing source literal"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &changed,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch)
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean bool/signed fixture: {error}"));
+        checked?;
+        cleanup?;
+    }
+    let source = literal_bool_signed_roundtrip_branch_module(
+        1,
+        TypeDef::U8,
+        TypeDef::I32,
+    );
+    let mut dynamic = project_typed_ir(&source)?;
+    let InputInstruction::IntegerToBool { value, .. } =
+        &mut dynamic.functions[0].blocks[0].instructions[2]
+    else {
+        return Err(String::from("missing source truth"));
+    };
+    *value = 0; // SSA 0 is a real guest ByteInput, not an exact literal.
+    assert_eq!(
+        lower_typed_ir(&dynamic),
+        Err(TernaryLoweringError::UnsupportedTerminator)
+    );
+    Ok(())
+}
+
+// The same conversion can preserve a Boolean established by exact signed
+// comparison, without treating the resulting Boolean as a guest literal.
+#[test]
+fn comparison_proven_boolean_survives_signed_roundtrip_and_checkpoint()
+-> Result<(), String> {
+    for (left, right, destination, selected) in [
+        (2, 7, TypeDef::I8, true),
+        (9, 7, TypeDef::I8, false),
+        (2, 7, TypeDef::I16, true),
+        (9, 7, TypeDef::I16, false),
+        (2, 7, TypeDef::I32, true),
+        (9, 7, TypeDef::I32, false),
+    ] {
+        let source = signed_roundtrip_with_known_bool(
+            literal_comparison_branch_module(
+                left,
+                right,
+                CompareOp::LessSigned,
+                false,
+            ),
+            3,
+            destination.clone(),
+        );
+        validate_module(&source).map_err(|error| {
+            format!("admit comparison/signed roundtrip: {error:?}")
+        })?;
+        let typed = canonical_bytes(&source)
+            .map_err(|error| format!("encode comparison/signed: {error:?}"))?;
+        assert_eq!(canonical_module(&typed), Ok(source.clone()));
+        let projection = project_typed_ir(&source)?;
+        let target = lower_typed_ir(&projection).map_err(|error| {
+            format!("lower comparison/signed {destination:?}: {error:?}")
+        })?;
+        assert_eq!(
+            target.functions[0]
+                .operations
+                .iter()
+                .filter(|operation| matches!(
+                    operation,
+                    TernaryOperation::ByteOutput { .. }
+                ))
+                .count(),
+            if selected {
+                2
+            } else {
+                1
+            }
+        );
+        let wire = canonical_ternary_bytes(&target)
+            .map_err(|error| format!("encode comparison target: {error:?}"))?;
+        assert_eq!(canonical_ternary_program(&wire), Ok(target.clone()));
+        let label = format!("comp-bool-signed-{left}-{right}-{destination:?}");
+        let (progress, directory) =
+            publish_ternary_progress_fixture(&label, &wire)?;
+        let checked = (|| {
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &projection,
+                ),
+                Ok(target.clone())
+            );
+            let mut tampered = projection.clone();
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut tampered.functions[0].blocks[0].instructions[1]
+            else {
+                return Err(String::from("missing comparison literal"));
+            };
+            little_endian[0] ^= 1;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &tampered,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch)
+            );
+            Ok(())
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean comparison roundtrip: {error}"));
+        checked?;
+        cleanup?;
+    }
+    let source = signed_roundtrip_with_known_bool(
+        literal_comparison_branch_module(2, 7, CompareOp::LessSigned, false),
+        3,
+        TypeDef::I32,
+    );
+    let mut runtime = project_typed_ir(&source)?;
+    let InputInstruction::CompareOrdered { left, .. } =
+        &mut runtime.functions[0].blocks[0].instructions[3]
+    else {
+        return Err(String::from("missing signed comparison"));
+    };
+    *left = 0; // A live byte cannot authenticate a static signed comparison.
+    assert_eq!(
+        lower_typed_ir(&runtime),
+        Err(TernaryLoweringError::UnsupportedTerminator)
+    );
     Ok(())
 }

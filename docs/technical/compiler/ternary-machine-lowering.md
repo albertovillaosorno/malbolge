@@ -26,8 +26,9 @@ This document governs the following declared TODO scope:
 `src/compiler/ternary-lowering/` now owns the first executable pre-layout target
 model. Its inbound port accepts a copied semantic projection from already
 validated typed IR rather than importing the upstream implementation type. The
-application lowerer currently admits no-argument functions containing one
-entry block, no phi nodes, exact `bool`/`u8`/`i32`/`u32` constants,
+application lowerer admits no-argument functions containing an acyclic CFG
+with unconditional jumps or literal-Boolean-selected branches, no phi nodes,
+exact `bool`/`u8`/`i32`/`u32` constants,
 `i32`/`u32` bitwise AND/OR/XOR, addition/subtraction, multiplication,
 signed/unsigned division and remainder, and typed left and right shifts,
 unsigned byte-to-word extension,
@@ -37,6 +38,144 @@ typed-IR
 `ByteInput`/`ByteOutput` effects with an `i32`, `u32`, `i8`, `u8`, Boolean, or
 value-free `void` return.
 Other admitted typed-IR shapes fail explicitly.
+
+The inbound boundary now carries typed CFG branch conditions, true/false
+successors, unconditional jump targets and exact terminator source spans.
+Acyclic, fully reachable CFGs without phi merges can now flatten a branch
+whose Boolean SSA condition is defined by an exact typed Boolean literal.
+The selected arm contributes its actual byte effects; the unselected arm
+contributes none. Both arms and all targets must be structurally valid, and
+other Boolean definitions with distinct effectful successors (including
+comparisons and guest input-dependent casts), cycles, missing blocks, orphan
+blocks and phi merges still reject.
+
+Fresh lowering and source-bound checkpoint resume share this selected-block
+proof. A canonical four-block branch-and-join fixture writes one or two
+copies of a live guest input byte depending on the known condition, and
+source-bound checkpoint restoration rejects a changed condition bit.
+
+A validated three-block CFG can also collapse a conditional whose true and
+false successors are identical, even when the condition comes from a guest
+byte-to-Boolean cast. The cast remains an explicit target operation and one
+real byte-input/byte-output effect remains. This does not evaluate the
+runtime Boolean or require a guest branch: either outcome continues at the
+same block. Both fresh lowering and source-bound resume reject an undefined
+or non-Boolean condition, and diverging runtime successors still refuse.
+
+A second runtime-dependent but control-equivalent case is a fully reachable,
+acyclic diamond whose two distinct successors travel through zero or more
+**empty unconditional-jump blocks** before reaching the same first effectful
+or deciding block. Flattening skips only the empty arms, never the guest-
+generated Boolean or the shared continuation's byte effects. This includes
+an asymmetric five-block witness with an extra jump on only one arm.
+
+Canonical typed/ternary wire round-trips and source-bound checkpoint restoration
+pass. Forged arm instructions, nonconvergent joins, cycles, malformed phi nodes,
+and non-Boolean conditions fail closed. This is not runtime guest branch
+dispatch; either input value produces the same effect stream.
+
+The same bounded proof now traverses nested, instruction-free branches as
+well as jumps. Every nested branch condition must be a Boolean SSA value
+already defined on the common prefix; every reachable leaf must identify
+one identical first instruction-bearing or returning block. A six-block
+witness with two runtime-dependent decisions reconstructs the same one-read,
+one-write ternary operations as a flat diamond. A second witness uses two
+independent live byte reads and two guest Boolean casts with one shared output;
+neither guest condition is computed by the host. Canonical typed/ternary
+round-trips, source-bound checkpoint restore and negative mutations check
+undefined or mistyped nested conditions, inserted guest effects, missing
+successors, cycles and phi merges. This remains static elimination of
+control-only paths, not runtime guest-dependent selection or looping.
+
+A third static-selection case admits an `IntegerToBool` cast fed by a
+previously defined exact signed or unsigned 8-, 16-, or 32-bit integer literal.
+All six integer categories use their exact source bit patterns: zero selects
+false and every nonzero bit pattern, including the signed sign bit, selects
+true. The cast remains a symbolic guest operation and does not consume the
+source byte input to decide control flow. The bounded 13-case typed-CFG test
+round-trips both wire formats, checks the selected one- or two-write guest
+operation stream, and restores source-bound progress checkpoints. Mutating
+literal bits rejects checkpoint identity; changing the cast input to a live
+guest byte still refuses effect-divergent branch lowering. This is compile-
+time truth selection, not general guest branch dispatch or constant folding.
+
+A second static-selection case admits a typed Boolean comparison whose two
+operands are exact, previously defined signed or unsigned 32-bit literals.
+Equality, inequality, signed/unsigned less-than and less-than-or-equal choose
+the known successor without reading guest input. Exact bit patterns keep
+signed ordering distinct from unsigned ordering (including the sign bit);
+the comparison itself remains a typed target operation rather than being
+removed from the guest effect stream. A canonical four-block typed-IR byte-
+input CFG with one-output and two-output arms passes six Boolean outcomes,
+MCTI/MCTR round-trips and source-bound checkpoint restoration. Changed
+source literals or input-derived comparison operands refuse the saved
+checkpoint; runtime-dependent comparisons with divergent effects still
+refuse fresh lowering. This is limited literal comparison selection, not
+general arithmetic constant propagation, guest branching, or a source-C
+runtime state model.
+
+An exact unsigned-32 expression chain now also supplies static CFG choices:
+`And`, `Or`, `Xor`, `Add`, `Subtract`, and `Multiply` consume two previously
+proven `u32` words, and record their result as another proven `u32` word.
+The three arithmetic operations use C's defined modulo-`2^32` unsigned
+semantics, including wraparound. The original ALU and comparison instructions
+remain in the selected ternary stream; only the known Boolean selects a
+successor. Twelve red-first cases exercise true/false selection for all six
+operations, canonical MCTI/MCTR round-trips, selected one- or two-write byte
+streams, checkpoint source binding, and mutated literal identity rejection.
+Replacing a known `u32` literal with a valid guest-input-derived `u8`-to-`u32`
+cast refuses effect-divergent control while preserving source-bound checkpoint
+identity rejection. The bounded selector also proves exact unsigned division,
+remainder, left shift and logical right shift when the divisor is nonzero and
+the shift count is below 32. Signed `i32` add/subtract/multiply, bitwise,
+division and remainder are admitted only if the checked result is defined;
+signed overflow and `INT_MIN / -1` cannot select a successor. The additional
+red-first signed/unsigned regressions keep symbolic target ALU operations,
+actual byte effects, canonical wires, and checkpoint source identity. This
+does not implement executable guest branching or general source-C streams.
+
+Previously proven exact integral literals now retain their source bit patterns
+through same-width `IntegerBitcast`, signed 8-/16-bit extension to wider
+signed integers, unsigned 8-/16-bit extension to wider unsigned integers,
+and 32-/16-bit narrowing to smaller integer types. Each step is a separate
+symbolic ternary cast; a subsequent `IntegerToBool` may select a static CFG
+arm, but byte-input-derived values are never evaluated by the host. Fourteen
+red-first conversion cases prove selected guest byte effects, canonical MCTI
+and MCTR round-trips, checkpoint replay, and tampered literal rejection.
+
+A proven Boolean may also pass through a symbolic `BoolToSigned` conversion
+to `i8`, `i16` or `i32`, then through a separate `IntegerToBool` operation.
+The bounded static selector records precisely zero or one for these signed
+results only if the input Boolean was already proven from exact literals.
+Six red-first true/false and width regressions verify the selected one- or
+two-write guest operations, MCTI/MCTR canonical round-trips, checkpoint
+restoration, and rejection of changed source bits. Six independent cases
+also derive the Boolean from exact signed `i32` comparisons, preserving the
+symbolic comparison and both conversions. An equivalent live-guest Boolean
+cannot select an effect-divergent arm. This is not host execution of guest
+values.
+
+Conservative signed-shift selection adds exact nonnegative `i32` left shift
+only when the mathematical value fits signed 32 bits, and arithmetic right
+shift of nonnegative `i32` only for counts below 32. Negative signed shifts
+are not assumed portable C semantics. Overflow and invalid counts refuse
+effect-divergent selection; shift operations stay in the guest target stream.
+Neither extension authorizes runtime guest branches, locals or EOF loops.
+
+No guest runtime branch is implemented. One canonical two-block
+typed-IR byte-input/output program validates, round-trips through MCTI,
+lowers to the same admitted MCTR bytes as its flat equivalent and resumes
+through a verified source-bound progress checkpoint.
+
+A second canonical
+three-block byte-I/O graph executes IDs `0 -> 2 -> 1`, proving that lowering
+follows successor edges instead of vector order. The same flat byte effects
+and source-bound checkpoint are restored, while mutated edges, cycles,
+unproven divergent branches and phi merges reject.
+
+No guest-dependent branch
+execution, repeated runtime loops or arbitrary C semantics are claimed by
+this CFG simplification.
 
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every

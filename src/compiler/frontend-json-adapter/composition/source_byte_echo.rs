@@ -3824,6 +3824,7 @@ fn prove_static_if_statement<'node>(
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    outer_aliases: &[LocalDeclaration<'node>],
     depth: usize,
     allow_new_local: bool,
     for_depth: usize,
@@ -3842,6 +3843,7 @@ fn prove_static_if_statement<'node>(
             expected_id,
             parent,
             None,
+            &[],
             for_depth.checked_add(1)?,
             induction,
             source,
@@ -3859,6 +3861,7 @@ fn prove_static_if_statement<'node>(
                 expected_id,
                 parent,
                 Some(live),
+                outer_aliases,
                 for_depth.checked_add(1)?,
                 induction,
                 source,
@@ -3938,6 +3941,7 @@ fn prove_static_if_statement<'node>(
             expected_id,
             parent,
             local,
+            outer_aliases,
             depth.checked_add(1)?,
             allow_new_local,
             for_depth,
@@ -4191,6 +4195,7 @@ fn prove_static_if_arm<'node>(
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    outer_aliases: &[LocalDeclaration<'node>],
     depth: usize,
     conditional_column: u32,
     allow_new_local: bool,
@@ -4207,6 +4212,7 @@ fn prove_static_if_arm<'node>(
             expected_id,
             parent,
             local,
+            outer_aliases,
             depth.checked_add(1)?,
             allow_new_local,
             for_depth,
@@ -4237,6 +4243,7 @@ fn prove_static_if_arm<'node>(
             expected_id,
             parent,
             local,
+            outer_aliases,
             depth,
             allow_new_local,
             for_depth,
@@ -4290,6 +4297,8 @@ fn prove_static_if_arm<'node>(
     // Within this exact C block, identity copies keep all their prior
     // source names until a fresh guest input replaces the resident byte.
     let mut equivalent_locals: Vec<LocalDeclaration<'node>> = Vec::new();
+    // Outer identity aliases are valid only while the entry byte is resident.
+    let mut outer_aliases_live = true;
     loop {
         if statement_count >= 16 || effects.len() >= 16 {
             return None;
@@ -4419,6 +4428,11 @@ fn prove_static_if_arm<'node>(
                 .chain(equivalent_locals.iter().filter(|_| {
                     local_is_live && statement.kind == "call-expression"
                 }))
+                .chain(outer_aliases.iter().filter(|_| {
+                    outer_aliases_live
+                        && local_is_live
+                        && statement.kind == "call-expression"
+                }))
                 .find_map(|candidate| {
                     prove_static_if_statement(
                         nodes.get(cursor..)?,
@@ -4427,6 +4441,7 @@ fn prove_static_if_arm<'node>(
                         expected_id.checked_add(u32::try_from(cursor).ok()?)?,
                         child.id,
                         Some(candidate),
+                        outer_aliases,
                         depth,
                         allow_new_local,
                         for_depth,
@@ -4444,6 +4459,7 @@ fn prove_static_if_arm<'node>(
                                 .checked_add(u32::try_from(cursor).ok()?)?,
                             child.id,
                             None,
+                            &[],
                             depth,
                             allow_new_local,
                             for_depth,
@@ -4466,6 +4482,12 @@ fn prove_static_if_arm<'node>(
                 "if-statement" | "for-statement"
             ) && statement.span.end.line > statement.span.begin.line);
         expected_line = statement.span.end.line.checked_add(1)?;
+        if statement_effects
+            .iter()
+            .any(|effect| effect.input.is_some())
+        {
+            outer_aliases_live = false;
+        }
         if !declares_local {
             if statement_effects
                 .iter()
@@ -4567,6 +4589,7 @@ fn prove_static_for<'node>(
     expected_id: u32,
     parent: u32,
     outer_local: Option<&LocalDeclaration<'node>>,
+    outer_aliases: &[LocalDeclaration<'node>],
     for_depth: usize,
     outer_induction: Option<StaticInduction<'_>>,
     source: Option<&[u8]>,
@@ -5145,6 +5168,7 @@ fn prove_static_for<'node>(
             expected_id.checked_add(arm_id_offset)?,
             loop_node.id,
             outer_local,
+            outer_aliases,
             0,
             column,
             true,
@@ -5217,6 +5241,13 @@ fn prove_static_for<'node>(
         if unsigned && !ascending && counter_value.checked_sub(stride)? < 0 {
             return None;
         }
+    }
+    // A prior source-local alias cannot survive an accumulator-clobbering
+    // input in any selected trip. Do not infer generic guest C storage.
+    if !outer_aliases.is_empty()
+        && effects.iter().any(|effect| effect.input.is_some())
+    {
+        return None;
     }
     Some(StaticForProof {
         width: usize::try_from(arm_id_offset)
@@ -5515,6 +5546,9 @@ fn checked_induction_arithmetic(
             "+" => counter.wrapping_add(operand),
             "-" => counter.wrapping_sub(operand),
             "*" => counter.wrapping_mul(operand),
+            "&" => counter & operand,
+            "^" => counter ^ operand,
+            "|" => counter | operand,
             _ => return None,
         };
         return Some(i64::from(value));
@@ -5552,7 +5586,8 @@ fn prove_induction_arithmetic_shape(
     };
     let operator_start = usize::try_from(name_end.checked_add(1)?).ok()?;
     let operator_end = operator_start.checked_add(operator.len())?;
-    if !matches!(operator, "%" | "/" | "+" | "-" | "*")
+    if !matches!(operator, "%" | "/" | "+" | "-" | "*" | "&" | "^" | "|")
+        || (matches!(operator, "&" | "^" | "|") && !induction.unsigned)
         || (induction.source.is_none() && operator != "%")
         || induction.source.is_some_and(|witness| {
             witness.get(operator_start..operator_end)
@@ -5797,10 +5832,17 @@ fn prove_induction_truth(
         return None;
     };
     let end = induction_identifier_end(induction, at)?;
+    // C lvalue-to-rvalue reads retain the protected declaration's scalar
+    // type; truth conversion itself does not change that Clang annotation.
+    let counter_type = if induction.unsigned {
+        "u32"
+    } else {
+        "i32"
+    };
     if read.id != at.id
         || read.parent != at.parent
         || read.kind != "cast-expression"
-        || read.type_name.as_deref() != Some("i32")
+        || read.type_name.as_deref() != Some(counter_type)
         || read.operation.as_deref() != Some("lvalue-to-rvalue")
         || read.reference.is_some()
         || !metadata_empty(read)
@@ -5808,7 +5850,7 @@ fn prove_induction_truth(
         || variable.id != read.id.checked_add(1)?
         || variable.parent != read.id
         || variable.kind != "declaration-reference-expression"
-        || variable.type_name.as_deref() != Some("i32")
+        || variable.type_name.as_deref() != Some(counter_type)
         || variable.reference.as_deref() != Some(induction.reference)
         || variable.operation.is_some()
         || !metadata_empty(variable)
@@ -6295,7 +6337,7 @@ fn prove_induction_value(
     if node.kind == "binary-expression"
         && matches!(
             node.operation.as_deref(),
-            Some("%" | "/" | "+" | "-" | "*")
+            Some("%" | "/" | "+" | "-" | "*" | "&" | "^" | "|")
         )
     {
         let (width, value, end) =
@@ -6793,6 +6835,51 @@ fn prove_total_byte_ternary(
     Some((width, spelling, values))
 }
 
+// Bind a pure i32 predicate literal to its exact C23 token and Clang value.
+// The normalized node holds a decimal value, but its source may be radix-
+// spelled; the token parser is shared with the frontend source identity gate.
+fn source_proven_byte_guard_literal(
+    node: &Node,
+    expected_id: u32,
+    parent: u32,
+    source: &[u8],
+) -> Option<(i32, String)> {
+    let canonical = node.literal.as_deref()?;
+    let value = canonical.parse::<i32>().ok()?;
+    let start = node.span.begin.byte;
+    let end = node.span.end.byte;
+    let token =
+        source.get(usize::try_from(start).ok()?..usize::try_from(end).ok()?)?;
+    if !(value >= 0
+        && canonical == value.to_string()
+        && super::source_integer_token_value(token)?
+            == u64::try_from(value).ok()?
+        && node.id == expected_id
+        && node.parent == parent
+        && node.kind == "integer-literal"
+        && node.type_name.as_deref() == Some("i32")
+        && node.operation.is_none()
+        && node.reference.is_none()
+        && node.name.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+        && node.constant_integer.as_deref() == Some(canonical)
+        && source_word(
+            node,
+            start,
+            end,
+            node.span.begin.line,
+            node.span.begin.column,
+        ))
+    {
+        return None;
+    }
+    Some((value, str::from_utf8(token).ok()?.to_owned()))
+}
+
 // Every leaf is an exact pure Clang/source predicate of the same resident
 // byte. Enumerate the entire 256-value successful-input domain, rather than
 // approximating with independently constant leaves. A bitmap keeps logical
@@ -6816,15 +6903,12 @@ fn prove_total_byte_leaf(
     // rather than trusting a host-calculated constant detached from source.
     let root = nodes.first()?;
     if root.kind == "integer-literal" {
-        let value = prove_decimal_condition_operand(
+        let (value, spelling) = source_proven_byte_guard_literal(
             root,
             expected_id,
             parent,
-            root.span.begin.byte,
-            root.span.begin.line,
-            root.span.begin.column,
+            source,
         )?;
-        let spelling = value.to_string();
         pure_expression_source(root, &spelling, source)?;
         return Some((1, spelling, Box::new([Some(value); 256])));
     }
@@ -6985,6 +7069,7 @@ fn prove_static_if<'node>(
     expected_id: u32,
     parent: u32,
     local: Option<&LocalDeclaration<'node>>,
+    outer_aliases: &[LocalDeclaration<'node>],
     depth: usize,
     allow_new_local: bool,
     for_depth: usize,
@@ -7036,6 +7121,7 @@ fn prove_static_if<'node>(
         predicate_last.id.checked_add(1)?,
         conditional.id,
         local,
+        outer_aliases,
         depth,
         column,
         allow_new_local,
@@ -7064,6 +7150,7 @@ fn prove_static_if<'node>(
             expected_id.checked_add(u32::try_from(width).ok()?)?,
             conditional.id,
             local,
+            outer_aliases,
             depth,
             column,
             allow_new_local,
@@ -7228,6 +7315,7 @@ pub(super) fn canonical_source_byte_echo(
                 next_id,
                 body.id,
                 None,
+                &[],
                 0,
                 false,
                 0,
@@ -7258,7 +7346,15 @@ pub(super) fn canonical_source_byte_echo(
             let remaining =
                 rest.get(consumed..).ok_or(FrontendJsonError::Unsupported)?;
             let proof = prove_static_for(
-                remaining, body, previous, next_id, body.id, None, 1, None,
+                remaining,
+                body,
+                previous,
+                next_id,
+                body.id,
+                None,
+                &[],
+                1,
+                None,
                 source,
             )
             .or_else(|| {
@@ -7276,6 +7372,7 @@ pub(super) fn canonical_source_byte_echo(
                             next_id,
                             body.id,
                             Some(candidate),
+                            &equivalent_locals,
                             1,
                             None,
                             source,
@@ -7376,6 +7473,7 @@ pub(super) fn canonical_source_byte_echo(
                 next_id,
                 body.id,
                 latest_local.as_ref().map(|(local, _)| local),
+                &equivalent_locals,
                 0,
                 // Block-local identity aliases cannot leave this C arm.
                 // Each declaration is still bound to source-proven live SSA.

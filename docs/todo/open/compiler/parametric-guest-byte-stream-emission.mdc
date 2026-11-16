@@ -57,6 +57,208 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a complete four-read C23 compound-byte probe adds
+  source-bound XOR cancellation, signed addition, logical conjunction, and
+  two successive output-selecting branches. Its 1,183-byte capsule emits
+  twelve unchanged guest output bytes in 17 instructions for ASCII and
+  mixed NUL/high-bit inputs. Clang/source operator forgeries reject; an
+  independently normalized C parity-branch control is also rejected, not
+  silently host-selected. The 29-vector adaptive-width guest replay and
+  independent C23 `-O0`/`-O2` UBSan matrix now pass, with eight canonical-
+  width VM vectors separately passing. The full 13-source canonical replay
+  remains incomplete due runtime cost. Guest-dependent C branches, mutable
+  locals and EOF loops remain unsupported; P0 remains pending.
+
+- On 2026-11-16, C23 hexadecimal `current < 0x100` proved a total
+  predicate over all 256 successful guest byte values in a four-read loop.
+  Twenty seeded binary VM vectors execute thirteen steps and exactly eight
+  writes, including all-zero and all-`0xff` streams. Changing only the
+  threshold to `0x0FF` makes the condition guest-dependent; the compiler
+  refuses publication. Pinned C23 Clang UBSan at O0 and O2 confirms the
+  seven-output boundary oracle. The 29-vector Python replay inventory was
+  deduplicated and now refuses unregistered oracles. The full long guest
+  matrix did not complete within this session; the P0 remains **pending**.
+
+- On 2026-11-16, a paired two-level unsigned C experiment tested
+  whether lexical aliases survive nested finite induction without replaying
+  guest input. `unsigned_nested_alias_live_input.c` uses one successful read,
+  an outer alias and a loop-local identity copy to emit four equal bytes in
+  six actual VM steps. `unsigned_nested_fresh_live_input.c` reads five guest
+  bytes and emits only the later four in ten steps. A third valid C program
+  instead tries to output the earlier aliases after fresh reads: the compiler
+  rejects it without an artifact because current guest storage cannot retain
+  that older byte. The two accepted programs each pass 29 binary real-guest
+  vectors; all three match independent pinned C23 Clang O0/O2 UBSan oracles
+  on 29 vectors apiece. Typed SSA checks and Clang/source binding forgeries
+  enforce live value identity. Neither general C locals nor runtime input-
+  dependent branching or EOF loops were implemented; P0 stays **pending**.
+
+- On 2026-11-16, a red-first complete source-C alias-loop probe exposed
+  a missing identity proof for two C names holding one live `getchar()` byte
+  across finite unsigned induction. The source-authenticated frontend now
+  admits both original declaration bindings through a counter-selected
+  branch and preserves one actual guest read plus three guest writes. The
+  pinned compiler emits a 1,087-byte `malbolge-2026` capsule; the normative
+  VM executes five steps, producing `AAA` from `A` and preserving NUL and
+  high-bit bytes. Changed source alias names are rejected; a separate
+  normalized C negative with fresh reads inside the loop refuses stale
+  aliases instead of inventing guest local storage. This does not implement
+  runtime input-dependent branches, mutable independent locals or EOF loops,
+  so P0 remains **pending**.
+
+- On 2026-11-16, a red-first typed-CFG Boolean-to-signed conversion chain
+  established a further bounded static control-flow proof. Previously
+  proven Boolean zero/one values now survive symbolic `BoolToSigned` casts
+  into `i8`, `i16`, or `i32` and a subsequent `IntegerToBool` branch. Six
+  true/false and width cases pass actual byte-effect selection, MCTI/MCTR
+  round-trips, source-bound checkpoint replay, and mutated-literal rejection.
+  Six comparison-derived Boolean cases also retain symbolic signed `i32`
+  comparisons and both casts, including their saved source identity. The
+  same conversion fed by live guest input still refuses divergent arms.
+  No guest branching, runtime C locals or EOF-driven loops were implemented;
+  the parametric stream P0 remains **pending**.
+
+- On 2026-11-16, a fresh complete source-C probe combined an automatic
+  `int` local, EOF-controlled `while`, guest-derived parity branch and
+  per-byte XOR/output. The pinned CLI still rejected the normalized local
+  declaration at line 4, column 5; it published no guest artifact. The
+  source-C-to-typed runtime-local and executable branch/EOF work remains
+  outstanding, independently of static typed-CFG selection.
+
+- On 2026-11-16, red-first typed CFG regressions proved defined signed
+  `i32` and unsigned `u32` arithmetic before a comparison selects an arm.
+  Exact unsigned division/remainder and left/logical-right shifts refuse
+  zero divisors and shift counts of 32 or greater. Signed 32-bit arithmetic,
+  bitwise, division and remainder select only when checked operations are
+  defined; signed overflow and `INT_MIN / -1` refuse effect-divergent branches.
+  Typed/MCTR round-trips retain symbolic ALU and live byte effects, and
+  source-bound checkpoints reject modified literal bits. This is source-
+  independent static typed-IR reasoning, not source-C runtime arithmetic,
+  guest-dependent control, EOF handling, or completion of this P0.
+
+- On 2026-11-16, twelve red-first typed-CFG cases added an exact `u32`
+  bitwise/arithmetic expression proof before comparison-driven branch
+  selection. The static selector now propagates known unsigned 32-bit AND,
+  OR, XOR, addition, subtraction and multiplication results, including
+  modulo-`2^32` wraparound, without erasing symbolic target ALU operations.
+  MCTI/MCTR round-trips and source-bound checkpoints preserve one real
+  typed byte input and the selected one- or two-output operation stream.
+  Mutating source literals rejects checkpoint identity. Replacing a literal
+  with a well-typed `u8`-to-`u32` guest-byte extension still refuses
+  effect-divergent branches and saved-source restoration. The bounded
+  selector does not run the full C program, evaluate signed overflow, realize
+  a guest branch, or handle EOF/runtime locals; P0 remains **pending**.
+
+- On 2026-11-16, the conservative typed-CFG static selector gained exact
+  integer cast chains (signed/unsigned extensions, same-width bitcasts and
+  narrowing). Fourteen red-first width/signedness boundary examples now
+  preserve actual byte effects, both canonical wire forms and source-bound
+  checkpoint replay, while guest-derived cast operands never select an arm.
+  Separately, defined nonnegative signed left/right shifts can select an
+  arm without host evaluation of guest words; negative signed operands,
+  left-shift overflow and oversized counts still refuse. These are target-
+  level static choices only. The original C runtime-local/EOF witness still
+  refuses, leaving parametric guest byte streams **pending**.
+
+- On 2026-11-16, a red-first typed-CFG fixture exposed a missing
+  `IntegerToBool` static selector even with an exact known scalar operand.
+  Ternary lowering now recognizes zero/nonzero truth for exact signed and
+  unsigned 8-, 16-, and 32-bit literals without evaluating guest input or
+  removing the symbolic cast. Thirteen signedness/width/boundary cases admit
+  canonical typed and ternary wire round-trips, preserve the selected live
+  byte effects and restore source-bound checkpoints; forged literal bits
+  fail checkpoint identity and a live guest-derived cast input cannot select
+  diverging effect paths. The complete C runtime-local/EOF program still
+  refuses at the frontend declaration, so P0 remains **pending**. This is
+  bounded static selection only, not runtime guest branching or a whole-C
+  execution witness.
+
+- On 2026-11-16, a new red-first four-block typed CFG rejected a branch
+  selected by signed/unsigned 32-bit literal comparison even though both
+  operands and the Boolean result were fully known in typed IR. The bounded
+  selector now proves exact 32-bit equality, inequality, signed/unsigned
+  less-than and less-than-or-equal with bit-pattern-preserving ordering
+  before selecting the successor. Six distinct cases pass canonical
+  MCTI/MCTR round-trips, preserve one actual guest byte read and one or two
+  output effects according to the proven Boolean, and restore from source-
+  bound checkpoints. Modified literal bits and guest-derived operand
+  forgeries refuse source resume; guest-dependent effectful branches still
+  refuse fresh lowering. The original full C runtime-local/EOF probe remains
+  stopped at the normalized declaration statement before typed IR, so this
+  is a static typed-CFG capability and **not** generalized guest streams.
+
+- On 2026-11-16, an additional red-first six-block typed CFG contains a
+  guest-input-derived Boolean at the entry and a nested branch on that same
+  live Boolean inside an otherwise empty arm. Before the change, ternary
+  lowering refused its second decision. The bounded acyclic control-frontier
+  proof now verifies **every** instruction-free branch/jump path reaches the
+  same first observable or returning block; all nested condition SSA values
+  must already be defined on the common prefix. Canonical typed and ternary
+  round-trips and source-bound checkpoint resume retain exactly one guest
+  byte read, cast and write. Forged nested conditions, inserted arm effects,
+  missing targets, cycles and phis refuse, including source-bound replay.
+  A second typed witness uses two independently read guest bytes and two
+  guest Boolean casts before these nested decisions, preserving both inputs
+  without evaluating either condition on the host; its isolated regression
+  and checkpoint test pass. The original 399-test ternary and 138-test
+  typed-IR suites pass; full ternary revalidation with the second witness
+  is pending. The original C runtime-local/EOF probe still cannot reach
+  typed IR or the guest; P0 stays pending. This is control-equivalent CFG
+  elimination, not a guest branch.
+
+- On 2026-11-16, the typed-IR-to-ternary boundary began preserving branch
+  and jump successor identities and source locations. A verified two-block
+  unconditional-jump byte-I/O graph now round-trips through canonical MCTI,
+  flattens to the same independently admitted MCTR bytes as its one-block
+  equivalent, and restores from a source-bound checkpoint. A canonical
+  three-block graph visiting IDs `0 -> 2 -> 1` preserves the byte-effect
+  stream and source-bound checkpoint despite nonmonotonic block order.
+  Tampered edges, cycles, missing targets, orphans and phi merges still
+  fail closed. A further validated four-block branch-and-join fixture selects
+  one or two actual byte-output effects from a typed literal Boolean; both
+  branch outcomes round-trip through MCTI/MCTR and restore from source-bound
+  checkpoints. A changed Boolean bit fails checkpoint identity, and a live
+  input-derived Boolean with different successors still refuses. This is
+  static CFG selection only: EOF-driven loops and input-dependent choices
+  remain unimplemented.
+
+- On 2026-11-16, a canonical three-block typed CFG accepts a live-input
+  Boolean when both branch targets coincide. Its cast remains guest-target
+  computation; input and output occur exactly once. A canonical MCTI/MCTR
+  round-trip and source-bound checkpoint restore pass, while an undefined,
+  mistyped, or divergent condition refuses. This removes a redundant edge,
+  not runtime guest-dependent control flow.
+
+- On 2026-11-16, a complete C probe with a local counter and byte variable,
+  an EOF-driven loop, input-dependent parity branch, arithmetic, and guest
+  input/output again refused at normalized `declaration-statement` (line 3,
+  column 5) using the pinned repository CLI. No guest file was published.
+  This preserves the outstanding frontend runtime-state blocker. Separately,
+  a red-first canonical four-block typed CFG with a live-input Boolean and
+  two **empty** branch arms now flattens safely to their common join, retains
+  the Boolean cast and one guest byte input/output, and passes source-bound
+  checkpoint restoration. A second red-first asymmetric five-block CFG
+  traverses one extra empty jump before joining; it lowers to exactly the same
+  MCTR byte operations and restores from its own checkpoint. Mutations adding
+  instructions to either arm, diverging joins, cycling edges, forging phis or
+  using a non-Boolean condition refuse. The change proves only effect-
+  independent empty paths; it does not compile the complete C program or
+  implement executable runtime branches.
+
+- On 2026-11-15, a complete C probe combining an EOF-driven `while`, an
+  automatic local, byte-parity branch, arithmetic and guest I/O was attempted
+  through the repository CLI. The normalized adapter refused at
+  `declaration-statement` (line 4, column 5), before typed IR or guest
+  publication. A second no-local probe using
+  `if ((getchar() & 1) != 0)` independently refused at `if-statement`
+  (line 4, column 5). Neither attempt published a guest artifact. This
+  isolates the next P2 work in `ternary-machine-lowering`: the normalized
+  frontend adapter must project runtime locals and input-dependent branches
+  into the completed typed-IR CFG, then ternary lowering must realize
+  executable branch/loop control flow; the current stage has no guest
+  branch addresses. This is failure diagnosis, not guest execution
+  evidence; P0 remains open.
+
 - A follow-up complete three-level C23 program verifies that a deepest-loop
   `continue` and a later selected inner `break` do not stop enclosing
   loops or duplicate the wrong live byte. Seven guest reads and eight writes
@@ -330,7 +532,6 @@ a compiler capability gap, not a reason to return to N+1.
   checks pass; real guest relocation witnesses remain separate evidence.
   This does not implement dynamic C state/control or arbitrary streams.
 
-## Evidence
 
 - On 2026-11-14, the straight-line guest search was found to abandon
   each source geometry after the first complete byte count even when the
@@ -1077,7 +1278,8 @@ a compiler capability gap, not a reason to return to N+1.
   fourteen steps. Six loop-bound shapes each match two binary input
   streams; a mixed nested two-by-three loop matches two nine-byte guest
   streams in nineteen steps. Five unsupported source steps and twenty
-  forged AST mutations refuse without artifacts. Runtime C control, storage and EOF remain
+  forged AST mutations refuse without artifacts. Runtime C control, storage
+  and EOF remain
   outside the bounded source-time proof; P0 stays pending.
 
 

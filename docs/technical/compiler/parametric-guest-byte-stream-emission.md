@@ -26,6 +26,68 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated live-byte algebra (2026-11-16)
+
+The complete `unsigned_byte_algebra_live_input.c` program combines XOR
+cancellation, signed 32-bit arithmetic, logical AND and two sequential C
+branches inside a four-trip unsigned induction loop. Each predicate is
+source- and Clang-bound and is total across all 256 successful input byte
+values. The compiler preserves four real reads and twelve writes instead of
+predicting an input value. The 1,183-byte capsule produces three copies of
+each byte in 17 normative VM steps for both ASCII and mixed NUL/high-bit
+inputs. Source and normalized-AST operator forgeries are rejected.
+
+A fresh 29-vector replay passed actual guest output and 17-step counts with
+trusted adaptive-width selection. Eight vectors separately passed the
+canonical-width guest VM, including NUL and `0xff` boundaries. The source
+identity matches its pinned C23 golden, and Clang `-O0`/`-O2` UBSan agrees
+with the independent oracle across all 29 vectors for both the admitted
+source and its rejected input-dependent control. The 13-source canonical
+matrix has not completed; these are bounded stream proofs, not EOF support.
+
+A paired valid C23 control replaces one cancellation identity with an
+input-dependent parity test. The frontend can normalize that C, but typed
+projection refuses rather than publishing a guest program. This is
+compile-time proof of invariant output effects, not runtime guest control.
+The broader seeded binary VM matrix is tracked separately from these
+bounded witness executions.
+
+### C23 radix threshold boundary and exact guest I/O (2026-11-16)
+
+The whole `unsigned_hex_threshold_live_input.c` source contains four live
+successful `getchar()` calls guarded by `current < 0x100`. Its authenticated
+signed-C23 hexadecimal literal is greater than every possible successful
+byte, so all four trips take the two-output arm without predicting stdin.
+The pinned compiler emits 1,151 bytes of guest code. Twenty seeded input
+vectors, including all-zero, all-`0xff` and mixed high-bit bytes, produce
+eight correctly duplicated output bytes in thirteen normative VM steps.
+A same-width source mutation to `0x0FF` makes the arm genuinely dependent
+on the byte value: compiler publication refuses, while independent pinned
+Clang C23 UBSan at `-O0` and `-O2` produces seven bytes for an input
+containing `0xff`. The parity harness now asserts fixture uniqueness and
+refuses unknown stems instead of silently applying a different oracle.
+These checks do not establish runtime guest-dependent branches or EOF loops.
+
+### Nested C alias identity and accumulator invalidation (2026-11-16)
+
+A complete two-level unsigned C program carries one successful `getchar()`
+through outer names and a loop-local identity copy. Both original and copied
+names produce the same guest SSA byte: one actual read, four outputs, six
+normative VM steps (`A` becomes `AAAA`). A paired nested-control program
+executes four fresh reads after an unused initial read and writes only the
+new bytes: five input effects, four output effects, ten VM steps (`ABCDE`
+becomes `BCDE`). Source/C23 AST identities bind each use to its declaration.
+
+The paired negative remains valid native C but tries to write the original
+byte after those fresh reads; compilation refuses without publishing a guest
+artifact rather than inventing persistent C local storage. Independent
+pinned Clang 22.1.8 C23 O0/O2 UBSan oracles match 29 binary vectors for
+all three original programs. Both accepted programs match 29 more actual
+Malbolge VM executions each, including NUL and high-bit bytes. Source-token
+and normalized declaration-reference mutations refuse typed projection.
+Runtime guest-dependent control, independent mutable locals, EOF loops and
+arbitrary byte streams remain outside the admitted slice; P0 remains open.
+
 ### Three-level source-authenticated induction with live I/O (2026-11-15)
 
 A complete C23 program uses three nested unsigned loops, a live `getchar()`
@@ -2951,8 +3013,9 @@ EOF or binary input. Seven unsupported C variants and 24 forged conditional
 ASTs refuse without publishing a guest. A second complete C source
 moves all twelve outputs inside the selected conditional branches; the
 normative VM independently confirms the same twelve bytes and 47 steps.
-This adds finite C control replay, not guest-side dynamic branching. The original unmasked Fibonacci byte
-stream still fails layout synthesis, and the P0 remains pending.
+This adds finite C control replay, not guest-side dynamic branching. The
+original unmasked Fibonacci byte stream still fails layout synthesis, and
+the P0 remains pending.
 
 ### Nested source-proven switch output effects (2026-11-11)
 
@@ -2982,8 +3045,9 @@ selected arm of an enclosing `switch` inside twelve bounded `for` trips. A
 nested switch chooses one of four distinct unsigned masks (`0`, `32`,
 `26`, `58`); the two switch-local `break` statements do not exit the for.
 Pinned Clang admitted the program, but the normalized C adapter first
-rejected nested source-state selection. The finite projector now checks at most two active switch levels,
-source-ordered and span-checked Clang children, and carries the selected inner
+rejected nested source-state selection. The finite projector now checks at
+most two active switch levels, source-ordered and span-checked Clang children,
+and carries the selected inner
 branch's local state into the outer switch without leaking another case.
 
 A separate unsigned-C oracle covers all four selector combinations. The

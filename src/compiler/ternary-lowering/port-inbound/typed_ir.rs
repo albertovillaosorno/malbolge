@@ -407,6 +407,24 @@ pub enum InputInstruction {
 /// One projected typed-IR block terminator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputTerminator {
+    /// Preserve a typed CFG conditional edge without evaluating it on host.
+    Branch {
+        /// Typed Boolean SSA value selecting the successor.
+        condition: u32,
+        /// Successor on a false condition.
+        false_target: u32,
+        /// Source span of the terminating branch.
+        span: InputSourceSpan,
+        /// Successor on a true condition.
+        true_target: u32,
+    },
+    /// Preserve a typed CFG unconditional edge.
+    Jump {
+        /// Source span of the terminating jump.
+        span: InputSourceSpan,
+        /// Target basic-block identity.
+        target: u32,
+    },
     /// Return an optional upstream SSA value.
     Return {
         /// Exact terminator provenance.

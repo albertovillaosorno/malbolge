@@ -60,6 +60,10 @@ type ConstantI32Input<'input> =
     (u16, &'input [u8], u32, InputSourceSpan, InputScalarType);
 type TruncateInput = (u32, InputSourceSpan, InputScalarType, u32);
 type SourceCoordinatesByByte = BTreeMap<u32, (u32, u32)>;
+// Local proof records, not runtime guest state.
+type ProvenWord = (u32, InputScalarType, u32);
+type ProvenWordTable = BTreeMap<u32, (InputScalarType, u32)>;
+type LiteralCastIdentity = (u32, u32, InputScalarType, LiteralCastKind);
 
 #[derive(Clone, Copy)]
 enum Bitwise32Kind {
@@ -80,6 +84,15 @@ enum Arithmetic32Kind {
     ShiftRightArithmetic,
     ShiftRightLogical,
     Subtract,
+}
+
+// This proof-local shape is not an executable cast or target operation.
+#[derive(Clone, Copy)]
+enum LiteralCastKind {
+    Bitcast,
+    SignExtend,
+    Truncate,
+    ZeroExtend,
 }
 
 #[derive(Default)]
@@ -228,76 +241,807 @@ fn validate_projection_spans_into(
     {
         return Err(TernaryLoweringError::InvalidProjection);
     }
-    let block = function
-        .blocks
-        .first()
-        .ok_or(TernaryLoweringError::UnsupportedFunction)?;
-    if let InputTerminator::Return { span, .. } = block.terminator
-        && (!valid_projection_span(span)
-            || !projection_span_contains(function.span, span)
-            || !register_projection_span(observed, span))
-    {
-        return Err(TernaryLoweringError::InvalidProjection);
+    if function.blocks.is_empty() {
+        return Err(TernaryLoweringError::UnsupportedFunction);
     }
-    for instruction in &block.instructions {
-        if let Some(span) = projected_instruction_span(instruction)
+    for block in &function.blocks {
+        let term_span = match block.terminator {
+            InputTerminator::Return { span, .. }
+            | InputTerminator::Jump { span, .. }
+            | InputTerminator::Branch { span, .. } => Some(span),
+            InputTerminator::Unsupported => None,
+        };
+        if let Some(span) = term_span
             && (!valid_projection_span(span)
                 || !projection_span_contains(function.span, span)
                 || !register_projection_span(observed, span))
         {
             return Err(TernaryLoweringError::InvalidProjection);
         }
+        for instruction in &block.instructions {
+            if let Some(span) = projected_instruction_span(instruction)
+                && (!valid_projection_span(span)
+                    || !projection_span_contains(function.span, span)
+                    || !register_projection_span(observed, span))
+            {
+                return Err(TernaryLoweringError::InvalidProjection);
+            }
+        }
     }
     Ok(())
+}
+
+// Validate the whole projected CFG before selecting a path. Even an untaken
+// arm must be structurally valid: no orphan, malformed edge, phi merge, or
+// cycle may hide behind a compile-time Boolean. Runtime-dependent choices
+// have no lowering in the current target operation model.
+fn validate_static_cfg(
+    function: &InputFunction,
+) -> Result<(), TernaryLoweringError> {
+    let count = function.blocks.len();
+    if function.parameter_count != 0 || count == 0 {
+        return Err(TernaryLoweringError::UnsupportedFunction);
+    }
+    let mut incoming = vec![0usize; count];
+    let mut reachable = BTreeSet::new();
+    let mut pending = vec![function.entry];
+    while let Some(id) = pending.pop() {
+        let index = usize::try_from(id)
+            .map_err(|_error| TernaryLoweringError::UnsupportedFunction)?;
+        let block = function
+            .blocks
+            .get(index)
+            .ok_or(TernaryLoweringError::UnsupportedFunction)?;
+        if block.id != id || block.phi_count != 0 {
+            return Err(TernaryLoweringError::UnsupportedFunction);
+        }
+        if !reachable.insert(id) {
+            continue;
+        }
+        let targets = match block.terminator {
+            InputTerminator::Jump { target, .. } => vec![target],
+            InputTerminator::Branch {
+                false_target,
+                true_target,
+                ..
+            } => {
+                if false_target == true_target {
+                    vec![true_target]
+                } else {
+                    vec![false_target, true_target]
+                }
+            },
+            InputTerminator::Return { .. } => Vec::new(),
+            InputTerminator::Unsupported => {
+                return Err(TernaryLoweringError::UnsupportedTerminator);
+            },
+        };
+        for target in targets {
+            let target_index = usize::try_from(target)
+                .map_err(|_error| TernaryLoweringError::UnsupportedFunction)?;
+            let degree = incoming
+                .get_mut(target_index)
+                .ok_or(TernaryLoweringError::UnsupportedFunction)?;
+            *degree = degree
+                .checked_add(1)
+                .ok_or(TernaryLoweringError::UnsupportedFunction)?;
+            pending.push(target);
+        }
+    }
+    if reachable.len() != count {
+        return Err(TernaryLoweringError::UnsupportedFunction);
+    }
+    let mut zero_degree = incoming
+        .iter()
+        .enumerate()
+        .filter_map(|(index, degree)| (*degree == 0).then_some(index))
+        .collect::<Vec<_>>();
+    let mut consumed = 0usize;
+    while let Some(index) = zero_degree.pop() {
+        consumed += 1;
+        let targets = match function.blocks[index].terminator {
+            InputTerminator::Jump { target, .. } => vec![target],
+            InputTerminator::Branch {
+                false_target,
+                true_target,
+                ..
+            } => {
+                if false_target == true_target {
+                    vec![true_target]
+                } else {
+                    vec![false_target, true_target]
+                }
+            },
+            _ => Vec::new(),
+        };
+        for target in targets {
+            let index = usize::try_from(target)
+                .map_err(|_error| TernaryLoweringError::UnsupportedFunction)?;
+            let degree = &mut incoming[index];
+            *degree -= 1;
+            if *degree == 0 {
+                zero_degree.push(index);
+            }
+        }
+    }
+    if consumed != count {
+        return Err(TernaryLoweringError::UnsupportedFunction);
+    }
+    Ok(())
+}
+
+// A branch with coincident successors needs no Boolean evaluation to choose
+// control flow, but its operand must still be a defined Boolean SSA value.
+// Later lowering validates its defining instruction and emits any guest work.
+const fn projected_boolean_definition(
+    instruction: &InputInstruction,
+) -> Option<u32> {
+    match instruction {
+        InputInstruction::ConstantInteger {
+            bit_width: 1,
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        }
+        | InputInstruction::CompareEqual {
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        }
+        | InputInstruction::CompareNotEqual {
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        }
+        | InputInstruction::CompareOrdered {
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        }
+        | InputInstruction::IntegerToBool {
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => Some(*result),
+        _ => None,
+    }
+}
+
+// Only typed exact literals can settle comparison-driven CFG choices. Keep
+// their complete bit patterns; input-derived SSA and arithmetic are never
+// evaluated by this static selector. The ordinary lowerer still validates and
+// emits every selected comparison as a guest target operation.
+fn proven_literal_integer(
+    instruction: &InputInstruction,
+) -> Option<(u32, InputScalarType, u32)> {
+    let InputInstruction::ConstantInteger {
+        bit_width,
+        little_endian,
+        result,
+        type_kind,
+        ..
+    } = instruction
+    else {
+        return None;
+    };
+    let bits = match (*bit_width, *type_kind, little_endian.as_slice()) {
+        (8, InputScalarType::I8 | InputScalarType::U8, &[byte]) => {
+            u32::from(byte)
+        },
+        (16, InputScalarType::I16 | InputScalarType::U16, &[lo, hi]) => {
+            u32::from(u16::from_le_bytes([lo, hi]))
+        },
+        (
+            32,
+            InputScalarType::I32 | InputScalarType::U32,
+            &[first, second, third, fourth],
+        ) => u32::from_le_bytes([first, second, third, fourth]),
+        _ => return None,
+    };
+    Some((*result, *type_kind, bits))
+}
+
+fn proven_literal_comparison(
+    instruction: &InputInstruction,
+    words: &BTreeMap<u32, (InputScalarType, u32)>,
+) -> Option<(u32, bool)> {
+    let (left, right, result, ordered) = match instruction {
+        InputInstruction::CompareEqual {
+            left,
+            result,
+            right,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => (*left, *right, *result, None),
+        InputInstruction::CompareNotEqual {
+            left,
+            result,
+            right,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => (*left, *right, *result, Some(None)),
+        InputInstruction::CompareOrdered {
+            left,
+            operation,
+            result,
+            right,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => (*left, *right, *result, Some(Some(*operation))),
+        _ => return None,
+    };
+    let &(left_kind, left_bits) = words.get(&left)?;
+    let &(right_kind, right_bits) = words.get(&right)?;
+    if left_kind != right_kind
+        || !matches!(left_kind, InputScalarType::I32 | InputScalarType::U32)
+    {
+        return None;
+    }
+    let chosen = match ordered {
+        None => left_bits == right_bits,
+        Some(None) => left_bits != right_bits,
+        Some(Some(InputOrderedComparison::Signed))
+            if left_kind == InputScalarType::I32 =>
+        {
+            (left_bits as i32) < (right_bits as i32)
+        },
+        Some(Some(InputOrderedComparison::SignedEqual))
+            if left_kind == InputScalarType::I32 =>
+        {
+            (left_bits as i32) <= (right_bits as i32)
+        },
+        Some(Some(InputOrderedComparison::Unsigned))
+            if left_kind == InputScalarType::U32 =>
+        {
+            left_bits < right_bits
+        },
+        Some(Some(InputOrderedComparison::UnsignedEqual))
+            if left_kind == InputScalarType::U32 =>
+        {
+            left_bits <= right_bits
+        },
+        _ => return None,
+    };
+    Some((result, chosen))
+}
+
+// Preserve exact 32-bit literal arithmetic chains for static CFG selection.
+// Signed overflow and zero divisors cannot prove a successor; unsigned
+// addition/multiplication wrap, while shift counts must be below 32.
+// This is control selection only: the selected path still emits each target
+// ALU instruction, and no guest-derived operand is inspected on the host.
+fn proven_literal_word_alu(
+    instruction: &InputInstruction,
+    words: &BTreeMap<u32, (InputScalarType, u32)>,
+) -> Option<(u32, InputScalarType, u32)> {
+    let (left, right, result, kind) = match instruction {
+        InputInstruction::BinaryAnd {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryOr {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryXor {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryAdd {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinarySubtract {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryMultiply {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryDivideSigned {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryRemainderSigned {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryDivideUnsigned {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryRemainderUnsigned {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryShiftLeft {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryShiftRightLogical {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryShiftRightArithmetic {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        } => (*left, *right, *result, *type_kind),
+        _ => return None,
+    };
+    if !matches!(kind, InputScalarType::I32 | InputScalarType::U32) {
+        return None;
+    }
+    let &(left_kind, left_bits) = words.get(&left)?;
+    let &(right_kind, right_bits) = words.get(&right)?;
+    if left_kind != kind || right_kind != kind {
+        return None;
+    }
+    let signed_left = i32::from_le_bytes(left_bits.to_le_bytes());
+    let signed_right = i32::from_le_bytes(right_bits.to_le_bytes());
+    let bits = match (kind, instruction) {
+        (_, InputInstruction::BinaryAnd { .. }) => left_bits & right_bits,
+        (_, InputInstruction::BinaryOr { .. }) => left_bits | right_bits,
+        (_, InputInstruction::BinaryXor { .. }) => left_bits ^ right_bits,
+        (InputScalarType::U32, InputInstruction::BinaryAdd { .. }) => {
+            left_bits.wrapping_add(right_bits)
+        },
+        (InputScalarType::U32, InputInstruction::BinarySubtract { .. }) => {
+            left_bits.wrapping_sub(right_bits)
+        },
+        (InputScalarType::U32, InputInstruction::BinaryMultiply { .. }) => {
+            left_bits.wrapping_mul(right_bits)
+        },
+        (InputScalarType::I32, InputInstruction::BinaryAdd { .. }) => {
+            u32::from_le_bytes(
+                signed_left.checked_add(signed_right)?.to_le_bytes(),
+            )
+        },
+        (InputScalarType::I32, InputInstruction::BinarySubtract { .. }) => {
+            u32::from_le_bytes(
+                signed_left.checked_sub(signed_right)?.to_le_bytes(),
+            )
+        },
+        (InputScalarType::I32, InputInstruction::BinaryMultiply { .. }) => {
+            u32::from_le_bytes(
+                signed_left.checked_mul(signed_right)?.to_le_bytes(),
+            )
+        },
+        (InputScalarType::I32, InputInstruction::BinaryDivideSigned { .. }) => {
+            u32::from_le_bytes(
+                signed_left.checked_div(signed_right)?.to_le_bytes(),
+            )
+        },
+        (
+            InputScalarType::I32,
+            InputInstruction::BinaryRemainderSigned { .. },
+        ) => u32::from_le_bytes(
+            signed_left.checked_rem(signed_right)?.to_le_bytes(),
+        ),
+        (
+            InputScalarType::U32,
+            InputInstruction::BinaryDivideUnsigned { .. },
+        ) => left_bits.checked_div(right_bits)?,
+        (
+            InputScalarType::U32,
+            InputInstruction::BinaryRemainderUnsigned { .. },
+        ) => left_bits.checked_rem(right_bits)?,
+        (InputScalarType::I32, InputInstruction::BinaryShiftLeft { .. })
+            if signed_left >= 0i32 && right_bits < 32u32 =>
+        {
+            // Shifting a nonnegative signed C integer is defined only when
+            // its mathematical result remains representable as signed i32.
+            let shifted = i64::from(signed_left) << right_bits;
+            u32::from_le_bytes(i32::try_from(shifted).ok()?.to_le_bytes())
+        },
+        (
+            InputScalarType::I32,
+            InputInstruction::BinaryShiftRightArithmetic { .. },
+        ) if signed_left >= 0i32 => {
+            // Negative signed right shifts are implementation-defined in C.
+            u32::from_le_bytes(
+                signed_left.checked_shr(right_bits)?.to_le_bytes(),
+            )
+        },
+        (InputScalarType::U32, InputInstruction::BinaryShiftLeft { .. }) => {
+            left_bits.checked_shl(right_bits)?
+        },
+        (
+            InputScalarType::U32,
+            InputInstruction::BinaryShiftRightLogical { .. },
+        ) => left_bits.checked_shr(right_bits)?,
+        _ => return None,
+    };
+    Some((result, kind, bits))
+}
+
+const fn literal_integer_width(kind: InputScalarType) -> Option<u32> {
+    match kind {
+        InputScalarType::I8 | InputScalarType::U8 => Some(8u32),
+        InputScalarType::I16 | InputScalarType::U16 => Some(16u32),
+        InputScalarType::I32 | InputScalarType::U32 => Some(32u32),
+        InputScalarType::Bool
+        | InputScalarType::Other
+        | InputScalarType::Void => None,
+    }
+}
+
+const fn literal_cast_identity(
+    instruction: &InputInstruction,
+) -> Option<LiteralCastIdentity> {
+    let (value, result, kind, cast) =
+        if let InputInstruction::IntegerBitcast {
+            value,
+            result,
+            type_kind,
+            ..
+        } = instruction
+        {
+            (value, result, type_kind, LiteralCastKind::Bitcast)
+        } else if let InputInstruction::SignExtendI8ToI32 {
+            value,
+            result,
+            type_kind,
+            ..
+        } = instruction
+        {
+            (value, result, type_kind, LiteralCastKind::SignExtend)
+        } else if let InputInstruction::ZeroExtendInteger {
+            value,
+            result,
+            type_kind,
+            ..
+        } = instruction
+        {
+            (value, result, type_kind, LiteralCastKind::ZeroExtend)
+        } else if let InputInstruction::TruncateInteger {
+            value,
+            result,
+            type_kind,
+            ..
+        } = instruction
+        {
+            (value, result, type_kind, LiteralCastKind::Truncate)
+        } else {
+            return None;
+        };
+    Some((*value, *result, *kind, cast))
+}
+
+// Only exact, typed constant integral casts may propagate a known bit
+// pattern into static CFG selection. Preserve C integer widths and bitcasts;
+// narrowing drops high bits, while signed extension copies the sign bit.
+// The target operation remains in the guest stream and invalid casts are
+// refused by the normal lowerer rather than silently proven here.
+fn proven_literal_integer_cast(
+    instruction: &InputInstruction,
+    words: &ProvenWordTable,
+) -> Option<ProvenWord> {
+    let (value, result, kind, cast) = literal_cast_identity(instruction)?;
+    let &(source_kind, source_bits) = words.get(&value)?;
+    let source_width = literal_integer_width(source_kind)?;
+    let target_width = literal_integer_width(kind)?;
+    let valid = match cast {
+        LiteralCastKind::Bitcast => source_width == target_width,
+        LiteralCastKind::SignExtend => matches!(
+            (source_kind, kind),
+            (
+                InputScalarType::I8,
+                InputScalarType::I16 | InputScalarType::I32
+            ) | (InputScalarType::I16, InputScalarType::I32)
+        ),
+        LiteralCastKind::ZeroExtend => matches!(
+            (source_kind, kind),
+            (
+                InputScalarType::U8,
+                InputScalarType::U16 | InputScalarType::U32
+            ) | (InputScalarType::U16, InputScalarType::U32)
+        ),
+        LiteralCastKind::Truncate => source_width > target_width,
+    };
+    if !valid {
+        return None;
+    }
+    let result_bits = if matches!(cast, LiteralCastKind::SignExtend) {
+        let [lo, hi, _, _] = source_bits.to_le_bytes();
+        let signed = if source_width == 8u32 {
+            i32::from(i8::from_le_bytes([lo]))
+        } else {
+            i32::from(i16::from_le_bytes([lo, hi]))
+        };
+        u32::from_le_bytes(signed.to_le_bytes())
+    } else {
+        match target_width {
+            8 => source_bits & 0xffu32,
+            16 => source_bits & 0xffffu32,
+            32 => source_bits,
+            _ => return None,
+        }
+    };
+    Some((result, kind, result_bits))
+}
+
+// A cast from an exact, previously defined integer literal has a known
+// truth value. This only selects control flow: the symbolic cast is still
+// lowered into a target operation, and guest-derived words remain unknown.
+fn proven_literal_word_truth(
+    instruction: &InputInstruction,
+    words: &BTreeMap<u32, (InputScalarType, u32)>,
+) -> Option<(u32, bool)> {
+    let InputInstruction::IntegerToBool {
+        result,
+        type_kind: InputScalarType::Bool,
+        value,
+        ..
+    } = instruction
+    else {
+        return None;
+    };
+    let &(kind, bits) = words.get(value)?;
+    matches!(
+        kind,
+        InputScalarType::I8
+            | InputScalarType::U8
+            | InputScalarType::I16
+            | InputScalarType::U16
+            | InputScalarType::I32
+            | InputScalarType::U32
+    )
+    .then_some((*result, bits != 0))
+}
+
+// A Boolean known from exact literals or their proven integer comparisons
+// converts to exactly zero or one at any admitted signed width. Keep the
+// conversion symbolic in the emitted target operations; no guest Boolean can
+// enter this proof table without an earlier source-constant derivation.
+fn proven_literal_boolean_to_signed(
+    instruction: &InputInstruction,
+    constants: &BTreeMap<u32, bool>,
+) -> Option<ProvenWord> {
+    let InputInstruction::BoolToSigned {
+        result, type_kind, value, ..
+    } = instruction
+    else {
+        return None;
+    };
+    if !matches!(
+        type_kind,
+        InputScalarType::I8 | InputScalarType::I16 | InputScalarType::I32
+    ) {
+        return None;
+    }
+    let known = *constants.get(value)?;
+    Some((*result, *type_kind, u32::from(known)))
+}
+
+// Follow all instruction-free control paths until their first observable
+// instruction or return. A nested branch is safe to erase only if its Boolean
+// has already been defined on the common prefix and every path reaches the
+// exact same continuation. Reject even pure-looking skipped instructions:
+// a computation may trap, define SSA, or carry guest effects. The whole CFG
+// has already passed acyclicity, reachability, and phi checks.
+fn empty_control_frontier(
+    function: &InputFunction,
+    start: u32,
+    available_bools: &BTreeSet<u32>,
+) -> Option<u32> {
+    let mut pending = vec![start];
+    let mut visited = BTreeSet::new();
+    let mut continuation = None;
+    while let Some(current) = pending.pop() {
+        if !visited.insert(current) {
+            continue;
+        }
+        let block = function.blocks.get(usize::try_from(current).ok()?)?;
+        if !block.instructions.is_empty()
+            || matches!(block.terminator, InputTerminator::Return { .. })
+        {
+            if continuation.is_some_and(|existing| existing != current) {
+                return None;
+            }
+            continuation = Some(current);
+            continue;
+        }
+        match block.terminator {
+            InputTerminator::Jump { target, .. } => pending.push(target),
+            InputTerminator::Branch {
+                condition,
+                false_target,
+                true_target,
+                ..
+            } if available_bools.contains(&condition) => {
+                pending.push(false_target);
+                pending.push(true_target);
+            },
+            _ => return None,
+        }
+    }
+    continuation
+}
+
+// Runtime-dependent paths are equivalent only when *all* their leaves share
+// the same first effectful or returning block. The input-dependent control
+// choices themselves then need no guest branch instruction.
+fn empty_diamond_join(
+    function: &InputFunction,
+    false_target: u32,
+    true_target: u32,
+    available_bools: &BTreeSet<u32>,
+) -> Option<u32> {
+    if false_target == true_target {
+        return None;
+    }
+    let false_join =
+        empty_control_frontier(function, false_target, available_bools)?;
+    let true_join =
+        empty_control_frontier(function, true_target, available_bools)?;
+    (false_join == true_join).then_some(false_join)
+}
+
+// Literal Boolean SSA can select a successor; a nonliteral Boolean may only
+// skip proven empty equivalent arms. Never evaluate guest values on the host.
+pub(super) fn selected_function_blocks(
+    function: &InputFunction,
+) -> Result<Vec<&super::input::InputBlock>, TernaryLoweringError> {
+    validate_static_cfg(function)?;
+    let mut blocks = Vec::new();
+    let mut constants = BTreeMap::new();
+    let mut literal_words = BTreeMap::new();
+    let mut defined_bools = BTreeSet::new();
+    let mut next = function.entry;
+    loop {
+        let index = usize::try_from(next)
+            .map_err(|_error| TernaryLoweringError::UnsupportedFunction)?;
+        let block = &function.blocks[index];
+        blocks.push(block);
+        for instruction in &block.instructions {
+            if let Some(result) = projected_boolean_definition(instruction) {
+                _ = defined_bools.insert(result);
+            }
+            if let InputInstruction::ConstantInteger {
+                bit_width: 1,
+                little_endian,
+                result,
+                type_kind: InputScalarType::Bool,
+                ..
+            } = instruction
+                && let &[value @ 0..=1] = little_endian.as_slice()
+            {
+                _ = constants.insert(*result, value == 1);
+            }
+            if let Some((result, kind, bits)) =
+                proven_literal_integer(instruction)
+            {
+                _ = literal_words.insert(result, (kind, bits));
+            }
+            if let Some((result, kind, bits)) =
+                proven_literal_word_alu(instruction, &literal_words)
+            {
+                _ = literal_words.insert(result, (kind, bits));
+            }
+            if let Some((result, kind, bits)) =
+                proven_literal_integer_cast(instruction, &literal_words)
+            {
+                _ = literal_words.insert(result, (kind, bits));
+            }
+            if let Some((result, value)) =
+                proven_literal_comparison(instruction, &literal_words)
+            {
+                _ = constants.insert(result, value);
+            }
+            if let Some((result, value)) =
+                proven_literal_word_truth(instruction, &literal_words)
+            {
+                _ = constants.insert(result, value);
+            }
+            if let Some((result, kind, bits)) =
+                proven_literal_boolean_to_signed(instruction, &constants)
+            {
+                _ = literal_words.insert(result, (kind, bits));
+            }
+        }
+        match block.terminator {
+            InputTerminator::Jump { target, .. } => next = target,
+            InputTerminator::Branch {
+                condition,
+                false_target,
+                true_target,
+                ..
+            } => {
+                if !defined_bools.contains(&condition) {
+                    return Err(TernaryLoweringError::UnsupportedTerminator);
+                }
+                next = match (
+                    true_target == false_target,
+                    constants.get(&condition),
+                ) {
+                    (true, _) | (false, Some(true)) => true_target,
+                    (false, Some(false)) => false_target,
+                    (false, None) => empty_diamond_join(
+                        function,
+                        false_target,
+                        true_target,
+                        &defined_bools,
+                    )
+                    .ok_or(TernaryLoweringError::UnsupportedTerminator)?,
+                };
+            },
+            InputTerminator::Return { .. } => return Ok(blocks),
+            InputTerminator::Unsupported => {
+                return Err(TernaryLoweringError::UnsupportedTerminator);
+            },
+        }
+    }
 }
 
 fn lower_function(
     function: &InputFunction,
 ) -> Result<TernaryFunction, TernaryLoweringError> {
-    if function.parameter_count != 0 || function.blocks.len() != 1 {
-        return Err(TernaryLoweringError::UnsupportedFunction);
-    }
-    let block = function
-        .blocks
-        .first()
-        .ok_or(TernaryLoweringError::UnsupportedFunction)?;
-    if block.id != function.entry || block.phi_count != 0 {
-        return Err(TernaryLoweringError::UnsupportedFunction);
-    }
     validate_projection_spans(function)?;
-
+    let selected = selected_function_blocks(function)?;
     let mut state = LoweringState::default();
     let mut operations = Vec::new();
-    for instruction in &block.instructions {
-        operations.push(lower_instruction(instruction, &mut state)?);
+    for block in &selected {
+        for instruction in &block.instructions {
+            operations.push(lower_instruction(instruction, &mut state)?);
+        }
     }
-
-    let InputTerminator::Return { span: return_span, value } = block.terminator
+    let Some(InputTerminator::Return { span, value }) =
+        selected.last().map(|block| block.terminator)
     else {
         return Err(TernaryLoweringError::UnsupportedTerminator);
     };
-    if function.return_kind == InputScalarType::Void && value.is_none() {
-        operations.push(TernaryOperation::ReturnVoid {
-            span: copy_span(return_span),
-        });
-        return Ok(TernaryFunction {
-            id: function.id,
-            name: function.name.clone(),
-            operations,
-            span: copy_span(function.span),
-        });
-    }
-    let Some(return_value) = value else {
-        return Err(TernaryLoweringError::UnsupportedTerminator);
-    };
-    let return_operation = lower_return_operation(
-        function.return_kind,
-        &state,
-        return_value,
-        copy_span(return_span),
-    )?;
+    let return_operation =
+        if function.return_kind == InputScalarType::Void && value.is_none() {
+            TernaryOperation::ReturnVoid { span: copy_span(span) }
+        } else {
+            lower_return_operation(
+                function.return_kind,
+                &state,
+                value.ok_or(TernaryLoweringError::UnsupportedTerminator)?,
+                copy_span(span),
+            )?
+        };
     operations.push(return_operation);
-
     Ok(TernaryFunction {
         id: function.id,
         name: function.name.clone(),

@@ -1053,3 +1053,494 @@ fn triple_induction_break_exit_checks_original_c_keyword() {
         Err(FrontendJsonError::Unsupported)
     ));
 }
+
+const UNSIGNED_SCALAR_TRUTH_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_scalar_truth_live_input.c");
+const UNSIGNED_SCALAR_TRUTH_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_scalar_truth_live_input.json");
+
+#[test]
+fn unsigned_scalar_truth_preserves_four_live_bytes_and_seven_writes() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        UNSIGNED_SCALAR_TRUTH_JSON,
+        Some(UNSIGNED_SCALAR_TRUTH_SOURCE),
+    )
+    .expect("source-proven unsigned scalar guard must select real guest I/O");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded =
+        canonical_module(&typed).expect("canonical typed byte effects");
+    let effects = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in effects {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 4);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[1], reads[2], reads[2], reads[3], reads[3]
+    ]);
+}
+
+#[test]
+fn unsigned_scalar_truth_requires_original_counter_and_typed_reference() {
+    for replacement in [b'1', b'0'] {
+        let mut source = UNSIGNED_SCALAR_TRUTH_SOURCE.to_vec();
+        let at = source
+            .windows(6)
+            .position(|part| part == b"if (i)")
+            .expect("source contains scalar unsigned condition");
+        source[at + 4] = replacement;
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                UNSIGNED_SCALAR_TRUTH_JSON,
+                Some(&source)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    let baseline: serde_json::Value =
+        serde_json::from_slice(UNSIGNED_SCALAR_TRUTH_JSON).unwrap();
+    let nodes = baseline["nodes"].as_array().unwrap();
+    let read = nodes
+        .iter()
+        .position(|node| node["kind"] == "if-statement" && node["id"] == 19)
+        .unwrap()
+        + 1;
+    assert_eq!(nodes[read]["type"], "u32");
+    assert_eq!(nodes[read + 1]["type"], "u32");
+    for (offset, key, forged_value) in [
+        (0, "type", "i32"),
+        (1, "type", "i32"),
+        (1, "reference", "other@0"),
+    ] {
+        let mut forged = baseline.clone();
+        forged["nodes"][read + offset][key] = serde_json::json!(forged_value);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&forged).unwrap(),
+                Some(UNSIGNED_SCALAR_TRUTH_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
+const UNSIGNED_BITWISE_TRUTH_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_bitwise_truth_live_input.c");
+const UNSIGNED_BITWISE_TRUTH_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_bitwise_truth_live_input.json");
+
+#[test]
+fn unsigned_bitwise_predicates_preserve_runtime_byte_provenance() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        UNSIGNED_BITWISE_TRUTH_JSON,
+        Some(UNSIGNED_BITWISE_TRUTH_SOURCE),
+    )
+    .expect("source-proven unsigned &, ^ and | guards should lower");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let module = canonical_module(&wire).expect("typed module must round-trip");
+    let effects = module.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in effects {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 4);
+    assert_eq!(writes, vec![
+        reads[0], reads[0], reads[1], reads[1], reads[1], reads[1], reads[2],
+        reads[2], reads[3], reads[3], reads[3], reads[3],
+    ]);
+}
+
+#[test]
+fn unsigned_bitwise_predicates_require_original_source_and_clang_ops() {
+    let baseline: serde_json::Value =
+        serde_json::from_slice(UNSIGNED_BITWISE_TRUTH_JSON).unwrap();
+    for (operator, forged) in
+        [(b"i & 1U", b'|'), (b"i ^ 2U", b'&'), (b"i | 0U", b'^')]
+    {
+        let mut source = UNSIGNED_BITWISE_TRUTH_SOURCE.to_vec();
+        let start = source
+            .windows(operator.len())
+            .position(|part| part == operator)
+            .expect("source contains bitwise predicate");
+        source[start + 2] = forged;
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                UNSIGNED_BITWISE_TRUTH_JSON,
+                Some(&source)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    for (id, forged) in [(20, "|"), (31, "&"), (42, "^")] {
+        let mut normalized = baseline.clone();
+        normalized["nodes"][id - 1]["operation"] = serde_json::json!(forged);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&normalized).unwrap(),
+                Some(UNSIGNED_BITWISE_TRUTH_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    for (id, forged) in [(21, "i32"), (22, "i32"), (23, "i32")] {
+        let mut normalized = baseline.clone();
+        normalized["nodes"][id - 1]["type"] = serde_json::json!(forged);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&normalized).unwrap(),
+                Some(UNSIGNED_BITWISE_TRUTH_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
+const UNSIGNED_ALIAS_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_alias_induction_live_input.c");
+const UNSIGNED_ALIAS_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_alias_induction_live_input.json"
+);
+
+#[test]
+fn unsigned_alias_induction_preserves_one_live_guest_byte_across_names() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        UNSIGNED_ALIAS_JSON,
+        Some(UNSIGNED_ALIAS_SOURCE),
+    )
+    .expect("both C local names must select the same live guest byte");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded =
+        canonical_module(&typed).expect("canonical typed guest trace");
+    let block = &decoded.functions()[0].blocks()[0];
+    let instructions = block.instructions();
+    assert_eq!(instructions.len(), 4);
+    let Instruction::ByteInput { result, .. } = instructions[0].instruction()
+    else {
+        panic!("expected one live guest input");
+    };
+    for output in &instructions[1..] {
+        assert!(matches!(
+            output.instruction(),
+            Instruction::ByteOutput { value } if value == result
+        ));
+    }
+
+    let mut changed = UNSIGNED_ALIAS_SOURCE.to_vec();
+    let at = changed
+        .windows(18)
+        .position(|part| part == b"int alias = first;")
+        .unwrap();
+    changed[at + 4] = b'X';
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_ALIAS_JSON,
+            Some(&changed)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+
+    // A same-width operand substitution must not reinterpret Clang's alias.
+    let mut changed = UNSIGNED_ALIAS_SOURCE.to_vec();
+    let at = changed
+        .windows(15)
+        .position(|part| part == b"putchar(alias);")
+        .unwrap();
+    changed[at + 8..at + 13].copy_from_slice(b"first");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_ALIAS_JSON,
+            Some(&changed)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+const STALE_ALIAS_SOURCE: &[u8] =
+    include_bytes!("c-frontend/rejected/unsigned_stale_alias_induction.c");
+const STALE_ALIAS_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_stale_alias_induction.json");
+
+#[test]
+fn unsigned_alias_induction_refuses_clobbered_earlier_guest_byte() {
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            STALE_ALIAS_JSON,
+            Some(STALE_ALIAS_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+const NESTED_ALIAS_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_nested_alias_live_input.c");
+const NESTED_ALIAS_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_nested_alias_live_input.json");
+const NESTED_STALE_ALIAS_SOURCE: &[u8] =
+    include_bytes!("c-frontend/rejected/unsigned_nested_stale_alias.c");
+const NESTED_STALE_ALIAS_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_nested_stale_alias.json");
+
+#[test]
+fn nested_unsigned_local_alias_retains_one_live_guest_value() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        NESTED_ALIAS_JSON,
+        Some(NESTED_ALIAS_SOURCE),
+    )
+    .expect("nested source-checked aliases must retain the resident byte");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let module = canonical_module(&wire).expect("canonical typed nested alias");
+    let instructions = module.functions()[0].blocks()[0].instructions();
+    assert_eq!(instructions.len(), 5);
+    let Instruction::ByteInput { result, .. } = instructions[0].instruction()
+    else {
+        panic!("expected one guest byte read");
+    };
+    for instruction in &instructions[1..] {
+        assert!(matches!(
+            instruction.instruction(),
+            Instruction::ByteOutput { value } if value == result
+        ));
+    }
+}
+
+#[test]
+fn nested_unsigned_alias_refuses_forged_binding_and_stale_guest_state() {
+    let mut edited = NESTED_ALIAS_SOURCE.to_vec();
+    let token = b"int localcopy = alias;";
+    let offset = edited
+        .windows(token.len())
+        .position(|bytes| bytes == token)
+        .expect("source fixture contains inner alias");
+    edited[offset + 4] = b'X';
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(NESTED_ALIAS_JSON, Some(&edited)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+
+    let original: serde_json::Value =
+        serde_json::from_slice(NESTED_ALIAS_JSON).unwrap();
+    // Clang's declaration provenance, nested loop counter, byte output
+    // operands and source operator must all remain exactly source-bound.
+    for (node, field, replacement) in [
+        (26usize, "reference", serde_json::json!("first@905")),
+        (41, "reference", serde_json::json!("j@1041")),
+        (48, "reference", serde_json::json!("first@905")),
+        (54, "reference", serde_json::json!("localcopy@1000")),
+        (39, "operation", serde_json::json!("|")),
+        (17, "type", serde_json::json!("i32")),
+    ] {
+        let mut forged = original.clone();
+        forged["nodes"][node - 1][field] = replacement;
+        assert!(
+            matches!(
+                canonical_guest_typed_ir_with_source(
+                    &serde_json::to_vec(&forged).unwrap(),
+                    Some(NESTED_ALIAS_SOURCE),
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "forged node {node} field {field} escaped source admission"
+        );
+    }
+
+    // A later getchar inside the nested loop clobbers accumulator state;
+    // names bound to the earlier input cannot be silently reinterpreted.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            NESTED_STALE_ALIAS_JSON,
+            Some(NESTED_STALE_ALIAS_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+const NESTED_FRESH_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_nested_fresh_live_input.c");
+const NESTED_FRESH_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_nested_fresh_live_input.json");
+
+#[test]
+fn nested_unsigned_fresh_reads_preserve_current_ssa_without_old_alias() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        NESTED_FRESH_JSON,
+        Some(NESTED_FRESH_SOURCE),
+    )
+    .expect("latest-byte nested source control must be accepted");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let module =
+        canonical_module(&wire).expect("nested latest-byte typed module");
+    let instructions = module.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for instruction in instructions {
+        match instruction.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected nested guest effect {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 5);
+    assert_eq!(writes.as_slice(), &reads[1..]);
+}
+
+const UNSIGNED_HEX_THRESHOLD_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_hex_threshold_live_input.c");
+const UNSIGNED_HEX_THRESHOLD_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_hex_threshold_live_input.json");
+
+#[test]
+fn signed_c23_hex_threshold_selects_all_live_guest_byte_outputs() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        UNSIGNED_HEX_THRESHOLD_JSON,
+        Some(UNSIGNED_HEX_THRESHOLD_SOURCE),
+    )
+    .expect("the exact C23 threshold exceeds all successful guest bytes");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let module = canonical_module(&wire).expect("canonical live byte trace");
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in module.functions()[0].blocks()[0].instructions() {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 4);
+    assert_eq!(writes, vec![
+        reads[0], reads[0], reads[1], reads[1], reads[2], reads[2], reads[3],
+        reads[3],
+    ]);
+}
+
+#[test]
+fn signed_c23_hex_threshold_rejects_source_and_clang_literal_forgery() {
+    let source = UNSIGNED_HEX_THRESHOLD_SOURCE;
+    let start = source
+        .windows(5)
+        .rposition(|part| part == b"0x100")
+        .expect("C23 hex predicate token");
+    for digit in [b'1', b'2'] {
+        let mut forged = source.to_vec();
+        forged[start + 4] = digit;
+        let observed = canonical_guest_typed_ir_with_source(
+            UNSIGNED_HEX_THRESHOLD_JSON,
+            Some(&forged),
+        );
+        assert!(
+            matches!(observed, Err(FrontendJsonError::Unsupported)),
+            "forged source final digit {digit}: {observed:?}"
+        );
+    }
+    let baseline: serde_json::Value =
+        serde_json::from_slice(UNSIGNED_HEX_THRESHOLD_JSON).unwrap();
+    let index = baseline["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| {
+            node["kind"] == "integer-literal" && node["literal"] == "256"
+        })
+        .expect("Clang records normalized C23 0x100 literal");
+    for field in ["literal", "constant_integer"] {
+        let mut forged = baseline.clone();
+        forged["nodes"][index][field] = serde_json::json!("257");
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&forged).unwrap(),
+                Some(source),
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
+const BYTE_ALGEBRA_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_byte_algebra_live_input.c");
+const BYTE_ALGEBRA_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_byte_algebra_live_input.json");
+
+#[test]
+fn source_proven_byte_algebra_selects_only_constant_guest_effects() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        BYTE_ALGEBRA_JSON,
+        Some(BYTE_ALGEBRA_SOURCE),
+    )
+    .expect("both bitwise identities hold for all successful guest bytes");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let module = canonical_module(&wire).expect("canonical byte algebra IR");
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in module.functions()[0].blocks()[0].instructions() {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected byte algebra effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 4);
+    assert_eq!(
+        writes,
+        reads.iter().flat_map(|byte| [*byte; 3]).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn source_proven_byte_algebra_rejects_forged_operator_and_dynamic_branch() {
+    let original: serde_json::Value =
+        serde_json::from_slice(BYTE_ALGEBRA_JSON).unwrap();
+    let index = original["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "^"
+        })
+        .expect("Clang retained the first XOR operator");
+    let mut forged = original.clone();
+    forged["nodes"][index]["operation"] = serde_json::json!("|");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            &serde_json::to_vec(&forged).unwrap(),
+            Some(BYTE_ALGEBRA_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+    let mut changed = BYTE_ALGEBRA_SOURCE.to_vec();
+    let old = b"(current ^ current) == 0";
+    let at = changed
+        .windows(old.len())
+        .position(|part| part == old)
+        .unwrap();
+    changed[at + 9] = b'|';
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(BYTE_ALGEBRA_JSON, Some(&changed)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+const BYTE_ALGEBRA_DYNAMIC_SOURCE: &[u8] =
+    include_bytes!("c-frontend/rejected/unsigned_byte_algebra_dynamic.c");
+const BYTE_ALGEBRA_DYNAMIC_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_byte_algebra_dynamic.json");
+
+#[test]
+fn source_byte_algebra_never_folds_guest_dependent_parity() {
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            BYTE_ALGEBRA_DYNAMIC_JSON,
+            Some(BYTE_ALGEBRA_DYNAMIC_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}

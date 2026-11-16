@@ -11,6 +11,49 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Signed C23 radix threshold on successful live bytes (2026-11-16)
+
+A complete four-trip unsigned loop tests the signed `int` returned by each
+successful `getchar()` against the C23 source token `0x100`. The source- and
+Clang-bound byte-domain proof selects the true arm for all 256 successful
+byte values, retaining four real guest reads and eight writes. Twenty seeded
+normative VM inputs, including NUL, `0x80` and `0xff`, produce eight bytes
+in thirteen steps. The independent real C23 oracle at `-O0` and `-O2`
+confirms that replacing the threshold with `0x0FF` changes the `0xff`
+case; the guest compiler rejects that changed program without publishing
+an artifact rather than guessing a guest-dependent branch. The full seeded
+guest replay remains a separate long-running validation suite.
+
+### Nested live aliases and fresh-byte invalidation (2026-11-16)
+
+Two nested source-authenticated unsigned loops can copy a previously read
+`getchar()` byte into a loop-local C name and use that name alongside an
+outer alias. The emitted guest contains one real read and four writes, yielding
+`AAAA` from `A` in six VM steps. A paired whole-C control reads one original
+byte and four fresh inner-loop bytes; it correctly emits the latter four in
+ten VM steps. The fresh reads never reuse the older alias's SSA value.
+
+A third, otherwise matching source attempts to write the original alias after
+those fresh reads. This remains valid C but refuses guest publication because
+the current accumulator backend cannot restore independently stored locals.
+Both admitted examples pass 29 binary VM vectors each; pinned C23 Clang UBSan
+at O0 and O2 matches 29 vectors for each admitted source and the rejected
+C source. The typed projection tests require the exact live SSA trace and
+reject forged source or Clang alias bindings. These are finite source-time
+control paths, not executable guest-dependent branches or general C locals.
+
+### Live C identity aliases across finite unsigned induction (2026-11-16)
+
+A complete C23 program now keeps two source-checked automatic `int` names for
+one successful `getchar()` byte through three finite unsigned-loop trips.
+Each counter-selected branch writes through a different name, but both bind
+to the same resident guest SSA byte. No guest input is predicted or folded.
+The normative VM compiles this C to a 1,087-byte capsule and emits `AAA` for
+`A` in five guest instructions; NUL, `0x80` and `0xff` preserve all three
+output bytes. Forged source names refuse, and a loop with a later input
+cannot restore the earlier alias from the new accumulator byte. This is not
+arbitrary C local storage, guest-dependent branching, or EOF support.
+
 ### Source-proven unsigned induction arithmetic (2026-11-15)
 
 Finite source-C loops may now select guest byte effects using authenticated
@@ -59,6 +102,42 @@ VM emits `ABCCD` for `ABCD` and `00 ff 80 80 01` for input
 metadata refuse before guest publication. The C branch remains
 compile-time counter selection, not runtime guest-dependent control; EOF,
 unsigned runtime state, and unrestricted C remain unsupported.
+
+### Source-checked unsigned scalar branch truth (2026-11-16)
+
+A bounded unsigned `for` loop may now use its original counter directly in
+`if (i)` without a comparison. Pinned Clang emits a `u32` lvalue-to-rvalue
+cast and reference, not the signed `i32` pair used by the existing scalar
+counter proof. The projector now requires the authenticated declaration type
+on both nodes, their exact source span and binding, and the corresponding
+nonzero C truth value. No actual guest input is evaluated by the host.
+
+The complete `unsigned_scalar_truth_live_input.c` source reads four successful
+guest bytes; only the zero-counter trip writes once, and each later trip
+writes twice. The normative guest VM emits seven correct bytes in twelve
+steps for binary and printable stdin. The dedicated seeded parity suite
+checks thirteen independent input vectors, and source-token, type and
+reference forgeries refuse. This is finite source-time branch selection, not
+general guest-dependent conditionals, EOF, or runtime C loops.
+
+### Source-authenticated unsigned bitwise induction guards (2026-11-16)
+
+A complete four-trip C23 program now selects byte outputs using `i & 1U`,
+`i ^ 2U` and `i | 0U`, exercising three distinct bitwise operations on an
+unsigned loop counter. Before the fix, the normalized frontend refused the
+`for` statement. The bounded arithmetic proof now checks unsigned 32-bit
+bitwise semantics, exact source operators and C23 operand tokens, Clang
+ancestry, the counter declaration binding, and source spans. Signed bitwise
+induction and guest-input-dependent bitwise branches are not inferred.
+
+The pinned compiler emits a 1,183-byte `malbolge-2026` capsule. The normative
+VM reads four actual guest bytes, writes twelve, and executes 17 instructions:
+`ABCD` becomes `AABBBBCCDDDD`. A seeded thirteen-vector replay, including
+NUL and high-bit bytes, matches both an independent per-index oracle and
+pinned native Clang 22.1.8 C23 UBSan at O0 and O2. Tests also reject source
+operator replacements and forged Clang operation, type and binding metadata.
+These source-time decisions do not implement guest arithmetic, runtime C
+locals/branching, EOF, or arbitrary input streams; P0 remains pending.
 
 ### Three nested unsigned counter scopes (2026-11-15)
 

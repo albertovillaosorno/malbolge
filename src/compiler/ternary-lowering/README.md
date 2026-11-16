@@ -24,8 +24,8 @@ semantics.
 
 ## Status
 
-The executable slice lowers admitted no-argument, single-block functions using
-exact `i32` constants/returns, `i32` bitwise AND, `i32`-to-`u8` truncation, and
+The executable slice lowers admitted no-argument functions using exact `i32`
+constants/returns, `i32` bitwise AND, `i32`-to-`u8` truncation, and
 deterministic typed-IR `ByteInput`/`ByteOutput` effects. Exact 32-bit bit
 patterns become fixed-width 21-trit scalars while source, ABI, typed-IR version,
 source digest, and target-profile provenance are preserved. Byte effects remain
@@ -44,8 +44,47 @@ results without host evaluation. Signed and unsigned 32-bit `IntegerToBool`
 casts create Boolean SSA results without host truth evaluation. Successful
 `u8` constants and guest byte input also preserve `IntegerToBool` as a
 symbolic Boolean result. Pointer truth conversions, floating-point
-comparisons, control flow, and executable target realization remain outside
-this slice.
+comparisons, general guest-dependent branch dispatch, loops, and executable
+target realization remain outside this slice.
+
+Acyclic, reachable typed control-flow graphs can flatten unconditional jumps,
+select a branch on a previously defined Boolean literal or exact signed or
+unsigned 32-bit literal comparison, and eliminate instruction-free divergent
+paths proven to converge at the same first effectful block. Exact zero/nonzero
+truth of prior 8-, 16- and 32-bit integer literals also selects a branch after
+`IntegerToBool`, without erasing its symbolic target operation. Source-bound
+checkpoint restoration checks the same selected path. Exact prior `u32`
+literals may also feed `And`/`Or`/`Xor`, `Add`/`Subtract`/`Multiply`,
+`Divide`/`Remainder`, or admitted shifts before a comparison chooses an arm.
+Unsigned arithmetic wraps where defined, division requires a nonzero divisor,
+and shifts require a count below 32. Signed arithmetic selects only when
+checked operations prove no overflow, including the `INT_MIN / -1` case.
+Static selection also follows defined integral cast chains: exact `i8`/`i16`
+sign extension, `u8`/`u16` zero extension, same-width signedness bitcasts,
+and narrowing from 32 or 16 bits. Truncation drops the high bits and sign
+extension preserves the source sign; the original target cast and Boolean
+truth operations remain symbolic. Fourteen typed-CFG cases check output
+selection, canonical source/target wires and source-bound checkpoint replay.
+A further exact-Boolean proof now propagates previously proven `bool` zero/one
+through symbolic `BoolToSigned` casts to `i8`, `i16`, or `i32`. A subsequent
+`IntegerToBool` can select a static, effect-divergent CFG arm without host
+inspection of guest input. Six red-first width/truth cases retain actual
+byte I/O, canonical MCTI/MCTR bytes, source-bound checkpoint restoration,
+and tamper rejection. Six more cases derive known Booleans from exact signed
+`i32` comparisons before the same signed cast and truth round trip, preserving
+the target comparison as well. Guest-derived Boolean conditions still refuse.
+This does not add runtime guest branching.
+
+Unsigned and signed constant arithmetic also includes conservative signed
+shift proofs: nonnegative signed left operands only when the shifted result
+fits `i32`, and nonnegative arithmetic-right-shift operands with counts below
+32. Negative signed shifts, overflow and oversized counts do not select an
+arm; guests never supply host-selected operands.
+All selected paths retain symbolic ALU operations; no guest input is
+host-evaluated. Guest-dependent branches
+with different effects, runtime loops, phi merges, and orphan or cyclic blocks
+remain unsupported; these static CFG proofs do not implement general C control
+flow or guest branch addresses.
 
 Validated one-bit Boolean constants now materialize separate Boolean SSA
 values and return directly or convert explicitly to signed `i32`. The wire
@@ -242,8 +281,9 @@ A target-profile port then copies canonical I/O instruction bytes and EOF state
 from the admitted profile descriptor and realizes those operations without
 hardcoded opcode characters. Helper lowering and raw I/O realization reject
 EOF words inside the successful-byte range or outside the all-two-trit geometry
-(`3^n - 1`), for both input and output operations. This guards projection consistency but does
-not authenticate the complete profile descriptor or its memory width. An
+(`3^n - 1`), for both input and output operations. This guards projection
+consistency but does not authenticate the complete profile descriptor or its
+memory width. An
 instruction-decoder port lets lowering invert the canonical VM decode relation
 without copying XLAT1, producing one unique graphical source cell for an
 already-selected code position.

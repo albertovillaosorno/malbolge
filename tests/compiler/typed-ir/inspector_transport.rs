@@ -71,9 +71,9 @@ fn repository_root() -> PathBuf {
 fn repository_python() -> PathBuf {
     let root = repository_root();
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.7/venv/Scripts/python.exe")
+        root.join(".dependencies/python/3.14.7/Scripts/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.7/venv/bin/python")
+        root.join(".dependencies/python/3.14.7/bin/python")
     }
 }
 

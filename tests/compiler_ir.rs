@@ -237,7 +237,7 @@ original_write_immutable = progress._write_immutable
 original_publish = progress._publish_immutable_payload
 original_confirm = progress._confirm_publication_durability
 original_fsync = os.fsync
-original_replace = Path.replace
+original_replace = os.replace if os.name != "nt" else Path.replace
 publication_count = 0
 regular_sync_count = 0
 
@@ -290,10 +290,10 @@ def confirm_then_crash(published_path, *, context, platform=os.name):
 def crash_before_sidecar(_sidecar):
     os._exit(exit_code)
 
-def replace_then_crash(source, destination):
+def replace_then_crash(source, destination, *args, **kwargs):
     if boundary == "before-sidecar-replace":
         os._exit(exit_code)
-    result = original_replace(source, destination)
+    result = original_replace(source, destination, *args, **kwargs)
     if boundary == "after-sidecar-replace":
         os._exit(exit_code)
     return result
@@ -305,7 +305,10 @@ os.fsync = fsync_then_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
 elif boundary in {"before-sidecar-replace", "after-sidecar-replace"}:
-    Path.replace = replace_then_crash
+    if os.name == "nt":
+        Path.replace = replace_then_crash
+    else:
+        os.replace = replace_then_crash
 progress.write_checkpoint_generation(second, second_checkpoint)
 raise SystemExit(93)
 "#;
@@ -313,9 +316,9 @@ raise SystemExit(93)
 fn repository_python() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.7/venv/Scripts/python.exe")
+        root.join(".dependencies/python/3.14.7/Scripts/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.7/venv/bin/python")
+        root.join(".dependencies/python/3.14.7/bin/python")
     }
 }
 
