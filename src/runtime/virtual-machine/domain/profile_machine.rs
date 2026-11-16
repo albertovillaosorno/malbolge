@@ -1345,6 +1345,9 @@ pub(crate) fn admit_profile_source(
         if words.len() >= capacity {
             return Err(ProfileLoadError::SourceTooLong);
         }
+        words
+            .try_reserve(1)
+            .map_err(|_error| ProfileLoadError::MemoryAllocation)?;
         words.push(u32::from(byte));
     }
     for (loaded_position, cell) in words.iter().copied().enumerate() {

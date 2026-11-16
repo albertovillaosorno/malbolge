@@ -898,6 +898,102 @@ fn profiled_historical_matches_classic_roundtrip_and_eof() -> TestResult {
 }
 
 #[test]
+fn profiled_historical_all_256_binary_inputs() -> TestResult {
+    // This is a byte-domain proof, not a host text-mode/Unicode conversion:
+    // the independent expected byte is the exact input octet.
+    for byte in u8::MIN..=u8::MAX {
+        let mut classic =
+            normalize_result(Machine::from_source(IO_ROUNDTRIP, vec![byte]))?;
+        let mut profiled = normalize_result(ProfileMachine::from_source(
+            historical_profile(),
+            IO_ROUNDTRIP,
+            vec![byte],
+        ))?;
+        let classic_outcome = normalize_result(classic.run(8))?;
+        let profiled_outcome = normalize_result(profiled.run(8))?;
+        check_equal(&profiled_outcome, &classic_outcome, "byte outcome")
+            .map_err(|error| format!("input={byte}: {error}"))?;
+        check_equal(profiled.output(), &[byte], "profiled binary output")
+            .map_err(|error| format!("input={byte}: {error}"))?;
+        check_equal(classic.output(), &[byte], "classic binary output")
+            .map_err(|error| format!("input={byte}: {error}"))?;
+        check_equal(&profiled.input_consumed(), &1usize, "profiled input")?;
+        check_equal(&classic.input_consumed(), &1usize, "classic input")?;
+        for address in 0..3u32 {
+            let classic_address = normalize_result(Word::new(
+                u16::try_from(address).map_err(|error| error.to_string())?,
+            ))?;
+            let classic_word =
+                normalize_result(classic.memory_word(classic_address))?;
+            let profiled_word =
+                normalize_result(profiled.memory_word(address))?;
+            check_equal(
+                &profiled_word,
+                &u32::from(classic_word.value()),
+                "self-encrypted instruction prefix",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn profiled_current_byte_boundaries_and_eof() -> TestResult {
+    // Check the selected 15-trit profile, not only N10 interpreter parity.
+    // Load the full recurrence once; revalidate each independent exact state.
+    // EOF must use 3^15 - 1, which has a different low byte than N10 EOF.
+    let seed = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        b"ubO",
+        Vec::new(),
+    ))?;
+    let original_memory = seed.memory().to_vec();
+    for input in [
+        Vec::new(),
+        vec![0],
+        vec![1],
+        vec![10],
+        vec![13],
+        vec![127],
+        vec![128],
+        vec![255],
+    ] {
+        let mut machine = normalize_result(ProfileMachine::from_state(
+            current_profile(),
+            original_memory.clone(),
+            input.clone(),
+            ProfileRegisters::default(),
+        ))?;
+        let outcome = normalize_result(machine.run(8))?;
+        check_equal(
+            &outcome,
+            &RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 3,
+            },
+            "current profile roundtrip termination",
+        )?;
+        let expected = input.first().copied().unwrap_or(106);
+        check_equal(machine.output(), &[expected], "current byte or EOF")?;
+        check_equal(
+            &machine.input_consumed(),
+            &usize::from(!input.is_empty()),
+            "current input consumption",
+        )?;
+        check_equal(
+            &machine.registers().accumulator,
+            &if input.is_empty() {
+                14_348_906
+            } else {
+                u32::from(expected)
+            },
+            "profile-width accumulator",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn profiled_runtime_capability_accepts_current_profile() -> TestResult {
     normalize_result(preflight_profile(
         current_profile(),

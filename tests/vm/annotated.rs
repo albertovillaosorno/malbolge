@@ -104,11 +104,14 @@ fn annotated_formatter_roundtrips_hash_heavy_canonical_source() -> TestResult {
 }
 
 #[test]
-fn annotated_formatter_preserves_every_graphical_byte_and_source_position() -> TestResult {
+fn annotated_formatter_preserves_every_graphical_byte_and_source_position()
+-> TestResult {
     let canonical = (33u8..=126).collect::<Vec<_>>();
     for width in 1..=canonical.len() + 1 {
-        let formatted = normalize_result(format_annotated_source(&canonical, width))?;
-        let recovered = normalize_result(canonicalize_annotated_source(&formatted))?;
+        let formatted =
+            normalize_result(format_annotated_source(&canonical, width))?;
+        let recovered =
+            normalize_result(canonicalize_annotated_source(&formatted))?;
         check_equal(
             recovered.bytes(),
             canonical.as_slice(),
@@ -117,7 +120,9 @@ fn annotated_formatter_preserves_every_graphical_byte_and_source_position() -> T
         let observed = recovered
             .locations()
             .iter()
-            .map(|location| (location.offset(), location.line(), location.column()))
+            .map(|location| {
+                (location.offset(), location.line(), location.column())
+            })
             .collect::<Vec<_>>();
         let mut expected = Vec::with_capacity(canonical.len());
         let mut offset = 0;
@@ -180,6 +185,23 @@ fn annotated_invalid_presentation_fails_closed() -> TestResult {
         &format_annotated_source(ROUNDTRIP_SOURCE, 0),
         &Err(AnnotatedSourceError::ZeroWrapWidth),
         "zero wrap width",
+    )
+}
+
+#[test]
+fn annotated_allocation_failure_has_a_stable_typed_diagnostic() -> TestResult {
+    check_equal(
+        &AnnotatedSourceError::AllocationFailure.to_string(),
+        &String::from("annotated source allocation failed"),
+        "annotated allocation failure diagnostic",
+    )?;
+    check_equal(
+        &format_annotated_source(b"ct\0O", 2),
+        &Err(AnnotatedSourceError::InvalidPresentationByte {
+            offset: 2,
+            byte: 0,
+        }),
+        "invalid format source remains an explicit presentation rejection",
     )
 }
 

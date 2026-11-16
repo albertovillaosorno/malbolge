@@ -80,6 +80,13 @@ provide explicit annotated constructors, while every existing `from_source()`
 entry point retains canonical raw semantics. Canonicalized bytes still pass
 
 through the ordinary selected-profile loader before execution.
+Canonicalization now reserves the canonical bytes and source-map entries
+fallibly, and formatting reserves its exact wrapped byte count fallibly.
+The profiled raw-source admission step likewise uses checked source-word
+storage and returns its existing typed memory-allocation error.
+Allocation failures return a typed `AnnotatedSourceError::AllocationFailure`
+instead of panicking during presentation processing; raw source semantics and
+selected-profile admission are unchanged.
 
 The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
@@ -160,9 +167,15 @@ host values, and an input cursor beyond its stream is rejected before checkpoint
 construction. Historical differential fixtures
 run the same 1998 program through both engines and compare all 59,049 final
 memory words,
-registers, byte I/O/EOF, and termination. Current-profile fixtures additionally
-exercise addresses above 59,048 and independent scalar expectations for N15
-crazy and rotate.
+registers, byte I/O/EOF, and termination. A separate 256-case historical
+byte-domain fixture runs every binary octet through both classic and profiled
+Rust machines, asserting direct input/output identity, equal termination, and
+identical self-encrypted instruction-prefix cells. The N15 binary fixture
+checks seven boundary octets and EOF independently, including the different
+N15 all-two-trit EOF accumulator and its low-byte output. It loads a full N15
+memory image once, then validates a fresh exact initial state per vector.
+Current-profile fixtures also exercise addresses above 59,048 and independent
+scalar expectations for N15 crazy and rotate.
 
 Independent differential evidence now exists against the separately implemented
 pure-C VM. Both implementations compute semantic signature

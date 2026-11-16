@@ -68,6 +68,9 @@ where
 /// Failure while canonicalizing or formatting annotated Malbolge source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AnnotatedSourceError {
+    /// Canonical output, locations, or formatting storage could not be
+    /// reserved.
+    AllocationFailure,
     /// A comment contains a non-ASCII/control byte outside space/tab/graphical.
     InvalidCommentByte {
         /// Original byte offset in annotated source.
@@ -90,6 +93,9 @@ pub enum AnnotatedSourceError {
 impl Display for AnnotatedSourceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
+            Self::AllocationFailure => {
+                f.write_str("annotated source allocation failed")
+            },
             Self::InvalidCommentByte { offset, byte } => write!(
                 f,
                 concat!(
@@ -263,7 +269,7 @@ impl SourceCursor {
 /// # Errors
 ///
 /// Returns [`AnnotatedSourceError`] for bytes outside the admitted ASCII
-/// presentation surface.
+/// presentation surface or when output storage cannot be reserved.
 pub fn canonicalize_annotated_source(
     source: &[u8],
 ) -> Result<CanonicalizedAnnotatedSource, AnnotatedSourceError> {
@@ -291,6 +297,12 @@ pub fn canonicalize_annotated_source(
                 byte,
             });
         }
+        bytes
+            .try_reserve(1)
+            .map_err(|_error| AnnotatedSourceError::AllocationFailure)?;
+        locations
+            .try_reserve(1)
+            .map_err(|_error| AnnotatedSourceError::AllocationFailure)?;
         bytes.push(byte);
         locations.push(AnnotatedSourceLocation {
             column: cursor.column,
@@ -313,7 +325,8 @@ pub fn canonicalize_annotated_source(
 ///
 /// Returns [`AnnotatedSourceError::ZeroWrapWidth`] for width zero or
 /// [`AnnotatedSourceError::InvalidPresentationByte`] when `canonical` contains
-/// anything outside graphical ASCII `33..=126`.
+/// anything outside graphical ASCII `33..=126`, or when formatting storage
+/// cannot be reserved.
 pub fn format_annotated_source(
     canonical: &[u8],
     width: usize,
@@ -321,9 +334,15 @@ pub fn format_annotated_source(
     if width == 0 {
         return Err(AnnotatedSourceError::ZeroWrapWidth);
     }
-    let wrapped_lines = canonical.len().div_ceil(width);
-    let mut output =
-        Vec::with_capacity(canonical.len().saturating_add(wrapped_lines));
+    let inserted_newlines = canonical.len().saturating_sub(1).div_euclid(width);
+    let capacity = canonical
+        .len()
+        .checked_add(inserted_newlines)
+        .ok_or(AnnotatedSourceError::AllocationFailure)?;
+    let mut output = Vec::new();
+    output
+        .try_reserve_exact(capacity)
+        .map_err(|_error| AnnotatedSourceError::AllocationFailure)?;
     for (position, byte) in canonical.iter().copied().enumerate() {
         if !(33..=126).contains(&byte) {
             return Err(AnnotatedSourceError::InvalidPresentationByte {
