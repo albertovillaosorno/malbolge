@@ -45,6 +45,7 @@ NESTED_ALIAS_STEM = "unsigned_nested_alias_live_input"
 NESTED_FRESH_STEM = "unsigned_nested_fresh_live_input"
 HEX_STEM = "unsigned_hex_threshold_live_input"
 ALGEBRA_STEM = "unsigned_byte_algebra_live_input"
+DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
 CASES = (
     ("triple_control_live_input", 7, 16),
@@ -60,6 +61,7 @@ CASES = (
     (NESTED_FRESH_STEM, 5, 10),
     (HEX_STEM, 4, 13),
     (ALGEBRA_STEM, 4, 17),
+    (DEAD_LITERAL_STEM, 4, 17),
 )
 NATIVE_TOOL_ROOT = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin"
 FRONTEND = NATIVE_TOOL_ROOT / "malbolge-c-frontend"
@@ -94,8 +96,8 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
         elif stem == "nested_outer_induction_live_input":
             # Two inner trips per outer row. Only row two repeats its bytes.
             copies = 2 if (counter - 1) // 2 == 1 else 1
-        elif stem == ALGEBRA_STEM:
-            # XOR cancellation and signed byte-domain arithmetic are total.
+        elif stem in {ALGEBRA_STEM, DEAD_LITERAL_STEM}:
+            # XOR and reflexive predicates select only live byte outputs.
             copies = 3
         elif stem == HEX_STEM:
             # Every successful getchar value lies in [0, 255] < C23 0x100.
@@ -574,6 +576,85 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                             self.assertEqual(observed.returncode, 0, observed.stderr)
                             self.assertEqual(observed.stdout, expected)
 
+    def test_dead_literal_native_c23_oracle(self) -> None:
+        """Prove selected effects in a complete C23 loop at both opt levels."""
+        if not CLANG.is_file():
+            self.skipTest("repository-pinned native C23 clang missing")
+        source = SOURCES / f"{DEAD_LITERAL_STEM}.c"
+        env = dict(os.environ)
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            folder = Path(temporary)
+            wrapper = folder / "oracle.c"
+            _ = wrapper.write_text(
+                f'#include "{source}"\nint main(void) {{ emit(); return 0; }}\n',
+                encoding="utf-8",
+            )
+            for optimization in ("-O0", "-O2"):
+                native = folder / f"native-{optimization[2:]}"
+                built = subprocess.run(
+                    [
+                        str(CLANG),
+                        "-std=c23",
+                        optimization,
+                        "-fsanitize=undefined",
+                        "-fno-sanitize-recover=all",
+                        str(wrapper),
+                        "-o",
+                        str(native),
+                    ],
+                    env=env,
+                    capture_output=True,
+                    check=False,
+                    timeout=45,
+                )
+                self.assertEqual(built.returncode, 0, built.stderr)
+                for data in cases_for_length(4):
+                    with self.subTest(optimization=optimization, stdin=data.hex()):
+                        observed = subprocess.run(
+                            [str(native)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        self.assertEqual(observed.returncode, 0, observed.stderr)
+                        self.assertEqual(
+                            observed.stdout,
+                            independent_c_oracle(DEAD_LITERAL_STEM, data),
+                        )
+
+    def test_dead_literal_changed_branch_refuses_guest_publication(self) -> None:
+        """Never erase a reachable constant C output in real compilation."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned compiler executable missing")
+        rejected = ROOT / "tests/compiler/c-frontend/rejected"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for kind in ("selected", "dynamic"):
+                source = rejected / f"unsigned_reflexive_{kind}_literal_live_input.c"
+                guest = Path(temporary) / f"{kind}.malbolge"
+                attempt = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        str(source),
+                        "--output",
+                        str(guest),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=120,
+                )
+                with self.subTest(kind=kind):
+                    self.assertNotEqual(attempt.returncode, 0)
+                    self.assertIn(UNSUPPORTED_MARKER, attempt.stderr)
+                    self.assertFalse(guest.exists())
+
     def _check_seeded_guest_parity(
         self, cases: tuple[tuple[str, int, int], ...]
     ) -> None:
@@ -646,7 +727,10 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
         self._check_seeded_guest_parity(CASES[4:8])
 
     def test_seeded_guest_parity_aliases_and_byte_algebra(self) -> None:
-        self._check_seeded_guest_parity(CASES[8:])
+        self._check_seeded_guest_parity(CASES[8:-1])
+
+    def test_seeded_guest_parity_dead_literal(self) -> None:
+        self._check_seeded_guest_parity(CASES[-1:])
 
 
 if __name__ == "__main__":

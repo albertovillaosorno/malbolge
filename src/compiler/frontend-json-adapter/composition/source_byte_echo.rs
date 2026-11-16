@@ -4185,6 +4185,79 @@ fn prove_static_if_statement<'node>(
     ))
 }
 
+// An unreachable literal output is still a real C effect and must be fully
+// authenticated. It may only be discarded after a source-proven total guard
+// selects the other arm; it must never become a resident-byte output.
+fn prove_unreachable_literal_output(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+    parent: u32,
+    source: &[u8],
+) -> Option<(usize, u32)> {
+    let [call, cast, callee, argument, ..] = nodes else {
+        return None;
+    };
+    let start = call.span.begin.byte;
+    let line = call.span.begin.line;
+    let column = call.span.begin.column;
+    let (value, literal) = source_proven_byte_guard_literal(
+        argument,
+        expected_id.checked_add(3)?,
+        call.id,
+        source,
+    )?;
+    (0_i32..=255_i32).contains(&value).then_some(())?;
+    let spelling = format!("putchar({literal});");
+    let end = start
+        .checked_add(u32::try_from(spelling.len().checked_sub(1)?).ok()?)?;
+    let from = usize::try_from(start).ok()?;
+    let to = from.checked_add(spelling.len())?;
+    (start > previous
+        && start > body.span.begin.byte
+        && end < body.span.end.byte
+        && source.get(from..to) == Some(spelling.as_bytes())
+        && call.id == expected_id
+        && call.parent == parent
+        && call.kind == "call-expression"
+        && call.type_name.as_deref() == Some("i32")
+        && call.reference.as_deref() == Some("external:putchar")
+        && call.operation.is_none()
+        && metadata_empty(call)
+        && source_word(call, start, end, line, column)
+        && cast.id == expected_id.checked_add(1)?
+        && cast.parent == call.id
+        && cast.kind == "cast-expression"
+        && cast.type_name.as_deref() == Some("ptr(fn(i32)->i32)")
+        && cast.operation.as_deref() == Some("function-to-pointer")
+        && cast.reference.is_none()
+        && metadata_empty(cast)
+        && source_word(cast, start, start.checked_add(7)?, line, column)
+        && callee.id == expected_id.checked_add(2)?
+        && callee.parent == cast.id
+        && callee.kind == "declaration-reference-expression"
+        && callee.type_name.as_deref() == Some("fn(i32)->i32")
+        && callee.reference.as_deref() == Some("external:putchar")
+        && callee.operation.is_none()
+        && metadata_empty(callee)
+        && source_word(callee, start, start.checked_add(7)?, line, column)
+        && argument.id == expected_id.checked_add(3)?
+        && argument.parent == call.id
+        && argument.kind == "integer-literal"
+        && argument.type_name.as_deref() == Some("i32")
+        && argument.reference.is_none()
+        && argument.operation.is_none()
+        && source_word(
+            argument,
+            start.checked_add(8)?,
+            end.checked_sub(1)?,
+            line,
+            column.checked_add(8)?,
+        ))
+    .then_some((4, end))
+}
+
 // Source-authenticate both one-line and canonical one-statement-per-line
 // compound arms, including the unselected branch. Each effect must have an
 // exact byte gap, line, column, ID and parent; no other C statement is erased.
@@ -4201,6 +4274,7 @@ fn prove_static_if_arm<'node>(
     allow_new_local: bool,
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
+    allow_unreachable_literal: bool,
     source: Option<&[u8]>,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
@@ -4236,6 +4310,30 @@ fn prove_static_if_arm<'node>(
         });
     }
     if child.kind != "compound-statement" {
+        if allow_unreachable_literal
+            && let Some((width, end)) = source.and_then(|witness| {
+                prove_unreachable_literal_output(
+                    nodes,
+                    body,
+                    previous,
+                    expected_id,
+                    parent,
+                    witness,
+                )
+            })
+        {
+            return Some(StaticIfArm {
+                width,
+                effects: Vec::new(),
+                begin: child.span.begin.byte,
+                begin_line: child.span.begin.line,
+                begin_column: child.span.begin.column,
+                end,
+                end_line: child.span.end.line,
+                end_column: child.span.end.column,
+                braced: false,
+            });
+        }
         let (width, effects, end) = prove_static_if_statement(
             nodes,
             body,
@@ -4339,6 +4437,17 @@ fn prove_static_if_arm<'node>(
         } else {
             None
         };
+        let unreachable_literal =
+            allow_unreachable_literal.then_some(()).and_then(|()| {
+                prove_unreachable_literal_output(
+                    nodes.get(cursor..)?,
+                    body,
+                    effect_end,
+                    expected_id.checked_add(u32::try_from(cursor).ok()?)?,
+                    child.id,
+                    source?,
+                )
+            });
         let (width, statement_effects, statement_end) = if let Some(alias) =
             alias
         {
@@ -4417,6 +4526,8 @@ fn prove_static_if_arm<'node>(
                 }],
                 end,
             )
+        } else if let Some((width, end)) = unreachable_literal {
+            (width, Vec::new(), end)
         } else {
             // Every candidate is tied to this same live guest SSA
             // byte. Try the most recent C binding, then earlier exact
@@ -5188,6 +5299,7 @@ fn prove_static_for<'node>(
                 outermost: outer_induction
                     .and_then(|enclosing| enclosing.outer),
             }),
+            false,
             source,
         )?;
         if !arm.braced
@@ -7127,6 +7239,7 @@ fn prove_static_if<'node>(
         allow_new_local,
         for_depth,
         induction,
+        condition_true == Some(false),
         source,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
@@ -7156,6 +7269,7 @@ fn prove_static_if<'node>(
             allow_new_local,
             for_depth,
             induction,
+            condition_true == Some(true),
             source,
         )?;
         let else_gap = if then_arm.braced {

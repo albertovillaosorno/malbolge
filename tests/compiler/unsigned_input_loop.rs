@@ -1544,3 +1544,135 @@ fn source_byte_algebra_never_folds_guest_dependent_parity() {
         Err(FrontendJsonError::Unsupported)
     ));
 }
+
+const REFLEXIVE_DEAD_LITERAL_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/accepted/unsigned_reflexive_dead_literal_live_input.c"
+);
+const REFLEXIVE_DEAD_LITERAL_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_reflexive_dead_literal_live_input.json"
+);
+
+#[test]
+fn source_reflexive_guard_authenticates_unreachable_literal_output() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        REFLEXIVE_DEAD_LITERAL_JSON,
+        Some(REFLEXIVE_DEAD_LITERAL_SOURCE),
+    )
+    .expect("the source-bound self-comparison makes putchar(0) unreachable");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let module = canonical_module(&wire).expect("typed guest I/O proof");
+    let mut latest = None;
+    let mut reads = 0;
+    let mut writes = 0;
+    for effect in module.functions()[0].blocks()[0].instructions() {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => {
+                latest = Some(*result);
+                reads += 1;
+            },
+            Instruction::ByteOutput { value } => {
+                assert_eq!(Some(*value), latest);
+                writes += 1;
+            },
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads, 4);
+    assert_eq!(writes, 12);
+}
+
+const REFLEXIVE_SELECTED_LITERAL_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/rejected/unsigned_reflexive_selected_literal_live_input.c"
+);
+const REFLEXIVE_SELECTED_LITERAL_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_reflexive_selected_literal_live_input.json"
+);
+const REFLEXIVE_DYNAMIC_LITERAL_SOURCE: &[u8] = include_bytes!(
+    "c-frontend/rejected/unsigned_reflexive_dynamic_literal_live_input.c"
+);
+const REFLEXIVE_DYNAMIC_LITERAL_JSON: &[u8] = include_bytes!(
+    "c-frontend/golden/unsigned_reflexive_dynamic_literal_live_input.json"
+);
+
+#[test]
+fn source_reflexive_guard_never_discards_reachable_literal_output() {
+    for (json, source) in [
+        (
+            REFLEXIVE_SELECTED_LITERAL_JSON,
+            REFLEXIVE_SELECTED_LITERAL_SOURCE,
+        ),
+        (
+            REFLEXIVE_DYNAMIC_LITERAL_JSON,
+            REFLEXIVE_DYNAMIC_LITERAL_SOURCE,
+        ),
+    ] {
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(json, Some(source)),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
+
+#[test]
+fn source_reflexive_dead_literal_requires_exact_source_and_clang_proof() {
+    for (needle, offset, replacement) in [
+        (b"0xA5".as_slice(), 3, b'6'),
+        (b"putchar(0);".as_slice(), 8, b'1'),
+        (b"current == current".as_slice(), 9, b'!'),
+    ] {
+        let mut forged = REFLEXIVE_DEAD_LITERAL_SOURCE.to_vec();
+        let at = forged
+            .windows(needle.len())
+            .position(|bytes| bytes == needle)
+            .expect("source witness for discarded branch");
+        forged[at + offset] = replacement;
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                REFLEXIVE_DEAD_LITERAL_JSON,
+                Some(&forged),
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    let original: serde_json::Value =
+        serde_json::from_slice(REFLEXIVE_DEAD_LITERAL_JSON).unwrap();
+    let nodes = original["nodes"].as_array().unwrap();
+    let literal_index = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "integer-literal" && node["literal"] == "165"
+        })
+        .expect("normalized C23 hex integer literal");
+    for (field, forged_value) in [
+        ("literal", serde_json::json!("166")),
+        ("constant_integer", serde_json::json!("166")),
+        ("type", serde_json::json!("u32")),
+    ] {
+        let mut altered = original.clone();
+        altered["nodes"][literal_index][field] = forged_value;
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&altered).unwrap(),
+                Some(REFLEXIVE_DEAD_LITERAL_SOURCE),
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+    let call_index = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "call-expression"
+                && node["span"]["begin"]["line"] == 35
+        })
+        .expect("unreachable literal call");
+    let mut altered = original.clone();
+    altered["nodes"][call_index]["reference"] =
+        serde_json::json!("external:getchar");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            &serde_json::to_vec(&altered).unwrap(),
+            Some(REFLEXIVE_DEAD_LITERAL_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
