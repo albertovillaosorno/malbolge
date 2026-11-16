@@ -239,6 +239,8 @@ pub enum MachineError {
     },
     /// A fixed-memory invariant unexpectedly failed.
     Memory(MemoryError),
+    /// The output byte buffer could not grow before a transition committed.
+    OutputAllocation,
     /// A translation-table lookup failed inside its admitted domain.
     TranslationTableInvariant,
     /// Explicit legacy behavior cannot be reproduced without historical UB.
@@ -255,6 +257,9 @@ impl Display for MachineError {
                 value.value()
             ),
             Self::Memory(error) => Display::fmt(error, f),
+            Self::OutputAllocation => {
+                f.write_str("classic output memory allocation failed")
+            },
             Self::UnsupportedInterpreterBehavior(
                 InterpreterUndefinedBehavior::InvalidSelfEncryptionTarget {
                     pointer,
@@ -321,6 +326,13 @@ impl Machine {
         plan: TransitionPlan,
         encrypted: Word,
     ) -> Result<(), MachineError> {
+        // Reserve before touching guest memory, registers, or input.
+        if plan.output.is_some() && self.output.len() == self.output.capacity()
+        {
+            self.output
+                .try_reserve(1)
+                .map_err(|_error| MachineError::OutputAllocation)?;
+        }
         let encryption_pointer = plan.registers.code_pointer;
         if let Some((write_pointer, value)) = plan.memory_write
             && write_pointer != encryption_pointer

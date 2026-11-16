@@ -312,6 +312,8 @@ pub enum ProfileMachineError {
         /// Rejected raw word value.
         value: u32,
     },
+    /// The output byte buffer could not grow before a transition committed.
+    OutputAllocation,
     /// The selected profile exceeds this runtime's explicit capability.
     Profile(ProfileRequirementError),
     /// A supplied register is outside the selected word/address domain.
@@ -463,6 +465,9 @@ impl Display for ProfileMachineError {
                 f,
                 "profile state memory[{address}]={value} is outside word domain"
             ),
+            Self::OutputAllocation => {
+                f.write_str("profile output memory allocation failed")
+            },
             Self::Profile(error) => Display::fmt(error, f),
             Self::RegisterOutOfRange { register, value } => write!(
                 f,
@@ -498,6 +503,13 @@ impl ProfileMachine {
         encrypted: u32,
         register_accesses: &mut ProfileRegisterAccesses,
     ) -> Result<(), ProfileMachineError> {
+        // A rejected output reservation cannot mutate guest state.
+        if plan.output.is_some() && self.output.len() == self.output.capacity()
+        {
+            self.output
+                .try_reserve(1)
+                .map_err(|_error| ProfileMachineError::OutputAllocation)?;
+        }
         let encryption_pointer = plan.registers.code_pointer;
         if let Some((write_pointer, value)) = plan.memory_write
             && write_pointer != encryption_pointer

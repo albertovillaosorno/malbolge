@@ -87,6 +87,16 @@ storage and returns its existing typed memory-allocation error.
 Allocation failures return a typed `AnnotatedSourceError::AllocationFailure`
 instead of panicking during presentation processing; raw source semantics and
 selected-profile admission are unchanged.
+The classic raw loader now also grows its bounded source-word buffer
+with fallible reservations and reserves the complete fixed memory image before
+copying source words or filling the recurrence. Allocation failures return
+`LoadError::MemoryAllocation`; lexical, positional-decode, and capacity
+diagnostics remain unchanged when memory is available.
+Classic and profile-driven output transitions also reserve the next byte
+fallibly before committing memory, registers, input, or output. Host memory
+pressure reports `MachineError::OutputAllocation` or
+`ProfileMachineError::OutputAllocation`, respectively, without partially
+committing an output instruction. Successful output and tracing are unchanged.
 
 The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for

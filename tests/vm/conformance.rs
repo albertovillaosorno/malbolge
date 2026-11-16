@@ -37,8 +37,9 @@
 //! Conformance tests for the first safe-Rust classic VM implementation slice.
 
 use malbolge::{
-    InterpreterUndefinedBehavior, LoadError, Machine, MachineError, Memory,
-    Registers, StepOutcome, Termination, Word, load, profile_cell_is_graphical,
+    InterpreterUndefinedBehavior, LoadError, MEMORY_WORDS, Machine,
+    MachineError, Memory, Registers, StepOutcome, Termination, Word,
+    decode_instruction, load, profile_cell_is_graphical,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -120,6 +121,67 @@ fn loader_enforces_recurrence_base_and_accepts_roundtrip_fixture() -> TestResult
         &normalize_result(memory.read(Word::from_byte(2)))?,
         &Word::from_byte(b'O'),
         "third loaded word",
+    )
+}
+
+#[test]
+fn loader_accepts_exact_capacity_without_extra_fill() -> TestResult {
+    const INSTRUCTIONS: &[u8; 8] = b"ji*p</vo";
+    let mut source = Vec::with_capacity(MEMORY_WORDS);
+    for position in 0..MEMORY_WORDS {
+        let address = normalize_result(Word::new(
+            u16::try_from(position).map_err(|error| error.to_string())?,
+        ))?;
+        let graphical = (33..=126).find(|candidate| {
+            decode_instruction(Word::from_byte(*candidate), address)
+                .is_some_and(|instruction| INSTRUCTIONS.contains(&instruction))
+        });
+        let byte = graphical.ok_or_else(|| {
+            format!("no valid source word at classic position {position}")
+        })?;
+        source.push(byte);
+    }
+
+    let complete = normalize_result(load(&source))?;
+    let expected: Vec<Word> =
+        source.iter().copied().map(Word::from_byte).collect();
+    check_equal(
+        complete.words(),
+        expected.as_slice(),
+        "exact-capacity source must not introduce recurrence words",
+    )?;
+
+    let partial_source = source.get(..MEMORY_WORDS - 1).ok_or_else(|| {
+        String::from("classic prefix escaped admitted source")
+    })?;
+    let partial = normalize_result(load(partial_source))?;
+    let previous = source
+        .get(MEMORY_WORDS - 2)
+        .copied()
+        .map(Word::from_byte)
+        .ok_or_else(|| {
+        String::from("classic source lacks previous word")
+    })?;
+    let older = source
+        .get(MEMORY_WORDS - 3)
+        .copied()
+        .map(Word::from_byte)
+        .ok_or_else(|| String::from("classic source lacks older word"))?;
+    let generated = partial
+        .words()
+        .get(MEMORY_WORDS - 1)
+        .ok_or_else(|| String::from("filled image lacks final word"))?;
+    check_equal(
+        generated,
+        &older.crazy(previous),
+        "one remaining classic word must use the exact fill recurrence",
+    )?;
+
+    source.push(b'!');
+    check_equal(
+        &load(&source),
+        &Err(LoadError::SourceTooLong),
+        "one extra graphical word must exceed classic capacity",
     )
 }
 

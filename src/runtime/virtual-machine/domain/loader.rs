@@ -62,6 +62,8 @@ pub enum LoadError {
         /// Rejected raw byte value.
         byte: u8,
     },
+    /// The classic memory image or admitted source could not be reserved.
+    MemoryAllocation,
     /// More non-whitespace words were supplied than classic memory can hold.
     SourceTooLong,
 }
@@ -85,6 +87,9 @@ impl Display for LoadError {
             ),
             Self::InternalInvariant => {
                 f.write_str("classic loader internal invariant failed")
+            },
+            Self::MemoryAllocation => {
+                f.write_str("classic loader memory allocation failed")
             },
         }
     }
@@ -147,6 +152,11 @@ fn collect_source(source: &[u8]) -> Result<Vec<u8>, LoadError> {
         if admitted.len() == MEMORY_WORDS {
             over_capacity = true;
         } else {
+            if admitted.len() == admitted.capacity() {
+                admitted
+                    .try_reserve(1)
+                    .map_err(|_error| LoadError::MemoryAllocation)?;
+            }
             admitted.push(byte);
         }
     }
@@ -160,8 +170,13 @@ fn collect_source(source: &[u8]) -> Result<Vec<u8>, LoadError> {
 }
 
 fn fill_memory(admitted: Vec<u8>) -> Result<Memory, LoadError> {
-    let mut words: Vec<Word> =
-        admitted.into_iter().map(Word::from_byte).collect();
+    // Reserve the complete classic image before the source-word projection
+    // and recurrence, so subsequent pushes cannot trigger an implicit grow.
+    let mut words = Vec::new();
+    words
+        .try_reserve_exact(MEMORY_WORDS)
+        .map_err(|_error| LoadError::MemoryAllocation)?;
+    words.extend(admitted.into_iter().map(Word::from_byte));
     let mut reverse = words.iter().rev().copied();
     let mut previous = reverse.next().ok_or(LoadError::InternalInvariant)?;
     let mut older = reverse.next().ok_or(LoadError::InternalInvariant)?;
