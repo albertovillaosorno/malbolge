@@ -26,6 +26,38 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-proven switch case/default byte domains (2026-11-16)
+
+A complete C23 EOF-driven checksum with mutable unsigned state, parity
+arithmetic and an input-dependent `while` still refuses its first local
+declaration. It publishes no guest artifact. A separate complete four-read
+source program exposed a new structured-control gap: a `switch (current & 1)`
+with `case 0` and `default` writes the input through `current & -2` and
+`current | 1`, respectively. Neither output expression is a global byte
+identity, but each is identical to the resident input on its C case domain.
+The pinned frontend accepted this C23 program and the old adapter rejected
+the source `for` statement before guest publication.
+
+The typed adapter now admits one source-authenticated case/default switch
+with a pure byte-domain expression, one `putchar` per label and explicit
+`break` statements. Its verifier checks the complete original C spelling,
+normalized Clang nodes, label integer and all source positions. It evaluates
+the predicate over all 256 *possible* successful input bytes, checks both
+output expressions only on their reachable case domains, and retains the
+actual guest input and output rather than a host-predicted byte. Fallthrough,
+extra effects, forged parent/position/label metadata and nonidentical outputs
+refuse before artifact publication.
+
+A 1,119-byte `malbolge-2026` capsule executes four actual VM reads and four
+writes in nine steps. Twenty-nine seeded binary VM vectors agree with an
+independent identity oracle. Pinned C23 UBSan `-O0` and `-O2` agree for
+all 29 vectors of the accepted source and both nonidentity changed-output
+and changed-label controls (174 native executions). The compiler refuses
+both changed sources and a removed-`break` control without publishing an
+artifact. This is neither general executable C `switch` nor arbitrary
+runtime C arithmetic, mutable guest storage or EOF iteration. P0 remains
+**pending**.
+
 ### Source-proven unsigned-byte conversion on guarded live input (2026-11-16)
 
 The complete EOF-driven checksum with mutable state, input-dependent control,

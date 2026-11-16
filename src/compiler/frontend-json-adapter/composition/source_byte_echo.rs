@@ -56,6 +56,10 @@ mod multiple_guarded_byte_output_tests;
 mod narrowed_byte_output_tests;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/switch_guarded_byte_output.rs"]
+mod switch_guarded_byte_output_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
 mod unsigned_input_loop_tests;
 
@@ -3876,6 +3880,287 @@ fn outer_loop_byte_after_effects(
     Some(available)
 }
 
+// A switch over the resident byte needs no guest branch if both source
+// arms write that byte on their own reachable case domains. This narrow
+// grammar requires exactly one integer case and a default, each with one
+// source-proven putchar and an explicit break. No switch fallthrough, extra
+// effects, or sampled guest values can disappear from the accepted trace.
+#[expect(
+    clippy::too_many_lines,
+    reason = "authenticate the complete case/default AST and original source"
+)]
+fn prove_guarded_byte_switch<'node>(
+    nodes: &'node [Node],
+    body: &Node,
+    previous: u32,
+    expected_id: u32,
+    parent: u32,
+    local: Option<&LocalDeclaration<'node>>,
+    source: Option<&[u8]>,
+) -> Option<(usize, Vec<StaticIfEffect<'node>>, u32)> {
+    let source = source?;
+    let local = local?;
+    let switch = nodes.first()?;
+    let start = switch.span.begin.byte;
+    let line = switch.span.begin.line;
+    let column = switch.span.begin.column;
+    if start <= previous
+        || start <= body.span.begin.byte
+        || switch.span.end.byte >= body.span.end.byte
+        || switch.id != expected_id
+        || switch.parent != parent
+        || switch.kind != "switch-statement"
+        || switch.type_name.is_some()
+        || switch.operation.is_some()
+        || switch.reference.is_some()
+        || !metadata_empty(switch)
+        || line == 0
+        || column == 0
+    {
+        return None;
+    }
+    let (condition_width, condition, values) = prove_total_byte_guard(
+        nodes.get(1..)?,
+        body,
+        previous,
+        switch.id,
+        switch.id.checked_add(1)?,
+        Some(local),
+        0,
+        source,
+    )?;
+    if values.iter().any(Option::is_none) {
+        return None;
+    }
+    let scope_index = condition_width.checked_add(1)?;
+    let scope = nodes.get(scope_index)?;
+    let case = nodes.get(scope_index.checked_add(1)?)?;
+    let constant = nodes.get(scope_index.checked_add(2)?)?;
+    let literal = nodes.get(scope_index.checked_add(3)?)?;
+    let (case_value, case_token) = source_proven_byte_guard_literal(
+        literal,
+        constant.id.checked_add(1)?,
+        constant.id,
+        source,
+    )?;
+    // The accepted case must be a real single C integer label; a forged
+    // Clang ConstantExpr cannot redirect guest effects.
+    if case_value > 255
+        || scope.id
+            != switch.id.checked_add(u32::try_from(scope_index).ok()?)?
+        || scope.parent != switch.id
+        || scope.kind != "compound-statement"
+        || scope.type_name.is_some()
+        || scope.operation.is_some()
+        || scope.reference.is_some()
+        || !metadata_empty(scope)
+        || scope.span.end != switch.span.end
+        || case.id != scope.id.checked_add(1)?
+        || case.parent != scope.id
+        || case.kind != "case-statement"
+        || case.type_name.is_some()
+        || case.operation.is_some()
+        || case.reference.is_some()
+        || !metadata_empty(case)
+        || constant.id != case.id.checked_add(1)?
+        || constant.parent != case.id
+        || constant.kind != "constant-expression"
+        || constant.type_name.as_deref() != Some("i32")
+        || constant.operation.is_some()
+        || constant.reference.is_some()
+        || !metadata_except_integer_constant_empty(constant)
+        || constant.constant_integer.as_deref()
+            != Some(case_value.to_string().as_str())
+        || constant.span != literal.span
+    {
+        return None;
+    }
+    let mut case_domain = [false; 256];
+    let mut default_domain = [false; 256];
+    for (byte, result) in values.iter().enumerate() {
+        let selected = *result == Some(case_value);
+        case_domain[byte] = selected;
+        default_domain[byte] = !selected;
+    }
+    let call_index = scope_index.checked_add(4)?;
+    let (case_width, case_call, None, case_nested) =
+        prove_identity_byte_output(
+            nodes.get(call_index..)?,
+            body,
+            Some(local),
+            switch.id.checked_add(u32::try_from(call_index).ok()?)?,
+            case.span.begin.byte,
+            case.id,
+            source,
+            Some(&case_domain),
+        )?
+    else {
+        return None;
+    };
+    if !case_nested.is_empty() || case.span.end != case_call.span.end {
+        return None;
+    }
+    let case_break_index = call_index.checked_add(case_width)?;
+    let case_break = nodes.get(case_break_index)?;
+    let default_index = case_break_index.checked_add(1)?;
+    let default = nodes.get(default_index)?;
+    let default_call_index = default_index.checked_add(1)?;
+    let (default_width, default_call, None, default_nested) =
+        prove_identity_byte_output(
+            nodes.get(default_call_index..)?,
+            body,
+            Some(local),
+            switch
+                .id
+                .checked_add(u32::try_from(default_call_index).ok()?)?,
+            default.span.begin.byte,
+            default.id,
+            source,
+            Some(&default_domain),
+        )?
+    else {
+        return None;
+    };
+    let default_break_index = default_call_index.checked_add(default_width)?;
+    let default_break = nodes.get(default_break_index)?;
+    let end_index = default_break_index.checked_add(1)?;
+    if !default_nested.is_empty()
+        || default.span.end != default_call.span.end
+        || default.id
+            != switch.id.checked_add(u32::try_from(default_index).ok()?)?
+        || default.parent != scope.id
+        || default.kind != "default-statement"
+        || default.type_name.is_some()
+        || default.operation.is_some()
+        || default.reference.is_some()
+        || !metadata_empty(default)
+    {
+        return None;
+    }
+    for (index, jump) in [
+        (case_break_index, case_break),
+        (default_break_index, default_break),
+    ] {
+        if jump.id != switch.id.checked_add(u32::try_from(index).ok()?)?
+            || jump.parent != scope.id
+            || jump.kind != "break-statement"
+            || jump.type_name.is_some()
+            || jump.operation.is_some()
+            || jump.reference.is_some()
+            || !metadata_empty(jump)
+            || jump.span.end.byte != jump.span.begin.byte.checked_add(5)?
+        {
+            return None;
+        }
+    }
+
+    // Verify every byte between the switch keyword and its closing brace.
+    // The original source must have exactly these labels, calls and breaks.
+    // This also verifies Clang's node positions and prohibits hidden code.
+    let indent = usize::try_from(column.checked_sub(1)?).ok()?;
+    if indent > 128
+        || switch.span.begin.line != case.span.begin.line.checked_sub(1)?
+        || switch.span.begin.line != scope.span.begin.line
+        || scope.span.begin.column
+            != column.checked_add(
+                u32::try_from("switch (".len() + condition.len() + ") ".len())
+                    .ok()?,
+            )?
+    {
+        return None;
+    }
+    let extract_call = |node: &Node| -> Option<&str> {
+        str::from_utf8(source.get(
+            usize::try_from(node.span.begin.byte).ok()?
+                ..usize::try_from(node.span.end.byte).ok()?,
+        )?)
+        .ok()
+    };
+    let case_text = extract_call(case_call)?;
+    let default_text = extract_call(default_call)?;
+    let label_indent = " ".repeat(indent);
+    let statement_indent = " ".repeat(indent.checked_add(4)?);
+    let expected = format!(
+        "switch ({condition}) {{\n{label_indent}case {case_token}:\n\
+         {statement_indent}{case_text};\n{statement_indent}break;\n\
+         {label_indent}default:\n{statement_indent}{default_text};\n\
+         {statement_indent}break;\n{label_indent}}}"
+    );
+    let end = switch.span.end.byte;
+    // A forged preorder can keep the bytes unchanged but move a case label
+    // or a break's source location. Authenticate those positions too.
+    let relative = |needle: &str| expected.find(needle);
+    let source_position =
+        |offset: usize| start.checked_add(u32::try_from(offset).ok()?);
+    let case_at = source_position(relative("case ")?)?;
+    let default_at = source_position(relative("default:")?)?;
+    let scope_at = source_position(relative("{")?)?;
+    let first_call_at = source_position(
+        relative("case ")?.checked_add(
+            expected
+                .get(relative("case ")?..relative("default:")?)?
+                .find(case_text)?,
+        )?,
+    )?;
+    let second_call_at = source_position(relative("default:")?.checked_add(
+        expected.get(relative("default:")?..)?.find(default_text)?,
+    )?)?;
+    let mut breaks = expected.match_indices("break;").map(|(at, _)| at);
+    let first_break_at = source_position(breaks.next()?)?;
+    let second_break_at = source_position(breaks.next()?)?;
+    if breaks.next().is_some()
+        || scope.span.begin.byte != scope_at
+        || case.span.begin.byte != case_at
+        || default.span.begin.byte != default_at
+        || case_call.span.begin.byte != first_call_at
+        || default_call.span.begin.byte != second_call_at
+        || literal.span.begin.byte != case_at.checked_add(5)?
+        || literal.span.begin.line != line.checked_add(1)?
+        || literal.span.begin.column != column.checked_add(5)?
+        || !source_word(
+            case_break,
+            first_break_at,
+            first_break_at.checked_add(5)?,
+            line.checked_add(3)?,
+            column.checked_add(4)?,
+        )
+        || !source_word(
+            default_break,
+            second_break_at,
+            second_break_at.checked_add(5)?,
+            line.checked_add(6)?,
+            column.checked_add(4)?,
+        )
+        || default.span.begin.line != line.checked_add(4)?
+        || case_call.span.begin.line != line.checked_add(2)?
+        || default_call.span.begin.line != line.checked_add(5)?
+        || source.get(usize::try_from(start).ok()?..usize::try_from(end).ok()?)
+            != Some(expected.as_bytes())
+        || source.get(usize::try_from(case_break.span.end.byte).ok()?)
+            != Some(&b';')
+        || source.get(usize::try_from(default_break.span.end.byte).ok()?)
+            != Some(&b';')
+        || switch.span.end.line != default_break.span.end.line.checked_add(1)?
+        || switch.span.end.column != column.checked_add(1)?
+        || case.span.begin.column != column
+        || default.span.begin.column != column
+        || case_call.span.begin.column != column.checked_add(4)?
+        || default_call.span.begin.column != column.checked_add(4)?
+    {
+        return None;
+    }
+    Some((
+        end_index,
+        vec![StaticIfEffect {
+            input: None,
+            assigned_local: None,
+            outputs: vec![case_call],
+            loop_exit: None,
+        }],
+        end,
+    ))
+}
+
 fn prove_static_if_statement<'node>(
     nodes: &'node [Node],
     body: &Node,
@@ -3991,6 +4276,17 @@ fn prove_static_if_statement<'node>(
             }],
             end,
         ));
+    }
+    if child.kind == "switch-statement" {
+        return prove_guarded_byte_switch(
+            nodes,
+            body,
+            previous,
+            expected_id,
+            parent,
+            local,
+            source,
+        );
     }
     if child.kind == "if-statement" {
         let proof = prove_static_if(
@@ -4784,7 +5080,7 @@ fn prove_static_if_arm<'node>(
             == "declaration-statement"
             || (matches!(
                 statement.kind.as_str(),
-                "if-statement" | "for-statement"
+                "if-statement" | "for-statement" | "switch-statement"
             ) && statement.span.end.line > statement.span.begin.line
                 && source.is_none_or(|witness| {
                     usize::try_from(statement_end)

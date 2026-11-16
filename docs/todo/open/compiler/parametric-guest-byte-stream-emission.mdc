@@ -57,6 +57,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a complete EOF-driven mutable checksum refused its
+  first `unsigned` declaration without publication. A distinct four-read
+  C23 `switch (current & 1)` experiment exposed a new byte-domain lowering
+  gap: `case 0` writes `current & -2`, while `default` writes
+  `current | 1`. Source/Clang-authenticated case/default and both explicit
+  breaks now prove identity on their disjoint live byte domains, retaining
+  four real reads and writes in a 1,119-byte capsule (nine VM steps).
+  Twenty-nine binary guest vectors and 174 pinned C23 UBSan native
+  executions across accepted and two nonidentity controls agree with
+  independent oracles; changed outputs/labels and missing breaks reject
+  without an artifact. General dynamic guest `switch`, mutable locals
+  and EOF loops remain unsupported; P0 is **pending**.
+
 - On 2026-11-16, a complete mutable EOF checksum still refused its first
   declaration without a guest artifact. A distinct four-read C23 program
   exposed previously unsupported signed offsets followed by explicit

@@ -53,6 +53,7 @@ UNBRACED_MULTILINE_STEM = "unsigned_multiline_guarded_live_input"
 ELSE_IF_STEM = "unsigned_else_if_guarded_live_input"
 MULTI_GUARDED_STEM = "unsigned_multiple_guarded_live_input"
 NARROWED_STEM = "unsigned_narrowed_guarded_live_input"
+SWITCH_STEM = "unsigned_switch_guarded_live_input"
 DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 DEAD_PURE_STEM = "unsigned_reflexive_dead_pure_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
@@ -78,6 +79,7 @@ CASES = (
     (ELSE_IF_STEM, 4, 9),
     (MULTI_GUARDED_STEM, 4, 13),
     (NARROWED_STEM, 4, 9),
+    (SWITCH_STEM, 4, 9),
     (DEAD_LITERAL_STEM, 4, 17),
     (DEAD_PURE_STEM, 4, 17),
 )
@@ -121,6 +123,7 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
             UNBRACED_MULTILINE_STEM,
             ELSE_IF_STEM,
             NARROWED_STEM,
+            SWITCH_STEM,
         }:
             # Every nested byte guard preserves the live byte on the active
             # source-C path, including NUL and high-bit inputs.
@@ -1408,6 +1411,176 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                             exit_code = observed.returncode
                             self.assertEqual(exit_code, 0, observed.stderr)
                             self.assertEqual(observed.stdout, expected)
+
+    def test_switch_guarded_c23_native_and_guest_parity(self) -> None:
+        """A source-proven switch retains live input, not host selection."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM, CLANG)):
+            self.skipTest("pinned C23 frontend, adapter or guest VM missing")
+        source = SOURCES / f"{SWITCH_STEM}.c"
+        original = source.read_text(encoding="utf-8")
+        self.assertEqual(original.count("putchar(current | 1)"), 1)
+        self.assertEqual(original.count("case 0:"), 1)
+        self.assertEqual(original.count("break;"), 2)
+        cases = cases_for_length(4)
+        env = dict(os.environ)
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            folder = Path(directory)
+            guest = folder / "switch.malbolge"
+            accepted = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    str(source),
+                    "--output",
+                    str(guest),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertTrue(guest.is_file())
+
+            def run_guest(data: bytes) -> subprocess.CompletedProcess[bytes]:
+                return subprocess.run(
+                    [
+                        str(VM),
+                        str(guest),
+                        "--input-stdin",
+                        "--max-steps",
+                        "9",
+                        "--report-steps",
+                    ],
+                    input=data,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                for data, observed in zip(
+                    cases, executor.map(run_guest, cases), strict=True
+                ):
+                    with self.subTest(stdin=data.hex()):
+                        self.assertEqual(observed.returncode, 0, observed.stderr)
+                        self.assertEqual(
+                            observed.stdout, independent_c_oracle(SWITCH_STEM, data)
+                        )
+                        self.assertEqual(observed.stderr, b"malbolge-steps-v1:9\n")
+
+            variants = (
+                ("original", original, lambda byte: byte, True),
+                (
+                    "changed-output",
+                    original.replace("putchar(current | 1)", "putchar(current | 2)"),
+                    lambda byte: byte if byte & 1 == 0 else byte | 2,
+                    False,
+                ),
+                (
+                    "changed-case",
+                    original.replace("case 0:", "case 1:"),
+                    lambda byte: byte & -2 if byte & 1 else byte | 1,
+                    False,
+                ),
+            )
+            for name, content, oracle, admissible in variants:
+                candidate = source if admissible else folder / f"{name}.c"
+                if not admissible:
+                    candidate.write_text(content, encoding="utf-8")
+                    target = folder / f"{name}.malbolge"
+                    rejected = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--capsule",
+                            str(candidate),
+                            "--output",
+                            str(target),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=120,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn(UNSUPPORTED_MARKER, rejected.stderr)
+                    self.assertFalse(target.exists())
+
+                wrapper = folder / f"native-{name}.c"
+                wrapper.write_text(
+                    f'#include "{candidate}"\nint main(void) {{ emit(); return 0; }}\n',
+                    encoding="utf-8",
+                )
+                for optimization in ("-O0", "-O2"):
+                    native = folder / f"native-{name}-{optimization[2:]}"
+                    built = subprocess.run(
+                        [
+                            str(CLANG),
+                            "-std=c23",
+                            optimization,
+                            "-fsanitize=undefined",
+                            "-fno-sanitize-recover=all",
+                            str(wrapper),
+                            "-o",
+                            str(native),
+                        ],
+                        env=env,
+                        capture_output=True,
+                        check=False,
+                        timeout=45,
+                    )
+                    self.assertEqual(built.returncode, 0, built.stderr)
+                    for data in cases:
+                        observed = subprocess.run(
+                            [str(native)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        expected = bytes(oracle(byte) for byte in data)
+                        with self.subTest(
+                            variant=name,
+                            optimization=optimization,
+                            stdin=data.hex(),
+                        ):
+                            self.assertEqual(observed.returncode, 0, observed.stderr)
+                            self.assertEqual(observed.stdout, expected)
+
+            # Removing one mandatory break would introduce fallthrough and
+            # change the number of actual guest writes on some inputs.
+            missing_break = folder / "fallthrough.c"
+            missing_break.write_text(
+                original.replace("            break;\n", "", 1),
+                encoding="utf-8",
+            )
+            target = folder / "fallthrough.malbolge"
+            refused = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    str(missing_break),
+                    "--output",
+                    str(target),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(UNSUPPORTED_MARKER, refused.stderr)
+            self.assertFalse(target.exists())
 
     def test_pure_output_c23_oracles(self) -> None:
         """Compare selected pure-C output with two native C23 optimizers."""
