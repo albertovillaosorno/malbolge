@@ -11,6 +11,18 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Guarded byte-preserving C output (2026-11-16)
+
+A source- and Clang-authenticated C23 parity branch may choose different
+pure signed output expressions if both emit exactly the current guest
+byte *on their own active input domains*. The 256-byte truth table for
+the condition and checked expression results are preserved through the
+proof; undefined arithmetic or changed output on an active arm refuses.
+The complete four-read C program emits four unchanged bytes in nine
+normative VM steps, with 29 seeded binary guest vectors and independent
+native C23 UBSan O0/O2 controls. This removes an output-equivalent branch
+only, not general guest dynamic branching, arithmetic, EOF or C storage.
+
 ### Reachable modulo-256 C output proof (2026-11-16)
 
 A pure signed `int` argument to standalone `putchar` may now be lowered

@@ -57,6 +57,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a complete EOF-driven checksum with mutable state,
+  guest-dependent branches and arithmetic still refused its first
+  unsigned local with no guest artifact. A distinct four-read C23 probe
+  demonstrated **path-sensitive byte-preserving output**: odd and even
+  guest inputs choose different signed C arithmetic, each preserving
+  its original byte only on the active parity domain. A red-first
+  source/Clang-bound proof now checks all 256 successful input values,
+  retains four real guest reads and writes, and admits a 1,119-byte
+  capsule that executes nine VM steps. Twenty-nine seeded binary guest
+  vectors and independent C23 UBSan O0/O2 oracles match; a valid-C
+  changed-byte control and mutated source/AST refuse without a guest.
+  This is not runtime C arithmetic, general executable branches,
+  mutable guest locals or EOF loops; P0 remains **pending**.
+
 - On 2026-11-16, a new complete EOF-driven checksum with mutable state,
   parity branch and arithmetic still refused its first `unsigned` local
   declaration and published no guest artifact. A separate bounded source-C

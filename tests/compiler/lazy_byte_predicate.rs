@@ -31,7 +31,28 @@
 
 use serde_json::json;
 
-use super::{Node, prove_total_byte_if_predicate};
+use super::Node;
+
+// Keep the existing predicate-selection assertions independent of whether
+// the production proof also retains its per-byte branch truth domain.
+fn prove_total_byte_if_predicate(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+    conditional: &Node,
+    local: Option<&super::LocalDeclaration<'_>>,
+    source: Option<&[u8]>,
+) -> Option<(usize, Option<bool>)> {
+    super::prove_total_byte_if_predicate(
+        nodes,
+        body,
+        previous,
+        conditional,
+        local,
+        source,
+    )
+    .map(|(width, selected, _)| (width, selected))
+}
 
 fn node(
     id: u32,

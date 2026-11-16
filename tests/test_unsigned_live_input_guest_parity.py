@@ -46,6 +46,7 @@ NESTED_FRESH_STEM = "unsigned_nested_fresh_live_input"
 HEX_STEM = "unsigned_hex_threshold_live_input"
 ALGEBRA_STEM = "unsigned_byte_algebra_live_input"
 MODULAR_STEM = "unsigned_modular_output_live_input"
+GUARDED_STEM = "unsigned_guarded_modular_output_live_input"
 DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 DEAD_PURE_STEM = "unsigned_reflexive_dead_pure_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
@@ -64,6 +65,7 @@ CASES = (
     (HEX_STEM, 4, 13),
     (ALGEBRA_STEM, 4, 17),
     (MODULAR_STEM, 4, 25),
+    (GUARDED_STEM, 4, 9),
     (DEAD_LITERAL_STEM, 4, 17),
     (DEAD_PURE_STEM, 4, 17),
 )
@@ -100,6 +102,10 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
         elif stem == "nested_outer_induction_live_input":
             # Two inner trips per outer row. Only row two repeats its bytes.
             copies = 2 if (counter - 1) // 2 == 1 else 1
+        elif stem == GUARDED_STEM:
+            # Both dynamic C branches preserve the byte only on their
+            # individually proven parity domains.
+            copies = 1
         elif stem == MODULAR_STEM:
             # Signed negative, multiplication, bitwise and additive modulo.
             copies = 5
@@ -579,6 +585,141 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                             native=is_dynamic,
                             optimization=optimization,
                             data=data.hex(),
+                        ):
+                            self.assertEqual(observed.returncode, 0, observed.stderr)
+                            self.assertEqual(observed.stdout, expected)
+
+    def test_guarded_modular_c23_native_and_guest_parity(self) -> None:
+        """Source-C parity-dependent output arithmetic, without guest ALU."""
+        prerequisites = (FRONTEND, ADAPTER, LAYOUT, VM, CLANG)
+        if not all(path.is_file() for path in prerequisites):
+            self.skipTest("pinned compiler, C23 Clang or guest VM missing")
+        valid = SOURCES / f"{GUARDED_STEM}.c"
+        invalid = (
+            ROOT
+            / "tests/compiler/c-frontend/rejected"
+            / "unsigned_guarded_nonidentity_output_live_input.c"
+        )
+        cases = cases_for_length(4)
+        env = dict(os.environ)
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            folder = Path(temporary)
+            guest = folder / "guarded.malbolge"
+            built = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    str(valid),
+                    "--output",
+                    str(guest),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(built.returncode, 0, built.stderr)
+            self.assertTrue(guest.is_file())
+
+            def run_guest(data: bytes) -> subprocess.CompletedProcess[bytes]:
+                return subprocess.run(
+                    [
+                        str(VM),
+                        str(guest),
+                        "--input-stdin",
+                        "--max-steps",
+                        "9",
+                        "--report-steps",
+                    ],
+                    input=data,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                for data, observed in zip(
+                    cases, executor.map(run_guest, cases), strict=True
+                ):
+                    with self.subTest(guest=data.hex()):
+                        self.assertEqual(observed.returncode, 0, observed.stderr)
+                        self.assertEqual(
+                            observed.stdout, independent_c_oracle(GUARDED_STEM, data)
+                        )
+                        self.assertEqual(observed.stderr, b"malbolge-steps-v1:9\n")
+
+            refused = folder / "guarded-invalid.malbolge"
+            rejected = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    str(invalid),
+                    "--output",
+                    str(refused),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(UNSUPPORTED_MARKER, rejected.stderr)
+            self.assertFalse(refused.exists())
+
+            # A changed byte is valid C, but unavailable guest arithmetic.
+            # Check both the admitted and rejected C sources independently.
+            for source, nonidentity in ((valid, False), (invalid, True)):
+                wrapper = folder / "oracle.c"
+                _ = wrapper.write_text(
+                    f'#include "{source}"\nint main(void) {{ emit(); return 0; }}\n',
+                    encoding="utf-8",
+                )
+                for optimization in ("-O0", "-O2"):
+                    native = folder / f"native-{nonidentity}-{optimization[2:]}"
+                    compiled = subprocess.run(
+                        [
+                            str(CLANG),
+                            "-std=c23",
+                            optimization,
+                            "-fsanitize=undefined",
+                            "-fno-sanitize-recover=all",
+                            str(wrapper),
+                            "-o",
+                            str(native),
+                        ],
+                        env=env,
+                        capture_output=True,
+                        check=False,
+                        timeout=45,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    for data in cases:
+                        observed = subprocess.run(
+                            [str(native)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        expected = (
+                            bytes(
+                                byte if byte & 1 else (byte + 1) & 255 for byte in data
+                            )
+                            if nonidentity
+                            else independent_c_oracle(GUARDED_STEM, data)
+                        )
+                        with self.subTest(
+                            optimization=optimization,
+                            nonidentity=nonidentity,
+                            stdin=data.hex(),
                         ):
                             self.assertEqual(observed.returncode, 0, observed.stderr)
                             self.assertEqual(observed.stdout, expected)

@@ -32,6 +32,10 @@
 //! Closed dynamic-byte input provenance from normalized source C to typed IR.
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/guarded_byte_output.rs"]
+mod guarded_byte_output_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
 mod unsigned_input_loop_tests;
 
@@ -3434,6 +3438,7 @@ fn prove_identity_byte_output<'node>(
     previous: u32,
     parent: u32,
     source: &[u8],
+    active_domain: Option<(&[Option<i32>; 256], bool)>,
 ) -> Option<(usize, &'node Node, Option<&'node Node>, Vec<&'node Node>)> {
     let [output, callee_cast, callee, rest @ ..] = nodes else {
         return None;
@@ -3470,9 +3475,20 @@ fn prove_identity_byte_output<'node>(
                 .iter()
                 .enumerate()
                 .all(|(byte, value)| {
-                    value.is_some_and(|actual| {
+                    // Require defined C arithmetic on all 256 successful
+                    // guest bytes, and byte identity on the active branch.
+                    let same_byte = value.is_some_and(|actual| {
                         i32::try_from(byte).ok() == Some(actual.rem_euclid(256))
-                    })
+                    });
+                    match active_domain {
+                        Some((predicate, arm)) => {
+                            value.is_some()
+                                && predicate[byte].is_some_and(|truth| {
+                                    (truth != 0) != arm || same_byte
+                                })
+                        },
+                        None => same_byte,
+                    }
                 })
                 .then_some((width, argument, None, Vec::new()))
         })?;
@@ -3543,6 +3559,7 @@ fn prove_identity_binary_local_output<'node>(
         previous,
         parent,
         source,
+        None,
     )?;
     (input.is_none() && outputs.is_empty()).then_some((width, call))
 }
@@ -4306,6 +4323,7 @@ fn prove_static_if_arm<'node>(
     for_depth: usize,
     induction: Option<StaticInduction<'_>>,
     allow_unreachable_pure: bool,
+    active_domain: Option<(&[Option<i32>; 256], bool)>,
     source: Option<&[u8]>,
 ) -> Option<StaticIfArm<'node>> {
     let child = nodes.first()?;
@@ -4481,6 +4499,39 @@ fn prove_static_if_arm<'node>(
                     source?,
                 )
             });
+        // Never remove dynamic guest control based on a sampled input:
+        // authenticate every value of the source/Clang predicate and both
+        // expressions. Restrict this proof to one output per branch, with
+        // no input or assignment before it.
+        let guarded_output = if statement_count == 0
+            && statement.kind == "call-expression"
+            && let Some(domain) = active_domain
+            && let Some(bound) = declared_local.as_ref().or(local)
+            && local_is_live
+            && let Some(witness) = source
+            && let Some((width, call, None, nested)) =
+                prove_identity_byte_output(
+                    nodes.get(cursor..)?,
+                    body,
+                    Some(bound),
+                    expected_id.checked_add(u32::try_from(cursor).ok()?)?,
+                    effect_end,
+                    child.id,
+                    witness,
+                    Some(domain),
+                )
+            && nested.is_empty()
+        {
+            let gap = if multiline {
+                conditional_column.checked_add(2)?
+            } else {
+                3
+            };
+            (call.span.end.byte.checked_add(gap)? == end)
+                .then_some((width, call))
+        } else {
+            None
+        };
         let (width, statement_effects, statement_end) = if let Some(alias) =
             alias
         {
@@ -4561,6 +4612,17 @@ fn prove_static_if_arm<'node>(
             )
         } else if let Some((width, end)) = unreachable_pure {
             (width, Vec::new(), end)
+        } else if let Some((width, call)) = guarded_output {
+            (
+                width,
+                vec![StaticIfEffect {
+                    input: None,
+                    assigned_local: None,
+                    outputs: vec![call],
+                    loop_exit: None,
+                }],
+                call.span.end.byte,
+            )
         } else {
             // Every candidate is tied to this same live guest SSA
             // byte. Try the most recent C binding, then earlier exact
@@ -5333,6 +5395,7 @@ fn prove_static_for<'node>(
                     .and_then(|enclosing| enclosing.outer),
             }),
             false,
+            None,
             source,
         )?;
         if !arm.braced
@@ -7130,7 +7193,7 @@ fn prove_total_byte_if_predicate(
     conditional: &Node,
     local: Option<&LocalDeclaration<'_>>,
     source: Option<&[u8]>,
-) -> Option<(usize, Option<bool>)> {
+) -> Option<(usize, Option<bool>, Box<[Option<i32>; 256]>)> {
     let (width, _, values) = prove_total_byte_guard(
         nodes,
         body,
@@ -7157,7 +7220,7 @@ fn prove_total_byte_if_predicate(
     } else {
         None
     };
-    Some((width, selected))
+    Some((width, selected, values))
 }
 
 // Two arms can be folded without predicting the guest byte only when their
@@ -7242,9 +7305,9 @@ fn prove_static_if<'node>(
     {
         return None;
     }
-    let (predicate_width, condition_true) =
+    let (predicate_width, condition_true, domain) =
         prove_static_predicate(nodes.get(1..)?, conditional, induction)
-            .map(|(width, selected)| (width, Some(selected)))
+            .map(|(width, selected)| (width, Some(selected), None))
             .or_else(|| {
                 prove_total_byte_if_predicate(
                     nodes.get(1..)?,
@@ -7254,6 +7317,9 @@ fn prove_static_if<'node>(
                     local,
                     source,
                 )
+                .map(|(width, selected, values)| {
+                    (width, selected, Some(values))
+                })
             })?;
     let predicate_root = nodes.get(1)?;
     let predicate_last = nodes.get(predicate_width)?;
@@ -7273,6 +7339,9 @@ fn prove_static_if<'node>(
         for_depth,
         induction,
         condition_true == Some(false),
+        domain.as_deref().and_then(|values| {
+            condition_true.is_none().then_some((values, true))
+        }),
         source,
     )?;
     if then_arm.begin != predicate_root.span.end.byte.checked_add(2)?
@@ -7303,6 +7372,9 @@ fn prove_static_if<'node>(
             for_depth,
             induction,
             condition_true == Some(true),
+            domain.as_deref().and_then(|values| {
+                condition_true.is_none().then_some((values, false))
+            }),
             source,
         )?;
         let else_gap = if then_arm.braced {
@@ -7842,6 +7914,7 @@ pub(super) fn canonical_source_byte_echo(
                         previous,
                         body.id,
                         witness,
+                        None,
                     )
                 })
         {
