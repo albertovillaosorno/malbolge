@@ -26,6 +26,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Three-level source-authenticated induction with live I/O (2026-11-15)
+
+A complete C23 program uses three nested unsigned loops, a live `getchar()`
+local and a three-counter Boolean branch. The pinned frontend initially
+refused its outer `for` statement because the bounded induction proof supported
+at most two nested loops. A red-first pinned-Clang regression captured the
+missing scope; the typed adapter now retains two source-authenticated ancestor
+counters, each with its own Clang declaration binding, type and current value.
+Every predicate leaf is proven against the matching counter, and forged source
+operators or Clang ancestor bindings refuse admission.
+
+`triple_induction_live_input.c` reads eight live guest bytes and writes nine,
+duplicating only the sixth. Its real `malbolge-2026` VM trace is 18 steps:
+`ABCDEFGH` becomes `ABCDEFFGH`. Pinned Clang 22.1.8 C23 UBSan at both O0
+and O2 matches the actual guest on ASCII and binary bytes, including NUL and
+high-bit inputs. A seeded 29-vector actual guest replay compares the entire
+stream to an independent per-trip oracle. Its formerly six-byte fixed binary
+boundary was corrected to cover longer input counts without implicit EOF.
+The implementation remains bounded to three finite nested
+loops and 16 trips per loop; it neither guesses guest stdin nor implements
+runtime C branch conditions or arbitrary streams. P0 remains open.
+
 ### Nested unsigned counter predicates with live guest I/O (2026-11-15)
 
 A complete six-read C program with nested unsigned `for` loops initially

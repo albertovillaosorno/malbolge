@@ -60,6 +60,18 @@ metadata refuse before guest publication. The C branch remains
 compile-time counter selection, not runtime guest-dependent control; EOF,
 unsigned runtime state, and unrestricted C remain unsupported.
 
+### Three nested unsigned counter scopes (2026-11-15)
+
+The finite C23 `for` projector now admits up to three nested unsigned loops
+with a source-backed three-counter Boolean predicate on live guest input.
+Its two enclosing induction values retain their independent declaration
+references and exact source C counter tokens. Forging the ancestor's Clang
+type or reference, or rewriting a predicate's source counter name, refuses.
+The complete eight-read program emits `ABCDEFFGH` in 18 normative guest VM
+steps and matches independent pinned Clang UBSan at O0/O2 on binary input.
+This is compile-time selection among bounded C iterations, not runtime
+branching on input-byte values or an unbounded stream.
+
 ### Source-authenticated shape of skipped signed induction arithmetic
 
 Pure signed loop-counter expressions in short-circuited `&&`/`||` operands

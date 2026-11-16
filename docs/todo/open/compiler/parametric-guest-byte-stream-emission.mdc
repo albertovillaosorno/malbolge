@@ -57,6 +57,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-15, an eight-read C23 program with three nested unsigned
+  counters and a three-way Boolean condition rejected at normalized `for`
+  admission. A red-first pinned Clang regression now proves both enclosing
+  counters with exact source/Clang declaration identity and each predicate
+  leaf's source-time value. The normative guest VM reads eight live bytes
+  and emits nine in 18 steps: `ABCDEFGH` becomes `ABCDEFFGH`.
+  Independent pinned Clang 22.1.8 C23 UBSan at O0/O2 confirms binary
+  witnesses including NUL and high-bit bytes. The seeded 29-vector VM
+  matrix now includes eight-byte boundaries after correcting a truncated
+  binary vector; original-source and normalized-AST forgeries refuse.
+  This is three-level finite induction expansion, not guest
+  runtime control, EOF handling or arbitrary stream emission; P0 stays open.
+
 - On 2026-11-15, a six-read nested unsigned C program rejected an inner
   branch on its still-in-scope outer counter while the same program's inner
   counter succeeded. Source- and Clang-authenticated outer induction is now

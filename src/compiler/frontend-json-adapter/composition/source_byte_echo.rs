@@ -63,7 +63,7 @@ const MAX_BYTE_IDENTITY_DEPTH: usize = 12;
 const MAX_BYTE_IDENTITY_LENGTH: usize = 160;
 const MAX_NESTED_LOCAL_DEPTH: usize = 16;
 const MAX_STATIC_IF_DEPTH: usize = 4;
-const MAX_STATIC_FOR_DEPTH: usize = 2;
+const MAX_STATIC_FOR_DEPTH: usize = 3;
 const MAX_STATIC_PREDICATE_DEPTH: usize = 8;
 const MAX_STATIC_PREDICATE_NODES: usize = 31;
 
@@ -3727,8 +3727,9 @@ struct StaticInduction<'name> {
     source: Option<&'name [u8]>,
     unsigned: bool,
     value: i32,
-    // Bound to the immediately enclosing finite loop, never guest stdin.
+    // Source-proven enclosing scopes, nearest first, never guest stdin.
     outer: Option<StaticCounter<'name>>,
+    outermost: Option<StaticCounter<'name>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -5160,6 +5161,8 @@ fn prove_static_for<'node>(
                     unsigned: enclosing.unsigned,
                     value: enclosing.value,
                 }),
+                outermost: outer_induction
+                    .and_then(|enclosing| enclosing.outer),
             }),
             source,
         )?;
@@ -6242,8 +6245,8 @@ fn prove_induction_logical(
     Some((width, selected, right_end))
 }
 
-// Select only the immediate enclosing counter. Its original source token,
-// declaration binding and C value remain checked at every predicate leaf.
+// Each selected enclosing counter retains its source token, Clang declaration
+// binding and value, including when the intermediate loop has a different name.
 fn enclosing_induction(
     induction: StaticInduction<'_>,
 ) -> Option<StaticInduction<'_>> {
@@ -6254,8 +6257,15 @@ fn enclosing_induction(
         source: induction.source,
         unsigned: counter.unsigned,
         value: counter.value,
-        outer: None,
+        outer: induction.outermost,
+        outermost: None,
     })
+}
+
+fn induction_scopes<'name>(
+    induction: StaticInduction<'name>,
+) -> impl Iterator<Item = StaticInduction<'name>> {
+    std::iter::successors(Some(induction), |scope| enclosing_induction(*scope))
 }
 
 // Admit only fully proven, pure logical combinations of exact induction
@@ -6279,9 +6289,8 @@ fn prove_induction_value(
         return prove_induction_ternary(nodes, at, induction);
     }
     if node.kind == "cast-expression" {
-        return prove_induction_truth(nodes, at, induction).or_else(|| {
-            prove_induction_truth(nodes, at, enclosing_induction(induction)?)
-        });
+        return induction_scopes(induction)
+            .find_map(|counter| prove_induction_truth(nodes, at, counter));
     }
     if node.kind == "binary-expression"
         && matches!(
@@ -6290,12 +6299,8 @@ fn prove_induction_value(
         )
     {
         let (width, value, end) =
-            prove_induction_arithmetic(nodes, at, induction).or_else(|| {
-                prove_induction_arithmetic(
-                    nodes,
-                    at,
-                    enclosing_induction(induction)?,
-                )
+            induction_scopes(induction).find_map(|counter| {
+                prove_induction_arithmetic(nodes, at, counter)
             })?;
         return Some((width, value != 0, end));
     }
@@ -6310,13 +6315,10 @@ fn prove_induction_value(
     ) {
         return prove_induction_prefix(nodes, at, induction);
     }
-    prove_induction_arithmetic_comparison(nodes, at, induction)
-        .or_else(|| prove_induction_comparison(nodes, at, induction))
-        .or_else(|| {
-            let enclosing = enclosing_induction(induction)?;
-            prove_induction_arithmetic_comparison(nodes, at, enclosing)
-                .or_else(|| prove_induction_comparison(nodes, at, enclosing))
-        })
+    induction_scopes(induction).find_map(|counter| {
+        prove_induction_arithmetic_comparison(nodes, at, counter)
+            .or_else(|| prove_induction_comparison(nodes, at, counter))
+    })
 }
 
 fn prove_induction_predicate(
@@ -6348,17 +6350,12 @@ fn prove_static_predicate(
     induction: Option<StaticInduction<'_>>,
 ) -> Option<(usize, bool)> {
     if let Some(static_induction) = induction {
+        // An entire branch can use only an enclosing counter. Retain every
+        // complete source/Clang proof instead of guessing a counter value.
         if let Some(result) =
-            prove_induction_predicate(nodes, conditional, static_induction)
-        {
-            return Some(result);
-        }
-        // The entire branch may refer to the enclosing finite loop instead
-        // of the nearest induction. Bind its original C name and Clang
-        // declaration reference again, with no guessed guest byte values.
-        if let Some(enclosing) = enclosing_induction(static_induction)
-            && let Some(result) =
-                prove_induction_predicate(nodes, conditional, enclosing)
+            induction_scopes(static_induction).find_map(|counter| {
+                prove_induction_predicate(nodes, conditional, counter)
+            })
         {
             return Some(result);
         }

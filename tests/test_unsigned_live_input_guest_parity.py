@@ -39,6 +39,7 @@ from typing import final
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = (
+    ("triple_induction_live_input", 8, 18),
     ("nested_mixed_induction_live_input", 6, 14),
     ("nested_outer_induction_live_input", 6, 15),
     ("unsigned_modulo_live_input", 5, 13),
@@ -62,7 +63,10 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
     """Only successful getchar bytes; C unsigned operations use 32 bits."""
     output = bytearray()
     for counter, byte in enumerate(data, start=1):
-        if stem == "nested_mixed_induction_live_input":
+        if stem == "triple_induction_live_input":
+            # Plane two, row one, column two is the sixth live read.
+            copies = 2 if counter == 6 else 1
+        elif stem == "nested_mixed_induction_live_input":
             # The second outer row, first inner column is trip number three.
             copies = 2 if counter == 3 else 1
         elif stem == "nested_outer_induction_live_input":
@@ -82,9 +86,10 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
 
 def cases_for_length(length: int) -> list[bytes]:
     rng = random.Random(0x26B017 + length)
+    binary_pattern = (0x00, 0xFF, 0x80, 0x01, 0x7F, 0x32, 0xA8, 0x5C)
     boundaries = [
         bytes(range(65, 65 + length)),
-        bytes((0x00, 0xFF, 0x80, 0x01, 0x7F, 0x32)[:length]),
+        bytes(binary_pattern[index % len(binary_pattern)] for index in range(length)),
         bytes([0x00] * length),
         bytes([0xFF] * length),
         bytes([0x80] * length),
@@ -94,6 +99,17 @@ def cases_for_length(length: int) -> list[bytes]:
 
 @final
 class UnsignedLiveGuestParityTests(unittest.TestCase):
+    def test_generated_input_vectors_are_full_length(self) -> None:
+        # Include a longer future stream to catch fixed-width vector tables.
+        lengths = {count for _, count, _ in CASES}
+        lengths.add(17)
+        for length in sorted(lengths):
+            with self.subTest(length=length):
+                self.assertEqual(len(cases_for_length(length)), 29)
+                self.assertTrue(
+                    all(len(data) == length for data in cases_for_length(length))
+                )
+
     def test_golden_source_identity(self) -> None:
         for stem, _, _ in CASES:
             with self.subTest(stem=stem):

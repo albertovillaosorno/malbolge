@@ -930,3 +930,78 @@ fn nested_mixed_counter_guard_refuses_forged_source_and_ast() {
         ));
     }
 }
+
+const TRIPLE_INDUCTION_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/triple_induction_live_input.c");
+const TRIPLE_INDUCTION_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/triple_induction_live_input.json");
+
+#[test]
+fn three_nested_unsigned_counters_select_one_live_guest_byte() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        TRIPLE_INDUCTION_JSON,
+        Some(TRIPLE_INDUCTION_SOURCE),
+    )
+    .expect("all three finite C counters must remain source authenticated");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&typed).unwrap();
+    let effects = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in effects {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 8);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[2], reads[3], reads[4], reads[5], reads[5],
+        reads[6], reads[7]
+    ]);
+}
+
+#[test]
+fn three_nested_unsigned_counters_reject_source_and_clang_forgeries() {
+    // A valid Clang predicate about row would mean a different selection
+    // than a forged source predicate about col, even at the same byte width.
+    let mut changed = TRIPLE_INDUCTION_SOURCE.to_vec();
+    let predicate = changed
+        .windows(9)
+        .position(|part| part == b"row == 1U")
+        .unwrap();
+    changed[predicate..predicate + 3].copy_from_slice(b"col");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            TRIPLE_INDUCTION_JSON,
+            Some(&changed),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+
+    let baseline: serde_json::Value =
+        serde_json::from_slice(TRIPLE_INDUCTION_JSON).unwrap();
+    let nodes = baseline["nodes"].as_array().unwrap();
+    let ancestor = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "declaration-reference-expression"
+                && node["reference"]
+                    .as_str()
+                    .is_some_and(|reference| reference.starts_with("plane@"))
+                && node["span"]["begin"]["line"] == 32
+        })
+        .unwrap();
+    for (field, value) in [("reference", "other@0"), ("type", "i32")] {
+        let mut forged = baseline.clone();
+        forged["nodes"][ancestor][field] = serde_json::json!(value);
+        assert!(matches!(
+            canonical_guest_typed_ir_with_source(
+                &serde_json::to_vec(&forged).unwrap(),
+                Some(TRIPLE_INDUCTION_SOURCE),
+            ),
+            Err(FrontendJsonError::Unsupported)
+        ));
+    }
+}
