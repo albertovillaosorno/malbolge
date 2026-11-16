@@ -72,6 +72,11 @@ steps and matches independent pinned Clang UBSan at O0/O2 on binary input.
 This is compile-time selection among bounded C iterations, not runtime
 branching on input-byte values or an unbounded stream.
 
+The follow-up three-level probe proves scoped `continue` and inner `break`
+effects: seven live reads, eight writes, 16 guest steps and a 29-vector
+independent VM oracle, with pinned Clang UBSan parity at O0/O2. A forged C
+`break` keyword cannot impersonate the normalized exit node.
+
 ### Source-authenticated shape of skipped signed induction arithmetic
 
 Pure signed loop-counter expressions in short-circuited `&&`/`||` operands

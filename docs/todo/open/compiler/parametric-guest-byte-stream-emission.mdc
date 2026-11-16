@@ -57,6 +57,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- A follow-up complete three-level C23 program verifies that a deepest-loop
+  `continue` and a later selected inner `break` do not stop enclosing
+  loops or duplicate the wrong live byte. Seven guest reads and eight writes
+  execute in 16 normative VM steps (`ABCDEFG` to `ABCCDEFG`). A fresh
+  29-vector seeded replay and independent pinned Clang 22.1.8 C23 UBSan
+  O0/O2 binary oracles agree. A same-width forged source `break` refuses;
+  this verifies existing finite exit handling, not general guest control.
+
 - On 2026-11-15, an eight-read C23 program with three nested unsigned
   counters and a three-way Boolean condition rejected at normalized `for`
   admission. A red-first pinned Clang regression now proves both enclosing

@@ -1005,3 +1005,51 @@ fn three_nested_unsigned_counters_reject_source_and_clang_forgeries() {
         ));
     }
 }
+
+const TRIPLE_CONTROL_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/triple_control_live_input.c");
+const TRIPLE_CONTROL_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/triple_control_live_input.json");
+
+#[test]
+fn triple_induction_inner_break_and_continue_do_not_exit_outer_loop() {
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
+        TRIPLE_CONTROL_JSON,
+        Some(TRIPLE_CONTROL_SOURCE),
+    )
+    .expect("selected inner exits must preserve later outer loop reads");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&typed).unwrap();
+    let effects = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in effects {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 7);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[2], reads[2], reads[3], reads[4], reads[5],
+        reads[6]
+    ]);
+}
+
+#[test]
+fn triple_induction_break_exit_checks_original_c_keyword() {
+    let mut changed = TRIPLE_CONTROL_SOURCE.to_vec();
+    let at = changed
+        .windows(6)
+        .rposition(|word| word == b"break;")
+        .unwrap();
+    changed[at..at + 5].copy_from_slice(b"false");
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            TRIPLE_CONTROL_JSON,
+            Some(&changed),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}

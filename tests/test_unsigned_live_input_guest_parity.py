@@ -39,6 +39,7 @@ from typing import final
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = (
+    ("triple_control_live_input", 7, 16),
     ("triple_induction_live_input", 8, 18),
     ("nested_mixed_induction_live_input", 6, 14),
     ("nested_outer_induction_live_input", 6, 15),
@@ -63,7 +64,11 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
     """Only successful getchar bytes; C unsigned operations use 32 bits."""
     output = bytearray()
     for counter, byte in enumerate(data, start=1):
-        if stem == "triple_induction_live_input":
+        if stem == "triple_control_live_input":
+            # Continue duplicates read three; the later inner break skips
+            # column two, but the next outer row still runs.
+            copies = 2 if counter == 3 else 1
+        elif stem == "triple_induction_live_input":
             # Plane two, row one, column two is the sixth live read.
             copies = 2 if counter == 6 else 1
         elif stem == "nested_mixed_induction_live_input":

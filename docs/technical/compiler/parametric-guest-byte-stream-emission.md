@@ -77,6 +77,15 @@ publication. These checks extend only the already bounded two-level finite
 loop grammar. Guest-dependent branch selection, EOF and general runtime C
 state remain unimplemented; the P0 stays open.
 
+The follow-up `triple_control_live_input.c` exercises a selected
+`continue` in the deepest loop and a later inner `break` without terminating
+its two enclosing loops. Seven actual reads produce eight writes in 16
+normative VM steps: `ABCDEFG` becomes `ABCCDEFG`. A separate seeded 29-vector
+replay agrees with a per-trip oracle; pinned C23 Clang 22.1.8 UBSan at O0/O2
+agrees on ASCII and binary input. Forging the original `break` keyword to a
+same-width `false` refuses. This is existing finite control selection, not a
+new guest runtime loop implementation.
+
 ### Unsigned arithmetic predicates with live guest bytes (2026-11-15)
 
 The complete five-trip C program
