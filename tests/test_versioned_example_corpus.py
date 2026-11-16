@@ -78,7 +78,7 @@ class Case:
 CASES = (
     Case(
         "emit-qp",
-        "9d99117ec1218be5102aef819fc872e098fcfea7f7efede831c765e5104886f3",
+        "d2138a5388fd64358c0bfdeec8404fd2d1e310617011379abc475545367c96e9",
         "4112557f6f320f8827278ff8b623fddba73812c49801569093e815f27a9fa2b8",
         b"Q.",
         8,
@@ -86,7 +86,7 @@ CASES = (
     ),
     Case(
         "emit-zph",
-        "94e5a35dcf0df2da9676ef630c0e1dc0e1926962c4b951adf0f80cec7558dcb4",
+        "886dbf337d7f685c2afa04eec03767674fe9cec9a9f4650029999b750cff1a0f",
         "44ef08f92ac1c352ff5df820e63d4830664b6f7a569cd6e0f5504deb4cba9eb8",
         b"Z%H",
         8,
@@ -94,7 +94,7 @@ CASES = (
     ),
     Case(
         "emit-t4",
-        "34d1144628330399658b36bfe57e2d34cf71f40ad46645ec075a6390ea45fb1a",
+        "adf878d0935344d5f0a103544988927bc0994fa7e12c236521ef5d28650beecd",
         "9ee602682624425da80c13786df338c80df15a65e1df083613c37100ed81f72d",
         b"T=4>",
         21,
@@ -102,7 +102,7 @@ CASES = (
     ),
     Case(
         "emit-qesc79",
-        "5a753a10b51b5211022694a2b3f9c45fe4afb92cd8e0ebf7f9cc37876953688d",
+        "6f46d7d7e2789646f24e018c4af21f9399474197bc58670ad59a8f5361f39abd",
         "09be18cd3358663cf7c8434f4b4c910f9ae2a87f0e6b799238372d2110fae2b6",
         b'Q"\x1b79',
         23,
@@ -110,7 +110,7 @@ CASES = (
     ),
     Case(
         "emit-qop6",
-        "91f7d5bdcb226014082d80e3d15a944811366506d5ecd0ce24441699235f434e",
+        "0de0b18a8b5abfd5a6271062c350ab18fddf621546cfa97785e4205a4eb0698c",
         "bcf659b66b69e7dac57505ac70a516451b60393bc9a2510d6fd6a59d897b7a76",
         bytes((0x51, 0x1C, 0x4F, 0x1D, 0x50, 0x1B)),
         15,
@@ -118,7 +118,7 @@ CASES = (
     ),
     Case(
         "emit-seven",
-        "1bf0848c18f712c2e7b87e0305563a73cb9299aa45cc74d463e4f6098db19140",
+        "08f98ac45b496d4ceed5c85efefdff0b91c20ed0a2a76687f90538f2924ffbbe",
         "4f0c732c3b55dd48b12795044f106989ffc84cd7839bcbff1e11c1b9643b99f8",
         bytes((0x36, 0x3E, 0x35, 0x02, 0x54, 0x1F, 0x18)),
         21,
@@ -126,7 +126,7 @@ CASES = (
     ),
     Case(
         "emit-eight",
-        "5971c3577e8087ed2a895790fefc2a8b3b4c931445c03a7d06de451e3e1fa711",
+        "2dad8927207bd98292974ae068b6c0213d16efd3348fa404abf8228f640a0489",
         "59106439d2b0c203a6f934952adcd10b1d0dae7049df62fb708da48203e8a578",
         bytes((0x53, 0x20, 0x17, 0x3C, 0x36, 0x01, 0x52, 0x06)),
         21,
@@ -134,7 +134,7 @@ CASES = (
     ),
     Case(
         "emit-nine",
-        "45229743a0d515e503b190695307694985a7ba47c2dc74f616839e8bf680f430",
+        "256a09a44911bfbd8371438e10cd6b4068d78a0e47fcad91accd31cb77b1966a",
         "1d09fccde1f7d346ebc7e72439b82544da2dda37ff2a6e93b020996189e7bbeb",
         bytes((0x54, 0x3D, 0x8D, 0xD1, 0xC0, 0xB4, 0xBF, 0xD2, 0xA2)),
         21,
@@ -142,7 +142,7 @@ CASES = (
     ),
     Case(
         "emit-ten",
-        "eeacae21350d6c88dbfbd8be4b1d1294e04be60868324463b8a97e24a5553675",
+        "92c5aa4ac7210f84073ef50e34db1ae8a462343023ef5969473de0ee85128277",
         "7befd3c590d03e94889bc93348bb37c51358f4b719dc2f371e07f918130386b0",
         bytes((0x51, 0x22, 0xFD, 0xCE, 0xA5, 0x98, 0xBA, 0xB6, 0x87, 0xCB)),
         23,
@@ -150,7 +150,7 @@ CASES = (
     ),
     Case(
         "emit-eleven",
-        "4a42a412d63b0131f9d6c613b4f6dedca7fc2a01fd94433add89e5c873853c39",
+        "ecc66119b9e63dfdee3e33a82c2b76c07b59219f4ad81fe47f6147d572dd9aa9",
         "6b7381c638e959fa3f1cca6376317340c4278c4611bc518aa54b4ce2fcc6d8af",
         bytes((0x50, 0x1D, 0x1A, 0x36, 0x05, 0xB4, 0xBA, 0xB3, 0x84, 0xCF, 0x9E)),
         24,
@@ -158,7 +158,7 @@ CASES = (
     ),
     Case(
         "emit-twelve",
-        "f5e8963f704c59cc34e15b217d30f69c2b1816c1bf1e5b20369392b3b1085fc7",
+        "6100ffbb742b162bba01f9df5890edf9497f19e19c0c535534ee01fc01ebddfb",
         "5bc03bb8ce1d9ab95a9aad99d387d4752f148c5be30dcab7919ffd53fbc52a34",
         bytes((0x51, 0x37, 0x34, 0x38, 0xFB, 0xCE, 0x9F, 0x98, 0xB8, 0xB4, 0x83, 0xCD)),
         27,
@@ -166,7 +166,7 @@ CASES = (
     ),
     Case(
         "emit-thirteen",
-        "59a96352ab35a582e2424d15818ce59c105fc8222cd3b07394c1486e3ed32e0e",
+        "4cf2ebd351daf7795b4bd6108b7b9acea5f1d45769af660fbe27eac191debdd8",
         "10b08a4c61f6e5a28f9ef1e01809cdc455178b0523328205bb101325c7a78bc5",
         bytes(
             (
@@ -190,7 +190,7 @@ CASES = (
     ),
     Case(
         "emit-fourteen",
-        "923b7245d13803ffbb1615b4f9684fd076a618f4e25d80861ab1e0fe2a807c14",
+        "175baa125b40d5c2986d2bc56f93e63cfd2d65091e1597b48447e02e03b46050",
         "e3ea5ad67954382872f2f2a6dbd03dfb497a91a52a1fbe04d2aa92afd9e7b438",
         bytes(
             (
@@ -215,7 +215,7 @@ CASES = (
     ),
     Case(
         "emit-fifteen",
-        "a82eecdcfc33fafa28e365d3d8a9792c649f2edd65d23d90d33ea8ecf04e801c",
+        "2b649eff0f561ab94977bbf95fd8c062cb5534f8067f8eaf64f8acffbba40a0a",
         "c69df83c4073806ef27c976de1a029a9f550ad7937e3432a7bda0908a8b58d9b",
         bytes(
             (
@@ -241,7 +241,7 @@ CASES = (
     ),
     Case(
         "emit-sixteen",
-        "e49132f84f6a2afff02dd289f1e0844325e0fe6bf372fcb39ebac4b5f1dd6a72",
+        "ec64864dbcdf552917b4de490f1ed483a5059ded1d57cbf8ed5f098b89b1a86f",
         "74ad2a4f6cb71221199a1bbeaa79feb8639c10d0646f697442c42aea96d5b094",
         bytes(
             (
@@ -268,7 +268,7 @@ CASES = (
     ),
     Case(
         "emit-seventeen",
-        "a02514adb41a373560e30ed7a4b68cf995872b0c0aca174a20abbdb8618b9cb6",
+        "263893349a361c04dcc625e33b9c8a1227d137594e4f18e01434aefcc185e8f9",
         "2f2087fcac832159d1759b9d1b3fd7da96f51904eafd27eda84f2242573df952",
         bytes(
             (
@@ -296,7 +296,7 @@ CASES = (
     ),
     Case(
         "emit-eighteen",
-        "ac2df0d8547294c5307acaa9e9777eac94f98f83842b039b5fde50ad98bcb091",
+        "78732a00faab500e389a44a5974cce3e0bafedc4ddc292c1f11e9c00db621f3e",
         "23855763efbc636c108d5da73b723391e66d481c489de17482344b37326c5b8a",
         bytes(
             (
@@ -325,7 +325,7 @@ CASES = (
     ),
     Case(
         "emit-nineteen",
-        "9fe717e9e002dee994ece2089602b5c8813edc23f364f37e6424d823a903d9fa",
+        "8e24c37b466ba4603321884abc17ef2dffe0a7a937600ffc48f1913bd68c900a",
         "7836c69e89d97d7d82b1fcec171199e34a1223a2f239447e62f696737ced1379",
         bytes(
             (
@@ -355,7 +355,7 @@ CASES = (
     ),
     Case(
         "emit-twenty",
-        "f6f81dfbc9abef2429d1090866bf6bae42d8495a3ed91219f6e703e37545aee6",
+        "409e71280abefe32cc574c19050e5fdb539104cbe20b1dbba6bf839905373536",
         "e0f9a1d80c98be4a5d1c1bc5fa9800772e2e7fafc8fbbc4a22b72409e9eedfcb",
         bytes(
             (
@@ -386,7 +386,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-one",
-        "221655ff1f398b6745e2174e611b554c479b3c278a6069e14c1ac6f32e70d26c",
+        "e565097636ef21b5bbecc1373dde4045564e1f59275fae1128c537515bc2f8b4",
         "4d5bc3b62c7525898863d2a3b9dae6f62f8700ab6ae6f3557425896c9f6f661d",
         bytes(
             (
@@ -418,7 +418,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-two",
-        "140a3ad6d13fefddfdc910fca0121a00f5a3fd0c262bb962108d3d694fdb1013",
+        "211e9babb6f29f2984ef8e0ac53e48df1dac8fd7849e634d9767ada6e3c6a765",
         "8d65a853bf783a7af690f44aa04029838bf9056179eee1033c04ac972c0c1fdb",
         bytes(
             (
@@ -451,7 +451,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-three",
-        "6df4c2a4e60d238b7dc6bb3201a9ec739fc1e0b5a08d751b5c8916062ee3b662",
+        "bc1baa982f773d8292d266d34375782a9ce1d8505c9af008cb46683507c58dd1",
         "6a4351b4fb7afc894fca6ac00790b97de44db6150ffd955c13a5462ba08b8f66",
         bytes(
             (
@@ -485,7 +485,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-four",
-        "1bab4a3ece74188988944e0f98834aa3f86709c517508f125d93dc126b0119ea",
+        "40d4e9e55b35b660f41128b22b532a96ff55cb8f500ae1ea3a9afcc3dee22853",
         "97cbe0aa9f95c315919cfec5f3cfbc151f3f31e28fd1272bf740bb2e0f1f2f73",
         bytes(
             (
@@ -520,7 +520,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-five",
-        "64dcdaa83db80adbc87c3cb0ff76a1ef834cc60d367eff442f25c4dfeb37beb9",
+        "bfff8a7925d5c6e35ec0b8577dbaf75a5abea0d92e3ebbf319f2daeba45af741",
         "2d58c920bb132efe10668d4f6035bdf8ed988c2114323f7ac859277ac2579683",
         bytes(
             (
@@ -556,7 +556,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-six",
-        "d43d8cfc015160c9e6b26ec14b23cea1931d9d5f7968bdfa334da25dcc1bcea8",
+        "7f5c459abdf70f50605b68f198d1618503db49eef78d2acfb31ee150e46045d9",
         "ee6f2e7133685a4c913c2cc2a6ba54664f34ab8f5f6a0623b63caf84bd81c586",
         bytes(
             (
@@ -593,7 +593,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-seven",
-        "cc703648b791fd1d36131c1a373edba2ebd75c33517fead73531b50d1df5a518",
+        "a3af465616fd176da3c19e53c0a2421ca0f5ac4dad3cadd6059291aea46bd4a0",
         "bd99663a6cef14f03546a72c4236a6849b35770733da141c652cf433da4f0ff9",
         bytes(
             (
@@ -631,7 +631,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-eight",
-        "c9b88ebb690b203c079dc394001ee9a85d3286d5580ac1809ba0644070bc65c0",
+        "8712784e9ac4722c983d92dd123a852164879fc6f11841be609167a5f4037743",
         "05e36945d4660f14ebab4efe600b2f6b44fdc7dcf0369055c90099def82aeb50",
         bytes(
             (
@@ -670,7 +670,7 @@ CASES = (
     ),
     Case(
         "emit-twenty-nine",
-        "4262ba655782c6678cc266922e23086dd397232afe6b41196492c3919f81c6e3",
+        "08d6b10d70725ea0593230765831c5f2cd21ec374f052596c0a30b7aa4c5207b",
         "0066976f557e119fa30b580fe6c73018dd4ca922700a7796a59d0acea2f46d26",
         bytes(
             (
@@ -710,7 +710,7 @@ CASES = (
     ),
     Case(
         "emit-thirty",
-        "163cc08af89a4a5aff7d26791b2a3639e2b2f37f164025bd04d26a4d85131625",
+        "e3078c1ddf6a7d82af2fcd03d7bccd43b034b2723f821039b413129e8487242a",
         "778fc6a678185dddff20772d58641335a1131af08cd28403fa364952286506f9",
         bytes(
             (
@@ -751,7 +751,7 @@ CASES = (
     ),
     Case(
         "emit-thirty-two",
-        "a10e977d9912ef2bea54c9bb702a1295345a5ffe58b7721a8afac4e2bb02dd7b",
+        "28233e1aa816b9dad6bc749c8fdae9763d87f0ae0374af867bc90a43fd1a840e",
         "f9322856b876e52e368a51b54cdecab167fc0b9d5baa8e11aa2bdbe95c201205",
         bytes((
             0x41, 0x17, 0x32, 0x18, 0x50, 0x23, 0x5C, 0x27,
@@ -764,7 +764,7 @@ CASES = (
     ),
     Case(
         "emit-thirty-four",
-        "af99582479ac6ead9b3c326835e7c2d5f3f1102338f8f3769026d72989d8e196",
+        "b6609c9b750b2d272c3c034ad4e663577d755a77a83532d0258e93db6f2c04c7",
         "a21549a604de61c889020a1574560fc02ef9c34beee0afa592e02c31a1857959",
         bytes((
             0x3F, 0x11, 0x2C, 0x14, 0x39, 0x04, 0xA8, 0x50,
@@ -778,7 +778,7 @@ CASES = (
     ),
     Case(
         "emit-thirty-five",
-        "2f93cff11c619933cca4d6b92543cefc1ca2b433ef0550ea5d8de6bf6f36cbdc",
+        "3df37b1afe8aefc09d529b448f5468ccd0f1c8fd019585bd1477798381f0aa9b",
         "766476813c35af5b6e3830292a71fa1d8c22fd7b9866e0a5b3e2c74e8530513e",
         bytes((
             0x30, 0x0D, 0x3C, 0x11, 0x2C, 0x14, 0x39, 0xA6,
@@ -792,7 +792,7 @@ CASES = (
     ),
     Case(
         "emit-thirty-six",
-        "f265c7d119f22fb8feb203b93f314d12ad97c6dd77d3d1cd43389819f1c0172d",
+        "195e41025d8cfcf322439ae93924478a8d3989a9ad0525616a9f481720732a5b",
         "3a86aea76aeb2fc166a137cf54697b8bb70df85b7fb21bf42f75e183521f6cd0",
         bytes((
             0x39, 0xA8, 0x07, 0xBB, 0x02, 0xB6, 0x0C, 0xB1,
@@ -806,7 +806,7 @@ CASES = (
     ),
     Case(
         "emit-thirty-seven",
-        "f4888a38cd96f63b398bb0b3576de2b12dad860a486af3c7fe0f86cfe6d58b46",
+        "140399437ad666f6ecdef3965369f77d375a2d57b79f37630708f7c918c9f1f2",
         "2f5344960a12ca10e847339ee466eb4bd22c63d9ff584650938807e2f139b577",
         bytes((
             0x3F, 0x11, 0x2C, 0xA8, 0x07, 0xBB, 0x02, 0xB6,
@@ -820,7 +820,7 @@ CASES = (
     ),
     Case(
         "emit-thirty-eight",
-        "3e1e3f7dd3def1b13e617f6e4f356aba3c5cfe7343b2fcc8677fbe6a6dd09e22",
+        "48c2cce2ad5a9aa5a48e671b9cab74e6349b863b8c86747d729718701b274365",
         "f4acddf3964d448b763f8d92278818fd77ddaa16b24d88409bd76c8f79b2ee7d",
         bytes((
             0x41, 0x17, 0x32, 0x30, 0x0D, 0x3C, 0x11, 0x2C,
@@ -834,7 +834,7 @@ CASES = (
     ),
     Case(
         "emit-thirty-nine",
-        "a2b0c3c514ce0af1568fa4b97c57efb1e5b23cfaa952dcf98f65ce645bb0871d",
+        "e329ceebec7483bc8a4cc7513e021f1267551c90441e10033a3029374f00cb66",
         "20bca04da87da684d1c61b3d1a0f3d8b80feb4c28dd37347249e332fa198f816",
         bytes((
             0x5C, 0x32, 0x26, 0xA8, 0x07, 0xBB, 0x02, 0xB6,
@@ -848,7 +848,7 @@ CASES = (
     ),
     Case(
         "emit-forty",
-        "20fe0bd02f9d640daf57156d4734aaa9544204418c99eaa0e473929735993360",
+        "2988f5852da08056b95fcc05c7dba3dccc0b040014671e04831010ee62eb4c49",
         "0e990005bbdc9b2b3b1a956df09a68582e4fb6ab3c529fb1a52b492ad59c34e6",
         bytes((
             0xA8, 0x07, 0xBB, 0x02, 0xB6, 0x0C, 0xB1, 0x30,
@@ -862,7 +862,7 @@ CASES = (
     ),
     Case(
         "emit-forty-one",
-        "16973e6e709b07c044ccf158464bbd93a390ab299c1abfd4837ba31ae1774b53",
+        "e9c800f4361c5e18a5bfba494144ddf99c3f54cbd3807d9bf0ce0d4b80af4c67",
         "af079783ce7479c86540f95f4854ef9e081e7f56ca9147a9af2aaec40e5722f0",
         bytes((
             0x5A, 0xA8, 0x07, 0xBB, 0x02, 0xB6, 0x0C, 0xB1,
@@ -877,7 +877,7 @@ CASES = (
     ),
     Case(
         "emit-forty-two",
-        "117d1eeb3a74f69c75897d23beaf5a5f298494037f0151722449a96f8fcc6fc9",
+        "d8046497a2931c30dbb8adba7e64d8b91577e780531950c28244c68882f39862",
         "c88ee1dc8e6bd0acfd1c1ea08c20231767c1a5288140ffea157e02c031816951",
         bytes((
             0xA8, 0x07, 0xBB, 0x02, 0xB6, 0x0C, 0xB1, 0x30,
@@ -892,7 +892,7 @@ CASES = (
     ),
     Case(
         "emit-forty-six",
-        "5618619ba65ddb2917d1716e5c7fe629a408798e1037241f2832e46f29d79b2f",
+        "43c9e428eebebffd1c2a36aaba2e3bbbaa658c525c8db6b49b259b5e4eaa6da6",
         "5a11922ef7e50e8b6c5612938c8fffb3228afd9d0272a7c254a377483fcbf4b5",
         bytes((
             0x54, 0x22, 0x4F, 0x23, 0x53, 0x1E, 0x09, 0x08,
@@ -908,7 +908,7 @@ CASES = (
 
     Case(
         "emit-forty-seven",
-        "e82395c60195edf52bb418420e1ea54c0dd908e779c9e57e69f993600b712d11",
+        "0d556825d271692f541a1cff84a71fc0e38f0c07d45b8cd09ca10d144c738684",
         "3130215c9ba054edc462792a37cfe3e304132b51498c6185b0e35ce8576b8488",
         bytes((
             0x05, 0xFC, 0xCD, 0xA7, 0xD8, 0xC2, 0xBB, 0xC3,
@@ -923,7 +923,7 @@ CASES = (
     ),
     Case(
         "emit-forty-eight",
-        "216401da8db1a4f275c6584f94d207a611be93028fb12682c0f2c1352a729e60",
+        "65e37ec484f1be04b1e15fc90b2948035fc3c62e7c13adfbed6a7df612b1ce22",
         "5c5892d0f601e8cd44ad7ffe152d91bc48b3a53d5ec71d08c8de0502313c6bdc",
         bytes((
             0x51, 0x37, 0x34, 0x38, 0xFB, 0xCE, 0x9F, 0x98,

@@ -5,7 +5,7 @@
 - Example ID: `emit-qop6-v1` (fixed teaching example; not a generated
   challenge).
 - Source: [`emit-qop6.c`](emit-qop6.c), SHA-256
-  `91f7d5bdcb226014082d80e3d15a944811366506d5ecd0ce24441699235f434e`.
+  `0de0b18a8b5abfd5a6271062c350ab18fddf621546cfa97785e4205a4eb0698c`.
 - Guest artifact: [`emit-qop6.malbolge`](emit-qop6.malbolge), SHA-256
   `bcf659b66b69e7dac57505ac70a516451b60393bc9a2510d6fd6a59d897b7a76`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

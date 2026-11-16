@@ -5,7 +5,7 @@
 - Example ID: `emit-twelve-v1` (fixed teaching example, not a generated
   challenge).
 - Source: [`emit-twelve.c`](emit-twelve.c), SHA-256
-  `f5e8963f704c59cc34e15b217d30f69c2b1816c1bf1e5b20369392b3b1085fc7`.
+  `6100ffbb742b162bba01f9df5890edf9497f19e19c0c535534ee01fc01ebddfb`.
 - Guest artifact: [`emit-twelve.malbolge`](emit-twelve.malbolge), SHA-256
   `5bc03bb8ce1d9ab95a9aad99d387d4752f148c5be30dcab7919ffd53fbc52a34`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

@@ -5,7 +5,7 @@
 - Example ID: `emit-thirteen-v1` (fixed teaching example, not a generated
   challenge).
 - Source: [`emit-thirteen.c`](emit-thirteen.c), SHA-256
-  `59a96352ab35a582e2424d15818ce59c105fc8222cd3b07394c1486e3ed32e0e`.
+  `4cf2ebd351daf7795b4bd6108b7b9acea5f1d45769af660fbe27eac191debdd8`.
 - Guest artifact: [`emit-thirteen.malbolge`](emit-thirteen.malbolge), SHA-256
   `10b08a4c61f6e5a28f9ef1e01809cdc455178b0523328205bb101325c7a78bc5`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

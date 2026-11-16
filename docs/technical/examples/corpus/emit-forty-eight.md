@@ -4,7 +4,7 @@
 
 - Example ID: `emit-forty-eight-v1` (teaching example, not a challenge).
 - Source: [`emit-forty-eight.c`](emit-forty-eight.c), SHA-256
-  `216401da8db1a4f275c6584f94d207a611be93028fb12682c0f2c1352a729e60`.
+  `65e37ec484f1be04b1e15fc90b2948035fc3c62e7c13adfbed6a7df612b1ce22`.
 - Guest artifact: [`emit-forty-eight.malbolge`](emit-forty-eight.malbolge),
   SHA-256 `5c5892d0f601e8cd44ad7ffe152d91bc48b3a53d5ec71d08c8de0502313c6bdc`.
 - Target: `malbolge-2026`, current 15-trit `MALBCAP1` capsule.

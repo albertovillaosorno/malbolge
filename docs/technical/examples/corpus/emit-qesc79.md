@@ -5,7 +5,7 @@
 - Example ID: `emit-qesc79-v1` (fixed teaching example; not a generated
   challenge).
 - Source: [`emit-qesc79.c`](emit-qesc79.c), SHA-256
-  `5a753a10b51b5211022694a2b3f9c45fe4afb92cd8e0ebf7f9cc37876953688d`.
+  `6f46d7d7e2789646f24e018c4af21f9399474197bc58670ad59a8f5361f39abd`.
 - Guest artifact: [`emit-qesc79.malbolge`](emit-qesc79.malbolge), SHA-256
   `09be18cd3358663cf7c8434f4b4c910f9ae2a87f0e6b799238372d2110fae2b6`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

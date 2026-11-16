@@ -5,7 +5,7 @@
 - Example ID: `emit-twenty-eight-v1` (fixed teaching example, not a generated
   challenge).
 - Source: [`emit-twenty-eight.c`](emit-twenty-eight.c), SHA-256
-  `c9b88ebb690b203c079dc394001ee9a85d3286d5580ac1809ba0644070bc65c0`.
+  `8712784e9ac4722c983d92dd123a852164879fc6f11841be609167a5f4037743`.
 - Guest artifact: [`emit-twenty-eight.malbolge`](emit-twenty-eight.malbolge),
   SHA-256
   `05e36945d4660f14ebab4efe600b2f6b44fdc7dcf0369055c90099def82aeb50`.

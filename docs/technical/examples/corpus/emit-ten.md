@@ -5,7 +5,7 @@
 - Example ID: `emit-ten-v1` (fixed teaching example, not a generated
   challenge).
 - Source: [`emit-ten.c`](emit-ten.c), SHA-256
-  `eeacae21350d6c88dbfbd8be4b1d1294e04be60868324463b8a97e24a5553675`.
+  `92c5aa4ac7210f84073ef50e34db1ae8a462343023ef5969473de0ee85128277`.
 - Guest artifact: [`emit-ten.malbolge`](emit-ten.malbolge), SHA-256
   `7befd3c590d03e94889bc93348bb37c51358f4b719dc2f371e07f918130386b0`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

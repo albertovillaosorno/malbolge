@@ -4,7 +4,7 @@
 
 - Example ID: `emit-zph-v1` (fixed teaching example; not a generated challenge).
 - Source: [`emit-zph.c`](emit-zph.c), SHA-256
-  `94e5a35dcf0df2da9676ef630c0e1dc0e1926962c4b951adf0f80cec7558dcb4`.
+  `886dbf337d7f685c2afa04eec03767674fe9cec9a9f4650029999b750cff1a0f`.
 - Guest artifact: [`emit-zph.malbolge`](emit-zph.malbolge), SHA-256
   `44ef08f92ac1c352ff5df820e63d4830664b6f7a569cd6e0f5504deb4cba9eb8`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

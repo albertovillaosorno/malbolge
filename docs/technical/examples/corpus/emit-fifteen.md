@@ -5,7 +5,7 @@
 - Example ID: `emit-fifteen-v1` (fixed teaching example, not a generated
   challenge).
 - Source: [`emit-fifteen.c`](emit-fifteen.c), SHA-256
-  `a82eecdcfc33fafa28e365d3d8a9792c649f2edd65d23d90d33ea8ecf04e801c`.
+  `2b649eff0f561ab94977bbf95fd8c062cb5534f8067f8eaf64f8acffbba40a0a`.
 - Guest artifact: [`emit-fifteen.malbolge`](emit-fifteen.malbolge), SHA-256
   `c69df83c4073806ef27c976de1a029a9f550ad7937e3432a7bda0908a8b58d9b`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

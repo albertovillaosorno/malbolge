@@ -4,7 +4,7 @@
 
 - Example ID: `emit-qp-v1` (fixed teaching example; not a generated challenge).
 - Source: [`emit-qp.c`](emit-qp.c), SHA-256
-  `9d99117ec1218be5102aef819fc872e098fcfea7f7efede831c765e5104886f3`.
+  `d2138a5388fd64358c0bfdeec8404fd2d1e310617011379abc475545367c96e9`.
 - Guest artifact: [`emit-qp.malbolge`](emit-qp.malbolge), SHA-256
   `4112557f6f320f8827278ff8b623fddba73812c49801569093e815f27a9fa2b8`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

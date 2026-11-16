@@ -4,7 +4,7 @@
 
 - Example ID: `emit-t4-v1` (fixed teaching example; not a generated challenge).
 - Source: [`emit-t4.c`](emit-t4.c), SHA-256
-  `34d1144628330399658b36bfe57e2d34cf71f40ad46645ec075a6390ea45fb1a`.
+  `adf878d0935344d5f0a103544988927bc0994fa7e12c236521ef5d28650beecd`.
 - Guest artifact: [`emit-t4.malbolge`](emit-t4.malbolge), SHA-256
   `9ee602682624425da80c13786df338c80df15a65e1df083613c37100ed81f72d`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended

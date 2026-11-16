@@ -5,7 +5,7 @@
 - Example ID: `emit-eight-v1` (fixed teaching example, not a generated
   challenge).
 - Source: [`emit-eight.c`](emit-eight.c), SHA-256
-  `5971c3577e8087ed2a895790fefc2a8b3b4c931445c03a7d06de451e3e1fa711`.
+  `2dad8927207bd98292974ae068b6c0213d16efd3348fa404abf8228f640a0489`.
 - Guest artifact: [`emit-eight.malbolge`](emit-eight.malbolge), SHA-256
   `59106439d2b0c203a6f934952adcd10b1d0dae7049df62fb708da48203e8a578`.
 - Target: `malbolge-2026`, current 15-trit profile, in an extended
