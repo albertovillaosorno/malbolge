@@ -23,9 +23,37 @@
 // - Summary:
 //   - Prove bounded unsigned iteration preserves live stdin provenance.
 
+use super::super::typed::{Instruction, canonical_module};
 use super::super::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
 };
+
+// Guest output count alone cannot prove the selected C induction effect trace.
+// Decode independently validated typed bytes and require exactly four fresh
+// reads and the five ordered writes of the third resident SSA value twice.
+fn assert_four_reads_five_writes(wire: &[u8]) {
+    let decoded = canonical_module(wire).expect("canonical typed wire");
+    let block = decoded
+        .functions()
+        .first()
+        .unwrap()
+        .blocks()
+        .first()
+        .unwrap();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in block.instructions() {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 4);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[2], reads[2], reads[3]
+    ]);
+}
 
 const JSON: &[u8] =
     include_bytes!("c-frontend/golden/input_unsigned_loop.json");
@@ -181,12 +209,13 @@ const STRIDE_JSON: &[u8] = include_bytes!(
 
 #[test]
 fn unsigned_compound_stride_selects_live_third_byte_twice() {
-    let (_typed, mode) =
+    let (typed, mode) =
         canonical_guest_typed_ir_with_source(STRIDE_JSON, Some(STRIDE_SOURCE))
             .expect(
                 "source-proven unsigned non-unit stride preserves live input",
             );
     assert_eq!(mode, FrontendGuestMode::LatestRead);
+    assert_four_reads_five_writes(&typed);
 }
 
 #[test]
@@ -253,12 +282,13 @@ const ASSIGNED_STRIDE_JSON: &[u8] = include_bytes!(
 
 #[test]
 fn unsigned_assigned_stride_preserves_live_input() {
-    let (_typed, mode) = canonical_guest_typed_ir_with_source(
+    let (typed, mode) = canonical_guest_typed_ir_with_source(
         ASSIGNED_STRIDE_JSON,
         Some(ASSIGNED_STRIDE_SOURCE),
     )
     .expect("source-proven unsigned assignment step preserves live input");
     assert_eq!(mode, FrontendGuestMode::LatestRead);
+    assert_four_reads_five_writes(&typed);
 }
 
 #[test]
@@ -302,8 +332,9 @@ fn unsigned_descending_stride_stops_at_zero_before_wrapping() {
     let source = include_bytes!(
         "c-frontend/accepted/unsigned_descending_stride_live_input.c"
     );
-    let (_typed, mode) =
+    let (typed, mode) =
         canonical_guest_typed_ir_with_source(json, Some(source))
             .expect("40, 30, 20, 10 must terminate at zero after four reads");
     assert_eq!(mode, FrontendGuestMode::LatestRead);
+    assert_four_reads_five_writes(&typed);
 }
