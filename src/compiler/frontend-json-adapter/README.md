@@ -11,6 +11,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Ordered multiple outputs in dynamic C guard arms (2026-11-16)
+
+Each branch of an authenticated live-byte C predicate may now perform two
+ordered pure `putchar` calls that each preserve the resident byte on the
+branch's own input domain. The finite source proof permits an additional
+write only when every preceding statement is a proven pure output of the
+same byte, without a fresh input, assignment, exit or hidden side effect.
+The original call semicolons, source gaps and Clang nodes are checked.
+
+The complete four-read C23 source emits eight genuine byte writes in
+thirteen normative VM steps from a 1,151-byte capsule. Twenty-nine seeded
+binary guest vectors and pinned C23 UBSan `-O0`/`-O2` accepted and
+changed-second-output controls agree with separate byte oracles. The
+rejected control does not publish a guest. This is source-proven removal
+of equivalent output arms, not general runtime C control or arithmetic.
+
 ### Multiline C `else if` byte identities (2026-11-16)
 
 A source/Clang-authenticated three-way `if` / `else if` / `else` can

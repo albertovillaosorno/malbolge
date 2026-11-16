@@ -57,6 +57,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Evidence
 
+- On 2026-11-16, a full EOF-driven checksum with mutable locals
+  still refused its initial declaration without a guest artifact. A
+  distinct four-read C23 experiment proved **two source-ordered writes
+  per dynamic byte-guard arm**, each preserving the byte only on its
+  reachable odd/even C domain. Red-first authenticated lowering now
+  checks source semicolons, Clang nodes and preceding pure effects before
+  admitting additional writes. The 1,151-byte capsule executes 13 VM
+  steps with four real reads and eight writes. Twenty-nine binary guest
+  vectors and independent pinned C23 UBSan `-O0`/`-O2` positive and
+  changed-second-output negative controls agree with their oracles.
+  Dynamic guest C branching, storage and EOF remain absent; P0 is pending.
+
 - On 2026-11-16, a full mutable, EOF-driven C checksum still refused
   its first `unsigned` declaration without a guest artifact. A distinct
   four-read C23 program exposed an indented `else if` chain whose three

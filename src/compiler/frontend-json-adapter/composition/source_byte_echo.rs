@@ -48,6 +48,10 @@ mod unbraced_guarded_byte_output_tests;
 mod else_if_guarded_byte_output_tests;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/multiple_guarded_byte_output.rs"]
+mod multiple_guarded_byte_output_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/unsigned_input_loop.rs"]
 mod unsigned_input_loop_tests;
 
@@ -4548,11 +4552,21 @@ fn prove_static_if_arm<'node>(
                     source?,
                 )
             });
-        // Never remove dynamic guest control based on a sampled input:
-        // authenticate every value of the source/Clang predicate and both
-        // expressions. Restrict this proof to one output per branch, with
-        // no input or assignment before it.
-        let guarded_output = if statement_count == 0
+        // Never remove dynamic guest control based on sampled input:
+        // each original output expression must preserve its resident byte
+        // on the active source/Clang guard domain. Multiple ordered writes
+        // are safe only when every preceding statement is another pure
+        // write of the same byte: any read, assignment or exit invalidates
+        // the argument's proven resident-byte identity.
+        let prior_outputs_preserve_byte = statement_count == 0
+            || (statement_count == effects.len()
+                && effects.iter().all(|effect: &StaticIfEffect<'_>| {
+                    effect.input.is_none()
+                        && effect.assigned_local.is_none()
+                        && effect.loop_exit.is_none()
+                        && !effect.outputs.is_empty()
+                }));
+        let guarded_output = if prior_outputs_preserve_byte
             && statement.kind == "call-expression"
             && let Some(domain) = active_domain
             && let Some(bound) = declared_local.as_ref().or(local)
@@ -4571,13 +4585,14 @@ fn prove_static_if_arm<'node>(
                 )
             && nested.is_empty()
         {
-            let gap = if multiline {
-                conditional_column.checked_add(2)?
-            } else {
-                3
-            };
-            (call.span.end.byte.checked_add(gap)? == end)
-                .then_some((width, call))
+            // Every C call ends before its semicolon. The enclosing
+            // statement loop separately checks each source/Clang gap and
+            // the eventual closing brace; do not require this particular
+            // write to be the last statement in the compound block.
+            witness
+                .get(usize::try_from(call.span.end.byte).ok()?)
+                .filter(|byte| **byte == b';')
+                .map(|_| (width, call))
         } else {
             None
         };

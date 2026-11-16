@@ -26,6 +26,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Multiple ordered guarded C outputs (2026-11-16)
+
+A complete mutable, EOF-driven checksum still refuses its first C local;
+no guest is published. A separate complete four-read C23 program exposed
+another bounded but real compiler gap: two successive `putchar` calls in
+each of two byte-guarded `if` arms. The odd C path writes `current | 1`
+twice, and the even path writes `current & -2` twice. Neither expression
+is a byte identity for all possible inputs, but each is an identity on
+its source-proven active path. The initial adapter refused the enclosing
+`for` because it only allowed the final guarded output in an arm.
+
+The verified proof now allows multiple source-ordered writes only when
+all earlier statements in the arm were pure writes of the resident byte.
+Every original call, Clang node, semicolon, indentation gap and 256-value
+guard-domain identity must independently verify. New input, assignments,
+control exits and hidden effects cannot be erased under this exception.
+The 1,151-byte capsule executes four real guest reads, eight writes and
+thirteen VM steps. All 29 seeded binary input vectors matched the
+independent two-copies-per-byte oracle; pinned C23 UBSan O0/O2 accepted
+and second-write changed-byte negative controls matched separately for
+29 vectors each. The changed C refuses guest publication. This is not
+runtime guest branching, mutable storage or EOF control. P0 is pending.
+
 ### Authenticated multiline `else if` byte domains (2026-11-16)
 
 The full source-C EOF checksum, with mutable `unsigned` state, a `while`
