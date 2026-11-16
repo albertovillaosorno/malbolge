@@ -68,6 +68,27 @@ Clang/source forgeries inside the skipped arithmetic subtree also refuse.
 The seeded matrix includes this third C program and a negative publication
 check, for 87 real guest input vectors across three programs.
 
+### C23 unsigned radix literals with live guest I/O (2026-11-15)
+
+A complete five-trip input/branch/loop C program initially refused when its
+unsigned initializer, bound, non-unit-capable compound step, remainder operand
+and equality guards used source C23 binary, octal or hexadecimal integer
+spelling instead of normalized decimal tokens. The new source-backed proof
+compares Clang's canonical `u32` value with the original bounded integer
+literal using the shared C23 token parser. It authenticates the exact `u`/`U`
+suffix, source coordinates, type and AST ancestry before selecting effects;
+changes to a source digit, prefix or normalized value refuse admission.
+
+The pinned Clang 22.1.8 frontend, typed IR, verified layout and normative
+`malbolge-2026` VM now replay `unsigned_radix_live_input.c` with five live
+reads and seven actual writes: `ABCDE` becomes `ABBCDDE` in 13 VM steps.
+Binary input `00 ff 80 01 7f` becomes `00 ff ff 80 01 01 7f`; native
+C23 Clang 22.1.8 UBSan at O0 and O2 independently agrees on both vectors.
+The seeded real-guest matrix now covers 116 input vectors across four whole
+C programs, including NUL and high-bit bytes. This extends a bounded
+source-time unsigned counter proof, not dynamic guest C arithmetic, variable
+byte-dependent branches, EOF or arbitrary-length streams. P0 remains open.
+
 ### Source-proven early unsigned exits before wrap (2026-11-15)
 
 A demanding source-C probe combines unsigned `9U; i > 0U; i -= 2U`,

@@ -28,6 +28,21 @@ zero divisor must refuse guest publication. The third complete C regression
 executes one live input/output in three VM steps and rejects forged dead
 subtree types and operators.
 
+### C23 radix-authenticated unsigned induction literals (2026-11-15)
+
+The bounded source-time `u32` loop projector now accepts authenticated C23
+binary, octal and hexadecimal integer tokens in the initializer, condition,
+step and pure counter predicates, rather than requiring decimal spelling.
+The shared scalar token parser checks original source against Clang's decimal
+value; the finite-loop proof additionally requires a `u`/`U` suffix,
+validated coordinates, typed declarations and matching arithmetic ancestry.
+
+A five-trip C23 program using `0b1U`, `0X5u`, `01u`, `0x2U` and `0u`
+executes five real guest reads and seven writes in 13 normative VM steps.
+Its independent seeded 29-vector input replay extends the current matrix
+to 116 real guest executions across four complete C programs. Runtime
+byte-dependent branching and arbitrary input length remain unsupported.
+
 ### Source-checked unsigned loop-counter branch (2026-11-15)
 
 A complete four-trip C program initializes a fresh `int` from `getchar()`

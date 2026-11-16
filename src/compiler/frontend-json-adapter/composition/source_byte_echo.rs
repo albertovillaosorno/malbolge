@@ -4613,10 +4613,9 @@ fn prove_static_for<'node>(
         return None;
     }
     let name_width = u32::try_from(name_bytes.len()).ok()?;
-    let initial_width = u32::try_from(initial.literal.as_deref()?.len())
-        .ok()?
-        .checked_add(u32::from(unsigned))?;
-    if !(1..=3).contains(&initial_width) {
+    let initial_width =
+        initial.span.end.byte.checked_sub(initial.span.begin.byte)?;
+    if !(1..=9).contains(&initial_width) {
         return None;
     }
     let initial_start = start
@@ -4680,17 +4679,19 @@ fn prove_static_for<'node>(
     // The pinned Clang preorder supplies the increment literal at a fixed
     // child offset. Its source width extends the exact header geometry; the
     // later leaf proof binds every digit to the original C and its parent.
-    let stride_width = if assigned_increment {
-        u32::try_from(rest.get(3)?.literal.as_deref()?.len()).ok()?
+    let stride_leaf = if assigned_increment {
+        Some(rest.get(3)?)
     } else if compound_increment {
-        u32::try_from(rest.first()?.literal.as_deref()?.len()).ok()?
+        Some(rest.first()?)
+    } else {
+        None
+    };
+    let stride_width = if let Some(leaf) = stride_leaf {
+        leaf.span.end.byte.checked_sub(leaf.span.begin.byte)?
     } else {
         1
     };
-    let stride_width = stride_width.checked_add(u32::from(
-        unsigned && (compound_increment || assigned_increment),
-    ))?;
-    if !(1..=3).contains(&stride_width) {
+    if !(1..=9).contains(&stride_width) {
         return None;
     }
     let increment_length = (if assigned_increment {
@@ -4711,7 +4712,7 @@ fn prove_static_for<'node>(
             return None;
         }
     }
-    let initial_value = prove_for_decimal_operand(
+    let initial_value = prove_for_literal_operand(
         initial,
         expected_id.checked_add(3)?,
         variable.id,
@@ -4933,7 +4934,7 @@ fn prove_static_for<'node>(
         {
             return None;
         }
-        let stride = prove_for_decimal_operand(
+        let stride = prove_for_literal_operand(
             one,
             expected_id.checked_add(13)?,
             arithmetic.id,
@@ -4954,7 +4955,7 @@ fn prove_static_for<'node>(
     } else if compound_increment {
         // The additional compound-assignment child must be exactly one.
         let (one, tail) = rest.split_first()?;
-        let stride = prove_for_decimal_operand(
+        let stride = prove_for_literal_operand(
             one,
             expected_id.checked_add(10)?,
             increment.id,
@@ -4978,7 +4979,7 @@ fn prove_static_for<'node>(
     if !(1..=99).contains(&stride) || (stride != 1 && source.is_none()) {
         return None;
     }
-    let bound_value = prove_for_decimal_operand(
+    let bound_value = prove_for_literal_operand(
         bound,
         expected_id.checked_add(7)?,
         condition.id,
@@ -4993,7 +4994,7 @@ fn prove_static_for<'node>(
     // Same-width numeric forgeries can otherwise turn a terminating loop
     // into a different number of guest effects. Compare both Clang decimal
     // leaves with their original source, not only each node's own metadata.
-    if let Some(witness) = source {
+    if !unsigned && let Some(witness) = source {
         for literal in [initial, bound] {
             let begin = usize::try_from(literal.span.begin.byte).ok()?;
             let text = literal.literal.as_deref()?;
@@ -5018,14 +5019,28 @@ fn prove_static_for<'node>(
     // divergent loop. Re-check the same fixed-shape source step for every
     // loop whose original bytes are available.
     if let Some(witness) = source {
-        let suffix = if unsigned {
-            "U"
+        // The leaf proof has already authenticated this exact spelling and
+        // value. Preserve the source token in the surrounding step grammar
+        // rather than silently replacing `0x2U` with decimal `2U`.
+        let stride_spelling = if unsigned && let Some(leaf) = stride_leaf {
+            let begin = usize::try_from(leaf.span.begin.byte).ok()?;
+            let end = usize::try_from(leaf.span.end.byte).ok()?;
+            std::str::from_utf8(witness.get(begin..end)?)
+                .ok()?
+                .to_owned()
         } else {
-            ""
+            format!(
+                "{stride}{}",
+                if unsigned {
+                    "U"
+                } else {
+                    ""
+                }
+            )
         };
         let spelling = if assigned_increment {
             format!(
-                "{name} = {name} {} {stride}{suffix}",
+                "{name} = {name} {} {stride_spelling}",
                 if ascending {
                     "+"
                 } else {
@@ -5034,7 +5049,7 @@ fn prove_static_for<'node>(
             )
         } else if compound_increment {
             format!(
-                "{name} {}= {stride}{suffix}",
+                "{name} {}= {stride_spelling}",
                 if ascending {
                     "+"
                 } else {
@@ -5197,9 +5212,11 @@ struct StaticIfProof<'node> {
     end: u32,
 }
 
-// The signed witness remains compatible with AST-only tests; an unsigned
-// counter requires a source-backed exact `U` suffix on each bounded literal.
-fn prove_for_decimal_operand(
+// Signed induction retains the existing decimal AST-only witness. Unsigned
+// induction must authenticate the complete C23 token against its normalized
+// decimal Clang value, including radix and an exact `u`/`U` suffix. Reuse the
+// shared lexer rather than inventing a second integer spelling authority.
+fn prove_for_literal_operand(
     node: &Node,
     expected_id: u32,
     parent: u32,
@@ -5221,18 +5238,21 @@ fn prove_for_decimal_operand(
     }
     let digits = node.literal.as_deref()?;
     let value = digits.parse::<i32>().ok()?;
-    let end = start
-        .checked_add(u32::try_from(digits.len()).ok()?)?
-        .checked_add(1)?;
+    let end = node.span.end.byte;
+    let width = end.checked_sub(start)?;
+    if !(2..=9).contains(&width) {
+        return None;
+    }
     let witness = source?;
     let begin = usize::try_from(start).ok()?;
     let source_end = usize::try_from(end).ok()?;
-    let (suffix, source_digits) =
-        witness.get(begin..source_end)?.split_last()?;
+    let token = witness.get(begin..source_end)?;
+    let (suffix, _) = token.split_last()?;
+    let spelled_value = super::source_integer_token_value(token)?;
     (value >= 0
         && value.to_string() == digits
-        && *suffix == b'U'
-        && source_digits == digits.as_bytes()
+        && matches!(*suffix, b'U' | b'u')
+        && spelled_value == u64::try_from(value).ok()?
         && node.id == expected_id
         && node.parent == parent
         && node.kind == "integer-literal"
@@ -5541,7 +5561,7 @@ fn prove_induction_arithmetic_shape(
     {
         return None;
     }
-    let divisor_value = prove_for_decimal_operand(
+    let divisor_value = prove_for_literal_operand(
         divisor,
         variable.id.checked_add(1)?,
         remainder.id,
@@ -5552,13 +5572,7 @@ fn prove_induction_arithmetic_shape(
         induction.source,
     )?;
     let end = divisor.span.end.byte;
-    let divisor_start = usize::try_from(divisor.span.begin.byte).ok()?;
-    let spelling = divisor.literal.as_deref()?;
-    let divisor_end = divisor_start.checked_add(spelling.len())?;
-    if induction.source.is_some_and(|witness| {
-        witness.get(divisor_start..divisor_end) != Some(spelling.as_bytes())
-    }) || !source_word(remainder, at.start, end, at.line, at.column)
-    {
+    if !source_word(remainder, at.start, end, at.line, at.column) {
         return None;
     }
     let value = checked_induction_arithmetic(
@@ -5612,7 +5626,7 @@ fn prove_induction_arithmetic_comparison_shape(
     let right_index = left_width.checked_add(1)?;
     let right = nodes.get(right_index)?;
     let right_offset = u32::try_from(operator.len()).ok()?.checked_add(2)?;
-    let rhs = i64::from(prove_for_decimal_operand(
+    let rhs = i64::from(prove_for_literal_operand(
         right,
         at.id.checked_add(u32::try_from(right_index).ok()?)?,
         comparison.id,
@@ -5627,13 +5641,9 @@ fn prove_induction_arithmetic_comparison_shape(
     let comparison_operator = usize::try_from(left_end.checked_add(1)?).ok()?;
     let comparison_operator_end =
         comparison_operator.checked_add(operator.len())?;
-    let rhs_start = usize::try_from(right.span.begin.byte).ok()?;
-    let rhs_text = right.literal.as_deref()?;
-    let rhs_end = rhs_start.checked_add(rhs_text.len())?;
     if induction.source.is_some_and(|witness| {
         witness.get(comparison_operator..comparison_operator_end)
             != Some(operator.as_bytes())
-            || witness.get(rhs_start..rhs_end) != Some(rhs_text.as_bytes())
     }) || !source_word(
         comparison,
         at.start,
@@ -5718,7 +5728,7 @@ fn prove_induction_comparison(
     {
         return None;
     }
-    let rhs = prove_for_decimal_operand(
+    let rhs = prove_for_literal_operand(
         bound,
         variable.id.checked_add(1)?,
         comparison.id,
@@ -5730,12 +5740,8 @@ fn prove_induction_comparison(
     )?;
     let operator_start = usize::try_from(name_end.checked_add(1)?).ok()?;
     let operator_end = operator_start.checked_add(operator.len())?;
-    let rhs_start = usize::try_from(bound.span.begin.byte).ok()?;
-    let rhs_text = bound.literal.as_deref()?;
-    let rhs_end = rhs_start.checked_add(rhs_text.len())?;
     if induction.source.is_some_and(|witness| {
         witness.get(operator_start..operator_end) != Some(operator.as_bytes())
-            || witness.get(rhs_start..rhs_end) != Some(rhs_text.as_bytes())
     }) || !source_word(
         comparison,
         at.start,

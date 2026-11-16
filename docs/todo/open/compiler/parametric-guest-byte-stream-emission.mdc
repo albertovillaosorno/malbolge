@@ -78,6 +78,16 @@ a compiler capability gap, not a reason to return to N+1.
   source/Clang arithmetic refuse. The seeded integration matrix now checks
   87 VM input vectors and negative nonpublication across three C programs.
 
+  A further whole C23 loop rejected source binary `0b1U`, hexadecimal
+  `0X5u` and octal `01u` despite valid normalized `u32` values. The
+  source-checked finite induction proof now recognizes bounded C23 radix
+  spellings using the shared scalar lexer and verified Clang ancestry.
+  Pinned end-to-end compilation emits a 13-step guest with five real reads
+  and seven writes (`ABCDE` to `ABBCDDE`). A seeded four-program matrix
+  checks 116 real-VM input vectors and original-token/Clang forgeries.
+  Native C23 Clang 22.1.8 UBSan at O0/O2 agrees on ASCII and binary
+  witnesses; guest-dependent control and arbitrary streams remain unfinished.
+
 - On 2026-11-15, a complete live-input unsigned descending C program
   refused before guest emission because the compiler modeled an unsigned
   post-body underflow that a selected `break` would skip. A red-first pinned

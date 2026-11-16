@@ -423,6 +423,94 @@ fn unsigned_continue_at_zero_must_not_skip_wrapping_decrement() {
     ));
 }
 
+const RADIX_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_radix_live_input.c");
+const RADIX_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_radix_live_input.json");
+
+#[test]
+fn unsigned_radix_counter_and_predicate_keep_seven_live_byte_writes() {
+    let (wire, mode) = canonical_guest_typed_ir_with_source(
+        RADIX_JSON,
+        Some(RADIX_SOURCE),
+    )
+    .expect(
+        "source-checked C23 radix induction and branch must preserve guest IO",
+    );
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+    let decoded = canonical_module(&wire).expect("canonical typed module");
+    let block = decoded.functions()[0].blocks()[0].instructions();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    for effect in block {
+        match effect.instruction() {
+            Instruction::ByteInput { result, .. } => reads.push(*result),
+            Instruction::ByteOutput { value } => writes.push(*value),
+            other => panic!("unexpected guest effect: {other:?}"),
+        }
+    }
+    assert_eq!(reads.len(), 5);
+    assert_eq!(writes, vec![
+        reads[0], reads[1], reads[1], reads[2], reads[3], reads[3], reads[4],
+    ]);
+}
+
+#[test]
+fn unsigned_radix_counter_refuses_source_token_and_clang_forgeries() {
+    for (original, forged) in [
+        (b"0b1U".as_slice(), b"0b0U".as_slice()),
+        (b"0X5u".as_slice(), b"0X6u".as_slice()),
+        (b"01u".as_slice(), b"00u".as_slice()),
+        (b"0x2U".as_slice(), b"0x3U".as_slice()),
+        (b"0u".as_slice(), b"1u".as_slice()),
+        (b"0x5U".as_slice(), b"0x5L".as_slice()),
+        (b"0b1U".as_slice(), b"0y1U".as_slice()),
+    ] {
+        let mut changed = RADIX_SOURCE.to_vec();
+        let at = changed
+            .windows(original.len())
+            .position(|part| part == original)
+            .expect("radix token exists");
+        changed[at..at + original.len()].copy_from_slice(forged);
+        assert!(
+            matches!(
+                canonical_guest_typed_ir_with_source(
+                    RADIX_JSON,
+                    Some(&changed),
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "forged source token {} was admitted",
+            String::from_utf8_lossy(forged)
+        );
+    }
+
+    let baseline: serde_json::Value =
+        serde_json::from_slice(RADIX_JSON).unwrap();
+    let literal = baseline["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| node["kind"] == "integer-literal")
+        .unwrap();
+    for (field, forged_value) in
+        [("literal", "2"), ("constant_integer", "2"), ("type", "i32")]
+    {
+        let mut forged = baseline.clone();
+        forged["nodes"][literal][field] = serde_json::json!(forged_value);
+        assert!(
+            matches!(
+                canonical_guest_typed_ir_with_source(
+                    &serde_json::to_vec(&forged).unwrap(),
+                    Some(RADIX_SOURCE),
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "forged radix AST field {field} was admitted"
+        );
+    }
+}
+
 const UNSIGNED_MODULO_SOURCE: &[u8] =
     include_bytes!("c-frontend/accepted/unsigned_modulo_live_input.c");
 const UNSIGNED_MODULO_JSON: &[u8] =

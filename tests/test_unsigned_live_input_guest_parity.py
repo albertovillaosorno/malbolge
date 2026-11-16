@@ -40,6 +40,7 @@ from typing import final
 ROOT = Path(__file__).resolve().parents[1]
 CASES = (
     ("unsigned_modulo_live_input", 5, 13),
+    ("unsigned_radix_live_input", 5, 13),
     ("unsigned_wrapping_predicate_live_input", 4, 10),
     ("unsigned_short_circuit_zero_divisor", 1, 3),
 )
@@ -62,7 +63,7 @@ def independent_c_oracle(stem: str, data: bytes) -> bytes:
         if stem == "unsigned_short_circuit_zero_divisor":
             # i == 1U makes the RHS undefined division unreachable.
             copies = 1
-        elif stem == "unsigned_modulo_live_input":
+        elif stem in {"unsigned_modulo_live_input", "unsigned_radix_live_input"}:
             copies = 2 if counter % 2 == 0 else 1
         else:
             # C's subtraction converts to u32 before the > 99U comparison.
