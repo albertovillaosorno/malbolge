@@ -25440,6 +25440,34 @@ fn guest_reflexive_comparisons_choose_only_proven_branches()
                 ),
                 Err(TernaryProgressCheckpointError::IdentityMismatch)
             );
+            // A forged same-SSA comparison over the original u8 input
+            // cannot pass as a signed/unsigned 32-bit comparison. Control
+            // selection is not a substitute for guest type validation.
+            let mut mistyped = projected.clone();
+            let forged =
+                &mut mistyped.functions[0].blocks[0].instructions[3];
+            match forged {
+                InputInstruction::CompareEqual { left, right, .. }
+                | InputInstruction::CompareNotEqual { left, right, .. }
+                | InputInstruction::CompareOrdered { left, right, .. } => {
+                    *left = 0;
+                    *right = 0;
+                },
+                _ => return Err(String::from("missing typed comparison")),
+            }
+            assert_eq!(
+                lower_typed_ir(&mistyped),
+                Err(TernaryLoweringError::UnsupportedInstruction)
+            );
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &mistyped,
+                ),
+                Err(TernaryProgressCheckpointError::IdentityMismatch)
+            );
             Ok(())
         })();
         let cleanup = remove_dir_all(&directory)
