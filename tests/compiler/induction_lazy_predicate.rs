@@ -109,6 +109,7 @@ fn guard(source: &str, nodes: &[Node], counter: i32) -> Option<(usize, bool)> {
         reference: "i@0",
         name: "i",
         source: Some(source.as_bytes()),
+        unsigned: false,
         value: counter,
     })
 }
@@ -428,6 +429,7 @@ fn source_backed_static_if_must_not_fall_back_to_unchecked_ast() {
                     reference: "i@0",
                     name: "i",
                     source: Some(source.as_bytes()),
+                    unsigned: false,
                     value: 0,
                 }),
             ),
@@ -456,6 +458,7 @@ fn source_backed_static_logical_keeps_a_proven_constant_fallback() {
                     reference: "i@0",
                     name: "i",
                     source: Some(source.as_bytes()),
+                    unsigned: false,
                     value: 0,
                 }),
             ),
@@ -668,6 +671,7 @@ fn skipped_shape_keeps_the_induction_expression_depth_budget() {
         reference: "i@0",
         name: "i",
         source: Some(source.as_bytes()),
+        unsigned: false,
         value: 0,
     };
     assert_eq!(

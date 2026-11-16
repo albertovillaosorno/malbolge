@@ -11,6 +11,23 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Source-checked unsigned loop-counter branch (2026-11-15)
+
+A complete four-trip C program initializes a fresh `int` from `getchar()`
+on each trip and writes it in `if (i == 2U)` branches, duplicating only
+the third byte. Initially the pinned normalized frontend refused the
+unsigned loop despite accepting the analogous signed loop. The C-bound
+predicate proof now carries the counter signedness into `u32` comparison
+operand checks, verifies the original `U` suffix and comparison operator,
+and retains the actual guest byte reads and selected writes.
+
+The compiler emits 1,127 bytes of guest code, and the normative Malbolge
+VM emits `ABCCD` for `ABCD` and `00 ff 80 80 01` for input
+`00 ff 80 01`, in ten steps each. Forged source tokens and AST operator
+metadata refuse before guest publication. The C branch remains
+compile-time counter selection, not runtime guest-dependent control; EOF,
+unsigned runtime state, and unrestricted C remain unsupported.
+
 ### Source-authenticated shape of skipped signed induction arithmetic
 
 Pure signed loop-counter expressions in short-circuited `&&`/`||` operands

@@ -3717,6 +3717,7 @@ struct StaticInduction<'name> {
     reference: &'name str,
     name: &'name str,
     source: Option<&'name [u8]>,
+    unsigned: bool,
     value: i32,
 }
 
@@ -5093,6 +5094,7 @@ fn prove_static_for<'node>(
                 reference: &variable_reference,
                 name,
                 source,
+                unsigned,
                 value: if ascending {
                     initial_value.checked_add(
                         stride.checked_mul(i32::try_from(iteration).ok()?)?,
@@ -5621,6 +5623,11 @@ fn prove_induction_comparison(
         return None;
     }
     let name_end = induction_identifier_end(induction, at)?;
+    let counter_type = if induction.unsigned {
+        "u32"
+    } else {
+        "i32"
+    };
     let right_offset = u32::try_from(induction.name.len())
         .ok()?
         .checked_add(2 + u32::try_from(operator.len()).ok()?)?;
@@ -5635,7 +5642,7 @@ fn prove_induction_comparison(
         || cast.id != comparison.id.checked_add(1)?
         || cast.parent != comparison.id
         || cast.kind != "cast-expression"
-        || cast.type_name.as_deref() != Some("i32")
+        || cast.type_name.as_deref() != Some(counter_type)
         || cast.operation.as_deref() != Some("lvalue-to-rvalue")
         || cast.reference.is_some()
         || !metadata_empty(cast)
@@ -5643,7 +5650,7 @@ fn prove_induction_comparison(
         || variable.id != cast.id.checked_add(1)?
         || variable.parent != cast.id
         || variable.kind != "declaration-reference-expression"
-        || variable.type_name.as_deref() != Some("i32")
+        || variable.type_name.as_deref() != Some(counter_type)
         || variable.operation.is_some()
         || variable.reference.as_deref() != Some(induction.reference)
         || !metadata_empty(variable)
@@ -5651,13 +5658,15 @@ fn prove_induction_comparison(
     {
         return None;
     }
-    let rhs = prove_decimal_condition_operand(
+    let rhs = prove_for_decimal_operand(
         bound,
         variable.id.checked_add(1)?,
         comparison.id,
         right_start,
         at.line,
         right_column,
+        induction.unsigned,
+        induction.source,
     )?;
     let operator_start = usize::try_from(name_end.checked_add(1)?).ok()?;
     let operator_end = operator_start.checked_add(operator.len())?;

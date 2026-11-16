@@ -68,6 +68,68 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
             timeout=90,
         )
 
+    def test_unsigned_counter_selects_live_byte_replay(self) -> None:
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/unsigned_conditional_live_input.c"
+        )
+        golden = (
+            ROOT
+            / "tests/compiler/c-frontend/golden/unsigned_conditional_live_input.json"
+        )
+        frontend = subprocess.run(
+            [
+                str(TOOLS[0]),
+                "--guest-include",
+                str(ROOT / "src/runtime/guest-c-library/contract/include"),
+                "--resource-dir",
+                str(ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"),
+                "--source-id",
+                source.name,
+                str(source),
+            ],
+            capture_output=True,
+            check=False,
+            timeout=15,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        self.assertEqual(frontend.stdout, golden.read_bytes())
+
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
+            guest = Path(folder) / "unsigned-branch.malbolge"
+            built = self.compile(source, guest)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            self.assertTrue(guest.is_file())
+            seed = random.Random(0xA159)
+            samples = [
+                bytes((0, 255, 128, 1)),
+                b"ABCD",
+                bytes(seed.randrange(256) for _ in range(4)),
+            ]
+            for sample in samples:
+                with self.subTest(sample=sample):
+                    run = subprocess.run(
+                        [str(TOOLS[3]), str(guest), "--input-stdin", "--report-steps"],
+                        input=sample,
+                        capture_output=True,
+                        check=False,
+                        timeout=20,
+                    )
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    # Original C takes four independent reads; only the
+                    # counter-selected third successful byte is written twice.
+                    self.assertEqual(run.stdout, sample[:3] + sample[2:3] + sample[3:4])
+                    self.assertIn(b"malbolge-steps-v1:10", run.stderr)
+
+            invalid = source.read_text().replace("i == 2U", "current == 2U")
+            invalid_source = Path(folder) / "dynamic-branch.c"
+            invalid_guest = Path(folder) / "dynamic-branch.malbolge"
+            invalid_source.write_text(invalid)
+            refused = self.compile(invalid_source, invalid_guest)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(invalid_guest.exists())
+
     @staticmethod
     def source(calls: int) -> str:
         return (

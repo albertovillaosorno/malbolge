@@ -73,3 +73,101 @@ fn unsigned_decrement_must_not_treat_wraparound_as_loop_exit() {
         Err(FrontendJsonError::Unsupported)
     ));
 }
+
+const CONDITIONAL_SOURCE: &[u8] =
+    include_bytes!("c-frontend/accepted/unsigned_conditional_live_input.c");
+const CONDITIONAL_JSON: &[u8] =
+    include_bytes!("c-frontend/golden/unsigned_conditional_live_input.json");
+
+#[test]
+fn unsigned_branch_repeats_one_runtime_byte_without_folding_input() {
+    let (_typed, mode) = canonical_guest_typed_ir_with_source(
+        CONDITIONAL_JSON,
+        Some(CONDITIONAL_SOURCE),
+    )
+    .expect("source-proven unsigned counter branch must preserve live reads");
+    assert_eq!(mode, FrontendGuestMode::LatestRead);
+}
+
+#[test]
+fn unsigned_branch_requires_original_literal_and_operator_tokens() {
+    let mut source = CONDITIONAL_SOURCE.to_vec();
+    let at = source
+        .windows(7)
+        .position(|text| text == b"i == 2U")
+        .unwrap();
+    source[at + 5] = b'3';
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(CONDITIONAL_JSON, Some(&source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+
+    let mut value: serde_json::Value =
+        serde_json::from_slice(CONDITIONAL_JSON).unwrap();
+    let nodes = value["nodes"].as_array_mut().unwrap();
+    let comparison = nodes
+        .iter_mut()
+        .find(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "=="
+        })
+        .unwrap();
+    comparison["operation"] = serde_json::json!("!=");
+    let forged = serde_json::to_vec(&value).unwrap();
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(&forged, Some(CONDITIONAL_SOURCE)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
+
+#[test]
+fn unsigned_branch_rejects_forged_counter_type_and_identity() {
+    let baseline: serde_json::Value =
+        serde_json::from_slice(CONDITIONAL_JSON).unwrap();
+    let nodes = baseline["nodes"].as_array().unwrap();
+    let condition = nodes
+        .iter()
+        .position(|node| {
+            node["kind"] == "binary-expression" && node["operation"] == "=="
+        })
+        .unwrap();
+    assert_eq!(nodes[condition + 1]["kind"], "cast-expression");
+    assert_eq!(
+        nodes[condition + 2]["kind"],
+        "declaration-reference-expression"
+    );
+    assert_eq!(nodes[condition + 3]["kind"], "integer-literal");
+    for (offset, field, replacement) in [
+        (1, "type", "i32"),
+        (2, "type", "i32"),
+        (2, "reference", "other@0"),
+        (3, "type", "i32"),
+        (3, "literal", "3"),
+        (3, "constant_integer", "3"),
+    ] {
+        let mut changed = baseline.clone();
+        changed["nodes"][condition + offset][field] =
+            serde_json::json!(replacement);
+        let forged = serde_json::to_vec(&changed).unwrap();
+        assert!(
+            matches!(
+                canonical_guest_typed_ir_with_source(
+                    &forged,
+                    Some(CONDITIONAL_SOURCE)
+                ),
+                Err(FrontendJsonError::Unsupported)
+            ),
+            "forged node {offset} field {field} was admitted"
+        );
+    }
+
+    let mut source = CONDITIONAL_SOURCE.to_vec();
+    let at = source
+        .windows(7)
+        .position(|part| part == b"i == 2U")
+        .unwrap();
+    source[at + 6] = b'L';
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(CONDITIONAL_JSON, Some(&source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}

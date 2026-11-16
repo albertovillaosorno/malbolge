@@ -26,6 +26,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-checked unsigned byte-branch selection (2026-11-15)
+
+A whole four-trip C function reads each byte into an automatic `int`, then
+uses an unsigned loop counter to choose a distinct output effect: the third
+input is written twice. The signed-counter counterpart worked, but the
+unsigned `if (i == 2U)` version initially refused at `for-statement`
+admission. The full live-input Fibonacci experiment still refuses its
+earlier mixed unsigned-state declaration.
+
+A red-first pinned Clang regression now retains the induction counter
+signedness in the source-aware predicate proof. Unsigned comparisons use
+exact `u32` variable/cast nodes, a source-authenticated `U` literal suffix,
+exact operator bytes, and checked declaration ancestry before choosing a
+compile-time loop branch. Changed C source or forged equal-width `!=`
+operator metadata refuses typed admission. The rebuilt native pipeline
+emits a 1,127-byte Malbolge capsule whose normative VM consumes four real
+input bytes and emits five in ten steps; binary `00 ff 80 01` becomes
+`00 ff 80 80 01`, and `ABCD` becomes `ABCCD`. A source-C guard on the
+live byte is deliberately unsupported.
+
+This is statically proven C counter control with dynamic guest I/O, not
+guest-side conditional execution, general unsigned arithmetic or EOF.
+The P0 generalization remains open.
+
 ### Source-checked unsigned guest-input induction (2026-11-14)
 
 The complete Fibonacci-with-live-input C probe still refuses its first
