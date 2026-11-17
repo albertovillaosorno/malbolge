@@ -490,6 +490,10 @@ pub(super) fn is_unchecked_local_eof_echo(
     let mut expected_id = nodes[4].id.saturating_add(1);
     let mut outputs = 0usize;
     while let Some(first) = remaining.first() {
+        // A later statement cannot undo an already emitted wrong EOF byte.
+        if outputs > 0 {
+            return true;
+        }
         if outputs < MAX_ECHO_CALLS
             && let Some((width, calls)) = prove_local_output_chain(
                 remaining,

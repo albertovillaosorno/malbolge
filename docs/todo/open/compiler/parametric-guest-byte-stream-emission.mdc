@@ -77,7 +77,7 @@ evidence describe the old priority scheme, not the current phase.
   native C23 `-O0`/`-O2` emitted `ff` after specified unsigned-char
   conversion. The source/Clang-authenticated adapter now refuses
   straight-line direct, copied and repeated local outputs before publishing
-  any guest. Three sources, four binary vectors and two native optimization
+  any guest. Four sources, four binary vectors and two native optimization
   modes are independently checked by a new no-publication/real-VM parity
   test. The 123 frontend Rust unit tests pass. No observable EOF
   conversion or mutable-EOF checksum implementation is claimed; P2

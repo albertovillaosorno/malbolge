@@ -55,8 +55,8 @@ permission to compile a different grammar. Other source forms not proved
 by this checker retain existing compiler behavior and need independent
 EOF audits; this is not general signed-local soundness or conversion.
 
-`tests/test_signed_getchar_local_publication.py` pins three complete
-sources (direct, copied and repeated signed-local output) and four binary
+`tests/test_signed_getchar_local_publication.py` pins four complete
+sources (direct, copied, repeated, and discarded-read suffix) and four binary
 stdin vectors. Independent pinned Clang C23 `-O0` and `-O2` with UBSan
 must match the explicit expected bytes; the guest either matches the same
 oracle or the compiler returns typed `Unsupported` without publishing a

@@ -13,7 +13,7 @@
 # - Must-Not:
 #   - Conflate profile EOF residue with C unsigned-char conversion.
 # - Allows:
-#   - Inputs: three frozen local C23 forms and four binary stdin vectors.
+#   - Inputs: four frozen local C23 forms and four binary stdin vectors.
 #   - Outputs: native/guest parity or typed refusal without guest publication.
 #   - Side effects: bounded isolated compiler and VM processes.
 # - Split-When:
@@ -46,6 +46,11 @@ LAYOUT: Final = ROOT / ".cache/rust/target/debug/malbolge_layout"
 VM: Final = ROOT / ".cache/rust/target/debug/malbolge"
 SHAPES: Final = (
     ("direct-local", "int current = getchar();\n    putchar(current);", 1),
+    (
+        "discard-after-output",
+        "int current = getchar();\n    putchar(current);\n    getchar();",
+        1,
+    ),
     (
         "copied-local",
         "int current = getchar();\n    int saved = current;\n    putchar(saved);",
