@@ -4312,3 +4312,13 @@ evidence describe the old priority scheme, not the current phase.
   `ternary-machine-lowering.mdc` task, with guest control-flow realization
   in `malbolge-layout-and-encoding-backend.mdc`. Expanding the induction
   whitelist or choosing an arm on the host would be unsound. P0 remains open.
+
+
+2026-11-17 continuation: Added source-authenticated composition of one
+signed `getchar` initializer and a checked unsigned local `+=` before a
+constant-proven `putchar`. The canonical typed mixed-effect projection
+passes native C23 source and negative AST/source gates. This is only a
+frontend/typed staging step: no independently verified guest for the full
+mutable EOF checksum. That source still rejects at 29:5; next work is
+runtime-local storage, EOF loop predicate and dynamic branch arithmetic,
+followed by target layout and real guest parity.

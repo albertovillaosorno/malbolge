@@ -39,7 +39,7 @@ use super::{
 
 // Authenticate every normalized subtree and source slice. A matching token
 // and AST parent alone do not authorize any unrecognized sibling effect.
-fn node_is(
+pub(super) fn node_is(
     node: &Node,
     id: u32,
     parent: u32,
@@ -70,10 +70,134 @@ fn node_is(
             || (node.constant_integer.is_none() && node.literal.is_none()))
 }
 
-fn source_slice<'a>(source: &'a [u8], node: &Node) -> Option<&'a [u8]> {
+pub(super) fn source_slice<'a>(
+    source: &'a [u8],
+    node: &Node,
+) -> Option<&'a [u8]> {
     let start = usize::try_from(node.span.begin.byte).ok()?;
     let end = usize::try_from(node.span.end.byte).ok()?;
     source.get(start..end)
+}
+
+/// Construct the same re-admitted signed read/independent output trace
+/// from separate complete source/Clang proofs.
+pub(super) fn emit_signed_input_literal(
+    input: &Artifact,
+    function: &Node,
+    body: &Node,
+    read_calls: &[&Node],
+    literal: &Node,
+    write: &Node,
+    byte: u8,
+) -> Result<CanonicalGuestProjection, FrontendJsonError> {
+    let read_count = read_calls.len();
+    let frontend = FrontendArtifact::new_void(
+        FrontendArtifactSpec {
+            abi_id: input.profile.abi_id.clone(),
+            artifact_id: input.identity.clone(),
+            clang_target: input.clang.target.clone(),
+            clang_version: input.clang.version.clone(),
+            functions: Vec::new(),
+            language: input.clang.language.clone(),
+            schema_version: input.schema_version,
+            source_id: input.source.id.clone(),
+            source_sha256: source_digest(&input.source.sha256)?,
+            target_profile: input.profile.target_profile.clone(),
+        },
+        FrontendReturnVoidFunction::new_fallthrough(
+            FrontendFallthroughVoidFunctionSpec {
+                body_span: super::span(&body.span),
+                definition: String::from("definition"),
+                function_span: super::span(&function.span),
+                inline_specified: false,
+                linkage: String::from("external"),
+                name: String::from("emit"),
+                signature: String::from("fn()->void"),
+                storage_class: String::from("none"),
+            },
+        ),
+    );
+    let base = lower_frontend_artifact(&frontend)
+        .map_err(|_error| FrontendJsonError::InvalidTypedIr)?;
+    let original = base
+        .functions()
+        .first()
+        .ok_or(FrontendJsonError::InvalidTypedIr)?;
+    let block = original
+        .blocks()
+        .first()
+        .ok_or(FrontendJsonError::InvalidTypedIr)?;
+    let mut types = base.types().to_vec();
+    if types.len() != 2 || types[0].id() != TypeId::new(0) {
+        return Err(FrontendJsonError::InvalidTypedIr);
+    }
+    types[0] = TypeEntry::new(TypeId::new(0), TypeDef::I32);
+    types.push(TypeEntry::new(TypeId::new(2), TypeDef::U8));
+    let mut instructions = Vec::with_capacity(read_count + 2);
+    for (index, read) in read_calls.iter().enumerate() {
+        instructions.push(LocatedInstruction::new(
+            Instruction::Getchar {
+                result: ValueId::new(
+                    u32::try_from(index)
+                        .map_err(|_error| FrontendJsonError::Unsupported)?,
+                ),
+                type_id: TypeId::new(0),
+            },
+            typed_span(&read.span),
+        ));
+    }
+    let literal_id = ValueId::new(
+        u32::try_from(read_count)
+            .map_err(|_error| FrontendJsonError::Unsupported)?,
+    );
+    instructions.push(LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(8, vec![byte]),
+            result: literal_id,
+            type_id: TypeId::new(2),
+        },
+        typed_span(&literal.span),
+    ));
+    instructions.push(LocatedInstruction::new(
+        Instruction::ByteOutput { value: literal_id },
+        typed_span(&write.span),
+    ));
+    let function = Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: block.id(),
+            instructions,
+            phis: block.phis().to_vec(),
+            span: block.span(),
+            terminator: block.terminator().clone(),
+            terminator_span: block.terminator_span(),
+        })],
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![function],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types,
+    });
+    let wire = canonical_bytes(&module)
+        .map_err(|_error| FrontendJsonError::InvalidTypedIr)?;
+    if canonical_module(&wire)
+        .map_err(|_error| FrontendJsonError::InvalidTypedIr)?
+        != module
+    {
+        return Err(FrontendJsonError::InvalidTypedIr);
+    }
+    Ok((wire, FrontendGuestMode::DiscardedInputLiteral))
 }
 
 /// Recognize only one `void emit(void)` body with one or two discarded
@@ -265,111 +389,13 @@ pub(super) fn canonical_signed_input_literal(
     if body_bytes != expected.as_bytes() {
         return Err(FrontendJsonError::Unsupported);
     }
-    let frontend = FrontendArtifact::new_void(
-        FrontendArtifactSpec {
-            abi_id: input.profile.abi_id,
-            artifact_id: input.identity,
-            clang_target: input.clang.target,
-            clang_version: input.clang.version,
-            functions: Vec::new(),
-            language: input.clang.language,
-            schema_version: input.schema_version,
-            source_id: input.source.id,
-            source_sha256: source_digest(&input.source.sha256)?,
-            target_profile: input.profile.target_profile,
-        },
-        FrontendReturnVoidFunction::new_fallthrough(
-            FrontendFallthroughVoidFunctionSpec {
-                body_span: super::span(&body.span),
-                definition: String::from("definition"),
-                function_span: super::span(&function.span),
-                inline_specified: false,
-                linkage: String::from("external"),
-                name: String::from("emit"),
-                signature: String::from("fn()->void"),
-                storage_class: String::from("none"),
-            },
-        ),
-    );
-    let base = lower_frontend_artifact(&frontend)
-        .map_err(|_error| FrontendJsonError::InvalidTypedIr)?;
-    let original = base
-        .functions()
-        .first()
-        .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let block = original
-        .blocks()
-        .first()
-        .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let mut types = base.types().to_vec();
-    if types.len() != 2 || types[0].id() != TypeId::new(0) {
-        return Err(FrontendJsonError::InvalidTypedIr);
-    }
-    types[0] = TypeEntry::new(TypeId::new(0), TypeDef::I32);
-    types.push(TypeEntry::new(TypeId::new(2), TypeDef::U8));
-    let mut instructions = Vec::with_capacity(read_count + 2);
-    for (index, read) in read_calls.iter().enumerate() {
-        instructions.push(LocatedInstruction::new(
-            Instruction::Getchar {
-                result: ValueId::new(
-                    u32::try_from(index)
-                        .map_err(|_error| FrontendJsonError::Unsupported)?,
-                ),
-                type_id: TypeId::new(0),
-            },
-            typed_span(&read.span),
-        ));
-    }
-    let literal_id = ValueId::new(
-        u32::try_from(read_count)
-            .map_err(|_error| FrontendJsonError::Unsupported)?,
-    );
-    instructions.push(LocatedInstruction::new(
-        Instruction::ConstantInteger {
-            constant: IntegerConstant::new(8, vec![byte]),
-            result: literal_id,
-            type_id: TypeId::new(2),
-        },
-        typed_span(&literal.span),
-    ));
-    instructions.push(LocatedInstruction::new(
-        Instruction::ByteOutput { value: literal_id },
-        typed_span(&write.span),
-    ));
-    let function = Function::new(FunctionSpec {
-        blocks: vec![BasicBlock::new(BasicBlockSpec {
-            id: block.id(),
-            instructions,
-            phis: block.phis().to_vec(),
-            span: block.span(),
-            terminator: block.terminator().clone(),
-            terminator_span: block.terminator_span(),
-        })],
-        entry: original.entry(),
-        id: original.id(),
-        name: String::from(original.name()),
-        parameters: original.parameters().to_vec(),
-        signature: original.signature(),
-        span: original.span(),
-    });
-    let module = Module::new(ModuleSpec {
-        abi_id: String::from(base.abi_id()),
-        format_version: base.format_version(),
-        functions: vec![function],
-        globals: base.globals().to_vec(),
-        proof_obligations: base.proof_obligations().to_vec(),
-        source_id: String::from(base.source_id()),
-        source_sha256: *base.source_sha256(),
-        target_profile: String::from(base.target_profile()),
-        types,
-    });
-    let wire = canonical_bytes(&module)
-        .map_err(|_error| FrontendJsonError::InvalidTypedIr)?;
-    if canonical_module(&wire)
-        .map_err(|_error| FrontendJsonError::InvalidTypedIr)?
-        != module
-    {
-        return Err(FrontendJsonError::InvalidTypedIr);
-    }
-    Ok((wire, FrontendGuestMode::DiscardedInputLiteral))
+    emit_signed_input_literal(
+        &input,
+        function,
+        body,
+        &read_calls,
+        literal,
+        write,
+        byte,
+    )
 }

@@ -7932,3 +7932,20 @@ and normative VM replay. The red-first regression, twelve-byte real
 Fibonacci guest and canonical typed publisher pass; the pinned frontend
 was unavailable, so no original full source-C pipeline parity or
 generalized P0 acceptance is established.
+
+### Mixed signed input and source-proven unsigned local (2026-11-17)
+
+The frontend now independently admits the complete closed C23 shape
+`unsigned checksum = 0U; int current = getchar(); checksum += 11U;`
+followed by `putchar((int)checksum);`. It checks every normalized Clang
+node against the original source, re-admits a canonical signed `Getchar`
+followed by a proven unsigned local byte value, and delegates target
+emission to the existing separately verified mixed-effect backend. The
+signed input is neither converted to a byte nor discarded in typed IR.
+A native Clang -O0/-O2 and source/AST mutation regression confirms its
+frontend proof; a failing backend injection verifies that unsupported
+layout never publishes an artifact. This is **not** an accepted P2 guest
+checksum: the new regression does not claim executable guest parity, and
+the full mutable EOF loop still rejects at the first unsupported dynamic
+storage/control-flow node (29:5). Its layout synthesis remains a costly,
+independently verified downstream operation.

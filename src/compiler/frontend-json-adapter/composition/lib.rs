@@ -47,6 +47,9 @@ mod local_constant_flow;
 #[path = "signed_input_literal.rs"]
 mod signed_input_literal;
 
+#[path = "source_mutable_input_literal.rs"]
+mod source_mutable_input_literal;
+
 #[path = "source_byte_echo.rs"]
 mod source_byte_echo;
 
@@ -3016,6 +3019,9 @@ pub fn canonical_guest_typed_ir_with_source(
     }
     if let Some(witness) = source {
         if let Ok(projection) = signed_input_literal::canonical_signed_input_literal(bytes, witness) {
+            return Ok(projection);
+        }
+        if let Ok(projection) = source_mutable_input_literal::canonical_mutable_input_literal(bytes, witness) {
             return Ok(projection);
         }
     }
