@@ -4,12 +4,18 @@ status: "pending"
 lane: "10"
 priority: "p10"
 area: "research"
-task: "TODO - Malbolge machine-model and C compilation paper"
+task: "TODO - Final comprehensive Malbolge paper"
 contract: "docs/research/methodology/publication-pipeline.md"
 depends_on:
-  - "publication-grade-paper-pipeline"
+  - "prepublication-hardening"
   - "historical-capability-demonstration"
   - "turnkey-c-to-malbolge-toolchain"
+  - "cuda-superoptimizer"
+  - "doom-playable-generated-code-performance"
+  - "apollo-11-luminary-agc-malbolge-demonstration"
+  - "rv32i-malbolge-runner"
+  - "self-hosting-equivalence-proof"
+  - "real-program-benchmark-suite"
 adr_paths:
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
 scope:
@@ -19,14 +25,15 @@ scope:
 validation:
   - "jig validate --root ."
 ---
-# TODO - Malbolge machine-model and C compilation paper
+# TODO - Final comprehensive Malbolge paper
 
 ## Objective
 
-Publish the systems/compiler result as a reproducible study of compiling a
-modern deterministic C profile to Malbolge's versioned execution model, using
-an explicit abstract-machine description rather than relying on the historical
-"esoteric programming language" label as the technical model.
+Publish **one** reproducible, publication-grade paper containing the complete
+verified Malbolge project: its historical machine model, deterministic C-to-
+Malbolge compiler, semantics and translation verification, CPU and CUDA
+optimization, native AOT/JIT execution, DOOM, Apollo AGC, RV32I and self-hosting
+results, including real measurements, negative evidence and limitations.
 
 ## Acceptance
 
@@ -46,8 +53,18 @@ an explicit abstract-machine description rather than relying on the historical
   supports the specific analogy; they are not asserted as semantic equivalence.
 - The declared evidence is reproducible and separates measured capability from
   interpretation, historical framing, and broader Church-Turing commentary.
-- Completion of the separate effective-transcendental-separation paper is not a
-  prerequisite for this paper or for ordinary product engineering.
+- Exactly **one** final manuscript integrates all supported project claims,
+  including machine profiles, compiler/runtime architecture, CPU/CUDA scaling,
+  verified native tiers, DOOM, Apollo, RV32I and self-hosting results.
+- LaTeX build, bibliography, diagrams, statistical tables, fixed experiment
+  identities, code/artifact hashes and public reproduction instructions form
+  part of this task's acceptance, not a separate publication-pipeline TODO.
+- Claim only measured or proved outcomes, including unavailable GPU evidence,
+  failed large-workload attempts and documented performance constraints; the
+  paper may not invent successes to close an unfinished task.
+- The final paper is the **last** open TODO in P10, reached only after P2-P9
+  delivery evidence and P9 research/hardening records are reviewed.
+- No separate transcendental theorem paper or human-scale study is required.
 
 ## Evidence
 
@@ -57,5 +74,6 @@ an explicit abstract-machine description rather than relying on the historical
 - Required systems evidence includes the turnkey C workflow, substantial
   generated programs, provenance-preserving historical comparison, resource
   accounting, and explicit threats to validity.
-- The paper pipeline owns publication packaging; this TODO owns the thesis and
-  evidence boundary for the systems/compiler paper.
+- This one TODO owns the complete manuscript and publication pipeline.
+  `docs/research/methodology/publication-pipeline.md` is supporting guidance,
+  not a separate open deliverable.

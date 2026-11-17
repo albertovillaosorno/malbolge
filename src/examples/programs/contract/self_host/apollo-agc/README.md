@@ -38,21 +38,20 @@ Expected output is exactly `OK\n`. Native execution is only debug scaffolding;
 completion requires a verifier-accepted `malbolge-2026` artifact executing the
 historical Luminary workload inside Malbolge semantics.
 
-## Deterministic parity harness
+## Native parity versus whole-program execution
 
-`apollo_agc_parity.c` includes the runner as guest C and exercises bounded
-machine vectors for one's-complement arithmetic, erasable/fixed bank selection,
-superbank behavior, switched and fixed-fixed memory, prohibited fixed-memory
-writes, basic opcode families, quarter-code operations, INDEX state, and indexed
-fetch. It also reruns the embedded rope smoke program.
+- **Guest C compilation target:** `apollo_agc_runner.c` only. The normal
+  compiler produces one `.malbolge` artifact from this source; there is no special
+  AGC/RISC-V compiler or second guest test program.
+- **Native parity fixture:** `apollo_agc_parity.c` includes that runner
+  and exercises deterministic machine-state and instruction vectors. It is a host test,
+  **not** a second `.malbolge` translation target.
+- **Separate whole-program test:** `tests/cli_native_debug.rs` runs the
+  unmodified runner with the native debugging CLI, checking exit status and
+  exact `OK` plus newline. The guest-artifact test must later run the generated
+  Malbolge program and compare its actual behavior against that native oracle.
 
-```text
-malbolge src/examples/programs/contract/self_host/apollo-agc/apollo_agc_parity.c
-```
-
-The exact transcript is `AGC-PARITY-v1
-OK
-`. This harness is deliberately
-freestanding so the same source can later be lowered to `.malbolge` and compared
-byte-for-byte with native C. Passing these bounded vectors does not claim full
-Block II or Luminary conformance.
+The parity fixture is executable today through the native debug CLI and emits
+an exact canonical transcript. It does not claim that the guest compiler
+already supports the runner or that a historical mission/external ISA workload
+is complete.

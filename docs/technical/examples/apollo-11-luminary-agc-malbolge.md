@@ -30,16 +30,22 @@ instructions sufficient to execute a real encoded AGC smoke program. The smoke
 program reaches a fixed machine-state oracle and emits `OK\n` in native debug
 execution.
 
+The next milestone is compiling and executing **only** `apollo_agc_runner.c`
+with the ordinary C-to-Malbolge workflow and independently comparing its real
+guest behavior against its native C execution. No custom AGC
+translator or host-executed guidance is a permitted shortcut. Missing language
+support must be reported against the compiler with a reproducible failing C
+source, not worked around with a special static fixture.
+
 This is not yet a Luminary execution claim. Extracodes, full overflow behavior,
 editing registers, interrupts and unprogrammed sequences, mission-specific I/O,
 rope ingestion, and differential evidence remain incomplete.
 
-`apollo_agc_parity.c` now supplies bounded cross-backend vectors over the
-current machine subset. The harness is itself freestanding guest C: native
-debug and a
-future generated `.malbolge` execute identical checks and must emit the same
-canonical transcript. This strengthens translation parity without upgrading the
-bounded vectors into a full AGC conformance claim.
+`apollo_agc_parity.c` is a **native-only C parity fixture**. The independent
+whole-program test lives in `tests/cli_native_debug.rs`; guest verification
+compiles only `apollo_agc_runner.c` and compares its actual VM output with
+the native runner oracle. The bounded test vectors do not prove full AGC
+conformance.
 
 ### Historical and legal boundary
 
@@ -74,6 +80,8 @@ implementation.
 
 Completion requires:
 
+- ordinary C-to-Malbolge build and real guest execution of the *single*
+  AGC runner, with separate native parity and whole-program oracle tests;
 - a pinned and reproducibly assembled Luminary 099 image with provenance;
 - complete admitted Block II semantics for the exercised mission workload;
 - independent reference-machine differential traces;

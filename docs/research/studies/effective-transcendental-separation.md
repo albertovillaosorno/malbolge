@@ -2,7 +2,7 @@
 
 ## Status
 
-Product closure complete; optional publication study remains
+Product closure complete; correctness evidence retained
 
 ## Research Question
 
@@ -28,9 +28,8 @@ representable plan is stage 44,739,239: 44,739,241 fractional limbs provide
 `24*N` scratch occupies `0xffffffc0` bytes. The looser `<2^35` total-storage
 bound remains useful only when generously rejecting theorem routes.
 
-- Status: Product closure complete; optional publication remains
+- Status: Product closure complete; correctness evidence retained
 - Record type: Study
-- Planning identity: `effective-transcendental-separation-paper`
 - Last reviewed: 2026-09-10
 
 ## Prior Work
@@ -239,9 +238,9 @@ being useless under the guest memory contract.
 
 Finite global separation/resource closure remains a P2 guest-runtime
 engineering problem because it is the remaining correctness gate for public
-`atan2`. The **paper is P5 and is not the gate**: publication waits for
-`publication-grade-paper-pipeline`, and a complete independently justified
-finite-domain certificate may close the product without a new theorem.
+`atan2`. The retained product-specific finite-domain proof remains
+correctness evidence. No new mathematical theorem or separate paper is
+required.
 
 The accepted product result is now the explicit Nesterenko-Waldschmidt bound
 below the guest resource ceiling plus the adaptive candidate-domain proof.

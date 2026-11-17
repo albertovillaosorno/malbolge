@@ -1,6 +1,6 @@
 ---
 id: "source-bound-diff-generator"
-status: "active"
+status: "completed"
 lane: "10"
 priority: "p10"
 area: "tools"
@@ -22,16 +22,18 @@ validation:
 
 ## Objective
 
-Implement `algorithms/diff/` as a generic deterministic generator that learns a
-source-tree transformation from a local source/oracle pair and emits a
-distributable transform whose target material remains bound to sufficiently
-compatible source input.
+Deliver the deterministic source-bound exact-baseline transformation used
+by the existing DOOM normalization and single-file amalgamation recipes.
+Admitted source plus the emitted transform reconstructs the accepted oracle;
+the generated transform alone cannot disclose the local oracle.
 
-The generic engine must remain agnostic to DOOM, C, Malbolge, and licensing
-policy. Thin product recipes select paths, thresholds, domain probes, and output
-format.
+**Completion boundary (2026-11-16):** Only the delivered exact-baseline DOOM
+consumers are completed. Generic compatible-variant admission, new bug-probe
+policies and other feature expansion were never accepted and are **not**
+represented as complete. DOOM source-semantic checks and C-to-Malbolge
+execution remain separately governed.
 
-**Current implementation.**
+**Historical implementation evidence.**
 
 - Recipe preflight now rejects foreign `pathlib.Path` subclasses for source,
   oracle, output, and domain module before invoking path conversion or
@@ -2064,26 +2066,16 @@ format.
 
 ## Acceptance
 
-- Exact baseline source plus emitted transform reproduces the local oracle
-  byte-for-byte.
-- Comments and formatting may be ignored for source identity without being
-  silently discarded from preserved output/provenance.
-- Content/token anchors tolerate non-semantic insertions better than absolute
-  byte
-  offsets.
-- Identity, compatibility, and bug probes have separate semantics.
-- An upstream source that already satisfies a bug-fix postcondition can remain
-  compatible without reproducing the original bug.
-- Generated transform without enough admitted source cannot materialize the
-  target.
-- Unrelated source and behavior-only clones fail closed.
-- Source-binding failure occurs before accepted target files are published.
-- Generic tests contain no third-party DOOM source.
-- Generation and exact-baseline materialization are deterministic and
-  byte-identical across repeated runs.
-- Threshold values are justified by calibration evidence and documented as
-  technical policy rather than legal conclusions.
-- Jig repository validation passes without weakening project governance.
+- The accepted normalized DOOM tree plus the emitted exact transformation
+  reproduces the pinned canonical single-file `doom.c` oracle byte-for-byte.
+- Missing, mutated and wrong original source is rejected before publication;
+  possession of the emitted transform alone cannot materialize the target.
+- Exact generation and materialization are deterministic under the declared
+  source and profile identity; input source is never overwritten.
+- Generic source-binding regressions contain only synthetic test inputs.
+- Only the accepted exact-baseline path is completed. General compatible-
+  variant search, arbitrary behavior probes and Malbolge guest execution are
+  **not** claimed or required by this completed source-preparation milestone.
 
 ## Evidence
 
@@ -2097,3 +2089,15 @@ format.
 - Required evidence: exact reconstruction hashes, threshold-boundary fixtures,
   wrong/no-source rejection, behavior-probe fixtures, deterministic generation,
   source-binding negative tests, and `jig validate --root .`.
+
+## Completion decision (2026-11-16)
+
+The owner closed the accepted **exact source-bound DOOM transformation** while
+retaining its code and tests; generic future feature research is out of scope.
+Accepted DOOM amalgamation records source-bound Rust transform SHA-256
+`7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`
+and `doom.c` SHA-256
+`a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`.
+The historical record reports 4,367 diff-suite tests at its recorded revision;
+this is **not** a new full Jig validation or a proof of generalized variant
+admission. DOOM-generated guest execution remains an open application task.

@@ -7,7 +7,7 @@ area: "applications"
 task: "TODO - Apollo 11 Luminary AGC in Malbolge"
 contract: "docs/technical/examples/apollo-11-luminary-agc-malbolge.md"
 depends_on:
-  - "doom-playable-generated-code-performance"
+  - "cpu-first-c-to-malbolge-release"
   - "malbolge-layout-and-encoding-backend"
   - "translation-validation"
   - "documentation-readiness-and-implementation-gate"
@@ -34,6 +34,14 @@ Block II AGC interpreter that is itself compiled to and executed as
 
 ## Acceptance
 
+- Compile **only** `apollo_agc_runner.c` as ordinary C to Malbolge, without
+  a special AGC translator. `apollo_agc_parity.c` is a separate native-only
+  parity fixture; `tests/cli_native_debug.rs` independently tests full runner
+  output/termination. Compare actual guest execution with the native runner
+  oracle and report unsupported C features or resource limits without host
+  simulation.
+- After the C runners work, pursue the actual historical mission image.
+  Executing a C approximation of guidance alone must not be called Luminary.
 - A pinned Luminary 099 / LMY99 revision 1 source and assembled rope image have
   explicit public-domain provenance, attribution, reproducible assembly, and an
   exact artifact identity.
@@ -63,5 +71,6 @@ Block II AGC interpreter that is itself compiled to and executed as
 - Required evidence: source/image provenance, reproducible assembly,
   differential traces, exact output/state oracle, generated-artifact identity,
   resource budgets, and verifier acceptance.
-- Prerequisite completion evidence: `doom-playable-generated-code-performance`,
+- Prerequisite completion evidence: `cpu-first-c-to-malbolge-release`,
   `malbolge-layout-and-encoding-backend`, and `translation-validation`.
+  DOOM playability is not a dependency of compiling an AGC C program.

@@ -25,8 +25,8 @@
 // - Description:
 //   - Checks one's-complement arithmetic, banking, memory, fetch, and opcodes.
 // - Usage:
-//   - Run as guest C now; compile this same harness to Malbolge for parity
-//     later.
+//   - Run as a native parity test only. The included runner, not this
+//     harness, is the sole source compiled to Malbolge.
 // - Defaults:
 //   - Fail closed on the first mismatching deterministic vector.
 //

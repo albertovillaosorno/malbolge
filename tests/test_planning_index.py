@@ -59,10 +59,9 @@ P_GROUPS = (
     ("P6", "Scale compilation with verified reuse"),
     ("P7", "Native execution and turnkey packaging"),
     ("P8", "Accelerators and large-program validation"),
-    ("P9", "Self-hosting and guest-machine applications"),
-    ("P10", "Publication and optional research"),
+    ("P9", "Self-hosting, machine runners and final evidence"),
+    ("P10", "Final comprehensive paper"),
 )
-PHASES_ROOT = ROOT / "docs/todo/ROADMAP.md"
 EARLIEST_BLOCKER = "parametric-guest-byte-stream-emission"
 FIRST_RELEASE = "cpu-first-c-to-malbolge-release"
 
@@ -336,7 +335,6 @@ def test_unapproved_gpu_adapter_has_no_active_reservation() -> None:
     ).exists()
     for document in (
         TODO_PATH,
-        PHASES_ROOT,
         ROOT / "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md",
         ROOT / "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md",
     ):
@@ -345,19 +343,46 @@ def test_unapproved_gpu_adapter_has_no_active_reservation() -> None:
     assert all(reserved not in path.name for path in OPEN_ROOT.rglob("*.mdc"))
 
 
-def test_phase_gates_include_every_current_phase_and_real_release() -> None:
-    """No gate is silently removed and the CPU-only milestone remains named."""
-    roadmap = PHASES_ROOT.read_text(encoding="utf-8")
+def test_single_todo_owns_phase_gates_and_final_paper() -> None:
+    """One TODO document owns P2-P10 and ends with one comprehensive paper."""
     index = TODO_PATH.read_text(encoding="utf-8")
-    assert "[phase gates and critical path](docs/todo/ROADMAP.md)" in index
+    assert not (ROOT / "docs/todo/ROADMAP.md").exists()
+    assert "## Delivery phase gates" in index
     assert "P5 CPU-only release" in index
-    assert "## Immediate execution queue" in roadmap
-    assert "not another fixture ladder" in roadmap
+    assert "**Current execution queue:**" in index
+    assert "CPU" in index and "CUDA" in index
     for phase, _ in P_GROUPS:
-        assert roadmap.count(f"### {phase} — ") == 1
-    assert "CPU-first" in roadmap
-    assert "turnkey contract" in roadmap
+        assert index.count(f"- **{phase} — ") == 1
+    sections = _parse_sections(index)
+    final_section = sections[-1]
+    assert final_section.identifier == "P10"
+    assert len(final_section.records) == 1
+    assert final_section.records[0].identifier == (
+        "malbolge-machine-model-and-c-compilation-paper"
+    )
+    assert index.rstrip().endswith(
+        "[docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc]"
+        "(docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc)"
+    )
     assert (ROOT / "docs/todo/open/compiler" / f"{FIRST_RELEASE}.mdc").is_file()
+
+
+def test_removed_studies_and_completed_diff_are_not_open() -> None:
+    """Scope deletions do not become an archive or a false open task."""
+    removed = (
+        "hexagonal-authoring-layout-experiment",
+        "human-scale-malbolge-search-study",
+        "effective-transcendental-separation-paper",
+        "publication-grade-paper-pipeline",
+    )
+    assert not (ROOT / "docs/todo/withdrawn").exists()
+    ids = {record.identifier for record in _open_records()}
+    for identity in removed:
+        assert identity not in ids
+    assert "source-bound-diff-generator" not in ids
+    path = COMPLETED_ROOT / "tools/source-bound-diff-generator.mdc"
+    assert path.is_file()
+    assert _front_matter(path.read_text(encoding="utf-8"), "status") == "completed"
 
 
 def test_open_records_do_not_retain_migrated_root_detail() -> None:

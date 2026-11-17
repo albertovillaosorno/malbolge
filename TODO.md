@@ -14,8 +14,9 @@ and completed records retain their historical lane labels.
 control -> P3 an explicitly supported deterministic-C/byte-stream surface ->
 P4 independent translation verification -> **P5 CPU-only release**. Native
 AOT/JIT, CUDA, DOOM, resident scaling, self-hosting, and papers do not block
-this first usable delivery. The final cross-platform turnkey toolchain is P7;
-it remains distinct from the new P5 CPU release.
+this first usable delivery. CUDA is nevertheless required for P8 scaling
+evidence on ambitious programs; CPU remains the reference for correctness.
+The final cross-platform turnkey toolchain is P7, distinct from the P5 release.
 
 **Start here:** compile the complete mutable EOF checksum, capture the first
 real compiler failure, fix that capability, and rerun the *same* source on the
@@ -25,18 +26,72 @@ binary stream edge cases, verify supported lowerability and advance the P5
 single-command acceptance. Never fake guest output or defer safety,
 correctness, or source/guest verification.
 
-**Phase exit is evidence-based.** A gate is only passed with the exact
-source, guest artifact, oracle, validation receipt and known limitations
-recorded under its owning typed TODO and contract. Not all supporting or
-optional tasks in a phase must be finished for an earlier gate: deferred
-tasks remain open and visibly scheduled. See the
-[phase gates and critical path](docs/todo/ROADMAP.md).
+**Phase exit is evidence-based.** A gate passes only with the exact source,
+guest artifact, independent oracle, validation receipt and known limits under
+its owning typed TODO. Optional tasks do not block a proven earlier release.
+This `TODO.md` is the **sole roadmap**; typed task contracts hold the detailed
+acceptance and the status of each experiment.
+
+The optional hexagonal and human-search studies and the separate mathematical
+paper are removed. The delivered source-bound diff generator is completed;
+its DOOM integration and regression tests remain. Apollo and RV32I use the
+ordinary C compiler, while CUDA is needed for later large-program scaling.
 
 Only unfinished work appears below. Each entry keeps one title, one synthesis
-paragraph and one direct link to its typed authority. Completed work stays
-under `docs/todo/completed/`. Ordinary correctness and memory safety are
-never postponed; optional rare-edge research belongs to the single
-`prepublication-hardening` task when it does not affect supported behavior.
+paragraph and one link to its typed authority. Completed work stays under
+`docs/todo/completed/`. Correctness and memory safety are never deferred.
+
+## Delivery phase gates
+
+- **P2 — Real guest C:** one complete C checksum program with mutable state,
+  input-driven arithmetic and branching, and EOF loop must execute in the
+  normative Malbolge VM. Start with the recorded automatic-declaration
+  refusal, fix the actual compiler stage and compare with native C23 on
+  NUL, high bytes and EOF; guest stdout cannot be host-simulated.
+- **P3 — Supported deterministic C:** accepted tidy source always lowers;
+  variable-length binary byte I/O, EOF and negative cases match native
+  controls with explicit limitations and reproducible source locations.
+- **P4 — Verified translation:** independent source-to-guest checking,
+  address-sensitive layout and self-modification equivalence, reproducible
+  artifacts, deterministic builds and genuine guest-state tests.
+- **P5 — First usable release:** a pinned Linux bootstrap and one stable
+  compile command produce safe, verified Malbolge artifacts for two distinct
+  real C programs; native oracles match on binary/EOF inputs. CPU only.
+- **P6 — Scaling and reuse:** measure CPU search success, latency, memory,
+  target size and verifier work. Add exact pruning, reusable blocks and
+  resident compilation where evidence demonstrates benefit; no GPU required.
+- **P7 — Native execution:** x86-64/AArch64 AOT plus guarded JIT remain
+  equivalent to the interpreter on mutable-code and I/O tests. Final
+  turnkey Windows/Linux packaging preserves deterministic CPU fallback.
+- **P8 — CUDA and large programs:** **real NVIDIA CUDA acceleration is
+  mandatory for the scaling goal**; verify proposals independently against
+  CPU, measure real hardware, code size and compilation cost, and test
+  generated DOOM playability and ordinary C-compiled Apollo AGC runners.
+  PyTorch, stochastic search and symmetry pruning stay later than P5.
+- **P9 — Self-hosting and applications:** the Malbolge-hosted compiler must
+  compile another supported C program with independent equivalence proof.
+  Independently compile the ordinary RV32I C runner; prove its real guest
+  ISA execution with bounded binary/state evidence. Retain historical
+  demonstration and risk-ranked prepublication hardening here.
+- **P10 — One final paper:** **the final open task** is a single
+  reproducible systems paper covering the historical machine model,
+  compiler/verification, CPU/CUDA algorithms, native tiers, DOOM,
+  Apollo, RV32I, self-hosting, performance, caveats, bibliography and
+  regeneration scripts. No separate mathematical or methodology paper.
+
+**Current execution queue:** compile the *same* complete EOF-checksum C
+source repeatedly, repair its first real failure, compare guest bytes and
+termination with independently executed native C23 at `-O0` and `-O2`, and
+record exact before/after source and artifact identities. Add seeded
+boundary cases only after that full program works. Do not replace general
+compiler progress with more literal `emit-N` examples.
+
+**Scope control:** CPU is the correctness baseline. CUDA is required for P8,
+not P5. The accepted source-bound diff generator remains completed and
+maintained for DOOM, with no open generic expansion. Apollo and RV32I each
+have only one C **guest compilation target**; their parity and whole-program
+tests are separate host validation inputs, never special translators. Only
+one final P10 paper is planned.
 
 ## P2 — Execute real stateful C
 
@@ -218,14 +273,6 @@ produce capacity curves and Pareto frontiers rather than one pass/fail score.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc](docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc)
 
-### TODO - Stochastic and guided search
-
-Evaluate Monte Carlo, evolutionary, STOKE-like stochastic, learned, and hybrid
-search with deterministic final verification and reproducible research seeds.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/stochastic-and-guided-search.mdc](docs/todo/open/accelerator/stochastic-and-guided-search.mdc)
-
 ### TODO - Resident incremental compiler and WAL
 
 Build a native long-lived compiler service that keeps parsed source, normalized
@@ -325,6 +372,14 @@ and Linux hosts.
 
 ## P8 — Accelerators and large-program validation
 
+### TODO - Stochastic and guided search
+
+Evaluate Monte Carlo, evolutionary, STOKE-like stochastic, learned, and hybrid
+search with deterministic final verification and reproducible research seeds.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/stochastic-and-guided-search.mdc](docs/todo/open/accelerator/stochastic-and-guided-search.mdc)
+
 ### TODO - CUDA superoptimizer
 
 Implement GPU-parallel candidate synthesis, pruning, equivalence testing, cost
@@ -332,15 +387,6 @@ evaluation, and verified block stitching.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/accelerator/cuda-superoptimizer.mdc](docs/todo/open/accelerator/cuda-superoptimizer.mdc)
-
-### TODO - PyTorch search orchestration
-
-Use PyTorch for batched candidate/state representation, experiment
-orchestration, and heuristic models where useful while purpose-built kernels
-retain exact semantic execution where tensor operations are a poor fit.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/pytorch-search-orchestration.mdc](docs/todo/open/accelerator/pytorch-search-orchestration.mdc)
 
 ### TODO - DOOM playable generated-code performance
 
@@ -369,7 +415,25 @@ across original C, modern C, Rust, CPU batch, JIT, and accelerator paths.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/real-program-benchmark-suite.mdc](docs/todo/open/applications/real-program-benchmark-suite.mdc)
 
-## P9 — Self-hosting and guest-machine applications
+### TODO - PyTorch search orchestration
+
+Use PyTorch for batched candidate/state representation, experiment
+orchestration, and heuristic models where useful while purpose-built kernels
+retain exact semantic execution where tensor operations are a poor fit.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/pytorch-search-orchestration.mdc](docs/todo/open/accelerator/pytorch-search-orchestration.mdc)
+
+### TODO - High-arity synthesis symmetry pruning
+
+Extend exact tuple-quotient and stabilizer mathematics only when measured
+synthesis traces show symmetry-related residual branching is eroding pruning
+effectiveness.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc](docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc)
+
+## P9 — Self-hosting, machine runners and final evidence
 
 ### TODO - Portable c2malbolge implementation in C
 
@@ -412,7 +476,14 @@ RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/rv32i-malbolge-runner.mdc](docs/todo/open/applications/rv32i-malbolge-runner.mdc)
 
-## P10 — Publication and optional research
+### TODO - Historical capability demonstration
+
+Produce a reproducible demonstration from the 1998 interpreter through modern
+tooling to substantial generated programs and self-hosting while keeping
+historical attribution and compatibility evidence explicit.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/research/historical-capability-demonstration.mdc](docs/todo/open/research/historical-capability-demonstration.mdc)
 
 ### TODO - Prepublication hardening
 
@@ -423,79 +494,15 @@ of the real supported C-to-Malbolge path.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/prepublication-hardening.mdc](docs/todo/open/research/prepublication-hardening.mdc)
 
-### TODO - Historical capability demonstration
+## P10 — Final comprehensive paper
 
-Produce a reproducible demonstration from the 1998 interpreter through modern
-tooling to substantial generated programs and self-hosting while keeping
-historical attribution and compatibility evidence explicit.
+### TODO - Final comprehensive Malbolge paper
 
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/research/historical-capability-demonstration.mdc](docs/todo/open/research/historical-capability-demonstration.mdc)
-
-### TODO - Human-scale Malbolge search study
-
-Create a bounded experiment illustrating why manual Malbolge synthesis is
-cognitively impractical even for very capable humans, separating attention and
-energy limits from machine-search throughput without bogus IQ or neuroscience
-claims.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/research/human-scale-malbolge-search-study.mdc](docs/todo/open/research/human-scale-malbolge-search-study.mdc)
-
-### TODO - Publication-grade paper pipeline
-
-Create a reproducible LaTeX paper pipeline under `docs/research/papers/`
-capable of turning mature investigations into publication-quality papers with
-canonical bibliography, equations, figures, tables, experiment provenance,
-limitations, and regenerated results without making publication a prerequisite
-for ordinary engineering work.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/research/publication-grade-paper-pipeline.mdc](docs/todo/open/research/publication-grade-paper-pipeline.mdc)
-
-### TODO - Malbolge machine-model and C compilation paper
-
-Publish the systems/compiler result as a reproducible study of compiling a
-modern deterministic C profile to Malbolge's versioned execution model, using
-an explicit abstract-machine description rather than relying on the historical
-"esoteric programming language" label as the technical model.
+Publish **one** reproducible, publication-grade paper containing the complete
+verified Malbolge project: its historical machine model, deterministic C-to-
+Malbolge compiler, semantics and translation verification, CPU and CUDA
+optimization, native AOT/JIT execution, DOOM, Apollo AGC, RV32I and self-hosting
+results, including real measurements, negative evidence and limitations.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc](docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc)
-
-### TODO - Effective transcendental separation paper
-
-Keep any genuinely new effective Diophantine/transcendence result needed to
-bound rational or dyadic trigonometric midpoint separation as an independent
-mathematics paper rather than an implicit product-engineering prerequisite.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/research/effective-transcendental-separation-paper.mdc](docs/todo/open/research/effective-transcendental-separation-paper.mdc)
-
-### TODO - Source-bound diff generator
-
-Implement `algorithms/diff/` as a generic deterministic generator that learns a
-source-tree transformation from a local source/oracle pair and emits a
-distributable transform whose target material remains bound to sufficiently
-compatible source input.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/tools/source-bound-diff-generator.mdc](docs/todo/open/tools/source-bound-diff-generator.mdc)
-
-### TODO - Hexagonal authoring-layout experiment
-
-Research an optional graph or hexagonal authoring representation that lowers to
-ordinary linear `.malbolge` output and therefore does not require a special
-execution engine for compatible programs.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compatibility/hexagonal-authoring-layout-experiment.mdc](docs/todo/open/compatibility/hexagonal-authoring-layout-experiment.mdc)
-
-### TODO - High-arity synthesis symmetry pruning
-
-Extend exact tuple-quotient and stabilizer mathematics only when measured
-synthesis traces show symmetry-related residual branching is eroding pruning
-effectiveness.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc](docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc)

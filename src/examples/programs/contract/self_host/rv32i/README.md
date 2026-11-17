@@ -40,22 +40,20 @@ malbolge src/examples/programs/contract/self_host/rv32i/rv32i_runner.c
 Expected output is exactly `OK\n`. Native execution is debug scaffolding only;
 it is not evidence that a RISC-V binary has executed inside Malbolge yet.
 
-## Deterministic parity harness
+## Native parity versus whole-program execution
 
-`rv32i_parity.c` includes the interpreter as guest C and drives real encoded
-instructions through the normal fetch/decode/execute path. The vectors cover
-upper immediates, immediate ALU, logical/arithmetic shifts, all base register
-ALU operations, taken and non-taken branches, JAL/JALR, signed and unsigned
-loads, stores, misalignment and bounds traps, illegal instructions, FENCE,
-EBREAK, and the architectural `x0` invariant. It also reruns the embedded loop
-program.
+- **Guest C compilation target:** `rv32i_runner.c` only. The normal compiler
+  produces one `.malbolge` artifact from this source; there is no special
+  AGC/RISC-V compiler or second guest test program.
+- **Native parity fixture:** `rv32i_parity.c` includes that runner and exercises
+  deterministic machine-state and instruction vectors. It is a host test,
+  **not** a second `.malbolge` translation target.
+- **Separate whole-program test:** `tests/cli_native_debug.rs` runs the
+  unmodified runner with the native debugging CLI, checking exit status and
+  exact `OK` plus newline. The guest-artifact test must later run the generated
+  Malbolge program and compare its actual behavior against that native oracle.
 
-```text
-malbolge src/examples/programs/contract/self_host/rv32i/rv32i_parity.c
-```
-
-The exact transcript is `RV32I-PARITY-v1
-OK
-`. The same harness will be
-compiled to `.malbolge` later, making the native-C and Malbolge comparison an
-exact byte-parity check over identical test logic.
+The parity fixture is executable today through the native debug CLI and emits
+an exact canonical transcript. It does not claim that the guest compiler
+already supports the runner or that a historical mission/external ISA workload
+is complete.

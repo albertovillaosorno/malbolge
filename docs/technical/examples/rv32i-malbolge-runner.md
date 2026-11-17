@@ -30,15 +30,22 @@ and EBREAK termination. Its embedded machine-code program computes a looped
 sum, stores the result, and reaches a fixed architectural oracle before `OK\n`
 is emitted by the outer guest fixture.
 
+The immediate acceptance step is to compile **only** `rv32i_runner.c` as
+ordinary C, run the generated Malbolge guest, and compare it with an
+independently executed native runner oracle. There is no RISC-V-specific
+translation path; a refusal must identify the missing general C capability.
+This does not require completing the Apollo AGC demonstration.
+
 The bootstrap does not yet ingest arbitrary binaries and has no completed
 Malbolge artifact. The external binary format, deterministic platform, broader
 conformance corpus, reference differential execution, and generated execution
 remain open.
 
-`rv32i_parity.c` now drives bounded instruction vectors through the same guest
-interpreter and emits a canonical transcript. Because the parity program is
-freestanding guest C, the future generated `.malbolge` can execute the same
-checks; native and Malbolge outputs then become direct byte-parity evidence.
+`rv32i_parity.c` supplies a **native-only C parity fixture**, separate from
+the runner compilation target. `tests/cli_native_debug.rs` tests the complete
+native runner independently. Guest parity is established by executing the
+one generated `.malbolge` artifact from `rv32i_runner.c`, not by translating
+test harnesses as extra guest programs.
 
 ### Standards and licensing boundary
 
@@ -68,6 +75,8 @@ exhaustion, or differential mismatches fail explicitly.
 
 Completion requires:
 
+- ordinary C-to-Malbolge compilation and guest execution of the *single*
+  RV32I runner, with separate native parity and whole-program oracle tests;
 - a documented deterministic RV32I execution environment and binary format;
 - instruction-family conformance vectors covering the complete base ISA;
 - differential execution against an independent reference implementation;

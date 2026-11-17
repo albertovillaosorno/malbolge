@@ -7,7 +7,7 @@ area: "applications"
 task: "TODO - RV32I runner in Malbolge"
 contract: "docs/technical/examples/rv32i-malbolge-runner.md"
 depends_on:
-  - "apollo-11-luminary-agc-malbolge-demonstration"
+  - "cpu-first-c-to-malbolge-release"
   - "malbolge-layout-and-encoding-backend"
   - "deterministic-binary-byte-stream-runtime"
   - "translation-validation"
@@ -33,6 +33,14 @@ RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
 
 ## Acceptance
 
+- Compile **only** `rv32i_runner.c` as ordinary C to Malbolge. Keep
+  `rv32i_parity.c` as an independent native-only parity fixture and
+  `tests/cli_native_debug.rs` as a separate whole-program runner test.
+  Compare real guest execution with the native runner oracle and record size,
+  runtime and first unsupported C construct; no special RISC-V compiler or
+  host-side instruction executor is admitted.
+- Expand from its embedded smoke binary to toolchain-produced RV32I inputs
+  only after the guest C interpreter itself executes correctly.
 - The runner implements the complete selected base RV32I contract with explicit
   deterministic memory, misalignment, trap, binary-loading, output, and exit
   semantics.
@@ -61,7 +69,7 @@ RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
 - Required evidence: ISA conformance vectors, independent differential traces,
   compiler-produced binary identity, exact output/state oracle, generated
   artifact identity, resource budgets, and verifier acceptance.
-- Prerequisite completion evidence:
-  `apollo-11-luminary-agc-malbolge-demonstration`,
+- Prerequisite completion evidence: `cpu-first-c-to-malbolge-release`,
   `malbolge-layout-and-encoding-backend`,
   `deterministic-binary-byte-stream-runtime`, and `translation-validation`.
+  Apollo AGC work is not a prerequisite.

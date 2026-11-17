@@ -11,7 +11,6 @@ depends_on:
   - "benchmark-and-statistical-evidence-protocol"
   - "parametric-compiler-challenge-generator"
   - "reusable-block-catalogue"
-  - "stochastic-and-guided-search"
   - "resumable-compilation-progress-sidecars"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
@@ -69,5 +68,5 @@ budgets and fit empirical models instead of assuming a complexity class.
   catalogue/version provenance, verifier identity, and threats to validity.
 - Prerequisite completion evidence: `superoptimization-research-program`,
   `benchmark-and-statistical-evidence-protocol`,
-  `parametric-compiler-challenge-generator`, `reusable-block-catalogue`,
-  `stochastic-and-guided-search`.
+  `parametric-compiler-challenge-generator` and `reusable-block-catalogue`.
+  Stochastic proposals are optional comparison inputs, not prerequisites.

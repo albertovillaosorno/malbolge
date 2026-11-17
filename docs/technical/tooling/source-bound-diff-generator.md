@@ -2,8 +2,15 @@
 
 ## Status
 
-Active. Exact authoring/materialization, generic identity primitives, tree-level
-structural/stable-anchor admission, the first language-aware consumer identity
+The DOOM-consumed exact source-bound transformation is accepted as completed
+on 2026-11-16; its typed record now lives under
+`docs/todo/completed/tools/source-bound-diff-generator.mdc`. Its code, generated
+transforms and existing regression tests remain maintained for DOOM. General
+compatible-variant admission and further generic feature expansion are **not**
+completed or independently scheduled; this is not guest DOOM execution.
+
+Historical implementation status: exact authoring/materialization, generic
+identity primitives, tree-level structural/stable-anchor admission, the first language-aware consumer identity
 adapter, generic behavior-evidence semantics, a portable bounded process-probe
 executor, the first DOOM identity behavior program, and threshold source-bound
 key

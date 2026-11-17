@@ -30,7 +30,7 @@ one successful finite program. Unsupported C behavior must fail explicitly.
 The current critical path starts at **P2**, under
 `docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc`, and
 targets the **P5 CPU-first usable compiler release**. Follow the
-[phase gates](docs/todo/ROADMAP.md) instead of scheduling native tiers,
+[phase gates in TODO.md](TODO.md) instead of scheduling native tiers,
 CUDA, DOOM or publication before a real stateful C program runs in the guest.
 The older versioned corpus is evidence, not a roadmap for incrementing N.
 Escalate unclear priorities before another homogeneous byte-count example.

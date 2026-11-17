@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Methodology for the single final comprehensive Malbolge paper
 
 ## Research Question
 
@@ -17,9 +17,10 @@ bibliography, equations, figures, tables, experiment provenance, limitations,
 and regenerated results without making publication a prerequisite for ordinary
 engineering work.
 
-- Status: Proposed
+- Status: Supporting method; one P10 paper is the only deliverable
 - Record type: Methodology
-- Planning identity: `publication-grade-paper-pipeline`
+- Planning identity: `malbolge-machine-model-and-c-compilation-paper`
+  (single final publication TODO)
 - Last reviewed: 2026-07-26
 
 ## Prior Work
@@ -47,9 +48,10 @@ Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`. The [LaTeX
 bibliography record](../../bibliography/tooling/latex.md) defines the
-publication tool family. The final pipeline consumes mature study records,
-including the historical capability demonstration and bounded human-scale
-search study, rather than blocking their evidence collection.
+publication tool family. The final paper consumes reproducible compiler,
+VM, CPU/CUDA, DOOM, Apollo, RV32I, self-hosting and historical-capability
+results without blocking their
+earlier P2-P9 engineering acceptance.
 
 ## Evidence
 
@@ -63,18 +65,19 @@ search study, rather than blocking their evidence collection.
 
 ## Results
 
-No completed research result or implementation claim is made by this proposed
-record.
+This methodology is guidance for the one final paper. It does not assert a
+completed manuscript or create a second publication objective.
 
 ## Threats to Validity
 
-The record is proposed; implementation bias, workload selection, hardware
-effects, and incomplete replication remain threats until measured.
+Implementation bias, workload selection, hardware effects, and incomplete
+replication remain threats until measured in the final paper.
 
 ## Conclusion
 
-Open. No technique is promoted to product architecture until the declared
-evidence supports it.
+Supporting methodology only; acceptance and publication are owned by the
+single final P10 paper in `TODO.md`. No additional paper or pipeline task is
+scheduled.
 
 ## References
 

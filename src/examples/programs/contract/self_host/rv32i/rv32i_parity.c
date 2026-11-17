@@ -25,8 +25,8 @@
 // - Description:
 //   - Checks ALU, shifts, branches, jumps, loads, stores, traps, and x0.
 // - Usage:
-//   - Run as guest C now; compile this same harness to Malbolge for parity
-//     later.
+//   - Run as a native parity test only. The included runner, not this
+//     harness, is the sole source compiled to Malbolge.
 // - Defaults:
 //   - Fail closed on the first mismatching deterministic vector.
 //
