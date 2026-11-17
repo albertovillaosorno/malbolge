@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the tempting direct `*; j` reset of a nine-rotation
+  signed-EOF loader operand is now ruled out for all 20 source lengths that
+  could place the first operand at D=122. The four algebraic candidate tails
+  across those lengths are all position-invalid (80 decode checks), and
+  the actual backend seed selector refuses every length. A genuine 89-step
+  N15 `Iy` guest with one rotation and three ensuing `j` instructions traces
+  D=95 -> 96 -> 122 -> 158 -> 158: the untouched loader stream reaches
+  a fixed point rather than the desired operand. Both focused tests pass.
+  Constructing writable relocation control or another EOF conversion is
+  still required, and the frozen mutable C checksum continues to refuse
+  declaration `29:5` without an artifact.
+
 - On 2026-11-17, the known real four-read C23 EOF publication defect
   (`6a6a6a6a6a` guest versus `ffffffffff` native on empty stdin) now
   fails closed for source-authenticated, unit-incremented unsigned loops

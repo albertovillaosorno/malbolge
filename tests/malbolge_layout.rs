@@ -2623,3 +2623,6 @@ mod trailing_loader_seed_tests;
 
 #[path = "compiler/layout/loader_seed_selection.rs"]
 mod loader_seed_selection_tests;
+
+#[path = "compiler/layout/eof_reset_geometry.rs"]
+mod eof_reset_geometry_tests;

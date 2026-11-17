@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exhausted adjacent loader-only nine-rotation reset (2026-11-17)
+
+The 257-case signed-EOF operand proof yields four source-tail candidates:
+`Hy`, `Iy`, `Ky`, and `Ly`. Their first derived operand needs nine real
+rotations while its adjacent untouched word is `121`. A `j` reading that
+second word sets the post-instruction data pointer to **122**. Thus the
+simple two-instruction `*; j` reset could revisit its first word only if
+that word lives at address 122. For this particular adjacent-loader class,
+phase alignment then requires source lengths `4, 10, ..., 118` (20 lengths).
+All 80 candidate tail/length combinations fail actual 94-phase XLAT1 source
+admission; the position-aware selector independently refuses all 20 lengths.
+The result closes this **unmodified-seed, direct-reset geometry only**.
+
+A genuine 91-cell `Iy` guest instead performs `j; *; j; j; j` at source
+positions 40..44. The normative 15-trit VM traces D as
+`40 -> 95 -> 96 -> 122 -> 158 -> 158`; its one `*` really rotates memory
+address 95 and no other arithmetic cell. Unmodified loader values at
+addresses 96, 122 and 158 are `121`, `157` and `157`, respectively.
+The final `j` is a data-pointer fixed point rather than a reset to 95.
+`tests/compiler/layout/eof_reset_geometry.rs` pins the 80 positional
+refusals and 89-step real guest. Guest arithmetic that **writes a new
+control operand**, a different conversion algorithm, or a more general
+layout remains open. No nine-write guest or whole-C EOF checksum is claimed.
+
 ### Checked loader-tail selection and rejected pointer reset (2026-11-17)
 
 The backend now exposes `select_rotated_loader_seed` for finite, position-
