@@ -28,7 +28,6 @@
 from __future__ import annotations
 
 import json
-import random
 import subprocess
 import sys
 import tempfile
@@ -68,7 +67,7 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
             timeout=90,
         )
 
-    def test_unsigned_counter_selects_live_byte_replay(self) -> None:
+    def test_unsigned_counter_refuses_unconverted_signed_eof(self) -> None:
         source = (
             ROOT
             / "tests/compiler/c-frontend/accepted/unsigned_conditional_live_input.c"
@@ -98,28 +97,11 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
             guest = Path(folder) / "unsigned-branch.malbolge"
             built = self.compile(source, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
-            self.assertTrue(guest.is_file())
-            seed = random.Random(0xA159)
-            samples = [
-                bytes((0, 255, 128, 1)),
-                b"ABCD",
-                bytes(seed.randrange(256) for _ in range(4)),
-            ]
-            for sample in samples:
-                with self.subTest(sample=sample):
-                    run = subprocess.run(
-                        [str(TOOLS[3]), str(guest), "--input-stdin", "--report-steps"],
-                        input=sample,
-                        capture_output=True,
-                        check=False,
-                        timeout=20,
-                    )
-                    self.assertEqual(run.returncode, 0, run.stderr)
-                    # Original C takes four independent reads; only the
-                    # counter-selected third successful byte is written twice.
-                    self.assertEqual(run.stdout, sample[:3] + sample[2:3] + sample[3:4])
-                    self.assertIn(b"malbolge-steps-v1:10", run.stderr)
+            # Source-proven unsigned induction cannot prove that all four
+            # signed getchar calls succeed. C23 outputs ff at EOF, not 6a.
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn(b"Unsupported", built.stderr)
+            self.assertFalse(guest.exists())
 
             invalid = source.read_text().replace("i == 2U", "current == 2U")
             invalid_source = Path(folder) / "dynamic-branch.c"

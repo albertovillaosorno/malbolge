@@ -57,6 +57,12 @@ SWITCH_STEM = "unsigned_switch_guarded_live_input"
 DEAD_LITERAL_STEM = "unsigned_reflexive_dead_literal_live_input"
 DEAD_PURE_STEM = "unsigned_reflexive_dead_pure_live_input"
 UNSUPPORTED_MARKER = b"Unsupported"
+# These signed getchar loop locals used to publish guest outputs only for
+# successful reads; on exhausted stdin they emitted 0x6a instead of C23 ff.
+# Their unsigned induction proofs remain historical, not EOF conversion.
+SIGNED_EOF_REFUSALS = frozenset(
+    {"unsigned_modulo_live_input", "unsigned_radix_live_input"}
+)
 CASES = (
     ("triple_control_live_input", 7, 16),
     ("triple_induction_live_input", 8, 18),
@@ -1722,6 +1728,11 @@ class UnsignedLiveGuestParityTests(unittest.TestCase):
                         check=False,
                         timeout=120,
                     )
+                    if stem in SIGNED_EOF_REFUSALS:
+                        self.assertNotEqual(compiled.returncode, 0)
+                        self.assertIn(UNSUPPORTED_MARKER, compiled.stderr)
+                        self.assertFalse(guest.exists())
+                        continue
                     self.assertEqual(compiled.returncode, 0, compiled.stderr)
                     self.assertTrue(guest.is_file())
                     # The trusted adaptive-width selector keeps the entire
