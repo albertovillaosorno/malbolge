@@ -53,6 +53,19 @@ emission.
 
 ## Evidence
 
+- On 2026-11-16, the bounded nonlinear guest verifier began requiring
+  transition-indexed input/output ordering and independently expected guest
+  data-memory mutations (address and full before/after words). An altered
+  event step or invented arithmetic write refuses, even if final bytes,
+  read counts and visited code positions still agree. A 104-cell program
+  performs real input-dependent `p` arithmetic at step 3, one guest output
+  at step 4 and a second data rotation after revisiting code at step 25;
+  it halts on step 34. An independent scalar crazy/rotate oracle agrees for
+  empty, NUL, 0x80, 0xff and unread-suffix inputs under the historical and
+  modern VMs, within 35 steps and the declared 512-step bound. The source
+  is a machine-level finite path, not a source-C checksum or general guest
+  EOF-loop compiler; the P2 milestone remains open.
+
 - A separately admitted, **input-specific** bounded revisiting-source gate
   now verifies genuine guest backward control without changing the existing
   forward-only encoder. It requires canonical target identity, a complete
@@ -73,8 +86,9 @@ emission.
   reads twice before output: empty input attempts EOF twice; one byte reads
   that byte then EOF; two bytes are consumed in order; extra stdin remains
   unread. Both canonical VMs execute the real guest input instructions.
-  This is a **verification gate**, not a general backward layout synthesizer or the mutable EOF
-  checksum C compiler; dynamic branches, guest locals and EOF loops remain
+  This is a **verification gate**, not a general backward layout synthesizer
+  or the mutable EOF checksum C compiler. Dynamic branches, guest locals
+  and EOF loops remain
   open.
 - A first address-sensitive executable machine-code slice now exists under
   `src/compiler/malbolge-layout/`. It assigns exact code addresses, inverts

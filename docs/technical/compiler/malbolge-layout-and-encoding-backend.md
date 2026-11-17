@@ -22,6 +22,29 @@ This document governs the following declared TODO scope:
 
 ### Bounded revisiting guest input evidence
 
+The input-specific verifier now records **instruction-indexed I/O order**:
+`Input(Byte)`, `Input(EndOfInput)` and `Output(byte)` carry their exact
+zero-based guest step. It also checks instruction-caused data-memory writes,
+including the address and full profile-width before/after words, separately
+from automatic XLAT2 code encryption. Missing, moved or forged effects reject
+even when the final output, consumed-input count and visited code path match.
+The expectation is finite and must provide ordered, in-range event steps.
+
+A separate 104-cell executable experiment now runs real input-dependent
+Malbolge `p` arithmetic before an output and a genuine backward-code revisit.
+It reads a byte or EOF at step 2, computes the ternary crazy operation with
+original memory word 119 at address 43 at step 3, emits its low byte at step
+4, then rotates the independent word 97 at address 65 at step 25 before
+halting at step 34. All source paths revisit code cells.
+
+The expected values come from an independent scalar 3-by-3 trit table and
+rotation equation, not from the VM under test. Five frozen streams (empty,
+NUL, 0x80, 0xff and a two-byte stream with unread suffix) agree on both modern
+and historical profiles. This establishes actual guest input-dependent
+arithmetic, memory mutation and backward control on one fixed path; it
+**does not** synthesize an arbitrary EOF loop, mutable C locals or source-C
+conditional branches.
+
 The separate backward-control admission path checks a complete finite guest
 execution against exact source/profile, code visits, self-encryption, output,
 successful input consumption and **ordered input events**. These distinguish
@@ -792,15 +815,16 @@ complete caller-supplied graphical source against a single input-specific
 normative VM execution witness. The ordinary `LinearOpcode` encoder and
 forward-only automatic padding planner are unchanged.
 
-The gate requires exact canonical profile identity, 2..4096 loader-valid source cells, at most
-512 guest transitions and supplied input bytes, an exact ordered code path
+The gate requires exact canonical profile identity, 2..4096 loader-valid
+source cells, at most 512 guest transitions and supplied input bytes, an exact
+ordered code path
 ending in halt, and independently expected guest output and successful byte
 consumption. It checks every fetched guest C address, captures D and
 post-step XLAT2 encryption addresses, requires at least one actual repeated
 code address, and fails closed on any discrepancy.
 
-There is no guessed guest branch or host-performed output, and one accepted input does not authorize
-any other stream.
+There is no guessed guest branch or host-performed output. One accepted
+input does not authorize any other stream.
 
 A finite 104-cell fixture loads on both canonical profiles, executes `j`
 and a forward `i`, reads and outputs one binary byte, and performs a genuine

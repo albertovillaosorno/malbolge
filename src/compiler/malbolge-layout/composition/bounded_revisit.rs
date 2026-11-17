@@ -51,6 +51,37 @@ pub const MAX_REVISIT_SOURCE_CELLS: usize = 4096;
 /// Hard limit for one supplied complete execution-path witness.
 pub const MAX_REVISIT_STEPS: usize = 512;
 
+/// One committed guest I/O operation, preserving read/write ordering.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundedRevisitIoEffect {
+    /// A real VM input instruction, including an attempted read at EOF.
+    Input(TraceInput),
+    /// An actual output byte committed by the VM.
+    Output(u8),
+}
+
+/// Zero-based transition index and its committed I/O effect.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BoundedRevisitIoEvent {
+    /// Index into the exact executed code path (including the halt step).
+    pub step: u32,
+    /// Guest effect observed at that transition.
+    pub effect: BoundedRevisitIoEffect,
+}
+
+/// One instruction-caused guest memory write, excluding XLAT2 encryption.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BoundedRevisitDataWrite {
+    /// Zero-based transition index that committed the data write.
+    pub step: u32,
+    /// Exact profile-width data memory address.
+    pub address: u32,
+    /// Word present before the instruction wrote to guest memory.
+    pub before: u32,
+    /// Final written word prior to post-instruction code encryption.
+    pub after: u32,
+}
+
 /// Complete, input-specific oracle: code visits, output, byte reads and EOF.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BoundedRevisitExpectation<'input> {
@@ -64,6 +95,10 @@ pub struct BoundedRevisitExpectation<'input> {
     pub input_consumed: usize,
     /// All committed input instructions, including attempts at EOF.
     pub input_events: &'input [TraceInput],
+    /// Exact source-ordered guest I/O effects, anchored to executed steps.
+    pub io_events: &'input [BoundedRevisitIoEvent],
+    /// Exact executed arithmetic data writes, with pre/post word witnesses.
+    pub data_writes: &'input [BoundedRevisitDataWrite],
 }
 
 /// An admitted, input-specific guest path with at least one revisited cell.
@@ -76,6 +111,8 @@ pub struct BoundedRevisitLayout {
     output: Vec<u8>,
     input_consumed: usize,
     input_events: Vec<TraceInput>,
+    io_events: Vec<BoundedRevisitIoEvent>,
+    data_writes: Vec<BoundedRevisitDataWrite>,
 }
 
 impl BoundedRevisitLayout {
@@ -120,6 +157,18 @@ impl BoundedRevisitLayout {
     pub fn input_events(&self) -> &[TraceInput] {
         &self.input_events
     }
+
+    /// Exact committed I/O order, including the step of each EOF attempt.
+    #[must_use]
+    pub fn io_events(&self) -> &[BoundedRevisitIoEvent] {
+        &self.io_events
+    }
+
+    /// Actual guest data writes, distinct from automatic code encryption.
+    #[must_use]
+    pub fn data_writes(&self) -> &[BoundedRevisitDataWrite] {
+        &self.data_writes
+    }
 }
 
 /// Stable reason a bounded, input-specific nonlinear witness was not admitted.
@@ -147,6 +196,10 @@ pub enum BoundedRevisitError {
     InputConsumptionMismatch,
     /// Actual byte/EOF input attempts differ from the supplied event sequence.
     InputEventsMismatch,
+    /// Guest I/O events occur in a different order or at different steps.
+    IoEventsMismatch,
+    /// Runtime guest data mutation differs from the independent oracle.
+    DataWritesMismatch,
 }
 
 /// Admits only one *complete*, exact-profile, bounded path with a genuine
@@ -191,6 +244,24 @@ pub fn admit_bounded_revisit_layout(
         || expected.output.len() > MAX_REVISIT_STEPS
         || expected.input_consumed > expected.input.len()
         || expected.input_events.len() > MAX_REVISIT_STEPS
+        || expected.io_events.len() > expected.code_positions.len()
+        || expected.data_writes.len() > expected.code_positions.len()
+        || expected
+            .io_events
+            .windows(2)
+            .any(|pair| pair[0].step >= pair[1].step)
+        || expected.io_events.last().is_some_and(|event| {
+            usize::try_from(event.step).unwrap_or(usize::MAX)
+                >= expected.code_positions.len()
+        })
+        || expected
+            .data_writes
+            .windows(2)
+            .any(|pair| pair[0].step >= pair[1].step)
+        || expected.data_writes.last().is_some_and(|event| {
+            usize::try_from(event.step).unwrap_or(usize::MAX)
+                >= expected.code_positions.len()
+        })
     {
         return Err(BoundedRevisitError::InvalidExpectation);
     }
@@ -204,6 +275,8 @@ pub fn admit_bounded_revisit_layout(
     let mut encrypted_positions =
         Vec::with_capacity(expected.code_positions.len());
     let mut input_events = Vec::with_capacity(expected.input_events.len());
+    let mut io_events = Vec::with_capacity(expected.io_events.len());
+    let mut data_writes = Vec::with_capacity(expected.data_writes.len());
     for (index, &code) in expected.code_positions.iter().enumerate() {
         let before = machine.registers();
         if before.code_pointer != code {
@@ -225,6 +298,24 @@ pub fn admit_bounded_revisit_layout(
         }
         if let Some(input_event) = observed.input {
             input_events.push(input_event);
+            io_events.push(BoundedRevisitIoEvent {
+                step: u32::try_from(index).unwrap_or(u32::MAX),
+                effect: BoundedRevisitIoEffect::Input(input_event),
+            });
+        }
+        if let Some(output_byte) = observed.output {
+            io_events.push(BoundedRevisitIoEvent {
+                step: u32::try_from(index).unwrap_or(u32::MAX),
+                effect: BoundedRevisitIoEffect::Output(output_byte),
+            });
+        }
+        if let Some(data) = observed.memory_delta.data {
+            data_writes.push(BoundedRevisitDataWrite {
+                step: u32::try_from(index).unwrap_or(u32::MAX),
+                address: data.address,
+                before: data.before,
+                after: data.after,
+            });
         }
         code_positions.push(code);
         data_positions.push(before.data_pointer);
@@ -254,6 +345,12 @@ pub fn admit_bounded_revisit_layout(
     if input_events != expected.input_events {
         return Err(BoundedRevisitError::InputEventsMismatch);
     }
+    if io_events != expected.io_events {
+        return Err(BoundedRevisitError::IoEventsMismatch);
+    }
+    if data_writes != expected.data_writes {
+        return Err(BoundedRevisitError::DataWritesMismatch);
+    }
     Ok(BoundedRevisitLayout {
         source: source.to_vec(),
         code_positions,
@@ -262,5 +359,7 @@ pub fn admit_bounded_revisit_layout(
         output: machine.output().to_vec(),
         input_consumed: machine.input_consumed(),
         input_events,
+        io_events,
+        data_writes,
     })
 }

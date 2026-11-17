@@ -35,7 +35,10 @@
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
 
-use layout::{LinearOpcode, LinearProfileIdentity, encode_linear_layout};
+use layout::{
+    BoundedRevisitIoEffect as IoEffect, BoundedRevisitIoEvent as IoEvent,
+    LinearOpcode, LinearProfileIdentity, encode_linear_layout,
+};
 use malbolge::{
     TraceInput, current_profile, decode_profile_instruction, historical_profile,
 };
@@ -113,6 +116,17 @@ fn bounded_revisiting_guest_executes_real_input_output_and_xlat2()
             } else {
                 vec![TraceInput::Byte(input[0])]
             };
+            let io_events = [
+                IoEvent {
+                    step: 2,
+                    effect: IoEffect::Input(input_events[0]),
+                },
+                IoEvent {
+                    step: 3,
+                    effect: IoEffect::Output(expected_output[0]),
+                },
+            ];
+            let data_writes = expected_revisited_data_write(profile);
             let admitted = admit_bounded_revisit_layout(
                 profile,
                 &source,
@@ -126,6 +140,8 @@ fn bounded_revisiting_guest_executes_real_input_output_and_xlat2()
                     output: &expected_output,
                     input_consumed: expected_consumption,
                     input_events: &input_events,
+                    io_events: &io_events,
+                    data_writes: &data_writes,
                 },
             )
             .map_err(|error| {
@@ -143,6 +159,7 @@ fn bounded_revisiting_guest_executes_real_input_output_and_xlat2()
             assert_eq!(admitted.output(), expected_output);
             assert_eq!(admitted.input_consumed(), expected_consumption);
             assert_eq!(admitted.input_events(), input_events);
+            assert_eq!(admitted.io_events(), io_events);
         }
     }
     Ok(())
@@ -201,6 +218,21 @@ fn revisiting_guest_proves_successful_reads_followed_by_real_eof()
             ),
         ];
         for (input, events, output, consumed) in cases {
+            let io_events = [
+                IoEvent {
+                    step: 2,
+                    effect: IoEffect::Input(events[0]),
+                },
+                IoEvent {
+                    step: 3,
+                    effect: IoEffect::Input(events[1]),
+                },
+                IoEvent {
+                    step: 4,
+                    effect: IoEffect::Output(output[0]),
+                },
+            ];
+            let data_writes = expected_revisited_data_write(profile);
             let admitted = admit_bounded_revisit_layout(
                 profile,
                 &source,
@@ -214,6 +246,8 @@ fn revisiting_guest_proves_successful_reads_followed_by_real_eof()
                     output: &output,
                     input_consumed: consumed,
                     input_events: &events,
+                    io_events: &io_events,
+                    data_writes: &data_writes,
                 },
             )
             .map_err(|error| format!("revisiting EOF guest: {error:?}"))?;
@@ -221,6 +255,7 @@ fn revisiting_guest_proves_successful_reads_followed_by_real_eof()
             assert_eq!(admitted.input_events(), events);
             assert_eq!(admitted.input_consumed(), consumed);
             assert_eq!(admitted.output(), output);
+            assert_eq!(admitted.io_events(), io_events);
         }
         // Deleting the second EOF read preserves this exact input's path,
         // output and successful byte count. The extra EOF event is the only
@@ -250,6 +285,21 @@ fn revisiting_guest_proves_successful_reads_followed_by_real_eof()
                     output: &output,
                     input_consumed: 0,
                     input_events: &events,
+                    data_writes: &expected_revisited_data_write(profile),
+                    io_events: &[
+                        IoEvent {
+                            step: 2,
+                            effect: IoEffect::Input(events[0])
+                        },
+                        IoEvent {
+                            step: 3,
+                            effect: IoEffect::Input(events[1])
+                        },
+                        IoEvent {
+                            step: 4,
+                            effect: IoEffect::Output(output[0])
+                        },
+                    ],
                 },
             ),
             Err(layout::BoundedRevisitError::InputEventsMismatch),
@@ -271,6 +321,17 @@ fn bounded_revisiting_admission_rejects_forged_or_incomplete_evidence()
     let input = [0xe7];
     let output = [0xe7];
     let input_events = [TraceInput::Byte(0xe7)];
+    let io_events = [
+        IoEvent {
+            step: 2,
+            effect: IoEffect::Input(input_events[0]),
+        },
+        IoEvent {
+            step: 3,
+            effect: IoEffect::Output(output[0]),
+        },
+    ];
+    let data_writes = expected_revisited_data_write(profile);
     let id = LinearProfileIdentity {
         id: profile.id(),
         fingerprint: profile.fingerprint(),
@@ -281,6 +342,8 @@ fn bounded_revisiting_admission_rejects_forged_or_incomplete_evidence()
         output: &output,
         input_consumed: 1,
         input_events: &input_events,
+        io_events: &io_events,
+        data_writes: &data_writes,
     };
     let admit = |candidate: &[u8], identity, expected| {
         admit_bounded_revisit_layout(profile, candidate, identity, expected)
@@ -349,6 +412,36 @@ fn bounded_revisiting_admission_rejects_forged_or_incomplete_evidence()
         }),
         Err(Error::InputEventsMismatch),
     );
+    let forged_order = [
+        IoEvent {
+            step: 2,
+            effect: IoEffect::Input(input_events[0]),
+        },
+        IoEvent {
+            step: 4,
+            effect: IoEffect::Output(output[0]),
+        },
+    ];
+    assert_eq!(
+        admit(&source, id, BoundedRevisitExpectation {
+            io_events: &forged_order,
+            ..witness
+        }),
+        Err(Error::IoEventsMismatch),
+    );
+    let forged_data = [layout::BoundedRevisitDataWrite {
+        step: 4,
+        address: 43,
+        before: 119,
+        after: 42,
+    }];
+    assert_eq!(
+        admit(&source, id, BoundedRevisitExpectation {
+            data_writes: &forged_data,
+            ..witness
+        }),
+        Err(Error::DataWritesMismatch),
+    );
     let forward = encode_linear_layout(profile, &[
         LinearOpcode::NoOperation,
         LinearOpcode::OutputByte,
@@ -362,6 +455,11 @@ fn bounded_revisiting_admission_rejects_forged_or_incomplete_evidence()
             output: &[0],
             input_consumed: 0,
             input_events: &[],
+            io_events: &[IoEvent {
+                step: 1,
+                effect: IoEffect::Output(0)
+            }],
+            data_writes: &[],
         },),
         Err(Error::NotRevisiting),
     );
@@ -396,5 +494,126 @@ fn bounded_revisiting_admission_rejects_forged_or_incomplete_evidence()
         }),
         Err(Error::InvalidExpectation),
     );
+    Ok(())
+}
+
+// This small scalar calculation is independent of the VM's generated ternary
+// table. It justifies every byte and data write in the guest arithmetic test.
+fn independent_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
+    let table = [[1u32, 0, 0], [1, 0, 2], [2, 2, 1]];
+    let mut result = 0;
+    let mut place = 1;
+    for _ in 0..trits {
+        result +=
+            table[(data % 3) as usize][(accumulator % 3) as usize] * place;
+        data /= 3;
+        accumulator /= 3;
+        place *= 3;
+    }
+    result
+}
+
+fn independent_rotate(word: u32, modulus: u32) -> u32 {
+    word / 3 + (word % 3) * (modulus / 3)
+}
+
+fn expected_revisited_data_write(
+    profile: &malbolge::ProfileDescriptor,
+) -> [layout::BoundedRevisitDataWrite; 1] {
+    [layout::BoundedRevisitDataWrite {
+        step: 25,
+        address: 65,
+        before: 97,
+        after: independent_rotate(97, profile.word_modulus()),
+    }]
+}
+
+#[test]
+fn revisiting_guest_mutates_real_data_using_live_input() -> Result<(), String> {
+    use layout::{
+        BoundedRevisitDataWrite, BoundedRevisitExpectation,
+        admit_bounded_revisit_layout,
+    };
+    for profile in [current_profile(), historical_profile()] {
+        let mut source = bounded_revisit_echo_fixture(profile)?;
+        for (position, opcode) in
+            [(78, b'p'), (79, profile.output_instruction())]
+        {
+            source[position] = (33u8..=126)
+                .find(|byte| {
+                    decode_profile_instruction(
+                        u32::from(*byte),
+                        u32::try_from(position).unwrap_or(u32::MAX),
+                    ) == Some(opcode)
+                })
+                .ok_or_else(|| {
+                    format!("cannot encode {opcode} at {position}")
+                })?;
+        }
+        assert_eq!(source[43], 119);
+        assert_eq!(source[65], 97);
+        for input in [vec![], vec![0], vec![0x80], vec![0xff], vec![b'A', b'B']]
+        {
+            let input_event = input
+                .first()
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+            let accumulator = input
+                .first()
+                .map_or(profile.eof_word(), |value| u32::from(*value));
+            let first_word =
+                independent_crazy(119, accumulator, profile.word_trits());
+            let second_word = independent_rotate(97, profile.word_modulus());
+            let output = [u8::try_from(first_word % 256)
+                .map_err(|error| error.to_string())?];
+            let data_writes = [
+                BoundedRevisitDataWrite {
+                    step: 3,
+                    address: 43,
+                    before: 119,
+                    after: first_word,
+                },
+                BoundedRevisitDataWrite {
+                    step: 25,
+                    address: 65,
+                    before: 97,
+                    after: second_word,
+                },
+            ];
+            let io_events = [
+                IoEvent {
+                    step: 2,
+                    effect: IoEffect::Input(input_event),
+                },
+                IoEvent {
+                    step: 4,
+                    effect: IoEffect::Output(output[0]),
+                },
+            ];
+            let admitted = admit_bounded_revisit_layout(
+                profile,
+                &source,
+                LinearProfileIdentity {
+                    id: profile.id(),
+                    fingerprint: profile.fingerprint(),
+                },
+                BoundedRevisitExpectation {
+                    input: &input,
+                    code_positions: &bounded_revisit_code_path(),
+                    output: &output,
+                    input_consumed: usize::from(!input.is_empty()),
+                    input_events: &[input_event],
+                    io_events: &io_events,
+                    data_writes: &data_writes,
+                },
+            )
+            .map_err(|error| {
+                format!("input-derived guest data write: {error:?}")
+            })?;
+            assert_eq!(admitted.output(), output);
+            assert_eq!(admitted.io_events(), io_events);
+            assert_eq!(admitted.data_writes(), data_writes);
+        }
+    }
     Ok(())
 }

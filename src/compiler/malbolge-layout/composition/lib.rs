@@ -44,7 +44,8 @@
 mod bounded_revisit;
 
 pub use bounded_revisit::{
-    BoundedRevisitError, BoundedRevisitExpectation, BoundedRevisitLayout,
+    BoundedRevisitDataWrite, BoundedRevisitError, BoundedRevisitExpectation,
+    BoundedRevisitIoEffect, BoundedRevisitIoEvent, BoundedRevisitLayout,
     MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS, admit_bounded_revisit_layout,
 };
 
