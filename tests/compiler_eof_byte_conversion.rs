@@ -115,3 +115,102 @@ fn wrong_or_unplaceable_operands_do_not_acquire_a_conversion_proof() {
         );
     }
 }
+
+// The loader's ternary recurrence operates independently on each trit.
+// Each ordered pair of trits enters a 3- or 4-cycle after at most one
+// transition; their least common period is 12. Exhaust every graphical
+// seed pair and every phase, not merely the first few expanded cells.
+// No guest C output is published by this negative feasibility study.
+#[test]
+fn passive_loader_words_cannot_convert_signed_eof_in_twelve_crazy_steps() {
+    let profile = current_profile();
+    let eof = profile.eof_word();
+    let samples = [0, 1, 255, eof];
+    let expected = [0, 1, 255, 255];
+    let mut four_sample_matches = [0usize; 11];
+    let mut complete_matches = 0usize;
+
+    for first in 33..=126u32 {
+        for second in 33..=126u32 {
+            // Positions zero and one are the two graphical source-tail
+            // words; all later cells follow the real loader recurrence.
+            let mut memory = [0u32; 26];
+            memory[0] = first;
+            memory[1] = second;
+            for index in 2..memory.len() {
+                memory[index] = scalar_crazy(
+                    memory[index - 2],
+                    memory[index - 1],
+                    profile.word_trits(),
+                );
+            }
+            assert_eq!(
+                &memory[1..14],
+                &memory[13..26],
+                "graphical tail ({first},{second}) violated the 12-cycle"
+            );
+            // The first expanded pair begins at address 2. The later
+            // phases 2..13 span the complete period; 12 writes fit inside
+            // this frozen 26-word witness without wrapping the VM memory.
+            for start in 2..14 {
+                let mut observed = samples;
+                for length in 1..=12usize {
+                    let operand = memory[start + length - 1];
+                    for accumulator in &mut observed {
+                        *accumulator = scalar_crazy(
+                            operand,
+                            *accumulator,
+                            profile.word_trits(),
+                        );
+                    }
+                    if length < 2
+                        || observed
+                            .iter()
+                            .zip(expected)
+                            .any(|(&value, expected)| value % 256 != expected)
+                    {
+                        continue;
+                    }
+                    four_sample_matches[length - 2] += 1;
+                    // Passing four witnesses is only a candidate, never a
+                    // conversion proof. Check every byte and actual EOF.
+                    let converts_every_input = (0..=256u32).all(|input| {
+                        let word = if input == 256 {
+                            eof
+                        } else {
+                            input
+                        };
+                        let result = memory[start..start + length].iter().fold(
+                            word,
+                            |accumulator, &data| {
+                                scalar_crazy(
+                                    data,
+                                    accumulator,
+                                    profile.word_trits(),
+                                )
+                            },
+                        );
+                        result % 256
+                            == if input == 256 {
+                                255
+                            } else {
+                                input
+                            }
+                    });
+                    if converts_every_input {
+                        complete_matches += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(
+        four_sample_matches,
+        [0, 0, 16, 0, 16, 0, 0, 0, 16, 0, 16],
+        "a different loader candidate population requires renewed review"
+    );
+    assert_eq!(
+        complete_matches, 0,
+        "an actual passive-loader conversion would need guest layout proof"
+    );
+}

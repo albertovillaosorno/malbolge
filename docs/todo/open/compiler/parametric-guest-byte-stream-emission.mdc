@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the complete five-input mutable-EOF checksum was
+  rerun against native C23 controls and still refused the first observed
+  declaration at `29:5`. The four-read signed-EOF loop remains a known
+  mismatching guest output. A new bounded negative loader study verified all
+  8,836 printable source-tail pairs, their 12-phase 15-trit loader cycle,
+  and 2..12 untouched consecutive `p` operands (1,166,352 candidates).
+  Four necessary byte/EOF checks left 64 candidates; exhaustive 257-case
+  verification rejected every one. This eliminates passive short loader
+  conversion but neither constructs guest data operands nor moves the C
+  checksum past its declaration. P2 remains active.
+
 - On 2026-11-17, the source-checked signed-local reassignment gate was
   corrected for *same-line, later-byte* C statements. Four complete source
   forms (two/three real reads, interleaved locals, final return) now compile

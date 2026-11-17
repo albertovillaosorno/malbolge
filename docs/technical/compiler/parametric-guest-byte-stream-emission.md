@@ -28,6 +28,36 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exhausted passive-loader signed EOF operands (2026-11-17)
+
+The frozen mutable-EOF checksum still explicitly refuses its first observed
+`unsigned checksum` local at `29:5`; independently compiled native C23
+`-O0` and `-O2` controls remain the acceptance oracle. The previously
+observed signed output bug in the four-read C23 loop is also still an active
+known failure. It is not solved by a correct algebraic `p`/`p` word pair.
+
+A finite, broader passive-loader study now rules out a tempting short-cut for
+that conversion. For each of all **8,836** graphical final-source-word pairs
+(ASCII 33..126), the 15-trit loader recurrence is independently calculated
+from its scalar crazy table. Each trit-pair transition has a transient of at
+most one step and a period of three or four. Therefore every expanded-word
+phase repeats within 12 transitions; checking the 12 starts from positions
+2..13 covers all *untouched adjacent loader operand streams*, regardless of
+how far the code would have advanced.
+
+`tests/compiler_eof_byte_conversion.rs` now exhausts these starts and every
+chain length from **2 to 12** consecutive `p` operations: 1,166,352
+seed/phase/length candidates. Four necessary observations (0, 1, 255 and
+EOF) leave 64 candidates (16 each at lengths 4, 6, 10, 12), but all 64
+fail the full independent 257-case C23 output oracle. No candidate converts
+all successful bytes and signed EOF. The test also verifies the 12-word
+recurrence directly for each seed. This is a **negative result only for
+passive, unwritten consecutive loader words and the stated length budget**;
+it says nothing about guest-constructed words, operand relocation,
+non-consecutive addresses, or longer arithmetic programs. A real compiler
+must still generate and independently validate those code/data effects, not
+just assert that `87844` and `2551` are correct operand values.
+
 ### Source-ordered, unobserved signed local overwrites (2026-11-17)
 
 A real compiler/guest regression now covers four complete C23 source forms
