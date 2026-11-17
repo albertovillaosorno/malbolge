@@ -175,6 +175,7 @@ class GetcharEofPublicationTests(unittest.TestCase):
             ("parenthesized", "putchar((getchar()));"),
             ("double-parenthesized", "putchar(((getchar())));"),
             ("discard-prefix", "getchar(); putchar(getchar());"),
+            ("discard-suffix", "putchar(getchar()); getchar();"),
             (
                 "double-discard-prefix",
                 "getchar(); getchar(); putchar(((getchar())));",

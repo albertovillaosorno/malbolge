@@ -408,25 +408,48 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     }
     let mut remaining = nodes;
     let mut previous = body.span.begin.byte;
-    let mut reads = 0;
-    // Only standalone unobserved reads may precede the terminal output.
-    // An intervening operation or branch requires a separate C semantics
-    // proof; this refusal predicate never assumes it has one.
-    while remaining.len() > 6 && reads < MAX_ECHO_CALLS {
+    let mut discarded_reads = 0;
+    let mut found_output = false;
+    // C evaluates standalone unused reads on either side of its one
+    // terminal signed-output expression. Both orders leave the output's
+    // EOF conversion observable, even though their input counts differ.
+    while !remaining.is_empty() {
+        if !found_output {
+            for width in 6..=9 {
+                if let Some(candidate) = remaining.get(..width) {
+                    let proven = if width == 6 {
+                        prove_call(candidate, body, previous, body.id).is_some()
+                    } else {
+                        unchecked_parenthesized_echo(candidate, body, previous)
+                    };
+                    if proven {
+                        previous = candidate[0].span.end.byte;
+                        remaining = &remaining[width..];
+                        found_output = true;
+                        break;
+                    }
+                }
+            }
+            if found_output {
+                continue;
+            }
+        }
+        if discarded_reads == MAX_ECHO_CALLS {
+            return false;
+        }
         let Some((head, tail)) = remaining.split_first_chunk::<3>() else {
-            break;
+            return false;
         };
         let input = &head[0];
         if prove_input_call(head, body, previous, (input.id, body.id)).is_none()
         {
-            break;
+            return false;
         }
         previous = input.span.end.byte;
         remaining = tail;
-        reads += 1;
+        discarded_reads += 1;
     }
-    prove_call(remaining, body, previous, body.id).is_some()
-        || unchecked_parenthesized_echo(remaining, body, previous)
+    found_output
 }
 
 // A source-proven getchar() is a guest effect even when its result
