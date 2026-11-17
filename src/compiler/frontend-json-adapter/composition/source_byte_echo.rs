@@ -555,12 +555,6 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
             && declaration.kind == "declaration-statement"
             && loop_body.kind == "compound-statement"
             && for_loop.kind == "for-statement"
-            && by_id.get(&for_loop.parent).is_some_and(|parent| {
-                parent.kind == "compound-statement"
-                    && by_id.get(&parent.parent).is_some_and(|function| {
-                        function.kind == "function-declaration"
-                    })
-            })
             && let Some(reference) = local.reference.as_deref()
         {
             let _ = signed_inputs.insert((loop_body.id, reference));
@@ -573,16 +567,15 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
         let Some(reference) = read.reference.as_deref() else {
             continue;
         };
-        // A signed local can reach putchar through nested putchar calls,
-        // an arithmetic identity, or an explicit cast. The earlier direct
-        // cast/parent proof only saw putchar(current), and published a
-        // genuine guest that emitted 0x6a instead of C23's 0xff at EOF.
-        // Walk Clang ancestry within the exact read/output source spans;
-        // require a direct loop-body effect or nested putchar composition.
-        // Conditional arithmetic still needs a separate complete EOF proof.
+        // A signed loop-local read used by any descendant putchar is unsafe
+        // at EOF unless the output expression has been independently proved
+        // on the signed -1 domain. Branches, nested calls, casts, and modular
+        // arithmetic cannot turn a successful-byte proof into that evidence.
+        // Follow exact Clang parents and spans through the output to the
+        // specific loop body that owns this local declaration. This proof
+        // refuses a publication; it never authorizes a lowering.
         let mut ancestor_id = read.parent;
         let mut output = None;
-        let mut nested_outputs = 0usize;
         for _ in 0..MAX_NESTED_LOCAL_DEPTH {
             let Some(ancestor) = by_id.get(&ancestor_id) else {
                 break;
@@ -592,10 +585,8 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
                 && ancestor.span.begin.byte <= read.span.begin.byte
                 && read.span.end.byte <= ancestor.span.end.byte
             {
-                if output.is_none() {
-                    output = Some(*ancestor);
-                }
-                nested_outputs += 1;
+                output = Some(*ancestor);
+                break;
             }
             ancestor_id = ancestor.parent;
         }
@@ -607,75 +598,11 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
                 };
                 if ancestor.kind == "compound-statement"
                     && signed_inputs.contains(&(ancestor.id, reference))
-                    && (output.parent == ancestor.id || nested_outputs > 1)
                 {
                     return true;
                 }
                 ancestor_id = ancestor.parent;
             }
-        }
-        let Some(cast) = by_id.get(&read.parent) else {
-            continue;
-        };
-        let Some(output) = by_id.get(&cast.parent) else {
-            continue;
-        };
-        // A direct putchar in the same counted-loop body is unsafe even
-        // without a counter-selected if arm. Static unrolling proves the
-        // number of reads, not that any signed getchar avoids EOF.
-        if cast.kind == "cast-expression"
-            && cast.type_name.as_deref() == Some("i32")
-            && output.kind == "call-expression"
-            && output.reference.as_deref() == Some("external:putchar")
-            && signed_inputs.contains(&(output.parent, reference))
-        {
-            return true;
-        }
-        let Some(arm) = by_id.get(&output.parent) else {
-            continue;
-        };
-        let Some(conditional) = by_id.get(&arm.parent) else {
-            continue;
-        };
-        let Some(loop_body) = by_id.get(&conditional.parent) else {
-            continue;
-        };
-        let pure_counter_equality = nodes.iter().any(|comparison| {
-            if comparison.parent != conditional.id
-                || comparison.kind != "binary-expression"
-                || comparison.operation.as_deref() != Some("==")
-            {
-                return false;
-            }
-            let signed_local_is_not_the_guard = nodes.iter().any(|child| {
-                child.parent == comparison.id
-                    && child.kind == "cast-expression"
-                    && child.type_name.as_deref() == Some("u32")
-                    && nodes.iter().any(|counter| {
-                        counter.parent == child.id
-                            && counter.kind
-                                == "declaration-reference-expression"
-                            && counter.type_name.as_deref() == Some("u32")
-                    })
-            });
-            let has_unsigned_literal = nodes.iter().any(|literal| {
-                literal.parent == comparison.id
-                    && literal.kind == "integer-literal"
-                    && literal.type_name.as_deref() == Some("u32")
-            });
-            signed_local_is_not_the_guard && has_unsigned_literal
-        });
-        if pure_counter_equality
-            && cast.kind == "cast-expression"
-            && cast.type_name.as_deref() == Some("i32")
-            && output.kind == "call-expression"
-            && output.reference.as_deref() == Some("external:putchar")
-            && arm.kind == "compound-statement"
-            && conditional.kind == "if-statement"
-            && loop_body.kind == "compound-statement"
-            && signed_inputs.contains(&(loop_body.id, reference))
-        {
-            return true;
         }
     }
     false

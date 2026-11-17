@@ -545,27 +545,14 @@ const UNSIGNED_WRAP_JSON: &[u8] = include_bytes!(
 
 #[test]
 fn unsigned_subtraction_wraps_before_counter_branch_selection() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        UNSIGNED_WRAP_JSON,
-        Some(UNSIGNED_WRAP_SOURCE),
-    )
-    .expect("unsigned 1U - 2U wraps and selects the first extra output");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&wire).expect("canonical typed module");
-    let block = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in block {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes, vec![
-        reads[0], reads[0], reads[1], reads[2], reads[3],
-    ]);
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_WRAP_JSON,
+            Some(UNSIGNED_WRAP_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -720,28 +707,14 @@ const NESTED_OUTER_JSON: &[u8] =
 
 #[test]
 fn nested_unsigned_loop_can_select_outer_counter_without_folding_input() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        NESTED_OUTER_JSON,
-        Some(NESTED_OUTER_SOURCE),
-    )
-    .expect("inner loop should preserve authenticated enclosing induction");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&typed).unwrap();
-    let effects = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in effects {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 6);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[2], reads[2], reads[3], reads[3], reads[4],
-        reads[5]
-    ]);
+    // Nested induction cannot prove C's signed getchar avoids EOF.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            NESTED_OUTER_JSON,
+            Some(NESTED_OUTER_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -790,27 +763,14 @@ const NESTED_MIXED_JSON: &[u8] =
 
 #[test]
 fn nested_unsigned_mixed_counter_guard_uses_two_source_bound_values() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        NESTED_MIXED_JSON,
-        Some(NESTED_MIXED_SOURCE),
-    )
-    .expect("both nested counters must be source and Clang authenticated");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&typed).unwrap();
-    let effects = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in effects {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 6);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[2], reads[2], reads[3], reads[4], reads[5]
-    ]);
+    // Nested induction cannot prove C's signed getchar avoids EOF.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            NESTED_MIXED_JSON,
+            Some(NESTED_MIXED_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -865,28 +825,14 @@ const TRIPLE_INDUCTION_JSON: &[u8] =
 
 #[test]
 fn three_nested_unsigned_counters_select_one_live_guest_byte() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        TRIPLE_INDUCTION_JSON,
-        Some(TRIPLE_INDUCTION_SOURCE),
-    )
-    .expect("all three finite C counters must remain source authenticated");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&typed).unwrap();
-    let effects = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in effects {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 8);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[2], reads[3], reads[4], reads[5], reads[5],
-        reads[6], reads[7]
-    ]);
+    // Nested induction cannot prove C's signed getchar avoids EOF.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            TRIPLE_INDUCTION_JSON,
+            Some(TRIPLE_INDUCTION_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -940,28 +886,14 @@ const TRIPLE_CONTROL_JSON: &[u8] =
 
 #[test]
 fn triple_induction_inner_break_and_continue_do_not_exit_outer_loop() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        TRIPLE_CONTROL_JSON,
-        Some(TRIPLE_CONTROL_SOURCE),
-    )
-    .expect("selected inner exits must preserve later outer loop reads");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&typed).unwrap();
-    let effects = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in effects {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 7);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[2], reads[2], reads[3], reads[4], reads[5],
-        reads[6]
-    ]);
+    // Nested induction cannot prove C's signed getchar avoids EOF.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            TRIPLE_CONTROL_JSON,
+            Some(TRIPLE_CONTROL_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -988,28 +920,14 @@ const UNSIGNED_SCALAR_TRUTH_JSON: &[u8] =
 
 #[test]
 fn unsigned_scalar_truth_preserves_four_live_bytes_and_seven_writes() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        UNSIGNED_SCALAR_TRUTH_JSON,
-        Some(UNSIGNED_SCALAR_TRUTH_SOURCE),
-    )
-    .expect("source-proven unsigned scalar guard must select real guest I/O");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded =
-        canonical_module(&typed).expect("canonical typed byte effects");
-    let effects = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in effects {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[1], reads[2], reads[2], reads[3], reads[3]
-    ]);
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_SCALAR_TRUTH_JSON,
+            Some(UNSIGNED_SCALAR_TRUTH_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -1285,26 +1203,14 @@ const NESTED_FRESH_JSON: &[u8] =
 
 #[test]
 fn nested_unsigned_fresh_reads_preserve_current_ssa_without_old_alias() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        NESTED_FRESH_JSON,
-        Some(NESTED_FRESH_SOURCE),
-    )
-    .expect("latest-byte nested source control must be accepted");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module =
-        canonical_module(&wire).expect("nested latest-byte typed module");
-    let instructions = module.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for instruction in instructions {
-        match instruction.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected nested guest effect {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 5);
-    assert_eq!(writes.as_slice(), &reads[1..]);
+    // Nested induction cannot prove C's signed getchar avoids EOF.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            NESTED_FRESH_JSON,
+            Some(NESTED_FRESH_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 const UNSIGNED_HEX_THRESHOLD_SOURCE: &[u8] =
@@ -1314,27 +1220,14 @@ const UNSIGNED_HEX_THRESHOLD_JSON: &[u8] =
 
 #[test]
 fn signed_c23_hex_threshold_selects_all_live_guest_byte_outputs() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        UNSIGNED_HEX_THRESHOLD_JSON,
-        Some(UNSIGNED_HEX_THRESHOLD_SOURCE),
-    )
-    .expect("the exact C23 threshold exceeds all successful guest bytes");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("canonical live byte trace");
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in module.functions()[0].blocks()[0].instructions() {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes, vec![
-        reads[0], reads[0], reads[1], reads[1], reads[2], reads[2], reads[3],
-        reads[3],
-    ]);
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_HEX_THRESHOLD_JSON,
+            Some(UNSIGNED_HEX_THRESHOLD_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -1386,27 +1279,14 @@ const BYTE_ALGEBRA_JSON: &[u8] =
 
 #[test]
 fn source_proven_byte_algebra_selects_only_constant_guest_effects() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        BYTE_ALGEBRA_JSON,
-        Some(BYTE_ALGEBRA_SOURCE),
-    )
-    .expect("both bitwise identities hold for all successful guest bytes");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("canonical byte algebra IR");
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in module.functions()[0].blocks()[0].instructions() {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected byte algebra effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(
-        writes,
-        reads.iter().flat_map(|byte| [*byte; 3]).collect::<Vec<_>>()
-    );
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            BYTE_ALGEBRA_JSON,
+            Some(BYTE_ALGEBRA_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -1480,31 +1360,14 @@ const REFLEXIVE_SELECTED_PURE_JSON: &[u8] = include_bytes!(
 
 #[test]
 fn source_dead_pure_arithmetic_cannot_change_guest_input_or_output_counts() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        REFLEXIVE_DEAD_PURE_JSON,
-        Some(REFLEXIVE_DEAD_PURE_SOURCE),
-    )
-    .expect("source-proven dead arithmetic may be discarded, not executed");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("typed guest I/O proof");
-    let mut latest = None;
-    let mut reads = 0;
-    let mut writes = 0;
-    for effect in module.functions()[0].blocks()[0].instructions() {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => {
-                latest = Some(*result);
-                reads += 1;
-            },
-            Instruction::ByteOutput { value } => {
-                assert_eq!(Some(*value), latest);
-                writes += 1;
-            },
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads, 4);
-    assert_eq!(writes, 12);
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            REFLEXIVE_DEAD_PURE_JSON,
+            Some(REFLEXIVE_DEAD_PURE_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -1578,35 +1441,6 @@ const REFLEXIVE_DEAD_LITERAL_JSON: &[u8] = include_bytes!(
     "c-frontend/golden/unsigned_reflexive_dead_literal_live_input.json"
 );
 
-#[test]
-fn source_reflexive_guard_authenticates_unreachable_literal_output() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        REFLEXIVE_DEAD_LITERAL_JSON,
-        Some(REFLEXIVE_DEAD_LITERAL_SOURCE),
-    )
-    .expect("the source-bound self-comparison makes putchar(0) unreachable");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("typed guest I/O proof");
-    let mut latest = None;
-    let mut reads = 0;
-    let mut writes = 0;
-    for effect in module.functions()[0].blocks()[0].instructions() {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => {
-                latest = Some(*result);
-                reads += 1;
-            },
-            Instruction::ByteOutput { value } => {
-                assert_eq!(Some(*value), latest);
-                writes += 1;
-            },
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads, 4);
-    assert_eq!(writes, 12);
-}
-
 const REFLEXIVE_SELECTED_LITERAL_SOURCE: &[u8] = include_bytes!(
     "c-frontend/rejected/unsigned_reflexive_selected_literal_live_input.c"
 );
@@ -1619,6 +1453,18 @@ const REFLEXIVE_DYNAMIC_LITERAL_SOURCE: &[u8] = include_bytes!(
 const REFLEXIVE_DYNAMIC_LITERAL_JSON: &[u8] = include_bytes!(
     "c-frontend/golden/unsigned_reflexive_dynamic_literal_live_input.json"
 );
+
+#[test]
+fn source_reflexive_guard_authenticates_unreachable_literal_output() {
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            REFLEXIVE_DEAD_LITERAL_JSON,
+            Some(REFLEXIVE_DEAD_LITERAL_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
+}
 
 #[test]
 fn source_reflexive_guard_never_discards_reachable_literal_output() {

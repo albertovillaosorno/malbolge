@@ -27,12 +27,10 @@
 
 from __future__ import annotations
 
-import random
 import subprocess
 import sys
 import tempfile
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import final
 
@@ -49,16 +47,15 @@ VM = RUST_BIN / "malbolge"
 
 @final
 class UnsignedScalarTruthGuestParityTests(unittest.TestCase):
-    def test_complete_c_program_preserves_guest_input(self) -> None:
+    def test_complete_c_program_refuses_unconverted_signed_eof(self) -> None:
+        """Unsigned loop induction does not imply that getchar succeeds."""
         required = (
             FRONTEND,
             RUST_BIN / "c2malbolge_json",
             RUST_BIN / "malbolge_layout",
-            VM,
         )
-        binaries_present = all(path.is_file() for path in required)
-        if not binaries_present or not RESOURCE.is_dir():
-            self.skipTest("pinned compiler and VM executables required")
+        if not all(path.is_file() for path in required) or not RESOURCE.is_dir():
+            self.skipTest("pinned compiler tools required")
 
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as root:
             target = Path(root) / "unsigned-scalar-truth.malbolge"
@@ -75,46 +72,11 @@ class UnsignedScalarTruthGuestParityTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 check=False,
-                timeout=120,
+                timeout=60,
             )
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
-            self.assertTrue(target.is_file())
-
-            seeded = random.Random(0xBAD5CA1A)
-            inputs = [
-                b"ABCD",
-                b"\x00\xff\x80\x01",
-                b"\n\x00\xfe\xff",
-                b"\xff\xff\xff\xff",
-                b"\x00\x00\x00\x00",
-            ]
-            inputs.extend(
-                bytes(seeded.getrandbits(8) for _ in range(4)) for _ in range(8)
-            )
-
-            # Each normative VM process has independent memory and stdin.
-            # Bounded parallel replay avoids serial loader initialization.
-            def run_guest(data: bytes) -> subprocess.CompletedProcess[bytes]:
-                return subprocess.run(
-                    [str(VM), str(target), "--input-stdin", "--report-steps"],
-                    input=data,
-                    capture_output=True,
-                    check=False,
-                    timeout=40,
-                )
-
-            expected_steps = b"malbolge-steps-v1:12\n"
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                for data, executed in zip(
-                    inputs, executor.map(run_guest, inputs), strict=True
-                ):
-                    with self.subTest(input=data.hex()):
-                        expected = data[:1] + b"".join(
-                            bytes((value, value)) for value in data[1:]
-                        )
-                        self.assertFalse(executed.returncode, executed.stderr)
-                        self.assertEqual(executed.stdout, expected)
-                        self.assertEqual(executed.stderr, expected_steps)
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"Unsupported", compiled.stderr)
+            self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":

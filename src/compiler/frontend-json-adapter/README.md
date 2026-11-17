@@ -11,6 +11,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Guarded signed loop-local EOF refusal (2026-11-17)
+
+Previously accepted source-proven `if`/`else`, nested guard, `switch`, and
+unsigned-counter output identities covered only successful `getchar()`
+values. C23 permits `-1` at exhaustion, and the actual 15-trit guest writes
+`0x6a` where `putchar(-1)` writes `0xff`. The source-bound preflight now
+refuses signed loop-local reads used by descendant output calls, including
+expressions, casts, nested calls, nested `for` bodies and conditional
+statements, rather than
+publishing an EOF-unsound guest. Former 256-successful-byte fixtures remain
+useful historical algebra evidence but no longer establish complete stdin
+behavior. The C23/guest-or-refusal regression and 123 frontend tests pass.
+
+This is not a signed EOF conversion or general guest runtime branching.
+The original mutable C checksum still fails closed at declaration `29:5`.
+
 ### Direct counted-loop signed EOF refusal (2026-11-17)
 
 A one-trip C23 source with `int current = getchar(); putchar(current);`

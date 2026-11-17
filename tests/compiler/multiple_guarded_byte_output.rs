@@ -23,10 +23,7 @@
 // - Summary:
 //   - Authenticate two byte identities per reachable C arm.
 
-use super::super::typed::{Instruction, canonical_module};
-use super::super::{
-    FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
-};
+use super::super::{FrontendJsonError, canonical_guest_typed_ir_with_source};
 
 const SOURCE: &[u8] = include_bytes!(
     "c-frontend/accepted/unsigned_multiple_guarded_live_input.c"
@@ -37,28 +34,11 @@ const JSON: &[u8] = include_bytes!(
 
 #[test]
 fn two_guarded_outputs_preserve_each_real_input_byte() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(JSON, Some(SOURCE))
-        .expect("two source-authenticated writes per live input");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("canonical typed artifact");
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for instruction in module.functions()[0].blocks()[0].instructions() {
-        match instruction.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest instruction: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes.len(), 8);
-    assert_eq!(
-        writes,
-        reads
-            .iter()
-            .flat_map(|value| [*value; 2])
-            .collect::<Vec<_>>()
-    );
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(JSON, Some(SOURCE)),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]

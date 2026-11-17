@@ -23,10 +23,7 @@
 // - Summary:
 //   - Preserve four dynamic guest bytes across plus/minus 256 and u8 cast.
 
-use super::super::typed::{Instruction, canonical_module};
-use super::super::{
-    FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
-};
+use super::super::{FrontendJsonError, canonical_guest_typed_ir_with_source};
 
 const SOURCE: &[u8] = include_bytes!(
     "c-frontend/accepted/unsigned_narrowed_guarded_live_input.c"
@@ -37,21 +34,11 @@ const JSON: &[u8] = include_bytes!(
 
 #[test]
 fn signed_offsets_narrow_to_same_live_guest_byte() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(JSON, Some(SOURCE))
-        .expect("proven C u8 conversion preserves every live guest byte");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("canonical typed module");
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for instruction in module.functions()[0].blocks()[0].instructions() {
-        match instruction.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest instruction: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes, reads);
+    // Successful-byte identities do not implement signed C23 EOF output.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(JSON, Some(SOURCE)),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]

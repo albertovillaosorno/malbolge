@@ -28,6 +28,36 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Conditional signed C23 EOF output fails closed (2026-11-17)
+
+A complete four-trip C23 source with `int current = getchar()` and parity-
+selected arithmetic in two `putchar` arms published an actual 1,119-byte
+nine-step guest emitting `6a6a6a6a` on empty stdin, whereas pinned UBSan
+Clang `-O0` and `-O2` emit `ffffffff`. Nested guards and switch arms also
+published the wrong EOF suffix. A successful-byte 256-case identity proof
+is insufficient: C23 `getchar()` is an `int` that can return `-1` on EOF,
+while raw Malbolge input leaves its profile's low EOF residue `0x6a`.
+
+The normalized frontend now traces the Clang identity of a signed loop-local
+`getchar` result through any descendant output expression, then follows the
+output call back through conditional, compound and nested call ancestry to
+that same loop body. It refuses signed EOF publication before the byte-only
+projection and target writer. The same gate detects nested `for`-body
+signed locals; five previously accepted double/triple-loop witnesses now
+refuse instead of publishing an EOF-unsound guest. Former positive Rust
+source variants require explicit `Unsupported`;
+all 123 frontend Rust tests pass. Five complete C23 programs exercise empty,
+NUL, high-bit, `0xff` and mixed input with native `-O0`/`-O2` oracles and
+either real guest parity or typed refusal without an artifact.
+
+This **fail-closed gate only** covers source-authenticated signed locals
+declared in an inspected `for` body, including nested `for` bodies, and
+used by an output call. It does not prove aliases, predicate-only flows
+or other source forms are EOF-correct, nor implement signed EOF-to-byte
+conversion. The complete mutable EOF checksum still refuses its first
+unsupported declaration at `29:5`. Earlier dated positive successful-input
+examples below are historical evidence, not current EOF-safe capabilities.
+
 ### Nested signed `getchar` local in counted C loops (2026-11-17)
 
 A source-authenticated two-trip C23 loop containing

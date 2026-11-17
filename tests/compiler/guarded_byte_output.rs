@@ -23,10 +23,7 @@
 // - Summary:
 //   - Conditional output identity follows the authenticated guard truth set.
 
-use super::super::typed::{Instruction, canonical_module};
-use super::super::{
-    FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
-};
+use super::super::{FrontendJsonError, canonical_guest_typed_ir_with_source};
 
 const SOURCE: &[u8] = include_bytes!(
     "c-frontend/accepted/unsigned_guarded_modular_output_live_input.c"
@@ -36,23 +33,11 @@ const JSON: &[u8] = include_bytes!(
 );
 
 #[test]
-fn conditional_modular_output_preserves_four_distinct_guest_inputs() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(JSON, Some(SOURCE))
-        .expect("guarded signed C arithmetic must retain the real input byte");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("canonical typed bytes");
-    let effects = module.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in effects {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected instruction: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes, reads);
+fn conditional_modular_output_refuses_unproved_signed_eof() {
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(JSON, Some(SOURCE)),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]

@@ -73,15 +73,28 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
-- Open C23 EOF publication defect (2026-11-17): the previously accepted
-  `unsigned_guarded_modular_output_live_input.c` still publishes a genuine
-  1,119-byte, nine-step guest emitting `6a6a6a6a` on empty stdin. Pinned
-  Clang C23 UBSan `-O0` produces `ffffffff` for the same complete source.
-  The direct/nested counted-loop guard does not cover conditional byte-domain
-  proofs. Extend source-authenticated EOF-aware admission to conditional
-  arithmetic and update all impacted historical positive tests before
-  claiming any guarded signed-input output correctness. This is an **open
-  soundness blocker**, not a verified guest compiler capability.
+- On 2026-11-17, complete C23 conditional-output sources using a signed
+  `int current = getchar()` in a counted `for` loop still published a genuine
+  guest: `unsigned_guarded_modular_output_live_input.c` emitted `6a6a6a6a`
+  on empty input, while pinned UBSan Clang `-O0`/`-O2` required `ffffffff`.
+  Four different guarded source shapes reproduced the mismatch on exhausted
+  input. A source/Clang-anchored refusal now follows signed loop-local
+  references through casts, arithmetic, nested calls and selected output
+  arms to the owning loop body. Five complete guarded programs, five binary
+  vectors, both C23 native modes, 123 Rust frontend tests and dedicated
+  no-artifact regressions pass. Five previously accepted inner-loop
+  signed-local outputs under two or three nested `for` loops also now fail
+  closed under a red-first normalized frontend/adapter regression.
+  Historical successful-byte-only positive fixtures now refuse rather than
+  claim EOF parity. This is a scoped soundness repair, **not** guest
+  signed EOF conversion, general C I/O or
+  the still-refused mutable checksum at declaration `29:5`.
+
+- The earlier red-first C23 EOF defect from the modular guard source was
+  historically recorded as open when its genuine nine-step guest emitted
+  `6a6a6a6a` on exhausted stdin versus C23 `ffffffff`. The source-checked
+  refusal above resolves this publication error, but **not** the missing
+  general signed EOF conversion or mutable C checksum.
 
 - On 2026-11-17, a two-trip C23 `int current = getchar();
   putchar(putchar(current));` source published a real 1,103-byte N15 guest
