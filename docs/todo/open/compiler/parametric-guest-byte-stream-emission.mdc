@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, non-unit step-two signed `getchar` loop output still
+  published a real ten-step N15 guest emitting `6a6a6a6a6a` on empty
+  stdin instead of native C23 `ffffffffff`. The frozen complete C23
+  five-vector UBSan `-O0`/`-O2` regression failed on four short streams
+  before the correction. The frontend now refuses all source-proven
+  counter-selected signed loop-local output regardless of induction step;
+  six previously accepted stride, descending, radix, remainder and break
+  variants also correctly fail closed. All 123 Rust adapter unit tests
+  and both bounded C23 Python regressions pass. No general guest signed
+  EOF conversion or mutable checksum support is claimed.
+
 - On 2026-11-17, the checked-in four-trip `input_unsigned_loop.c` compiled
   to a real nine-step N15 guest that emitted `6a6a6a6a` on empty stdin,
   violating native C23 `ffffffff`. A red-first five-vector, two-mode

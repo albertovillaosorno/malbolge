@@ -39,6 +39,9 @@ ROOT: Final = Path(__file__).resolve().parents[1]
 SOURCE: Final = (
     ROOT / "tests/compiler/c-frontend/accepted/unsigned_conditional_live_input.c"
 )
+STRIDE_SOURCE: Final = (
+    ROOT / "tests/compiler/c-frontend/accepted/unsigned_stride_conditional_live_input.c"
+)
 DRIVER: Final = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
 CLANG: Final = ROOT / ".dependencies/llvm/22.1.8/bin/clang"
 FRONTEND: Final = (
@@ -53,6 +56,12 @@ SAMPLES: Final = (b"", b"A", b"\x00\xff", b"\x05\x80\xff", b"\x00\xff\x80A")
 @final
 class BoundedC23EofPublicationTests(unittest.TestCase):
     def test_four_read_guest_matches_native_c23_or_explicit_refusal(self) -> None:
+        self._check_source(SOURCE)
+
+    def test_nonunit_stride_eof_matches_native_or_explicit_refusal(self) -> None:
+        self._check_source(STRIDE_SOURCE)
+
+    def _check_source(self, source: Path) -> None:
         # A verified refusal is valid until guest signed EOF conversion
         # exists. Successful compilation must still match every native byte.
         if not all(
@@ -64,7 +73,7 @@ class BoundedC23EofPublicationTests(unittest.TestCase):
             folder = Path(raw)
             wrapper = folder / "main.c"
             _ = wrapper.write_text(
-                f'#include "{SOURCE}"\nint main(void) {{ emit(); return 0; }}\n',
+                f'#include "{source}"\nint main(void) {{ emit(); return 0; }}\n',
                 encoding="utf-8",
             )
             env = os.environ.copy()
@@ -122,7 +131,7 @@ class BoundedC23EofPublicationTests(unittest.TestCase):
                     "75",
                     "--output",
                     str(target),
-                    str(SOURCE),
+                    str(source),
                 ],
                 capture_output=True,
                 check=False,

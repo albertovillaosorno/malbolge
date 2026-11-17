@@ -516,6 +516,7 @@ pub(super) fn is_unchecked_direct_loop_eof_echo(bytes: &[u8]) -> bool {
     })
 }
 
+// No induction step or bounded static unrolling proves signed getchar EOF.
 // A statically unrolled loop does not prove its signed getchar values are
 // successful bytes. Even a single counter-selected output of an unguarded
 // signed local writes 0xff at EOF in C, but the current
@@ -559,11 +560,6 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
                     && by_id.get(&parent.parent).is_some_and(|function| {
                         function.kind == "function-declaration"
                     })
-            })
-            && nodes.iter().any(|increment| {
-                increment.parent == for_loop.id
-                    && increment.kind == "unary-expression"
-                    && increment.operation.as_deref() == Some("++")
             })
             && let Some(reference) = local.reference.as_deref()
         {

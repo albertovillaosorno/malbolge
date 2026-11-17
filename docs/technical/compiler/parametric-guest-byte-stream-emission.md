@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Non-unit counted-loop signed EOF publication (2026-11-17)
+
+An accepted C23 `unsigned_stride_conditional_live_input.c` combines a
+four-trip, step-two unsigned `for` loop, a local signed `getchar()` per
+iteration, and counter-dependent one/two `putchar(current)` effects. The
+actual 1,127-byte, ten-step N15 guest emitted `6a6a6a6a6a` on empty input;
+native C23 `-O0`/`-O2` with UBSan requires `ffffffffff`. Four short binary
+streams also expose the incorrect EOF suffix. The new complete native/guest
+five-vector regression was red before the repair.
+
+The source/Clang-backed counted-loop signed-local refusal no longer requires
+unit `++` induction, because static loop finiteness cannot prove every
+signed `getchar()` succeeds. Its expanded soundness gate also refuses six
+older source-proven induction/branch shapes, including assigned, descending,
+radix, remainder and selected-break loops that used to admit successful-byte
+output but would publish incorrect EOF results. All 123 frontend Rust tests
+and the two focused native/guest-or-refusal Python regressions pass.
+This is deliberately scoped fail-closed behavior, not an implementation of
+guest `putchar(-1)` conversion or the mutable EOF checksum (still refused).
+
 ### Direct counted-loop signed EOF publication (2026-11-17)
 
 The previously accepted complete C23 `input_unsigned_loop.c` unrolls four

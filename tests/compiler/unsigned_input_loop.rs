@@ -28,33 +28,6 @@ use super::super::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
 };
 
-// Guest output count alone cannot prove the selected C induction effect trace.
-// Decode independently validated typed bytes and require exactly four fresh
-// reads and the five ordered writes of the third resident SSA value twice.
-fn assert_four_reads_five_writes(wire: &[u8]) {
-    let decoded = canonical_module(wire).expect("canonical typed wire");
-    let block = decoded
-        .functions()
-        .first()
-        .unwrap()
-        .blocks()
-        .first()
-        .unwrap();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in block.instructions() {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[2], reads[2], reads[3]
-    ]);
-}
-
 const JSON: &[u8] =
     include_bytes!("c-frontend/golden/input_unsigned_loop.json");
 const SOURCE: &[u8] =
@@ -213,14 +186,13 @@ const STRIDE_JSON: &[u8] = include_bytes!(
 );
 
 #[test]
-fn unsigned_compound_stride_selects_live_third_byte_twice() {
-    let (typed, mode) =
-        canonical_guest_typed_ir_with_source(STRIDE_JSON, Some(STRIDE_SOURCE))
-            .expect(
-                "source-proven unsigned non-unit stride preserves live input",
-            );
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    assert_four_reads_five_writes(&typed);
+fn unsigned_compound_stride_refuses_signed_eof_output() {
+    // The counted stride is source-proven, but it does not mean each
+    // signed getchar call succeeds. On EOF C writes 0xff, not 0x6a.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(STRIDE_JSON, Some(STRIDE_SOURCE)),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -286,14 +258,16 @@ const ASSIGNED_STRIDE_JSON: &[u8] = include_bytes!(
 );
 
 #[test]
-fn unsigned_assigned_stride_preserves_live_input() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        ASSIGNED_STRIDE_JSON,
-        Some(ASSIGNED_STRIDE_SOURCE),
-    )
-    .expect("source-proven unsigned assignment step preserves live input");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    assert_four_reads_five_writes(&typed);
+fn unsigned_assigned_stride_refuses_signed_eof_output() {
+    // Source-proven induction does not prove a successful signed getchar.
+    // A guest writing the EOF residue violates C23 putchar(-1) = 0xff.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            ASSIGNED_STRIDE_JSON,
+            Some(ASSIGNED_STRIDE_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -330,36 +304,19 @@ fn unsigned_assigned_stride_authenticates_arithmetic_ancestry() {
 }
 
 #[test]
-fn unsigned_descending_stride_stops_at_zero_before_wrapping() {
+fn unsigned_descending_stride_refuses_signed_eof_output() {
+    // Source-proven induction does not prove a successful signed getchar.
+    // A guest writing the EOF residue violates C23 putchar(-1) = 0xff.
     let json = include_bytes!(
         "c-frontend/golden/unsigned_descending_stride_live_input.json"
     );
     let source = include_bytes!(
         "c-frontend/accepted/unsigned_descending_stride_live_input.c"
     );
-    let (typed, mode) =
-        canonical_guest_typed_ir_with_source(json, Some(source))
-            .expect("40, 30, 20, 10 must terminate at zero after four reads");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    assert_four_reads_five_writes(&typed);
-}
-
-fn assert_five_reads_six_writes(wire: &[u8]) {
-    let decoded = canonical_module(wire).expect("canonical typed wire");
-    let block = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for instruction in block {
-        match instruction.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 5);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[2], reads[2], reads[3], reads[4],
-    ]);
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(json, Some(source)),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 const EARLY_BREAK_SOURCE: &[u8] = include_bytes!(
@@ -370,14 +327,16 @@ const EARLY_BREAK_JSON: &[u8] = include_bytes!(
 );
 
 #[test]
-fn unsigned_selected_break_prevents_post_body_wrap_and_keeps_guest_bytes() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        EARLY_BREAK_JSON,
-        Some(EARLY_BREAK_SOURCE),
-    )
-    .expect("the selected break must skip the otherwise wrapping decrement");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    assert_five_reads_six_writes(&typed);
+fn unsigned_selected_break_refuses_signed_eof_output() {
+    // Source-proven induction does not prove a successful signed getchar.
+    // A guest writing the EOF residue violates C23 putchar(-1) = 0xff.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            EARLY_BREAK_JSON,
+            Some(EARLY_BREAK_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -404,14 +363,16 @@ const INCLUSIVE_ZERO_BREAK_JSON: &[u8] = include_bytes!(
 );
 
 #[test]
-fn unsigned_zero_inclusive_guard_needs_break_before_wrap() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        INCLUSIVE_ZERO_BREAK_JSON,
-        Some(INCLUSIVE_ZERO_BREAK_SOURCE),
-    )
-    .expect("break at zero must make the unsigned >= 0U guard finite");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    assert_five_reads_six_writes(&typed);
+fn unsigned_zero_break_refuses_signed_eof_output() {
+    // Source-proven induction does not prove a successful signed getchar.
+    // A guest writing the EOF residue violates C23 putchar(-1) = 0xff.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            INCLUSIVE_ZERO_BREAK_JSON,
+            Some(INCLUSIVE_ZERO_BREAK_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -434,30 +395,13 @@ const RADIX_JSON: &[u8] =
     include_bytes!("c-frontend/golden/unsigned_radix_live_input.json");
 
 #[test]
-fn unsigned_radix_counter_and_predicate_keep_seven_live_byte_writes() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        RADIX_JSON,
-        Some(RADIX_SOURCE),
-    )
-    .expect(
-        "source-checked C23 radix induction and branch must preserve guest IO",
-    );
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&wire).expect("canonical typed module");
-    let block = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in block {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 5);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[1], reads[2], reads[3], reads[3], reads[4],
-    ]);
+fn unsigned_radix_loop_refuses_signed_eof_output() {
+    // Source-proven induction does not prove a successful signed getchar.
+    // A guest writing the EOF residue violates C23 putchar(-1) = 0xff.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(RADIX_JSON, Some(RADIX_SOURCE)),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -522,28 +466,16 @@ const UNSIGNED_MODULO_JSON: &[u8] =
     include_bytes!("c-frontend/golden/unsigned_modulo_live_input.json");
 
 #[test]
-fn unsigned_remainder_branch_repeats_even_input_bytes() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        UNSIGNED_MODULO_JSON,
-        Some(UNSIGNED_MODULO_SOURCE),
-    )
-    .expect("source-proven unsigned remainder must select live byte effects");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&wire).expect("canonical typed module");
-    let block = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in block {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 5);
-    assert_eq!(writes, vec![
-        reads[0], reads[1], reads[1], reads[2], reads[3], reads[3], reads[4],
-    ]);
+fn unsigned_remainder_loop_refuses_signed_eof_output() {
+    // Source-proven induction does not prove a successful signed getchar.
+    // A guest writing the EOF residue violates C23 putchar(-1) = 0xff.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_MODULO_JSON,
+            Some(UNSIGNED_MODULO_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
