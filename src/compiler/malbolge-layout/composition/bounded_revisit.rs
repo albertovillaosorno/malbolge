@@ -40,7 +40,7 @@
 use std::collections::BTreeSet;
 
 use malbolge::{
-    ProfileDescriptor, ProfileMachine, StepOutcome, Termination,
+    ProfileDescriptor, ProfileMachine, StepOutcome, Termination, TraceInput,
     decode_profile_instruction,
 };
 
@@ -51,7 +51,7 @@ pub const MAX_REVISIT_SOURCE_CELLS: usize = 4096;
 /// Hard limit for one supplied complete execution-path witness.
 pub const MAX_REVISIT_STEPS: usize = 512;
 
-/// One complete, input-specific oracle: source visits, output and input reads.
+/// Complete, input-specific oracle: code visits, output, byte reads and EOF.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BoundedRevisitExpectation<'input> {
     /// Exact binary guest input, including possible empty input.
@@ -62,6 +62,8 @@ pub struct BoundedRevisitExpectation<'input> {
     pub output: &'input [u8],
     /// Exact number of successful guest input bytes consumed before halt.
     pub input_consumed: usize,
+    /// All committed input instructions, including attempts at EOF.
+    pub input_events: &'input [TraceInput],
 }
 
 /// An admitted, input-specific guest path with at least one revisited cell.
@@ -73,6 +75,7 @@ pub struct BoundedRevisitLayout {
     encrypted_positions: Vec<Option<u32>>,
     output: Vec<u8>,
     input_consumed: usize,
+    input_events: Vec<TraceInput>,
 }
 
 impl BoundedRevisitLayout {
@@ -111,6 +114,12 @@ impl BoundedRevisitLayout {
     pub const fn input_consumed(&self) -> usize {
         self.input_consumed
     }
+
+    /// Exact committed guest reads, including EOF attempts without a byte.
+    #[must_use]
+    pub fn input_events(&self) -> &[TraceInput] {
+        &self.input_events
+    }
 }
 
 /// Stable reason a bounded, input-specific nonlinear witness was not admitted.
@@ -136,6 +145,8 @@ pub enum BoundedRevisitError {
     OutputMismatch,
     /// Guest input consumption differs from the independent oracle.
     InputConsumptionMismatch,
+    /// Actual byte/EOF input attempts differ from the supplied event sequence.
+    InputEventsMismatch,
 }
 
 /// Admits only one *complete*, exact-profile, bounded path with a genuine
@@ -149,7 +160,7 @@ pub enum BoundedRevisitError {
 ///
 /// Refuses source/profile drift, malformed/budget-exceeding witnesses,
 /// incomplete paths, transition failures, nonrevisiting control flow,
-/// and independent output/input-consumption discrepancies.
+/// and independent output/input-event/input-consumption discrepancies.
 pub fn admit_bounded_revisit_layout(
     profile: &'static ProfileDescriptor,
     source: &[u8],
@@ -179,6 +190,7 @@ pub fn admit_bounded_revisit_layout(
         || expected.code_positions.len() > MAX_REVISIT_STEPS
         || expected.output.len() > MAX_REVISIT_STEPS
         || expected.input_consumed > expected.input.len()
+        || expected.input_events.len() > MAX_REVISIT_STEPS
     {
         return Err(BoundedRevisitError::InvalidExpectation);
     }
@@ -191,6 +203,7 @@ pub fn admit_bounded_revisit_layout(
     let mut data_positions = Vec::with_capacity(expected.code_positions.len());
     let mut encrypted_positions =
         Vec::with_capacity(expected.code_positions.len());
+    let mut input_events = Vec::with_capacity(expected.input_events.len());
     for (index, &code) in expected.code_positions.iter().enumerate() {
         let before = machine.registers();
         if before.code_pointer != code {
@@ -209,6 +222,9 @@ pub fn admit_bounded_revisit_layout(
                 != Some(code)
         {
             return Err(BoundedRevisitError::GuestStep);
+        }
+        if let Some(input_event) = observed.input {
+            input_events.push(input_event);
         }
         code_positions.push(code);
         data_positions.push(before.data_pointer);
@@ -235,6 +251,9 @@ pub fn admit_bounded_revisit_layout(
     if machine.input_consumed() != expected.input_consumed {
         return Err(BoundedRevisitError::InputConsumptionMismatch);
     }
+    if input_events != expected.input_events {
+        return Err(BoundedRevisitError::InputEventsMismatch);
+    }
     Ok(BoundedRevisitLayout {
         source: source.to_vec(),
         code_positions,
@@ -242,5 +261,6 @@ pub fn admit_bounded_revisit_layout(
         encrypted_positions,
         output: machine.output().to_vec(),
         input_consumed: machine.input_consumed(),
+        input_events,
     })
 }

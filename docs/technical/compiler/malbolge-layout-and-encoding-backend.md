@@ -20,6 +20,26 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Bounded revisiting guest input evidence
+
+The separate backward-control admission path checks a complete finite guest
+execution against exact source/profile, code visits, self-encryption, output,
+successful input consumption and **ordered input events**. These distinguish
+successful `getchar`-equivalent byte reads from actual guest EOF input attempts;
+a matching byte count alone cannot prove whether EOF was ever tested.
+
+A 104-cell self-modifying guest visits sixteen code cells twice and exits after
+its real backward jump. Two source variants perform one input/output or two
+input instructions followed by one output on the first pass; encryption makes
+the revisited input/output cells inert. The two-read variant proves empty,
+byte-then-EOF, two-byte and extra-unread-input cases on the current and frozen
+historical VMs. Replacing only the second EOF read with an inert instruction
+preserves the empty-input path, output and successful-byte count; the gate
+rejects the altered program solely on its missing EOF event. The API accepts
+only complete, input-specific paths, not arbitrary input streams or
+data-dependent control synthesis. The frozen mutable
+EOF checksum remains uncompiled.
+
 ### Implemented linear code-layout slice
 
 `src/compiler/malbolge-layout/composition/lib.rs` owns a bounded position-
