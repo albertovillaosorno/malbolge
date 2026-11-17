@@ -28,6 +28,42 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Signed local `getchar` output at EOF (2026-11-17)
+
+An additional complete C23 source exposed another **real guest miscompile**:
+
+```c
+void emit(void) {
+    int current = getchar();
+    putchar(current);
+}
+```
+
+The pinned frontend and adapter previously published a 1,071-byte capsule
+whose normative VM executed three instructions and emitted hex `6a` on
+empty stdin. Native C23 outputs `ff`: the stored signed `getchar` result
+is `-1` at EOF and `putchar` converts its argument to `unsigned char`.
+The accumulator-only successful-byte backend cannot reproduce that result.
+Storing a signed input in a C local does not remove its EOF behavior.
+
+The source/Clang-checked adapter now refuses a bounded, straight-line
+`int local = getchar();` followed by one or more output calls using that
+local, with an optional source-authenticated `int alias = local;` and final
+`return;`. The check executes **before** the byte-only projection and
+before other fallback adapters; it never treats a negative result as
+permission to compile a different grammar. Other source forms not proved
+by this checker retain existing compiler behavior and need independent
+EOF audits; this is not general signed-local soundness or conversion.
+
+`tests/test_signed_getchar_local_publication.py` pins three complete
+sources (direct, copied and repeated signed-local output) and four binary
+stdin vectors. Independent pinned Clang C23 `-O0` and `-O2` with UBSan
+must match the explicit expected bytes; the guest either matches the same
+oracle or the compiler returns typed `Unsupported` without publishing a
+file. The frontend unit suite has 123 passing tests. The original mutable
+EOF checksum still refuses its first declaration at `29:5`; this change
+closes an unsound publication, not the P2 guest runtime gap.
+
 ### Signed discarded `getchar` guest execution and safe EOF refusal (2026-11-17)
 
 A red-first public source-C test now compiles `void emit(void) { getchar(); }`

@@ -453,6 +453,97 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     signed_outputs > 0
 }
 
+// A straight-line signed int local is just as EOF-sensitive as a direct
+// putchar(getchar()). The byte-only projection can preserve an alias on the
+// successful-byte domain, but it cannot convert a returned -1 to C's 0xff.
+// Require pinned declaration/output ancestry; a copied alias is admitted
+// only with exact original source bytes. This is a rejection proof, never a
+// reason to accept a source or replace a genuine EOF guard.
+pub(super) fn is_unchecked_local_eof_echo(
+    bytes: &[u8],
+    source: Option<&[u8]>,
+) -> bool {
+    let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
+        return false;
+    };
+    let [function, body, nodes @ ..] = artifact.nodes.as_slice() else {
+        return false;
+    };
+    if function.kind != "function-declaration"
+        || body.kind != "compound-statement"
+        || body.parent != function.id
+    {
+        return false;
+    }
+    let Some(mut local) = nodes.get(..5).and_then(|declaration| {
+        prove_local_declaration(
+            declaration,
+            body,
+            body.span.begin.byte,
+            body.id,
+        )
+    }) else {
+        return false;
+    };
+    let mut remaining = &nodes[5..];
+    let mut previous = local.declaration_end;
+    let mut expected_id = nodes[4].id.saturating_add(1);
+    let mut outputs = 0usize;
+    while let Some(first) = remaining.first() {
+        if outputs < MAX_ECHO_CALLS
+            && let Some((width, calls)) = prove_local_output_chain(
+                remaining,
+                body,
+                &local,
+                expected_id,
+                previous,
+                body.id,
+                source,
+            )
+            && outputs
+                .checked_add(calls.len())
+                .is_some_and(|total| total <= MAX_ECHO_CALLS)
+        {
+            outputs += calls.len();
+            previous = calls[0].span.end.byte;
+            remaining = &remaining[width..];
+            let Ok(width_id) = u32::try_from(width) else {
+                return false;
+            };
+            expected_id = expected_id.saturating_add(width_id);
+            continue;
+        }
+        if outputs == 0
+            && let Some(witness) = source
+            && let Some(alias) = remaining.get(..4).and_then(|declaration| {
+                prove_local_alias(
+                    declaration,
+                    (body, previous, body.id),
+                    &local,
+                    witness,
+                )
+            })
+        {
+            previous = alias.declaration_end;
+            local = alias;
+            remaining = &remaining[4..];
+            expected_id = expected_id.saturating_add(4);
+            continue;
+        }
+        if outputs > 0
+            && remaining.len() == 1
+            && first.kind == "return-statement"
+            && first.parent == body.id
+            && first.id == expected_id
+            && first.span.begin.byte > previous
+        {
+            return true;
+        }
+        return false;
+    }
+    outputs > 0
+}
+
 // A source-proven getchar() is a guest effect even when its result
 // is discarded. Both standalone and comma-child calls use the same exact
 // three-node proof to preserve input ordering and prevent hidden effects.
