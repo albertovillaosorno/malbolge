@@ -77,6 +77,9 @@ STUB = textwrap.dedent("""\
         if mode == 'OVERSIZE':
             sys.stdout.buffer.write(b'x' * 1_048_577)
             sys.exit(0)
+        if mode == 'EXCESSIVE_NESTING':
+            sys.stdout.write('{"source":' + '[' * 100000 + '0' + ']' * 100000 + '}')
+            sys.exit(0)
         source = Path(sys.argv[-1])
         payload = {
             'source': {
@@ -268,6 +271,14 @@ class CToMalbolgeDriverTests(unittest.TestCase):
                 self.assertNotEqual(completed.returncode, 0)
                 self.assert_stages(b"F")
                 self.assertFalse(self.target.exists())
+
+    def test_excessively_nested_frontend_json_fails_with_typed_diagnostic(self):
+        completed = self.run_pipeline("EXCESSIVE_NESTING")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"invalid normalized frontend JSON", completed.stderr)
+        self.assertNotIn(b"Traceback", completed.stderr)
+        self.assert_stages(b"F")
+        self.assertFalse(self.target.exists())
 
     def test_source_mutation_during_frontend_rejects_before_publication(self):
         completed = self.run_pipeline("SOURCE_CHANGED")

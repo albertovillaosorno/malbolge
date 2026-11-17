@@ -133,7 +133,8 @@ def admit_source_identity(frontend_bytes: bytes, source_id: str, digest: str) ->
         parsed = cast(
             object, json.loads(frontend_bytes, object_pairs_hook=strict_object)
         )
-    except (UnicodeError, ValueError) as error:
+    except (RecursionError, UnicodeError, ValueError) as error:
+        # A bounded byte stream can still exceed the JSON parser stack.
         raise PipelineError(f"invalid normalized frontend JSON: {error}") from error
     if not isinstance(parsed, dict):
         raise PipelineError("normalized frontend JSON lacks source identity")
