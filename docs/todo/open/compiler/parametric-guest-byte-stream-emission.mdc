@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the auto-padded forward backend now preserves exactly
+  two post-halt graphical loader seed words as physical, *unreached* source
+  data. Its new explicit API takes a reached path and an exact seed pair,
+  verifies decode and loader placement, and maps both seed cells separately
+  from requested logical steps and padding. The existing 91-cell N15
+  `Iy` witness is reproduced by fixed `j` and automatically selected `j`
+  before one real rotation at address 95; invalid seeds, premature halts
+  and manual skipped bytes in logical plans reject. This enables planning
+  from a loader seed without pretending the seed executes. It does **not**
+  perform the other eight rotations or C23 signed EOF conversion. The frozen
+  mutable checksum continues to refuse declaration `29:5`.
+
 - On 2026-11-17, the source-derived N15 EOF operands also occur at
   **adjacent** loader phases four and five (addresses 95/96 of the frozen
   91-cell `Iy` source). A new exact two-cell post-halt loader-seed
@@ -102,7 +114,8 @@ evidence describe the old priority scheme, not the current phase.
   rerun against native C23 controls and still refused the first observed
   declaration at `29:5`. The four-read signed-EOF loop remains a known
   mismatching guest output. A new bounded negative loader study verified all
-  8,836 printable source-tail pairs, two full cycles of their six-phase 15-trit loader recurrence,
+  8,836 printable source-tail pairs, two full cycles of their six-phase
+  15-trit loader recurrence,
   and 2..12 untouched consecutive `p` operands (1,166,352 candidates).
   Four necessary byte/EOF checks left 64 candidates; exhaustive 257-case
   verification rejected every one. This eliminates passive short loader

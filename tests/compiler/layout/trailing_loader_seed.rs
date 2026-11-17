@@ -150,3 +150,148 @@ fn only_two_loader_data_cells_may_follow_a_reached_halt() {
         Err(LinearLayoutError::JumpPathUnsupported),
     );
 }
+
+#[test]
+fn padded_planner_keeps_loader_seeds_outside_reached_logical_steps()
+-> Result<(), String> {
+    let profile = current_profile();
+    let manually_planned = halted_seed_plan();
+    let logical: Vec<PaddedForwardStep> = manually_planned[..89]
+        .iter()
+        .copied()
+        .map(PaddedForwardStep::Instruction)
+        .collect();
+    let padded = layout::encode_auto_padded_forward_layout_with_loader_seed(
+        profile, &logical, *b"Iy",
+    )
+    .map_err(|error| format!("padded seed plan: {error:?}"))?;
+    let manual = encode_linear_layout(profile, &manually_planned)
+        .map_err(|error| format!("manual seed plan: {error:?}"))?;
+    assert_eq!(padded.layout(), &manual);
+    assert_eq!(padded.operations(), &manually_planned);
+    assert_eq!(padded.logical_code_positions().len(), 89);
+    assert_eq!(padded.logical_code_positions().last(), Some(&88));
+    assert_eq!(&padded.source_cell_origins()[89..], &[
+        PaddedCellOrigin::LoaderSeed,
+        PaddedCellOrigin::LoaderSeed
+    ],);
+    verify_bidirectional_source_map(&padded)?;
+    let mut vm =
+        ProfileMachine::from_source(profile, padded.layout().source(), vec![
+            255,
+        ])
+        .map_err(|error| error.to_string())?;
+    verify_execution_witness(&mut vm, padded.layout())?;
+    assert_eq!(vm.input_consumed(), 0);
+
+    // The same fixed loader tail must be available to online relocation
+    // selection, not only to a hand-placed `j` instruction.
+    let mut auto = logical;
+    auto[40] = PaddedForwardStep::AutoRelocate;
+    let automatically_relocated =
+        layout::encode_auto_padded_forward_layout_with_loader_seed(
+            profile, &auto, *b"Iy",
+        )
+        .map_err(|error| format!("automatic seed relocation: {error:?}"))?;
+    assert_eq!(automatically_relocated.layout(), &manual);
+    assert_eq!(automatically_relocated.logical_code_positions().len(), 89);
+    verify_bidirectional_source_map(&automatically_relocated)?;
+    Ok(())
+}
+
+#[test]
+fn padded_loader_seed_api_rejects_unreachable_or_invalid_logical_paths() {
+    let profile = current_profile();
+    let logical = [
+        PaddedForwardStep::Instruction(LinearOpcode::NoOperation),
+        PaddedForwardStep::Instruction(LinearOpcode::Halt),
+    ];
+    let graphical = |position| {
+        (33..=126u8)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), position)
+                    == Some(b'o')
+            })
+            .expect("one loadable graphical cell at each source address")
+    };
+    let seed = [graphical(2), graphical(3)];
+    let safe = layout::encode_auto_padded_forward_layout_with_loader_seed(
+        profile, &logical, seed,
+    )
+    .expect("a reached halt must preserve two loadable suffix cells");
+    assert_eq!(safe.layout().source().len(), 4);
+    assert_eq!(safe.logical_code_positions(), [0, 1]);
+    assert_eq!(safe.source_cell_origins(), [
+        PaddedCellOrigin::Logical(0),
+        PaddedCellOrigin::Logical(1),
+        PaddedCellOrigin::LoaderSeed,
+        PaddedCellOrigin::LoaderSeed
+    ]);
+    let mut guest =
+        ProfileMachine::from_source(profile, safe.layout().source(), vec![])
+            .expect(
+                "the canonical loader must accept its exact graphical suffix",
+            );
+    assert_eq!(
+        guest.run(2),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 2,
+        })
+    );
+
+    let bad_byte = (33..=126u8)
+        .find(|&byte| {
+            !matches!(
+                decode_profile_instruction(u32::from(byte), 2),
+                Some(b'j' | b'i' | b'*' | b'p' | b'v' | b'o' | b'<' | b'/')
+            )
+        })
+        .expect("some graphical bytes are not loadable at address two");
+    assert_eq!(
+        layout::encode_auto_padded_forward_layout_with_loader_seed(
+            profile,
+            &logical,
+            [bad_byte, seed[1]],
+        ),
+        Err(LinearLayoutError::NoEncoding { position: 2 }),
+    );
+    assert_eq!(
+        encode_auto_padded_forward_layout(profile, &[
+            logical[0],
+            logical[1],
+            PaddedForwardStep::Instruction(LinearOpcode::SkippedDataByte {
+                byte: u32::from(seed[0]),
+            }),
+            PaddedForwardStep::Instruction(LinearOpcode::SkippedDataByte {
+                byte: u32::from(seed[1]),
+            }),
+        ]),
+        Err(LinearLayoutError::JumpPathUnsupported),
+    );
+    let wrong_terminal = [
+        PaddedForwardStep::Instruction(LinearOpcode::Halt),
+        PaddedForwardStep::Instruction(LinearOpcode::NoOperation),
+    ];
+    assert_eq!(
+        layout::encode_auto_padded_forward_layout_with_loader_seed(
+            profile,
+            &wrong_terminal,
+            seed,
+        ),
+        Err(LinearLayoutError::MissingHalt),
+    );
+    let early_halt = [
+        PaddedForwardStep::Instruction(LinearOpcode::Halt),
+        PaddedForwardStep::Instruction(LinearOpcode::NoOperation),
+        PaddedForwardStep::Instruction(LinearOpcode::Halt),
+    ];
+    assert_eq!(
+        layout::encode_auto_padded_forward_layout_with_loader_seed(
+            profile,
+            &early_halt,
+            [graphical(3), graphical(4)],
+        ),
+        Err(LinearLayoutError::EarlyHalt { position: 0 }),
+    );
+}

@@ -252,6 +252,8 @@ pub enum PaddedCellOrigin {
     Logical(u32),
     /// An inserted no-op skipped by an unconditional forward code jump.
     SkippedPadding,
+    /// One unreachable graphical byte of a two-cell loader seed.
+    LoaderSeed,
 }
 
 /// Executable automatically padded source, plus bidirectional source maps.
@@ -1250,25 +1252,52 @@ fn proven_source_origins(
     operations: &[LinearOpcode],
 ) -> Result<Vec<PaddedCellOrigin>, LinearLayoutError> {
     let mut origins = vec![PaddedCellOrigin::SkippedPadding; operations.len()];
+    let seed_start = operations
+        .iter()
+        .position(|operation| *operation == LinearOpcode::Halt)
+        .filter(|&halt| halt.saturating_add(3) == operations.len())
+        .map(|halt| halt.saturating_add(1));
     for (logical_index, &code) in positions.iter().enumerate() {
-        let address = usize::try_from(code).map_err(|_error| LinearLayoutError::TooLong)?;
+        let address = usize::try_from(code)
+            .map_err(|_error| LinearLayoutError::TooLong)?;
         let slot = origins
             .get_mut(address)
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
-        if *slot != PaddedCellOrigin::SkippedPadding
-            || layout
-                .executed_code_positions()
-                .binary_search(&code)
-                .is_err()
+        if *slot != PaddedCellOrigin::SkippedPadding {
+            return Err(LinearLayoutError::JumpPathUnsupported);
+        }
+        if let Some(seed_offset) =
+            seed_start.and_then(|start| address.checked_sub(start))
+        {
+            if seed_offset < 2
+                && matches!(
+                    operations[address],
+                    LinearOpcode::SkippedDataByte { .. }
+                )
+                && layout
+                    .executed_code_positions()
+                    .binary_search(&code)
+                    .is_err()
+            {
+                *slot = PaddedCellOrigin::LoaderSeed;
+                continue;
+            }
+        }
+        if layout
+            .executed_code_positions()
+            .binary_search(&code)
+            .is_err()
         {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         *slot = PaddedCellOrigin::Logical(
-            u32::try_from(logical_index).map_err(|_error| LinearLayoutError::TooLong)?,
+            u32::try_from(logical_index)
+                .map_err(|_error| LinearLayoutError::TooLong)?,
         );
     }
     for &code in layout.executed_code_positions() {
-        let address = usize::try_from(code).map_err(|_error| LinearLayoutError::TooLong)?;
+        let address = usize::try_from(code)
+            .map_err(|_error| LinearLayoutError::TooLong)?;
         let slot = origins
             .get_mut(address)
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
@@ -1393,6 +1422,72 @@ fn prove_single_fixed_tail_jump(
 /// unplaceable safe relocation, unproven post-relocation jump operands,
 /// explicit targets, or any expanded source refused by independent admission.
 pub fn encode_auto_padded_forward_layout(
+    profile: &'static ProfileDescriptor,
+    logical: &[PaddedForwardStep],
+) -> Result<PaddedForwardLayout, LinearLayoutError> {
+    if logical.iter().any(|step| {
+        matches!(
+            step,
+            PaddedForwardStep::Instruction(
+                LinearOpcode::SkippedDataByte { .. }
+            )
+        )
+    }) {
+        // The logical path consists only of reached steps. Loader data
+        // belongs to the explicit physical suffix API below.
+        return Err(LinearLayoutError::JumpPathUnsupported);
+    }
+    encode_auto_padded_forward_layout_impl(profile, logical)
+}
+
+/// Appends two loadable graphical data cells *after* the reached final halt.
+/// The suffix contributes to loader memory but never enters logical step
+/// maps or source execution. All resulting code, data and provenance are
+/// independently checked by the ordinary linear admission boundary.
+///
+/// This remains a forward-only layout; it cannot synthesize operand revisits
+/// or general signed-EOF input conversion.
+///
+/// # Errors
+/// Rejects a missing final halt, malformed seed bytes, unproved relocation,
+/// unsafe arithmetic and every ordinary forward-layout admission failure.
+pub fn encode_auto_padded_forward_layout_with_loader_seed(
+    profile: &'static ProfileDescriptor,
+    logical: &[PaddedForwardStep],
+    seed: [u8; 2],
+) -> Result<PaddedForwardLayout, LinearLayoutError> {
+    if !matches!(
+        logical.last(),
+        Some(PaddedForwardStep::Instruction(LinearOpcode::Halt))
+    ) {
+        return Err(LinearLayoutError::MissingHalt);
+    }
+    if logical.iter().any(|step| {
+        matches!(
+            step,
+            PaddedForwardStep::Instruction(
+                LinearOpcode::SkippedDataByte { .. }
+            )
+        )
+    }) {
+        return Err(LinearLayoutError::JumpPathUnsupported);
+    }
+    let mut with_seed = Vec::with_capacity(logical.len().saturating_add(2));
+    with_seed.extend_from_slice(logical);
+    with_seed.extend(seed.into_iter().map(|byte| {
+        PaddedForwardStep::Instruction(LinearOpcode::SkippedDataByte {
+            byte: u32::from(byte),
+        })
+    }));
+    let mut layout =
+        encode_auto_padded_forward_layout_impl(profile, &with_seed)?;
+    // These physical bytes have their own LoaderSeed provenance; they are
+    // not instructions that the logical caller requested to execute.
+    layout.logical_code_positions.truncate(logical.len());
+    Ok(layout)
+}
+
+fn encode_auto_padded_forward_layout_impl(
     profile: &'static ProfileDescriptor,
     logical: &[PaddedForwardStep],
 ) -> Result<PaddedForwardLayout, LinearLayoutError> {

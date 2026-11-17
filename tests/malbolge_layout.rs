@@ -138,6 +138,17 @@ fn verify_bidirectional_source_map(artifact: &layout::PaddedForwardLayout) -> Re
             PaddedCellOrigin::SkippedPadding if reached => {
                 return Err(String::from("reached an allegedly skipped padding cell"));
             }
+            PaddedCellOrigin::LoaderSeed if reached => {
+                return Err(String::from("reached a loader seed data cell"));
+            }
+            PaddedCellOrigin::LoaderSeed => {
+                if !matches!(
+                    artifact.operations().get(code),
+                    Some(LinearOpcode::SkippedDataByte { .. })
+                ) {
+                    return Err(String::from("noncanonical loader seed origin"));
+                }
+            }
             PaddedCellOrigin::Logical(_) => {}
             PaddedCellOrigin::ExecutedPadding | PaddedCellOrigin::SkippedPadding => {
                 if artifact.operations().get(code) != Some(&LinearOpcode::NoOperation) {

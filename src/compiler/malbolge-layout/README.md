@@ -34,6 +34,17 @@ shows that nine rotations of word 95 yield a valid adjacent two-`p`
 conversion pair, but the layout executes only the first rotation. No
 nine-write loop, operand revisit, or source-C conversion is claimed.
 
+The forward-padding planner also exposes
+`encode_auto_padded_forward_layout_with_loader_seed(profile, logical, seed)`.
+It takes a **reached** logical path ending in `Halt` and exactly two physical
+loader seed bytes. They are position-validated and incorporated into the
+final loader image without becoming reached logical steps. Their source-map
+origin is `LoaderSeed`, distinct from both executed and skipped padding;
+manual `SkippedDataByte` tokens in a logical path are refused. The same
+91-cell N15 program is reproduced using both a fixed `j` and
+`AutoRelocate`, then checked against the normative VM. This is source
+layout, not repeated-operand synthesis or signed C `getchar` lowering.
+
 ### Opt-in bounded revisiting source admission
 
 `composition/bounded_revisit.rs` separately admits an independently supplied

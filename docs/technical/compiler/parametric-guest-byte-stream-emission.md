@@ -56,6 +56,20 @@ mispublication, and the frozen mutable-EOF checksum still refuses its
 first declaration at `29:5`. Neither source-C observable signed EOF
 conversion nor the P2 stateful checksum has been implemented.
 
+### Planned post-halt loader seeds (2026-11-17)
+
+The automatic forward-padding layout can now take the exact two graphical
+loader-seed bytes **separately** from a reached logical operation sequence.
+`encode_auto_padded_forward_layout_with_loader_seed` preserves these source
+cells after the final halt and marks their origins as `LoaderSeed`, without
+adding fictitious logical instructions or confusing them with jump padding.
+The original 91-cell `Iy` witness is reproduced exactly by an explicit `j`
+and by `AutoRelocate`, with an independent VM execution and negative seed,
+path and halt checks. This removes a source-mapping obstacle to later
+operand construction; it still performs one rotation, not the nine required
+for the tested adjacent two-`p` signed EOF operand pair. The complete C
+checksum still refuses its first unsigned declaration, so P2 remains open.
+
 ### Exact post-halt loader-seed admission (2026-11-17)
 
 A source-loadable backend increment now admits two exact graphical
