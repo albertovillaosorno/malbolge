@@ -10,7 +10,38 @@ subsequent writes target either expanded memory or past source cells strictly
 behind the executing instruction. Later forward jumps are also admitted if
 D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
-conditional branch, backward jump, or helper.
+automatically emitted conditional branch, backward jump, or helper.
+
+### Opt-in bounded revisiting source admission
+
+`composition/bounded_revisit.rs` separately admits an independently supplied
+raw graphical program for **one explicit binary input** and its exact finite
+normative-VM path. This is not a new automatic layout or source compiler:
+`admit_bounded_revisit_layout` requires canonical profile ID/fingerprint,
+2..4096 loader-valid source cells, at most 512 steps and input bytes, complete
+ordered code addresses (including halt), expected output bytes and successful
+input-consumption count.
+
+Actual VM transitions must agree on every code address, terminate at the
+final supplied step, revisit at least one code address, and match
+output/input-consumption exactly. A successful result
+exposes the genuine code/D/encryption positions and raw source; malformed,
+unbounded, altered, incomplete or nonrevisiting witnesses fail closed.
+
+`tests/bounded_revisit_layout.rs` pins a 104-cell graphical guest for both
+current/historical profiles. A real `j` and forward `i` reach a 16-cell body;
+a subsequent `i` jumps **backward** to the already executed body. Its first
+pass performs actual byte input and echo; after XLAT2 self-encryption its
+second pass leaves those two operations inert and exits by reading a
+different live D memory word. The entire 35-step VM path, D addresses,
+encryption targets, binary output for NUL/128/255, and EOF sentinel output
+with zero successful reads are verified.
+
+The tests also refuse tampered
+jump operands, forged paths, incomplete termination, wrong output/reads,
+nonrevisiting candidates and exceeded bounds. This is input-specific
+machine-control evidence, **not** runtime-conditional branching, repeated
+successful reads, compiled C state, or EOF-driven checksum termination.
 
 ### Canonical effect-free function
 

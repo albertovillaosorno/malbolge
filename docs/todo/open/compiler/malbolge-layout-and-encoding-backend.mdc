@@ -53,6 +53,25 @@ emission.
 
 ## Evidence
 
+- A separately admitted, **input-specific** bounded revisiting-source gate
+  now verifies genuine guest backward control without changing the existing
+  forward-only encoder. It requires canonical target identity, a complete
+  loader-valid source of 2..4096 cells, up to 512 exact code steps and input
+  bytes, a repeated executed code address, real VM halt, and matching binary
+  output and read count.
+
+  The 104-cell machine witness executes 35 steps on
+  both current/historical profiles: one forward entry, 16 code cells visited
+  twice via a real backward `i`, one live byte read/echo on the first pass,
+  and a data-word-selected exit after XLAT2 changes the revisited byte-I/O
+  cells to no-ops.
+
+  EOF/NUL/128/255, extra unread stdin, exact C/D/encryption
+  positions, and forged profile/path/operand/output/consumption/budget cases
+  are covered in `tests/bounded_revisit_layout.rs`. This is a **verification
+  gate**, not a general backward layout synthesizer or the mutable EOF
+  checksum C compiler; dynamic branches, guest locals and EOF loops remain
+  open.
 - A first address-sensitive executable machine-code slice now exists under
   `src/compiler/malbolge-layout/`. It assigns exact code addresses, inverts
   normative graphical decoding over all 94 source-cell phases, preserves the

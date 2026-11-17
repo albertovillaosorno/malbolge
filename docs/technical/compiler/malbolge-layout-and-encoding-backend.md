@@ -765,6 +765,41 @@ Fibonacci probe emits `18 3e 38 12` under both input streams; the older
 exact `T=4>` capsule is preserved. Other streams may still be unsupported;
 this is not general Malbolge runtime arithmetic or a complete guest linker.
 
+### Bounded source-backed revisiting execution admission
+
+A separate opt-in library gate, `admit_bounded_revisit_layout`, checks a
+complete caller-supplied graphical source against a single input-specific
+normative VM execution witness. The ordinary `LinearOpcode` encoder and
+forward-only automatic padding planner are unchanged.
+
+The gate requires exact canonical profile identity, 2..4096 loader-valid source cells, at most
+512 guest transitions and supplied input bytes, an exact ordered code path
+ending in halt, and independently expected guest output and successful byte
+consumption. It checks every fetched guest C address, captures D and
+post-step XLAT2 encryption addresses, requires at least one actual repeated
+code address, and fails closed on any discrepancy.
+
+There is no guessed guest branch or host-performed output, and one accepted input does not authorize
+any other stream.
+
+A finite 104-cell fixture loads on both canonical profiles, executes `j`
+and a forward `i`, reads and outputs one binary byte, and performs a genuine
+backward `i` transfer that revisits code positions 77..92. The first pass's
+`InputWord` and `OutputByte` cells become inert after their real XLAT2
+mutations; the second pass's jump reads a distinct D word and exits to a
+real halt. All 35 steps and exact D/encryption positions are pinned, with
+NUL, 128, 255, and extra unread input vectors. Empty input separately
+produces the selected profile's EOF-word low byte with zero consumed bytes.
+Negative witnesses cover profile drift, malformed graphical source,
+loader-valid backedge tampering, forged paths, premature witness end,
+incorrect output/consumption, a strictly nonrevisiting valid program, and
+input/path size overruns. See `tests/bounded_revisit_layout.rs`.
+
+This completes only one finite machine-control **verification** prerequisite.
+It neither synthesizes a backward layout from ternary IR, nor implements
+runtime C comparisons, mutable local storage, repeated `getchar`, EOF
+branches or the accepted mutable checksum program.
+
 ### Remaining implementation
 
 Map admitted typed ternary operations and runtime/heap helpers onto real target

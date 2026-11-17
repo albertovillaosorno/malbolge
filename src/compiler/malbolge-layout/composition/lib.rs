@@ -41,6 +41,13 @@
 //! require normative VM validation. Forward code jumps are admitted only
 //! when the exact evolving data-pointer cells and skipped padding prove them.
 
+mod bounded_revisit;
+
+pub use bounded_revisit::{
+    BoundedRevisitError, BoundedRevisitExpectation, BoundedRevisitLayout,
+    MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS, admit_bounded_revisit_layout,
+};
+
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 
 const GRAPHICAL_START: u8 = 33;
