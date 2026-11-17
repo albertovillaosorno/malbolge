@@ -48,33 +48,45 @@ const fn span(start: u32, end: u32) -> InputSourceSpan {
     }
 }
 
-fn admitted_program() -> Result<TernaryProgram, String> {
+fn admitted_program_with_reads(
+    read_count: usize,
+    output: u8,
+) -> Result<TernaryProgram, String> {
+    let mut instructions = Vec::new();
+    for index in 0..read_count {
+        let id = u32::try_from(index).map_err(|error| error.to_string())?;
+        let start = id * 2 + 1;
+        instructions.push(InputInstruction::Getchar {
+            result: id,
+            span: span(start, start + 1),
+            type_kind: InputScalarType::I32,
+        });
+    }
+    let literal_id =
+        u32::try_from(read_count).map_err(|error| error.to_string())?;
+    let literal_start = literal_id * 2 + 1;
+    instructions.extend([
+        InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: vec![output],
+            result: literal_id,
+            span: span(literal_start, literal_start + 1),
+            type_kind: InputScalarType::U8,
+        },
+        InputInstruction::ByteOutput {
+            span: span(literal_start + 2, literal_start + 3),
+            value: literal_id,
+        },
+    ]);
     let input = TypedIrInput {
         abi_id: String::from("malbolge-c32-v1"),
         functions: vec![InputFunction {
             blocks: vec![InputBlock {
                 id: 0,
-                instructions: vec![
-                    InputInstruction::Getchar {
-                        result: 0,
-                        span: span(1, 2),
-                        type_kind: InputScalarType::I32,
-                    },
-                    InputInstruction::ConstantInteger {
-                        bit_width: 8,
-                        little_endian: vec![OUTPUT],
-                        result: 1,
-                        span: span(3, 4),
-                        type_kind: InputScalarType::U8,
-                    },
-                    InputInstruction::ByteOutput {
-                        span: span(5, 6),
-                        value: 1,
-                    },
-                ],
+                instructions,
                 phi_count: 0,
                 terminator: InputTerminator::Return {
-                    span: span(7, 8),
+                    span: span(literal_start + 4, literal_start + 5),
                     value: None,
                 },
             }],
@@ -83,7 +95,7 @@ fn admitted_program() -> Result<TernaryProgram, String> {
             name: String::from("mixed_signed_input_literal"),
             parameter_count: 0,
             return_kind: InputScalarType::Void,
-            span: span(0, 9),
+            span: span(0, literal_start + 6),
         }],
         global_count: 0,
         input_format_version: 1,
@@ -93,6 +105,10 @@ fn admitted_program() -> Result<TernaryProgram, String> {
         target_profile: String::from("malbolge-2026"),
     };
     lower_typed_ir(&input).map_err(|error| format!("lowering: {error:?}"))
+}
+
+fn admitted_program() -> Result<TernaryProgram, String> {
+    admitted_program_with_reads(1, OUTPUT)
 }
 
 #[test]
@@ -176,6 +192,88 @@ fn signed_input_literal_rejects_wrong_effect_shape() -> Result<(), String> {
     let _removed = no_input.functions[0].operations.remove(0);
     if encode_discarded_input_literal(&no_input, profile).is_ok() {
         return Err(String::from("invented an absent guest input"));
+    }
+    Ok(())
+}
+
+#[test]
+fn signed_two_getchars_then_independent_guest_literal() -> Result<(), String> {
+    let program = admitted_program_with_reads(2, OUTPUT)?;
+    let wire = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("canonical encoding: {error:?}"))?;
+    let decoded = canonical_ternary_program(&wire)
+        .map_err(|error| format!("canonical decode: {error:?}"))?;
+    if decoded != program {
+        return Err(String::from(
+            "two reads changed during canonical roundtrip",
+        ));
+    }
+    let profile = current_profile();
+    let layout = encode_discarded_input_literal(&decoded, profile)
+        .map_err(|error| format!("two-input bridge: {error:?}"))?;
+    if layout.executed_code_positions().len() != 6
+        || layout.source() != [117, 116, 38, 36, 95, 76]
+        || layout.data_pointer_positions() != [0, 1, 2, 39, 40, 41]
+    {
+        return Err(String::from("unrecognized two-read guest layout"));
+    }
+    for index in 0..2usize {
+        let source_byte = layout.source()[index];
+        if malbolge::decode_profile_instruction(
+            u32::from(source_byte),
+            u32::try_from(index).map_err(|error| error.to_string())?,
+        ) != Some(profile.input_instruction())
+        {
+            return Err(String::from("source skipped a guest input effect"));
+        }
+    }
+    for stream in [vec![], vec![0], vec![255], vec![128, 255], vec![
+        0, 128, 255,
+    ]] {
+        let mut machine = ProfileMachine::from_source(
+            profile,
+            layout.source(),
+            stream.clone(),
+        )
+        .map_err(|error| format!("machine load: {error:?}"))?;
+        let outcome = machine
+            .run(6)
+            .map_err(|error| format!("machine run: {error:?}"))?;
+        if !matches!(outcome, RunOutcome::Terminated { steps: 6, .. })
+            || machine.input_consumed() != stream.len().min(2)
+            || machine.output() != [OUTPUT]
+        {
+            return Err(format!(
+                "two-read guest {stream:?}: {outcome:?}; {}/{:?}",
+                machine.input_consumed(),
+                machine.output()
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn signed_two_getchars_refuses_unproved_output_and_third_read()
+-> Result<(), String> {
+    let profile = current_profile();
+    let unsupported = admitted_program_with_reads(2, 223)?;
+    if encode_discarded_input_literal(&unsupported, profile).is_ok() {
+        return Err(String::from("published unwitnessed two-read byte 223"));
+    }
+    let third = admitted_program_with_reads(3, OUTPUT)?;
+    if encode_discarded_input_literal(&third, profile).is_ok() {
+        return Err(String::from("published unsupported third signed input"));
+    }
+    let mut duplicate = admitted_program_with_reads(2, OUTPUT)?;
+    let TernaryOperation::GetcharI32 { result, .. } =
+        &mut duplicate.functions[0].operations[1]
+    else {
+        return Err(String::from("missing second input"));
+    };
+    *result = 0;
+    if encode_discarded_input_literal(&duplicate, profile).is_ok() {
+        return Err(String::from("published duplicate signed input SSA"));
     }
     Ok(())
 }

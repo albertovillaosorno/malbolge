@@ -1145,16 +1145,19 @@ pub fn encode_successful_byte_echo(
         .map_err(ByteEchoBridgeError::Layout)
 }
 
-/// Emit a source-bound signed `getchar()` (including EOF), followed by a
-/// byte literal that is computed independently of the input inside the guest.
+/// Emit one or two source-bound signed `getchar()` reads (including EOF),
+/// followed by a byte literal that is computed independently of the input
+/// inside the guest.
 ///
-/// The admitted ternary effect trace is exactly `GetcharI32`, `MaterializeU8`,
-/// `ByteOutput` of that constant, `ReturnVoid`. A bounded 94-phase search
-/// uses only inert padding, a genuine input word, relocation, data rotation,
-/// guest byte output and halt. The loader-expanded data word is derived from
-/// the emitted source and independently replayed in the normative VM on EOF
-/// and binary stdin before the layout can be returned. The discarded signed
-/// input never becomes a successful-byte value or an output surrogate.
+/// The admitted effect trace is one or two distinct `GetcharI32` results,
+/// `MaterializeU8`, `ByteOutput` of that constant, `ReturnVoid`. A bounded
+/// 94-phase one-read search uses inert padding, a genuine input word,
+/// relocation, data rotation, guest byte output and halt. The two-read case
+/// admits only its independently witnessed six-step output of byte 11. The
+/// loader-expanded data word is derived from the emitted source and
+/// independently replayed in the normative VM on EOF and binary stdin before
+/// the layout can be returned. The discarded signed input never becomes a
+/// successful-byte value or an output surrogate.
 ///
 /// # Errors
 ///
@@ -1175,20 +1178,46 @@ pub fn encode_discarded_input_literal(
     let [function] = program.functions.as_slice() else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    let [
-        TernaryOperation::GetcharI32 { result: input, .. },
-        TernaryOperation::MaterializeU8 { result, scalar, .. },
-        TernaryOperation::ByteOutput { value, .. },
-        TernaryOperation::ReturnVoid { .. },
-    ] = function.operations.as_slice()
+    let Some((TernaryOperation::ReturnVoid { .. }, effects)) =
+        function.operations.split_last()
     else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    if input == result || result != value {
+    let Some((TernaryOperation::ByteOutput { value, .. }, prefix)) =
+        effects.split_last()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::MaterializeU8 { result, scalar, .. }, reads)) =
+        prefix.split_last()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if reads.is_empty() || reads.len() > 2 || result != value {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    for padding in 0..94 {
-        let mut operations = vec![LinearOpcode::InputWord];
+    let mut input_ids = BTreeSet::new();
+    for read in reads {
+        let TernaryOperation::GetcharI32 { result: input, .. } = read else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if input == result || !input_ids.insert(input) {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    // Two independent source reads have a separately verified six-step
+    // guest witness for byte 11. Do not infer other bytes from the one-read
+    // padding search: changing the input prefix changes the loader words.
+    if reads.len() == 2 && scalar.bits() != 11 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let search_limit = if reads.len() == 2 {
+        1
+    } else {
+        94
+    };
+    for padding in 0..search_limit {
+        let mut operations = vec![LinearOpcode::InputWord; reads.len()];
         operations.extend(repeat_n(LinearOpcode::NoOperation, padding));
         operations.extend([
             LinearOpcode::RelocateDataPointer,
@@ -1199,11 +1228,11 @@ pub fn encode_discarded_input_literal(
         let Ok(layout) = encode_linear_layout(profile, &operations) else {
             continue;
         };
-        // The input changes A but the later rotate overwrites A with a
-        // data word that is never written by preceding source instructions.
-        // Check the original graphical source's loader recurrence, not an
-        // assumed output byte or a precomputed output-count fixture.
-        let rotate_index = padding + 2;
+
+        // Input changes A, but the later rotation overwrites A from an
+        // untouched expanded loader word. Derive it from this exact source;
+        // never assume a host literal, a byte conversion, or a stored read.
+        let rotate_index = padding + reads.len() + 1;
         let Some(&data_address) =
             layout.data_pointer_positions().get(rotate_index)
         else {
@@ -1236,14 +1265,15 @@ pub fn encode_discarded_input_literal(
         let Some(&word) = words.get(data_address) else {
             continue;
         };
-        let rotated = word / 3 + (word % 3) * (profile.word_modulus() / 3);
+        let rotated = malbolge::profile_rotate(word, profile.word_modulus());
         if (rotated % 256) != u32::from(scalar.bits()) {
             continue;
         }
-        // The scalar preview is an optimization; only executed VM results
-        // authorize returning a guest program, including an EOF attempt.
+        // Static preview is only a candidate filter. Independently replay
+        // the actual source and check both reads, EOF, and an unread suffix.
         let mut verified = true;
-        for stream in [vec![], vec![0], vec![128], vec![255]] {
+        for stream in [vec![], vec![0], vec![128], vec![255], vec![0, 128, 255]]
+        {
             let Ok(mut machine) = ProfileMachine::from_source(
                 profile,
                 layout.source(),
@@ -1253,8 +1283,13 @@ pub fn encode_discarded_input_literal(
                 break;
             };
             let outcome = machine.run(operations.len());
-            if !matches!(outcome, Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
-                || machine.input_consumed() != usize::from(!stream.is_empty())
+            let terminated = matches!(
+                outcome,
+                Ok(RunOutcome::Terminated { steps, .. })
+                    if steps == operations.len()
+            );
+            if !terminated
+                || machine.input_consumed() != stream.len().min(reads.len())
                 || machine.output() != [scalar.bits()]
             {
                 verified = false;

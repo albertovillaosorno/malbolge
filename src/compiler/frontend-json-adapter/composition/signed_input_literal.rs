@@ -76,9 +76,9 @@ fn source_slice<'a>(source: &'a [u8], node: &Node) -> Option<&'a [u8]> {
     source.get(start..end)
 }
 
-/// Recognize only one `void emit(void)` body with a discarded signed read
-/// followed by a source-spelled decimal literal `putchar`. The ordinary
-/// frontend source SHA-256 check is also repeated by the caller.
+/// Recognize only one `void emit(void)` body with one or two discarded
+/// signed reads followed by a source-spelled decimal literal `putchar`. The
+/// ordinary frontend source SHA-256 check is also repeated by the caller.
 ///
 /// # Errors
 ///
@@ -86,7 +86,7 @@ fn source_slice<'a>(source: &'a [u8], node: &Node) -> Option<&'a [u8]> {
 /// signed EOF representation, SSA identity or canonical typed admission.
 #[expect(
     clippy::too_many_lines,
-    reason = "exact nine-node Clang source proof and typed reconstruction"
+    reason = "closed Clang source proof and typed reconstruction"
 )]
 pub(super) fn canonical_signed_input_literal(
     bytes: &[u8],
@@ -108,18 +108,17 @@ pub(super) fn canonical_signed_input_literal(
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    let [
-        function,
-        body,
-        read,
-        read_decay,
-        read_callee,
-        write,
-        write_decay,
-        write_callee,
-        literal,
-    ] = input.nodes.as_slice()
-    else {
+    let [function, body, tail @ ..] = input.nodes.as_slice() else {
+        return Err(FrontendJsonError::Unsupported);
+    };
+    // One or two complete signed reads are currently bounded by a proven
+    // graphical layout. No other sibling effects are admitted.
+    if tail.len() != 7 && tail.len() != 10 {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    let read_count = (tail.len() - 4) / 3;
+    let (reads, output) = tail.split_at(read_count * 3);
+    let [write, write_decay, write_callee, literal] = output else {
         return Err(FrontendJsonError::Unsupported);
     };
     let function_ok = function.id == 1
@@ -138,38 +137,56 @@ pub(super) fn canonical_signed_input_literal(
         && function.literal.is_none()
         && function.span.begin.byte < function.span.end.byte
         && function.span.begin.line > 0;
-    if !function_ok
-        || !node_is(body, 2, 1, "compound-statement", None, None, None)
-        || !node_is(
+    let mut read_calls = Vec::with_capacity(read_count);
+    let mut preceding_end = body.span.begin.byte;
+    for (index, nodes) in reads.chunks_exact(3).enumerate() {
+        let [read, decay, callee] = nodes else {
+            return Err(FrontendJsonError::Unsupported);
+        };
+        let id = 3 + u32::try_from(index * 3)
+            .map_err(|_error| FrontendJsonError::Unsupported)?;
+        if !node_is(
             read,
-            3,
+            id,
             2,
             "call-expression",
             Some("i32"),
             Some("external:getchar"),
             None,
-        )
-        || !node_is(
-            read_decay,
-            4,
-            3,
+        ) || !node_is(
+            decay,
+            id + 1,
+            id,
             "cast-expression",
             Some("ptr(fn()->i32)"),
             None,
             Some("function-to-pointer"),
-        )
-        || !node_is(
-            read_callee,
-            5,
-            4,
+        ) || !node_is(
+            callee,
+            id + 2,
+            id + 1,
             "declaration-reference-expression",
             Some("fn()->i32"),
             Some("external:getchar"),
             None,
-        )
+        ) || preceding_end >= read.span.begin.byte
+            || read.span.begin != decay.span.begin
+            || decay.span != callee.span
+            || source_slice(source, read) != Some(b"getchar()")
+            || source_slice(source, decay) != Some(b"getchar")
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        preceding_end = read.span.end.byte;
+        read_calls.push(read);
+    }
+    let write_id = 3 + u32::try_from(read_count * 3)
+        .map_err(|_error| FrontendJsonError::Unsupported)?;
+    if !function_ok
+        || !node_is(body, 2, 1, "compound-statement", None, None, None)
         || !node_is(
             write,
-            6,
+            write_id,
             2,
             "call-expression",
             Some("i32"),
@@ -178,8 +195,8 @@ pub(super) fn canonical_signed_input_literal(
         )
         || !node_is(
             write_decay,
-            7,
-            6,
+            write_id + 1,
+            write_id,
             "cast-expression",
             Some("ptr(fn(i32)->i32)"),
             None,
@@ -187,31 +204,35 @@ pub(super) fn canonical_signed_input_literal(
         )
         || !node_is(
             write_callee,
-            8,
-            7,
+            write_id + 2,
+            write_id + 1,
             "declaration-reference-expression",
             Some("fn(i32)->i32"),
             Some("external:putchar"),
             None,
         )
-        || !node_is(literal, 9, 6, "integer-literal", Some("i32"), None, None)
+        || !node_is(
+            literal,
+            write_id + 3,
+            write_id,
+            "integer-literal",
+            Some("i32"),
+            None,
+            None,
+        )
         || body.span.end != function.span.end
         || body.span.begin.byte <= function.span.begin.byte
-        || !(body.span.begin.byte < read.span.begin.byte
-            && read.span.end.byte < write.span.begin.byte
-            && write.span.end.byte < body.span.end.byte)
-        || read.span.begin != read_decay.span.begin
-        || read_decay.span != read_callee.span
+        || preceding_end >= write.span.begin.byte
+        || write.span.end.byte >= body.span.end.byte
         || write.span.begin != write_decay.span.begin
         || write_decay.span != write_callee.span
         || literal.span.begin.byte
             != write_decay.span.end.byte.checked_add(1).unwrap_or(0)
         || literal.span.end.byte.checked_add(1) != Some(write.span.end.byte)
-        || source_slice(source, read) != Some(b"getchar()")
-        || source_slice(source, read_decay) != Some(b"getchar")
         || source_slice(source, write_decay) != Some(b"putchar")
-        || source_slice(source, body)
-            .is_none_or(|body| !body.starts_with(b"{") || !body.ends_with(b"}"))
+        || source_slice(source, body).is_none_or(|bytes| {
+            !bytes.starts_with(b"{") || !bytes.ends_with(b"}")
+        })
     {
         return Err(FrontendJsonError::Unsupported);
     }
@@ -237,7 +258,10 @@ pub(super) fn canonical_signed_input_literal(
     }
     let body_bytes =
         source_slice(source, body).ok_or(FrontendJsonError::Unsupported)?;
-    let expected = format!("{{ getchar(); putchar({decimal}); }}");
+    let expected = format!(
+        "{{ {}putchar({decimal}); }}",
+        "getchar(); ".repeat(read_count)
+    );
     if body_bytes != expected.as_bytes() {
         return Err(FrontendJsonError::Unsupported);
     }
@@ -283,30 +307,39 @@ pub(super) fn canonical_signed_input_literal(
     }
     types[0] = TypeEntry::new(TypeId::new(0), TypeDef::I32);
     types.push(TypeEntry::new(TypeId::new(2), TypeDef::U8));
+    let mut instructions = Vec::with_capacity(read_count + 2);
+    for (index, read) in read_calls.iter().enumerate() {
+        instructions.push(LocatedInstruction::new(
+            Instruction::Getchar {
+                result: ValueId::new(
+                    u32::try_from(index)
+                        .map_err(|_error| FrontendJsonError::Unsupported)?,
+                ),
+                type_id: TypeId::new(0),
+            },
+            typed_span(&read.span),
+        ));
+    }
+    let literal_id = ValueId::new(
+        u32::try_from(read_count)
+            .map_err(|_error| FrontendJsonError::Unsupported)?,
+    );
+    instructions.push(LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(8, vec![byte]),
+            result: literal_id,
+            type_id: TypeId::new(2),
+        },
+        typed_span(&literal.span),
+    ));
+    instructions.push(LocatedInstruction::new(
+        Instruction::ByteOutput { value: literal_id },
+        typed_span(&write.span),
+    ));
     let function = Function::new(FunctionSpec {
         blocks: vec![BasicBlock::new(BasicBlockSpec {
             id: block.id(),
-            instructions: vec![
-                LocatedInstruction::new(
-                    Instruction::Getchar {
-                        result: ValueId::new(0),
-                        type_id: TypeId::new(0),
-                    },
-                    typed_span(&read.span),
-                ),
-                LocatedInstruction::new(
-                    Instruction::ConstantInteger {
-                        constant: IntegerConstant::new(8, vec![byte]),
-                        result: ValueId::new(1),
-                        type_id: TypeId::new(2),
-                    },
-                    typed_span(&literal.span),
-                ),
-                LocatedInstruction::new(
-                    Instruction::ByteOutput { value: ValueId::new(1) },
-                    typed_span(&write.span),
-                ),
-            ],
+            instructions,
             phis: block.phis().to_vec(),
             span: block.span(),
             terminator: block.terminator().clone(),

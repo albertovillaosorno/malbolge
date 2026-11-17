@@ -47,6 +47,12 @@ SOURCE_TWO: Final = (
 SOURCE_TWO_DIGEST: Final = (
     "5757c553e9dfbdcc9b68278a85b5f0429f36dd1c2f70a336da7b79d6fcfd910c"
 )
+SOURCE_TWO_ELEVEN: Final = (
+    ROOT / "tests/compiler/c-frontend/accepted/discarded_two_input_literal_11.c"
+)
+SOURCE_TWO_ELEVEN_DIGEST: Final = (
+    "b39aa3acf223f2500ea4cc156d52b4369c19fabe22f3a76a33d0fb9aa2c49a24"
+)
 DRIVER: Final = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
 ADAPTER: Final = ROOT / ".cache/rust/target/debug/c2malbolge_json"
 FRONTEND: Final = (
@@ -205,6 +211,84 @@ class SignedInputLiteralPublicationTests(unittest.TestCase):
                     observed.returncode, 0, observed.stderr.decode(errors="replace")
                 )
                 self.assertEqual(observed.stdout, b"\xdf")
+
+    def test_two_signed_reads_emit_independent_guest_byte_11(self) -> None:
+        self.assertEqual(
+            hashlib.sha256(SOURCE_TWO_ELEVEN.read_bytes()).hexdigest(),
+            SOURCE_TWO_ELEVEN_DIGEST,
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+            directory = Path(raw)
+            wrapper = directory / "main.c"
+            wrapper.write_text(
+                f'#include "{SOURCE_TWO_ELEVEN}"\n'
+                "int main(void) { emit(); return 0; }\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["LD_LIBRARY_PATH"] = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+            for optimization in ("-O0", "-O2"):
+                native = directory / f"native-{optimization[2:]}"
+                subprocess.run(
+                    [
+                        str(CLANG),
+                        "-std=c23",
+                        optimization,
+                        str(wrapper),
+                        "-o",
+                        str(native),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=15,
+                    env=env,
+                )
+                for stream in VECTORS:
+                    observed = subprocess.run(
+                        [str(native)],
+                        input=stream,
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    self.assertEqual(observed.returncode, 0)
+                    self.assertEqual(observed.stdout, b"\x0b")
+
+            guest = directory / "two-inputs-byte-11.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    "--max-wall-seconds",
+                    "240",
+                    "--output",
+                    str(guest),
+                    str(SOURCE_TWO_ELEVEN),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=260,
+            )
+            self.assertEqual(
+                compiled.returncode, 0, compiled.stderr.decode(errors="replace")
+            )
+            self.assertTrue(guest.exists())
+            self.assertIn(b"6 VM steps", compiled.stderr)
+            for stream in VECTORS:
+                observed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--max-steps", "20"],
+                    input=stream,
+                    capture_output=True,
+                    check=False,
+                    timeout=20,
+                )
+                self.assertEqual(
+                    observed.returncode, 0, observed.stderr.decode(errors="replace")
+                )
+                self.assertEqual(observed.stdout, b"\x0b")
 
     def test_native_c23_and_real_guest_binary_parity(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:

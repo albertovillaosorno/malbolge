@@ -283,16 +283,15 @@ fn project_discarded_input_literal_effects(
     module: &Module,
     original: &[typed::LocatedInstruction],
 ) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
-    let [read, literal, write] = original else {
+    let Some((write, prefix)) = original.split_last() else {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     };
-    let Instruction::Getchar {
-        result: read_id,
-        type_id: read_type,
-    } = read.instruction()
-    else {
+    let Some((literal, reads)) = prefix.split_last() else {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     };
+    if reads.is_empty() || reads.len() > 2 {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
     let Instruction::ConstantInteger {
         constant,
         result: literal_id,
@@ -304,34 +303,45 @@ fn project_discarded_input_literal_effects(
     let Instruction::ByteOutput { value } = write.instruction() else {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     };
-    if !module.types().iter().any(|entry| {
-        entry.id() == *read_type && *entry.definition() == TypeDef::I32
-    }) || !is_byte_type(module, *literal_type)
+    if !is_byte_type(module, *literal_type)
         || constant.bit_width() != 8
         || constant.little_endian().len() != 1
-        || read_id == literal_id
         || value != literal_id
     {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     }
-    Ok(vec![
-        InputInstruction::Getchar {
-            result: read_id.value(),
+    let mut identities = BTreeSet::new();
+    let mut instructions = Vec::with_capacity(original.len());
+    for read in reads {
+        let Instruction::Getchar { result, type_id } = read.instruction()
+        else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        };
+        if !module.types().iter().any(|entry| {
+            entry.id() == *type_id && *entry.definition() == TypeDef::I32
+        }) || result == literal_id
+            || !identities.insert(*result)
+        {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+        instructions.push(InputInstruction::Getchar {
+            result: result.value(),
             span: project_span(read.span()),
             type_kind: InputScalarType::I32,
-        },
-        InputInstruction::ConstantInteger {
-            bit_width: constant.bit_width(),
-            little_endian: constant.little_endian().to_vec(),
-            result: literal_id.value(),
-            span: project_span(literal.span()),
-            type_kind: InputScalarType::U8,
-        },
-        InputInstruction::ByteOutput {
-            span: project_span(write.span()),
-            value: value.value(),
-        },
-    ])
+        });
+    }
+    instructions.push(InputInstruction::ConstantInteger {
+        bit_width: constant.bit_width(),
+        little_endian: constant.little_endian().to_vec(),
+        result: literal_id.value(),
+        span: project_span(literal.span()),
+        type_kind: InputScalarType::U8,
+    });
+    instructions.push(InputInstruction::ByteOutput {
+        span: project_span(write.span()),
+        value: value.value(),
+    });
+    Ok(instructions)
 }
 
 // An exact source u8 zero needs no materialization instruction: the normative

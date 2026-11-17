@@ -10,6 +10,16 @@ projects the complete source function/effect trace, and lowers to canonical
 bytes, compares complete stage state, and passes the admitted result through
 the existing independently verified Malbolge byte-echo layout backend.
 
+## Bounded two-read signed input and literal output (2026-11-17)
+
+The opt-in mixed signed-input projection accepts one or two distinct `i32`
+`getchar` results, an independent `u8` constant, and output of that constant.
+The source/SSA order is preserved through canonical typed and ternary admission.
+Only two reads followed by byte 11 have a proved six-step graphical guest;
+other two-read literal values remain unsupported, including byte 223. The
+normative VM verifies actual reads, EOF, consumed input count and output.
+This mode does not implement general signed EOF conversion or stored locals.
+
 ## Effect-free void return
 
 `compile_canonical_typed_empty_void` admits one canonical no-parameter,

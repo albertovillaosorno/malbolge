@@ -309,7 +309,7 @@ enum SuccessfulByteEffect {
 
 enum SourceEffectWitness {
     DiscardedGetchar { reads: usize },
-    DiscardedInputLiteral { byte: u8 },
+    DiscardedInputLiteral { byte: u8, reads: usize },
     DistinctLiteralPair { first: u8, second: u8 },
     DistinctLiteralTriple { bytes: [u8; 3] },
     DistinctLiteralQuad { bytes: [u8; 4] },
@@ -1639,16 +1639,38 @@ fn verified_ternary_bytes(
         .first()
         .ok_or("bridge accepted no ternary function")?
         .operations;
-    let effect_witness = if matches!(mode, ByteTraceMode::DiscardedInputLiteral) {
-        let [
-            TernaryOperation::GetcharI32 { .. },
-            TernaryOperation::MaterializeU8 { scalar, .. },
-            TernaryOperation::ByteOutput { .. },
-            TernaryOperation::ReturnVoid { .. },
-        ] = operations.as_slice() else {
-            return Err(String::from("missing signed-input literal effects"));
+    let effect_witness = if matches!(mode, ByteTraceMode::DiscardedInputLiteral)
+    {
+        let Some((TernaryOperation::ReturnVoid { .. }, effects)) =
+            operations.split_last()
+        else {
+            return Err(String::from("missing signed-input literal return"));
         };
-        Some(SourceEffectWitness::DiscardedInputLiteral { byte: scalar.bits() })
+        let Some((TernaryOperation::ByteOutput { value, .. }, prefix)) =
+            effects.split_last()
+        else {
+            return Err(String::from("missing signed-input literal output"));
+        };
+        let Some((
+            TernaryOperation::MaterializeU8 { result, scalar, .. },
+            reads,
+        )) = prefix.split_last()
+        else {
+            return Err(String::from("missing signed-input literal scalar"));
+        };
+        if reads.is_empty()
+            || reads.len() > 2
+            || result != value
+            || !reads.iter().all(|operation| {
+                matches!(operation, TernaryOperation::GetcharI32 { .. })
+            })
+        {
+            return Err(String::from("missing signed-input literal effects"));
+        }
+        Some(SourceEffectWitness::DiscardedInputLiteral {
+            byte: scalar.bits(),
+            reads: reads.len(),
+        })
     } else if matches!(mode, ByteTraceMode::DiscardedGetchar) {
         Some(SourceEffectWitness::DiscardedGetchar {
             reads: operations
@@ -3590,14 +3612,18 @@ fn verify_discarded_input_literal(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
     byte: u8,
+    reads: usize,
 ) -> Result<(), String> {
-    if artifact.steps < 5 || artifact.steps > 98 {
+    if !(1..=2).contains(&reads)
+        || artifact.steps < reads + 4
+        || artifact.steps > 99
+    {
         return Err(String::from(
             "signed-input literal guest geometry disagrees",
         ));
     }
-    for input in [Vec::new(), vec![0], vec![128, 255]] {
-        let expected_consumed = usize::from(!input.is_empty());
+    for input in [Vec::new(), vec![0], vec![128, 255], vec![0, 128, 255]] {
+        let expected_consumed = input.len().min(reads);
         let mut vm =
             ProfileMachine::from_source(profile, &artifact.source, input)
                 .map_err(|error| {
@@ -6317,8 +6343,8 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         Some(SourceEffectWitness::DiscardedGetchar { reads }) => {
             verify_discarded_getchar(profile, &artifact, *reads)?;
         },
-        Some(SourceEffectWitness::DiscardedInputLiteral { byte }) => {
-            verify_discarded_input_literal(profile, &artifact, *byte)?;
+        Some(SourceEffectWitness::DiscardedInputLiteral { byte, reads }) => {
+            verify_discarded_input_literal(profile, &artifact, *byte, *reads)?;
         },
         Some(SourceEffectWitness::EmptyVoid) => {
             verify_empty_void(profile, &artifact)?;

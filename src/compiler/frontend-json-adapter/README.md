@@ -9,6 +9,17 @@ then emit independently re-admitted canonical MCTI bytes. This separate
 compiler workspace package contains the JSON dependency; the VM's
 dependency-free crate remains unchanged.
 
+### Source-authenticated two discarded signed inputs (2026-11-17)
+
+A complete C23 function body spelled `getchar(); getchar(); putchar(11);`
+can now lower through pinned Clang JSON, canonical typed IR, canonical ternary
+IR, and a six-step guest that actually executes both reads before emitting
+byte 11. The closed grammar requires source SHA-256 agreement, exact AST
+parentage, ordered source spans, and independent SSA input definitions. Native
+C23 at `-O0`/`-O2` and the normative guest agree on empty and binary stdin.
+The otherwise identical `putchar(223)` fixture remains a deliberate typed
+refusal without publication; no two-read byte-generalizing claim is made.
+
 ## Supported slice
 
 ### Guarded signed loop-local EOF refusal (2026-11-17)

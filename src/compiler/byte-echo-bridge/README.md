@@ -6,6 +6,19 @@ Prove one small executable end-to-end compiler slice without weakening the
 canonical pre-layout ternary model or the independently admitted graphical
 Malbolge encoder.
 
+### Two discarded signed reads and an independent literal (2026-11-17)
+
+The separate mixed-effect bridge now admits either one `GetcharI32` or two
+independent, discarded signed `GetcharI32` effects before one unrelated `u8`
+literal and output. The two-read path is deliberately restricted to byte 11:
+its six graphical instructions execute **two actual guest input words**, one
+relocation, one loader-data rotation, output, and halt. EOF, short binary
+streams, two successful bytes, and an unread suffix are verified in the
+normative VM, including exact input consumption. Other two-read bytes, a
+third read, duplicate SSA results, and any source/effect drift still refuse.
+The single-read padding search retains its existing domain. Neither path
+converts signed EOF to a successful byte or implements general C dataflow.
+
 ## Ownership
 
 `composition/lib.rs` first admits a one-function, value-free-return program
