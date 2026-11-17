@@ -53,6 +53,14 @@ emission.
 
 ## Evidence
 
+- The separate finite batch API replays the exact same source against 2..8
+  distinct binary inputs, with a fresh normative VM and independent path,
+  byte, I/O chronology and data-write oracle for each input. Duplicated
+  streams, singleton and oversized batches refuse before execution; a
+  deliberately corrupted expected output rejects the entire batch. Three
+  frozen inputs pass on both canonical profiles. This does not claim
+  general input equivalence or arbitrary C-to-guest EOF iteration.
+
 - On 2026-11-16, the bounded nonlinear guest verifier began requiring
   transition-indexed input/output ordering and independently expected guest
   data-memory mutations (address and full before/after words). An altered

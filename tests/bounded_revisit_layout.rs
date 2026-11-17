@@ -617,3 +617,117 @@ fn revisiting_guest_mutates_real_data_using_live_input() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn bounded_batch_rechecks_each_distinct_guest_input_without_inference()
+-> Result<(), String> {
+    use layout::{
+        BoundedRevisitError as Error, BoundedRevisitExpectation,
+        MAX_REVISIT_CASES, admit_bounded_revisit_batch,
+    };
+    for profile in [current_profile(), historical_profile()] {
+        let source = bounded_revisit_echo_fixture(profile)?;
+        let path = bounded_revisit_code_path();
+        let inputs = [vec![], vec![0xff], vec![b'A', b'B']];
+        let outputs = [[profile.eof_word().to_le_bytes()[0]], [0xff], [b'A']];
+        let reads = [[TraceInput::EndOfInput], [TraceInput::Byte(0xff)], [
+            TraceInput::Byte(b'A'),
+        ]];
+        let io = [
+            [
+                IoEvent {
+                    step: 2,
+                    effect: IoEffect::Input(reads[0][0]),
+                },
+                IoEvent {
+                    step: 3,
+                    effect: IoEffect::Output(outputs[0][0]),
+                },
+            ],
+            [
+                IoEvent {
+                    step: 2,
+                    effect: IoEffect::Input(reads[1][0]),
+                },
+                IoEvent {
+                    step: 3,
+                    effect: IoEffect::Output(outputs[1][0]),
+                },
+            ],
+            [
+                IoEvent {
+                    step: 2,
+                    effect: IoEffect::Input(reads[2][0]),
+                },
+                IoEvent {
+                    step: 3,
+                    effect: IoEffect::Output(outputs[2][0]),
+                },
+            ],
+        ];
+        let writes = expected_revisited_data_write(profile);
+        let expected = (0..inputs.len())
+            .map(|index| BoundedRevisitExpectation {
+                input: &inputs[index],
+                code_positions: &path,
+                output: &outputs[index],
+                input_consumed: usize::from(index != 0),
+                input_events: &reads[index],
+                io_events: &io[index],
+                data_writes: &writes,
+            })
+            .collect::<Vec<_>>();
+        let identity = LinearProfileIdentity {
+            id: profile.id(),
+            fingerprint: profile.fingerprint(),
+        };
+        let accepted =
+            admit_bounded_revisit_batch(profile, &source, identity, &expected)
+                .map_err(|error| format!("multi-input guest: {error:?}"))?;
+        assert_eq!(accepted.len(), inputs.len());
+        for (index, trace) in accepted.iter().enumerate() {
+            assert_eq!(trace.output(), outputs[index]);
+            assert_eq!(trace.io_events(), io[index]);
+            assert_eq!(trace.data_writes(), writes);
+        }
+        assert_eq!(
+            admit_bounded_revisit_batch(profile, &source, identity, &[]),
+            Err(Error::InvalidBatch),
+        );
+        assert_eq!(
+            admit_bounded_revisit_batch(
+                profile,
+                &source,
+                identity,
+                &expected[..1]
+            ),
+            Err(Error::InvalidBatch),
+        );
+        assert_eq!(
+            admit_bounded_revisit_batch(profile, &source, identity, &[
+                expected[0],
+                expected[1],
+                expected[0]
+            ]),
+            Err(Error::InvalidBatch),
+        );
+        let overlong = vec![expected[0]; MAX_REVISIT_CASES + 1];
+        assert_eq!(
+            admit_bounded_revisit_batch(profile, &source, identity, &overlong),
+            Err(Error::InvalidBatch),
+        );
+        let incorrect_byte = [0];
+        let invalid_case = BoundedRevisitExpectation {
+            output: &incorrect_byte,
+            ..expected[1]
+        };
+        assert_eq!(
+            admit_bounded_revisit_batch(profile, &source, identity, &[
+                expected[0],
+                invalid_case
+            ]),
+            Err(Error::OutputMismatch),
+        );
+    }
+    Ok(())
+}

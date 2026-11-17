@@ -46,7 +46,8 @@ mod bounded_revisit;
 pub use bounded_revisit::{
     BoundedRevisitDataWrite, BoundedRevisitError, BoundedRevisitExpectation,
     BoundedRevisitIoEffect, BoundedRevisitIoEvent, BoundedRevisitLayout,
-    MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS, admit_bounded_revisit_layout,
+    MAX_REVISIT_CASES, MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS,
+    admit_bounded_revisit_batch, admit_bounded_revisit_layout,
 };
 
 use malbolge::{ProfileDescriptor, decode_profile_instruction};

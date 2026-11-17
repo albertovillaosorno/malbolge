@@ -50,6 +50,8 @@ use super::LinearProfileIdentity;
 pub const MAX_REVISIT_SOURCE_CELLS: usize = 4096;
 /// Hard limit for one supplied complete execution-path witness.
 pub const MAX_REVISIT_STEPS: usize = 512;
+/// Maximum independent, distinct binary streams in one finite guest check.
+pub const MAX_REVISIT_CASES: usize = 8;
 
 /// One committed guest I/O operation, preserving read/write ordering.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -200,6 +202,8 @@ pub enum BoundedRevisitError {
     IoEventsMismatch,
     /// Runtime guest data mutation differs from the independent oracle.
     DataWritesMismatch,
+    /// A multi-input check needs 2..8 distinct input streams.
+    InvalidBatch,
 }
 
 /// Admits only one *complete*, exact-profile, bounded path with a genuine
@@ -362,4 +366,35 @@ pub fn admit_bounded_revisit_layout(
         io_events,
         data_writes,
     })
+}
+
+/// Recheck a *single* graphical guest source against several independent,
+/// distinct binary input/path/effect oracles. Each input reinitializes and
+/// executes the real profile VM. No case inherits output or control evidence
+/// from another; this finite matrix makes no claim about all possible inputs.
+///
+/// # Errors
+///
+/// Refuses an empty, singleton, oversized or repeated-input matrix, or the
+/// first individually unsupported execution. No partial matrix is returned.
+pub fn admit_bounded_revisit_batch(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    identity: LinearProfileIdentity<'_>,
+    expected: &[BoundedRevisitExpectation<'_>],
+) -> Result<Vec<BoundedRevisitLayout>, BoundedRevisitError> {
+    if !(2..=MAX_REVISIT_CASES).contains(&expected.len()) {
+        return Err(BoundedRevisitError::InvalidBatch);
+    }
+    let mut inputs = BTreeSet::new();
+    if expected.iter().any(|case| !inputs.insert(case.input)) {
+        return Err(BoundedRevisitError::InvalidBatch);
+    }
+    let mut admitted = Vec::with_capacity(expected.len());
+    for case in expected {
+        admitted.push(admit_bounded_revisit_layout(
+            profile, source, identity, *case,
+        )?);
+    }
+    Ok(admitted)
 }

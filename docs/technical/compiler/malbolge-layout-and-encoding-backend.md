@@ -22,6 +22,13 @@ This document governs the following declared TODO scope:
 
 ### Bounded revisiting guest input evidence
 
+A finite multi-input gate now replays **one identical guest source** against
+2..8 distinct, independently supplied binary input/path/effect witnesses.
+Duplicate streams and oversized batches refuse before any guest execution.
+Each case starts a fresh normative VM and the gate returns no partial batch
+when any case disagrees. This does not extrapolate one finite trace to other
+inputs or prove unbounded streaming behavior.
+
 The input-specific verifier now records **instruction-indexed I/O order**:
 `Input(Byte)`, `Input(EndOfInput)` and `Output(byte)` carry their exact
 zero-based guest step. It also checks instruction-caused data-memory writes,
