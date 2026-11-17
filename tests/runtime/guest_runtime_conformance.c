@@ -129,25 +129,42 @@ static int test_frame_codec(void) {
 static int test_byte_stream(void) {
   int32_t value = INT32_C(99);
 
-  if (malbolge_guest_decode_input_word(UINT32_C(0), &value) !=
-          MALBOLGE_GUEST_RUNTIME_VALID ||
-      value != INT32_C(0)) {
-    return 1;
+  // The signed C getchar representation is exact for every successful byte,
+  // including NUL, high-bit bytes and all middle points.
+  for (uint32_t word = UINT32_C(0); word <= UINT32_C(255); ++word) {
+    value = INT32_C(-99);
+    if (malbolge_guest_decode_input_word(word, &value) !=
+            MALBOLGE_GUEST_RUNTIME_VALID ||
+        value != (int32_t)word) {
+      return 1;
+    }
   }
-  if (malbolge_guest_decode_input_word(UINT32_C(255), &value) !=
-          MALBOLGE_GUEST_RUNTIME_VALID ||
-      value != INT32_C(255)) {
-    return 2;
-  }
+  value = INT32_C(99);
   if (malbolge_guest_decode_input_word(MALBOLGE_GUEST_PROFILE_EOF_WORD,
                                        &value) !=
           MALBOLGE_GUEST_RUNTIME_VALID ||
       value != INT32_C(-1)) {
-    return 3;
+    return 2;
   }
-  if (malbolge_guest_decode_input_word(UINT32_C(256), &value) !=
-          MALBOLGE_GUEST_RUNTIME_INVALID_INPUT_WORD ||
-      malbolge_guest_decode_input_word(UINT32_C(0), NULL) !=
+  // All impossible nonbyte/non-EOF words fail closed. Most importantly, they
+  // must not accidentally publish EOF or clobber previously stored C state.
+  const uint32_t invalid_words[] = {
+      UINT32_C(256), UINT32_C(257),
+      MALBOLGE_GUEST_PROFILE_EOF_WORD - UINT32_C(1),
+      MALBOLGE_GUEST_PROFILE_EOF_WORD + UINT32_C(1), UINT32_MAX};
+  for (size_t index = 0; index < sizeof(invalid_words) / sizeof(invalid_words[0]);
+       ++index) {
+    value = INT32_C(1234567);
+    if (malbolge_guest_decode_input_word(invalid_words[index], &value) !=
+            MALBOLGE_GUEST_RUNTIME_INVALID_INPUT_WORD ||
+        value != INT32_C(1234567)) {
+      return 3;
+    }
+  }
+  if (malbolge_guest_decode_input_word(UINT32_C(0), NULL) !=
+          MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
+      malbolge_guest_decode_input_word(MALBOLGE_GUEST_PROFILE_EOF_WORD,
+                                       NULL) !=
           MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT) {
     return 4;
   }
