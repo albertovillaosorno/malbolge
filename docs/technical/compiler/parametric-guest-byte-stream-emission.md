@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nested signed `getchar` local in counted C loops (2026-11-17)
+
+A source-authenticated two-trip C23 loop containing
+`int current = getchar(); putchar(putchar(current));` reached the real N15
+VM as a 1,103-byte guest that halted in seven steps but emitted `6a6a6a6a`
+on empty input instead of C23's `ffffffff`. The counted-loop signed-local
+preflight checked only the immediate `putchar` argument cast. Nested
+`putchar`, arithmetic identities such as `current + 0`, and a direct
+unsigned-char cast could bypass it and publish a wrong EOF byte. A
+five-case C23 regression now checks these paths and a counter-selected nested
+call against five binary streams, independent UBSan Clang `-O0`/`-O2`, and
+either real-guest parity or typed refusal with no artifact.
+
+The bounded Clang ancestry refusal now follows a signed loop-local reference
+to an enclosing output call, refusing a direct loop-body output or nested
+`putchar` composition even when a cast or expression intervenes. The old
+five-output modular arithmetic fixture also correctly fails closed: its
+successful-byte identity does not prove C23 signed EOF conversion. This is
+one more **soundness gate**, not execution of a C EOF conversion or general
+conditional arithmetic. Dynamic signed EOF output and the frozen mutable
+checksum declaration at `29:5` remain unsupported.
+
 ### Direct signed `getchar` local in counted loops (2026-11-17)
 
 A complete C23 one-trip `for` loop with `int current = getchar();`

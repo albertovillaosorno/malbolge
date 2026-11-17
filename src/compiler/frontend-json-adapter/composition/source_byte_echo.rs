@@ -573,6 +573,47 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
         let Some(reference) = read.reference.as_deref() else {
             continue;
         };
+        // A signed local can reach putchar through nested putchar calls,
+        // an arithmetic identity, or an explicit cast. The earlier direct
+        // cast/parent proof only saw putchar(current), and published a
+        // genuine guest that emitted 0x6a instead of C23's 0xff at EOF.
+        // Walk Clang ancestry within the exact read/output source spans;
+        // require a direct loop-body effect or nested putchar composition.
+        // Conditional arithmetic still needs a separate complete EOF proof.
+        let mut ancestor_id = read.parent;
+        let mut output = None;
+        let mut nested_outputs = 0usize;
+        for _ in 0..MAX_NESTED_LOCAL_DEPTH {
+            let Some(ancestor) = by_id.get(&ancestor_id) else {
+                break;
+            };
+            if ancestor.kind == "call-expression"
+                && ancestor.reference.as_deref() == Some("external:putchar")
+                && ancestor.span.begin.byte <= read.span.begin.byte
+                && read.span.end.byte <= ancestor.span.end.byte
+            {
+                if output.is_none() {
+                    output = Some(*ancestor);
+                }
+                nested_outputs += 1;
+            }
+            ancestor_id = ancestor.parent;
+        }
+        if let Some(output) = output {
+            let mut ancestor_id = output.parent;
+            for _ in 0..MAX_NESTED_LOCAL_DEPTH {
+                let Some(ancestor) = by_id.get(&ancestor_id) else {
+                    break;
+                };
+                if ancestor.kind == "compound-statement"
+                    && signed_inputs.contains(&(ancestor.id, reference))
+                    && (output.parent == ancestor.id || nested_outputs > 1)
+                {
+                    return true;
+                }
+                ancestor_id = ancestor.parent;
+            }
+        }
         let Some(cast) = by_id.get(&read.parent) else {
             continue;
         };

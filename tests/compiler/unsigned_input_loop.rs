@@ -1721,33 +1721,17 @@ const OVERFLOWING_OUTPUT_JSON: &[u8] = include_bytes!(
 );
 
 #[test]
-fn source_proven_modular_c_output_preserves_four_live_guest_bytes() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        MODULAR_OUTPUT_JSON,
-        Some(MODULAR_OUTPUT_SOURCE),
-    )
-    .expect("pure C arithmetic equivalent after putchar conversion");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&wire).expect("canonical typed module");
-    let block = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in block {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(
-        writes,
-        reads
-            .iter()
-            .copied()
-            .flat_map(|v| [v; 5])
-            .collect::<Vec<_>>()
-    );
+fn source_proven_modular_c_output_refuses_signed_eof() {
+    // All five expressions preserve a successful byte, but C23 evaluates
+    // signed getchar() as -1 at EOF and writes 0xff after conversion.
+    // Byte-only guest output would instead leak the target EOF residue.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            MODULAR_OUTPUT_JSON,
+            Some(MODULAR_OUTPUT_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]

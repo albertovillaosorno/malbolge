@@ -65,6 +65,7 @@ SIGNED_EOF_REFUSALS = frozenset(
         "unsigned_modulo_live_input",
         "unsigned_radix_live_input",
         "unsigned_short_circuit_zero_divisor",
+        MODULAR_STEM,
     }
 )
 CASES = (

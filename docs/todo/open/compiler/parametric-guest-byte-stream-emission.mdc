@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, a two-trip C23 `int current = getchar();
+  putchar(putchar(current));` source published a real 1,103-byte N15 guest
+  emitting `6a6a6a6a` on empty stdin instead of native `ffffffff`. The
+  source/Clang-bound loop-local guard now refuses nested calls, direct
+  arithmetic identities and casts before publication. Five full C23 source
+  forms, five binary vectors, UBSan Clang `-O0`/`-O2`, and exact guest or
+  no-artifact checks pass. The previous modular signed-local positive
+  fixture is now correctly refused at EOF. The complete mutable checksum
+  remains unsupported at declaration `29:5`; no C23 conversion is claimed.
+
 - On 2026-11-17, genuine one- and two-trip C23 counted loops with a
   directly output signed `getchar` local published three-/five-step N15
   guests emitting `6a`/`6a6a` on empty stdin; pinned UBSan Clang `-O0`
