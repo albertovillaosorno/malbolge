@@ -71,6 +71,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, a genuine ten-step VM replay of the checked-in four-read
+  C23 `unsigned_conditional_live_input.c` produced `6a6a6a6a6a` on empty
+  stdin, versus the native C23 `ffffffffff`. The 4-read loop has static
+  induction but signed `getchar()` values can be EOF; existing standalone
+  and straight-line source/Clang refusal gates do not cover it. An explicit
+  known-expected-failure regression now preserves this uncorrected public
+  C publication bug with empty, truncated and complete streams. It must
+  become either true VM parity or typed refusal before P2 closes.
+  A new exhaustive N15 `p`/`p` word verifier accepts operands `(87844,2551)`:
+  all 256 input bytes survive and the canonical EOF sentinel maps to `ff`.
+  Independent scalar tests prove all 257 cases and reject altered plans.
+  This is an algebraic placement prerequisite only; no guest source or EOF
+  storage/branch is synthesized. P2 remains active at checksum `29:5`.
+
 - On 2026-11-17, `int current = getchar(); current = getchar();
   putchar(current);` also emitted the guest EOF residue `6a` despite native
   C23's `ff`. The new source/Clang-backed refusal handles fresh signed-local

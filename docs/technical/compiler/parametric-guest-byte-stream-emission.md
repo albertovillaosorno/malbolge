@@ -28,6 +28,45 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exact N15 signed EOF-to-byte word plan (2026-11-17)
+
+The existing accepted four-read C23 source
+`unsigned_conditional_live_input.c` was compiled through the pinned Clang,
+JSON adapter and layout into a 1,127-byte `malbolge-2026` capsule. The
+normative VM ran ten steps on empty stdin and emitted `6a6a6a6a6a`, while
+native C23 `-O0` and `-O2` both emit `ffffffffff`. Its unsigned loop counter
+is statically bounded, but each `int current = getchar()` is still signed;
+on early EOF, the source's five `putchar(current)` effects must convert `-1`
+to an unsigned byte. Earlier direct/local EOF refusals did not cover this
+nested loop. The new `tests/test_bounded_c23_eof_publication.py` retains a
+**known expected failure** until this source either publishes a matching
+real guest or refuses without a guest. Full-input byte parity alone does
+not establish correctness for the complete source-C program.
+
+A constructive target-arithmetic prerequisite is now available separately:
+for the exact current 15-trit profile, `p` with data word `87844` followed
+by `p` with data word `2551` preserves the low byte of all 256 successful
+input words and maps the profile EOF word (`14348906`) to `0xff`. The pure
+`admit_c23_signed_output_word_plan` checker replays exactly 257 states
+through the normative crazy primitive, refuses foreign profiles, invalid
+operands and changed byte/EOF results, and returns only an **operand plan**.
+`tests/compiler_eof_byte_conversion.rs` exhausts those 257 states against
+an independent digitwise three-valued scalar oracle and rejects four
+altered operand candidates. This implements neither host-computed guest
+output nor a general C `getchar()` interpreter.
+
+The crucial remaining step is **guest data placement**: those two large
+operand words must exist at consecutive *reachable and unmodified* data
+addresses when the VM executes two actual `p` instructions, despite loader
+recurrence, data-pointer movement, and `p` writes. A search of all 8,836
+pairs of printable loader seed cells found no suitable pair in any adjacent
+positions of their first six derived 15-trit words, even when trying two
+through six consecutive loader-word `p` operations. Therefore a directly
+appended `input/p/p/output` trace cannot simply assume these operands were
+provided by the loader. The existing layout checker still does not emit or
+publish this conversion, and general runtime EOF branches, mutable local
+state and the frozen checksum's input-dependent loop remain unsupported.
+
 ### Signed local `getchar` output at EOF (2026-11-17)
 
 An additional complete C23 source exposed another **real guest miscompile**:

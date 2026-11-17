@@ -42,12 +42,17 @@
 //! when the exact evolving data-pointer cells and skipped padding prove them.
 
 mod bounded_revisit;
+mod eof_output_plan;
 
 pub use bounded_revisit::{
     BoundedRevisitDataWrite, BoundedRevisitError, BoundedRevisitExpectation,
     BoundedRevisitIoEffect, BoundedRevisitIoEvent, BoundedRevisitLayout,
     MAX_REVISIT_CASES, MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS,
     admit_bounded_revisit_batch, admit_bounded_revisit_layout,
+};
+pub use eof_output_plan::{
+    C23SignedOutputWordPlan, C23SignedOutputWordPlanError,
+    CURRENT_C23_SIGNED_OUTPUT_WORDS, admit_c23_signed_output_word_plan,
 };
 
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
