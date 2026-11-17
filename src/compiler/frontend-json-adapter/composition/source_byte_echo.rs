@@ -75,7 +75,7 @@ mod lazy_byte_predicate_tests;
 #[path = "../../../../tests/compiler/induction_lazy_predicate.rs"]
 mod induction_lazy_predicate_tests;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::typed::{
     BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
@@ -451,6 +451,128 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
         discarded_reads += 1;
     }
     signed_outputs > 0
+}
+
+// A statically unrolled loop does not prove its signed getchar values are
+// successful bytes. When an induction branch repeats an unguarded signed
+// local in direct putchar calls, C writes 0xff at EOF but the current
+// byte-only guest writes the profile's low EOF residue. This is a refusal
+// proof, never permission to lower an unauthenticated source. Keep parent
+// identities explicit so forged descendant calls cannot imply C behavior.
+pub(super) fn is_unchecked_repeated_loop_signed_eof_output(
+    bytes: &[u8],
+) -> bool {
+    let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
+        return false;
+    };
+    let nodes = &artifact.nodes;
+    let by_id: HashMap<u32, &Node> =
+        nodes.iter().map(|node| (node.id, node)).collect();
+    let mut signed_inputs = HashSet::new();
+    for input in nodes.iter().filter(|node| {
+        node.kind == "call-expression"
+            && node.reference.as_deref() == Some("external:getchar")
+            && node.type_name.as_deref() == Some("i32")
+    }) {
+        let Some(local) = by_id.get(&input.parent) else {
+            continue;
+        };
+        let Some(declaration) = by_id.get(&local.parent) else {
+            continue;
+        };
+        let Some(loop_body) = by_id.get(&declaration.parent) else {
+            continue;
+        };
+        let Some(for_loop) = by_id.get(&loop_body.parent) else {
+            continue;
+        };
+        if local.kind == "variable-declaration"
+            && local.type_name.as_deref() == Some("i32")
+            && declaration.kind == "declaration-statement"
+            && loop_body.kind == "compound-statement"
+            && for_loop.kind == "for-statement"
+            && by_id.get(&for_loop.parent).is_some_and(|parent| {
+                parent.kind == "compound-statement"
+                    && by_id.get(&parent.parent).is_some_and(|function| {
+                        function.kind == "function-declaration"
+                    })
+            })
+            && nodes.iter().any(|increment| {
+                increment.parent == for_loop.id
+                    && increment.kind == "unary-expression"
+                    && increment.operation.as_deref() == Some("++")
+            })
+            && let Some(reference) = local.reference.as_deref()
+        {
+            let _ = signed_inputs.insert((loop_body.id, reference));
+        }
+    }
+    let mut writes: HashMap<(u32, &str), usize> = HashMap::new();
+    for read in nodes.iter().filter(|node| {
+        node.kind == "declaration-reference-expression"
+            && node.type_name.as_deref() == Some("i32")
+    }) {
+        let Some(reference) = read.reference.as_deref() else {
+            continue;
+        };
+        let Some(cast) = by_id.get(&read.parent) else {
+            continue;
+        };
+        let Some(output) = by_id.get(&cast.parent) else {
+            continue;
+        };
+        let Some(arm) = by_id.get(&output.parent) else {
+            continue;
+        };
+        let Some(conditional) = by_id.get(&arm.parent) else {
+            continue;
+        };
+        let Some(loop_body) = by_id.get(&conditional.parent) else {
+            continue;
+        };
+        let pure_counter_equality = nodes.iter().any(|comparison| {
+            if comparison.parent != conditional.id
+                || comparison.kind != "binary-expression"
+                || comparison.operation.as_deref() != Some("==")
+            {
+                return false;
+            }
+            let signed_local_is_not_the_guard = nodes.iter().any(|child| {
+                child.parent == comparison.id
+                    && child.kind == "cast-expression"
+                    && child.type_name.as_deref() == Some("u32")
+                    && nodes.iter().any(|counter| {
+                        counter.parent == child.id
+                            && counter.kind
+                                == "declaration-reference-expression"
+                            && counter.type_name.as_deref() == Some("u32")
+                    })
+            });
+            let has_unsigned_literal = nodes.iter().any(|literal| {
+                literal.parent == comparison.id
+                    && literal.kind == "integer-literal"
+                    && literal.type_name.as_deref() == Some("u32")
+            });
+            signed_local_is_not_the_guard && has_unsigned_literal
+        });
+        if pure_counter_equality
+            && cast.kind == "cast-expression"
+            && cast.type_name.as_deref() == Some("i32")
+            && output.kind == "call-expression"
+            && output.reference.as_deref() == Some("external:putchar")
+            && arm.kind == "compound-statement"
+            && conditional.kind == "if-statement"
+            && loop_body.kind == "compound-statement"
+            && signed_inputs.contains(&(loop_body.id, reference))
+        {
+            let count = writes.entry((arm.id, reference)).or_default();
+            *count += 1;
+            if *count >= 2 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 // A straight-line signed int local is just as EOF-sensitive as a direct

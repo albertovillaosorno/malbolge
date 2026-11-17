@@ -14,7 +14,7 @@
 #   - Accept full-input parity as proof of missing C23 EOF conversion.
 # - Allows:
 #   - Inputs: one frozen 4-read source and empty/truncated/full byte streams.
-#   - Outputs: parity or typed refusal; currently a known expected failure.
+#   - Outputs: native/guest parity or typed refusal without publication.
 #   - Side effects: pinned Clang, compiler and VM in an isolated temp folder.
 # - Split-When:
 #   - General executable signed EOF output conversion becomes available.
@@ -23,7 +23,7 @@
 # - Summary:
 #   - Guest EOF residue must never stand in for signed C putchar(-1).
 
-"""Preserve the actual four-read C23 signed EOF miscompile until repaired."""
+"""Refuse unsupported signed EOF output or prove full guest/native parity."""
 
 from __future__ import annotations
 
@@ -52,11 +52,9 @@ SAMPLES: Final = (b"", b"A", b"\x00\xff", b"\x05\x80\xff", b"\x00\xff\x80A")
 
 @final
 class BoundedC23EofPublicationTests(unittest.TestCase):
-    @unittest.expectedFailure
     def test_four_read_guest_matches_native_c23_or_explicit_refusal(self) -> None:
-        # Expected failure is intentional pending a *general* signed EOF
-        # output conversion. A future fix produces an unexpected success,
-        # requiring this marker to be removed rather than silently skipped.
+        # A verified refusal is valid until guest signed EOF conversion
+        # exists. Successful compilation must still match every native byte.
         if not all(
             path.is_file()
             for path in (SOURCE, DRIVER, CLANG, FRONTEND, ADAPTER, LAYOUT, VM)

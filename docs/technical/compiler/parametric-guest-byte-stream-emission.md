@@ -111,8 +111,9 @@ source-C checksum still fails at its first mutable declaration.
 The frozen mutable-EOF checksum still explicitly refuses its first observed
 `unsigned checksum` local at `29:5`; independently compiled native C23
 `-O0` and `-O2` controls remain the acceptance oracle. The previously
-observed signed output bug in the four-read C23 loop is also still an active
-known failure. It is not solved by a correct algebraic `p`/`p` word pair.
+observed signed output bug in the four-read C23 loop was still active at
+this study's completion. The later bounded refusal below stops publishing
+this witness, but does not implement a valid `p`/`p` guest conversion.
 
 A finite, broader passive-loader study now rules out a tempting short-cut for
 that conversion. For each of all **8,836** graphical final-source-word pairs
@@ -173,10 +174,14 @@ native C23 `-O0` and `-O2` both emit `ffffffffff`. Its unsigned loop counter
 is statically bounded, but each `int current = getchar()` is still signed;
 on early EOF, the source's five `putchar(current)` effects must convert `-1`
 to an unsigned byte. Earlier direct/local EOF refusals did not cover this
-nested loop. The new `tests/test_bounded_c23_eof_publication.py` retains a
-**known expected failure** until this source either publishes a matching
-real guest or refuses without a guest. Full-input byte parity alone does
-not establish correctness for the complete source-C program.
+nested loop. The source/Clang-backed frontend now rejects a bounded
+unit-increment loop whose induction-equality branch repeats a signed
+`getchar()` local in direct `putchar` calls. The formerly expected-failure
+`tests/test_bounded_c23_eof_publication.py` is now a passing native C23
+`-O0`/`-O2` and no-publication regression across five binary inputs.
+This is a **scoped fail-closed repair**, not general signed EOF conversion:
+other unguarded loop output shapes still require soundness work. Full-input
+byte parity alone does not establish whole-source C23 correctness.
 
 A constructive target-arithmetic prerequisite is now available separately:
 for the exact current 15-trit profile, `p` with data word `87844` followed

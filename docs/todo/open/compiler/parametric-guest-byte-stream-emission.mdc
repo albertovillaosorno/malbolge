@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the known real four-read C23 EOF publication defect
+  (`6a6a6a6a6a` guest versus `ffffffffff` native on empty stdin) now
+  fails closed for source-authenticated, unit-incremented unsigned loops
+  whose equality branch repeats a directly output signed `getchar` local.
+  Red-first frontend Rust proof initially accepted the unsound projection;
+  the repaired gate and all 123 adapter unit tests now pass. The previous
+  expected-failure Python test is now a passing native `-O0`/`-O2`
+  five-input parity-or-no-publication regression, with no guest artifact
+  on refusal. This is a bounded soundness fix, not general signed EOF
+  lowering or full mutable checksum acceptance; other C loop shapes may
+  still require EOF-specific refusal or guest conversion.
+
 - On 2026-11-17, position-aware loader suffix synthesis now exhausts the
   at-most-8,836 printable tail pairs against exact source decode and target
   loader recurrence. It independently selects `Iy` for the 91-cell N15
@@ -149,9 +161,9 @@ evidence describe the old priority scheme, not the current phase.
   stdin, versus the native C23 `ffffffffff`. The 4-read loop has static
   induction but signed `getchar()` values can be EOF; existing standalone
   and straight-line source/Clang refusal gates do not cover it. An explicit
-  known-expected-failure regression now preserves this uncorrected public
-  C publication bug with empty, truncated and complete streams. It must
-  become either true VM parity or typed refusal before P2 closes.
+  expected-failure regression originally captured this public C bug with
+  empty, truncated and complete streams. The later bounded typed refusal
+  recorded above now prevents publication of this particular witness.
   A new exhaustive N15 `p`/`p` word verifier accepts operands `(87844,2551)`:
   all 256 input bytes survive and the canonical EOF sentinel maps to `ff`.
   Independent scalar tests prove all 257 cases and reject altered plans.

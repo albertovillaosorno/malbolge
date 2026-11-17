@@ -108,13 +108,17 @@ const CONDITIONAL_JSON: &[u8] =
     include_bytes!("c-frontend/golden/unsigned_conditional_live_input.json");
 
 #[test]
-fn unsigned_branch_repeats_one_runtime_byte_without_folding_input() {
-    let (_typed, mode) = canonical_guest_typed_ir_with_source(
-        CONDITIONAL_JSON,
-        Some(CONDITIONAL_SOURCE),
-    )
-    .expect("source-proven unsigned counter branch must preserve live reads");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
+fn signed_loop_local_repeated_in_counter_branch_must_refuse_eof_output() {
+    // The bounded loop really reads four signed getchar results. Its
+    // induction-only branch repeats a signed local, so C writes 0xff at
+    // EOF while the current byte-only guest would publish 0x6a.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            CONDITIONAL_JSON,
+            Some(CONDITIONAL_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
