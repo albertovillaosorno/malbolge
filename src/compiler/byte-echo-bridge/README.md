@@ -8,16 +8,19 @@ Malbolge encoder.
 
 ### Two discarded signed reads and an independent literal (2026-11-17)
 
-The separate mixed-effect bridge now admits either one `GetcharI32` or two
-independent, discarded signed `GetcharI32` effects before one unrelated `u8`
-literal and output. The two-read path is deliberately restricted to byte 11:
-its six graphical instructions execute **two actual guest input words**, one
-relocation, one loader-data rotation, output, and halt. EOF, short binary
-streams, two successful bytes, and an unread suffix are verified in the
-normative VM, including exact input consumption. Other two-read bytes, a
-third read, duplicate SSA results, and any source/effect drift still refuse.
-The single-read padding search retains its existing domain. Neither path
-converts signed EOF to a successful byte or implements general C dataflow.
+The mixed-effect bridge admits one or two distinct discarded signed
+`GetcharI32` effects followed by an unrelated `u8` literal and output.
+A bounded 94-phase search constructs complete graphical guest sources
+for either input count; the second read changes all subsequent positional
+decoding and loader words. The two-read layout has 36 distinct candidate
+output bytes from this exact search, including 4, 11, 157 and 253.
+Bytes 4 and 157 have independent normative VM EOF and binary replay, and
+byte 11 retains the six-step source-C witness. Each accepted layout performs
+both real guest input operations and a loader-word rotation before output.
+Output 223, a third read, repeated SSA IDs and unrecognized effects still
+refuse. The supported byte set is limited, not a general constant writer.
+Neither path converts signed EOF to a successful byte, stores mutable C
+state, or performs guest-dependent branching.
 
 ## Ownership
 

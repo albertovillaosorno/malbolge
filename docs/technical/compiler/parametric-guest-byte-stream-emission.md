@@ -30,22 +30,24 @@ or hundreds of individual documentation pages.
 
 ### Two signed discarded reads before a constant (2026-11-17)
 
-The complete C23 source `discarded_two_input_literal.c` performs two
-`getchar()` calls followed by an independent `putchar(223)` effect. Pinned
-Clang `-O0` and `-O2` produce `df` for empty stdin, one-byte, high-byte, and
-three-byte streams. The current source-C compiler refuses the second read at
-normalized frontend admission and publishes no `.malbolge` artifact.
+The complete source-C function `getchar(); getchar(); putchar(11);`
+now preserves both independent C23 signed read effects through source-
+authenticated Clang JSON, canonical typed and ternary IR, a six-step
+graphical Malbolge guest, and normative VM replay. Pinned native C23
+`-O0`/`-O2` parity is established on exhausted and binary stdin.
+The source-identical `putchar(223)` program remains unsupported and
+publishes no guest; the negative C23 oracle remains byte `df`.
 
-An experimental extension authenticated both calls and propagated distinct
-signed SSA identities into the ternary layout stage, but its bounded search
-failed to publish a verified guest in the session. A separately emitted
-six-step raw layout (`input; input; relocate; rotate; output; halt`) ran on
-the normative VM and emitted `df` at EOF; this machine-level witness is not
-source-C compilation and does not establish arbitrary byte-stream parity.
-The red-first whole-C regression now requires either the precise typed refusal
-with no artifact or native/guest byte parity if the capability is implemented.
-This preserves the gap without pretending that a host oracle or raw handoff
-implements the P2 mutable checksum, still refused at `29:5`.
+The bridge no longer assumes that only byte 11 can be synthesized after
+two reads. A finite search of 94 graphical no-op phases derives the exact
+source-dependent loader word and identifies 36 distinct candidate output
+bytes, not all 256. Bytes 4 and 157 have separately replayed actual
+Malbolge guests with both signed input effects and EOF/short/long stdin.
+The bridge still independently admits the exact positional source and
+replays every accepted candidate in the normative VM before publication.
+This expands a bounded independent-output effect, not C runtime arithmetic,
+signed EOF-to-byte conversion, mutable storage, or checksum execution.
+The full mutable P2 checksum remains refused at declaration `29:5`.
 
 ### Source-checked discarded input followed by an independent byte (2026-11-17)
 

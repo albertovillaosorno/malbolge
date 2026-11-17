@@ -1151,9 +1151,9 @@ pub fn encode_successful_byte_echo(
 ///
 /// The admitted effect trace is one or two distinct `GetcharI32` results,
 /// `MaterializeU8`, `ByteOutput` of that constant, `ReturnVoid`. A bounded
-/// 94-phase one-read search uses inert padding, a genuine input word,
-/// relocation, data rotation, guest byte output and halt. The two-read case
-/// admits only its independently witnessed six-step output of byte 11. The
+/// 94-phase source-dependent search uses inert padding, genuine input words,
+/// relocation, data rotation, guest byte output and halt. Both read counts
+/// independently search and replay the exact source; no byte is assumed. The
 /// loader-expanded data word is derived from the emitted source and
 /// independently replayed in the normative VM on EOF and binary stdin before
 /// the layout can be returned. The discarded signed input never becomes a
@@ -1205,18 +1205,11 @@ pub fn encode_discarded_input_literal(
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
     }
-    // Two independent source reads have a separately verified six-step
-    // guest witness for byte 11. Do not infer other bytes from the one-read
-    // padding search: changing the input prefix changes the loader words.
-    if reads.len() == 2 && scalar.bits() != 11 {
-        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
-    }
-    let search_limit = if reads.len() == 2 {
-        1
-    } else {
-        94
-    };
-    for padding in 0..search_limit {
+    // Re-evaluate each complete, position-dependent source for either read
+    // count. The one-read witnesses cannot be transplanted to two reads:
+    // each additional input changes positional decoding and loader expansion.
+    const SEARCH_LIMIT: usize = 94;
+    for padding in 0..SEARCH_LIMIT {
         let mut operations = vec![LinearOpcode::InputWord; reads.len()];
         operations.extend(repeat_n(LinearOpcode::NoOperation, padding));
         operations.extend([

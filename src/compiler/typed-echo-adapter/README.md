@@ -12,13 +12,14 @@ the existing independently verified Malbolge byte-echo layout backend.
 
 ## Bounded two-read signed input and literal output (2026-11-17)
 
-The opt-in mixed signed-input projection accepts one or two distinct `i32`
-`getchar` results, an independent `u8` constant, and output of that constant.
-The source/SSA order is preserved through canonical typed and ternary admission.
-Only two reads followed by byte 11 have a proved six-step graphical guest;
-other two-read literal values remain unsupported, including byte 223. The
-normative VM verifies actual reads, EOF, consumed input count and output.
-This mode does not implement general signed EOF conversion or stored locals.
+The opt-in projection accepts one or two distinct signed `i32` reads,
+an independent `u8` constant, and an output of that same constant SSA.
+The order survives canonical typed and ternary IR. Two reads previously
+admitted only the independently witnessed six-step byte 11 guest; the
+source-dependent 94-phase layout search now admits up to 36 distinct
+output candidates after separate static and normative VM proof, including
+4 and 157. Byte 223 and any third read still refuse. This is not signed
+EOF conversion, general stored locals, or arbitrary byte-literal support.
 
 ## Effect-free void return
 

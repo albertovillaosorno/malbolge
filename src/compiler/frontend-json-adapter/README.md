@@ -11,14 +11,16 @@ dependency-free crate remains unchanged.
 
 ### Source-authenticated two discarded signed inputs (2026-11-17)
 
-A complete C23 function body spelled `getchar(); getchar(); putchar(11);`
-can now lower through pinned Clang JSON, canonical typed IR, canonical ternary
-IR, and a six-step guest that actually executes both reads before emitting
-byte 11. The closed grammar requires source SHA-256 agreement, exact AST
-parentage, ordered source spans, and independent SSA input definitions. Native
-C23 at `-O0`/`-O2` and the normative guest agree on empty and binary stdin.
-The otherwise identical `putchar(223)` fixture remains a deliberate typed
-refusal without publication; no two-read byte-generalizing claim is made.
+The exact source- and Clang-authenticated grammar accepts two ordered
+discarded `getchar()` calls followed by an independent decimal `putchar`
+literal. It preserves distinct signed SSA reads through typed and ternary IR;
+a finite backend search independently verifies the output byte, positional
+decoding and normative guest behavior. Byte 11 has the original six-step
+source-C acceptance witness, and the extended backend also verifies bytes
+4 and 157 with nonzero positional padding. The 94-phase layout search
+produces only 36 distinct static byte candidates, not all 256 bytes.
+The identical source with `putchar(223)` still refuses without a guest.
+No C signed EOF conversion or mutable checksum is implemented.
 
 ## Supported slice
 

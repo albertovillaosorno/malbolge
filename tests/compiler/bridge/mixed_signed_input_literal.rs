@@ -277,3 +277,85 @@ fn signed_two_getchars_refuses_unproved_output_and_third_read()
     }
     Ok(())
 }
+
+#[test]
+fn signed_two_reads_exhaust_graphical_padding_witnesses() -> Result<(), String>
+{
+    use std::iter::repeat_n;
+
+    let profile = current_profile();
+    let mut possible = BTreeMap::<u8, usize>::new();
+    for padding in 0..94 {
+        let mut operations = vec![LinearOpcode::InputWord; 2];
+        operations.extend(repeat_n(LinearOpcode::NoOperation, padding));
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let Ok(layout) = encode_linear_layout(profile, &operations) else {
+            continue;
+        };
+        let rotate_index = padding + 3;
+        let data_address =
+            usize::try_from(layout.data_pointer_positions()[rotate_index])
+                .map_err(|error| error.to_string())?;
+        if data_address <= layout.source().len() || data_address > 4096 {
+            continue;
+        }
+        let mut words: Vec<u32> = layout
+            .source()
+            .iter()
+            .map(|value| u32::from(*value))
+            .collect();
+        while words.len() <= data_address {
+            let length = words.len();
+            words.push(malbolge::profile_crazy(
+                words[length - 2],
+                words[length - 1],
+                profile.word_trits(),
+            ));
+        }
+        let byte = u8::try_from(
+            malbolge::profile_rotate(
+                words[data_address],
+                profile.word_modulus(),
+            ) % 256,
+        )
+        .map_err(|error| error.to_string())?;
+        let _first = possible.entry(byte).or_insert(padding);
+    }
+    // This is a finite graphical source search, not an arbitrary constant
+    // writer. The first admissible phase for each byte is deterministic.
+    if possible.len() != 36
+        || possible.get(&11) != Some(&0)
+        || possible.get(&4) != Some(&21)
+        || possible.get(&25) != Some(&51)
+        || possible.get(&157) != Some(&61)
+        || possible.get(&253) != Some(&17)
+        || possible.contains_key(&223)
+    {
+        return Err(format!(
+            "two-read loader candidate set drifted: {possible:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn signed_two_reads_emit_distinct_source_independent_literals()
+-> Result<(), String> {
+    let profile = current_profile();
+    for (byte, padding) in [(4u8, 21usize), (157, 61)] {
+        let program = admitted_program_with_reads(2, byte)?;
+        // The bridge independently replays the exact guest on EOF and
+        // successful inputs including a longer unread suffix.
+        let layout = encode_discarded_input_literal(&program, profile)
+            .map_err(|error| format!("two-read literal {byte}: {error:?}"))?;
+        if layout.executed_code_positions().len() != padding + 6 {
+            return Err(format!("two-read literal {byte}: wrong padding"));
+        }
+    }
+    Ok(())
+}

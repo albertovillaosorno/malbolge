@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, a red-first two-discarded-signed-read source reached a
+  real six-step byte-11 guest. An independent 94-phase positional layout
+  probe then found 36 distinct candidate output bytes after two reads.
+  The bridge now proves each candidate from its own source and loader
+  recurrence, and normatively replays EOF and successful binary stdin
+  before return. Additional real guest bytes 4 and 157 pass the mixed
+  typed/ternary VM regressions. Byte 223 still refuses without publication;
+  third reads and duplicate signed SSA IDs remain outside this slice.
+  The mutable EOF checksum still rejects its first declaration at 29:5.
+
+
 - On 2026-11-17, complete C23 conditional-output sources using a signed
   `int current = getchar()` in a counted `for` loop still published a genuine
   guest: `unsigned_guarded_modular_output_live_input.c` emitted `6a6a6a6a`
