@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- Open C23 EOF publication defect (2026-11-17): the previously accepted
+  `unsigned_guarded_modular_output_live_input.c` still publishes a genuine
+  1,119-byte, nine-step guest emitting `6a6a6a6a` on empty stdin. Pinned
+  Clang C23 UBSan `-O0` produces `ffffffff` for the same complete source.
+  The direct/nested counted-loop guard does not cover conditional byte-domain
+  proofs. Extend source-authenticated EOF-aware admission to conditional
+  arithmetic and update all impacted historical positive tests before
+  claiming any guarded signed-input output correctness. This is an **open
+  soundness blocker**, not a verified guest compiler capability.
+
 - On 2026-11-17, a two-trip C23 `int current = getchar();
   putchar(putchar(current));` source published a real 1,103-byte N15 guest
   emitting `6a6a6a6a` on empty stdin instead of native `ffffffff`. The
