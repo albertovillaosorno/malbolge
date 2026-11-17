@@ -247,18 +247,28 @@ handoff; owning TODOs, specifications, contracts, and ADRs remain authoritative
 when they are more specific.
 
 Run the repository-owned validation required by the work you change. On Linux,
-the following entrypoint ensures the installed Jig sees pinned ChkTeX and
-LaTeXmk tools instead of conflicting user-local aliases:
+Jig checks a real external ChkTeX executable in addition to the repository's
+pinned ChkTeX and LaTeXmk launchers. If the system ChkTeX is older than the
+pinned version, opt in to an independently installed, executable copy at
+`$HOME/.local/bin/chktex` (currently pinned to 1.7.10):
 
 ```sh
 export PYTHONPATH=src/automation/repository/composition
+# Only set this if $HOME/.local/bin/chktex is installed and verified.
+export MALBOLGE_JIG_EXTERNAL_TOOL_BIN="$HOME/.local/bin"
 python3.14 -B -m scripts.validate.jig_runner doctor
 python3.14 -B -m scripts.validate.jig_runner check
 python3.14 -B -m scripts.validate.jig_runner validate
 ```
 
-The mathematical and research contracts continue to require the full `validate`
-gate. This entrypoint does not suppress Jig diagnostics or evaluation gaps.
+On hosts with an up-to-date system ChkTeX, omit the optional environment
+variable. The [Linux bootstrap contract][linux-bootstrap] explains the
+direct-executable checks and how to install the approved version. Jig still
+performs its own version and digest checks; this opt-in does not suppress
+diagnostics or substitute an unverified binary. Mathematical and research
+work continue to require the full `validate` gate.
+
+[linux-bootstrap]: docs/technical/tooling/linux-development-host-bootstrap.md
 
 Do not weaken semantic verification to make an optimization, benchmark, or
 experimental result pass. Bounded evidence must remain visibly bounded.
