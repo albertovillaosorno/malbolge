@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, a complete three-trip C23 counted loop with one
+  counter-selected `putchar(current)` of a signed `getchar` local compiled
+  to a real 1,087-byte, five-step guest that emitted `6a` on empty and
+  one-byte stdin, instead of native C23 `ff`. A red-first five-vector,
+  -O0/-O2 UBSan native/guest-or-no-publication test reproduced the defect.
+  The adapter now refuses at the first unguarded loop-local output, not
+  only after two repeated writes. All 123 adapter Rust tests and both
+  focused C23 publication tests pass. This is a bounded soundness repair;
+  the frozen mutable EOF checksum still refuses declaration `29:5`.
+
 - On 2026-11-17, the tempting direct `*; j` reset of a nine-rotation
   signed-EOF loader operand is now ruled out for all 20 source lengths that
   could place the first operand at D=122. The four algebraic candidate tails

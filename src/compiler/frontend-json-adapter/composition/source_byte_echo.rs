@@ -454,12 +454,12 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
 }
 
 // A statically unrolled loop does not prove its signed getchar values are
-// successful bytes. When an induction branch repeats an unguarded signed
-// local in direct putchar calls, C writes 0xff at EOF but the current
+// successful bytes. Even a single counter-selected output of an unguarded
+// signed local writes 0xff at EOF in C, but the current
 // byte-only guest writes the profile's low EOF residue. This is a refusal
 // proof, never permission to lower an unauthenticated source. Keep parent
 // identities explicit so forged descendant calls cannot imply C behavior.
-pub(super) fn is_unchecked_repeated_loop_signed_eof_output(
+pub(super) fn is_unchecked_counter_loop_signed_eof_output(
     bytes: &[u8],
 ) -> bool {
     let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
@@ -507,7 +507,6 @@ pub(super) fn is_unchecked_repeated_loop_signed_eof_output(
             let _ = signed_inputs.insert((loop_body.id, reference));
         }
     }
-    let mut writes: HashMap<(u32, &str), usize> = HashMap::new();
     for read in nodes.iter().filter(|node| {
         node.kind == "declaration-reference-expression"
             && node.type_name.as_deref() == Some("i32")
@@ -565,11 +564,7 @@ pub(super) fn is_unchecked_repeated_loop_signed_eof_output(
             && loop_body.kind == "compound-statement"
             && signed_inputs.contains(&(loop_body.id, reference))
         {
-            let count = writes.entry((arm.id, reference)).or_default();
-            *count += 1;
-            if *count >= 2 {
-                return true;
-            }
+            return true;
         }
     }
     false

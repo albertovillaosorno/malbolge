@@ -11,6 +11,19 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Single-output counted-loop signed EOF refusal (2026-11-17)
+
+A three-trip C23 `for` loop with one `putchar(current)` selected by
+`if (i == 1U)` previously emitted `6a` at EOF, whereas native C23
+`putchar(-1)` requires `ff`. One output,
+not only two repeated calls, is sufficient to observe the mismatch.
+The source/Clang-bound counter-branch proof now refuses that case before
+byte-only guest projection and artifact publication. Five independent
+binary stdin cases and C23 UBSan at `-O0` and `-O2` verify output parity
+or typed refusal without a guest. The existing two-write refusal and
+123 frontend Rust unit tests still pass. Runtime signed EOF conversion
+and general guest-side mutable state remain unsupported.
+
 ### Discarded signed C `getchar` and EOF refusal (2026-11-17)
 
 Source-authenticated one- or two-call examples that discard each `getchar()`

@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Single-output signed EOF inside counted C loops (2026-11-17)
+
+One complete C23 source now demonstrates that a **single** output of a signed
+`int current = getchar()` inside `if (i == 1U)` in a bounded three-trip
+`for` loop is not safe on an exhausted stream. The previously published
+1,087-byte capsule executed five actual guest steps and emitted `6a`
+for empty or one-byte stdin. Pinned native C23 `-O0` and `-O2` with UBSan
+require `ff` there; the three-byte guest input produces the correctly
+selected middle byte `80`. The earlier loop-local refusal erroneously
+required two output calls in the same counter-selected arm.
+
+The source/Clang-backed adapter now refuses the **first** matching
+counter-selected signed-local output before any guest publication.
+`tests/test_single_c23_loop_eof_publication.py` pins five byte streams,
+independent native controls, a real guest check on successful compilation
+and no artifact on typed refusal. All 123 adapter unit tests and the prior
+four-read signed EOF publication regression pass. This repairs one unsound
+bounded loop shape; it does not implement signed EOF conversion, general
+mutable C locals or the frozen EOF checksum (still refused at `29:5`).
+
 ### Exhausted adjacent loader-only nine-rotation reset (2026-11-17)
 
 The 257-case signed-EOF operand proof yields four source-tail candidates:
