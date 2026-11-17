@@ -238,3 +238,96 @@ fn passive_loader_words_cannot_convert_signed_eof_in_twelve_crazy_steps() {
         "an actual passive-loader conversion would need guest layout proof"
     );
 }
+
+// A graphical source tail can supply a signed EOF conversion after nine
+// exact rotations of one loader-expanded operand. The linker has not
+// generated those nine writes or restored D for a subsequent p/p/output.
+// This is a constructive pre-layout witness, not a compiled C guest.
+#[test]
+fn source_loaded_rotated_operands_admit_signed_eof_conversion() {
+    let profile = current_profile();
+    // Position-dependent XLAT1 admits the tail "Iy" at C=89 and 90.
+    // Prepend 89 independently encoded no-ops rather than claiming the
+    // graphical loader can start with the invalid source bytes at C=0.
+    let mut source = Vec::with_capacity(91);
+    for position in 0..89u32 {
+        source.push(
+            (33..=126u8)
+                .find(|cell| {
+                    malbolge::decode_profile_instruction(
+                        u32::from(*cell),
+                        position,
+                    ) == Some(b'o')
+                })
+                .expect("every decode phase has one graphical nop"),
+        );
+    }
+    source.extend_from_slice(b"Iy");
+    assert_eq!(malbolge::decode_profile_instruction(73, 89), Some(b'o'),);
+    assert_eq!(
+        malbolge::decode_profile_instruction(121, 90),
+        Some(profile.input_instruction()),
+    );
+    let machine =
+        malbolge::ProfileMachine::from_source(profile, &source, Vec::new())
+            .expect("all 91 source cells must load into N15 memory");
+    let mut words = [0u32; 8];
+    words[0] = 73;
+    words[1] = 121;
+    for index in 2..words.len() {
+        words[index] = scalar_crazy(
+            words[index - 2],
+            words[index - 1],
+            profile.word_trits(),
+        );
+    }
+    for (address, word) in words.iter().copied().enumerate() {
+        assert_eq!(
+            machine.memory_word(
+                u32::try_from(source.len() - 2 + address).unwrap()
+            ),
+            Ok(word),
+            "the normative loader disagrees at address {address}"
+        );
+    }
+    let mut first = words[2];
+    for _ in 0..9 {
+        let independently_rotated = first.div_euclid(3)
+            + first.rem_euclid(3) * profile.word_modulus().div_euclid(3);
+        assert_eq!(
+            malbolge::profile_rotate(first, profile.word_modulus()),
+            independently_rotated,
+        );
+        first = independently_rotated;
+    }
+    let second = words[7];
+    assert_eq!([first, second], [7_138_732, 121]);
+    let plan = admit_c23_signed_output_word_plan(profile, [first, second])
+        .expect("source-derived operands must pass all 257 C23 outcomes");
+    assert_eq!(plan.operands(), [first, second]);
+    for input in 0..=256u32 {
+        let word = if input == 256 {
+            profile.eof_word()
+        } else {
+            input
+        };
+        let result = scalar_crazy(second, scalar_crazy(first, word, 15), 15);
+        let expected = if input == 256 {
+            255
+        } else {
+            u8::try_from(input).expect("input is a successful byte")
+        };
+        assert_eq!(
+            u8::try_from(result.rem_euclid(256)).expect("result is one byte"),
+            expected,
+        );
+    }
+    let extra_rotation = first.div_euclid(3)
+        + first.rem_euclid(3) * profile.word_modulus().div_euclid(3);
+    assert_ne!(extra_rotation, first);
+    assert!(
+        admit_c23_signed_output_word_plan(profile, [extra_rotation, second])
+            .is_err(),
+        "an extra rotation must invalidate the exact C23 conversion"
+    );
+}

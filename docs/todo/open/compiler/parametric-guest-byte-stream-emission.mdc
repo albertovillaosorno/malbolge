@@ -73,6 +73,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, an independently checked source-loader construction
+  improves the earlier negative *untouched* operand study. A 91-cell
+  graphical source with 89 canonical no-ops and tail `Iy` is accepted by
+  the normative 15-trit loader. Its derived words at addresses 91 and 96
+  are `7174404` and `121`. Nine scalar- and VM-primitive-checked trit
+  rotations of the first yield `7138732`, and `(7138732, 121)` passes
+  all 257 C23 signed `getchar` to `putchar` byte outcomes. One extra
+  rotation fails admission. The four Rust tests in
+  `tests/compiler_eof_byte_conversion.rs` pass. There is still no
+  executable guest layout that performs the nine writes, returns to
+  the operands, or converts a live input. The original four-read EOF
+  regression and mutable checksum remain unsupported. This is a
+  constructive pre-layout prerequisite, **not** P2 acceptance.
+
 - On 2026-11-17, the complete five-input mutable-EOF checksum was
   rerun against native C23 controls and still refused the first observed
   declaration at `29:5`. The four-read signed-EOF loop remains a known

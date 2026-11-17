@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Graphical-loader-derived rotated EOF conversion operands (2026-11-17)
+
+The negative result below applies only to **untouched** loader words. A new
+constructive, independently verified candidate requires guest-side preparation:
+a 91-cell source with 89 position-encoded graphical `o` instructions and the
+graphical tail `Iy` passes the normative N15 loader. The two final source
+cells are integers 73 and 121 at code addresses 89 and 90, with valid
+position-dependent instruction decodes. Loader expansion at address 91 is
+`7174404`, and at address 96 is `121`; each word agrees with a separate
+digitwise three-valued crazy recurrence.
+
+Rotating the word at address 91 **nine** trits to the right yields
+`7138732`. Two consecutive `p` operations reading the derived pair
+`(7138732, 121)` would preserve all 256 successful `getchar()` byte values
+and map the profile's signed EOF accumulator to the required `0xff`.
+`tests/compiler_eof_byte_conversion.rs` checks the normative source loader
+and decode, all intermediate rotations against the independent trit formula,
+all 257 scalar crazy outputs, the pure C23 admission checker, and an extra
+rotation mutation that must fail. This is a source-derived *operand* witness,
+not a generated instruction trace: the compiler cannot yet revisit the
+first expanded word to execute those nine `*` writes, restore the data
+pointer, or execute the two `p` operations with both words unmodified.
+
+The four-read C23 loop therefore still has the same known guest EOF
+mispublication, and the frozen mutable-EOF checksum still refuses its
+first declaration at `29:5`. Neither source-C observable signed EOF
+conversion nor the P2 stateful checksum has been implemented.
+
 ### Exhausted passive-loader signed EOF operands (2026-11-17)
 
 The frozen mutable-EOF checksum still explicitly refuses its first observed
