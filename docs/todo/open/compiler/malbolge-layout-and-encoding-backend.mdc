@@ -53,6 +53,16 @@ emission.
 
 ## Evidence
 
+- On 2026-11-17, a source-loaded 29-cell N15 guest executes nine real
+  rotations and pointer resets, then `/; p; p; <` with two distinct real
+  loader operands. Both manual and automatically relocated layouts yield
+  identical admitted guest code. Eight binary/EOF streams match independent
+  base-three computations, exact VM input/output, memory mutation and
+  27-step halt. Idempotent guest `p` stores correctly have no changed-cell
+  trace delta. This is a two-stage guest arithmetic prerequisite, **not** a
+  signed-C EOF converter: the chosen operands emit `0x0d` at EOF instead of
+  C23's `0xff`; the P2 mutable checksum still refuses publication.
+
 - The separate finite batch API replays the exact same source against 2..8
   distinct binary inputs, with a fresh normative VM and independent path,
   byte, I/O chronology and data-write oracle for each input. Duplicated

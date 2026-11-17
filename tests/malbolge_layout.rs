@@ -2632,3 +2632,6 @@ mod loader_recurrence_tests;
 
 #[path = "compiler/layout/repeated_loader_rotation.rs"]
 mod repeated_loader_rotation_tests;
+
+#[path = "compiler/layout/live_two_crazy_input.rs"]
+mod live_two_crazy_input;

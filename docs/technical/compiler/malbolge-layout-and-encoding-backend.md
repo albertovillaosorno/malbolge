@@ -20,6 +20,28 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Two consecutive live guest crazy operations (2026-11-17)
+
+A 29-cell, source-loadable current-profile guest now executes nine actual
+`*` data rotations, each followed by an actual `j` pointer reset, before
+performing a real `/; p; p; <` sequence and halting in exactly 27 steps.
+The two `p` instructions read different, still-unmodified loader words at
+addresses 42 and 43 (`40` and `7174413`), then independently mutate or
+idempotently rewrite those cells using the incoming byte or the profile EOF
+word. Both manual encoding and symbolic `AutoRelocate` with an exact two-byte
+loader seed produce the same source and reverse source map.
+
+Eight bounded binary/EOF input streams run in the normative N15 VM with
+independent scalar base-three oracles for all nine rotations, both distinct
+crazy operations, both memory before/after values, the single output, the
+committed input count and exact halt. The VM's delta represents *changed*
+cells, so an idempotent `p` intentionally has a data read but no data delta.
+This extends the prior one-`p` live arithmetic path to a genuine two-stage
+input-dependent guest computation. It does **not** implement source-C
+`putchar(getchar())`: this particular pair maps EOF to byte `0x0d` rather
+than the required C23 `0xff`. The fully correct 257-value operand proposal
+still lacks executable placement, and mutable EOF-checksum C remains refused.
+
 ### Bounded revisiting guest input evidence
 
 A finite multi-input gate now replays **one identical guest source** against
