@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Direct `putchar(getchar())` EOF counterexample (2026-11-16)
+
+Independent pinned Clang C23 `-O0`/`-O2` builds of
+`void emit(void) { putchar(getchar()); }` output `ff` on empty stdin:
+`getchar()` returns signed `EOF == -1`, and C `putchar` converts that to
+`unsigned char`. The existing source-bound successful-byte echo path instead
+publishes a valid 1,071-byte `malbolge-2026` capsule that executes three real
+VM steps but outputs `6a` on EOF, the profile sentinel's low byte. On
+successful `00`, `41`, and `ff` inputs both implementations agree.
+
+`tests/test_getchar_eof_publication.py` preserves the independent native
+oracle and runs the guest mismatch as an **explicit expected failure** until
+proper signed EOF lowering or a typed refusal is implemented. This is a P2
+non-pass, not a completed C `getchar` or an arbitrary-input correctness claim.
+The source-to-byte-echo proof remains valid only for successful byte reads;
+there is no guest-enforced minimum-input contract on the published capsule.
+The new `Getchar` IR op is not yet executable, so do not reinterpret its
+presence as EOF support or silently truncate the sentinel.
+
 ### Typed representation of EOF-aware C input (2026-11-16)
 
 The portable version-one typed-IR now distinguishes `Getchar { result, type_id }`

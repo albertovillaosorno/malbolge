@@ -16,6 +16,7 @@ scope:
   - "src/compiler/"
   - "tests/test_versioned_example_corpus.py"
   - "tests/test_unsigned_live_input_guest_parity.py"
+  - "tests/test_getchar_eof_publication.py"
   - "tests/compiler/"
 validation:
   - "jig check --root ."
@@ -67,6 +68,13 @@ evidence describe the old priority scheme, not the current phase.
   positive instruction/elapsed-time ceiling.
 
 ## Evidence
+
+- A separate minimal EOF soundness control found that the accepted
+  `putchar(getchar())` byte-echo capsule outputs `6a` on empty stdin, whereas
+  native pinned C23 O0/O2 output `ff`. Both match on successful `00`, `41`,
+  and `ff` inputs. `tests/test_getchar_eof_publication.py` records the real
+  guest discrepancy as an explicit expected failure, **not** P2 acceptance;
+  correct signed EOF lowering or typed refusal is still required.
 
 - The current complete EOF checksum is now tracked as
   `tests/compiler/c-frontend/accepted/mutable_eof_checksum.c` with a
