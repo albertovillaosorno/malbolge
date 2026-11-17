@@ -179,6 +179,7 @@ const fn instruction_is_high(instruction: &Instruction) -> bool {
         Instruction::AddressOffset { .. }
         | Instruction::Binary { .. }
         | Instruction::ByteInput { .. }
+        | Instruction::Getchar { .. }
         | Instruction::ByteOutput { .. }
         | Instruction::Call { .. } => false,
         Instruction::AutomaticAllocate { .. }
@@ -230,6 +231,9 @@ fn validate_instruction_low(
         ),
         Instruction::ByteInput { type_id, .. } => {
             validate_byte_type(context.types(), *type_id)
+        },
+        Instruction::Getchar { type_id, .. } => {
+            validate_getchar_type(context.types(), *type_id)
         },
         Instruction::ByteOutput { value } => {
             validate_byte_type(context.types(), context.type_of_use(*value)?)
@@ -306,6 +310,7 @@ fn validate_instruction_high(
         Instruction::AddressOffset { .. }
         | Instruction::Binary { .. }
         | Instruction::ByteInput { .. }
+        | Instruction::Getchar { .. }
         | Instruction::ByteOutput { .. }
         | Instruction::Call { .. } => Ok(()),
     }
@@ -409,6 +414,16 @@ fn validate_binary(
         },
     };
     if !valid {
+        return Err(ValidationError::OperandType);
+    }
+    Ok(())
+}
+
+fn validate_getchar_type(
+    types: &[TypeEntry],
+    type_id: TypeId,
+) -> Result<(), ValidationError> {
+    if !matches!(definition(types, type_id), Ok(TypeDef::I32)) {
         return Err(ValidationError::OperandType);
     }
     Ok(())

@@ -174,7 +174,10 @@ fn fixture_with_profile(
         target_profile: profile_id.to_owned(),
         types: vec![
             TypeEntry::new(TypeId::new(0), TypeDef::U8),
-            TypeEntry::new(TypeId::new(1), TypeDef::function(Vec::new(), None, false)),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::function(Vec::new(), None, false),
+            ),
         ],
     }))
 }
@@ -507,6 +510,79 @@ fn canonical_typed_ir_supports_full_byte_domain_and_maximum_trace() -> Result<()
         compile_canonical_typed_echo(&wire(&fixture(2048)?)?, current_profile()),
         Err(TypedEchoAdapterError::UnsupportedTypedIr),
     );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "signed EOF-bearing input may never become a successful-only echo"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "complete typed-IR source and two real guest publisher boundaries"
+)]
+fn signed_getchar_cannot_be_erased_by_successful_byte_guest_publisher() -> Result<(), String> {
+    let instructions = vec![
+        LocatedInstruction::new(
+            Instruction::Getchar {
+                result: ValueId::new(0),
+                type_id: TypeId::new(2),
+            },
+            span(0, 1),
+        ),
+        LocatedInstruction::new(
+            Instruction::ByteInput {
+                result: ValueId::new(1),
+                type_id: TypeId::new(0),
+            },
+            span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::ByteOutput { value: ValueId::new(1) },
+            span(2, 3),
+        ),
+    ];
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: adapter::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: span(0, 4),
+                terminator: Terminator::Return { value: None },
+                terminator_span: span(3, 4),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("eof_before_echo"),
+            parameters: Vec::new(),
+            signature: TypeId::new(1),
+            span: span(0, 4),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/getchar-eof.c"),
+        source_sha256: [0xb4; 32],
+        target_profile: String::from(current_profile().id()),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::U8),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+            TypeEntry::new(TypeId::new(2), TypeDef::I32),
+        ],
+    });
+    let encoded = wire(&module)?;
+    for result in [
+        compile_canonical_typed_echo(&encoded, current_profile()),
+        adapter::compile_canonical_typed_latest_byte_trace(&encoded, current_profile()),
+    ] {
+        assert_eq!(result, Err(TypedEchoAdapterError::UnsupportedTypedIr));
+    }
     Ok(())
 }
 
@@ -3204,7 +3280,10 @@ fn typed_identity_effects(effects: &[IdentityEffect]) -> Result<Module, String> 
         target_profile: String::from("malbolge-2026"),
         types: vec![
             TypeEntry::new(TypeId::new(0), TypeDef::U8),
-            TypeEntry::new(TypeId::new(1), TypeDef::function(Vec::new(), None, false)),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::function(Vec::new(), None, false),
+            ),
             TypeEntry::new(TypeId::new(2), TypeDef::I8),
         ],
     }))

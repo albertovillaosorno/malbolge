@@ -105,6 +105,7 @@ pub(super) const fn instruction_result(
         | Instruction::AutomaticAllocate { result, type_id, .. }
         | Instruction::Binary { result, type_id, .. }
         | Instruction::ByteInput { result, type_id }
+        | Instruction::Getchar { result, type_id }
         | Instruction::Cast { result, type_id, .. }
         | Instruction::Compare { result, type_id, .. }
         | Instruction::ConstantInteger { result, type_id, .. }

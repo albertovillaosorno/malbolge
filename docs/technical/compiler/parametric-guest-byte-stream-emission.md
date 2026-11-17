@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Typed representation of EOF-aware C input (2026-11-16)
+
+The portable version-one typed-IR now distinguishes `Getchar { result, type_id }`
+from the existing successful-only `ByteInput` operation. The new typed-IR
+operation represents C's signed `i32` result: `0..255` after a successful
+byte and `-1` on EOF. It has a separate canonical MCTI opcode (12), exact
+`i32` admission, deterministic decoding, and negative tests for wrong result
+types, unknown wire tags, and accidental publication by the successful-byte
+Malbolge echo adapter. Existing `ByteInput` remains strictly `u8`; a
+profile-specific EOF word must not be truncated into a fabricated C result.
+
+**This is an IR contract only, not an implemented guest `getchar`**. The source
+adapter still stops the frozen mutable checksum at its first declaration,
+and the nonlinear guest backend cannot yet execute this operation, local
+storage, runtime branching, or EOF-driven looping. The first executable
+acceptance remains pending; no host computation is substituted for guest
+semantics.
+
 ### Frozen mutable-C EOF checksum acceptance witness (2026-11-16)
 
 `tests/compiler/c-frontend/accepted/mutable_eof_checksum.c` is the single

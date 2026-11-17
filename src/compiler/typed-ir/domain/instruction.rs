@@ -207,6 +207,14 @@ pub enum Instruction {
         /// Unsigned byte result type.
         type_id: TypeId,
     },
+    /// Read one C `getchar()` result as signed i32: 0..255 or EOF (-1).
+    /// Unlike `ByteInput`, an exhausted stream is a defined result.
+    Getchar {
+        /// Signed 32-bit result value.
+        result: ValueId,
+        /// Must name the ABI `i32` type.
+        type_id: TypeId,
+    },
     /// Emit one deterministic guest byte.
     ByteOutput {
         /// Integer byte operand.

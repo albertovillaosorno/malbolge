@@ -440,6 +440,7 @@ const fn instruction_tag(instruction: &Instruction) -> u8 {
         Instruction::Store { .. } => 9,
         Instruction::AutomaticAllocate { .. } => 10,
         Instruction::FunctionAddress { .. } => 11,
+        Instruction::Getchar { .. } => 12,
     }
 }
 
@@ -534,6 +535,7 @@ fn encode_instruction_low(
         | Instruction::Compare { .. }
         | Instruction::ConstantInteger { .. }
         | Instruction::FunctionAddress { .. }
+        | Instruction::Getchar { .. }
         | Instruction::Load { .. }
         | Instruction::Store { .. } => {},
     }
@@ -582,6 +584,7 @@ fn encode_instruction_mid(
         | Instruction::AutomaticAllocate { .. }
         | Instruction::Binary { .. }
         | Instruction::ByteInput { .. }
+        | Instruction::Getchar { .. }
         | Instruction::ByteOutput { .. }
         | Instruction::Call { .. }
         | Instruction::FunctionAddress { .. }
@@ -611,6 +614,10 @@ fn encode_instruction_high(encoder: &mut Encoder, instruction: &Instruction) {
         } => encode_function_address_payload(
             encoder, *result, *type_id, *function,
         ),
+        Instruction::Getchar { result, type_id } => {
+            encoder.u32(result.value());
+            encoder.u32(type_id.value());
+        },
         Instruction::Load {
             alignment,
             pointer,

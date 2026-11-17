@@ -67,9 +67,17 @@
     "compare",
     "constant-integer",
     "function-address",
+    "getchar-i32-or-eof",
     "load",
     "store"
   ],
+  "getchar_semantics": {
+    "result": "signed-i32",
+    "successful_read": "next-unsigned-byte-zero-extended-to-0-through-255",
+    "end_of_input": "signed-negative-one-on-exhaustion",
+    "host_dispatch": "forbidden",
+    "status": "typed-ir-only-no-guest-codegen"
+  },
   "binary_operations": [
     "add",
     "and",

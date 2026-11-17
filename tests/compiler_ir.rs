@@ -1460,6 +1460,83 @@ fn automatic_allocation_requires_u32_byte_count() {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts exact canonical type, wire identity and refusal"
+)]
+fn eof_aware_getchar_has_distinct_i32_typed_identity() -> Result<(), String> {
+    let read = LocatedInstruction::new(
+        Instruction::Getchar {
+            result: ValueId::new(0),
+            type_id: I32_TYPE,
+        },
+        span(0, 1),
+    );
+    let module = module_with_function(single_block(vec![read], ValueId::new(0)));
+    validate_module(&module).map_err(|error| format!("getchar admission: {error:?}"))?;
+    let wire = canonical_bytes(&module)
+        .map_err(|error| format!("getchar serialization: {error:?}"))?;
+    assert_eq!(canonical_module(&wire), Ok(module));
+    // Wire tag 12 belongs to `Getchar`, not legacy successful-only tag 2.
+    let encoded_getchar = [12u8, 0, 0, 0, 0, 1, 0, 0, 0];
+    let instruction_offset = wire
+        .windows(encoded_getchar.len())
+        .position(|window| window == encoded_getchar)
+        .ok_or("missing signed getchar wire tag")?;
+    let mut unknown_opcode = wire.clone();
+    let tag = unknown_opcode
+        .get_mut(instruction_offset)
+        .ok_or("getchar wire tag offset outside canonical bytes")?;
+    *tag = 13;
+    assert_eq!(
+        canonical_module(&unknown_opcode),
+        Err(CanonicalDecodeError::UnknownTag),
+    );
+    assert_eq!(
+        canonical_bytes(&canonical_module(&wire).map_err(|error| format!("decode: {error:?}"))?),
+        Ok(wire),
+    );
+    let legacy_byte = module_with_function(single_block(
+        vec![LocatedInstruction::new(
+            Instruction::ByteInput {
+                result: ValueId::new(0),
+                type_id: I32_TYPE,
+            },
+            span(0, 1),
+        )],
+        ValueId::new(0),
+    ));
+    assert_eq!(validate_module(&legacy_byte), Err(ValidationError::OperandType));
+    assert_eq!(
+        canonical_bytes(&legacy_byte),
+        Err(CanonicalError::Validation(ValidationError::OperandType)),
+    );
+    Ok(())
+}
+
+#[test]
+fn eof_aware_getchar_rejects_non_i32_results() {
+    for type_id in [BOOL_TYPE, FUNCTION_TYPE, TypeId::new(3)] {
+        let mut types = standard_types();
+        types.push(TypeEntry::new(TypeId::new(3), TypeDef::U8));
+        let read = LocatedInstruction::new(
+            Instruction::Getchar {
+                result: ValueId::new(0),
+                type_id,
+            },
+            span(0, 1),
+        );
+        let function = single_block(vec![read], ValueId::new(0));
+        let module = module_with_parts(SOURCE_ID, types, vec![function], Vec::new());
+        assert_eq!(validate_module(&module), Err(ValidationError::OperandType));
+        assert_eq!(
+            canonical_bytes(&module),
+            Err(CanonicalError::Validation(ValidationError::OperandType)),
+        );
+    }
+}
+
+#[test]
 fn raw_function_typed_ssa_value_fails_closed() {
     let invalid_value = LocatedInstruction::new(
         Instruction::ByteInput {

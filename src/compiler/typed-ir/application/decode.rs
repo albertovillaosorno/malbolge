@@ -523,6 +523,10 @@ fn decode_instruction_high(
             type_id: TypeId::new(decoder.u32()?),
             function: FunctionId::new(decoder.u32()?),
         },
+        12 => Instruction::Getchar {
+            result: ValueId::new(decoder.u32()?),
+            type_id: TypeId::new(decoder.u32()?),
+        },
         _ => return Err(CanonicalDecodeError::UnknownTag),
     };
     Ok(instruction)
