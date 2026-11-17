@@ -22,6 +22,12 @@
 //   - The compiler emits and verifies all required operand preparations.
 // - Summary:
 //   - Nine rotations are necessary in the tested adjacent two-crazy class.
+// - Description:
+//   - Exhausts 795,240 data plans and traces a real one-write N15 guest.
+// - Usage:
+//   - `cargo test --test compiler_eof_rotated_operand_guest`.
+// - Defaults:
+//   - Current 15-trit profile and 91-cell Iy source-loader witness only.
 
 //! An exhaustive pre-layout bound plus one genuine guest write, not P2
 //! acceptance.
