@@ -333,8 +333,19 @@ class CToMalbolgeDriverTests(unittest.TestCase):
                 self.assertEqual(default_source_id(f"other/{basename}"), expected)
 
     def test_invalid_portable_source_id_prevents_all_stages(self):
-        for source_id in ("/absolute.c", "../bad.c", "a//b.c", "a\\b.c"):
+        for source_id in (
+            "/absolute.c",
+            "../bad.c",
+            "a//b.c",
+            "a\\b.c",
+            "drive:C.c",
+            "name with spaces.c",
+            "caf\u00e9.c",
+            "line\nbreak.c",
+            "question?.c",
+        ):
             with self.subTest(source_id=source_id):
+                self.trace.unlink(missing_ok=True)
                 completed = self.run_pipeline(source_id=source_id)
                 self.assertNotEqual(completed.returncode, 0)
                 self.assert_stages(b"")

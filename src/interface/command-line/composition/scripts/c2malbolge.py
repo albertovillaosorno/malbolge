@@ -54,6 +54,9 @@ MAX_JSON_BYTES = 1_048_576
 CHUNK_BYTES = 64 * 1024
 REPOSITORY_ROOT = Path(__file__).resolve().parents[5]
 PINNED_LLVM_VERSION = "22.1.8"
+PORTABLE_SOURCE_CHARACTERS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,16 +281,22 @@ def build_parser() -> argparse.ArgumentParser:
 def default_source_id(source: str) -> str:
     """Use the basename when portable, otherwise an unambiguous stable digest."""
     basename = Path(source).name
-    allowed = frozenset(
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
-    )
     if (
         basename
         and basename not in (".", "..")
-        and all(character in allowed for character in basename)
+        and all(character in PORTABLE_SOURCE_CHARACTERS for character in basename)
     ):
         return basename
     return f"source-{hashlib.sha256(os.fsencode(basename)).hexdigest()}.c"
+
+
+def portable_source_id(source_id: str) -> bool:
+    """Mirror the native frontend's portable ASCII path-component grammar."""
+    return all(
+        component not in ("", ".", "..")
+        and all(character in PORTABLE_SOURCE_CHARACTERS for character in component)
+        for component in source_id.split("/")
+    )
 
 
 def parse_arguments(
@@ -390,12 +399,7 @@ def sync_published_directory(target: Path) -> None:
 
 
 def compile_source(arguments: Arguments) -> None:
-    if (
-        not arguments.source_id
-        or "\\" in arguments.source_id
-        or arguments.source_id.startswith("/")
-        or any(part in ("", ".", "..") for part in arguments.source_id.split("/"))
-    ):
+    if not portable_source_id(arguments.source_id):
         raise PipelineError("source ID must be a portable relative path")
     if os.path.lexists(arguments.output):
         raise PipelineError("output path already exists (no-clobber)")
