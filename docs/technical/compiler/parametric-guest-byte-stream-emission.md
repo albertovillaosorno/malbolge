@@ -49,15 +49,19 @@ Storing a signed input in a C local does not remove its EOF behavior.
 The source/Clang-checked adapter now refuses a bounded, straight-line
 `int local = getchar();` followed by one or more output calls using that
 local, with an optional source-authenticated `int alias = local;` and final
-`return;`. The check executes **before** the byte-only projection and
+`return;`. Up to 128 discarded, source-ordered `getchar();` calls may also
+precede the signed local without weakening this refusal. A discarded read
+cannot turn a later C `-1` into a successful unsigned byte. The check
+executes **before** the byte-only projection and
 before other fallback adapters; it never treats a negative result as
 permission to compile a different grammar. Other source forms not proved
 by this checker retain existing compiler behavior and need independent
 EOF audits; this is not general signed-local soundness or conversion.
 
-`tests/test_signed_getchar_local_publication.py` pins four complete
-sources (direct, copied, repeated, and discarded-read suffix) and four binary
-stdin vectors. Independent pinned Clang C23 `-O0` and `-O2` with UBSan
+`tests/test_signed_getchar_local_publication.py` pins seven complete
+sources (direct, copied, repeated, discarded-read suffix, and three
+pre-declaration read forms) and four binary stdin vectors. Independent pinned
+Clang C23 `-O0` and `-O2` with UBSan
 must match the explicit expected bytes; the guest either matches the same
 oracle or the compiler returns typed `Unsupported` without publishing a
 file. The frontend unit suite has 123 passing tests. The original mutable

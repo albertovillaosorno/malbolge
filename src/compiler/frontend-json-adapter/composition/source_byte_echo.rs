@@ -475,19 +475,34 @@ pub(super) fn is_unchecked_local_eof_echo(
     {
         return false;
     }
-    let Some(mut local) = nodes.get(..5).and_then(|declaration| {
-        prove_local_declaration(
-            declaration,
-            body,
-            body.span.begin.byte,
-            body.id,
-        )
+    // The signed local may follow source-ordered discarded getchar calls.
+    // Those real guest reads do not make the later signed EOF observable
+    // through the successful-u8 projection. Authenticate each complete
+    // three-node Clang call before locating the declaration.
+    let mut remaining = nodes;
+    let mut previous = body.span.begin.byte;
+    let mut discarded = 0usize;
+    while discarded < MAX_ECHO_CALLS {
+        let Some((head, tail)) = remaining.split_first_chunk::<3>() else {
+            break;
+        };
+        let Some(call) =
+            prove_input_call(head, body, previous, (head[0].id, body.id))
+        else {
+            break;
+        };
+        previous = call.span.end.byte;
+        remaining = tail;
+        discarded += 1;
+    }
+    let Some(mut local) = remaining.get(..5).and_then(|declaration| {
+        prove_local_declaration(declaration, body, previous, body.id)
     }) else {
         return false;
     };
-    let mut remaining = &nodes[5..];
-    let mut previous = local.declaration_end;
-    let mut expected_id = nodes[4].id.saturating_add(1);
+    let mut expected_id = remaining[4].id.saturating_add(1);
+    remaining = &remaining[5..];
+    previous = local.declaration_end;
     let mut outputs = 0usize;
     while let Some(first) = remaining.first() {
         // A later statement cannot undo an already emitted wrong EOF byte.

@@ -71,6 +71,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, a complete source-C discarded-read prefix followed by
+  `int current = getchar(); putchar(current);` published a real four-step
+  Malbolge capsule that emitted `6a` at empty input, while pinned native C23
+  produces `ff`. One and two preceding discarded reads and one copied local
+  now undergo source/Clang-authenticated refusal before the successful-byte
+  projection. Seven signed-local shapes, four byte/EOF inputs, and both pinned
+  native optimization modes pass the parity-or-no-publication gate. This
+  repairs an unsound observable EOF path; mutable EOF checksum compilation
+  and guest signed-to-byte conversion remain P2 work.
+
 - On 2026-11-17, a complete signed-local C `int current = getchar();`
   followed by `putchar(current);` compiled to a real 1,071-byte
   three-step Malbolge guest. Empty stdin emitted hex `6a`, while pinned

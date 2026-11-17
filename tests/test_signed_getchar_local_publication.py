@@ -45,21 +45,48 @@ ADAPTER: Final = ROOT / ".cache/rust/target/debug/c2malbolge_json"
 LAYOUT: Final = ROOT / ".cache/rust/target/debug/malbolge_layout"
 VM: Final = ROOT / ".cache/rust/target/debug/malbolge"
 SHAPES: Final = (
-    ("direct-local", "int current = getchar();\n    putchar(current);", 1),
+    ("direct-local", "int current = getchar();\n    putchar(current);", 1, 0),
     (
         "discard-after-output",
         "int current = getchar();\n    putchar(current);\n    getchar();",
         1,
+        0,
     ),
     (
         "copied-local",
         "int current = getchar();\n    int saved = current;\n    putchar(saved);",
         1,
+        0,
     ),
     (
         "repeated-local",
         "int current = getchar();\n    putchar(current);\n    putchar(current);",
         2,
+        0,
+    ),
+    (
+        "discarded-prefix-local",
+        "getchar();\n    int current = getchar();\n    putchar(current);",
+        1,
+        1,
+    ),
+    (
+        "two-discarded-prefix-local",
+        (
+            "getchar();\n    getchar();\n    int current = getchar();\n"
+            "    putchar(current);"
+        ),
+        1,
+        2,
+    ),
+    (
+        "discarded-prefix-alias",
+        (
+            "getchar();\n    int current = getchar();\n"
+            "    int saved = current;\n    putchar(saved);"
+        ),
+        1,
+        1,
     ),
 )
 VECTORS: Final = (
@@ -82,7 +109,7 @@ class SignedGetcharLocalPublicationTests(unittest.TestCase):
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
             part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
         )
-        for label, body, writes in SHAPES:
+        for label, body, writes, read_offset in SHAPES:
             with (
                 self.subTest(shape=label),
                 tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw,
@@ -99,7 +126,11 @@ class SignedGetcharLocalPublicationTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 expected = {
-                    name: bytes((value,)) * writes for name, _, value in VECTORS
+                    name: bytes(
+                        (data[read_offset] if read_offset < len(data) else 255,)
+                    )
+                    * writes
+                    for name, data, _value in VECTORS
                 }
                 for optimization in ("-O0", "-O2"):
                     binary = directory / f"native-{optimization[2:]}"
