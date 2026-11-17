@@ -14,7 +14,7 @@
 #   - Duplicate typed metadata or accept completed work as active planning.
 # - Allows:
 #   - Inputs: `TODO.md` and typed TODO records.
-#   - Outputs: exact priority group, active-first order, summary, and links.
+#   - Outputs: exact phase, dependency order, summary, and links.
 #   - Side effects: repository reads only.
 # - Split-When:
 #   - Planning surfaces acquire an independent machine-readable schema.
@@ -23,21 +23,20 @@
 # - Summary:
 #   - Prevents the TODO index from duplicating or drifting from its authorities.
 # - Description:
-#   - Enforces P0-P5 grouping and compact title/summary/link blocks.
+#   - Enforces P2-P10 delivery phases and compact title/summary/link blocks.
 # - Usage:
 #   - Runs with the repository Python test suite.
 # - Defaults:
 #   - Open records are indexed; completed records are excluded.
 #
 
-"""Compact priority-grouped TODO index regressions."""
+"""Dependency-ordered P2-P10 TODO index regressions."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import field
-from pathlib import Path
 import re
+from dataclasses import dataclass, field
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TODO_PATH = ROOT / "TODO.md"
@@ -53,13 +52,20 @@ FORBIDDEN_SUMMARY_MARKERS = (
     "priority lane",
 )
 P_GROUPS = (
-    ("P0", "Authority and governance"),
-    ("P1", "Semantic and language foundations"),
-    ("P2", "Compiler, runtime, and accelerator core"),
-    ("P3", "Optimization, proof, and reusable scale"),
-    ("P4", "Applications, evidence, and self-hosting"),
-    ("P5", "Documentation and publication"),
+    ("P2", "Execute real stateful C"),
+    ("P3", "Complete supported C I/O semantics"),
+    ("P4", "Verify, link, and inspect generated programs"),
+    ("P5", "Ship the CPU-first compiler"),
+    ("P6", "Scale compilation with verified reuse"),
+    ("P7", "Native execution and turnkey packaging"),
+    ("P8", "Accelerators and large-program validation"),
+    ("P9", "Self-hosting and guest-machine applications"),
+    ("P10", "Publication and optional research"),
 )
+PHASES_ROOT = ROOT / "docs/todo/ROADMAP.md"
+EARLIEST_BLOCKER = "parametric-guest-byte-stream-emission"
+FIRST_RELEASE = "cpu-first-c-to-malbolge-release"
+
 AREA_ORDER = {
     name: index
     for index, name in enumerate(
@@ -80,9 +86,7 @@ AREA_ORDER = {
         )
     )
 }
-LINK_TARGET = re.compile(
-    rf"^\[({TODO_TARGET_PATTERN})\]\(({TODO_TARGET_PATTERN})\)$"
-)
+LINK_TARGET = re.compile(rf"^\[({TODO_TARGET_PATTERN})\]\(({TODO_TARGET_PATTERN})\)$")
 SENTENCE = re.compile(r"[^.!?]+[.!?]")
 
 
@@ -171,10 +175,7 @@ def _record_from_typed_todo(path: Path) -> PlanningRecord:
 
 
 def _open_records() -> tuple[PlanningRecord, ...]:
-    return tuple(
-        _record_from_typed_todo(path)
-        for path in OPEN_ROOT.rglob("*.mdc")
-    )
+    return tuple(_record_from_typed_todo(path) for path in OPEN_ROOT.rglob("*.mdc"))
 
 
 def _completed_titles() -> frozenset[str]:
@@ -245,9 +246,7 @@ def _parse_sections(text: str) -> tuple[ParsedSection, ...]:
 
 def _assert_section_headers(sections: tuple[ParsedSection, ...]) -> None:
     actual = tuple((section.identifier, section.title) for section in sections)
-    expected = tuple(
-        (identifier, title) for identifier, title in P_GROUPS
-    )
+    expected = tuple((identifier, title) for identifier, title in P_GROUPS)
     assert actual == expected
 
 
@@ -255,9 +254,7 @@ def _expected_section_records(
     priority: str,
     open_records: tuple[PlanningRecord, ...],
 ) -> frozenset[PlanningRecord]:
-    return frozenset(
-        record for record in open_records if record.priority == priority
-    )
+    return frozenset(record for record in open_records if record.priority == priority)
 
 
 def _assert_record_identity(
@@ -273,7 +270,7 @@ def _assert_record_identity(
 
 
 def test_todo_index_is_priority_grouped_compact_and_complete() -> None:
-    """Every open TODO has one compact block in heuristic priority order."""
+    """Every open TODO has exactly one block in the correct delivery phase."""
     sections = _parse_sections(TODO_PATH.read_text(encoding="utf-8"))
     _assert_section_headers(sections)
     open_records = _open_records()
@@ -281,10 +278,68 @@ def test_todo_index_is_priority_grouped_compact_and_complete() -> None:
     for section, group in zip(sections, P_GROUPS, strict=True):
         expected = _expected_section_records(group[0].lower(), open_records)
         assert frozenset(section.records) == expected
-        status_order = [record.status_order for record in section.records]
-        assert status_order == sorted(status_order)
         actual_records.extend(section.records)
     _assert_record_identity(actual_records, open_records)
+    assert sections[0].records[0].identifier == EARLIEST_BLOCKER
+    assert [item.identifier for item in sections[3].records] == [FIRST_RELEASE]
+
+
+def test_phase_dependencies_do_not_point_backward_or_hide_open_work() -> None:
+    """A phase never depends on later work, including within a phase."""
+    sections = _parse_sections(TODO_PATH.read_text(encoding="utf-8"))
+    records = _open_records()
+    by_id = {record.identifier: record for record in records}
+    order = {
+        record.identifier: (int(section.identifier[1:]), index)
+        for section in sections
+        for index, record in enumerate(section.records)
+    }
+    for record in records:
+        priority_number = int(record.priority.removeprefix("p"))
+        assert 2 <= priority_number <= 10
+        assert record.lane == priority_number
+        for predecessor in record.dependencies:
+            if predecessor not in by_id:
+                # Completed predecessors retain their historical priorities.
+                continue
+            dependency_phase, dependency_index = order[predecessor]
+            record_phase, record_index = order[record.identifier]
+            assert (dependency_phase, dependency_index) < (
+                record_phase,
+                record_index,
+            ), f"{record.identifier} scheduled before {predecessor}"
+
+
+def test_phase_task_dependencies_and_contracts_are_resolvable() -> None:
+    """All current typed TODOs point to real governing files and task IDs."""
+    records = tuple(OPEN_ROOT.rglob("*.mdc"))
+    completed = tuple(COMPLETED_ROOT.rglob("*.mdc"))
+    identifiers = {
+        _front_matter(path.read_text(encoding="utf-8"), "id")
+        for path in (*records, *completed)
+    }
+    assert len(identifiers) == len(records) + len(completed)
+    for path in records:
+        contents = path.read_text(encoding="utf-8")
+        contract = _front_matter(contents, "contract")
+        assert (ROOT / contract).is_file(), path
+        for dependency in _dependencies(contents):
+            assert dependency in identifiers, (path, dependency)
+
+
+def test_phase_gates_include_every_current_phase_and_real_release() -> None:
+    """No gate is silently removed and the CPU-only milestone remains named."""
+    roadmap = PHASES_ROOT.read_text(encoding="utf-8")
+    index = TODO_PATH.read_text(encoding="utf-8")
+    assert "[phase gates and critical path](docs/todo/ROADMAP.md)" in index
+    assert "P5 CPU-only release" in index
+    assert "## Immediate execution queue" in roadmap
+    assert "not another fixture ladder" in roadmap
+    for phase, _ in P_GROUPS:
+        assert roadmap.count(f"### {phase} — ") == 1
+    assert "CPU-first" in roadmap
+    assert "turnkey contract" in roadmap
+    assert (ROOT / "docs/todo/open/compiler" / f"{FIRST_RELEASE}.mdc").is_file()
 
 
 def test_open_records_do_not_retain_migrated_root_detail() -> None:

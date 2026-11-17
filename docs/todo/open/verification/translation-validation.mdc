@@ -1,7 +1,7 @@
 ---
 id: "translation-validation"
 status: "pending"
-lane: "11"
+lane: "3"
 priority: "p3"
 area: "verification"
 task: "TODO - Translation validation"

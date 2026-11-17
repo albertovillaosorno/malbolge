@@ -1,8 +1,8 @@
 ---
 id: "prepublication-hardening"
 status: "pending"
-lane: "17"
-priority: "p5"
+lane: "10"
+priority: "p10"
 area: "research"
 task: "TODO - Prepublication hardening"
 contract: "docs/research/methodology/publication-pipeline.md"

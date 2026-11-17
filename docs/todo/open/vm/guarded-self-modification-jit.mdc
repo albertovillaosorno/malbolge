@@ -1,8 +1,8 @@
 ---
 id: "guarded-self-modification-jit"
 status: "pending"
-lane: "12"
-priority: "p3"
+lane: "7"
+priority: "p7"
 area: "vm"
 task: "TODO - Guarded self-modification JIT"
 contract: "docs/technical/runtime/execution/guarded-self-modification-jit.md"

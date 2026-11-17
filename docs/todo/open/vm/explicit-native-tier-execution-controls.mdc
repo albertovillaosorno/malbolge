@@ -1,8 +1,8 @@
 ---
 id: "explicit-native-tier-execution-controls"
 status: "pending"
-lane: "13"
-priority: "p3"
+lane: "7"
+priority: "p7"
 area: "vm"
 task: "TODO - Explicit native-tier execution controls"
 contract: "docs/technical/runtime/execution/explicit-native-tier-execution-controls.md"

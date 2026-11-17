@@ -1,8 +1,8 @@
 ---
 id: "compilation-latency-performance-budget"
 status: "pending"
-lane: "15"
-priority: "p4"
+lane: "6"
+priority: "p6"
 area: "accelerator"
 task: "TODO - Compilation latency performance budget"
 contract: "docs/technical/integrations/accelerators/compilation-latency-performance-budget.md"

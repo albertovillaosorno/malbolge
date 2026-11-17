@@ -27,11 +27,13 @@ replace implementation progress with unbounded micro-fixture authoring.
 Never fake guest behavior using host stdout or claim general C support from
 one successful finite program. Unsupported C behavior must fail explicitly.
 
-The current priority work is the P0 generalized compiler contract under
-`docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc`; the
-older versioned example corpus is supporting evidence, not a roadmap for
-incrementing N forever. Escalate unclear priorities to the owner before
-starting another homogeneous byte-count example.
+The current critical path starts at **P2**, under
+`docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc`, and
+targets the **P5 CPU-first usable compiler release**. Follow the
+[phase gates](docs/todo/ROADMAP.md) instead of scheduling native tiers,
+CUDA, DOOM or publication before a real stateful C program runs in the guest.
+The older versioned corpus is evidence, not a roadmap for incrementing N.
+Escalate unclear priorities before another homogeneous byte-count example.
 
 ## Mandatory Jig-governed Rust formatting
 

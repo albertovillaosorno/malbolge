@@ -1,8 +1,8 @@
 ---
 id: "annotated-malbolge-source-syntax-and-formatter"
 status: "active"
-lane: "11"
-priority: "p3"
+lane: "4"
+priority: "p4"
 area: "tools"
 task: "TODO - Annotated Malbolge source syntax and formatter"
 contract: "docs/technical/tooling/annotated-malbolge-source-format.md"

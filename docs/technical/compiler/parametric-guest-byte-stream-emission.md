@@ -2,8 +2,10 @@
 
 ## Status
 
-Partial. One original complete Fibonacci C program now reaches the guest VM;
-generalized source-C and arbitrary byte-stream support are not implemented.
+Partial, scheduled in P2 under the current phase roadmap. One original
+complete Fibonacci C program now reaches the guest VM; generalized source-C
+and arbitrary byte-stream support are not implemented. References to the old
+"P0" priority in the dated experimental evidence below are historical.
 
 ## Purpose
 

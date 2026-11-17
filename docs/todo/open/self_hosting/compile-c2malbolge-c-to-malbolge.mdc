@@ -1,8 +1,8 @@
 ---
 id: "compile-c2malbolge-c-to-malbolge"
 status: "pending"
-lane: "13"
-priority: "p3"
+lane: "9"
+priority: "p9"
 area: "self_hosting"
 task: "TODO - Compile c2malbolge.c to Malbolge"
 contract: "docs/technical/compiler/self-hosting/compile-c2malbolge-c-to-malbolge.md"

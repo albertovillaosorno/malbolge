@@ -1,8 +1,8 @@
 ---
 id: "resident-incremental-compiler-and-wal"
 status: "pending"
-lane: "14"
-priority: "p4"
+lane: "6"
+priority: "p6"
 area: "compiler"
 task: "TODO - Resident incremental compiler and WAL"
 contract: "docs/technical/compiler/resident-incremental-compiler-and-wal.md"

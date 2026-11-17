@@ -1,8 +1,8 @@
 ---
 id: "hexagonal-authoring-layout-experiment"
 status: "pending"
-lane: "11"
-priority: "p3"
+lane: "10"
+priority: "p10"
 area: "compatibility"
 task: "TODO - Hexagonal authoring-layout experiment"
 contract: "docs/research/studies/hexagonal-authoring-layout.md"

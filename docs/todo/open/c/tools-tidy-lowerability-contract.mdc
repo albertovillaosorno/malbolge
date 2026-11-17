@@ -1,7 +1,7 @@
 ---
 id: "tools-tidy-lowerability-contract"
 status: "pending"
-lane: "11"
+lane: "3"
 priority: "p3"
 area: "c"
 task: "TODO - tools/tidy lowerability contract"

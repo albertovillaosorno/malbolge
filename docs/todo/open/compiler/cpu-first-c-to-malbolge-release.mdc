@@ -1,0 +1,58 @@
+---
+id: "cpu-first-c-to-malbolge-release"
+status: "pending"
+lane: "5"
+priority: "p5"
+area: "compiler"
+task: "TODO - CPU-first C-to-Malbolge release"
+contract: "docs/technical/compiler/cpu-first-c-to-malbolge-release.md"
+depends_on:
+  - "parametric-guest-byte-stream-emission"
+  - "ternary-machine-lowering"
+  - "malbolge-layout-and-encoding-backend"
+  - "deterministic-binary-byte-stream-runtime"
+  - "tools-tidy-lowerability-contract"
+  - "translation-validation"
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "README.md"
+  - "src/compiler/"
+  - "src/interface/command-line/"
+  - "src/automation/repository/"
+  - "tests/compiler/"
+  - "tests/cli/"
+validation:
+  - "jig check --root ."
+  - "python3.14 -B -m unittest tests.test_compound_c_pipeline -v"
+  - "python3.14 -B -m unittest tests.test_unsigned_live_input_guest_parity -v"
+---
+
+# TODO - CPU-first C-to-Malbolge release
+
+## Objective
+
+Ship a reproducible CPU-only C-to-Malbolge command that compiles a useful
+documented deterministic-C subset and proves real guest execution without
+waiting for native acceleration, CUDA, DOOM, self-hosting or publication.
+
+## Acceptance
+
+- Complete the exact five acceptance-evidence groups in the owning contract
+  using a tracked compound source with mutable locals, input-dependent
+  branching, arithmetic and an EOF-driven loop.
+- Run generated code on the normative Malbolge VM against independent
+  C23 defined-behavior and binary stream oracles; no host-output substitution.
+- Reproduce from a clean checkout with pinned tools and a single compiler
+  command, including negative/no-partial-output cases.
+- Record the exact supported subset and limits rather than claiming arbitrary
+  C, and retire this TODO only after the release evidence is durable.
+
+## Evidence
+
+- Not yet established. Existing source/guest experiments authenticate bounded
+  byte-preserving statements but do not implement general guest runtime C
+  storage, dependent branching or EOF-driven loops.
+- This is an explicit earlier delivery target than the final cross-platform
+  turnkey compiler. It does not alter that contract's dependencies.

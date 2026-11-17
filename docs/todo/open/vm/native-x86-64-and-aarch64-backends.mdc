@@ -1,8 +1,8 @@
 ---
 id: "native-x86-64-and-aarch64-backends"
 status: "active"
-lane: "10"
-priority: "p2"
+lane: "7"
+priority: "p7"
 area: "vm"
 task: "TODO - Native x86-64 and AArch64 backends"
 contract: "docs/technical/runtime/execution/native-x86-64-and-aarch64-backends.md"

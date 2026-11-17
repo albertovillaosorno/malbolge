@@ -1,8 +1,8 @@
 ---
 id: "rv32i-malbolge-runner"
 status: "pending"
-lane: "16"
-priority: "p4"
+lane: "9"
+priority: "p9"
 area: "applications"
 task: "TODO - RV32I runner in Malbolge"
 contract: "docs/technical/examples/rv32i-malbolge-runner.md"

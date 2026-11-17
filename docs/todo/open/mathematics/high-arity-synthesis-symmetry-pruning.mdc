@@ -1,8 +1,8 @@
 ---
 id: "high-arity-synthesis-symmetry-pruning"
 status: "pending"
-lane: "15"
-priority: "p4"
+lane: "10"
+priority: "p10"
 area: "mathematics"
 task: "TODO - High-arity synthesis symmetry pruning"
 contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"

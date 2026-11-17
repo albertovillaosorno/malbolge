@@ -1,8 +1,8 @@
 ---
 id: "search-pruning-and-state-canonicalization"
 status: "active"
-lane: "13"
-priority: "p3"
+lane: "6"
+priority: "p6"
 area: "accelerator"
 task: "TODO - Search pruning and state canonicalization"
 contract: "docs/research/algorithms/search-pruning-and-state-canonicalization/README.md"

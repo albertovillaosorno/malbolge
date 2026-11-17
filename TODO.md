@@ -1,90 +1,58 @@
 # Malbolge TODO
 
-## Owner priority — working compiler before exhaustive hardening (2026-11-04)
+## Delivery strategy — working compiler first (rephased 2026-11-16)
 
-Deliver and verify the complete supported `C -> c2malbolge -> .malbolge -> VM`
-path before expanding *optional* research-audit or hostile-input edge tests.
-The canonical VM behavior, accurate compiler output, known correctness defects,
-source bounds, memory safety and verification trust boundary are never deferred.
+P0/P1 foundation work is historical and tracked in completed records. The
+**unfinished roadmap now runs P2 through P10**. Phase labels are delivery
+order, not artificial dates or estimates; typed acceptance and dependency
+contracts remain authoritative. "Active" means implementation has started,
+not that an optional task outranks the P2 critical path. Open-record
+`lane` and `priority` agree with the current P2-P10 phase. Dated evidence
+and completed records retain their historical lane labels.
 
-Defer speculative nested error-identity combinations, pathological manifest/CSV
-mutations, remote or missing hardware variants, extremely large artificial
-inputs, exhaustive adversarial Git/FS/symlink scenarios, and optional statistical
-protocol permutations into the **single**
-`docs/todo/open/research/prepublication-hardening.mdc` task. Existing regression
-coverage remains in place. Promotion of a deferred case back into the working
-path requires a demonstrable security risk, common supported usage, an actual
-reproducible defect or a paper claim that consumes it.
+**Critical path to a usable compiler:** P2 guest-executed mutable C and EOF
+control -> P3 an explicitly supported deterministic-C/byte-stream surface ->
+P4 independent translation verification -> **P5 CPU-only release**. Native
+AOT/JIT, CUDA, DOOM, resident scaling, self-hosting, and papers do not block
+this first usable delivery. The final cross-platform turnkey toolchain is P7;
+it remains distinct from the new P5 CPU release.
 
-The hardening TODO is a prerequisite for publication-grade **claims**, not a
-prerequisite for compiling or running the product. Agents must actively deliver
-verified working programs rather than repeatedly polishing far-edge rejection
-identity in the evaluation arena.
+**Start here:** compile the complete mutable EOF checksum, capture the first
+real compiler failure, fix that capability, and rerun the *same* source on the
+normative VM against independent native-C controls. Do not replace progress
+with more fixed-length byte-identity examples. Once it executes, exercise
+binary stream edge cases, verify supported lowerability and advance the P5
+single-command acceptance. Never fake guest output or defer safety,
+correctness, or source/guest verification.
 
-Only unfinished work appears here. P0 is the highest-priority horizon and P5 is
-the final documentation and publication horizon. Within each section, active
-work appears first and stable task identity breaks ties; typed lanes and
-dependencies remain execution authority.
+**Phase exit is evidence-based.** A gate is only passed with the exact
+source, guest artifact, oracle, validation receipt and known limitations
+recorded under its owning typed TODO and contract. Not all supporting or
+optional tasks in a phase must be finished for an earlier gate: deferred
+tasks remain open and visibly scheduled. See the
+[phase gates and critical path](docs/todo/ROADMAP.md).
 
-Full metadata, acceptance criteria, dependencies, evidence, and planning notes
-remain in typed records under `docs/todo/open/`. Completed records remain under
-`docs/todo/completed/`.
+Only unfinished work appears below. Each entry keeps one title, one synthesis
+paragraph and one direct link to its typed authority. Completed work stays
+under `docs/todo/completed/`. Ordinary correctness and memory safety are
+never postponed; optional rare-edge research belongs to the single
+`prepublication-hardening` task when it does not affect supported behavior.
 
-**Canonical TODO format:** one `### TODO - ...` title, one synthesis paragraph,
-then one direct Markdown link to the complete typed record. No per-item field
-labels belong here.
-
-## P0 — Authority and governance
+## P2 — Execute real stateful C
 
 ### TODO - Generalize guest byte-stream emission instead of emit-N fixtures
 
-Attempt one complete C program, repair the first compiler defect, and then
-verify the admitted behavior with a parameterized, independent VM oracle.
+**First experiment, then verify.** Attempt one compact, demanding C program
+through the real compiler and guest VM before extending literal byte-count
+fixtures or a generated verification matrix.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc](docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc)
 
-## P1 — Semantic and language foundations
-
-## P2 — Compiler, runtime, and accelerator core
-
-### TODO - Multi-objective compiler algorithm evaluation arena
-
-Evaluate compiler and execution algorithms over scalable challenge families and
-produce capacity curves and Pareto frontiers rather than one pass/fail score.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc](docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc)
-
-### TODO - Native x86-64 and AArch64 backends
-
-Implement native-code emitters for x86-64 and AArch64 behind one execution-IR
-backend contract.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/vm/native-x86-64-and-aarch64-backends.mdc](docs/todo/open/vm/native-x86-64-and-aarch64-backends.mdc)
-
-### TODO - Resumable compilation progress sidecars
-
-Persist an atomic JSON sidecar and compatible checkpoint for long-running
-source, block, optimization, verification, and GPU jobs so elapsed time,
-scientific provenance, current stage, and recoverable work survive process or
-host failure without publishing an incomplete final `.malbolge` artifact.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc](docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc)
-
-### TODO - Tiered native execution engine
-
-Build an AOT-first tiered execution engine over one exact VM contract.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/vm/tiered-native-execution-engine.mdc](docs/todo/open/vm/tiered-native-execution-engine.mdc)
-
 ### TODO - Ternary machine lowering
 
-Lower typed C IR into a compact ternary virtual-machine representation suited to
-Malbolge instead of translating C operations directly instruction by
+Lower typed C IR into a compact ternary virtual-machine representation suited
+to Malbolge instead of translating C operations directly instruction by
 instruction.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
@@ -99,85 +67,17 @@ emission.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc](docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc)
 
-### TODO - Ahead-of-execution native translation
+### TODO - Resumable compilation progress sidecars
 
-Make verified ahead-of-execution translation the primary native path.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/vm/ahead-of-execution-native-translation.mdc](docs/todo/open/vm/ahead-of-execution-native-translation.mdc)
-
-### TODO - Compact guest bytecode strategy
-
-Evaluate a VM-inside-Malbolge strategy where large programs are represented as
-compact bytecode interpreted by a reusable Malbolge runtime when that reduces
-code-size explosion or compilation cost.
+Persist an atomic JSON sidecar and compatible checkpoint for long-running
+source, block, optimization, verification, and GPU jobs so elapsed time,
+scientific provenance, current stage, and recoverable work survive process or
+host failure without publishing an incomplete final `.malbolge` artifact.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc](docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc)
+[docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc](docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc)
 
-## P3 — Optimization, proof, and reusable scale
-
-### TODO - Annotated Malbolge source syntax and formatter
-
-Add an explicit readable Malbolge source form that supports multiline layout,
-full-line comments, deterministic automatic formatting, and source maps while
-canonicalizing to exactly the same position-sensitive `.malbolge` bytes consumed
-by the selected profile loader.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/tools/annotated-malbolge-source-syntax-and-formatter.mdc](docs/todo/open/tools/annotated-malbolge-source-syntax-and-formatter.mdc)
-
-### TODO - Deterministic CPU optimizer
-
-Implement a correct CPU reference optimizer and search engine that works without
-a GPU, even when much slower, and acts as the declared-profile-conformant CPU
-baseline for accelerator implementations.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/deterministic-cpu-optimizer.mdc](docs/todo/open/accelerator/deterministic-cpu-optimizer.mdc)
-
-### TODO - Search pruning and state canonicalization
-
-Develop exact pruning, dominance rules, partial-equivalence checks, canonical
-states, admissible heuristics, and profile-aware constraints before relying on
-raw hardware scale.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/search-pruning-and-state-canonicalization.mdc](docs/todo/open/accelerator/search-pruning-and-state-canonicalization.mdc)
-
-### TODO - Source-bound diff generator
-
-Implement `algorithms/diff/` as a generic deterministic generator that learns a
-source-tree transformation from a local source/oracle pair and emits a
-distributable transform whose target material remains bound to sufficiently
-compatible source input.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/tools/source-bound-diff-generator.mdc](docs/todo/open/tools/source-bound-diff-generator.mdc)
-
-### TODO - C-level source mapping and debugging
-
-Generate source maps from Malbolge addresses through lowered IR back to C source
-locations.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compiler/c-level-source-mapping-and-debugging.mdc](docs/todo/open/compiler/c-level-source-mapping-and-debugging.mdc)
-
-### TODO - Compile c2malbolge.c to Malbolge
-
-Compile the portable C compiler implementation with `c2malbolge` itself and run
-the resulting `c2malbolge.malbolge` under the modern VM.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/self_hosting/compile-c2malbolge-c-to-malbolge.mdc](docs/todo/open/self_hosting/compile-c2malbolge-c-to-malbolge.mdc)
-
-### TODO - Cross-platform native capability runners
-
-Implement the version-1 host-capability contract for supported 64-bit Windows,
-macOS, and Linux runners on x86-64 and AArch64.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/vm/cross-platform-native-capability-runners.mdc](docs/todo/open/vm/cross-platform-native-capability-runners.mdc)
+## P3 — Complete supported C I/O semantics
 
 ### TODO - Deterministic binary byte-stream runtime
 
@@ -188,102 +88,11 @@ file transformers.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/deterministic-binary-byte-stream-runtime.mdc](docs/todo/open/applications/deterministic-binary-byte-stream-runtime.mdc)
 
-### TODO - Deterministic cross-backend artifact hashing
-
-Require byte-identical outputs and hashes across backends for declared
-deterministic workloads, including versioned example artifacts and compiler-
-produced `.malbolge` artifacts where deterministic builds are promised.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/deterministic-cross-backend-artifact-hashing.mdc](docs/todo/open/applications/deterministic-cross-backend-artifact-hashing.mdc)
-
-### TODO - Explicit native-tier execution controls
-
-Expose independent `--no-jit` and `--no-aot` runtime controls plus an
-`--interpreter-only` shorthand equivalent to disabling both native compilation
-tiers and native-code cache reuse.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/vm/explicit-native-tier-execution-controls.mdc](docs/todo/open/vm/explicit-native-tier-execution-controls.mdc)
-
-### TODO - Guarded self-modification JIT
-
-Use JIT compilation as a latency-bounded rescue tier for hot mutable code-state
-versions that were not covered by verified AOT artifacts.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/vm/guarded-self-modification-jit.mdc](docs/todo/open/vm/guarded-self-modification-jit.mdc)
-
-### TODO - Hexagonal authoring-layout experiment
-
-Research an optional graph or hexagonal authoring representation that lowers to
-ordinary linear `.malbolge` output and therefore does not require a special
-execution engine for compatible programs.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compatibility/hexagonal-authoring-layout-experiment.mdc](docs/todo/open/compatibility/hexagonal-authoring-layout-experiment.mdc)
-
-### TODO - Machine-readable LLM and compiler challenge corpus
-
-Expose challenge definitions, expected semantics, constraints, oracle behavior,
-inputs, difficulty parameters, and evaluation results in a stable machine-
-readable format so compiler researchers and LLM-based code/algorithm agents can
-generate candidate passes or algorithms and submit them to the same verifier and
-benchmark arena.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/machine-readable-llm-and-compiler-challenge-corpus.mdc](docs/todo/open/applications/machine-readable-llm-and-compiler-challenge-corpus.mdc)
-
-### TODO - Portable c2malbolge implementation in C
-
-Keep a path for the essential compiler algorithm to exist in the admitted C
-profile without mandatory LLVM runtime, GPU, filesystem complexity, threads, or
-other host-only capabilities.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/self_hosting/portable-c2malbolge-implementation-in-c.mdc](docs/todo/open/self_hosting/portable-c2malbolge-implementation-in-c.mdc)
-
-### TODO - Proof-producing lowering
-
-Investigate compiler outputs carrying compact witnesses or proof material for
-local equivalence claims so final acceptance need not trust CUDA, PyTorch,
-stochastic search, or superoptimization implementations.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/verification/proof-producing-lowering.mdc](docs/todo/open/verification/proof-producing-lowering.mdc)
-
-### TODO - Reusable block catalogue
-
-Build a deterministic catalogue of verified arithmetic, branch, memory, calling
-convention, and runtime blocks so common operations are solved once and reused
-instead of synthesized from scratch for every compilation.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/reusable-block-catalogue.mdc](docs/todo/open/accelerator/reusable-block-catalogue.mdc)
-
-### TODO - State-aware Malbolge linker
-
-Build a linker that composes independently compiled Malbolge blocks while
-resolving symbols, addresses, entry/exit machine-state contracts, positional
-decode phase, post-instruction encryption phase, and self-modification
-footprints.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compiler/state-aware-malbolge-linker.mdc](docs/todo/open/compiler/state-aware-malbolge-linker.mdc)
-
-### TODO - Stochastic and guided search
-
-Evaluate Monte Carlo, evolutionary, STOKE-like stochastic, learned, and hybrid
-search with deterministic final verification and reproducible research seeds.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/stochastic-and-guided-search.mdc](docs/todo/open/accelerator/stochastic-and-guided-search.mdc)
-
 ### TODO - tools/tidy lowerability contract
 
-Partition checks into language, ABI, runtime, determinism, and resource families
-and enforce the promise that every accepted translation unit is supported by the
-compiler for its declared target profile.
+Partition checks into language, ABI, runtime, determinism, and resource
+families and enforce the promise that every accepted translation unit is
+supported by the compiler for its declared target profile.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/c/tools-tidy-lowerability-contract.mdc](docs/todo/open/c/tools-tidy-lowerability-contract.mdc)
@@ -296,6 +105,53 @@ components may remain untrusted.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/verification/translation-validation.mdc](docs/todo/open/verification/translation-validation.mdc)
 
+### TODO - C-level source mapping and debugging
+
+Generate source maps from Malbolge addresses through lowered IR back to C
+source locations.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/compiler/c-level-source-mapping-and-debugging.mdc](docs/todo/open/compiler/c-level-source-mapping-and-debugging.mdc)
+
+## P4 — Verify, link, and inspect generated programs
+
+### TODO - Deterministic CPU optimizer
+
+Implement a correct CPU reference optimizer and search engine that works
+without a GPU, even when much slower, and acts as the
+declared-profile-conformant CPU baseline for accelerator implementations.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/deterministic-cpu-optimizer.mdc](docs/todo/open/accelerator/deterministic-cpu-optimizer.mdc)
+
+### TODO - Deterministic cross-backend artifact hashing
+
+Require byte-identical outputs and hashes across backends for declared
+deterministic workloads, including versioned example artifacts and compiler-
+produced `.malbolge` artifacts where deterministic builds are promised.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/deterministic-cross-backend-artifact-hashing.mdc](docs/todo/open/applications/deterministic-cross-backend-artifact-hashing.mdc)
+
+### TODO - State-aware Malbolge linker
+
+Build a linker that composes independently compiled Malbolge blocks while
+resolving symbols, addresses, entry/exit machine-state contracts, positional
+decode phase, post-instruction encryption phase, and self-modification
+footprints.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/compiler/state-aware-malbolge-linker.mdc](docs/todo/open/compiler/state-aware-malbolge-linker.mdc)
+
+### TODO - Proof-producing lowering
+
+Investigate compiler outputs carrying compact witnesses or proof material for
+local equivalence claims so final acceptance need not trust CUDA, PyTorch,
+stochastic search, or superoptimization implementations.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/verification/proof-producing-lowering.mdc](docs/todo/open/verification/proof-producing-lowering.mdc)
+
 ### TODO - Versioned C and Malbolge example corpus
 
 Publish intentionally selected project-owned examples under
@@ -304,86 +160,71 @@ Publish intentionally selected project-owned examples under
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/versioned-c-and-malbolge-example-corpus.mdc](docs/todo/open/applications/versioned-c-and-malbolge-example-corpus.mdc)
 
-## P4 — Applications, evidence, and self-hosting
+### TODO - Annotated Malbolge source syntax and formatter
 
-### TODO - Apollo 11 Luminary AGC in Malbolge
-
-Execute the pinned Apollo 11 Luminary 099 software inside a project-authored
-Block II AGC interpreter that is itself compiled to and executed as
-`malbolge-2026`.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/apollo-11-luminary-agc-malbolge-demonstration.mdc](docs/todo/open/applications/apollo-11-luminary-agc-malbolge-demonstration.mdc)
-
-### TODO - Compilation latency performance budget
-
-Establish measured compile-time budgets for cold compilation, warm resident
-compilation, semantic invalidation, verified block reuse, relinking,
-verification, and novel search.
+Add an explicit readable Malbolge source form that supports multiline layout,
+full-line comments, deterministic automatic formatting, and source maps while
+canonicalizing to exactly the same position-sensitive `.malbolge` bytes
+consumed by the selected profile loader.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/compilation-latency-performance-budget.mdc](docs/todo/open/accelerator/compilation-latency-performance-budget.mdc)
+[docs/todo/open/tools/annotated-malbolge-source-syntax-and-formatter.mdc](docs/todo/open/tools/annotated-malbolge-source-syntax-and-formatter.mdc)
 
-### TODO - CUDA superoptimizer
+## P5 — Ship the CPU-first compiler
 
-Implement GPU-parallel candidate synthesis, pruning, equivalence testing, cost
-evaluation, and verified block stitching.
+### TODO - CPU-first C-to-Malbolge release
 
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/cuda-superoptimizer.mdc](docs/todo/open/accelerator/cuda-superoptimizer.mdc)
-
-### TODO - DOOM playable generated-code performance
-
-The source-level baseline is ready: the normalized single-player C tree and
-canonical `doom.c` are reproducible, validate cleanly, and are interactively
-playable through the native Windows/Linux debug boundary.
+Ship a reproducible CPU-only C-to-Malbolge command that compiles a useful
+documented deterministic-C subset and proves real guest execution without
+waiting for native acceleration, CUDA, DOOM, self-hosting or publication.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/doom-playable-generated-code-performance.mdc](docs/todo/open/applications/doom-playable-generated-code-performance.mdc)
+[docs/todo/open/compiler/cpu-first-c-to-malbolge-release.mdc](docs/todo/open/compiler/cpu-first-c-to-malbolge-release.mdc)
 
-### TODO - Empirical Malbolge synthesis scaling law
+## P6 — Scale compilation with verified reuse
 
-Measure how verified synthesis cost changes with challenge difficulty,
-self-modification footprint, layout coupling, target-state entropy, and reusable
-catalogue coverage.
+### TODO - Reusable block catalogue
 
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/research/empirical-malbolge-synthesis-scaling-law.mdc](docs/todo/open/research/empirical-malbolge-synthesis-scaling-law.mdc)
-
-### TODO - High-arity synthesis symmetry pruning
-
-Extend exact tuple-quotient and stabilizer mathematics only when measured
-synthesis traces show symmetry-related residual branching is eroding pruning
-effectiveness.
+Build a deterministic catalogue of verified arithmetic, branch, memory, calling
+convention, and runtime blocks so common operations are solved once and reused
+instead of synthesized from scratch for every compilation.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc](docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc)
+[docs/todo/open/accelerator/reusable-block-catalogue.mdc](docs/todo/open/accelerator/reusable-block-catalogue.mdc)
 
-### TODO - Malbolge compiler compiles C to Malbolge
+### TODO - Compact guest bytecode strategy
 
-Use `c2malbolge.malbolge` to consume C source and emit a new working `.malbolge`
-program, proving practical self-hosting of the translation path.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/self_hosting/malbolge-compiler-compiles-c-to-malbolge.mdc](docs/todo/open/self_hosting/malbolge-compiler-compiles-c-to-malbolge.mdc)
-
-### TODO - PyTorch search orchestration
-
-Use PyTorch for batched candidate/state representation, experiment
-orchestration, and heuristic models where useful while purpose-built kernels
-retain exact semantic execution where tensor operations are a poor fit.
+Evaluate a VM-inside-Malbolge strategy where large programs are represented as
+compact bytecode interpreted by a reusable Malbolge runtime when that reduces
+code-size explosion or compilation cost.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/pytorch-search-orchestration.mdc](docs/todo/open/accelerator/pytorch-search-orchestration.mdc)
+[docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc](docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc)
 
-### TODO - Real-program benchmark suite
+### TODO - Search pruning and state canonicalization
 
-Benchmark hello world, byte copying, arithmetic kernels, hashing, parsers,
-parametric challenge families, DOOM interoperability, and compiler workloads
-across original C, modern C, Rust, CPU batch, JIT, and accelerator paths.
+Develop exact pruning, dominance rules, partial-equivalence checks, canonical
+states, admissible heuristics, and profile-aware constraints before relying on
+raw hardware scale.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/real-program-benchmark-suite.mdc](docs/todo/open/applications/real-program-benchmark-suite.mdc)
+[docs/todo/open/accelerator/search-pruning-and-state-canonicalization.mdc](docs/todo/open/accelerator/search-pruning-and-state-canonicalization.mdc)
+
+### TODO - Multi-objective compiler algorithm evaluation arena
+
+Evaluate compiler and execution algorithms over scalable challenge families and
+produce capacity curves and Pareto frontiers rather than one pass/fail score.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc](docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc)
+
+### TODO - Stochastic and guided search
+
+Evaluate Monte Carlo, evolutionary, STOKE-like stochastic, learned, and hybrid
+search with deterministic final verification and reproducible research seeds.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/stochastic-and-guided-search.mdc](docs/todo/open/accelerator/stochastic-and-guided-search.mdc)
 
 ### TODO - Resident incremental compiler and WAL
 
@@ -394,30 +235,83 @@ resident in RAM.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/resident-incremental-compiler-and-wal.mdc](docs/todo/open/compiler/resident-incremental-compiler-and-wal.mdc)
 
-### TODO - ROCm adapter contract reservation
+### TODO - Machine-readable LLM and compiler challenge corpus
 
-Reserve a hardware-neutral ROCm adapter identity and capability boundary without
-implementing, packaging, benchmarking, or advertising ROCm support until
-supported AMD hardware and an explicit maintainer are available.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/rocm-accelerator-adapter.mdc](docs/todo/open/accelerator/rocm-accelerator-adapter.mdc)
-
-### TODO - RV32I runner in Malbolge
-
-Execute standard RV32I machine code inside a project-authored deterministic
-RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
+Expose challenge definitions, expected semantics, constraints, oracle behavior,
+inputs, difficulty parameters, and evaluation results in a stable machine-
+readable format so compiler researchers and LLM-based code/algorithm agents can
+generate candidate passes or algorithms and submit them to the same verifier
+and benchmark arena.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/rv32i-malbolge-runner.mdc](docs/todo/open/applications/rv32i-malbolge-runner.mdc)
+[docs/todo/open/applications/machine-readable-llm-and-compiler-challenge-corpus.mdc](docs/todo/open/applications/machine-readable-llm-and-compiler-challenge-corpus.mdc)
 
-### TODO - Self-hosting equivalence proof
+### TODO - Empirical Malbolge synthesis scaling law
 
-Compare native and Malbolge-hosted compiler outputs or normalized semantic
-artifacts and prove self-hosting does not silently change compilation meaning.
+Measure how verified synthesis cost changes with challenge difficulty,
+self-modification footprint, layout coupling, target-state entropy, and
+reusable catalogue coverage.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/self_hosting/self-hosting-equivalence-proof.mdc](docs/todo/open/self_hosting/self-hosting-equivalence-proof.mdc)
+[docs/todo/open/research/empirical-malbolge-synthesis-scaling-law.mdc](docs/todo/open/research/empirical-malbolge-synthesis-scaling-law.mdc)
+
+### TODO - Compilation latency performance budget
+
+Establish measured compile-time budgets for cold compilation, warm resident
+compilation, semantic invalidation, verified block reuse, relinking,
+verification, and novel search.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/compilation-latency-performance-budget.mdc](docs/todo/open/accelerator/compilation-latency-performance-budget.mdc)
+
+## P7 — Native execution and turnkey packaging
+
+### TODO - Tiered native execution engine
+
+Build an AOT-first tiered execution engine over one exact VM contract.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/vm/tiered-native-execution-engine.mdc](docs/todo/open/vm/tiered-native-execution-engine.mdc)
+
+### TODO - Native x86-64 and AArch64 backends
+
+Implement native-code emitters for x86-64 and AArch64 behind one execution-IR
+backend contract.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/vm/native-x86-64-and-aarch64-backends.mdc](docs/todo/open/vm/native-x86-64-and-aarch64-backends.mdc)
+
+### TODO - Ahead-of-execution native translation
+
+Make verified ahead-of-execution translation the primary native path.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/vm/ahead-of-execution-native-translation.mdc](docs/todo/open/vm/ahead-of-execution-native-translation.mdc)
+
+### TODO - Guarded self-modification JIT
+
+Use JIT compilation as a latency-bounded rescue tier for hot mutable code-state
+versions that were not covered by verified AOT artifacts.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/vm/guarded-self-modification-jit.mdc](docs/todo/open/vm/guarded-self-modification-jit.mdc)
+
+### TODO - Explicit native-tier execution controls
+
+Expose independent `--no-jit` and `--no-aot` runtime controls plus an
+`--interpreter-only` shorthand equivalent to disabling both native compilation
+tiers and native-code cache reuse.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/vm/explicit-native-tier-execution-controls.mdc](docs/todo/open/vm/explicit-native-tier-execution-controls.mdc)
+
+### TODO - Cross-platform native capability runners
+
+Implement the version-1 host-capability contract for supported 64-bit Windows,
+macOS, and Linux runners on x86-64 and AArch64.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/vm/cross-platform-native-capability-runners.mdc](docs/todo/open/vm/cross-platform-native-capability-runners.mdc)
 
 ### TODO - Turnkey C-to-Malbolge toolchain
 
@@ -429,13 +323,102 @@ and Linux hosts.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/turnkey-c-to-malbolge-toolchain.mdc](docs/todo/open/compiler/turnkey-c-to-malbolge-toolchain.mdc)
 
-## P5 — Documentation and publication
+## P8 — Accelerators and large-program validation
+
+### TODO - CUDA superoptimizer
+
+Implement GPU-parallel candidate synthesis, pruning, equivalence testing, cost
+evaluation, and verified block stitching.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/cuda-superoptimizer.mdc](docs/todo/open/accelerator/cuda-superoptimizer.mdc)
+
+### TODO - PyTorch search orchestration
+
+Use PyTorch for batched candidate/state representation, experiment
+orchestration, and heuristic models where useful while purpose-built kernels
+retain exact semantic execution where tensor operations are a poor fit.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/pytorch-search-orchestration.mdc](docs/todo/open/accelerator/pytorch-search-orchestration.mdc)
+
+### TODO - DOOM playable generated-code performance
+
+The source-level baseline is ready: the normalized single-player C tree and
+canonical `doom.c` are reproducible, validate cleanly, and are interactively
+playable through the native Windows/Linux debug boundary.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/doom-playable-generated-code-performance.mdc](docs/todo/open/applications/doom-playable-generated-code-performance.mdc)
+
+### TODO - Apollo 11 Luminary AGC in Malbolge
+
+Execute the pinned Apollo 11 Luminary 099 software inside a project-authored
+Block II AGC interpreter that is itself compiled to and executed as
+`malbolge-2026`.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/apollo-11-luminary-agc-malbolge-demonstration.mdc](docs/todo/open/applications/apollo-11-luminary-agc-malbolge-demonstration.mdc)
+
+### TODO - Real-program benchmark suite
+
+Benchmark hello world, byte copying, arithmetic kernels, hashing, parsers,
+parametric challenge families, DOOM interoperability, and compiler workloads
+across original C, modern C, Rust, CPU batch, JIT, and accelerator paths.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/real-program-benchmark-suite.mdc](docs/todo/open/applications/real-program-benchmark-suite.mdc)
+
+## P9 — Self-hosting and guest-machine applications
+
+### TODO - Portable c2malbolge implementation in C
+
+Keep a path for the essential compiler algorithm to exist in the admitted C
+profile without mandatory LLVM runtime, GPU, filesystem complexity, threads, or
+other host-only capabilities.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/self_hosting/portable-c2malbolge-implementation-in-c.mdc](docs/todo/open/self_hosting/portable-c2malbolge-implementation-in-c.mdc)
+
+### TODO - Compile c2malbolge.c to Malbolge
+
+Compile the portable C compiler implementation with `c2malbolge` itself and run
+the resulting `c2malbolge.malbolge` under the modern VM.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/self_hosting/compile-c2malbolge-c-to-malbolge.mdc](docs/todo/open/self_hosting/compile-c2malbolge-c-to-malbolge.mdc)
+
+### TODO - Malbolge compiler compiles C to Malbolge
+
+Use `c2malbolge.malbolge` to consume C source and emit a new working
+`.malbolge` program, proving practical self-hosting of the translation path.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/self_hosting/malbolge-compiler-compiles-c-to-malbolge.mdc](docs/todo/open/self_hosting/malbolge-compiler-compiles-c-to-malbolge.mdc)
+
+### TODO - Self-hosting equivalence proof
+
+Compare native and Malbolge-hosted compiler outputs or normalized semantic
+artifacts and prove self-hosting does not silently change compilation meaning.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/self_hosting/self-hosting-equivalence-proof.mdc](docs/todo/open/self_hosting/self-hosting-equivalence-proof.mdc)
+
+### TODO - RV32I runner in Malbolge
+
+Execute standard RV32I machine code inside a project-authored deterministic
+RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/rv32i-malbolge-runner.mdc](docs/todo/open/applications/rv32i-malbolge-runner.mdc)
+
+## P10 — Publication and optional research
 
 ### TODO - Prepublication hardening
 
-Once the compiler/VM works end to end, close the consolidated ledger of rare
-edge cases, research evidence variants and supported-target stress cases before
-claiming paper-grade validation; keep core safety checks throughout.
+Before publication-grade claims, execute one risk-ranked ledger of nonessential
+rare inputs and research-evidence failure modes previously preventing delivery
+of the real supported C-to-Malbolge path.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/prepublication-hardening.mdc](docs/todo/open/research/prepublication-hardening.mdc)
@@ -461,11 +444,11 @@ claims.
 
 ### TODO - Publication-grade paper pipeline
 
-Create a reproducible LaTeX paper pipeline under `docs/research/papers/` capable
-of turning mature investigations into publication-quality papers with canonical
-bibliography, equations, figures, tables, experiment provenance, limitations,
-and regenerated results without making publication a prerequisite for ordinary
-engineering work.
+Create a reproducible LaTeX paper pipeline under `docs/research/papers/`
+capable of turning mature investigations into publication-quality papers with
+canonical bibliography, equations, figures, tables, experiment provenance,
+limitations, and regenerated results without making publication a prerequisite
+for ordinary engineering work.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/publication-grade-paper-pipeline.mdc](docs/todo/open/research/publication-grade-paper-pipeline.mdc)
@@ -488,3 +471,40 @@ mathematics paper rather than an implicit product-engineering prerequisite.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/effective-transcendental-separation-paper.mdc](docs/todo/open/research/effective-transcendental-separation-paper.mdc)
+
+### TODO - Source-bound diff generator
+
+Implement `algorithms/diff/` as a generic deterministic generator that learns a
+source-tree transformation from a local source/oracle pair and emits a
+distributable transform whose target material remains bound to sufficiently
+compatible source input.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/tools/source-bound-diff-generator.mdc](docs/todo/open/tools/source-bound-diff-generator.mdc)
+
+### TODO - Hexagonal authoring-layout experiment
+
+Research an optional graph or hexagonal authoring representation that lowers to
+ordinary linear `.malbolge` output and therefore does not require a special
+execution engine for compatible programs.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/compatibility/hexagonal-authoring-layout-experiment.mdc](docs/todo/open/compatibility/hexagonal-authoring-layout-experiment.mdc)
+
+### TODO - High-arity synthesis symmetry pruning
+
+Extend exact tuple-quotient and stabilizer mathematics only when measured
+synthesis traces show symmetry-related residual branching is eroding pruning
+effectiveness.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc](docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc)
+
+### TODO - ROCm adapter contract reservation
+
+Reserve a hardware-neutral ROCm adapter identity and capability boundary
+without implementing, packaging, benchmarking, or advertising ROCm support
+until supported AMD hardware and an explicit maintainer are available.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/accelerator/rocm-accelerator-adapter.mdc](docs/todo/open/accelerator/rocm-accelerator-adapter.mdc)

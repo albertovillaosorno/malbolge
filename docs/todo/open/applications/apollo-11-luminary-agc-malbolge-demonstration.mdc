@@ -1,8 +1,8 @@
 ---
 id: "apollo-11-luminary-agc-malbolge-demonstration"
 status: "pending"
-lane: "15"
-priority: "p4"
+lane: "8"
+priority: "p8"
 area: "applications"
 task: "TODO - Apollo 11 Luminary AGC in Malbolge"
 contract: "docs/technical/examples/apollo-11-luminary-agc-malbolge.md"

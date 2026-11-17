@@ -1,8 +1,8 @@
 ---
 id: "portable-c2malbolge-implementation-in-c"
 status: "pending"
-lane: "12"
-priority: "p3"
+lane: "9"
+priority: "p9"
 area: "self_hosting"
 task: "TODO - Portable c2malbolge implementation in C"
 contract: "docs/technical/compiler/self-hosting/portable-c2malbolge-implementation-in-c.md"

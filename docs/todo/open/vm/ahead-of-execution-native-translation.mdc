@@ -1,8 +1,8 @@
 ---
 id: "ahead-of-execution-native-translation"
 status: "pending"
-lane: "11"
-priority: "p2"
+lane: "7"
+priority: "p7"
 area: "vm"
 task: "TODO - Ahead-of-execution native translation"
 contract: "docs/technical/runtime/execution/ahead-of-execution-native-translation.md"

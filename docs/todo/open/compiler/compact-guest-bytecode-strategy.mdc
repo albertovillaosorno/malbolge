@@ -1,8 +1,8 @@
 ---
 id: "compact-guest-bytecode-strategy"
 status: "pending"
-lane: "10"
-priority: "p2"
+lane: "6"
+priority: "p6"
 area: "compiler"
 task: "TODO - Compact guest bytecode strategy"
 contract: "docs/research/algorithms/compact-guest-bytecode-strategy/README.md"

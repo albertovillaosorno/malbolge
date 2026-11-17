@@ -1,8 +1,8 @@
 ---
 id: "deterministic-cpu-optimizer"
 status: "active"
-lane: "12"
-priority: "p3"
+lane: "4"
+priority: "p4"
 area: "accelerator"
 task: "TODO - Deterministic CPU optimizer"
 contract: "docs/technical/integrations/accelerators/deterministic-cpu-optimizer.md"

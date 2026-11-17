@@ -1,8 +1,8 @@
 ---
 id: "parametric-guest-byte-stream-emission"
-status: "pending"
-lane: "10"
-priority: "p0"
+status: "active"
+lane: "2"
+priority: "p2"
 area: "compiler"
 task: "TODO - Generalize guest byte-stream emission instead of emit-N fixtures"
 contract: "docs/technical/compiler/parametric-guest-byte-stream-emission.md"
@@ -31,6 +31,14 @@ validation:
 through the real compiler and guest VM before extending literal byte-count
 fixtures or a generated verification matrix. Treat the first real failure as
 a compiler capability gap, not a reason to return to N+1.
+
+## Current P2 delivery focus
+
+Retry one complete, input-dependent checksum with mutable locals,
+guest arithmetic, branching and EOF termination. Repair its first
+real failing stage and rerun that same program before adding more
+finite byte-identity variants. Historical P0 labels in dated
+evidence describe the old priority scheme, not the current phase.
 
 ## Acceptance
 

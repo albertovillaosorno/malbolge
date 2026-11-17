@@ -1,8 +1,8 @@
 ---
 id: "empirical-malbolge-synthesis-scaling-law"
 status: "pending"
-lane: "14"
-priority: "p4"
+lane: "6"
+priority: "p6"
 area: "research"
 task: "TODO - Empirical Malbolge synthesis scaling law"
 contract: "docs/research/studies/empirical-malbolge-synthesis-scaling-law.md"

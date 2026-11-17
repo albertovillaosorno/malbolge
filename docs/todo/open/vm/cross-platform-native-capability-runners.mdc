@@ -1,8 +1,8 @@
 ---
 id: "cross-platform-native-capability-runners"
 status: "pending"
-lane: "11"
-priority: "p3"
+lane: "7"
+priority: "p7"
 area: "vm"
 task: "TODO - Cross-platform native capability runners"
 contract: "docs/technical/runtime/execution/cross-platform-native-capability-runners.md"
