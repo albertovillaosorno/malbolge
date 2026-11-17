@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, a red-first layout test showed that a 23-cell N15
+  `p(`-seeded source could execute nine real `*; j` rotations of one
+  loader-expanded data word (D=41), but automatic future-step relocation
+  refused `UnsafeDataPlacement`. The backend now previews an exact
+  post-halt loader seed across upcoming `AutoRelocate` steps and keeps
+  final independent source admission mandatory. Manual/automatic layouts
+  produce the same genuine 21-step normative-VM guest on empty and binary
+  stdin, with nine traced writes and pointer resets, no I/O. This is not
+  the C23 EOF conversion operand or guest compilation of the frozen mutable
+  checksum, which still refuses its declaration at `29:5`.
+
 - On 2026-11-17, non-unit step-two signed `getchar` loop output still
   published a real ten-step N15 guest emitting `6a6a6a6a6a` on empty
   stdin instead of native C23 `ffffffffff`. The frozen complete C23

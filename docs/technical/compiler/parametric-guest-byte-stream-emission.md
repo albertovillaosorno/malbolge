@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Executable repeated loader-memory rotations (2026-11-17)
+
+A source-loadable 23-cell N15 guest with terminal graphical tail `p(`
+(ASCII `112, 40`) has loader words `7174413` at D=41 and `40` at
+D=42. One source-encoded `j` moves D to 41; nine successive pairs of
+`*; j` genuinely rotate D=41 and reset it through the untouched D=42
+operand. The normative VM halts in 21 steps, and the exact before/after
+values of all nine writes are independently checked for empty and binary
+stdin. No input is consumed and no output is emitted.
+
+The manual forward encoder already admitted this program. The automatic
+planner wrongly rejected it because it required every future step to be a
+literal instruction before previewing the fixed graphical loader tail.
+Its narrowly scoped preview now admits future `AutoRelocate` steps only when
+the final two physical steps are explicit post-halt `SkippedDataByte` seeds,
+with no intervening `Jump` and with full independent final-source admission.
+The two real-VM regressions compare automatic and manual artifacts exactly.
+This is a genuine repeated guest data-write prerequisite, **not** the
+previous C23 signed-EOF conversion pair, not compiled mutable-C storage, and
+not P2 checksum acceptance: the frozen source still refuses declaration
+`29:5` without publishing a guest.
+
 ### Non-unit counted-loop signed EOF publication (2026-11-17)
 
 An accepted C23 `unsigned_stride_conditional_live_input.c` combines a

@@ -375,12 +375,27 @@ impl ForwardPaddingBuilder<'_> {
         remaining: &[PaddedForwardStep],
     ) -> Result<Option<FixedGraphicalTail>, LinearLayoutError> {
         if remaining.len() < 2
-            || !remaining
+            || remaining
                 .iter()
-                .all(|step| matches!(step, PaddedForwardStep::Instruction(_)))
+                .any(|step| matches!(step, PaddedForwardStep::Jump))
+            || (remaining
+                .iter()
+                .any(|step| matches!(step, PaddedForwardStep::AutoRelocate))
+                && !remaining[remaining.len() - 2..].iter().all(|step| {
+                    matches!(
+                        step,
+                        PaddedForwardStep::Instruction(
+                            LinearOpcode::SkippedDataByte { .. }
+                        )
+                    )
+                }))
         {
             return Ok(None);
         }
+        // Fixed post-halt seeds permit an optimistic no-padding preview of
+        // future auto-relocations. The final independent layout admission
+        // rejects this projection if any relocation inserted padding or
+        // changed the physical source length or loader image.
         let mut tail = [0u8; 2];
         for (index, cell) in tail.iter_mut().enumerate() {
             let suffix_index =

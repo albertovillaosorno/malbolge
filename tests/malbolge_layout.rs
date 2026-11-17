@@ -2629,3 +2629,6 @@ mod eof_reset_geometry_tests;
 
 #[path = "compiler/layout/loader_recurrence.rs"]
 mod loader_recurrence_tests;
+
+#[path = "compiler/layout/repeated_loader_rotation.rs"]
+mod repeated_loader_rotation_tests;
