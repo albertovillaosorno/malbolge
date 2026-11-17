@@ -43,6 +43,7 @@
 
 mod bounded_revisit;
 mod eof_output_plan;
+mod loader_seed;
 
 pub use bounded_revisit::{
     BoundedRevisitDataWrite, BoundedRevisitError, BoundedRevisitExpectation,
@@ -55,6 +56,7 @@ pub use eof_output_plan::{
     CURRENT_C23_SIGNED_OUTPUT_WORDS, admit_c23_signed_output_word_plan,
 };
 
+pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 
 const GRAPHICAL_START: u8 = 33;

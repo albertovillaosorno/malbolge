@@ -2620,3 +2620,6 @@ mod source_scratch_tests;
 
 #[path = "compiler/layout/trailing_loader_seed.rs"]
 mod trailing_loader_seed_tests;
+
+#[path = "compiler/layout/loader_seed_selection.rs"]
+mod loader_seed_selection_tests;

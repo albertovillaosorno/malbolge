@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Checked loader-tail selection and rejected pointer reset (2026-11-17)
+
+The backend now exposes `select_rotated_loader_seed` for finite, position-
+checked data placement. Given a physical source length, expanded operand
+address, a bounded first-word rotation count and two exact resulting words,
+it searches at most 8,836 graphical suffix pairs. Unlike an algebra-only
+candidate search, the bytes must decode to loader-valid instructions at
+their *actual* source addresses. It recomputes the selected profile's real
+loader recurrence and never reports a hypothetical rotation as guest work.
+
+The selector reproduces `Iy` for N15 length 91, address 95, nine rotations
+and required adjacent words `(7138732, 121)`. Independent forward-layout
+admission and normative VM checks retain exactly one actual rotation. A
+potential reset loop at N15 source length 118, operand address 122 would
+consume data word 121 to reset `D` back to 122 after `*`. However the only
+candidate suffixes for that pair end in byte `y`, which decodes as invalid
+`)` at source position 117; the bounded search rejects that geometry.
+Both canonical profiles also pass exact unrotated source-tail data checks.
+This is a concrete negative executable-placement result, not a guest EOF
+converter or the missing mutable C checksum implementation.
+
 ### Graphical-loader-derived rotated EOF conversion operands (2026-11-17)
 
 The negative result below applies only to **untouched** loader words. A new

@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, position-aware loader suffix synthesis now exhausts the
+  at-most-8,836 printable tail pairs against exact source decode and target
+  loader recurrence. It independently selects `Iy` for the 91-cell N15
+  nine-rotation EOF word target and replays the existing one-rotation guest
+  layout under the normative VM, with exact cross-profile zero-rotation and
+  rejection cases. The tempting 118-cell repeat-rotation reset is actually
+  unloadable: `y` decodes to invalid `)` at source address 117. No nine-write
+  loop or signed C conversion has been emitted; the complete checksum still
+  refuses declaration `29:5`.
+
 - On 2026-11-17, the auto-padded forward backend now preserves exactly
   two post-halt graphical loader seed words as physical, *unreached* source
   data. Its new explicit API takes a reached path and an exact seed pair,

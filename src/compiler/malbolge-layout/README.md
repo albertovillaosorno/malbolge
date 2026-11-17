@@ -12,6 +12,27 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Position-constrained loader seed selection
+
+`select_rotated_loader_seed(profile, length, data_address, rotations, pair)`
+searches at most 8,836 printable final-source-byte pairs. It requires that
+both bytes decode as loader-valid instructions at their *actual* physical
+source positions, and that the normative loader recurrence produces the
+requested adjacent data words after the specified number of **hypothetical**
+rotations of the first word. An impossible geometry, out-of-range word or
+unloadable target pair fails explicitly. The search is deterministic and
+profile-width-aware; the selected tail may then be passed to the independent
+forward-padding encoder, which still verifies the complete source and VM.
+
+For the N15 conversion target `(7,138,732, 121)`, source length 91, first
+operand address 95 and nine rotations, the search returns `Iy`. This agrees
+with the checked 91-cell guest that performs **one** actual rotation.
+A tempting repeat-rotation geometry would instead use length 118 and data
+addresses 122/123, because the second word `121` would let `j` reset `D`
+to 122. The search correctly refuses that source: byte `y` at physical
+position 117 decodes as `)` and cannot be loaded. No operand revisit, nine
+rotations or signed C EOF conversion has been emitted by this selector.
+
 ### Exact post-halt loader seeds
 
 The independently checked linear encoder admits an optional **exactly two**
