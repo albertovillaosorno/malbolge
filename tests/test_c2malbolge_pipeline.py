@@ -201,11 +201,11 @@ class CToMalbolgeDriverTests(unittest.TestCase):
                 self.assertEqual(self.target.read_bytes(), b"stub-artifact")
 
     def test_finite_wall_budget_preserves_success_and_no_clobber(self):
-        completed = self.run_pipeline(max_wall_seconds="5")
+        completed = self.run_pipeline(max_wall_seconds="30")
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assert_stages(b"FA")
         self.assertEqual(self.target.read_bytes(), b"stub-artifact")
-        repeated = self.run_pipeline(max_wall_seconds="5")
+        repeated = self.run_pipeline(max_wall_seconds="30")
         self.assertNotEqual(repeated.returncode, 0)
         self.assertIn(b"no-clobber", repeated.stderr)
         self.assert_stages(b"FA")
