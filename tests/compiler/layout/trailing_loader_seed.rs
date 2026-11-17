@@ -382,13 +382,18 @@ fn final_relocation_before_halt_remains_safe_with_a_loader_seed()
     let mut operations = vec![LinearOpcode::NoOperation; 130];
     operations[126] = LinearOpcode::RelocateDataPointer;
     operations[127] = LinearOpcode::Halt;
-    for position in [128usize, 129] {
-        let byte = (33..=126u8)
+    let graphical_seed = |position| {
+        (33..=126u8)
             .find(|&byte| {
-                decode_profile_instruction(u32::from(byte), position as u32)
+                decode_profile_instruction(u32::from(byte), position)
                     == Some(b'o')
             })
-            .ok_or("missing source-loadable seed")?;
+            .ok_or("missing source-loadable seed")
+    };
+    for position in [128usize, 129] {
+        let address =
+            u32::try_from(position).map_err(|error| error.to_string())?;
+        let byte = graphical_seed(address)?;
         operations[position] =
             LinearOpcode::SkippedDataByte { byte: u32::from(byte) };
     }
@@ -403,18 +408,10 @@ fn final_relocation_before_halt_remains_safe_with_a_loader_seed()
             .copied()
             .map(PaddedForwardStep::Instruction)
             .collect();
-        let [
-            LinearOpcode::SkippedDataByte { byte: first },
-            LinearOpcode::SkippedDataByte { byte: second },
-        ] = operations[128..]
-        else {
-            return Err(String::from("missing exact two-cell seed"));
-        };
+        let seed = [with_seed.source()[128], with_seed.source()[129]];
         let planned =
             layout::encode_auto_padded_forward_layout_with_loader_seed(
-                profile,
-                &logical,
-                [first as u8, second as u8],
+                profile, &logical, seed,
             )
             .map_err(|error| format!("padded final relocation: {error:?}"))?;
         assert_eq!(planned.layout(), &with_seed);
@@ -424,6 +421,31 @@ fn final_relocation_before_halt_remains_safe_with_a_loader_seed()
             PaddedCellOrigin::LoaderSeed,
         ]);
         verify_bidirectional_source_map(&planned)?;
+        let mut automatic = logical;
+        automatic[126] = PaddedForwardStep::AutoRelocate;
+        let auto = layout::encode_auto_padded_forward_layout_with_loader_seed(
+            profile, &automatic, seed,
+        )
+        .map_err(|error| format!("terminal auto relocation: {error:?}"))?;
+        assert_eq!(auto.layout(), &with_seed);
+        assert_eq!(auto.logical_code_positions().len(), 128);
+        verify_bidirectional_source_map(&auto)?;
+        // This exemption must not admit a relocation before an actual
+        // output: D would point inside source instead of safe scratch.
+        let mut effectful_suffix = automatic.clone();
+        effectful_suffix.insert(
+            127,
+            PaddedForwardStep::Instruction(LinearOpcode::OutputByte),
+        );
+        let nonterminal_seed = [graphical_seed(129)?, graphical_seed(130)?];
+        assert_eq!(
+            layout::encode_auto_padded_forward_layout_with_loader_seed(
+                profile,
+                &effectful_suffix,
+                nonterminal_seed,
+            ),
+            Err(LinearLayoutError::UnsafeDataPlacement),
+        );
         assert_eq!(with_seed.executed_code_positions().last(), Some(&127));
         assert_eq!(with_seed.data_pointer_positions()[126], 126);
         assert!(with_seed.data_pointer_positions()[127] < 130);

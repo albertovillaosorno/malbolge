@@ -333,7 +333,16 @@ impl ForwardPaddingBuilder<'_> {
             let expanded_operand =
                 self.proven_expanded_relocation_operand(position, remaining)?;
             if expanded_operand.is_some()
-                || self.proven_relocation_operand(position, planned_length)?
+                || self.proven_relocation_operand(
+                    position,
+                    planned_length,
+                    matches!(
+                        remaining.first(),
+                        Some(PaddedForwardStep::Instruction(
+                            LinearOpcode::Halt
+                        ))
+                    ),
+                )?
             {
                 return self.instruction_with_expanded_operand(
                     LinearOpcode::RelocateDataPointer,
@@ -557,6 +566,7 @@ impl ForwardPaddingBuilder<'_> {
         &self,
         position: usize,
         planned_length: usize,
+        terminal: bool,
     ) -> Result<bool, LinearLayoutError> {
         if self.unproven_source_writes.contains(&self.data_pointer) {
             return Ok(false);
@@ -578,7 +588,10 @@ impl ForwardPaddingBuilder<'_> {
         let expanded_data = operand_address >= planned_length;
         let past_source_scratch = self.data_pointer < position
             && operand_address.saturating_add(1) < position;
-        Ok(expanded_data || past_source_scratch)
+        // A known operand can select any valid D destination when the next
+        // reached instruction is Halt: there is no subsequent guest data
+        // operation to alias pending source or the physical loader seed.
+        Ok(terminal || expanded_data || past_source_scratch)
     }
 
     fn prove_past_source_operand(&self) -> Result<(), LinearLayoutError> {

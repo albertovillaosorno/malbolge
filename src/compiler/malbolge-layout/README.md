@@ -76,8 +76,11 @@ bytes: the last *reached* step, not source length minus two, determines
 whether relocation can affect later guest behavior. Both profiles execute
 this 128-step no-output boundary with and without the extra seed, and the
 padded planner preserves identical code/data positions and seed provenance.
-Earlier relocations still require the usual exact scratch/expanded-memory
-proof; the final-`j` exception does not admit a data write into pending code.
+`AutoRelocate` selects this final `j` without extra filler when its operand
+is known; a subsequent actual `OutputByte` makes that shortcut unsafe and
+is rejected. Earlier relocations still require the usual exact
+scratch/expanded-memory proof; the final-`j` exception does not admit a
+data write into pending code.
 
 ### Opt-in bounded revisiting source admission
 
