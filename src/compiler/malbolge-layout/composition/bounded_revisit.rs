@@ -31,6 +31,7 @@
 // - Defaults:
 //   - Rejects unproven paths, profile drift, resource overrun and no revisit.
 //
+
 //! Opt-in, input-specific admission of genuine revisiting guest code paths.
 //!
 //! This is not a source generator, and a successful witness is not a proof
