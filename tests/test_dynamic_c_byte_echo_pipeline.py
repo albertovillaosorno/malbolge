@@ -165,9 +165,11 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
                     )
                     self.assertFalse(target.exists())
 
-    def test_source_local_input_reads_reach_guest(self) -> None:
-        # Clang must keep runtime input live even after it flows through a C
-        # automatic local. Mix both admitted source spellings and call sites.
+    def test_source_local_signed_echo_refuses_without_eof_lowering(self) -> None:
+        # Successful finite input does not justify publishing a C local echo:
+        # the signed getchar result is -1 after early EOF, not the guest
+        # profile sentinel's low byte. Preserve both earlier C shapes as
+        # no-artifact regression witnesses.
         sources = (
             (
                 "#include <stdio.h>\n"
@@ -194,23 +196,13 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
                     target = Path(folder) / f"local-{index}.malbolge"
                     source.write_text(contents)
                     built = self.compile(source, target)
-                    self.assertEqual(built.returncode, 0, built.stderr)
-                    data = bytes((0, 255, 128, 10, 65, 127, 1, 254)) * 2
-                    count = 3 if index == 0 else 16
-                    for sample in (data, bytes(range(16))):
-                        vm = subprocess.run(
-                            [str(TOOLS[3]), str(target), "--input-stdin"],
-                            input=sample[:count],
-                            capture_output=True,
-                            check=False,
-                            timeout=20,
-                        )
-                        self.assertEqual(vm.returncode, 0, vm.stderr)
-                        self.assertEqual(vm.stdout, sample[:count])
+                    self.assertNotEqual(built.returncode, 0)
+                    self.assertIn(b"Unsupported", built.stderr)
+                    self.assertFalse(target.exists())
 
-    def test_repeated_local_successful_byte_runs_on_guest(self) -> None:
-        # A C automatic local retains its successful getchar result while
-        # repeated putchar calls observe the same value; a fresh read evicts it.
+    def test_repeated_local_signed_echo_refuses_at_eof(self) -> None:
+        # A repeated C signed local output remains EOF-observable. Refuse
+        # publication instead of treating successful input as the contract.
         source_text = (
             "#include <stdio.h>\n"
             "void emit(void) {\n"
@@ -228,22 +220,9 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
             target = Path(folder) / "repeated-local.malbolge"
             source.write_text(source_text)
             built = self.compile(source, target)
-            self.assertEqual(built.returncode, 0, built.stderr)
-            self.assertTrue(target.is_file())
-            inputs = (bytes((0, 255, 128)), bytes((65, 10, 254)))
-            for data in inputs:
-                with self.subTest(data=data):
-                    oracle = bytes((data[0], data[0], data[1], data[2], data[2]))
-                    vm = subprocess.run(
-                        [str(TOOLS[3]), str(target), "--input-stdin", "--report-steps"],
-                        input=data,
-                        check=False,
-                        capture_output=True,
-                        timeout=20,
-                    )
-                    self.assertEqual(vm.returncode, 0, vm.stderr)
-                    self.assertEqual(vm.stdout, oracle)
-                    self.assertEqual(vm.stderr, b"malbolge-steps-v1:9\n")
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn(b"Unsupported", built.stderr)
+            self.assertFalse(target.exists())
 
     def test_repeated_local_excess_outputs_refuses(self) -> None:
         # Never publish a 257th live-source output instruction.
@@ -397,19 +376,11 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
             target = Path(folder) / "echo-128.malbolge"
             source.write_text(self.source(128))
             built = self.compile(source, target)
-            self.assertEqual(built.returncode, 0, built.stderr)
-            self.assertTrue(target.is_file())
-            data = bytes(range(128))
-            vm = subprocess.run(
-                [str(TOOLS[3]), str(target), "--input-stdin", "--report-steps"],
-                input=data,
-                capture_output=True,
-                check=False,
-                timeout=20,
-            )
-            self.assertEqual(vm.returncode, 0, vm.stderr)
-            self.assertEqual(vm.stdout, data)
-            self.assertEqual(vm.stderr, b"malbolge-steps-v1:257\n")
+            # At 128 reads, EOF can occur on any call; the bound is not a
+            # source-C promise of 128 successful bytes. Refuse both counts.
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn(b"Unsupported", built.stderr)
+            self.assertFalse(target.exists())
 
             over_source = Path(folder) / "echo-129.c"
             over_target = Path(folder) / "echo-129.malbolge"
@@ -651,7 +622,6 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
     def test_unimplemented_input_arithmetic_and_extra_effects_refuse(self) -> None:
         candidates = (
             self.source(1).replace("getchar()", "getchar() + 1"),
-            self.source(1).replace("putchar(getchar());", "getchar();"),
             self.source(1).replace(
                 "putchar(getchar());",
                 "putchar(getchar());\n    getchar();",

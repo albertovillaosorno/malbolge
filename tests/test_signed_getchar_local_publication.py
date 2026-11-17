@@ -88,6 +88,21 @@ SHAPES: Final = (
         1,
         1,
     ),
+    (
+        "reassigned-local",
+        "int current = getchar();\n    current = getchar();\n    putchar(current);",
+        1,
+        1,
+    ),
+    (
+        "discarded-prefix-reassigned-local",
+        (
+            "getchar();\n    int current = getchar();\n"
+            "    current = getchar();\n    putchar(current);"
+        ),
+        1,
+        2,
+    ),
 )
 VECTORS: Final = (
     ("eof", b"", 255),

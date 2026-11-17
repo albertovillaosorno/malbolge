@@ -58,11 +58,11 @@ permission to compile a different grammar. Other source forms not proved
 by this checker retain existing compiler behavior and need independent
 EOF audits; this is not general signed-local soundness or conversion.
 
-`tests/test_signed_getchar_local_publication.py` pins seven complete
+`tests/test_signed_getchar_local_publication.py` pins nine complete
 sources (direct, copied, repeated, discarded-read suffix, and three
-pre-declaration read forms) and four binary stdin vectors. Independent pinned
-Clang C23 `-O0` and `-O2` with UBSan
-must match the explicit expected bytes; the guest either matches the same
+pre-declaration read forms and two signed-local reassignments) and four
+binary stdin vectors. Independent pinned Clang C23 `-O0` and `-O2` with
+UBSan must match the explicit expected bytes; the guest either matches the same
 oracle or the compiler returns typed `Unsupported` without publishing a
 file. The frontend unit suite has 123 passing tests. The original mutable
 EOF checksum still refuses its first declaration at `29:5`; this change

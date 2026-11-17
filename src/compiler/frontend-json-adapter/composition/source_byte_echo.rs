@@ -532,6 +532,30 @@ pub(super) fn is_unchecked_local_eof_echo(
             expected_id = expected_id.saturating_add(width_id);
             continue;
         }
+        // Reassigning the signed local from another getchar does not make
+        // its next observed value an unsigned byte at EOF. Each reassignment
+        // must have exact Clang ancestry and source spelling; it can occur
+        // only before any output in this bounded refusal proof.
+        if outputs == 0
+            && let Some(witness) = source
+            && remaining
+                .get(..5)
+                .and_then(|assignment| {
+                    prove_local_input_reassignment(
+                        assignment,
+                        (body, previous, body.id),
+                        &local,
+                        witness,
+                        b';',
+                    )
+                })
+                .is_some()
+        {
+            previous = remaining[0].span.end.byte;
+            remaining = &remaining[5..];
+            expected_id = expected_id.saturating_add(5);
+            continue;
+        }
         if outputs == 0
             && let Some(witness) = source
             && let Some(alias) = remaining.get(..4).and_then(|declaration| {

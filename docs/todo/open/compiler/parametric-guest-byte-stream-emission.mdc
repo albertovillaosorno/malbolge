@@ -71,6 +71,13 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, `int current = getchar(); current = getchar();
+  putchar(current);` also emitted the guest EOF residue `6a` despite native
+  C23's `ff`. The new source/Clang-backed refusal handles fresh signed-local
+  reassignment before output, with or without one preceding discarded read.
+  Both cases are checked with four binary stdin inputs, two native optimization
+  modes, and a no-artifact rule; guest signed EOF conversion remains open.
+
 - On 2026-11-17, a complete source-C discarded-read prefix followed by
   `int current = getchar(); putchar(current);` published a real four-step
   Malbolge capsule that emitted `6a` at empty input, while pinned native C23
