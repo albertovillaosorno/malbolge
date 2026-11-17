@@ -50,6 +50,10 @@ mod source_byte_echo;
 #[path = "nested_byte_echo.rs"]
 mod nested_byte_echo;
 
+#[path = "source_sha256.rs"]
+mod source_sha256;
+
+
 #[cfg(test)]
 #[path = "../../../../tests/compiler/source_literal_auth.rs"]
 mod source_literal_auth_tests;
@@ -155,6 +159,8 @@ pub enum FrontendGuestMode {
     LatestRead,
     /// Exactly two VM-witnessed distinct nonzero printable bytes.
     DistinctLiteralPair,
+    /// One or more source-checked, discarded signed getchar results, EOF included.
+    DiscardedGetchar,
     /// Exactly three independently VM-witnessed different bytes.
     DistinctLiteralTriple,
     /// Exactly four independently VM-witnessed printable bytes.
@@ -2981,9 +2987,17 @@ pub fn canonical_guest_typed_ir_with_source(
     bytes: &[u8],
     source: Option<&[u8]>,
 ) -> Result<CanonicalGuestProjection, FrontendJsonError> {
-    if let Some(witness) = source
-        && !source_scalar_tokens_match(bytes, witness)
-    {
+    if let Some(witness) = source {
+        let artifact: Artifact = serde_json::from_slice(bytes)
+            .map_err(|_error| FrontendJsonError::Malformed)?;
+        if source_digest(&artifact.source.sha256)?
+            != source_sha256::sha256(witness)
+            || !source_scalar_tokens_match(bytes, witness)
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
+    }
+    if source_byte_echo::is_unchecked_direct_eof_echo(bytes) {
         return Err(FrontendJsonError::Unsupported);
     }
     if let Ok(projection) =

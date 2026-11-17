@@ -11,6 +11,22 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Discarded signed C `getchar` and EOF refusal (2026-11-17)
+
+Source-authenticated one- or two-call examples that discard each `getchar()`
+result now lower to signed `i32` MCTI `Getchar` and MCTR `GetcharI32` and
+execute real guest input instructions. Their returned values are unobserved,
+so the profile's raw EOF accumulator is safe to retain. The pinned C source
+witness must match the normalized JSON's SHA-256, plus exact calls and spans.
+A separately verified target emits real input and halt, with no guest output
+on empty, high-bit, or short stdin.
+
+A standalone `putchar(getchar())` is instead rejected before publication:
+its EOF output needs C's signed-to-`unsigned char` conversion, which the
+successful-byte bridge does not implement. The safe refusal, exact signed
+MCTI projection, source mutation and forged AST are regression tested.
+This is not general guest C I/O, mutable locals or EOF-controlled iteration.
+
 ### Ordered multiple outputs in dynamic C guard arms (2026-11-16)
 
 Each branch of an authenticated live-byte C predicate may now perform two

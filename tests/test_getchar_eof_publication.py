@@ -104,11 +104,42 @@ class GetcharEofPublicationTests(unittest.TestCase):
                         self.assertEqual(run.returncode, 0, run.stderr)
                         self.assertEqual(run.stdout, expected)
 
-    # Known P2 blocker: an emitted byte echo does not implement signed EOF.
-    # An unexpected success forces removal of this marker and closure of P2.
-    @unittest.expectedFailure
+    def test_discarded_signed_getchar_executes_on_real_guest(self) -> None:
+        """An unused C i32 getchar must consume input and handle EOF."""
+        if not all(binary.is_file() for binary in (CLANG, FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned source compiler and guest VM required")
+        for count in (1, 2):
+            with self.subTest(reads=count), tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+                directory = Path(raw)
+                source = directory / "discarded.c"
+                source.write_text(
+                    "#include <stdio.h>\nvoid emit(void) { "
+                    + "getchar(); " * count + "}\n",
+                    encoding="utf-8",
+                )
+                target = directory / "discarded.malbolge"
+                compiled = subprocess.run(
+                    [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                     "--capsule", "--max-wall-seconds", "40", "--output",
+                     str(target), str(source)],
+                    capture_output=True, check=False, timeout=45,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(target.is_file())
+                for data in (b"", b"\xff", b"\x00\x80"):
+                    with self.subTest(input=data):
+                        guest = subprocess.run(
+                            [str(VM), str(target), "--input-stdin", "--report-steps",
+                             "--max-steps", "1000"],
+                            input=data, capture_output=True, check=False, timeout=15,
+                        )
+                        self.assertEqual(guest.returncode, 0, guest.stderr)
+                        self.assertEqual(guest.stdout, b"")
+                        self.assertIn(f"malbolge-steps-v1:{count + 1}".encode(), guest.stderr)
+
+    # Safe refusal is mandatory until guest output can convert signed EOF.
     def test_source_c_eof_conversion_executes_correctly_or_refuses(self) -> None:
-        """A failing acceptance witness, never evidence of correct lowering."""
+        """A direct getchar output must be correct at EOF or refuse."""
         if not all(
             binary.is_file() for binary in (CLANG, FRONTEND, ADAPTER, LAYOUT, VM)
         ):

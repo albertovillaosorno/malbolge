@@ -1049,6 +1049,46 @@ pub fn encode_empty_void_function(
     .map_err(ByteEchoBridgeError::Layout)
 }
 
+/// Emit genuine guest input effects for discarded signed C getchar results.
+///
+/// A source-proven sequence of 1..=128 i32 Getchar instructions followed by
+/// void return needs no EOF transformation: the accumulator retains the
+/// complete profile EOF word, and C never observes the discarded result.
+/// No host callback, stdin prediction, or output occurs.
+///
+/// # Errors
+///
+/// Refuses any different ternary effect, profile or source-layout mismatch.
+pub fn encode_discarded_getchar(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id() {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::ReturnVoid { .. }, effects)) =
+        function.operations.split_last()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if effects.is_empty()
+        || effects.len() > 128
+        || !effects.iter().all(|operation| {
+            matches!(operation, TernaryOperation::GetcharI32 { .. })
+        })
+    {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut steps = vec![LinearOpcode::InputWord; effects.len()];
+    steps.push(LinearOpcode::Halt);
+    encode_linear_layout(profile, &steps).map_err(ByteEchoBridgeError::Layout)
+}
+
 /// Emits one bounded, source-validated successful-byte-echo trace.
 ///
 /// Each adjacent `ByteInput`/`ByteOutput` pair must use the exact same SSA

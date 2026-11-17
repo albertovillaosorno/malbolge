@@ -28,24 +28,41 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
-### Direct `putchar(getchar())` EOF counterexample (2026-11-16)
+### Signed discarded `getchar` guest execution and safe EOF refusal (2026-11-17)
 
-Independent pinned Clang C23 `-O0`/`-O2` builds of
-`void emit(void) { putchar(getchar()); }` output `ff` on empty stdin:
-`getchar()` returns signed `EOF == -1`, and C `putchar` converts that to
-`unsigned char`. The existing source-bound successful-byte echo path instead
-publishes a valid 1,071-byte `malbolge-2026` capsule that executes three real
-VM steps but outputs `6a` on EOF, the profile sentinel's low byte. On
-successful `00`, `41`, and `ff` inputs both implementations agree.
+A red-first public source-C test now compiles `void emit(void) { getchar(); }`
+and two consecutive discarded calls through pinned Clang, source-authenticated
+MCTI `Getchar` (`i32`), canonical MCTR `GetcharI32`, and a real
+`InputWord`/`Halt` Malbolge layout. These are **real guest reads**, not
+host-time input projection. The returned word is deliberately discarded:
+EOF may leave the profile's signed sentinel in A because neither C nor the
+published guest observes the value. The independent source SHA-256 is
+recomputed, rather than trusting the normalized Clang digest assertion.
 
-`tests/test_getchar_eof_publication.py` preserves the independent native
-oracle and runs the guest mismatch as an **explicit expected failure** until
-proper signed EOF lowering or a typed refusal is implemented. This is a P2
-non-pass, not a completed C `getchar` or an arbitrary-input correctness claim.
-The source-to-byte-echo proof remains valid only for successful byte reads;
-there is no guest-enforced minimum-input contract on the published capsule.
-The new `Getchar` IR op is not yet executable, so do not reinterpret its
-presence as EOF support or silently truncate the sentinel.
+Both one- and two-read source programs publish target capsules, execute in
+two and three real guest steps respectively, produce no bytes on empty,
+`ff`, NUL and mixed input, and halt after EOF without needing a successful
+input. The layout publisher independently checks the complete source and
+read count under a certified adaptive VM geometry; it never assumes a
+minimum stdin length. Rust admission tests reject changed C and forged
+Clang call ancestry. The new Python publication suite checks both paths
+with pinned native C EOF and the normative guest VM.
+
+The independent C23 `-O0`/`-O2` oracle for direct
+`void emit(void) { putchar(getchar()); }` still outputs `ff` on empty
+stdin: C `getchar` returns `EOF == -1`, then `putchar` converts its
+argument to `unsigned char`. The former successful-u8 bridge published a
+1,071-byte capsule with output `6a`, the profile sentinel's low byte.
+That **unsound publication has been closed** for the exact standalone
+Clang/source shape: the source frontend now returns typed `Unsupported`,
+and the regression is a passing fail-closed assertion, not an expected
+failure. Other successful-byte trace modes still require successful input
+and must not be interpreted as C signed-EOF semantics.
+
+The complete mutable EOF checksum remains the P2 acceptance gate; its first
+local declaration still refuses at `29:5` without publishing a guest.
+There is no general signed EOF-to-unsigned-char output lowering, guest C
+mutable storage, input-driven branches or dynamic EOF loop yet.
 
 ### Typed representation of EOF-aware C input (2026-11-16)
 
@@ -70,12 +87,11 @@ invalid words, and unchanged caller state after invalid inputs. Source-bound
 checkpoint restoration also refuses to replace `GetcharI32` with a valid
 constant `i32` whose source coordinates, SSA and provenance still match.
 
-**These are IR contracts only, not an implemented guest `getchar`**. The
-source adapter still stops the frozen mutable checksum at its first
-declaration, and the nonlinear guest backend cannot yet execute this
-operation, local storage, runtime branching, or EOF-driven looping. The
-first executable acceptance remains pending; no host computation is
-substituted for guest semantics.
+The new discarded-result source slice above now executes the real guest
+input operation even at EOF. General **observable** signed `getchar` results,
+local storage, runtime branching and EOF-driven looping remain unimplemented.
+The complete P2 checksum still fails before guest publication; no host
+computation is substituted for guest semantics.
 
 ### Frozen mutable-C EOF checksum acceptance witness (2026-11-16)
 

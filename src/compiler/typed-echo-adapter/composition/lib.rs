@@ -100,6 +100,7 @@ enum ByteTraceMode {
     DistinctLiteralQuint,
     DistinctLiteralSix,
     DistinctLiteralSeven,
+    DiscardedGetchar,
     DistinctLiteralEight,
     DistinctLiteralNine,
     DistinctLiteralTen,
@@ -241,6 +242,39 @@ fn project_latest_effects(
     Ok(instructions)
 }
 
+// Preserve the signed getchar effect even when the C return value is unused.
+// The full EOF word never becomes a successful u8 SSA value in this mode.
+fn project_discarded_getchar_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    if original.is_empty() || original.len() > 128 {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    original
+        .iter()
+        .map(|entry| {
+            let Instruction::Getchar { result, type_id } = entry.instruction()
+            else {
+                return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+            };
+            let signed = module.types().iter().any(|type_entry| {
+                type_entry.id() == *type_id
+                    && *type_entry.definition() == TypeDef::I32
+            });
+            if !signed {
+                return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+            }
+            Ok(InputInstruction::Getchar {
+                result: result.value(),
+                span: project_span(entry.span()),
+                type_kind: InputScalarType::I32,
+            })
+        })
+        .collect()
+}
+
+
 // An exact source u8 zero needs no materialization instruction: the normative
 // guest VM starts with accumulator A=0. This shape never consumes guest input.
 fn project_initial_zero_effects(
@@ -252,6 +286,7 @@ fn project_initial_zero_effects(
     };
     let Instruction::ConstantInteger {
         constant,
+
         result,
         type_id,
     } = first.instruction()
@@ -433,6 +468,7 @@ fn project_literal_pair_effects(
                 zero.little_endian() != [0] && literal.little_endian() != [0]
             },
             ByteTraceMode::AdjacentEcho
+            | ByteTraceMode::DiscardedGetchar
             | ByteTraceMode::EmptyVoid
             | ByteTraceMode::IdentityByteBitcast
             | ByteTraceMode::InitialZero
@@ -2792,11 +2828,24 @@ fn project_byte_trace(
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     }
     let instructions = match mode {
-        ByteTraceMode::AdjacentEcho => project_effects(module, block.instructions())?,
-        ByteTraceMode::EmptyVoid if block.instructions().is_empty() => Vec::new(),
-        ByteTraceMode::EmptyVoid => return Err(TypedEchoAdapterError::UnsupportedTypedIr),
-        ByteTraceMode::InitialZero => project_initial_zero_effects(module, block.instructions())?,
-        ByteTraceMode::LatestRead => project_latest_effects(module, block.instructions())?,
+        ByteTraceMode::AdjacentEcho => {
+            project_effects(module, block.instructions())?
+        },
+        ByteTraceMode::DiscardedGetchar => {
+            project_discarded_getchar_effects(module, block.instructions())?
+        },
+        ByteTraceMode::EmptyVoid if block.instructions().is_empty() => {
+            Vec::new()
+        },
+        ByteTraceMode::EmptyVoid => {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        },
+        ByteTraceMode::InitialZero => {
+            project_initial_zero_effects(module, block.instructions())?
+        },
+        ByteTraceMode::LatestRead => {
+            project_latest_effects(module, block.instructions())?
+        },
         ByteTraceMode::ZeroPrefixedLatest => {
             project_zero_prefixed_effects(module, block.instructions())?
         }
@@ -3018,9 +3067,13 @@ fn compile_byte_trace(
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     }
     let layout = match mode {
-        ByteTraceMode::AdjacentEcho => {
-            bridge::encode_successful_byte_echo(&independently_admitted, profile)
-        }
+        ByteTraceMode::AdjacentEcho => bridge::encode_successful_byte_echo(
+            &independently_admitted,
+            profile,
+        ),
+        ByteTraceMode::DiscardedGetchar => {
+            bridge::encode_discarded_getchar(&independently_admitted, profile)
+        },
         ByteTraceMode::EmptyVoid => {
             bridge::encode_empty_void_function(&independently_admitted, profile)
         }
@@ -3409,6 +3462,20 @@ pub fn compile_canonical_typed_distinct_literal_seven(
 ///
 /// # Errors
 ///
+/// Compile a source-authenticated sequence of discarded signed C getchar reads.
+/// Unlike successful-byte echoes, EOF is a defined guest read in this mode.
+///
+/// # Errors
+///
+/// Rejects mixed output effects, non-i32 reads, invalid canonical IR, or
+/// unadmitted source layout.
+pub fn compile_canonical_typed_discarded_getchar(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::DiscardedGetchar)
+}
+
 /// Rejects unsupported constants, stale SSA, wrong profiles and VM disagreement.
 pub fn compile_canonical_typed_distinct_literal_eight(
     canonical: &[u8],

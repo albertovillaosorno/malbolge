@@ -32,6 +32,10 @@
 //! Closed dynamic-byte input provenance from normalized source C to typed IR.
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/discarded_getchar.rs"]
+mod discarded_getchar_tests;
+
+#[cfg(test)]
 #[path = "../../../../tests/compiler/guarded_byte_output.rs"]
 mod guarded_byte_output_tests;
 
@@ -76,8 +80,8 @@ use std::collections::HashSet;
 use super::typed::{
     BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
     FrontendFallthroughVoidFunctionSpec, FrontendReturnVoidFunction, Function,
-    FunctionSpec, Instruction, LocatedInstruction, Module, ModuleSpec, TypeId,
-    ValueId,
+    FunctionSpec, Instruction, LocatedInstruction, Module, ModuleSpec, TypeDef,
+    TypeEntry, TypeId, ValueId,
 };
 use super::{
     Artifact, FrontendGuestMode, FrontendJsonError, Node, canonical_bytes,
@@ -334,6 +338,25 @@ fn prove_call<'node>(
         .iter()
         .all(|node| metadata_empty(node));
     well_formed.then_some((input, output))
+}
+
+// A whole-function direct putchar(getchar()) has an observable EOF output.
+// The successful-u8 bridge would emit the profile EOF accumulator's low byte
+// instead of C's unsigned-char conversion of -1 (0xff). This exact standalone
+// source cannot be published until a signed-EOF output projection is real.
+// Test *before* trying other frontend projection grammars: otherwise a
+// fallback could accidentally re-admit this unsupported operation.
+pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
+    let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
+        return false;
+    };
+    let [function, body, nodes @ ..] = artifact.nodes.as_slice() else {
+        return false;
+    };
+    function.kind == "function-declaration"
+        && body.kind == "compound-statement"
+        && body.parent == function.id
+        && prove_call(nodes, body, body.span.begin.byte, body.id).is_some()
 }
 
 // A source-proven getchar() is a guest effect even when its result
@@ -9225,6 +9248,37 @@ pub(super) fn canonical_source_byte_echo(
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
+    // A discarded C getchar is defined even at EOF. Preserve its signed i32
+    // identity, rather than projecting an unconditionally successful u8 read.
+    // This exact mode has no output and cannot observe the returned value.
+    let discarded_getchar = inputs > 0
+        && outputs == 0
+        && instructions.iter().all(|entry| {
+            matches!(entry.instruction(), Instruction::ByteInput { .. })
+        });
+    if discarded_getchar {
+        instructions = instructions
+            .into_iter()
+            .map(|entry| {
+                let Instruction::ByteInput { result, type_id } =
+                    entry.instruction()
+                else {
+                    unreachable!("discarded read mode preflighted")
+                };
+                LocatedInstruction::new(
+                    Instruction::Getchar {
+                        result: *result,
+                        type_id: *type_id,
+                    },
+                    entry.span(),
+                )
+            })
+            .collect();
+    }
+    let mut types = base.types().to_vec();
+    if discarded_getchar {
+        types[0] = TypeEntry::new(TypeId::new(0), TypeDef::I32);
+    }
     let compiled = Function::new(FunctionSpec {
         blocks: vec![BasicBlock::new(BasicBlockSpec {
             id: block.id(),
@@ -9250,7 +9304,7 @@ pub(super) fn canonical_source_byte_echo(
         source_id: String::from(base.source_id()),
         source_sha256: *base.source_sha256(),
         target_profile: String::from(base.target_profile()),
-        types: base.types().to_vec(),
+        types,
     });
     let wire = canonical_bytes(&module)
         .map_err(|_error| FrontendJsonError::InvalidTypedIr)?;
@@ -9262,7 +9316,9 @@ pub(super) fn canonical_source_byte_echo(
     }
     Ok((
         wire,
-        if requires_latest {
+        if discarded_getchar {
+            FrontendGuestMode::DiscardedGetchar
+        } else if requires_latest {
             FrontendGuestMode::LatestRead
         } else {
             FrontendGuestMode::AdjacentEcho

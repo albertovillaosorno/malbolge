@@ -69,12 +69,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
-- A separate minimal EOF soundness control found that the accepted
-  `putchar(getchar())` byte-echo capsule outputs `6a` on empty stdin, whereas
-  native pinned C23 O0/O2 output `ff`. Both match on successful `00`, `41`,
-  and `ff` inputs. `tests/test_getchar_eof_publication.py` records the real
-  guest discrepancy as an explicit expected failure, **not** P2 acceptance;
-  correct signed EOF lowering or typed refusal is still required.
+- On 2026-11-17, standalone C `getchar();` and two discarded reads
+  crossed pinned source Clang -> signed MCTI -> MCTR -> real Malbolge
+  input/halt instructions (two and three guest steps) with empty, high,
+  and binary stdin. Independent source SHA-256 is now checked at admission.
+  The previous direct `putchar(getchar())` EOF mismatch (`6a` versus native
+  `ff`) is now a passing fail-closed regression: that exact standalone
+  source refuses rather than publishing incorrect output. The full mutable
+  checksum still refuses first declaration `29:5`; no guest is published.
+
+- The historical direct-echo EOF discrepancy is recorded above; it is
+  now a source-authenticated typed refusal, while general observable EOF
+  conversion remains P2 work rather than claimed complete C I/O support.
 
 - The current complete EOF checksum is now tracked as
   `tests/compiler/c-frontend/accepted/mutable_eof_checksum.c` with a

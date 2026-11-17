@@ -40,7 +40,10 @@ use adapter::typed::{
     LocatedInstruction, Module, ModuleSpec, SourcePosition, SourceSpan, Terminator, TypeDef,
     TypeEntry, TypeId, ValueId, canonical_bytes, canonical_module, validate_module,
 };
-use adapter::{TypedEchoAdapterError, compile_canonical_typed_echo};
+use adapter::{
+    TypedEchoAdapterError, compile_canonical_typed_discarded_getchar,
+    compile_canonical_typed_echo,
+};
 use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile, target_profile};
 use std::fs;
 use std::io::Write as _;
@@ -189,6 +192,97 @@ fn fixture(pairs: usize) -> Result<Module, String> {
 fn wire(module: &Module) -> Result<Vec<u8>, String> {
     validate_module(module).map_err(|error| format!("typed IR admission: {error:?}"))?;
     canonical_bytes(module).map_err(|error| format!("typed IR encode: {error:?}"))
+}
+
+// A signed, source-independent MCTI fixture for the bounded discard-only
+// pipeline. The source adapter separately checks real pinned Clang evidence.
+fn discarded_getchar_fixture(reads: usize) -> Result<Module, String> {
+    let count = u32::try_from(reads).map_err(|error| error.to_string())?;
+    let mut instructions = Vec::with_capacity(reads);
+    for index in 0..count {
+        instructions.push(LocatedInstruction::new(
+            Instruction::Getchar {
+                result: ValueId::new(index),
+                type_id: TypeId::new(0),
+            },
+            span(index, index + 1),
+        ));
+    }
+    Ok(Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: adapter::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: span(0, count + 1),
+                terminator: Terminator::Return { value: None },
+                terminator_span: span(count, count + 1),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("signed_input"),
+            parameters: Vec::new(),
+            signature: TypeId::new(1),
+            span: span(0, count + 1),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/discarded-getchar.c"),
+        source_sha256: [0xa9; 32],
+        target_profile: current_profile().id().to_owned(),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::I32),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    }))
+}
+
+#[test]
+fn signed_discarded_getchar_executes_each_real_input_with_eof() -> Result<(), String> {
+    for reads in [1, 2, 3] {
+        let canonical = wire(&discarded_getchar_fixture(reads)?)?;
+        let compiled =
+            compile_canonical_typed_discarded_getchar(&canonical, current_profile())
+                .map_err(|error| format!("signed guest lowering: {error:?}"))?;
+        let ternary = canonical_ternary_program(compiled.ternary_bytes())
+            .map_err(|error| format!("signed ternary decode: {error:?}"))?;
+        let operations = &ternary.functions[0].operations;
+        assert_eq!(operations.len(), reads + 1);
+        assert!(operations[..reads].iter().all(|operation| {
+            matches!(operation, TernaryOperation::GetcharI32 { .. })
+        }));
+        assert!(matches!(
+            operations.last(),
+            Some(TernaryOperation::ReturnVoid { .. })
+        ));
+        assert!(matches!(
+            compile_canonical_typed_echo(&canonical, current_profile()),
+            Err(TypedEchoAdapterError::UnsupportedTypedIr)
+        ));
+        let layout = compiled.layout();
+        assert_eq!(layout.executed_code_positions().len(), reads + 1);
+        for input in [vec![], vec![0], vec![255, 0, 128], vec![65; 4]] {
+            let consumed = reads.min(input.len());
+            let mut guest = ProfileMachine::from_adaptive_source(
+                current_profile(),
+                layout.source(),
+                input,
+            )
+            .map_err(|error| format!("signed guest load: {error:?}"))?;
+            assert!(matches!(
+                guest.run(reads + 1),
+                Ok(RunOutcome::Terminated { steps, .. }) if steps == reads + 1
+            ));
+            assert_eq!(guest.input_consumed(), consumed);
+            assert!(guest.output().is_empty());
+        }
+    }
+    Ok(())
 }
 
 fn zero_prefixed_typed_fixture(

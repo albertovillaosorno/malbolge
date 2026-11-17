@@ -47,33 +47,33 @@ use malbolge::{
 
 use crate::bridge::ternary::{TernaryOperation, canonical_ternary_program};
 use crate::bridge::{
-    encode_distinct_literal_eight, encode_distinct_literal_eighteen,
-    encode_distinct_literal_eleven, encode_distinct_literal_fifteen,
-    encode_distinct_literal_forty, encode_distinct_literal_forty_eight,
-    encode_distinct_literal_forty_five, encode_distinct_literal_forty_four,
-    encode_distinct_literal_forty_one, encode_distinct_literal_forty_seven,
-    encode_distinct_literal_forty_six, encode_distinct_literal_forty_three,
-    encode_distinct_literal_forty_two, encode_distinct_literal_fourteen,
-    encode_distinct_literal_nine, encode_distinct_literal_nineteen,
-    encode_distinct_literal_pair, encode_distinct_literal_quad,
-    encode_distinct_literal_quint, encode_distinct_literal_seven,
-    encode_distinct_literal_seventeen, encode_distinct_literal_six,
-    encode_distinct_literal_sixteen, encode_distinct_literal_ten,
-    encode_distinct_literal_thirteen, encode_distinct_literal_thirty,
-    encode_distinct_literal_thirty_eight, encode_distinct_literal_thirty_five,
-    encode_distinct_literal_thirty_four, encode_distinct_literal_thirty_nine,
-    encode_distinct_literal_thirty_one, encode_distinct_literal_thirty_seven,
-    encode_distinct_literal_thirty_six, encode_distinct_literal_thirty_three,
-    encode_distinct_literal_thirty_two, encode_distinct_literal_triple,
-    encode_distinct_literal_twelve, encode_distinct_literal_twenty,
-    encode_distinct_literal_twenty_eight, encode_distinct_literal_twenty_five,
-    encode_distinct_literal_twenty_four, encode_distinct_literal_twenty_nine,
-    encode_distinct_literal_twenty_one, encode_distinct_literal_twenty_seven,
-    encode_distinct_literal_twenty_six, encode_distinct_literal_twenty_three,
-    encode_distinct_literal_twenty_two, encode_empty_void_function,
-    encode_initial_zero_outputs, encode_latest_byte_identity_trace,
-    encode_rotated_byte_literal, encode_successful_byte_echo,
-    encode_successful_latest_byte_trace,
+    encode_discarded_getchar, encode_distinct_literal_eight,
+    encode_distinct_literal_eighteen, encode_distinct_literal_eleven,
+    encode_distinct_literal_fifteen, encode_distinct_literal_forty,
+    encode_distinct_literal_forty_eight, encode_distinct_literal_forty_five,
+    encode_distinct_literal_forty_four, encode_distinct_literal_forty_one,
+    encode_distinct_literal_forty_seven, encode_distinct_literal_forty_six,
+    encode_distinct_literal_forty_three, encode_distinct_literal_forty_two,
+    encode_distinct_literal_fourteen, encode_distinct_literal_nine,
+    encode_distinct_literal_nineteen, encode_distinct_literal_pair,
+    encode_distinct_literal_quad, encode_distinct_literal_quint,
+    encode_distinct_literal_seven, encode_distinct_literal_seventeen,
+    encode_distinct_literal_six, encode_distinct_literal_sixteen,
+    encode_distinct_literal_ten, encode_distinct_literal_thirteen,
+    encode_distinct_literal_thirty, encode_distinct_literal_thirty_eight,
+    encode_distinct_literal_thirty_five, encode_distinct_literal_thirty_four,
+    encode_distinct_literal_thirty_nine, encode_distinct_literal_thirty_one,
+    encode_distinct_literal_thirty_seven, encode_distinct_literal_thirty_six,
+    encode_distinct_literal_thirty_three, encode_distinct_literal_thirty_two,
+    encode_distinct_literal_triple, encode_distinct_literal_twelve,
+    encode_distinct_literal_twenty, encode_distinct_literal_twenty_eight,
+    encode_distinct_literal_twenty_five, encode_distinct_literal_twenty_four,
+    encode_distinct_literal_twenty_nine, encode_distinct_literal_twenty_one,
+    encode_distinct_literal_twenty_seven, encode_distinct_literal_twenty_six,
+    encode_distinct_literal_twenty_three, encode_distinct_literal_twenty_two,
+    encode_empty_void_function, encode_initial_zero_outputs,
+    encode_latest_byte_identity_trace, encode_rotated_byte_literal,
+    encode_successful_byte_echo, encode_successful_latest_byte_trace,
     encode_zero_prefixed_latest_byte_trace, encode_zero_then_literal,
 };
 use crate::layout::{
@@ -82,6 +82,7 @@ use crate::layout::{
     encode_linear_layout,
 };
 use crate::typed_adapter::{
+    compile_canonical_typed_discarded_getchar,
     compile_canonical_typed_distinct_literal_eight,
     compile_canonical_typed_distinct_literal_eighteen,
     compile_canonical_typed_distinct_literal_eleven,
@@ -205,6 +206,7 @@ const DISTINCT_LITERAL_FORTY_SIX_ARG: &str = "--distinct-literal-forty-six";
 const DISTINCT_LITERAL_FORTY_SEVEN_ARG: &str = "--distinct-literal-forty-seven";
 const DISTINCT_LITERAL_FORTY_EIGHT_ARG: &str = "--distinct-literal-forty-eight";
 const EMPTY_VOID_ARG: &str = "--empty-void";
+const DISCARDED_GETCHAR_ARG: &str = "--discarded-getchar";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
@@ -238,6 +240,7 @@ struct CommandSpec {
 #[derive(Clone, Copy, Debug)]
 enum ByteTraceMode {
     AdjacentEcho,
+    DiscardedGetchar,
     DistinctLiteralPair,
     DistinctLiteralTriple,
     DistinctLiteralQuad,
@@ -302,6 +305,7 @@ enum SuccessfulByteEffect {
 }
 
 enum SourceEffectWitness {
+    DiscardedGetchar { reads: usize },
     DistinctLiteralPair { first: u8, second: u8 },
     DistinctLiteralTriple { bytes: [u8; 3] },
     DistinctLiteralQuad { bytes: [u8; 4] },
@@ -491,8 +495,11 @@ fn parse_canonical_source(
         || first == OsStr::new(DISTINCT_LITERAL_FORTY_SEVEN_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_FORTY_EIGHT_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
+        || first == OsStr::new(DISCARDED_GETCHAR_ARG)
     {
-        let mode = if first == OsStr::new(EMPTY_VOID_ARG) {
+        let mode = if first == OsStr::new(DISCARDED_GETCHAR_ARG) {
+            ByteTraceMode::DiscardedGetchar
+        } else if first == OsStr::new(EMPTY_VOID_ARG) {
             ByteTraceMode::EmptyVoid
         } else if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
             ByteTraceMode::InitialZero
@@ -714,6 +721,7 @@ fn parse_source(
         || first == OsStr::new(DISTINCT_LITERAL_FORTY_SEVEN_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_FORTY_EIGHT_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
+        || first == OsStr::new(DISCARDED_GETCHAR_ARG)
     {
         return parse_canonical_source(first, arguments);
     } else {
@@ -1439,6 +1447,9 @@ fn verified_ternary_bytes(
         ByteTraceMode::AdjacentEcho => {
             encode_successful_byte_echo(&program, profile)
         },
+        ByteTraceMode::DiscardedGetchar => {
+            encode_discarded_getchar(&program, profile)
+        },
         ByteTraceMode::EmptyVoid => {
             encode_empty_void_function(&program, profile)
         },
@@ -1617,7 +1628,16 @@ fn verified_ternary_bytes(
         .first()
         .ok_or("bridge accepted no ternary function")?
         .operations;
-    let effect_witness = if matches!(mode, ByteTraceMode::EmptyVoid) {
+    let effect_witness = if matches!(mode, ByteTraceMode::DiscardedGetchar) {
+        Some(SourceEffectWitness::DiscardedGetchar {
+            reads: operations
+                .iter()
+                .filter(|operation| {
+                    matches!(operation, TernaryOperation::GetcharI32 { .. })
+                })
+                .count(),
+        })
+    } else if matches!(mode, ByteTraceMode::EmptyVoid) {
         Some(SourceEffectWitness::EmptyVoid)
     } else if matches!(mode, ByteTraceMode::RotatedLiteral) {
         let [TernaryOperation::MaterializeU8 { scalar, .. }, ..] =
@@ -3069,6 +3089,9 @@ fn verified_typed_bytes(
         ByteTraceMode::AdjacentEcho => {
             compile_canonical_typed_echo(typed_bytes, profile)
         },
+        ByteTraceMode::DiscardedGetchar => {
+            compile_canonical_typed_discarded_getchar(typed_bytes, profile)
+        },
         ByteTraceMode::EmptyVoid => {
             compile_canonical_typed_empty_void(typed_bytes, profile)
         },
@@ -3504,6 +3527,38 @@ fn verify_successful_byte_trace(
 
 // An effect-free function still reaches its actual guest halt. The second
 // admission independently proves no output or input effects for two inputs.
+// Each discarded C read executes one real guest input operation, including
+// exhausted-input reads. Neither stdin nor EOF is ever substituted by host
+// output; the normatively run source must consume exactly the available bytes.
+fn verify_discarded_getchar(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    reads: usize,
+) -> Result<(), String> {
+    if reads == 0 || reads > 128 || artifact.steps != reads + 1 {
+        return Err(String::from("discarded getchar guest geometry disagrees"));
+    }
+    for input in [Vec::new(), vec![0], vec![255, 128, 0, 1], vec![65; 128]] {
+        let expected_consumed = reads.min(input.len());
+        let mut vm = ProfileMachine::from_adaptive_source(
+            profile,
+            &artifact.source,
+            input,
+        )
+        .map_err(|error| {
+            format!("discarded getchar VM load failed: {error:?}")
+        })?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != expected_consumed
+            || !vm.output().is_empty()
+        {
+            return Err(String::from("discarded getchar VM trace mismatch"));
+        }
+    }
+    Ok(())
+}
+
 fn verify_empty_void(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
@@ -6176,11 +6231,22 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
     let profile = target_profile(&spec.profile)
         .ok_or("unknown canonical target profile")?;
     let artifact = verified_source(&spec.source, profile)?;
-    let mut vm =
+
+    let mut vm = if matches!(
+        artifact.effect_witness,
+        Some(SourceEffectWitness::DiscardedGetchar { .. })
+    ) {
+        // A source-proven input/halt trace admits an exact narrower VM
+        // geometry; the certified adaptive loader rejects unsafe widths.
+        ProfileMachine::from_adaptive_source(
+            profile,
+            &artifact.source,
+            Vec::new(),
+        )
+    } else {
         ProfileMachine::from_source(profile, &artifact.source, Vec::new())
-            .map_err(|error| {
-                format!("normative VM rejected source: {error:?}")
-            })?;
+    }
+    .map_err(|error| format!("normative VM rejected source: {error:?}"))?;
     if !matches!(vm.run(artifact.steps), Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
     {
         return Err(String::from(
@@ -6190,6 +6256,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
     match &artifact.effect_witness {
         Some(SourceEffectWitness::SuccessfulByteTrace(effects)) => {
             verify_successful_byte_trace(profile, &artifact, effects)?;
+        },
+        Some(SourceEffectWitness::DiscardedGetchar { reads }) => {
+            verify_discarded_getchar(profile, &artifact, *reads)?;
         },
         Some(SourceEffectWitness::EmptyVoid) => {
             verify_empty_void(profile, &artifact)?;
