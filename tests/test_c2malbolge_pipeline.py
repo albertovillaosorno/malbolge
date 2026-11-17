@@ -51,14 +51,27 @@ STUB = textwrap.dedent("""\
     import hashlib
     import json
     import os
+    import subprocess
     from pathlib import Path
     import sys
+    import time
 
     role = Path(sys.argv[0]).name
     mode = os.environ.get('COMPILER_STUB_MODE', '')
     with open(os.environ['COMPILER_STUB_TRACE'], 'ab') as trace:
         trace.write(b'F' if role == 'frontend' else b'A')
     if role == 'frontend':
+        if mode == 'FRONTEND_HANG':
+            time.sleep(10)
+        if mode == 'SLOW_BOTH_STAGES':
+            time.sleep(0.65)
+        if mode == 'FRONTEND_INHERITED_PIPE':
+            subprocess.Popen(
+                [sys.executable, '-c', 'import time; time.sleep(10)'],
+                stdin=subprocess.DEVNULL,
+                stdout=sys.stdout,
+                stderr=subprocess.DEVNULL,
+            )
         if mode == 'FRONTEND_FAILURE':
             sys.exit(3)
         if mode == 'OVERSIZE':
@@ -82,6 +95,10 @@ STUB = textwrap.dedent("""\
         else:
             print(json.dumps(payload))
     else:
+        if mode == 'ADAPTER_HANG':
+            time.sleep(10)
+        if mode == 'SLOW_BOTH_STAGES':
+            time.sleep(0.65)
         assert sys.argv[1:3] == ['--layout-backend', os.environ['COMPILER_STUB_LAYOUT']]
         assert sys.argv[3] == '--output'
         assert ('--capsule' in sys.argv) == (os.environ['COMPILER_STUB_CAPSULE'] == '1')
@@ -131,6 +148,7 @@ class CToMalbolgeDriverTests(unittest.TestCase):
         *,
         capsule: bool = True,
         source_id: str = "fixtures/noop.c",
+        max_wall_seconds: str | None = None,
     ) -> subprocess.CompletedProcess[bytes]:
         environment = os.environ.copy()
         environment.update(
@@ -162,6 +180,8 @@ class CToMalbolgeDriverTests(unittest.TestCase):
         ]
         if capsule:
             argv.append("--capsule")
+        if max_wall_seconds is not None:
+            argv.extend(("--max-wall-seconds", max_wall_seconds))
         argv.append(str(self.source))
         return subprocess.run(argv, env=environment, capture_output=True, check=False)
 
@@ -179,6 +199,59 @@ class CToMalbolgeDriverTests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 self.assert_stages(b"FA")
                 self.assertEqual(self.target.read_bytes(), b"stub-artifact")
+
+    def test_finite_wall_budget_preserves_success_and_no_clobber(self):
+        completed = self.run_pipeline(max_wall_seconds="5")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assert_stages(b"FA")
+        self.assertEqual(self.target.read_bytes(), b"stub-artifact")
+        repeated = self.run_pipeline(max_wall_seconds="5")
+        self.assertNotEqual(repeated.returncode, 0)
+        self.assertIn(b"no-clobber", repeated.stderr)
+        self.assert_stages(b"FA")
+        self.assertEqual(self.target.read_bytes(), b"stub-artifact")
+
+    def test_finite_wall_budget_rejects_hung_frontend_without_adapter(self):
+        completed = self.run_pipeline("FRONTEND_HANG", max_wall_seconds="1")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"native C frontend wall-time limit exceeded", completed.stderr)
+        self.assert_stages(b"F")
+        self.assertFalse(self.target.exists())
+
+    @unittest.skipUnless(os.name == "posix", "process groups are POSIX-only")
+    def test_child_exit_with_inherited_pipe_still_obeys_budget(self):
+        completed = self.run_pipeline("FRONTEND_INHERITED_PIPE", max_wall_seconds="1")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"native C frontend wall-time limit exceeded", completed.stderr)
+        self.assert_stages(b"F")
+        self.assertFalse(self.target.exists())
+
+    def test_finite_wall_budget_rejects_hung_adapter_without_artifact(self):
+        completed = self.run_pipeline("ADAPTER_HANG", max_wall_seconds="1")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(
+            b"JSON-to-target adapter wall-time limit exceeded", completed.stderr
+        )
+        self.assert_stages(b"FA")
+        self.assertFalse(self.target.exists())
+
+    def test_one_budget_is_shared_across_both_compiler_stages(self):
+        completed = self.run_pipeline("SLOW_BOTH_STAGES", max_wall_seconds="1")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(
+            b"JSON-to-target adapter wall-time limit exceeded", completed.stderr
+        )
+        self.assert_stages(b"FA")
+        self.assertFalse(self.target.exists())
+
+    def test_invalid_wall_budget_rejects_before_any_child(self):
+        for budget in ("0", "-1", "86401", "nonsense", "1.5"):
+            with self.subTest(budget=budget):
+                completed = self.run_pipeline(max_wall_seconds=budget)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(b"wall limit", completed.stderr)
+                self.assert_stages(b"")
+                self.assertFalse(self.target.exists())
 
     def test_frontend_failure_never_invokes_adapter(self):
         completed = self.run_pipeline("FRONTEND_FAILURE")

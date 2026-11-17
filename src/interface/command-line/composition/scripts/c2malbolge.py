@@ -38,10 +38,13 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -66,6 +69,7 @@ class Arguments:
     output: str
     capsule: bool
     source: str
+    max_wall_seconds: int | None
 
 
 class PipelineError(Exception):
@@ -142,7 +146,36 @@ def admit_source_identity(frontend_bytes: bytes, source_id: str, digest: str) ->
         raise PipelineError("normalized frontend source ID or SHA-256 mismatch")
 
 
-def run_frontend(arguments: Arguments) -> bytes:
+def remaining_seconds(deadline: float | None) -> float | None:
+    """Use one budget across both child stages; zero is never a new allowance."""
+    if deadline is None:
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise PipelineError("compiler wall-time limit exceeded")
+    return remaining
+
+
+def terminate_child(child: subprocess.Popen[bytes]) -> None:
+    """Reap our own child and its ordinary POSIX descendants after failure."""
+    try:
+        if os.name == "posix":
+            # The leader may have exited while a same-group descendant still
+            # holds the frontend stdout pipe open. Kill the entire owned group.
+            os.killpg(child.pid, signal.SIGKILL)
+        elif child.poll() is None:
+            child.kill()
+    except ProcessLookupError:
+        pass
+    try:
+        _ = child.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        # A child that has escaped its process group cannot be reaped by
+        # waiting forever. An ordinary child is always bounded here.
+        pass
+
+
+def run_frontend(arguments: Arguments, deadline: float | None) -> bytes:
     command = [
         arguments.frontend,
         "--guest-include",
@@ -153,23 +186,74 @@ def run_frontend(arguments: Arguments) -> bytes:
         arguments.source_id,
         arguments.source,
     ]
+    _ = remaining_seconds(deadline)
     try:
-        with subprocess.Popen(command, stdout=subprocess.PIPE) as child:
-            assert child.stdout is not None
-            data = cast(bytes, child.stdout.read(MAX_JSON_BYTES + 1))
-            child.stdout.close()
-            status = child.wait()
+        with subprocess.Popen(
+            command, stdout=subprocess.PIPE, start_new_session=os.name == "posix"
+        ) as child:
+            stdout = child.stdout
+            assert stdout is not None
+            # A reader keeps the existing 1 MiB cap even when a frontend
+            # stalls before EOF. Popen.communicate would buffer unlimited JSON.
+            content: list[bytes] = []
+            faults: list[OSError] = []
+
+            def bounded_read() -> None:
+                try:
+                    content.append(cast(bytes, stdout.read(MAX_JSON_BYTES + 1)))
+                except OSError as error:
+                    faults.append(error)
+
+            reader = threading.Thread(target=bounded_read, daemon=True)
+            reader.start()
+            try:
+                reader.join(timeout=remaining_seconds(deadline))
+            except PipelineError:
+                terminate_child(child)
+                raise
+            if reader.is_alive():
+                terminate_child(child)
+                raise PipelineError("native C frontend wall-time limit exceeded")
+            if faults:
+                terminate_child(child)
+                raise PipelineError(f"cannot read native C frontend: {faults[0]}")
+            data = content[0]
+            if len(data) > MAX_JSON_BYTES:
+                terminate_child(child)
+                raise PipelineError("native C frontend JSON is empty or exceeds 1 MiB")
+            try:
+                status = child.wait(timeout=remaining_seconds(deadline))
+            except (subprocess.TimeoutExpired, PipelineError) as error:
+                terminate_child(child)
+                raise PipelineError(
+                    "native C frontend wall-time limit exceeded"
+                ) from error
     except OSError as error:
         raise PipelineError(f"cannot execute native C frontend: {error}") from error
     if status != 0:
         raise PipelineError(f"native C frontend failed with status {status}")
-    if not data or len(data) > MAX_JSON_BYTES:
+    if not data:
         raise PipelineError("native C frontend JSON is empty or exceeds 1 MiB")
     return data
 
 
+def positive_wall_seconds(raw: str) -> int:
+    try:
+        seconds = int(raw)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("wall limit must be an integer") from error
+    if not 1 <= seconds <= 86_400:
+        raise argparse.ArgumentTypeError("wall limit must be 1..86400 seconds")
+    return seconds
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    _ = parser.add_argument(
+        "--max-wall-seconds",
+        type=positive_wall_seconds,
+        help="optional total wall-time budget for frontend and target lowering",
+    )
     _ = parser.add_argument(
         "--repository-tools",
         action="store_true",
@@ -279,6 +363,7 @@ def parse_arguments(
         output=cast(str, parsed.output),
         capsule=cast(bool, parsed.capsule),
         source=source,
+        max_wall_seconds=cast(int | None, parsed.max_wall_seconds),
     )
 
 
@@ -313,9 +398,15 @@ def compile_source(arguments: Arguments) -> None:
         raise PipelineError("source ID must be a portable relative path")
     if os.path.lexists(arguments.output):
         raise PipelineError("output path already exists (no-clobber)")
+    deadline = (
+        time.monotonic() + arguments.max_wall_seconds
+        if arguments.max_wall_seconds is not None
+        else None
+    )
     source = Path(arguments.source)
     expected = source_digest(source)
-    normalized = run_frontend(arguments)
+    _ = remaining_seconds(deadline)
+    normalized = run_frontend(arguments, deadline)
     admit_source_identity(normalized, arguments.source_id, expected)
     if source_digest(source) != expected:
         raise PipelineError("source changed during frontend compilation")
@@ -341,16 +432,30 @@ def compile_source(arguments: Arguments) -> None:
         command.extend(("--source", arguments.source))
         if arguments.capsule:
             command.append("--capsule")
+        _ = remaining_seconds(deadline)
         try:
-            completed = subprocess.run(command, input=normalized, check=False)
+            with subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                start_new_session=os.name == "posix",
+            ) as child:
+                try:
+                    _ = child.communicate(
+                        input=normalized, timeout=remaining_seconds(deadline)
+                    )
+                except (subprocess.TimeoutExpired, PipelineError) as error:
+                    terminate_child(child)
+                    raise PipelineError(
+                        "JSON-to-target adapter wall-time limit exceeded"
+                    ) from error
+                status = child.returncode
         except OSError as error:
             raise PipelineError(
                 f"cannot execute JSON-to-target adapter: {error}"
             ) from error
-        if completed.returncode != 0:
-            raise PipelineError(
-                f"JSON-to-target adapter failed with status {completed.returncode}"
-            )
+        if status != 0:
+            raise PipelineError(f"JSON-to-target adapter failed with status {status}")
+        _ = remaining_seconds(deadline)
         try:
             published = staged.lstat()
         except OSError as error:
@@ -377,6 +482,7 @@ def compile_source(arguments: Arguments) -> None:
         # again afterward, immediately before exposing the verified artifact.
         if source_digest(source) != expected:
             raise PipelineError("source changed during guest compilation")
+        _ = remaining_seconds(deadline)
         try:
             # The link is atomic and fails if a peer occupied the target while
             # compilation ran; a rename would silently replace it on POSIX.

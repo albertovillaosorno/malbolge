@@ -156,6 +156,13 @@ the result privately, rechecks the original C source after guest compilation,
 and publishes via an atomic no-clobber link only if the source is still stable.
 The driver syncs the staged guest file and, on Unix, the final output directory
 before reporting success, as the layout publisher does for its own output.
+For finite experiments, pass `--max-wall-seconds N` (integer `1..86400`) to
+the direct `c2malbolge.py` command. This optional shared deadline bounds the
+frontend's capped JSON read/wait and the JSON adapter's entire downstream
+layout subprocess. On timeout it kills the owned child process group on POSIX,
+rejects without publication, and leaves the existing default unchanged when
+omitted. It is not a CPU quota or a guarantee against uninterruptible kernel
+I/O, detached descendants, or a delayed filesystem synchronization.
 Failures before the link leave no published guest artifact; a **post-link
 directory-sync failure** reports failure but may leave the already-created
 output in place for inspection rather than removing a published name. Late

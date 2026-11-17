@@ -28,6 +28,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Frozen mutable-C EOF checksum acceptance witness (2026-11-16)
+
+`tests/compiler/c-frontend/accepted/mutable_eof_checksum.c` is the single
+source-controlled P2 whole-program target, SHA-256
+`9ae147a9d0e824bafb9322ee4787cdc8a7f45cb84c3f8691ad74f9eef32553c7`.
+It performs runtime `getchar` until `EOF`, updates a mutable unsigned
+checksum through guest-dependent parity branches, and emits one final byte.
+The independent Python oracle in `tests/test_eof_checksum_pipeline.py` and
+pinned C23 Clang UBSan `-O0`/`-O2` agree on five frozen inputs: empty =>
+`00`, NUL => `03`, `ff` => `02`, `01 00 80 fe` => `8b`, and the
+prematurely terminated `05 00 81` => `8d`. Native runs have a 10-second
+per-process bound. The compiler has a 75-second per-process bound; any
+future guest publication must pass every vector through the normative VM,
+with at most 100,000 steps and 15 seconds per execution.
+
+The pinned frontend accepted this exact source. The compiled JSON adapter
+refused at `29:5`, node 3, with `Unsupported` and the diagnostic
+`unlowered C declaration-statement`. No guest artifact was published.
+This is a **non-pass** for P2 until real VM parity is proved. It does not
+establish guest EOF, storage or arithmetic. The test deliberately changes from an exact
+unsupported-stage assertion to guest VM parity if the compiler begins to
+publish successfully. This frozen witness supersedes ad hoc rotating EOF
+checksum probes; later work must repair the actual compiler gap rather than
+switch to another static-byte echo variant.
+
 ### Source-proven switch case/default byte domains (2026-11-16)
 
 A complete C23 EOF-driven checksum with mutable unsigned state, parity

@@ -68,6 +68,14 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- The current complete EOF checksum is now tracked as
+  `tests/compiler/c-frontend/accepted/mutable_eof_checksum.c` with a
+  SHA-pinned five-input C23 O0/O2 UBSan/independent-oracle gate in
+  `tests/test_eof_checksum_pipeline.py`. The pinned frontend accepts it,
+  but the adapter still refuses declaration `29:5` without a guest. A
+  future accepted compile must execute the **same** source on the normative
+  VM within 100,000 steps/15 seconds per frozen input. This remains open.
+
 - On 2026-11-16, a complete EOF-driven mutable checksum refused its
   first `unsigned` declaration without publication. A distinct four-read
   C23 `switch (current & 1)` experiment exposed a new byte-domain lowering
