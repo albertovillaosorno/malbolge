@@ -86,7 +86,11 @@ evidence describe the old priority scheme, not the current phase.
   signed-local outputs under two or three nested `for` loops also now fail
   closed under a red-first normalized frontend/adapter regression. Two
   function-scoped signed input aliases used in counted output loops were
-  likewise admitted by the old gate and now refuse.
+  likewise admitted by the old gate and now refuse. A separate red-first
+  source/Clang experiment proved two alias-only induction outputs bypassed
+  that direct-reference gate and reached the layout backend. The updated
+  lexical alias-propagation guard refuses both before layout; native UBSan
+  C23 `-O0`/`-O2`, five binary vectors and no-artifact checks pass.
   Historical successful-byte-only positive fixtures now refuse rather than
   claim EOF parity. This is a scoped soundness repair, **not** guest
   signed EOF conversion, general C I/O or

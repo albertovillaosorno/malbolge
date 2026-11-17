@@ -46,7 +46,14 @@ projection and target writer. The same gate detects nested `for`-body
 signed locals; five previously accepted double/triple-loop witnesses now
 refuse instead of publishing an EOF-unsound guest. Two previously accepted
 function-scope signed-input aliases feeding induction-selected outputs are
-also refused: their apparent byte identities cannot prove EOF. Former
+also refused: their apparent byte identities cannot prove EOF. A later
+red-first test isolated two alias-only output variants: replacing the last
+`putchar(first)` with `putchar(alias)` or `putchar(localcopy)` evaded the
+direct binding gate and reached the layout backend. Native UBSan C23
+`-O0`/`-O2` still writes `0xff` at empty stdin. The frontend now follows
+Clang-anchored initializer reads through lexical `int` aliases and refuses
+both variants before layout; five binary inputs and no-artifact checks pass.
+This remains conservative taint refusal, not signed EOF conversion. Former
 positive Rust source variants require explicit `Unsupported`;
 all 123 frontend Rust tests pass. Five complete C23 programs exercise empty,
 NUL, high-bit, `0xff` and mixed input with native `-O0`/`-O2` oracles and

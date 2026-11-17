@@ -516,6 +516,90 @@ pub(super) fn is_unchecked_direct_loop_eof_echo(bytes: &[u8]) -> bool {
     })
 }
 
+// A source-C alias initializer can carry the signed -1 result through one
+// or more locals before any putchar references it. A lexical output check
+// against the original getchar binding alone therefore misses the alias.
+// This bounded propagation only *adds refusals*: the independent frontend
+// projection remains responsible for proving any otherwise accepted source.
+fn propagate_signed_getchar_aliases<'node>(
+    nodes: &'node [Node],
+    by_id: &HashMap<u32, &'node Node>,
+    signed_inputs: &mut HashSet<(u32, &'node str)>,
+) {
+    for _ in 0..MAX_NESTED_LOCAL_DEPTH {
+        let mut changed = false;
+        for local in nodes.iter().filter(|node| {
+            node.kind == "variable-declaration"
+                && node.type_name.as_deref() == Some("i32")
+        }) {
+            let Some(reference) = local.reference.as_deref() else {
+                continue;
+            };
+            let Some(declaration) = by_id.get(&local.parent) else {
+                continue;
+            };
+            let Some(scope) = by_id.get(&declaration.parent) else {
+                continue;
+            };
+            if declaration.kind != "declaration-statement"
+                || scope.kind != "compound-statement"
+                || signed_inputs.contains(&(scope.id, reference))
+            {
+                continue;
+            }
+            // The original Clang initializer must contain a reference to
+            // an already-tainted i32 local. Follow actual parent edges and
+            // source extents, not spelling or adjacent node order. Nested
+            // casts/expressions remain tainted rather than assuming that
+            // successful-byte arithmetic also preserves signed EOF.
+            let carries_signed_eof = nodes.iter().any(|read| {
+                if read.kind != "declaration-reference-expression"
+                    || read.type_name.as_deref() != Some("i32")
+                    || read.span.begin.byte < local.span.begin.byte
+                    || read.span.end.byte > local.span.end.byte
+                {
+                    return false;
+                }
+                let Some(input_reference) = read.reference.as_deref() else {
+                    return false;
+                };
+                let mut parent = read.parent;
+                let mut in_initializer = false;
+                for _ in 0..MAX_NESTED_LOCAL_DEPTH {
+                    if parent == local.id {
+                        in_initializer = true;
+                        break;
+                    }
+                    let Some(ancestor) = by_id.get(&parent) else {
+                        break;
+                    };
+                    parent = ancestor.parent;
+                }
+                if !in_initializer {
+                    return false;
+                }
+                let mut ancestor_id = scope.id;
+                for _ in 0..MAX_NESTED_LOCAL_DEPTH {
+                    if signed_inputs.contains(&(ancestor_id, input_reference)) {
+                        return true;
+                    }
+                    let Some(ancestor) = by_id.get(&ancestor_id) else {
+                        break;
+                    };
+                    ancestor_id = ancestor.parent;
+                }
+                false
+            });
+            if carries_signed_eof {
+                changed |= signed_inputs.insert((scope.id, reference));
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
 // No induction step or bounded static unrolling proves signed getchar EOF.
 // A statically unrolled loop does not prove its signed getchar values are
 // successful bytes. Even a single counter-selected output of an unguarded
@@ -561,6 +645,7 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
             let _ = signed_inputs.insert((loop_body.id, reference));
         }
     }
+    propagate_signed_getchar_aliases(nodes, &by_id, &mut signed_inputs);
     for read in nodes.iter().filter(|node| {
         node.kind == "declaration-reference-expression"
             && node.type_name.as_deref() == Some("i32")

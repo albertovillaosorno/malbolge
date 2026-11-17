@@ -53,6 +53,9 @@ STEMS = (
     "unsigned_nested_alias_live_input",
 )
 INPUTS = (b"", b"\x00", b"\x80", b"\xff", b"\x00\x80\xff\x03")
+GUEST_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
+RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
+
 NESTED_STEMS = (
     "triple_control_live_input",
     "triple_induction_live_input",
@@ -93,6 +96,116 @@ class GuardedC23EofPublicationTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(b"Unsupported", result.stderr)
                     self.assertFalse(output.exists())
+
+    def test_transitive_alias_only_eof_outputs_refuse_before_layout(self) -> None:
+        """A copied signed getchar is EOF-sensitive even without direct output."""
+        dependencies = (FRONTEND, CLANG, ADAPTER)
+        if not all(path.is_file() for path in dependencies):
+            self.skipTest("pinned C frontend, Clang, or JSON adapter missing")
+        cases = (
+            (
+                "unsigned_alias_induction_live_input",
+                b"putchar(first);",
+                b"putchar(alias);",
+                3,
+            ),
+            (
+                "unsigned_nested_alias_live_input",
+                b"putchar(first);",
+                b"putchar(localcopy);",
+                4,
+            ),
+        )
+        env = os.environ.copy()
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            folder = Path(temporary)
+            for stem, old, new, writes in cases:
+                with self.subTest(shape=stem):
+                    original = (SOURCES / f"{stem}.c").read_bytes()
+                    self.assertEqual(original.count(old), 1)
+                    source = folder / "alias-only.c"
+                    _ = source.write_bytes(original.replace(old, new))
+                    frontend = subprocess.run(
+                        [
+                            str(FRONTEND),
+                            "--guest-include",
+                            str(GUEST_INCLUDE),
+                            "--resource-dir",
+                            str(RESOURCE),
+                            "--source-id",
+                            "tests/alias-only-c23-eof-v1",
+                            str(source),
+                        ],
+                        env=env,
+                        capture_output=True,
+                        check=False,
+                        timeout=20,
+                    )
+                    self.assertEqual(frontend.returncode, 0, frontend.stderr)
+                    guest = folder / "alias-only.malbolge"
+                    adapter = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            "/bin/false",
+                            "--output",
+                            str(guest),
+                            "--source",
+                            str(source),
+                        ],
+                        input=frontend.stdout,
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
+                    )
+                    self.assertNotEqual(adapter.returncode, 0)
+                    self.assertIn(b"Unsupported", adapter.stderr)
+                    self.assertNotIn(b"layout backend", adapter.stderr)
+                    self.assertFalse(guest.exists())
+                    wrapper = folder / "main.c"
+                    _ = wrapper.write_text(
+                        '#include "alias-only.c"\n'
+                        "int main(void) { emit(); return 0; }\n",
+                        encoding="ascii",
+                    )
+                    for optimization in ("-O0", "-O2"):
+                        native = folder / f"native-{optimization[2:]}"
+                        built = subprocess.run(
+                            [
+                                str(CLANG),
+                                "-std=c23",
+                                optimization,
+                                "-Wall",
+                                "-Wextra",
+                                "-Werror",
+                                "-fsanitize=undefined",
+                                "-fno-sanitize-recover=all",
+                                str(wrapper),
+                                "-o",
+                                str(native),
+                            ],
+                            env=env,
+                            capture_output=True,
+                            check=False,
+                            timeout=20,
+                        )
+                        self.assertEqual(built.returncode, 0, built.stderr)
+                        for data in INPUTS:
+                            with self.subTest(mode=optimization, data=data.hex()):
+                                run = subprocess.run(
+                                    [str(native)],
+                                    input=data,
+                                    capture_output=True,
+                                    check=False,
+                                    timeout=10,
+                                )
+                                self.assertEqual(run.returncode, 0, run.stderr)
+                                expected = bytes((data[0] if data else 255,)) * writes
+                                self.assertEqual(run.stdout, expected)
 
     def test_complete_conditional_c23_outputs_match_or_refuse(self) -> None:
         dependencies = (FRONTEND, CLANG, ADAPTER, LAYOUT, VM)
