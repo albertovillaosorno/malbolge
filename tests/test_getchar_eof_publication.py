@@ -106,39 +106,185 @@ class GetcharEofPublicationTests(unittest.TestCase):
 
     def test_discarded_signed_getchar_executes_on_real_guest(self) -> None:
         """An unused C i32 getchar must consume input and handle EOF."""
-        if not all(binary.is_file() for binary in (CLANG, FRONTEND, ADAPTER, LAYOUT, VM)):
+        if not all(
+            binary.is_file() for binary in (CLANG, FRONTEND, ADAPTER, LAYOUT, VM)
+        ):
             self.skipTest("pinned source compiler and guest VM required")
         for count in (1, 2):
-            with self.subTest(reads=count), tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+            with (
+                self.subTest(reads=count),
+                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw,
+            ):
                 directory = Path(raw)
                 source = directory / "discarded.c"
-                source.write_text(
+                _ = source.write_text(
                     "#include <stdio.h>\nvoid emit(void) { "
-                    + "getchar(); " * count + "}\n",
+                    + "getchar(); " * count
+                    + "}\n",
                     encoding="utf-8",
                 )
                 target = directory / "discarded.malbolge"
                 compiled = subprocess.run(
-                    [sys.executable, "-B", str(DRIVER), "--repository-tools",
-                     "--capsule", "--max-wall-seconds", "40", "--output",
-                     str(target), str(source)],
-                    capture_output=True, check=False, timeout=45,
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--capsule",
+                        "--max-wall-seconds",
+                        "40",
+                        "--output",
+                        str(target),
+                        str(source),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=45,
                 )
                 self.assertEqual(compiled.returncode, 0, compiled.stderr)
                 self.assertTrue(target.is_file())
                 for data in (b"", b"\xff", b"\x00\x80"):
                     with self.subTest(input=data):
                         guest = subprocess.run(
-                            [str(VM), str(target), "--input-stdin", "--report-steps",
-                             "--max-steps", "1000"],
-                            input=data, capture_output=True, check=False, timeout=15,
+                            [
+                                str(VM),
+                                str(target),
+                                "--input-stdin",
+                                "--report-steps",
+                                "--max-steps",
+                                "1000",
+                            ],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=15,
                         )
                         self.assertEqual(guest.returncode, 0, guest.stderr)
                         self.assertEqual(guest.stdout, b"")
-                        self.assertIn(f"malbolge-steps-v1:{count + 1}".encode(), guest.stderr)
+                        self.assertIn(
+                            f"malbolge-steps-v1:{count + 1}".encode(), guest.stderr
+                        )
+
+    def test_parenthesized_and_discard_prefix_eof_not_miscompiled(self) -> None:
+        """Equivalent unguarded signed reads cannot publish EOF surrogates."""
+        if not all(
+            binary.is_file() for binary in (CLANG, FRONTEND, ADAPTER, LAYOUT, VM)
+        ):
+            self.skipTest("pinned frontend and real guest VM required")
+        variants = (
+            ("parenthesized", "putchar((getchar()));"),
+            ("double-parenthesized", "putchar(((getchar())));"),
+            ("discard-prefix", "getchar(); putchar(getchar());"),
+            (
+                "double-discard-prefix",
+                "getchar(); getchar(); putchar(((getchar())));",
+            ),
+        )
+        vectors = (b"", b"\x00", b"\xff", b"\x00\x80", b"\xff\x00\x7f")
+        env = os.environ.copy()
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        for name, statement in variants:
+            with (
+                self.subTest(shape=name),
+                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw,
+            ):
+                directory = Path(raw)
+                source = directory / "getchar.c"
+                _ = source.write_text(
+                    f"#include <stdio.h>\nvoid emit(void) {{ {statement} }}\n",
+                    encoding="utf-8",
+                )
+                wrapper = directory / "main.c"
+                _ = wrapper.write_text(
+                    '#include "getchar.c"\nint main(void) { emit(); return 0; }\n',
+                    encoding="utf-8",
+                )
+                oracles: list[list[bytes]] = []
+                for optimization in ("-O0", "-O2"):
+                    binary = directory / f"native-{optimization[2:]}"
+                    built = subprocess.run(
+                        [
+                            str(CLANG),
+                            "-std=c23",
+                            optimization,
+                            "-Wall",
+                            "-Wextra",
+                            "-Werror",
+                            str(wrapper),
+                            "-o",
+                            str(binary),
+                        ],
+                        env=env,
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
+                    )
+                    self.assertEqual(built.returncode, 0, built.stderr)
+                    outputs: list[bytes] = []
+                    for data in vectors:
+                        native = subprocess.run(
+                            [str(binary)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        self.assertEqual(native.returncode, 0, native.stderr)
+                        outputs.append(native.stdout)
+                    oracles.append(outputs)
+                self.assertEqual(oracles[0], oracles[1])
+                self.assertEqual(oracles[0][0], b"\xff")
+
+                target = directory / "getchar.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--capsule",
+                        "--max-wall-seconds",
+                        "70",
+                        "--output",
+                        str(target),
+                        str(source),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=75,
+                )
+                if compiled.returncode != 0:
+                    self.assertIn(
+                        b"normalized frontend rejected: Unsupported",
+                        compiled.stderr,
+                    )
+                    self.assertFalse(target.exists())
+                    continue
+                self.assertTrue(target.is_file())
+                for data, expected in zip(vectors, oracles[0], strict=True):
+                    guest = subprocess.run(
+                        [
+                            str(VM),
+                            str(target),
+                            "--input-stdin",
+                            "--max-steps",
+                            "1000",
+                        ],
+                        input=data,
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
+                    )
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    self.assertEqual(guest.stdout, expected)
 
     # Safe refusal is mandatory until guest output can convert signed EOF.
-    def test_source_c_eof_conversion_executes_correctly_or_refuses(self) -> None:
+    def test_source_c_eof_conversion_executes_correctly_or_refuses(
+        self,
+    ) -> None:
         """A direct getchar output must be correct at EOF or refuse."""
         if not all(
             binary.is_file() for binary in (CLANG, FRONTEND, ADAPTER, LAYOUT, VM)

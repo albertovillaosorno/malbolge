@@ -346,6 +346,53 @@ fn prove_call<'node>(
 // source cannot be published until a signed-EOF output projection is real.
 // Test *before* trying other frontend projection grammars: otherwise a
 // fallback could accidentally re-admit this unsupported operation.
+// A straight-line output of a signed getchar result is unsafe at EOF whether
+// the source surrounds the expression with parentheses or executes preceding
+// discarded reads. This gate recognizes up to 128 discarded reads and three
+// parenthesis layers, without treating input exhaustion as a successful byte.
+fn unchecked_parenthesized_echo(
+    nodes: &[Node],
+    body: &Node,
+    previous: u32,
+) -> bool {
+    let [output, cast, callee, rest @ ..] = nodes else {
+        return false;
+    };
+    let wrappers = rest.len().saturating_sub(3);
+    if !(1..=3).contains(&wrappers)
+        || output.kind != "call-expression"
+        || output.reference.as_deref() != Some("external:putchar")
+        || output.parent != body.id
+        || cast.parent != output.id
+        || cast.kind != "cast-expression"
+        || callee.parent != cast.id
+        || callee.reference.as_deref() != Some("external:putchar")
+        || output.span.begin.byte <= previous
+    {
+        return false;
+    }
+    let parents = &rest[..wrappers];
+    let Some(input) = rest.get(wrappers) else {
+        return false;
+    };
+    let mut parent = output.id;
+    for (index, wrapper) in parents.iter().enumerate() {
+        let next = parents.get(index + 1).unwrap_or(input);
+        if wrapper.kind != "parenthesized-expression"
+            || wrapper.type_name.as_deref() != Some("i32")
+            || wrapper.parent != parent
+            || wrapper.span.begin.byte.checked_add(1)
+                != Some(next.span.begin.byte)
+            || next.span.end.byte.checked_add(1) != Some(wrapper.span.end.byte)
+        {
+            return false;
+        }
+        parent = wrapper.id;
+    }
+    prove_input_call(&rest[wrappers..], body, previous, (input.id, parent))
+        .is_some()
+}
+
 pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
         return false;
@@ -353,10 +400,33 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     let [function, body, nodes @ ..] = artifact.nodes.as_slice() else {
         return false;
     };
-    function.kind == "function-declaration"
-        && body.kind == "compound-statement"
-        && body.parent == function.id
-        && prove_call(nodes, body, body.span.begin.byte, body.id).is_some()
+    if function.kind != "function-declaration"
+        || body.kind != "compound-statement"
+        || body.parent != function.id
+    {
+        return false;
+    }
+    let mut remaining = nodes;
+    let mut previous = body.span.begin.byte;
+    let mut reads = 0;
+    // Only standalone unobserved reads may precede the terminal output.
+    // An intervening operation or branch requires a separate C semantics
+    // proof; this refusal predicate never assumes it has one.
+    while remaining.len() > 6 && reads < MAX_ECHO_CALLS {
+        let Some((head, tail)) = remaining.split_first_chunk::<3>() else {
+            break;
+        };
+        let input = &head[0];
+        if prove_input_call(head, body, previous, (input.id, body.id)).is_none()
+        {
+            break;
+        }
+        previous = input.span.end.byte;
+        remaining = tail;
+        reads += 1;
+    }
+    prove_call(remaining, body, previous, body.id).is_some()
+        || unchecked_parenthesized_echo(remaining, body, previous)
 }
 
 // A source-proven getchar() is a guest effect even when its result

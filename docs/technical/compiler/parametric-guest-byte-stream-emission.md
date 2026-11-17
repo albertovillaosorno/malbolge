@@ -59,6 +59,17 @@ and the regression is a passing fail-closed assertion, not an expected
 failure. Other successful-byte trace modes still require successful input
 and must not be interpreted as C signed-EOF semantics.
 
+A subsequent red-first C23 experiment exposed the same incorrect real-guest
+`6a` EOF output for `putchar((getchar()))` and for a discarded `getchar()`
+followed by `putchar(getchar())`. Independent Clang `-O0`/`-O2` output is
+`ff` in both cases. The source-authenticated refusal now also recognizes
+up to 128 preceding discarded reads and up to three enclosing parentheses
+on the final directly passed signed `getchar()` argument. Four complete C
+shapes, five binary vectors apiece, both pinned native optimization modes,
+and no-artifact refusal are checked by `tests/test_getchar_eof_publication.py`.
+This bounded refusal is not guest EOF-to-byte conversion; wider expression
+and dynamic-control semantics remain unfinished.
+
 The complete mutable EOF checksum remains the P2 acceptance gate; its first
 local declaration still refuses at `29:5` without publishing a guest.
 There is no general signed EOF-to-unsigned-char output lowering, guest C

@@ -69,6 +69,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, two additional whole C programs produced wrong real
+  guest EOF output (`6a` instead of native `ff`): parenthesized
+  `putchar((getchar()))` and a discarded read before a direct output.
+  A red-first source/Clang-backed refusal now covers up to 128 preceding
+  discarded reads and three final argument parentheses. Four C forms
+  with five binary inputs and pinned Clang `-O0`/`-O2` oracles now fail
+  closed without publishing an unsound guest. This does not implement
+  signed output conversion or advance the pending whole mutable checksum.
+
 - On 2026-11-17, standalone C `getchar();` and two discarded reads
   crossed pinned source Clang -> signed MCTI -> MCTR -> real Malbolge
   input/halt instructions (two and three guest steps) with empty, high,
