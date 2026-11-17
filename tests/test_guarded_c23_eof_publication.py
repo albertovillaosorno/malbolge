@@ -49,6 +49,8 @@ STEMS = (
     "unsigned_multiple_guarded_live_input",
     "unsigned_switch_guarded_live_input",
     "unsigned_scalar_truth_live_input",
+    "unsigned_alias_induction_live_input",
+    "unsigned_nested_alias_live_input",
 )
 INPUTS = (b"", b"\x00", b"\x80", b"\xff", b"\x00\x80\xff\x03")
 NESTED_STEMS = (
@@ -57,13 +59,15 @@ NESTED_STEMS = (
     "nested_mixed_induction_live_input",
     "nested_outer_induction_live_input",
     "unsigned_nested_fresh_live_input",
+    "unsigned_alias_induction_live_input",
+    "unsigned_nested_alias_live_input",
 )
 
 
 @final
 class GuardedC23EofPublicationTests(unittest.TestCase):
-    def test_nested_signed_loop_local_cannot_publish_byte_only_guest(self) -> None:
-        """Nested unsigned induction does not establish signed input success."""
+    def test_signed_local_scope_cannot_publish_byte_only_guest(self) -> None:
+        """Nested induction and outer locals cannot establish input success."""
         if not ADAPTER.is_file():
             self.skipTest("pinned JSON adapter missing")
         golden = ROOT / "tests/compiler/c-frontend/golden"

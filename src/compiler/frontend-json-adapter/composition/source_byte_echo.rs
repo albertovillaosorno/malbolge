@@ -547,14 +547,15 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
         let Some(loop_body) = by_id.get(&declaration.parent) else {
             continue;
         };
-        let Some(for_loop) = by_id.get(&loop_body.parent) else {
+        let Some(owner) = by_id.get(&loop_body.parent) else {
             continue;
         };
         if local.kind == "variable-declaration"
             && local.type_name.as_deref() == Some("i32")
             && declaration.kind == "declaration-statement"
             && loop_body.kind == "compound-statement"
-            && for_loop.kind == "for-statement"
+            && (owner.kind == "for-statement"
+                || owner.kind == "function-declaration")
             && let Some(reference) = local.reference.as_deref()
         {
             let _ = signed_inputs.insert((loop_body.id, reference));
@@ -567,7 +568,7 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
         let Some(reference) = read.reference.as_deref() else {
             continue;
         };
-        // A signed loop-local read used by any descendant putchar is unsafe
+        // A signed C local read used by any descendant putchar is unsafe
         // at EOF unless the output expression has been independently proved
         // on the signed -1 domain. Branches, nested calls, casts, and modular
         // arithmetic cannot turn a successful-byte proof into that evidence.

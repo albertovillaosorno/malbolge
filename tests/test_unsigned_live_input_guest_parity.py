@@ -69,6 +69,8 @@ SIGNED_EOF_REFUSALS = frozenset(
         "nested_mixed_induction_live_input",
         "nested_outer_induction_live_input",
         NESTED_FRESH_STEM,
+        ALIAS_STEM,
+        NESTED_ALIAS_STEM,
         "unsigned_wrapping_predicate_live_input",
         HEX_STEM,
         ALGEBRA_STEM,

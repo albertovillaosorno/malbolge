@@ -23,10 +23,7 @@
 // - Summary:
 //   - Prove bounded unsigned iteration preserves live stdin provenance.
 
-use super::super::typed::{Instruction, canonical_module};
-use super::super::{
-    FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
-};
+use super::super::{FrontendJsonError, canonical_guest_typed_ir_with_source};
 
 const JSON: &[u8] =
     include_bytes!("c-frontend/golden/input_unsigned_loop.json");
@@ -1045,53 +1042,11 @@ const UNSIGNED_ALIAS_JSON: &[u8] = include_bytes!(
 
 #[test]
 fn unsigned_alias_induction_preserves_one_live_guest_byte_across_names() {
-    let (typed, mode) = canonical_guest_typed_ir_with_source(
-        UNSIGNED_ALIAS_JSON,
-        Some(UNSIGNED_ALIAS_SOURCE),
-    )
-    .expect("both C local names must select the same live guest byte");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded =
-        canonical_module(&typed).expect("canonical typed guest trace");
-    let block = &decoded.functions()[0].blocks()[0];
-    let instructions = block.instructions();
-    assert_eq!(instructions.len(), 4);
-    let Instruction::ByteInput { result, .. } = instructions[0].instruction()
-    else {
-        panic!("expected one live guest input");
-    };
-    for output in &instructions[1..] {
-        assert!(matches!(
-            output.instruction(),
-            Instruction::ByteOutput { value } if value == result
-        ));
-    }
-
-    let mut changed = UNSIGNED_ALIAS_SOURCE.to_vec();
-    let at = changed
-        .windows(18)
-        .position(|part| part == b"int alias = first;")
-        .unwrap();
-    changed[at + 4] = b'X';
+    // Named aliases of a signed getchar do not prove successful input.
     assert!(matches!(
         canonical_guest_typed_ir_with_source(
             UNSIGNED_ALIAS_JSON,
-            Some(&changed)
-        ),
-        Err(FrontendJsonError::Unsupported)
-    ));
-
-    // A same-width operand substitution must not reinterpret Clang's alias.
-    let mut changed = UNSIGNED_ALIAS_SOURCE.to_vec();
-    let at = changed
-        .windows(15)
-        .position(|part| part == b"putchar(alias);")
-        .unwrap();
-    changed[at + 8..at + 13].copy_from_slice(b"first");
-    assert!(matches!(
-        canonical_guest_typed_ir_with_source(
-            UNSIGNED_ALIAS_JSON,
-            Some(&changed)
+            Some(UNSIGNED_ALIAS_SOURCE)
         ),
         Err(FrontendJsonError::Unsupported)
     ));
@@ -1124,25 +1079,14 @@ const NESTED_STALE_ALIAS_JSON: &[u8] =
 
 #[test]
 fn nested_unsigned_local_alias_retains_one_live_guest_value() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        NESTED_ALIAS_JSON,
-        Some(NESTED_ALIAS_SOURCE),
-    )
-    .expect("nested source-checked aliases must retain the resident byte");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("canonical typed nested alias");
-    let instructions = module.functions()[0].blocks()[0].instructions();
-    assert_eq!(instructions.len(), 5);
-    let Instruction::ByteInput { result, .. } = instructions[0].instruction()
-    else {
-        panic!("expected one guest byte read");
-    };
-    for instruction in &instructions[1..] {
-        assert!(matches!(
-            instruction.instruction(),
-            Instruction::ByteOutput { value } if value == result
-        ));
-    }
+    // Named aliases of a signed getchar do not prove successful input.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            NESTED_ALIAS_JSON,
+            Some(NESTED_ALIAS_SOURCE)
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]

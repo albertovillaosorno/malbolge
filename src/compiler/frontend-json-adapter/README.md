@@ -18,8 +18,8 @@ unsigned-counter output identities covered only successful `getchar()`
 values. C23 permits `-1` at exhaustion, and the actual 15-trit guest writes
 `0x6a` where `putchar(-1)` writes `0xff`. The source-bound preflight now
 refuses signed loop-local reads used by descendant output calls, including
-expressions, casts, nested calls, nested `for` bodies and conditional
-statements, rather than
+expressions, casts, nested calls, nested `for` bodies, directly owned
+function locals, and conditional statements, rather than
 publishing an EOF-unsound guest. Former 256-successful-byte fixtures remain
 useful historical algebra evidence but no longer establish complete stdin
 behavior. The C23/guest-or-refusal regression and 123 frontend tests pass.

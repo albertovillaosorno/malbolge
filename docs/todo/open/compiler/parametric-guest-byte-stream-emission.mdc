@@ -84,7 +84,9 @@ evidence describe the old priority scheme, not the current phase.
   vectors, both C23 native modes, 123 Rust frontend tests and dedicated
   no-artifact regressions pass. Five previously accepted inner-loop
   signed-local outputs under two or three nested `for` loops also now fail
-  closed under a red-first normalized frontend/adapter regression.
+  closed under a red-first normalized frontend/adapter regression. Two
+  function-scoped signed input aliases used in counted output loops were
+  likewise admitted by the old gate and now refuse.
   Historical successful-byte-only positive fixtures now refuse rather than
   claim EOF parity. This is a scoped soundness repair, **not** guest
   signed EOF conversion, general C I/O or
