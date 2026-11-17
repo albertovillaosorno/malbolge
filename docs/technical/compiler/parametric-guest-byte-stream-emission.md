@@ -81,7 +81,8 @@ particular parenthesis or expression width; discarded reads and an optional
 terminal return remain covered. This is conservative *refusal only*, not
 runtime EOF lowering or a claim about arbitrarily nested controls.
 
-Eight source forms across five finite input vectors now independently check
+Twelve source forms across five finite input vectors now independently
+check
 native C23 `-O0`/`-O2` output versus guest execution or explicit typed
 `Unsupported` without publication. The failing `6a` guest output was
 reproduced before the fix. The full checksum gate and all six focused Python

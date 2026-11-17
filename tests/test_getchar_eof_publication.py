@@ -179,6 +179,10 @@ class GetcharEofPublicationTests(unittest.TestCase):
             ("return-suffix", "putchar(getchar()); return;"),
             ("identity-plus-zero", "putchar(getchar() + 0);"),
             ("identity-plus-zero-return", "putchar(getchar() + 0); return;"),
+            ("identity-xor-zero", "putchar(getchar() ^ 0);"),
+            ("unsigned-char-cast", "putchar((unsigned char)getchar());"),
+            ("nested-putchar", "putchar(putchar(getchar()));"),
+            ("comma-discard", "putchar((getchar(), getchar()));"),
             (
                 "double-discard-prefix",
                 "getchar(); getchar(); putchar(((getchar())));",
@@ -240,7 +244,9 @@ class GetcharEofPublicationTests(unittest.TestCase):
                         outputs.append(native.stdout)
                     oracles.append(outputs)
                 self.assertEqual(oracles[0], oracles[1])
-                self.assertEqual(oracles[0][0], b"\xff")
+                # A nested putchar also emits the inner call's byte.
+                expected_eof = b"\xff" * (2 if name == "nested-putchar" else 1)
+                self.assertEqual(oracles[0][0], expected_eof)
 
                 target = directory / "getchar.malbolge"
                 compiled = subprocess.run(
