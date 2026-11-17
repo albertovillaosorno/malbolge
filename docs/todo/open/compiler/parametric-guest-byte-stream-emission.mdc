@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the preceding nine-rotation backend was composed with
+  real input-dependent `p` arithmetic and guest output in one 29-cell N15
+  program. A `Z(` source tail places data words `7174413`/`40` at D=41/42;
+  nine actual `*; j` rounds precede `/; p; <`, with a reached halt in
+  27 steps. Both manual/automatic layouts are byte-identical. Seven bounded
+  VM input cases are checked against a separate ternary scalar oracle,
+  including raw EOF and binary stdin. This does not perform C23 EOF-to-byte
+  conversion, compile mutable source-C state, or close the checksum's
+  declaration refusal at `29:5`.
+
+
 - On 2026-11-17, a red-first layout test showed that a 23-cell N15
   `p(`-seeded source could execute nine real `*; j` rotations of one
   loader-expanded data word (D=41), but automatic future-step relocation

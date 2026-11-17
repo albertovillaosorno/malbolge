@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Repeated guest writes followed by live ternary I/O (2026-11-17)
+
+A complete 29-cell N15 graphical source with terminal loader tail `Z(`
+retains the same expanded-memory pair at D=41/42 as the earlier `p(`
+23-cell witness: initial data words `7174413` and `40`. After an initial
+`j`, nine actual `*; j` pairs rotate the same data word and restore D=41;
+the longer reached suffix performs genuine `/; p; <` guest instructions,
+then halts in exactly 27 normative-VM steps. The real input goes into A,
+`p` updates both A and D=42 using the independently checked ternary crazy
+operation with operand `40`, and `<` emits the resulting accumulator byte.
+
+The manual encoder and fixed-seed automatic planner produce byte-identical
+source and source maps. Seven binary/EOF input cases across both regressions
+cover empty stdin, low ternary digits, NUL, the high-bit byte, `0xff`, and
+a multi-byte stream, with independent scalar trit, pointer, write, input-
+consumption and output checks. This proves composition of repeated guest
+memory writes with **input-dependent guest arithmetic**. The result of
+`crazy(40, input)` does **not** implement C23 signed `getchar` conversion;
+no mutable-C EOF checksum or general guest loop is emitted. The frozen
+checksum still refuses declaration `29:5` without publication.
+
+
 ### Executable repeated loader-memory rotations (2026-11-17)
 
 A source-loadable 23-cell N15 guest with terminal graphical tail `p(`
