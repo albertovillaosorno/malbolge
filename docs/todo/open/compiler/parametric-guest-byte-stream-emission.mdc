@@ -18,12 +18,14 @@ scope:
   - "tests/test_unsigned_live_input_guest_parity.py"
   - "tests/test_getchar_eof_publication.py"
   - "tests/test_signed_getchar_local_publication.py"
+  - "tests/test_unused_getchar_local_guest.py"
   - "tests/compiler/"
 validation:
   - "jig check --root ."
   - "python3.14 -B -m unittest tests.test_versioned_example_corpus -v"
   - "python3.14 -B -m unittest tests.test_unsigned_live_input_guest_parity -v"
   - "python3.14 -B -m unittest tests.test_signed_getchar_local_publication -v"
+  - "python3.14 -B -m unittest tests.test_unused_getchar_local_guest -v"
 ---
 
 # Generalize guest byte-stream emission instead of emit-N fixtures
@@ -70,6 +72,17 @@ evidence describe the old priority scheme, not the current phase.
   positive instruction/elapsed-time ceiling.
 
 ## Evidence
+
+- On 2026-11-17, the source-checked signed-local reassignment gate was
+  corrected for *same-line, later-byte* C statements. Four complete source
+  forms (two/three real reads, interleaved locals, final return) now compile
+  and execute real signed `GetcharI32` guest effects. Five binary stdin
+  cases per source match pinned native C23 UBSan `-O0`/`-O2`; N15 guest
+  empty/high-byte runs halt at the exact read-count-plus-one VM step. Two
+  observable signed local output variants still refuse without publication.
+  The checksum's source declaration/observable storage and EOF-driven branch
+  remain unsupported, so this is not the P2 whole-program acceptance.
+
 
 - On 2026-11-17, a genuine ten-step VM replay of the checked-in four-read
   C23 `unsigned_conditional_live_input.c` produced `6a6a6a6a6a` on empty

@@ -28,6 +28,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-ordered, unobserved signed local overwrites (2026-11-17)
+
+A real compiler/guest regression now covers four complete C23 source forms
+that initialize a signed `int` from `getchar()` and overwrite it with one or
+more later `getchar()` calls **on the same source line**, optionally
+interleaving another independently declared local or a final `return;`.
+Previously the source-checked reassignment gate refused these forms because
+it demanded a strictly *later line*, even though their exact byte spans,
+Clang reference identities, source spelling and statement order prove the
+assignment occurs after the initializer. The guard now allows the same line
+without weakening those independent checks.
+
+`tests/test_unused_getchar_local_guest.py` first reproduced all four
+refusals, then validated the corrected pipeline: pinned C23 Clang UBSan
+`-O0`/`-O2` over five binary inputs per source, real N15 guest capsules
+with two or three signed `GetcharI32` effects, exact three/four VM steps,
+and empty/high-byte stdin parity. The values are never observed; no C local
+storage or EOF-dependent output is synthesized. Two companion full C23
+programs that `putchar` the last signed local still return typed
+`Unsupported` with **no** guest published, while independent native EOF
+output is `ff`. The frozen mutable EOF checksum continues to refuse its
+first declaration at `29:5`; it requires *observable* runtime storage,
+branching, arithmetic and EOF termination. This is bounded real guest
+execution progress, not P2 completion.
+
 ### Exact N15 signed EOF-to-byte word plan (2026-11-17)
 
 The existing accepted four-read C23 source

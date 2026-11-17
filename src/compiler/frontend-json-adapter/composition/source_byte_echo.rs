@@ -1749,6 +1749,7 @@ fn prove_local_input_reassignment<'node>(
     let end = input_start.checked_add(9)?;
     let spelling =
         format!("{} = getchar(){}", local.name, char::from(terminator));
+    // A later byte offset is sufficient even on the initializer's line.
     if source.get(
         usize::try_from(start).ok()?
             ..usize::try_from(end.checked_add(1)?).ok()?,
@@ -1756,7 +1757,7 @@ fn prove_local_input_reassignment<'node>(
         || start <= previous
         || start <= local.declaration_end
         || end >= body.span.end.byte
-        || line <= local.line
+        || line < local.line
         || column == 0
         || assignment.parent != parent
         || assignment.kind != "binary-expression"
