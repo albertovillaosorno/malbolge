@@ -44,6 +44,9 @@ mod local_initialized_output;
 #[path = "local_constant_flow.rs"]
 mod local_constant_flow;
 
+#[path = "signed_input_literal.rs"]
+mod signed_input_literal;
+
 #[path = "source_byte_echo.rs"]
 mod source_byte_echo;
 
@@ -161,6 +164,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralPair,
     /// One or more source-checked, discarded signed getchar results, EOF included.
     DiscardedGetchar,
+    /// One real signed getchar, then a source-checked independent byte output.
+    DiscardedInputLiteral,
     /// Exactly three independently VM-witnessed different bytes.
     DistinctLiteralTriple,
     /// Exactly four independently VM-witnessed printable bytes.
@@ -3008,6 +3013,11 @@ pub fn canonical_guest_typed_ir_with_source(
     }
     if source_byte_echo::is_unchecked_counter_loop_signed_eof_output(bytes) {
         return Err(FrontendJsonError::Unsupported);
+    }
+    if let Some(witness) = source {
+        if let Ok(projection) = signed_input_literal::canonical_signed_input_literal(bytes, witness) {
+            return Ok(projection);
+        }
     }
     if let Ok(projection) =
         source_byte_echo::canonical_source_byte_echo(bytes, source)

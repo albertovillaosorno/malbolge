@@ -47,6 +47,9 @@ pub mod ternary;
 mod search_output_stream;
 
 #[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/mixed_signed_input_literal.rs"]
+mod mixed_signed_input_literal_tests;
+#[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/three_write_preview.rs"]
 mod three_write_preview_tests;
 #[cfg(test)]
@@ -1140,6 +1143,129 @@ pub fn encode_successful_byte_echo(
     operations.push(LinearOpcode::Halt);
     encode_linear_layout(profile, &operations)
         .map_err(ByteEchoBridgeError::Layout)
+}
+
+/// Emit a source-bound signed `getchar()` (including EOF), followed by a
+/// byte literal that is computed independently of the input inside the guest.
+///
+/// The admitted ternary effect trace is exactly `GetcharI32`, `MaterializeU8`,
+/// `ByteOutput` of that constant, `ReturnVoid`. A bounded 94-phase search
+/// uses only inert padding, a genuine input word, relocation, data rotation,
+/// guest byte output and halt. The loader-expanded data word is derived from
+/// the emitted source and independently replayed in the normative VM on EOF
+/// and binary stdin before the layout can be returned. The discarded signed
+/// input never becomes a successful-byte value or an output surrogate.
+///
+/// # Errors
+///
+/// Rejects unadmitted source/SSA/profile, unsupported literals, or any layout
+/// without both a static loader proof and exact real-VM parity.
+pub fn encode_discarded_input_literal(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let [
+        TernaryOperation::GetcharI32 { result: input, .. },
+        TernaryOperation::MaterializeU8 { result, scalar, .. },
+        TernaryOperation::ByteOutput { value, .. },
+        TernaryOperation::ReturnVoid { .. },
+    ] = function.operations.as_slice()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if input == result || result != value {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    for padding in 0..94 {
+        let mut operations = vec![LinearOpcode::InputWord];
+        operations.extend(repeat_n(LinearOpcode::NoOperation, padding));
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let Ok(layout) = encode_linear_layout(profile, &operations) else {
+            continue;
+        };
+        // The input changes A but the later rotate overwrites A with a
+        // data word that is never written by preceding source instructions.
+        // Check the original graphical source's loader recurrence, not an
+        // assumed output byte or a precomputed output-count fixture.
+        let rotate_index = padding + 2;
+        let Some(&data_address) =
+            layout.data_pointer_positions().get(rotate_index)
+        else {
+            continue;
+        };
+        let Ok(data_address) = usize::try_from(data_address) else {
+            continue;
+        };
+        if data_address > 4096 || data_address < layout.source().len() {
+            continue;
+        }
+        let mut words: Vec<u32> = layout
+            .source()
+            .iter()
+            .map(|value| u32::from(*value))
+            .collect();
+        while words.len() <= data_address {
+            let Some(&previous) = words.last() else {
+                break;
+            };
+            let Some(&older) = words.get(words.len().saturating_sub(2)) else {
+                break;
+            };
+            words.push(malbolge::profile_crazy(
+                older,
+                previous,
+                profile.word_trits(),
+            ));
+        }
+        let Some(&word) = words.get(data_address) else {
+            continue;
+        };
+        let rotated = word / 3 + (word % 3) * (profile.word_modulus() / 3);
+        if (rotated % 256) != u32::from(scalar.bits()) {
+            continue;
+        }
+        // The scalar preview is an optimization; only executed VM results
+        // authorize returning a guest program, including an EOF attempt.
+        let mut verified = true;
+        for stream in [vec![], vec![0], vec![128], vec![255]] {
+            let Ok(mut machine) = ProfileMachine::from_source(
+                profile,
+                layout.source(),
+                stream.clone(),
+            ) else {
+                verified = false;
+                break;
+            };
+            let outcome = machine.run(operations.len());
+            if !matches!(outcome, Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+                || machine.input_consumed() != usize::from(!stream.is_empty())
+                || machine.output() != [scalar.bits()]
+            {
+                verified = false;
+                break;
+            }
+        }
+        if verified {
+            return Ok(layout);
+        }
+    }
+    Err(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
 /// Emits a bounded successful-byte I/O trace using the VM accumulator itself.

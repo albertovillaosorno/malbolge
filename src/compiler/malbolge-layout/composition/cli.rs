@@ -47,7 +47,7 @@ use malbolge::{
 
 use crate::bridge::ternary::{TernaryOperation, canonical_ternary_program};
 use crate::bridge::{
-    encode_discarded_getchar, encode_distinct_literal_eight,
+    encode_discarded_getchar, encode_discarded_input_literal, encode_distinct_literal_eight,
     encode_distinct_literal_eighteen, encode_distinct_literal_eleven,
     encode_distinct_literal_fifteen, encode_distinct_literal_forty,
     encode_distinct_literal_forty_eight, encode_distinct_literal_forty_five,
@@ -83,6 +83,7 @@ use crate::layout::{
 };
 use crate::typed_adapter::{
     compile_canonical_typed_discarded_getchar,
+    compile_canonical_typed_discarded_input_literal,
     compile_canonical_typed_distinct_literal_eight,
     compile_canonical_typed_distinct_literal_eighteen,
     compile_canonical_typed_distinct_literal_eleven,
@@ -207,6 +208,7 @@ const DISTINCT_LITERAL_FORTY_SEVEN_ARG: &str = "--distinct-literal-forty-seven";
 const DISTINCT_LITERAL_FORTY_EIGHT_ARG: &str = "--distinct-literal-forty-eight";
 const EMPTY_VOID_ARG: &str = "--empty-void";
 const DISCARDED_GETCHAR_ARG: &str = "--discarded-getchar";
+const DISCARDED_INPUT_LITERAL_ARG: &str = "--discarded-input-literal";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
@@ -241,6 +243,7 @@ struct CommandSpec {
 enum ByteTraceMode {
     AdjacentEcho,
     DiscardedGetchar,
+    DiscardedInputLiteral,
     DistinctLiteralPair,
     DistinctLiteralTriple,
     DistinctLiteralQuad,
@@ -306,6 +309,7 @@ enum SuccessfulByteEffect {
 
 enum SourceEffectWitness {
     DiscardedGetchar { reads: usize },
+    DiscardedInputLiteral { byte: u8 },
     DistinctLiteralPair { first: u8, second: u8 },
     DistinctLiteralTriple { bytes: [u8; 3] },
     DistinctLiteralQuad { bytes: [u8; 4] },
@@ -496,9 +500,12 @@ fn parse_canonical_source(
         || first == OsStr::new(DISTINCT_LITERAL_FORTY_EIGHT_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
         || first == OsStr::new(DISCARDED_GETCHAR_ARG)
+        || first == OsStr::new(DISCARDED_INPUT_LITERAL_ARG)
     {
         let mode = if first == OsStr::new(DISCARDED_GETCHAR_ARG) {
             ByteTraceMode::DiscardedGetchar
+        } else if first == OsStr::new(DISCARDED_INPUT_LITERAL_ARG) {
+            ByteTraceMode::DiscardedInputLiteral
         } else if first == OsStr::new(EMPTY_VOID_ARG) {
             ByteTraceMode::EmptyVoid
         } else if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
@@ -722,6 +729,7 @@ fn parse_source(
         || first == OsStr::new(DISTINCT_LITERAL_FORTY_EIGHT_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
         || first == OsStr::new(DISCARDED_GETCHAR_ARG)
+        || first == OsStr::new(DISCARDED_INPUT_LITERAL_ARG)
     {
         return parse_canonical_source(first, arguments);
     } else {
@@ -1450,6 +1458,9 @@ fn verified_ternary_bytes(
         ByteTraceMode::DiscardedGetchar => {
             encode_discarded_getchar(&program, profile)
         },
+        ByteTraceMode::DiscardedInputLiteral => {
+            encode_discarded_input_literal(&program, profile)
+        },
         ByteTraceMode::EmptyVoid => {
             encode_empty_void_function(&program, profile)
         },
@@ -1628,7 +1639,17 @@ fn verified_ternary_bytes(
         .first()
         .ok_or("bridge accepted no ternary function")?
         .operations;
-    let effect_witness = if matches!(mode, ByteTraceMode::DiscardedGetchar) {
+    let effect_witness = if matches!(mode, ByteTraceMode::DiscardedInputLiteral) {
+        let [
+            TernaryOperation::GetcharI32 { .. },
+            TernaryOperation::MaterializeU8 { scalar, .. },
+            TernaryOperation::ByteOutput { .. },
+            TernaryOperation::ReturnVoid { .. },
+        ] = operations.as_slice() else {
+            return Err(String::from("missing signed-input literal effects"));
+        };
+        Some(SourceEffectWitness::DiscardedInputLiteral { byte: scalar.bits() })
+    } else if matches!(mode, ByteTraceMode::DiscardedGetchar) {
         Some(SourceEffectWitness::DiscardedGetchar {
             reads: operations
                 .iter()
@@ -3092,6 +3113,9 @@ fn verified_typed_bytes(
         ByteTraceMode::DiscardedGetchar => {
             compile_canonical_typed_discarded_getchar(typed_bytes, profile)
         },
+        ByteTraceMode::DiscardedInputLiteral => {
+            compile_canonical_typed_discarded_input_literal(typed_bytes, profile)
+        },
         ByteTraceMode::EmptyVoid => {
             compile_canonical_typed_empty_void(typed_bytes, profile)
         },
@@ -3554,6 +3578,39 @@ fn verify_discarded_getchar(
             || !vm.output().is_empty()
         {
             return Err(String::from("discarded getchar VM trace mismatch"));
+        }
+    }
+    Ok(())
+}
+
+// Re-admit the guest's real input followed by its independent constant byte.
+// For signed EOF the consumed count is zero; the input instruction still
+// executes and must never be mistaken for a successful byte read.
+fn verify_discarded_input_literal(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    byte: u8,
+) -> Result<(), String> {
+    if artifact.steps < 5 || artifact.steps > 98 {
+        return Err(String::from(
+            "signed-input literal guest geometry disagrees",
+        ));
+    }
+    for input in [Vec::new(), vec![0], vec![128, 255]] {
+        let expected_consumed = usize::from(!input.is_empty());
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("signed-input literal VM load failed: {error:?}")
+                })?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != expected_consumed
+            || vm.output() != [byte]
+        {
+            return Err(String::from(
+                "signed-input literal guest trace mismatch",
+            ));
         }
     }
     Ok(())
@@ -6259,6 +6316,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         },
         Some(SourceEffectWitness::DiscardedGetchar { reads }) => {
             verify_discarded_getchar(profile, &artifact, *reads)?;
+        },
+        Some(SourceEffectWitness::DiscardedInputLiteral { byte }) => {
+            verify_discarded_input_literal(profile, &artifact, *byte)?;
         },
         Some(SourceEffectWitness::EmptyVoid) => {
             verify_empty_void(profile, &artifact)?;

@@ -101,6 +101,7 @@ enum ByteTraceMode {
     DistinctLiteralSix,
     DistinctLiteralSeven,
     DiscardedGetchar,
+    DiscardedInputLiteral,
     DistinctLiteralEight,
     DistinctLiteralNine,
     DistinctLiteralTen,
@@ -274,6 +275,64 @@ fn project_discarded_getchar_effects(
         .collect()
 }
 
+
+// An unused signed getchar is a full profile word/EOF effect, not a u8
+// success. The unrelated constant is source-typed and independently emitted
+// only after that input has occurred in the guest.
+fn project_discarded_input_literal_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let [read, literal, write] = original else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    let Instruction::Getchar {
+        result: read_id,
+        type_id: read_type,
+    } = read.instruction()
+    else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    let Instruction::ConstantInteger {
+        constant,
+        result: literal_id,
+        type_id: literal_type,
+    } = literal.instruction()
+    else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    let Instruction::ByteOutput { value } = write.instruction() else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    if !module.types().iter().any(|entry| {
+        entry.id() == *read_type && *entry.definition() == TypeDef::I32
+    }) || !is_byte_type(module, *literal_type)
+        || constant.bit_width() != 8
+        || constant.little_endian().len() != 1
+        || read_id == literal_id
+        || value != literal_id
+    {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    Ok(vec![
+        InputInstruction::Getchar {
+            result: read_id.value(),
+            span: project_span(read.span()),
+            type_kind: InputScalarType::I32,
+        },
+        InputInstruction::ConstantInteger {
+            bit_width: constant.bit_width(),
+            little_endian: constant.little_endian().to_vec(),
+            result: literal_id.value(),
+            span: project_span(literal.span()),
+            type_kind: InputScalarType::U8,
+        },
+        InputInstruction::ByteOutput {
+            span: project_span(write.span()),
+            value: value.value(),
+        },
+    ])
+}
 
 // An exact source u8 zero needs no materialization instruction: the normative
 // guest VM starts with accumulator A=0. This shape never consumes guest input.
@@ -469,6 +528,7 @@ fn project_literal_pair_effects(
             },
             ByteTraceMode::AdjacentEcho
             | ByteTraceMode::DiscardedGetchar
+            | ByteTraceMode::DiscardedInputLiteral
             | ByteTraceMode::EmptyVoid
             | ByteTraceMode::IdentityByteBitcast
             | ByteTraceMode::InitialZero
@@ -2834,6 +2894,9 @@ fn project_byte_trace(
         ByteTraceMode::DiscardedGetchar => {
             project_discarded_getchar_effects(module, block.instructions())?
         },
+        ByteTraceMode::DiscardedInputLiteral => {
+            project_discarded_input_literal_effects(module, block.instructions())?
+        },
         ByteTraceMode::EmptyVoid if block.instructions().is_empty() => {
             Vec::new()
         },
@@ -3073,6 +3136,9 @@ fn compile_byte_trace(
         ),
         ByteTraceMode::DiscardedGetchar => {
             bridge::encode_discarded_getchar(&independently_admitted, profile)
+        },
+        ByteTraceMode::DiscardedInputLiteral => {
+            bridge::encode_discarded_input_literal(&independently_admitted, profile)
         },
         ByteTraceMode::EmptyVoid => {
             bridge::encode_empty_void_function(&independently_admitted, profile)
@@ -3462,6 +3528,22 @@ pub fn compile_canonical_typed_distinct_literal_seven(
 ///
 /// # Errors
 ///
+/// Compile one signed discarded getchar and an independent constant byte
+/// output from canonical typed IR, preserving exact source and SSA identities.
+/// The guest executes input (including EOF) then a genuine constant-producing
+/// rotation; unsupported literals or mutated effects fail closed.
+///
+/// # Errors
+///
+/// Rejects invalid canonical IR, source/profile drift, unsupported effects or
+/// any layout that does not reproduce both EOF and successful byte semantics.
+pub fn compile_canonical_typed_discarded_input_literal(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::DiscardedInputLiteral)
+}
+
 /// Compile a source-authenticated sequence of discarded signed C getchar reads.
 /// Unlike successful-byte echoes, EOF is a defined guest read in this mode.
 ///

@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-checked discarded input followed by an independent byte (2026-11-17)
+
+A new closed mixed-effect C23 slice admits the complete source form
+`void emit(void) { getchar(); putchar(11); }` with the original C bytes and
+nine-node Clang preorder authenticated. The discarded signed `getchar()` is
+lowered as `GetcharI32`, never as successful `ByteInput`; its result does not
+flow into output. An independent typed `u8` literal reaches a target-level
+`InputWord`, data relocation, loader-word rotation, `OutputByte`, and halt.
+The layout is admitted from graphical source, checked against its loader
+recurrence, and replayed by the normative VM on EOF/NUL/high-bit stdin before
+publication. The full C frontend emitted a 1,087-byte five-step capsule.
+Pinned native C23 `-O0` and `-O2` and the real Malbolge VM each emit `0b`
+on empty, NUL, `ff`, and `0080ff` input. Missing or altered source and
+forged call metadata reject before publishing an artifact.
+
+This deliberately **does not** implement reading signed EOF for branching,
+turning `getchar` into an output byte, general mixed I/O statements, or
+mutable C storage. The frozen complete EOF checksum still rejects its first
+mutable declaration at `29:5`; that P2 work remains open.
+
 ### Conditional signed C23 EOF output fails closed (2026-11-17)
 
 A complete four-trip C23 source with `int current = getchar()` and parity-
