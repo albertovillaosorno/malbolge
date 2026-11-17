@@ -77,7 +77,7 @@ evidence describe the old priority scheme, not the current phase.
   rerun against native C23 controls and still refused the first observed
   declaration at `29:5`. The four-read signed-EOF loop remains a known
   mismatching guest output. A new bounded negative loader study verified all
-  8,836 printable source-tail pairs, their 12-phase 15-trit loader cycle,
+  8,836 printable source-tail pairs, two full cycles of their six-phase 15-trit loader recurrence,
   and 2..12 untouched consecutive `p` operands (1,166,352 candidates).
   Four necessary byte/EOF checks left 64 candidates; exhaustive 257-case
   verification rejected every one. This eliminates passive short loader

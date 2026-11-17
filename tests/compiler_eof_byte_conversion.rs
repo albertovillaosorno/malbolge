@@ -184,9 +184,9 @@ fn passive_loader_candidate_counts(
 }
 
 // The loader's ternary recurrence operates independently on each trit.
-// Each ordered pair of trits enters a 3- or 4-cycle after at most one
-// transition; their least common period is 12. Exhaust every graphical
-// seed pair and every phase, not merely the first few expanded cells.
+// Each ordered pair of trits enters a 2- or 3-cycle after at most one
+// transition; the least common period is 6. Exhaust two full periods
+// for every graphical seed pair, not just the first expanded cells.
 // No guest C output is published by this negative feasibility study.
 #[test]
 fn passive_loader_words_cannot_convert_signed_eof_in_twelve_crazy_steps() {

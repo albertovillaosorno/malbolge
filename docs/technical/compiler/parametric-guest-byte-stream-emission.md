@@ -40,10 +40,10 @@ A finite, broader passive-loader study now rules out a tempting short-cut for
 that conversion. For each of all **8,836** graphical final-source-word pairs
 (ASCII 33..126), the 15-trit loader recurrence is independently calculated
 from its scalar crazy table. Each trit-pair transition has a transient of at
-most one step and a period of three or four. Therefore every expanded-word
-phase repeats within 12 transitions; checking the 12 starts from positions
-2..13 covers all *untouched adjacent loader operand streams*, regardless of
-how far the code would have advanced.
+most one step and a period of two or three. Every expanded-word phase then
+repeats within six transitions; checking 12 starts from positions 2..13
+covers two full periods of *untouched adjacent loader operand streams*,
+regardless of how far the code would have advanced.
 
 `tests/compiler_eof_byte_conversion.rs` now exhausts these starts and every
 chain length from **2 to 12** consecutive `p` operations: 1,166,352
