@@ -9,11 +9,12 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Source-proven unsigned local constant update with signed getchar input.
+//   - Source-proven ordered unsigned local constant updates with signed
+//     getchar.
 // - Must-Not:
 //   - Fold a live getchar into a byte, discard effects, or infer dynamic state.
 // - Allows:
-//   - Inputs: exact C23 declaration, one signed read, checked += and output.
+//   - Inputs: source-exact C23 locals, signed read and 1-2 checked updates.
 //   - Outputs: independently re-admitted signed Getchar and byte output IR.
 //   - Side effects: none.
 // - Split-When:
@@ -22,9 +23,9 @@
 // - Merge-When:
 //   - Complete EOF-checksum source lowering supersedes the closed proof.
 // - Summary:
-//   - Reuses guest mixed-effect emission after source-bound local propagation.
+//   - Constant-folds ordered local updates after source-authenticated input.
 
-//! One complete, closed Clang/source C expression path to a live guest effect.
+//! Bounded source-authenticated mutable constant flow and live signed input.
 
 use super::signed_input_literal::{
     emit_signed_input_literal, node_is, source_slice,
@@ -69,14 +70,19 @@ fn local_name(node: &Node, type_name: &str, prefix: &str) -> Option<String> {
         .then_some(name.to_owned())
 }
 
-/// Authenticate one actual Clang+source C mutation and preserve getchar.
+/// Authenticate the entire local operation trace from pinned Clang and source.
+///
+/// The signed getchar is always emitted as a real guest effect, but its
+/// unused result cannot influence the independent unsigned accumulator.
+/// This is constant propagation, not guest execution of arithmetic or
+/// support for dynamic mutable storage.
 ///
 /// # Errors
 ///
-/// Rejects every unrecognized effect, spelling, span, tree, and target drift.
+/// Refuses any unrecognized effect, spelling, span, tree or target drift.
 #[expect(
     clippy::too_many_lines,
-    reason = "all nineteen Clang nodes are checked together with their source"
+    reason = "complete source/Clang proof must reject all extra effects"
 )]
 pub(super) fn canonical_mutable_input_literal(
     bytes: &[u8],
@@ -103,22 +109,33 @@ pub(super) fn canonical_mutable_input_literal(
         body,
         initial_decl,
         checksum,
-        zero,
+        initial_value,
         input_decl,
         current,
         read,
         read_decay,
         read_callee,
-        increment,
-        assigned,
-        delta,
+        remaining @ ..,
+    ] = input.nodes.as_slice()
+    else {
+        return Err(FrontendJsonError::Unsupported);
+    };
+    // An exact output subtree has six Clang nodes. Accept one or two
+    // preceding ordered constant mutations with three nodes apiece.
+    let update_count = match remaining.len() {
+        9 => 1,
+        12 => 2,
+        _ => return Err(FrontendJsonError::Unsupported),
+    };
+    let (updates, output) = remaining.split_at(update_count * 3);
+    let [
         write,
         write_decay,
         write_callee,
         integral_cast,
         value_cast,
         value_ref,
-    ] = input.nodes.as_slice()
+    ] = output
     else {
         return Err(FrontendJsonError::Unsupported);
     };
@@ -131,26 +148,97 @@ pub(super) fn canonical_mutable_input_literal(
     }
     let checksum_symbol = checksum.reference.as_deref();
     let current_symbol = current.reference.as_deref();
-    let decimal = delta
+    let initial_decimal = initial_value
         .constant_integer
         .as_deref()
         .ok_or(FrontendJsonError::Unsupported)?;
-    let byte = decimal
-        .parse::<u8>()
+    let mut result = initial_decimal
+        .parse::<u32>()
         .map_err(|_error| FrontendJsonError::Unsupported)?;
-    // Authenticate the complete C statements, not just isolated AST tokens.
-    // A single signed getchar is an effect; its value never enters arithmetic.
-    let expected_body = format!(
+    let mut expected_body = format!(
         concat!(
-            "{{\n    unsigned {checksum_name} = 0U;\n",
+            "{{\n    unsigned {checksum_name} = {initial_decimal}U;\n",
             "    int {current_name} = getchar();\n",
-            "    {checksum_name} += {decimal}U;\n",
-            "    putchar((int){checksum_name});\n}}",
         ),
         checksum_name = checksum_name,
-        current_name = current_name,
-        decimal = decimal
+        initial_decimal = initial_decimal,
+        current_name = current_name
     );
+    let mut last_end = input_decl.span.end.byte;
+    let mut last_literal = initial_value;
+    for (index, nodes) in updates.chunks_exact(3).enumerate() {
+        let [update, assigned, delta] = nodes else {
+            return Err(FrontendJsonError::Unsupported);
+        };
+        let id = 11
+            + u32::try_from(index * 3)
+                .map_err(|_error| FrontendJsonError::Unsupported)?;
+        let operator = update
+            .operation
+            .as_deref()
+            .ok_or(FrontendJsonError::Unsupported)?;
+        let decimal = delta
+            .constant_integer
+            .as_deref()
+            .ok_or(FrontendJsonError::Unsupported)?;
+        let operand = decimal
+            .parse::<u32>()
+            .map_err(|_error| FrontendJsonError::Unsupported)?;
+        // Both operators are defined on u32, including wrapping addition.
+        result = match operator {
+            "+=" => result.wrapping_add(operand),
+            "^=" => result ^ operand,
+            _ => return Err(FrontendJsonError::Unsupported),
+        };
+        if !node_is(
+            update,
+            id,
+            2,
+            "compound-assignment-expression",
+            Some("u32"),
+            None,
+            Some(operator),
+        ) || !node_is(
+            assigned,
+            id + 1,
+            id,
+            "declaration-reference-expression",
+            Some("u32"),
+            checksum_symbol,
+            None,
+        ) || !node_is(
+            delta,
+            id + 2,
+            id,
+            "integer-literal",
+            Some("u32"),
+            None,
+            None,
+        ) || delta.literal.as_deref() != Some(decimal)
+            || source_slice(source, update)
+                != Some(
+                    format!("{checksum_name} {operator} {decimal}U").as_bytes(),
+                )
+            || source_slice(source, assigned) != Some(checksum_name.as_bytes())
+            || source_slice(source, delta)
+                != Some(format!("{decimal}U").as_bytes())
+            || last_end >= update.span.begin.byte
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        expected_body
+            .push_str(&format!("    {checksum_name} {operator} {decimal}U;\n"));
+        last_end = update.span.end.byte;
+        last_literal = delta;
+    }
+    // Do not project an out-of-range integer through a guest byte.
+    // That would collapse an otherwise observable C conversion distinction.
+    let byte = u8::try_from(result)
+        .map_err(|_error| FrontendJsonError::Unsupported)?;
+    expected_body.push_str(&format!("    putchar((int){checksum_name});\n}}"));
+    let write_id = 11
+        + u32::try_from(update_count * 3)
+            .map_err(|_error| FrontendJsonError::Unsupported)?;
     let good = function.id == 1
         && function.parent == 0
         && function.kind == "function-declaration"
@@ -176,9 +264,16 @@ pub(super) fn canonical_mutable_input_literal(
         )
         && checksum.id == 4
         && checksum.parent == 3
-        && node_is(zero, 5, 4, "integer-literal", Some("u32"), None, None)
-        && zero.constant_integer.as_deref() == Some("0")
-        && zero.literal.as_deref() == Some("0")
+        && node_is(
+            initial_value,
+            5,
+            4,
+            "integer-literal",
+            Some("u32"),
+            None,
+            None,
+        )
+        && initial_value.literal.as_deref() == Some(initial_decimal)
         && node_is(input_decl, 6, 2, "declaration-statement", None, None, None)
         && current.id == 7
         && current.parent == 6
@@ -210,28 +305,8 @@ pub(super) fn canonical_mutable_input_literal(
             None,
         )
         && node_is(
-            increment,
-            11,
-            2,
-            "compound-assignment-expression",
-            Some("u32"),
-            None,
-            Some("+="),
-        )
-        && node_is(
-            assigned,
-            12,
-            11,
-            "declaration-reference-expression",
-            Some("u32"),
-            checksum_symbol,
-            None,
-        )
-        && node_is(delta, 13, 11, "integer-literal", Some("u32"), None, None)
-        && delta.literal.as_deref() == Some(decimal)
-        && node_is(
             write,
-            14,
+            write_id,
             2,
             "call-expression",
             Some("i32"),
@@ -240,8 +315,8 @@ pub(super) fn canonical_mutable_input_literal(
         )
         && node_is(
             write_decay,
-            15,
-            14,
+            write_id + 1,
+            write_id,
             "cast-expression",
             Some("ptr(fn(i32)->i32)"),
             None,
@@ -249,8 +324,8 @@ pub(super) fn canonical_mutable_input_literal(
         )
         && node_is(
             write_callee,
-            16,
-            15,
+            write_id + 2,
+            write_id + 1,
             "declaration-reference-expression",
             Some("fn(i32)->i32"),
             Some("external:putchar"),
@@ -258,8 +333,8 @@ pub(super) fn canonical_mutable_input_literal(
         )
         && node_is(
             integral_cast,
-            17,
-            14,
+            write_id + 3,
+            write_id,
             "cast-expression",
             Some("i32"),
             None,
@@ -267,8 +342,8 @@ pub(super) fn canonical_mutable_input_literal(
         )
         && node_is(
             value_cast,
-            18,
-            17,
+            write_id + 4,
+            write_id + 3,
             "cast-expression",
             Some("u32"),
             None,
@@ -276,8 +351,8 @@ pub(super) fn canonical_mutable_input_literal(
         )
         && node_is(
             value_ref,
-            19,
-            18,
+            write_id + 5,
+            write_id + 4,
             "declaration-reference-expression",
             Some("u32"),
             checksum_symbol,
@@ -295,10 +370,17 @@ pub(super) fn canonical_mutable_input_literal(
         && body.operation.is_none()
         && source_slice(source, body) == Some(expected_body.as_bytes())
         && source_slice(source, initial_decl)
-            == Some(format!("unsigned {checksum_name} = 0U;").as_bytes())
+            == Some(
+                format!("unsigned {checksum_name} = {initial_decimal}U;")
+                    .as_bytes(),
+            )
         && source_slice(source, checksum)
-            == Some(format!("unsigned {checksum_name} = 0U").as_bytes())
-        && source_slice(source, zero) == Some(b"0U")
+            == Some(
+                format!("unsigned {checksum_name} = {initial_decimal}U")
+                    .as_bytes(),
+            )
+        && source_slice(source, initial_value)
+            == Some(format!("{initial_decimal}U").as_bytes())
         && source_slice(source, input_decl)
             == Some(format!("int {current_name} = getchar();").as_bytes())
         && source_slice(source, current)
@@ -306,11 +388,6 @@ pub(super) fn canonical_mutable_input_literal(
         && source_slice(source, read) == Some(b"getchar()")
         && source_slice(source, read_decay) == Some(b"getchar")
         && read_decay.span == read_callee.span
-        && source_slice(source, assigned) == Some(checksum_name.as_bytes())
-        && source_slice(source, increment)
-            == Some(format!("{checksum_name} += {decimal}U").as_bytes())
-        && source_slice(source, delta)
-            == Some(format!("{decimal}U").as_bytes())
         && source_slice(source, write)
             == Some(format!("putchar((int){checksum_name})").as_bytes())
         && source_slice(source, write_decay) == Some(b"putchar")
@@ -321,8 +398,7 @@ pub(super) fn canonical_mutable_input_literal(
         && value_cast.span == value_ref.span
         && source_slice(source, value_ref) == Some(checksum_name.as_bytes())
         && initial_decl.span.end.byte < input_decl.span.begin.byte
-        && input_decl.span.end.byte < increment.span.begin.byte
-        && increment.span.end.byte < write.span.begin.byte
+        && last_end < write.span.begin.byte
         && write.span.end.byte < body.span.end.byte
         && function.span.begin.byte < body.span.begin.byte;
     if !good {
@@ -333,7 +409,7 @@ pub(super) fn canonical_mutable_input_literal(
         function,
         body,
         &[read],
-        delta,
+        last_literal,
         write,
         byte,
     )

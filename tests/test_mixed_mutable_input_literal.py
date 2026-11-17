@@ -50,6 +50,10 @@ VM: Final = ROOT / ".cache/rust/target/debug/malbolge"
 DRIVER: Final = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
 VECTORS: Final = (b"", b"\x00", b"\xff", b"\x00\x80\xff", b"\x05\x00\x81")
 EXPECTED_BYTE: Final = b"\x0b"
+ORDERED_SOURCE: Final = (
+    ROOT / "tests/compiler/c-frontend/accepted/mixed_mutable_ordered_updates.c"
+)
+ORDERED_SHA: Final = "461372f30414b603442333232a38d3c9b308a43d4aa51345fb6473f8f8324f2d"
 
 
 def run_compiler(source: Path, target: Path) -> subprocess.CompletedProcess[bytes]:
@@ -225,6 +229,159 @@ class MixedMutableInputLiteralTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(
                     b"normalized frontend rejected: Unsupported", result.stderr
+                )
+                self.assertFalse(target.exists())
+
+    def test_ordered_updates_native_and_typed_admission(self) -> None:
+        self.assertEqual(
+            hashlib.sha256(ORDERED_SOURCE.read_bytes()).hexdigest(), ORDERED_SHA
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+            directory = Path(raw)
+            wrapper = directory / "main.c"
+            wrapper.write_text(
+                f'#include "{ORDERED_SOURCE}"\n'
+                "int main(void) { emit(); return 0; }\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["LD_LIBRARY_PATH"] = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+            for optimization in ("-O0", "-O2"):
+                binary = directory / f"native-{optimization[2:]}"
+                built = subprocess.run(
+                    [
+                        str(CLANG),
+                        "-std=c23",
+                        optimization,
+                        "-Wall",
+                        "-Wextra",
+                        "-Werror",
+                        "-Wno-unused-variable",
+                        "-fsanitize=undefined",
+                        "-fno-sanitize-recover=all",
+                        str(wrapper),
+                        "-o",
+                        str(binary),
+                    ],
+                    env=env,
+                    capture_output=True,
+                    check=False,
+                    timeout=15,
+                )
+                self.assertEqual(built.returncode, 0, built.stderr)
+                for data in VECTORS:
+                    with self.subTest(optimization=optimization, data=data):
+                        run = subprocess.run(
+                            [str(binary)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        self.assertEqual(run.returncode, 0, run.stderr)
+                        self.assertEqual(run.stdout, EXPECTED_BYTE)
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(ROOT / "src/runtime/guest-c-library/contract/include"),
+                    "--resource-dir",
+                    str(ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"),
+                    "--source-id",
+                    ORDERED_SOURCE.name,
+                    str(ORDERED_SOURCE),
+                ],
+                env=env,
+                capture_output=True,
+                check=False,
+                timeout=15,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            target = directory / "unpublished.malbolge"
+            projection = subprocess.run(
+                [
+                    str(ADAPTER),
+                    "--layout-backend",
+                    "/bin/false",
+                    "--output",
+                    str(target),
+                    "--source",
+                    str(ORDERED_SOURCE),
+                ],
+                input=frontend.stdout,
+                capture_output=True,
+                check=False,
+                timeout=15,
+            )
+            self.assertNotEqual(projection.returncode, 0)
+            self.assertIn(b"layout backend exited unsuccessfully", projection.stderr)
+            self.assertFalse(target.exists())
+
+    def test_ordered_updates_complete_guest(self) -> None:
+        # Real 15-trit VM execution, not host-synthesized output. An input
+        # effect occurs even on EOF and is independent of the folded local.
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+            artifact = Path(raw) / "ordered.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    "--max-wall-seconds",
+                    "180",
+                    "--output",
+                    str(artifact),
+                    str(ORDERED_SOURCE),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=190,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            self.assertEqual(len(artifact.read_bytes()), 1087)
+            for data in VECTORS:
+                with self.subTest(data=data):
+                    guest = subprocess.run(
+                        [str(VM), str(artifact), "--report-steps"],
+                        input=data,
+                        capture_output=True,
+                        check=False,
+                        timeout=25,
+                    )
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    self.assertEqual(guest.stdout, EXPECTED_BYTE)
+                    self.assertEqual(guest.stderr.strip(), b"malbolge-steps-v1:5")
+
+    def test_ordered_updates_reject_dynamic_or_extra_effects(self) -> None:
+        original = ORDERED_SOURCE.read_bytes()
+        mutations = (
+            ("dynamic-operand", b"checksum ^= 7U;", b"checksum ^= (unsigned)current;"),
+            ("unsupported-op", b"checksum += 5U;", b"checksum *= 5U;"),
+            ("out-of-range", b"checksum ^= 7U;", b"checksum ^= 500U;"),
+            ("signed-output", b"putchar((int)checksum)", b"putchar(current)"),
+            (
+                "extra-update",
+                b"checksum ^= 7U;",
+                b"checksum ^= 7U;\n    checksum += 1U;",
+            ),
+        )
+        for label, old, new in mutations:
+            with (
+                self.subTest(label=label),
+                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw,
+            ):
+                changed = original.replace(old, new)
+                self.assertNotEqual(changed, original)
+                path = Path(raw) / "changed.c"
+                path.write_bytes(changed)
+                target = Path(raw) / "rejected.malbolge"
+                compiled = run_compiler(path, target)
+                self.assertNotEqual(compiled.returncode, 0)
+                self.assertIn(
+                    b"normalized frontend rejected: Unsupported", compiled.stderr
                 )
                 self.assertFalse(target.exists())
 

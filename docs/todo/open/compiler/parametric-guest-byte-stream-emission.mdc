@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, an independent complete C23 source with a mutable
+  unsigned local, one live signed `getchar`, and ordered `+= 5U` then
+  `^= 7U` updates now reaches a genuine five-step 15-trit guest. Native
+  UBSan Clang `-O0`/`-O2` and norm VM agree on byte `0b` for binary and
+  exhausted input; the same operations in reverse would compute `05`.
+  Source/Clang proof handles one or two constant `u32` updates and refuses
+  dynamic local operands, unproved operators, extra effects and unrepresentable
+  output before guest publication. This remains source-verified constant
+  propagation, **not** guest dynamic mutable arithmetic or EOF branching.
+  The original full checksum remains refused at declaration `29:5`.
+
+
 - On 2026-11-17, a red-first two-discarded-signed-read source reached a
   real six-step byte-11 guest. An independent 94-phase positional layout
   probe then found 36 distinct candidate output bytes after two reads.

@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Ordered constant-only mutable updates with a real signed read
+
+A C23 source now initializes an unsigned local to `7U`, performs an actual
+signed `getchar()` and then executes source-ordered `+= 5U` and `^= 7U`
+updates before `putchar((int)checksum)`. The checked result is `11`, whereas
+commuting the updates would give `5`. The existing one-update source remains
+supported by the same Clang/source-bound path. The new admission iterates
+one or two pinned `u32` compound assignments, validates every original C
+span and exact Clang subtree, uses `u32` wrapping semantics, and refuses
+unimplemented operators, dynamic operands, extra effects and results above
+`255`. The signed read is preserved as `GetcharI32`, not byte-projected.
+
+Pinned native C23 `-O0`/`-O2` and the independently replayed normative
+15-trit VM produce byte `0b` on EOF, NUL, high-bit and mixed stdin. The
+1,087-byte guest halts in five steps; its byte is compiled from checked C
+constant flow, not from host stdout. Mutations feeding the signed read to
+arithmetic or output must refuse without publication. This is deliberately
+**constant-only** source evaluation and still does not execute mutable
+arithmetic in guest memory, handle a dynamic EOF branch or compile the
+whole checksum. That frozen source still refuses declaration `29:5`.
+
+
 ### Two signed discarded reads before a constant (2026-11-17)
 
 The complete source-C function `getchar(); getchar(); putchar(11);`
