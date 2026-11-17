@@ -373,3 +373,78 @@ fn loader_seed_provenance_does_not_confuse_forward_jump_gaps()
     }
     Ok(())
 }
+
+#[test]
+fn final_relocation_before_halt_remains_safe_with_a_loader_seed()
+-> Result<(), String> {
+    // A trailing seed changes physical source length, not the last reached
+    // instruction: j followed immediately by halt cannot alias a later read.
+    let mut operations = vec![LinearOpcode::NoOperation; 130];
+    operations[126] = LinearOpcode::RelocateDataPointer;
+    operations[127] = LinearOpcode::Halt;
+    for position in [128usize, 129] {
+        let byte = (33..=126u8)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), position as u32)
+                    == Some(b'o')
+            })
+            .ok_or("missing source-loadable seed")?;
+        operations[position] =
+            LinearOpcode::SkippedDataByte { byte: u32::from(byte) };
+    }
+    for profile in [current_profile(), historical_profile()] {
+        let without_seed = encode_linear_layout(profile, &operations[..128])
+            .map_err(|error| format!("unseeded final relocation: {error:?}"))?;
+        let with_seed = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("seeded final relocation: {error:?}"))?;
+        assert_eq!(&with_seed.source()[..128], without_seed.source());
+        let logical: Vec<PaddedForwardStep> = operations[..128]
+            .iter()
+            .copied()
+            .map(PaddedForwardStep::Instruction)
+            .collect();
+        let [
+            LinearOpcode::SkippedDataByte { byte: first },
+            LinearOpcode::SkippedDataByte { byte: second },
+        ] = operations[128..]
+        else {
+            return Err(String::from("missing exact two-cell seed"));
+        };
+        let planned =
+            layout::encode_auto_padded_forward_layout_with_loader_seed(
+                profile,
+                &logical,
+                [first as u8, second as u8],
+            )
+            .map_err(|error| format!("padded final relocation: {error:?}"))?;
+        assert_eq!(planned.layout(), &with_seed);
+        assert_eq!(planned.logical_code_positions().len(), 128);
+        assert_eq!(&planned.source_cell_origins()[128..], &[
+            PaddedCellOrigin::LoaderSeed,
+            PaddedCellOrigin::LoaderSeed,
+        ]);
+        verify_bidirectional_source_map(&planned)?;
+        assert_eq!(with_seed.executed_code_positions().last(), Some(&127));
+        assert_eq!(with_seed.data_pointer_positions()[126], 126);
+        assert!(with_seed.data_pointer_positions()[127] < 130);
+        assert_eq!(
+            with_seed.data_write_positions().iter().flatten().count(),
+            0
+        );
+        for source in [without_seed.source(), with_seed.source()] {
+            let mut machine =
+                ProfileMachine::from_source(profile, source, vec![255])
+                    .map_err(|error| format!("guest load: {error}"))?;
+            assert_eq!(
+                machine.run(128),
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 128,
+                })
+            );
+            assert_eq!(machine.input_consumed(), 0);
+            assert!(machine.output().is_empty());
+        }
+    }
+    Ok(())
+}

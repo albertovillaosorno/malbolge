@@ -1116,10 +1116,14 @@ fn derive_execution_positions(
             // pending source code (unless scratch is already behind C).
             // In particular, operand == source.len() - 1 safely selects
             // the first loader-expanded word at D == source.len().
-            // A final j cannot affect output. Otherwise a relocation
-            // within source is safe only behind the already executed C.
-            if position != operations.len().saturating_sub(2)
-                && next < source.len()
+            // A j immediately before a reached halt cannot affect
+            // output, even when two unreachable loader-seed cells follow
+            // the halt in the physical source. Earlier relocations into
+            // source must be proven scratch strictly behind C.
+            if !matches!(
+                operations.get(position.saturating_add(1)),
+                Some(LinearOpcode::Halt)
+            ) && next < source.len()
                 && !past_source_scratch
             {
                 return Err(LinearLayoutError::UnsafeDataPlacement);

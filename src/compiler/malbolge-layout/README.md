@@ -69,6 +69,16 @@ remain distinct with correct code and data execution in both VM profiles.
 This is source layout, not repeated-operand synthesis or signed C
 `getchar` lowering.
 
+A final `j` immediately before the reached `Halt` may relocate D to a
+source address without a subsequent data-dependent operation. That remains
+safe when the physical source continues with the two unreachable loader-seed
+bytes: the last *reached* step, not source length minus two, determines
+whether relocation can affect later guest behavior. Both profiles execute
+this 128-step no-output boundary with and without the extra seed, and the
+padded planner preserves identical code/data positions and seed provenance.
+Earlier relocations still require the usual exact scratch/expanded-memory
+proof; the final-`j` exception does not admit a data write into pending code.
+
 ### Opt-in bounded revisiting source admission
 
 `composition/bounded_revisit.rs` separately admits an independently supplied
