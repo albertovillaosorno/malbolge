@@ -165,6 +165,44 @@ class MixedMutableInputLiteralTests(unittest.TestCase):
             self.assertIn(b"layout backend exited unsuccessfully", projection.stderr)
             self.assertFalse(target.exists())
 
+    def test_complete_source_publishes_verified_guest(self) -> None:
+        # This test is deliberately more expensive than typed-only admission:
+        # every output byte is executed by the normative Malbolge interpreter.
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+            artifact = Path(raw) / "mixed-local.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--capsule",
+                    "--max-wall-seconds",
+                    "180",
+                    "--output",
+                    str(artifact),
+                    str(SOURCE),
+                ],
+                capture_output=True,
+                check=False,
+                timeout=190,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            self.assertEqual(len(artifact.read_bytes()), 1087)
+            for data in VECTORS:
+                with self.subTest(data=data):
+                    guest = subprocess.run(
+                        [str(VM), str(artifact), "--report-steps"],
+                        input=data,
+                        capture_output=True,
+                        check=False,
+                        timeout=25,
+                    )
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    self.assertEqual(guest.stdout, EXPECTED_BYTE)
+                    self.assertEqual(guest.stderr.strip(), b"malbolge-steps-v1:5")
+
     def test_source_mutations_never_publish(self) -> None:
         original = SOURCE.read_bytes()
         for label, old, new in (

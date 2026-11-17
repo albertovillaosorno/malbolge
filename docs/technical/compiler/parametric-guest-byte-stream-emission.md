@@ -7949,3 +7949,21 @@ checksum: the new regression does not claim executable guest parity, and
 the full mutable EOF loop still rejects at the first unsupported dynamic
 storage/control-flow node (29:5). Its layout synthesis remains a costly,
 independently verified downstream operation.
+
+### Executed mixed signed input with mutable constant C local (2026-11-17)
+
+The previously source-authenticated complete C23 function with one signed
+`getchar()` initializer, `unsigned checksum = 0U`, `checksum += 11U`,
+and final `putchar((int)checksum)` has now reached actual target
+publication. The normative 15-trit Malbolge VM runs its 1,087-byte
+capsule in five guest steps; the real read is preserved before the
+source-proven independent output. Six binary/EOF streams (empty, NUL,
+`0x80`, `0xff`, `00 80 ff`, `05 00 81`) all emit `0b`, matching native
+Clang C23 UBSan `-O0` and `-O2` for the same function. A new complete
+pipeline regression checks capsule publication, exact output and bounded
+VM steps; source mutations must still fail before publishing an artifact.
+The verified local update is constant-folded on the host, **not**
+executed as guest storage/arithmetic. Input-dependent updates, runtime
+conditional branches and the frozen mutable EOF checksum still refuse
+at their first unsupported dynamic construct. This is not P2 acceptance.
+EOF may never be treated as a successful `u8` read.

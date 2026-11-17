@@ -4322,3 +4322,12 @@ frontend/typed staging step: no independently verified guest for the full
 mutable EOF checksum. That source still rejects at 29:5; next work is
 runtime-local storage, EOF loop predicate and dynamic branch arithmetic,
 followed by target layout and real guest parity.
+
+2026-11-17 continuation: The complete source-authenticated mixed signed
+`getchar` and host-proven mutable-constant-local program now publishes a
+real 1,087-byte capsule; normative N15 VM emits `0b` in five steps for
+six EOF/binary streams, matching native Clang C23 `-O0`/`-O2`. A durable
+full-C-pipeline regression checks publication, output and step count.
+This is constant propagation across one real input effect, **not** guest
+mutable storage: the original input-dependent EOF checksum still refuses
+at `29:5`, and its guest loop/control/arithmetic remain P2 blockers.
