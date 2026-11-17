@@ -42,8 +42,11 @@ final loader image without becoming reached logical steps. Their source-map
 origin is `LoaderSeed`, distinct from both executed and skipped padding;
 manual `SkippedDataByte` tokens in a logical path are refused. The same
 91-cell N15 program is reproduced using both a fixed `j` and
-`AutoRelocate`, then checked against the normative VM. This is source
-layout, not repeated-operand synthesis or signed C `getchar` lowering.
+`AutoRelocate`, then checked against the normative VM. An additional
+forward-jump witness proves both forms of unreachable source provenance
+remain distinct with correct code and data execution in both VM profiles.
+This is source layout, not repeated-operand synthesis or signed C
+`getchar` lowering.
 
 ### Opt-in bounded revisiting source admission
 

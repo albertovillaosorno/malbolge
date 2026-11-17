@@ -295,3 +295,81 @@ fn padded_loader_seed_api_rejects_unreachable_or_invalid_logical_paths() {
         Err(LinearLayoutError::EarlyHalt { position: 0 }),
     );
 }
+
+// A forward-jump gap and a post-halt loader suffix are different kinds
+// of unreachable source cells. Both must retain their exact provenance.
+#[test]
+fn loader_seed_provenance_does_not_confuse_forward_jump_gaps()
+-> Result<(), String> {
+    let logical = [
+        PaddedForwardStep::Jump,
+        PaddedForwardStep::Instruction(LinearOpcode::NoOperation),
+        PaddedForwardStep::Instruction(LinearOpcode::Halt),
+    ];
+    let source_byte = (33..=126u32)
+        .find(|&byte| decode_profile_instruction(byte, 0) == Some(b'i'))
+        .ok_or("no inverse graphical first-instruction jump")?;
+    let target =
+        usize::try_from(source_byte + 1).map_err(|error| error.to_string())?;
+    let graphical = |position: u32| {
+        (33..=126u8)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), position)
+                    == Some(b'o')
+            })
+            .ok_or("no inverse graphical no-op")
+    };
+    let first_seed = graphical(
+        u32::try_from(target + 2).map_err(|error| error.to_string())?,
+    )?;
+    let second_seed = graphical(
+        u32::try_from(target + 3).map_err(|error| error.to_string())?,
+    )?;
+    for profile in [current_profile(), historical_profile()] {
+        let padded =
+            layout::encode_auto_padded_forward_layout_with_loader_seed(
+                profile,
+                &logical,
+                [first_seed, second_seed],
+            )
+            .map_err(|error| format!("jumped loader seed: {error:?}"))?;
+        assert_eq!(padded.operations().len(), target + 4);
+        assert_eq!(padded.logical_code_positions(), [
+            0,
+            target as u32,
+            target as u32 + 1
+        ]);
+        assert_eq!(
+            padded.source_cell_origins()[0],
+            PaddedCellOrigin::Logical(0)
+        );
+        assert!(
+            padded.source_cell_origins()[1..target]
+                .iter()
+                .all(|origin| { *origin == PaddedCellOrigin::SkippedPadding })
+        );
+        assert_eq!(
+            padded.source_cell_origins()[target],
+            PaddedCellOrigin::Logical(1)
+        );
+        assert_eq!(
+            padded.source_cell_origins()[target + 1],
+            PaddedCellOrigin::Logical(2)
+        );
+        assert_eq!(&padded.source_cell_origins()[target + 2..], &[
+            PaddedCellOrigin::LoaderSeed,
+            PaddedCellOrigin::LoaderSeed
+        ],);
+        verify_bidirectional_source_map(&padded)?;
+        let mut vm = ProfileMachine::from_source(
+            profile,
+            padded.layout().source(),
+            vec![0, 255],
+        )
+        .map_err(|error| format!("jumped guest load: {error:?}"))?;
+        verify_execution_witness(&mut vm, padded.layout())?;
+        assert_eq!(vm.input_consumed(), 0);
+        assert!(vm.output().is_empty());
+    }
+    Ok(())
+}
