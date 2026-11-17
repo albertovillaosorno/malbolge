@@ -92,8 +92,9 @@ apparent compatibility.
   documented operating-system facilities.
 - Retain architecture/platform identity and raw results for differential and
   performance evidence.
-- Prerequisite completion evidence: `versioned-host-capability-call-abi` and
-  `native-x86-64-and-aarch64-backends`.
+- Prerequisite completion evidence: `versioned-host-capability-call-abi`.
+  Host capability adapters can run behind the interpreter; AOT/JIT native-code
+  backends are optional optimizations, not capability-runner prerequisites.
 
 ## References
 

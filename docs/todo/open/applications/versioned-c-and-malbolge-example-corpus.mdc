@@ -10,7 +10,6 @@ depends_on:
   - "parametric-compiler-challenge-generator"
   - "malbolge-layout-and-encoding-backend"
   - "translation-validation"
-  - "deterministic-cross-backend-artifact-hashing"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
@@ -58,15 +57,18 @@ owning `out/` directories.
 - At least one representative fixed identity from the completed parametric
   challenge generator is compiled through the real layout backend, independently
   verified, executed as final `.malbolge`, and retained as an end-to-end pair.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Treat the corpus as a curated compatibility/teaching surface, not an
   indefinite fixture-count ladder: complete one real mutable-C guest and a
   limited, representative semantic set before adding optional pairs. The
   acceptance boundary is the documented distinct behaviors, not pair count.
-
+- **Finite acceptance witness:** One real mutable-C/EOF pair, one raw-vs-capsule
+  parity pair and one selected parametric identity, all with hashes and finite
+  step budgets; additional pairs require a new admitted semantic boundary.
 
 ## Evidence
 
@@ -75,5 +77,5 @@ owning `out/` directories.
 - Required evidence: reproducible build/run commands, expected outputs or
   interaction traces, artifact hashes, and end-to-end verification.
 - Prerequisite completion evidence: `parametric-compiler-challenge-generator`,
-  `malbolge-layout-and-encoding-backend`, `translation-validation`,
-  `deterministic-cross-backend-artifact-hashing`.
+  `malbolge-layout-and-encoding-backend` and `translation-validation`. Each
+  example includes its own hash; a wider cross-backend study is not required.

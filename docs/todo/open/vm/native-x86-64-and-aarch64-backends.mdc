@@ -41,15 +41,19 @@ synchronization, and hardening remain adapters rather than VM semantics.
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Label host-real runtime evidence separately from ISA-verified cross-built
   objects; cross-compilation and disassembly alone cannot be represented as
   measured AArch64 runtime performance. All advertised host-runner tuples
   need their own supported-machine tests before claiming support.
-
+- **Finite acceptance witness:** One representative code-state/native-object
+  case per named ISA and one invalid object per ISA; execute x86-64 on real
+  hardware and independently validate AArch64 cross-built bytes/IR, recording
+  hardware availability truthfully.
 
 ## Evidence
 

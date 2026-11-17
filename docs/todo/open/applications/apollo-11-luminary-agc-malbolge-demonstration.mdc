@@ -55,8 +55,9 @@ Block II AGC interpreter that is itself compiled to and executed as
   instruction or guidance substitution.
 - The demonstration records generated size, peak guest storage, executed
   Malbolge work, runtime, and deterministic final state/output oracle.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Stage evidence: first compile the one existing AGC interpreter C file and
@@ -64,7 +65,10 @@ Block II AGC interpreter that is itself compiled to and executed as
   bounded deterministic mission scenario with an independent instruction
   trace oracle. Machine-specific format loaders and DSKY fixtures are test
   data/adapters, not a second C-to-Malbolge compiler or a general AGC product.
-
+- **Finite acceptance witness:** Exactly one guest-translated AGC C runner, one
+  pinned Luminary 099 rope image and one finite mission instruction/IO trace
+  against an independent reference; freeze mission-step, VM-step, memory and
+  wall-time caps.
 
 ## Evidence
 

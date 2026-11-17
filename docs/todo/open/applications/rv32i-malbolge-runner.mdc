@@ -53,8 +53,9 @@ RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
 - The runner is compiled into a verifier-accepted `malbolge-2026` artifact and
   records generated size, peak guest storage, executed Malbolge work, runtime,
   and deterministic state/output oracles.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Pin the unprivileged RV32I base ISA revision, deterministic memory/loader
@@ -63,7 +64,10 @@ RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
   Linux syscall ABI and general platform emulation are outside the declared
   runner workload unless separately proven necessary. Only `rv32i_runner.c`
   is the C guest compilation target.
-
+- **Finite acceptance witness:** Exactly one C guest runner, the instruction
+  families in one pinned base RV32I revision, one ordinary toolchain-built
+  binary and one failing/trap binary; fixed guest RAM, RISC-V steps and Malbolge
+  steps.
 
 ## Evidence
 

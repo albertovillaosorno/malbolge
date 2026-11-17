@@ -240,10 +240,14 @@ Regions that cannot be proven safe fall back to ordinary VM execution.
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One finite closed graph of at least two
+  code-state variants with verified transitions, one missing-edge fallback, one
+  admitted fused step and bounded AOT preparation/load resources.
 
 ## Evidence
 

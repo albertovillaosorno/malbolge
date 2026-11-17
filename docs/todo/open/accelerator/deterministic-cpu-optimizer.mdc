@@ -40,8 +40,9 @@ baseline for accelerator implementations.
   baseline for accelerator strategies.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - CPU synthesis/exact candidate evaluation uses a versioned hardware-neutral
@@ -55,7 +56,10 @@ baseline for accelerator implementations.
   retain a validated kernel-shape/transfer feasibility record and mark live
   GPU proof open for P8, never falsely claim device parity. CPU correctness
   and P5 do not wait for GPU hardware.
-
+- **Finite acceptance witness:** One bounded deterministic candidate family at
+  three declared search budgets, a verified winner and rejected candidate, and a
+  CUDA-projectable batch schema; live GPU parity is only required when supported
+  hardware exists.
 
 ## Evidence
 

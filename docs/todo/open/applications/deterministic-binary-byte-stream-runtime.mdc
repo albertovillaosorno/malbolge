@@ -31,15 +31,21 @@ file transformers.
 
 ## Acceptance
 
-- Guest programs can read and emit all byte values including NUL and arbitrary
-  binary sequences with no host-side format parser/writer logic and
-  deterministic stream termination/error rules.
+- A generated guest reads and emits every value in the finite 0..255 byte
+  alphabet, including NUL, and handles bounded empty, short, 256-byte and
+  multichunk input fixtures without host-side format parsing. The declared
+  stream API specifies EOF and error behavior for longer finite inputs; testing
+  all possible byte strings is not a completion requirement.
 - The end-to-end fixture demonstrates the intended behavior from admitted
   source/input through the actual generated/executed Malbolge path.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One real guest echoes the 256 possible byte
+  values and handles empty, short, 256-byte and declared multichunk traces with
+  exact EOF/termination; pin the maximum fixture length and VM steps.
 
 ## Evidence
 

@@ -9,7 +9,6 @@ contract: "docs/technical/compiler/self-hosting/self-hosting-equivalence-proof.m
 depends_on:
   - "malbolge-compiler-compiles-c-to-malbolge"
   - "translation-validation"
-  - "proof-producing-lowering"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/self-hosting-as-conformance-goal.md"
@@ -36,8 +35,9 @@ artifacts and prove self-hosting does not silently change compilation meaning.
   adversarial compiler corpus.
 - The hosted stage performs the claimed compilation work inside the guest
   execution model rather than delegating the essential operation to the host.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - State the supported deterministic C subset, target-profile assumptions,
@@ -45,7 +45,9 @@ artifacts and prove self-hosting does not silently change compilation meaning.
   admitted rewrites where possible and compare representative/adversarial
   native-vs-hosted compilations through the independent verifier; do not claim
   a theorem about all C programs or treat matching bytes as sufficient.
-
+- **Finite acceptance witness:** Three supported and three rejected bounded
+  source cases compiled by both native and guest-hosted stages with the same
+  profile, verified observations and an independent mismatch/timeout diagnosis.
 
 ## Evidence
 
@@ -53,5 +55,6 @@ artifacts and prove self-hosting does not silently change compilation meaning.
   `tests/self_hosting/`.
 - Required evidence: compiler inputs/outputs, canonical comparison against
   native compilation, resource/profile requirements, and verifier acceptance.
-- Prerequisite completion evidence: `malbolge-compiler-compiles-c-to-malbolge`,
-  `translation-validation`, `proof-producing-lowering`.
+- Prerequisite completion evidence: `malbolge-compiler-compiles-c-to-malbolge`
+  and `translation-validation`. Additional proof-producing rewrites strengthen
+  evidence when available but do not block bounded hosted-vs-native tests.

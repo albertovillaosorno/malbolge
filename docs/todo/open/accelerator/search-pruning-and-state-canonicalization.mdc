@@ -52,10 +52,14 @@ raw hardware scale.
 - If executable algorithm research is required, the stable ID is mirrored under
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One or two named exact pruning rules on three
+  frozen difficulty/depth strata, one adversarial counterexample family and
+  before/after branching measurements with bounded candidate counts.
 
 ## Evidence
 

@@ -48,6 +48,10 @@ waiting for native acceleration, CUDA, DOOM, self-hosting or publication.
   command, including negative/no-partial-output cases.
 - Record the exact supported subset and limits rather than claiming arbitrary
   C, and retire this TODO only after the release evidence is durable.
+- **Finite acceptance witness:** Exactly the five owning release-evidence
+  groups, two distinct tracked C programs, five pinned binary input classes and
+  two C23 oracle optimization modes on one declared Linux host; bound
+  compilation and guest VM steps.
 
 ## Evidence
 

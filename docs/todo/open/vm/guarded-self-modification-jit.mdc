@@ -60,10 +60,15 @@ but discovery never changes observable Malbolge behavior by itself.
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One chosen hot mutable code-state family, one
+  invalidated guard, one budget-exhaustion deopt and at least 15 paired
+  in-process/interpreter latency samples with a frozen >=1.1x promotion
+  threshold.
 
 ## Evidence
 

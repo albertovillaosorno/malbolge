@@ -56,3 +56,7 @@ consolidated task, not dozens of speculative downstream TODOs.
 - Report deferred unavailable hardware as untested; no synthetic success.
 - Gate paper-grade claims on applicable complete validation, not core compiler
   development on the entire speculative extreme-case matrix.
+- **Finite acceptance witness:** Freeze a finite risk ledger of the ten
+  highest-impact currently identified supported-path/paper-claim cases, with one
+  repro per addressed case and bounded negative tests; later discoveries become
+  explicitly triaged defects.

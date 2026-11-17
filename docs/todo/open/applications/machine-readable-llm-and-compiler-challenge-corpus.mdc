@@ -47,15 +47,18 @@ admitted result.
 - If executable algorithm research is required, the stable ID is mirrored under
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - The deliverable is one offline, versioned, schema-validated challenge and
   result interchange with replay and rejected-input tests. It does not host
   agents, train an LLM, schedule autonomous jobs, provide a web service, or
   grant external agents verifier authority.
-
+- **Finite acceptance witness:** One versioned offline interchange schema, three
+  accepted challenge records, three malformed records and one deterministic
+  verifier replay; no agent hosting, training or server deployment.
 
 ## Evidence
 

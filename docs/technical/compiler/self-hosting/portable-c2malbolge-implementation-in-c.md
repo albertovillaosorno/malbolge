@@ -44,13 +44,16 @@ The portable compiler defines an exact freestanding C subset, versioned
 - The essential compiler algorithm fits the admitted C profile and does not
   require LLVM, GPU APIs, threads, filesystem conveniences, or other host-only
   facilities that prevent eventual self-hosting.
-- The hosted stage performs the claimed compilation work inside the guest
-  execution model rather than delegating the essential operation to the host.
+- The portable C implementation is built and exercised natively on a frozen
+  admitted-C corpus with input/output and resource bounds. The later guest
+  compiler task independently proves execution inside Malbolge; this task
+  does not require a compiler that is already self-hosted.
 
 ## Failure Behavior
 
-Hosted compilation that delegates essential compiler work to the host is a
-failed conformance result.
+The native portable compiler fails explicitly on unsupported input or
+exhausted limits. Later hosted compilation that delegates essential compiler
+work to the host is a separate failed self-hosting conformance result.
 
 ## Verification
 

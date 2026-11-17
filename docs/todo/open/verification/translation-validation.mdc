@@ -39,14 +39,18 @@ trusting a large heuristic backend.
   supplementary evidence rather than a universal equivalence proof.
 - The verifier is tested against valid cases and deliberately mutated invalid
   cases so acceptance and rejection boundaries are evidenced independently.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Positive and deliberately mutated negative fixtures name the admitted
   profile, state assumptions and checked obligations; report unsupported proof
   cases explicitly instead of inferring correctness from output samples.
-
+- **Finite acceptance witness:** One frozen set of admitted IR/proof rules; a
+  valid and deliberately invalid candidate per rule, bounded checking resources
+  and rejected unknown obligations. No universal equivalence decision procedure
+  is claimed.
 
 ## Evidence
 

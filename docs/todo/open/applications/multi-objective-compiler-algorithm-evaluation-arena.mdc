@@ -49,9 +49,10 @@ missing verification of an executable `.malbolge` candidate.
 - Authoritative comparisons retain capacity curves and Pareto frontiers; an
   aggregate score, if offered, is explicitly secondary and cannot hide
   time/quality/memory/size/verifier trade-offs.
-- The arena measures every available execution/compiler stage without making
-  a later target backend a prerequisite for the evaluation infrastructure; final
-  `.malbolge` measurements are added when verified artifacts become available.
+- The first arena compares an explicitly listed finite set of supported
+  execution/compiler stages. A new optional backend is not retroactively
+  required for completion. Verified final `.malbolge` measurements join only
+  when the corresponding guest artifact is available and independently checked.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
   and an observation that would reject or materially weaken the proposed
   technique before performance conclusions are accepted.
@@ -61,8 +62,9 @@ missing verification of an executable `.malbolge` candidate.
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Deliver reproducible workload ingestion, measurement schemas, raw samples,
@@ -70,7 +72,10 @@ missing verification of an executable `.malbolge` candidate.
   The arena provides the instrument; `empirical-malbolge-synthesis-scaling-law`
   owns inference/model fitting. Do not implement another experiment platform
   or require every optional backend before closing the arena.
-
+- **Finite acceptance witness:** A finite matrix of two admitted algorithm
+  strategies, three workload difficulty levels and three fixed budget points;
+  retain raw results, negative cases and Pareto/capacity plots without an
+  open-ended backend list.
 
 ## Evidence
 

@@ -38,21 +38,27 @@ compiler for its declared target profile.
 
 ## Acceptance
 
-- Every accepted fixture compiles successfully for its declared profile, and
-  every compiler rejection of a linter-clean supported program is treated as a
-  regression in the compiler/linter contract. This includes closing any
-  remaining normalized-frontend-to-typed-IR semantic coverage gaps rather than
-  weakening the accepted C surface.
+- Freeze an explicit finite set of admitted C syntax/ABI/runtime families
+  for the release, and prove each supported frontend-to-IR family lowers with
+  representative positive/negative fixtures. All accepted fixtures compile;
+  any rejected linter-clean program *within that declared subset* is a defect,
+  not permission to silently shrink the subset or claim arbitrary C support.
+  Later C features require a separately versioned admission contract.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - Rust tests are conformance/regression evidence for creating the profile; they
   do not replace manual `tools/tidy` validation of user-selected C.
 - A rejection corresponds to a documented lowerability/determinism/profile
   requirement, not to arbitrary formatting or host-C style policy.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One frozen supported-C feature/ABI table and at
+  least one accepted and rejected source per entry; require exact
+  toolchain/profile identity and finite source size, nesting and compiler-run
+  budgets.
 
 ## Evidence
 

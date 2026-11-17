@@ -41,15 +41,19 @@ for implementation and verification.
 - The stage has deterministic input/output form, rejects malformed or
   unsupported input explicitly, and preserves source/profile provenance needed
   downstream.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - A minimal compiled real-C fixture demonstrates correct source-address
   diagnostics through self-modification and relocation. Complete interactive
   source debugger UI, breakpoint protocol and optimizer-aware variable
   reconstruction are not prerequisites of the P3/P5 compiler.
-
+- **Finite acceptance witness:** One real compound C fixture with
+  source/function/line mapping through guest addresses, one
+  relocated/self-modifying region and one unmappable diagnostic; no interactive
+  debugger or arbitrary variable reconstruction.
 
 ## Evidence
 

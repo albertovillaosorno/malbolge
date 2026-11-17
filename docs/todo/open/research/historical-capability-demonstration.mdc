@@ -7,7 +7,6 @@ area: "research"
 task: "TODO - Historical capability demonstration"
 contract: "docs/research/studies/historical-capability-demonstration.md"
 depends_on:
-  - "self-hosting-equivalence-proof"
   - "real-program-benchmark-suite"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
@@ -30,20 +29,26 @@ historical attribution and compatibility evidence explicit.
 
 ## Acceptance
 
-- The final demonstration can be reproduced from the historical interpreter
-  evidence through modern compiler/execution/research artifacts to substantial
-  programs and self-hosting with provenance for every stage.
+- One reproducible script/report traces the historical interpreter through
+  the *actually achieved* compiler, guest programs and self-hosting evidence.
+  A missing large-program or hosted compiler result is explicitly labeled
+  unachieved with its bounded failure record; the evidence demonstration must
+  not imply a successful milestone from a host-only substitute.
 - The research record separates observed evidence from interpretation and
   preserves negative/null outcomes that affect the conclusion.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Reuse pinned historical interpreter evidence, existing P8/P9 generated
   programs and self-hosting receipts in a reproducible script or report.
   No independent museum app, GUI, alternate emulator or additional paper is
   required; this task produces evidence for the single final P10 manuscript.
-
+- **Finite acceptance witness:** One pinned script and evidence manifest
+  replaying historical VM, available compiler outputs and self-hosting status
+  once; missing ambitious results are recorded as missing, not new
+  implementations.
 
 ## Evidence
 
@@ -51,5 +56,6 @@ historical attribution and compatibility evidence explicit.
   `benchmarks/research/`.
 - Required evidence: research question, hypotheses/baselines, source trail,
   experiment manifest, raw-output provenance, results, and threats to validity.
-- Prerequisite completion evidence: `self-hosting-equivalence-proof` and
-  `real-program-benchmark-suite`.
+- Prerequisite completion evidence: `real-program-benchmark-suite`.
+  `self-hosting-equivalence-proof` is reported as a reproduced success or a
+  bounded unachieved result; it cannot block the historical evidence review.

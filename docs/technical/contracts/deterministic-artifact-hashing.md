@@ -21,7 +21,14 @@ This record defines the contract that implementation must satisfy for
 internal representation or language choices without changing the observable
 behavior, trust boundary, or ownership rules stated by its governing decisions.
 
-### Invariants
+### Finite Acceptance Boundary (2026-11-16)
+
+P4 uses two identical CPU compilations, one alternate independently accepted
+optimizer artifact and one rejected semantic mutation. P8 CUDA may extend the
+same equivalence matrix later, but no CUDA device or artifact is required to
+retire this P4 task. Byte identity holds only under a frozen algorithm policy.
+
+## Invariants
 
 - Identical declared source/profile/compiler/algorithm/seed/backend policy
   yields reproducible artifact bytes or a stated canonical normalization.

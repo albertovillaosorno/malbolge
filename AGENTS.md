@@ -36,6 +36,13 @@ The CPU optimizer's candidate-batch semantics, exact pruning/cost policy and
 verifier boundary must be CUDA-projectable before P6 fixes its data model.
 CPU code does not need to be GPU-fast, but CUDA must not require a second
 compiler algorithm. P8 requires measured real-device speedups, not a GPU label.
+Every P2-P10 TODO has a task-specific finite witness and a common
+bounded-evidence rule in `TODO.md`. Freeze fixture identities, seeds, step,
+time and memory limits before executing a study; stop on explicit success or
+failure without expanding the TODO forever. A negative research result can
+justify non-adoption, not false implementation success. Keep hardware and
+self-hosting outcomes honest and never make P10 depend on positive results from
+an infeasible experimental goal.
 The older versioned corpus is evidence, not a roadmap for incrementing N.
 Escalate unclear priorities before another homogeneous byte-count example.
 

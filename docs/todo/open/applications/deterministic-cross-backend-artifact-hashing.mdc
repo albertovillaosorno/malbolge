@@ -36,14 +36,22 @@ produced `.malbolge` artifacts where deterministic builds are promised.
   an explicitly specified canonical form. Different valid optimizers/CPU/CUDA
   proposal orders may emit different bytes; each artifact carries its own hash
   and independently checked semantic equivalence to the same source IR.
-- Cross-backend fixtures distinguish deterministic replay from equivalent
-  but nonidentical artifacts and reject a semantically divergent candidate.
+- A finite matrix repeats one pinned CPU compiler/algorithm/seed to prove
+  exact replay, and compares distinct available algorithms for separately
+  verified equivalence. CUDA rows are supplemental once P8 produces verified
+  artifacts; CUDA availability is never a P4 acceptance prerequisite.
+  Mutated semantic divergence is rejected.
 - The end-to-end fixture demonstrates the intended behavior from admitted
   source/input through the actual generated/executed Malbolge path.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** Two identical pinned CPU builds, one alternate
+  accepted optimization, and one mutated-invalid candidate. Compare hashes under
+  identical algorithm identity and source semantics across distinct algorithms;
+  no P8 GPU prerequisite.
 
 ## Evidence
 

@@ -489,3 +489,102 @@ def test_large_applications_and_single_paper_have_bounded_acceptance() -> None:
     assert "Privileged ISA" in rv32i
     assert "sole P10 manuscript" in paper
     assert "negative DOOM latency measurements" in paper
+
+
+def test_all_open_todos_have_one_finite_acceptance_witness() -> None:
+    """A task cannot grow indefinitely through new, implicit test families."""
+    paths = tuple(OPEN_ROOT.rglob("*.mdc"))
+    marker = "**Finite acceptance witness:**"
+    stale_global_placeholder = (
+        "The declared scope contains no unresolved placeholder implementation"
+    )
+    for path in paths:
+        contents = path.read_text(encoding="utf-8")
+        acceptance = contents.split("## Acceptance\n", 1)[1].split("\n## ", 1)[0]
+        assert acceptance.count(marker) == 1, path
+        witness = acceptance.split(marker, 1)[1].split("\n- ", 1)[0]
+        assert len(" ".join(witness.split())) >= 60, path
+        assert stale_global_placeholder not in acceptance, path
+    roadmap = TODO_PATH.read_text(encoding="utf-8")
+    assert "## Finite acceptance and stopping rules" in roadmap
+    assert "timeout is a **non-pass**" in roadmap
+    assert "**Work stops at the frozen evidence boundary.**" in roadmap
+
+
+def test_later_hardware_and_cross_backend_studies_do_not_gate_early_phases() -> None:
+    """GPU and optional research cannot hold CPU or catalogue acceptance open."""
+    early = (
+        "accelerator/reusable-block-catalogue.mdc",
+        "applications/deterministic-cross-backend-artifact-hashing.mdc",
+        "applications/versioned-c-and-malbolge-example-corpus.mdc",
+    )
+    for name in early:
+        text = (OPEN_ROOT / name).read_text(encoding="utf-8")
+        assert "**Finite acceptance witness:**" in text
+    catalog = (OPEN_ROOT / early[0]).read_text(encoding="utf-8")
+    hashing = (OPEN_ROOT / early[1]).read_text(encoding="utf-8")
+    corpus = (OPEN_ROOT / early[2]).read_text(encoding="utf-8")
+    assert "not P6 catalogue prerequisites" in catalog
+    assert "CUDA availability is never a P4 acceptance prerequisite" in hashing
+    assert "deterministic-cross-backend-artifact-hashing" not in _dependencies(corpus)
+
+
+def test_hosted_compiler_milestones_do_not_depend_on_their_successors() -> None:
+    """Portable C, executable compiler artifact and hosted compiler are stages."""
+    portable = (
+        OPEN_ROOT / "self_hosting/portable-c2malbolge-implementation-in-c.mdc"
+    ).read_text(encoding="utf-8")
+    compiled = (
+        OPEN_ROOT / "self_hosting/compile-c2malbolge-c-to-malbolge.mdc"
+    ).read_text(encoding="utf-8")
+    hosted = (
+        OPEN_ROOT / "self_hosting/malbolge-compiler-compiles-c-to-malbolge.mdc"
+    ).read_text(encoding="utf-8")
+    for prerequisite in (portable, compiled):
+        assert "The hosted stage performs the claimed compilation work" not in (
+            prerequisite
+        )
+    assert "native compile-and-run control" in portable
+    assert "bounded normative-VM smoke run" in compiled
+    assert "consume C source bytes" in hosted
+    assert "**Finite acceptance witness:**" in hosted
+
+
+def test_final_paper_can_report_unachieved_high_risk_goals() -> None:
+    """Publication follows a true guest baseline and finite evidence ledger."""
+    paper = (
+        OPEN_ROOT / "research/malbolge-machine-model-and-c-compilation-paper.mdc"
+    ).read_text(encoding="utf-8")
+    historical = (
+        OPEN_ROOT / "research/historical-capability-demonstration.mdc"
+    ).read_text(encoding="utf-8")
+    paper_deps = set(_dependencies(paper))
+    high_risk_goals = {
+        "cuda-superoptimizer",
+        "doom-playable-generated-code-performance",
+        "apollo-11-luminary-agc-malbolge-demonstration",
+        "rv32i-malbolge-runner",
+        "self-hosting-equivalence-proof",
+        "turnkey-c-to-malbolge-toolchain",
+    }
+    assert paper_deps.isdisjoint(high_risk_goals)
+    assert "cpu-first-c-to-malbolge-release" in paper_deps
+    assert "outcome ledger" in paper
+    assert "unmet/untested" in paper
+    assert "self-hosting-equivalence-proof" not in _dependencies(historical)
+    assert "bounded unachieved result" in historical
+
+
+def test_doom_playability_numbers_cannot_be_relaxed_after_failure() -> None:
+    """Declared guest frame and input-latency thresholds are fixed."""
+    todo = (
+        OPEN_ROOT / "applications/doom-playable-generated-code-performance.mdc"
+    ).read_text(encoding="utf-8")
+    contract = (
+        ROOT / "docs/technical/interoperability/doom-generated-performance.md"
+    ).read_text(encoding="utf-8")
+    for source in (todo, contract):
+        assert ">= 20" in source
+        assert "<= 150 ms" in source
+        assert "60-second" in source
+        assert "example median" not in source

@@ -56,6 +56,10 @@ effectiveness.
   budgets and preserve raw evidence, including null or negative results.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** Inspect one frozen scaling trace for an actual
+  residual symmetry collapse; if present, test one needed quotient/arity with
+  exact counterexample checks under bounded search. Otherwise record no trigger
+  and no implementation claim.
 
 ## Evidence
 

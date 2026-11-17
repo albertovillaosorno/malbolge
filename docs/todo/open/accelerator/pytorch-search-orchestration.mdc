@@ -41,8 +41,9 @@ retain exact semantic execution where tensor operations are a poor fit.
   for correctness or deterministic fallback.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Adopt PyTorch only after a bounded held-out experiment demonstrates an
@@ -50,7 +51,10 @@ retain exact semantic execution where tensor operations are a poor fit.
   training, inference and data-transfer costs. A reproducible no-benefit result
   is a legitimate research outcome; a mandatory training service, model zoo,
   multi-GPU cluster or tensor-based VM is outside project scope.
-
+- **Finite acceptance witness:** One predeclared PyTorch guidance candidate
+  against an identical no-model search baseline on one held-out bounded
+  challenge family, including preprocessing/inference cost; report adoption or
+  measured non-adoption.
 
 ## Evidence
 

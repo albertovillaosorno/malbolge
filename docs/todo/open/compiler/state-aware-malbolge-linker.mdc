@@ -46,6 +46,9 @@ concatenation.
   and artifacts.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** A two-block address-sensitive composition, a
+  mutation/aliasing fixture and one rejected unsafe relocation, each with finite
+  image-size and VM-step bounds; later arbitrary libraries are not required.
 
 ## Evidence
 

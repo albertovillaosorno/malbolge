@@ -37,6 +37,14 @@ composition contract matches its current obligations.
 Not implemented. No reusable block is currently promoted as repository
 architecture merely because an experiment produced one.
 
+## Finite Acceptance Boundary (2026-11-16)
+
+P6 closes on one independently verified reusable entry from each of the
+five admitted arithmetic, branch, memory, call, and runtime/I/O categories,
+plus a composition rejection and repeatable CPU lookup. Live CUDA execution
+is P8 evidence: it may share the same metadata/verifier identity but must not
+be required to complete the CPU-only catalogue.
+
 ## Invariants
 
 - Every admitted entry has independent verifier evidence.
@@ -59,8 +67,9 @@ near match.
 
 - Deterministic catalogue identities survive rebuilds from identical evidence.
 - Positive and negative linker fixtures exercise exact contract matching.
-- Cross-backend tests compare catalogue construction and lookup results where
-  deterministic equivalence is promised.
+- CPU catalogue construction and lookup replay with exact identities.
+  Cross-backend tests are supplemental once a supported CUDA producer exists;
+  they are not a P6 completion prerequisite.
 - Catalogue-hit benchmarks are reported separately from fresh synthesis cost.
 
 ## References

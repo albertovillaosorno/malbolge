@@ -66,7 +66,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 - Power-loss and cancellation simulation preserve exact source identities,
   monotonic committed generations, and no partial final artifact; no test may
   imply a GPU continuation exists before a matching backend/codec does.
-
+- **Finite acceptance witness:** One real CPU checkpoint/restart, one
+  incompatible-codec rejection, and fixed
+  cancellation/crash/publication-boundary injections; cap checkpoint bytes,
+  stages and runtime. GPU state remains optional until its codec exists.
 
 ## Evidence
 

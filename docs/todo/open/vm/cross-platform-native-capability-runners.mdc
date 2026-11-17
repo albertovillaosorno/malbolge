@@ -8,7 +8,6 @@ task: "TODO - Cross-platform native capability runners"
 contract: "docs/technical/runtime/execution/cross-platform-native-capability-runners.md"
 depends_on:
   - "versioned-host-capability-call-abi"
-  - "native-x86-64-and-aarch64-backends"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
@@ -58,15 +57,19 @@ Malbolge artifact and resolving host modules without changing guest bytes.
   operating-system facility is explicitly part of the runner contract.
 - x86-64/AArch64 implementation details remain adapter concerns and do not alter
   VM semantics or the versioned call ABI.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Begin with a reproducible Windows/Linux x86-64 and available AArch64
   smoke/byte-I/O capability matrix; widen the supported pairs only after
   real-machine admission. Host availability may limit the asserted support
   set but does not license fictional cross-platform pass results.
-
+- **Finite acceptance witness:** One pinned six-tuple OS/ISA target matrix, one
+  canonical capability-frame corpus and finite positive/invalid/unsupported
+  fixtures per actually supported host; unavailable pairs are unverified, never
+  silent success.
 
 ## Evidence
 

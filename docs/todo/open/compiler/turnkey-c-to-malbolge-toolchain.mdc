@@ -72,6 +72,10 @@ optional accelerator on Windows and Linux and never changes semantic acceptance.
   Native AOT/JIT runner matrix and optional GPU driver/optimizer installation
   are separately tested capabilities, not blocking prerequisites of the
   compiler command. Unknown host prerequisites fail with exact diagnostics.
+- **Finite acceptance witness:** One pinned Windows and one pinned Linux CPU
+  compiler host, one successful source/guest run per host, an unsupported-C,
+  missing-CUDA and atomic-output failure each, and a fixed cached/offline
+  bootstrap replay.
 
 ## Evidence
 

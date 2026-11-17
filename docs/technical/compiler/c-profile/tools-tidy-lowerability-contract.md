@@ -93,11 +93,11 @@ changes.
 
 ## Invariants
 
-- Every accepted fixture compiles successfully for its declared profile, and
-  every compiler rejection of a linter-clean supported program is treated as a
-  regression in the compiler/linter contract. Remaining normalized
-  frontend-to-typed-IR coverage gaps must be closed here rather than by
-  weakening the accepted C surface.
+- The accepted C subset is a finite, versioned source/ABI/runtime feature
+  inventory with positive and negative fixtures for each admitted family.
+  Every accepted fixture compiles for its declared profile. Rejection of a
+  supported linter-clean construct is a compiler/linter contract regression;
+  new source features cannot silently expand or shrink this release subset.
 - Accepted and rejected C fixtures exercise the boundary, and diagnostics
   identify the unsupported construct/profile requirement at source level.
 - Rust tests are conformance/regression evidence for creating the profile; they

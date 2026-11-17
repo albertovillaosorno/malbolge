@@ -33,12 +33,19 @@ the resulting `c2malbolge.malbolge` under the modern VM.
 - The native compiler successfully compiles its admitted C implementation into a
   verifier-accepted `c2malbolge.malbolge` with recorded profile/resource
   requirements.
-- The hosted stage performs the claimed compilation work inside the guest
-  execution model rather than delegating the essential operation to the host.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- A bounded normative-VM smoke run shows that the generated
+  `c2malbolge.malbolge` can start, consume and/or emit its declared byte I/O
+  without a hidden host compiler. Compiling a separate C source *inside* the
+  guest is reserved for `malbolge-compiler-compiles-c-to-malbolge`.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One exact compiler C source to one verified
+  Malbolge artifact, plus one guest VM startup/stream smoke and explicit
+  memory/step/output budgets; this milestone does not require compiling another
+  C program within the guest.
 
 ## Evidence
 

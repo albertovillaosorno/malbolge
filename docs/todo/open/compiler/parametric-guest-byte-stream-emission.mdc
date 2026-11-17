@@ -58,10 +58,13 @@ evidence describe the old priority scheme, not the current phase.
   `emit-49`, `emit-50`, ... ladder without a new semantic boundary.
 - The acceptance result names separately any unimplemented C construct.
   It does not claim arbitrary C support or complete P3 translation proof.
-- Retire the P0 only when one compound C program reaches guest-output
+- Retire this P2 TODO only when one compound C program reaches guest-output
   parity after fixing its actual semantic gaps. Defer broad generated
   matrices to downstream P2/P3 compiler and verification contracts.
-
+- **Finite acceptance witness:** One source-controlled mutable-C EOF checksum,
+  five pinned binary inputs (empty, NUL, high byte, mixed, truncated EOF), one
+  native C23 oracle at -O0/-O2, one guest trace per case, and a declared
+  positive instruction/elapsed-time ceiling.
 
 ## Evidence
 

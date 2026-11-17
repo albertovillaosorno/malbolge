@@ -35,13 +35,16 @@ Not implemented. This proposed contract does not claim executable support yet.
 - The native compiler successfully compiles its admitted C implementation into a
   verifier-accepted `c2malbolge.malbolge` with recorded profile/resource
   requirements.
-- The hosted stage performs the claimed compilation work inside the guest
-  execution model rather than delegating the essential operation to the host.
+- The verified compiler artifact starts under the normative VM and performs
+  one bounded byte-stream startup/exit smoke without delegating compiler work
+  to a host service. Translating a fresh C program *inside* the guest is the
+  next TODO and is not a prerequisite for this artifact's creation.
 
 ## Failure Behavior
 
-Hosted compilation that delegates essential compiler work to the host is a
-failed conformance result.
+A guest artifact that cannot be loaded or started under the declared finite
+VM limits is a failed translation/runtime test. A host compiler callback cannot
+stand in for guest execution; full hosted translation belongs downstream.
 
 ## Verification
 

@@ -31,19 +31,25 @@ emission.
 
 ## Acceptance
 
-- Layout solves address-sensitive decode and self-modification constraints
-  reproducibly and emits only verifier-accepted `.malbolge` for the declared
-  profile.
+- Layout solves the declared finite code/data/relocation fixtures under the
+  selected target profile and reproducibly emits verifier-accepted `.malbolge`.
+  Unsatisfiable layouts and exceeded search/resource budgets return explicit
+  failure without publishing a guessed or partial executable.
 - The backend may additionally emit an annotated human/debug view, but
   canonicalizing that view must reproduce the executable `.malbolge` stream
   byte-for-byte; comments and layout never occupy target positions.
 - The stage has deterministic input/output form, rejects malformed or
   unsupported input explicitly, and preserves source/profile provenance needed
   downstream.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One frozen target profile, a bounded layout
+  corpus covering linear code, branch, data placement and self-encryption, plus
+  one impossible/over-budget negative case; pin the maximum words and search
+  operations.
 
 ## Evidence
 

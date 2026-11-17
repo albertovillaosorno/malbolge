@@ -47,6 +47,37 @@ Only unfinished work appears below. Each entry keeps one title, one synthesis
 paragraph and one link to its typed authority. Completed work stays under
 `docs/todo/completed/`. Correctness and memory safety are never deferred.
 
+## Finite acceptance and stopping rules for every open TODO
+
+Every typed TODO has one **finite acceptance witness**. Before executing that
+witness, freeze its exact source/profile/compiler/algorithm identity, named
+fixtures and admissible grammar or ISA, deterministic seeds, resource class,
+number of runs, and finite ceilings for applicable memory, search nodes,
+compilation/guest steps, wall time, input bytes and artifact size. Record the
+positive success predicate and negative/error expectations before running.
+A test must terminate successfully, fail explicitly, or exhaust a specified
+limit; a timeout is a **non-pass**, not a success or a reason to relax limits.
+Unbounded C source sets, all possible binary streams, every imaginable host,
+and infinite random testing are never hidden acceptance obligations.
+
+**Work stops at the frozen evidence boundary.** A verified pass permits
+completion only of that declared capability. A failed or unavailable run
+receives an exact bounded failure/unavailable receipt, with the target still
+open if its promised capability was not delivered. Conditional research can
+finish with a documented reject/no-adoption result, but may not claim the
+rejected technique works. Address newly found safety/correctness regressions
+as owned defects; don't silently add more experiment families or fixtures to
+the TODO just to keep it alive. Any deliberate expansion needs an explicit
+change to the owning acceptance contract, not another open-ended iteration.
+
+Later CUDA, AOT/JIT, DOOM, Apollo, RV32I and guest self-hosting trials must
+report genuine target execution or an honest failed/untested result. A P4 CPU
+artifact or P6 block catalogue must not require P8 CUDA hardware. Early P9
+portable-C/compiled-compiler stages must not require the subsequent hosted
+compiler's output. The final P10 paper is still one last task, based on a
+finite outcome ledger of successes **and** failed/unavailable ambitious
+experiments; their success is not a publication prerequisite.
+
 ## Delivery phase gates
 
 - **P2 — Real guest C:** one complete C checksum program with mutable state,

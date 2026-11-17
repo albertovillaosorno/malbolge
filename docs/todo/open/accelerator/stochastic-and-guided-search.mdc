@@ -51,8 +51,9 @@ search with deterministic final verification and reproducible research seeds.
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Start with a deterministic search baseline and one bounded stochastic or
@@ -60,7 +61,10 @@ search with deterministic final verification and reproducible research seeds.
   families remain optional, not required implementations; preserve negative
   results and measured dispersion, and never gate the CUDA deterministic path
   on this research task.
-
+- **Finite acceptance witness:** One deterministic baseline and one chosen
+  stochastic/learned challenger at three declared difficulty points with at
+  least 15 seeded bounded attempts per point; negative/no-speedup evidence ends
+  the research comparison.
 
 ## Evidence
 

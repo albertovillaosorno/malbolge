@@ -41,12 +41,18 @@ must expose the state and layout contract required for safe linking.
   provenance, and verifier identity.
 - Lookup never substitutes a block whose complete composition contract does not
   match the requested operation and current linker assumptions.
-- Catalogue entries remain independently verifiable and reproducible across
-  the supported CPU and CUDA search backends.
+- Catalogue entries are independently verifiable and reproducible under
+  the available CPU search backend. CUDA-produced entries use the *same*
+  semantic/profile/link/verifier identity when P8 supports them; live CUDA
+  or identical GPU/CPU artifact bytes are not P6 catalogue prerequisites.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One verified reusable entry in each of five
+  declared categories (arithmetic, branch, memory, call and I/O/runtime), one
+  invalid composition rejection and one repeated CPU lookup; GPU rows are P8
+  follow-up.
 
 ## Evidence
 

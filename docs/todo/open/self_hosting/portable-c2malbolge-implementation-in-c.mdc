@@ -35,10 +35,13 @@ other host-only capabilities. Native accelerators remain optional speedups.
 - The essential compiler algorithm fits the admitted C profile and does not
   require LLVM, GPU APIs, threads, filesystem conveniences, or other host-only
   facilities that prevent eventual self-hosting.
-- The hosted stage performs the claimed compilation work inside the guest
-  execution model rather than delegating the essential operation to the host.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- A native compile-and-run control shows that this single portable-C compiler
+  implementation accepts the frozen bounded source corpus and emits expected
+  deterministic output. Actual Malbolge-hosted compilation belongs to the
+  later `malbolge-compiler-compiles-c-to-malbolge` TODO, not this prerequisite.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Document the exact admitted freestanding compiler-C subset, input/output
@@ -46,7 +49,9 @@ other host-only capabilities. Native accelerators remain optional speedups.
   behavior. Use the existing C-to-Malbolge translation contract, not an
   unrestricted hosted C runtime, LLVM, a filesystem server, or a separate
   guest-specific compiler language.
-
+- **Finite acceptance witness:** One freestanding compiler C translation unit, a
+  fixed supported source subset, three positive/three unsupported source inputs
+  and native output-oracle checks with finite source/heap/output caps.
 
 ## Evidence
 

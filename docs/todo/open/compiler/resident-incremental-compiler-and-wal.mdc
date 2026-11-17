@@ -8,7 +8,6 @@ task: "TODO - Resident incremental compiler and WAL"
 contract: "docs/technical/compiler/resident-incremental-compiler-and-wal.md"
 depends_on:
   - "state-aware-malbolge-linker"
-  - "c-level-source-mapping-and-debugging"
   - "reusable-block-catalogue"
   - "compiler-algorithm-experimentation-platform"
   - "resumable-compilation-progress-sidecars"
@@ -52,12 +51,16 @@ recompile only the semantic invalidation closure of an edit.
 - Before a resident service or WAL becomes necessary, benchmark a pinned
   cold-build baseline and a bounded verified reuse candidate. Record a
   reproducible semantic invalidation or latency bottleneck that justifies
-  residency. If no improvement is evidenced, keep the service deferred rather
-  than implementing a speculative daemon; this task stays open.
+  residency. A failed preregistered feasibility comparison terminates the
+  evaluation as a documented non-adoption; do not build a speculative daemon,
+  but do not claim that a resident compiler was implemented.
 - When implemented, use local bounded IPC and a versioned discardable cache;
   no remote multi-user service, distributed scheduler, new source language or
   separate database product is part of acceptance.
-
+- **Finite acceptance witness:** One predeclared cold-vs-reuse feasibility
+  benchmark and three edit classes (local, cross-function, layout/mutation) plus
+  three WAL failure boundaries if adopted. Negative benefit ends the feasibility
+  trial without claiming a service.
 
 ## Evidence
 
@@ -66,5 +69,5 @@ recompile only the semantic invalidation closure of an edit.
 - Required evidence: cold/warm differential builds, invalidation traces,
   crash/recovery WAL fixtures, cache provenance, and latency decomposition.
 - Prerequisite completion evidence: `state-aware-malbolge-linker`,
-  `c-level-source-mapping-and-debugging`, `reusable-block-catalogue`,
-  `compiler-algorithm-experimentation-platform`.
+  `reusable-block-catalogue`, `compiler-algorithm-experimentation-platform`.
+  Source-level debugging is not a semantic-invalidation prerequisite.

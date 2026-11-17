@@ -27,9 +27,10 @@ Prior-work claims must resolve through canonical records under
 
 ## Hypothesis
 
-- The final demonstration can be reproduced from the historical interpreter
-  evidence through modern compiler/execution/research artifacts to substantial
-  programs and self-hosting with provenance for every stage.
+- One script/manifest reproduces the historical interpreter and every
+  *achieved* selected compiler/guest milestone. Each unachieved substantial
+  program or self-hosted stage appears with a bounded failure/unavailable
+  record, not a fictitious success or a separate implementation requirement.
 - The research record separates observed evidence from interpretation and
   preserves negative/null outcomes that affect the conclusion.
 

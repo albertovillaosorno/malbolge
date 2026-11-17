@@ -7,14 +7,9 @@ area: "research"
 task: "TODO - Final comprehensive Malbolge paper"
 contract: "docs/research/methodology/publication-pipeline.md"
 depends_on:
+  - "cpu-first-c-to-malbolge-release"
   - "prepublication-hardening"
   - "historical-capability-demonstration"
-  - "turnkey-c-to-malbolge-toolchain"
-  - "cuda-superoptimizer"
-  - "doom-playable-generated-code-performance"
-  - "apollo-11-luminary-agc-malbolge-demonstration"
-  - "rv32i-malbolge-runner"
-  - "self-hosting-equivalence-proof"
   - "real-program-benchmark-suite"
 adr_paths:
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
@@ -62,15 +57,24 @@ results, including real measurements, negative evidence and limitations.
 - Claim only measured or proved outcomes, including unavailable GPU evidence,
   failed large-workload attempts and documented performance constraints; the
   paper may not invent successes to close an unfinished task.
-- The final paper is the **last** open TODO in P10, reached only after P2-P9
-  delivery evidence and P9 research/hardening records are reviewed.
+- The final paper remains the **last** P10 TODO. Freeze a finite P2-P9
+  outcome ledger before writing: each ambitious CUDA/DOOM/Apollo/RV32I/
+  self-hosting goal is either independently reproduced or explicitly reported
+  as unmet/untested with its fixed-budget failure evidence. These experimental
+  outcomes are publication inputs, not mandatory *successes* that make an
+  honest negative-result paper impossible.
 - No separate transcendental theorem paper or human-scale study is required.
 - The sole P10 manuscript is evidence-bounded: report unavailable GPU
   hardware, negative DOOM latency measurements and uncompleted experimental
   hypotheses as limitations rather than requiring a fabricated success or
-  a second publication track. Incorporate the completed P2-P9 artifacts and
-  cite the precise supported subset; do not claim arbitrary C correctness.
-
+  a second publication track. Incorporate the available verified P2-P9
+  artifacts and bounded negative records; cite the precise supported subset
+  without claiming arbitrary C correctness or implying every ambitious goal
+  succeeded.
+- **Finite acceptance witness:** Exactly one LaTeX manuscript,
+  bibliography/figure reproducibility pass and one frozen P2-P9 outcome table
+  for each named compiler, CUDA, native, DOOM, AGC, RV32I and self-hosting
+  claim; negative/unavailable evidence is publishable.
 
 ## Evidence
 

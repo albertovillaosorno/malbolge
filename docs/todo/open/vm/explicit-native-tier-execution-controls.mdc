@@ -41,10 +41,14 @@ honest measurements of pure VM, AOT-only, JIT-only, and fully tiered execution.
   reuse.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** All three named switches over one verified
+  mutable-code fixture, one byte-IO fixture and one deoptimization case; bounded
+  steps and exact no-native-execution assertions for interpreter-only.
 
 ## Evidence
 

@@ -57,15 +57,18 @@ behavior.
   before lookup, compilation, native loading, or fallback selection.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Keep 1.1x as the admission threshold for a measured in-process hot region,
   never as an assumption that every translated region can accelerate. Publish
   the benchmark family, warm-up, paired samples and conservative rejection
   behavior; a slow region must remain interpretable without JIT promotion.
-
+- **Finite acceptance witness:** One verified AOT state, one guarded JIT
+  candidate, one guard miss and one interpreter fallback, with finite guest
+  steps, bounded compile time and retained differential state/IO traces.
 
 ## Evidence
 

@@ -9,7 +9,6 @@ contract: "docs/technical/interoperability/doom-generated-performance.md"
 depends_on:
   - "user-supplied-doom-source-interoperability-generator"
   - "malbolge-layout-and-encoding-backend"
-  - "explicit-native-tier-execution-controls"
   - "deterministic-cpu-optimizer"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
@@ -57,23 +56,27 @@ oracle; no Malbolge performance claim starts until the compiler generates
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Pin a fixed gameplay level/trace, target profile, hardware class, display
   mode, audio/input capabilities and a >= 60-second interaction window *before*
-  tuning. Declare an objective playability gate (for example median >= 20
-  rendered frames/s and p95 input-to-present <= 150 ms), with genuine output
-  produced by the generated guest; publish the selected thresholds first,
-  measured p50/p95, dropped frames, guest VM steps and native-C equivalence.
-  A preselected alternative must not be weakened post hoc to claim completion.
+  tuning. The frozen playability gate is median >= 20 guest-rendered frames/s
+  and p95 input-to-present <= 150 ms during the pinned session, with real
+  output produced by the generated guest. Retain p50/p95, dropped frames,
+  executed VM steps and native-C equivalence. Lowering the thresholds after
+  a failed run never counts as completion.
 - The accepted `doom.c` and existing transformations stay the only DOOM
   input path. No game rewrite, host-executed game logic, alternate engine,
   external multiplayer feature, or new graphics framework is required.
   Failure to reach the frozen performance budget is reported as an open
   guest-performance problem, not proof that native DOOM equals Malbolge DOOM.
-
+- **Finite acceptance witness:** One pinned level/input trace and >=60-second
+  guest-rendered session on one recorded machine/profile with frozen median >=20
+  FPS and p95 <=150 ms input latency; timeout or lower FPS is an unmet goal, not
+  an endless optimization mandate.
 
 ## Evidence
 

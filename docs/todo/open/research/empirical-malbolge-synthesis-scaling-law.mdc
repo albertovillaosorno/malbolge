@@ -59,6 +59,10 @@ budgets and fit empirical models instead of assuming a complexity class.
 - The verifier remains the correctness authority regardless of search strategy.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** Three frozen challenge difficulty strata,
+  up to three preregistered available search/reuse strategies and at least 15
+  bounded trials per viable stratum; fit/report uncertainty or failed models
+  and mark unavailable strategies N/A.
 
 ## Evidence
 

@@ -52,6 +52,9 @@ target rather than a promised property of Malbolge synthesis.
   growth model; incorporate later empirical and resident evidence when present.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** Three pinned supported C workloads with at
+  least 15 CPU cold-build samples each, compiler-stage timings and failure
+  limits; warm/IPC/CUDA measurements are optional N/A until implemented.
 
 ## Evidence
 

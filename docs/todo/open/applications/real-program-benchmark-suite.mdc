@@ -42,15 +42,18 @@ across original C, modern C, Rust, CPU batch, JIT, and accelerator paths.
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - The benchmark infrastructure must work on the CPU/P5 subset before
   DOOM becomes playable. Compare only equivalent workload semantics, separate
   native-C debug scaffolding from actual guest execution, and publish N/A for
   incomplete modes rather than fabricated benchmark success.
-
+- **Finite acceptance witness:** Two pinned compiled C programs, one
+  parameterized family and at least 15 bounded paired measurements per available
+  mode; list DOOM/CUDA/JIT as N/A until actual verified guest execution exists.
 
 ## Evidence
 

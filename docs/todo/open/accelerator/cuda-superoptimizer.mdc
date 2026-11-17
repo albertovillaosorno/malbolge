@@ -41,8 +41,9 @@ evaluation, and verified block stitching.
 - Performance conclusions use equivalent workloads and report raw-sample
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 - Consume the same versioned semantic candidate batch, exact pruning/cost
@@ -57,7 +58,10 @@ evaluation, and verified block stitching.
   median must be >= 1.25x faster on CUDA with matched verification and no
   omitted overhead; otherwise the P8 scaling gate remains open. Do not invent
   CUDA availability or extrapolate from primitive-kernel microbenchmarks.
-
+- **Finite acceptance witness:** Three fixed growing candidate workloads with 15
+  paired CPU/CUDA samples each on one declared NVIDIA device, matching verifier
+  outcomes, transfer+verification-inclusive timing, peak memory and a frozen
+  >=1.25x acceptance gate.
 
 ## Evidence
 

@@ -35,10 +35,15 @@ program, proving practical self-hosting of the translation path.
   hidden host service.
 - The hosted stage performs the claimed compilation work inside the guest
   execution model rather than delegating the essential operation to the host.
-- The declared scope contains no unresolved placeholder implementation or
-  undocumented workaround required for this objective to function.
+- No placeholder, hidden host substitution or undocumented workaround is
+  permitted on this TODO's frozen admitted acceptance path. Unsupported or
+  untested extensions fail explicitly and do not silently expand that path.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Finite acceptance witness:** One frozen small supported C source consumed by
+  `c2malbolge.malbolge`, one generated executable Malbolge result and
+  independent VM output/termination equality; fix source/output/step/elapsed
+  budgets.
 
 ## Evidence
 

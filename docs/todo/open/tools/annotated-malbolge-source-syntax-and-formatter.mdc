@@ -63,7 +63,10 @@ by the selected profile loader.
   canonicalization boundary; a complete C-level decompiler, graphical editor,
   or richly aligned variable debugger is outside this TODO and never blocks
   CPU-first compilation or independent verifier correctness.
-
+- **Finite acceptance witness:** One fixed annotated-v1 grammar matrix (comment
+  markers, whitespace, line endings and literal hash), all 256 single-byte
+  inputs where admitted, and finite round-trip fixtures under both named VM
+  profiles.
 
 ## Evidence
 

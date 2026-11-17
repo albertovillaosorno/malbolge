@@ -40,12 +40,11 @@ Not implemented. This proposed contract does not claim executable support yet.
 
 ## Bounded Acceptance (2026-11-16)
 
-- Freeze a deterministic >= 60-second DOOM level/interaction workload,
-  target/runner identity, display/input/audio contract, host class and
-  objective frame/input-latency thresholds *before* tuning. An example
-  acceptable declared budget is >= 20 median guest-rendered frames/s and
-  <= 150 ms p95 input-to-present; any different acceptance threshold must
-  be frozen before experiments, not weakened to pass afterward.
+- Pin one deterministic DOOM level/input trace and a >= 60-second guest
+  session with exact target/profile/display/audio/host identity before testing.
+  The success threshold is fixed at >= 20 median guest-rendered frames/s and
+  <= 150 ms p95 input-to-present. A lower result or exhausted finite budget
+  is a failed performance result, never a new success threshold.
 - Count only frames/game behavior produced by generated `doom.malbolge` and
   its admitted host capability transport. Report median and tail frame/input
   latency, actual guest VM steps, discarded frames, resources and independent
@@ -76,8 +75,9 @@ demonstrations may not substitute host logic for guest behavior.
   interaction traces, artifact hashes, and end-to-end verification.
 - Prerequisite completion evidence:
   `user-supplied-doom-source-interoperability-generator`,
-  `malbolge-layout-and-encoding-backend`,
-  `explicit-native-tier-execution-controls`, `deterministic-cpu-optimizer`.
+  `malbolge-layout-and-encoding-backend`, `deterministic-cpu-optimizer`.
+  AOT/JIT controls are optional performance comparisons, not prerequisites
+  of the initial genuine generated guest execution test.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
