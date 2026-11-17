@@ -69,6 +69,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, red-first whole-C EOF probes found incorrect real guest
+  output (`6a` instead of native `ff`) for an explicit terminal `return;`
+  after `putchar(getchar())`, and for direct `putchar(getchar() + 0)`.
+  Source/Clang-bound refusal now traverses the direct output expression's
+  normalized subtree instead of assuming a fixed parenthesis width. Eight
+  shapes and five binary inputs, checked against pinned C23 `-O0`/`-O2`,
+  now reject unsound publication. All 123 frontend Rust tests and six
+  focused Python tests pass. The immutable mutable-EOF checksum still
+  refuses its first declaration; P2 remains open.
+
 - On 2026-11-17, three additional whole C programs produced wrong real
   guest EOF output (`6a` instead of native `ff`): parenthesized
   `putchar((getchar()))` and discarded reads before or after direct output.

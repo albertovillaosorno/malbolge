@@ -346,51 +346,49 @@ fn prove_call<'node>(
 // source cannot be published until a signed-EOF output projection is real.
 // Test *before* trying other frontend projection grammars: otherwise a
 // fallback could accidentally re-admit this unsupported operation.
-// A straight-line output of a signed getchar result is unsafe at EOF whether
-// the source surrounds the expression with parentheses or executes preceding
-// discarded reads. This gate recognizes up to 128 discarded reads and three
-// parenthesis layers, without treating input exhaustion as a successful byte.
-fn unchecked_parenthesized_echo(
+// A straight-line output of a signed getchar result is unsafe at EOF even
+// after pure arithmetic, parentheses, discarded reads or a trailing return.
+// This gate bounds discarded reads to 128 and never treats exhaustion as a
+// byte. Reject a direct top-level putchar whose argument contains a signed
+// getchar call, regardless of pure parentheses/arithmetic around that input.
+// The successful-byte backend only knows the 0..255 input domain; it cannot
+// reproduce putchar's defined EOF conversion from C's -1 result. Find the
+// complete preorder subtree by parent identity, without assuming its width
+// or its expression spelling. This only *rejects* a source shape; it never
+// authorizes lowering from unauthenticated nodes.
+fn unchecked_direct_signed_output_width(
     nodes: &[Node],
     body: &Node,
     previous: u32,
-) -> bool {
-    let [output, cast, callee, rest @ ..] = nodes else {
-        return false;
-    };
-    let wrappers = rest.len().saturating_sub(3);
-    if !(1..=3).contains(&wrappers)
-        || output.kind != "call-expression"
+) -> Option<usize> {
+    let output = nodes.first()?;
+    if output.kind != "call-expression"
         || output.reference.as_deref() != Some("external:putchar")
         || output.parent != body.id
-        || cast.parent != output.id
-        || cast.kind != "cast-expression"
-        || callee.parent != cast.id
-        || callee.reference.as_deref() != Some("external:putchar")
         || output.span.begin.byte <= previous
     {
-        return false;
+        return None;
     }
-    let parents = &rest[..wrappers];
-    let Some(input) = rest.get(wrappers) else {
-        return false;
-    };
-    let mut parent = output.id;
-    for (index, wrapper) in parents.iter().enumerate() {
-        let next = parents.get(index + 1).unwrap_or(input);
-        if wrapper.kind != "parenthesized-expression"
-            || wrapper.type_name.as_deref() != Some("i32")
-            || wrapper.parent != parent
-            || wrapper.span.begin.byte.checked_add(1)
-                != Some(next.span.begin.byte)
-            || next.span.end.byte.checked_add(1) != Some(wrapper.span.end.byte)
-        {
-            return false;
+    let mut descendants = HashSet::from([output.id]);
+    let mut width = 1;
+    let mut signed_input = false;
+    for child in nodes.iter().skip(1) {
+        if !descendants.contains(&child.parent) {
+            break;
         }
-        parent = wrapper.id;
+        if child.span.begin.byte < output.span.begin.byte
+            || child.span.end.byte > output.span.end.byte
+        {
+            return None;
+        }
+        signed_input |= child.kind == "call-expression"
+            && child.reference.as_deref() == Some("external:getchar");
+        if !descendants.insert(child.id) {
+            return None;
+        }
+        width += 1;
     }
-    prove_input_call(&rest[wrappers..], body, previous, (input.id, parent))
-        .is_some()
+    signed_input.then_some(width)
 }
 
 pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
@@ -414,25 +412,27 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     // terminal signed-output expression. Both orders leave the output's
     // EOF conversion observable, even though their input counts differ.
     while !remaining.is_empty() {
-        if !found_output {
-            for width in 6..=9 {
-                if let Some(candidate) = remaining.get(..width) {
-                    let proven = if width == 6 {
-                        prove_call(candidate, body, previous, body.id).is_some()
-                    } else {
-                        unchecked_parenthesized_echo(candidate, body, previous)
-                    };
-                    if proven {
-                        previous = candidate[0].span.end.byte;
-                        remaining = &remaining[width..];
-                        found_output = true;
-                        break;
-                    }
-                }
-            }
-            if found_output {
-                continue;
-            }
+        if !found_output
+            && let Some(width) =
+                unchecked_direct_signed_output_width(remaining, body, previous)
+        {
+            previous = remaining[0].span.end.byte;
+            remaining = &remaining[width..];
+            found_output = true;
+            continue;
+        }
+        // A trailing `return;` changes neither the signed getchar result
+        // nor putchar's EOF conversion. Without this explicit refusal the
+        // successful-byte backend can publish 0x6a instead of C's 0xff.
+        // Only reject the proven direct-echo prefix; a return by itself is
+        // not evidence of an observable EOF output.
+        if found_output
+            && let [last] = remaining
+            && last.kind == "return-statement"
+            && last.parent == body.id
+            && last.span.begin.byte > previous
+        {
+            return true;
         }
         if discarded_reads == MAX_ECHO_CALLS {
             return false;

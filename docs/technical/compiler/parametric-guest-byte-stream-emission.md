@@ -70,6 +70,23 @@ optimization modes, and no-artifact refusal are checked by
 `tests/test_getchar_eof_publication.py`. This bounded refusal is not guest
 EOF-to-byte conversion; dynamic-control semantics remain unfinished.
 
+A further red-first native/guest comparison found two real EOF miscompiles:
+`putchar(getchar()); return;` and `putchar(getchar() + 0);` produced the
+profile EOF word's low byte (`6a`) rather than C's `ff`. In the first case
+an inert terminal return had escaped the narrow refusal. In the second, a
+semantically neutral C arithmetic wrapper escaped it. The bounded gate now
+examines the normalized Clang subtree of one direct, source-ordered
+`putchar` call to detect a nested signed `getchar` without assuming a
+particular parenthesis or expression width; discarded reads and an optional
+terminal return remain covered. This is conservative *refusal only*, not
+runtime EOF lowering or a claim about arbitrarily nested controls.
+
+Eight source forms across five finite input vectors now independently check
+native C23 `-O0`/`-O2` output versus guest execution or explicit typed
+`Unsupported` without publication. The failing `6a` guest output was
+reproduced before the fix. The full checksum gate and all six focused Python
+checks continue to pass, with the checksum still explicitly unsupported.
+
 The complete mutable EOF checksum remains the P2 acceptance gate; its first
 local declaration still refuses at `29:5` without publishing a guest.
 There is no general signed EOF-to-unsigned-char output lowering, guest C
@@ -77,7 +94,8 @@ mutable storage, input-driven branches or dynamic EOF loop yet.
 
 ### Typed representation of EOF-aware C input (2026-11-16)
 
-The portable version-one typed-IR now distinguishes `Getchar { result, type_id }`
+The portable version-one typed-IR now distinguishes
+`Getchar { result, type_id }`
 from the existing successful-only `ByteInput` operation. The new typed-IR
 operation represents C's signed `i32` result: `0..255` after a successful
 byte and `-1` on EOF. It has a separate canonical MCTI opcode (12), exact
@@ -123,7 +141,8 @@ The pinned frontend accepted this exact source. The compiled JSON adapter
 refused at `29:5`, node 3, with `Unsupported` and the diagnostic
 `unlowered C declaration-statement`. No guest artifact was published.
 This is a **non-pass** for P2 until real VM parity is proved. It does not
-establish guest EOF, storage or arithmetic. The test deliberately changes from an exact
+establish guest EOF, storage or arithmetic. The test deliberately changes
+from an exact
 unsupported-stage assertion to guest VM parity if the compiler begins to
 publish successfully. This frozen witness supersedes ad hoc rotating EOF
 checksum probes; later work must repair the actual compiler gap rather than
