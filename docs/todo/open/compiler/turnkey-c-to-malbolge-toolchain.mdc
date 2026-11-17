@@ -79,6 +79,3 @@ optional accelerator on Windows and Linux and never changes semantic acceptance.
 - Jig remains repository-governance tooling for maintainers and is explicitly
   outside the redistributable/end-user dependency contract until a separate
   publication decision exists.
-- ROCm is not a completion dependency; its reserved adapter contract must remain
-  unavailable rather than pretending to have an implementation or device
-  evidence.

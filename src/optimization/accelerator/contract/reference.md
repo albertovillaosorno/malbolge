@@ -916,7 +916,7 @@ and empty CPU routes, malformed nested evidence/ticket behavior, and three live
 RTX 4060 routes: exact one-position publication, empty projection, and adapter-
 
 teardown CPU fallback. This is lifetime/exactness evidence, not measured speedup or
-independent-stream overlap. Other strategies and ROCm search tickets remain open.
+independent-stream overlap. Other search strategies remain open.
 `verification_submission.py` adds
 `validated-verification-assist-submission-v1`. Optional assistance remains pending
 until `wait()`; no backend, typed submit/wait failure, or malformed result completes
@@ -1307,9 +1307,7 @@ one-shot CUDA ticket (1.270x over ordinary); every same-baseline comparison wins
 faster than the one-shot ticket. Prepared setup is untimed while ticket setup and
 cleanup are timed. No cross-device, compiler, synthesis, kernel-overlap, or
 independent-stream claim is made.
-Synthesis/guided search, ROCm work ports and VM execution, broader hardware
-evidence, richer orchestration, and additional representative comparisons remain
-
-follow-on work. `src/optimization/optimizer/application/optimizer/enumerative.py` supplies the first concrete CPU-only
+Synthesis/guided search, broader hardware evidence, richer orchestration,
+and additional representative comparisons remain follow-on work. `src/optimization/optimizer/application/optimizer/enumerative.py` supplies the first concrete CPU-only
 search strategy: deterministic finite-corpus enumeration with canonical replay
 identity and independent trusted verification.

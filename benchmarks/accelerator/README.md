@@ -1230,8 +1230,7 @@ optimization. That production boundary is now implemented by
 workload
 projects exactly 1,024 positions without heuristic filtering and retains
 CPU/CUDA,
-search-ticket, and independent-admission evidence. New strategy families, ROCm,
-
+search-ticket, and independent-admission evidence. New strategy families
 and broader representative comparisons remain separate work.
 
 Run the projected prepared-search measurements with:

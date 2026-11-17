@@ -20,9 +20,8 @@ Hardware acceleration and search algorithms are independent ports.
 
 Hardware adapters provide capabilities such as batch execution, candidate
 evaluation, memory/resource reporting, and asynchronous work submission. CPU is
-the mandatory reference implementation; CUDA is the supported GPU adapter; ROCm
-and
-future devices can implement the same contract.
+the mandatory reference implementation and CUDA is the supported GPU adapter.
+Additional hardware adapter projects are not in scope without new approval.
 
 Algorithm adapters describe enumerative, stochastic, Monte Carlo, evolutionary,
 learned, hybrid, pruning, or future strategies independently from the hardware
@@ -57,8 +56,8 @@ to NVIDIA-specific APIs.
 
 ### Separate algorithms per hardware backend
 
-Rejected because it prevents fair comparison of the same strategy across CPU,
-CUDA, ROCm, and future devices.
+Rejected because it prevents fair comparison of the same strategy across
+supported CPU and CUDA backends.
 
 ## Evidence
 

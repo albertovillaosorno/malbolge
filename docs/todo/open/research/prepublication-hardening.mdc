@@ -37,7 +37,7 @@ consolidated task, not dozens of speculative downstream TODOs.
   provenance variants not used to accept a current compiler output.
 - Pathological source/manifest sizes, deep symlink, filesystem race, Git index
   or hostile host environment situations outside the supported tool path.
-- Unsupported CUDA/ROCm/hardware or optional accelerator settings and rare
+- Unsupported optional CUDA hardware or accelerator settings and rare
   synthetic scaling-statistics cases. No physical GPU is a prerequisite.
 - Pre-paper stress, reproducibility and adversarial evidence checks that are
   actually required by statements made in the final paper.

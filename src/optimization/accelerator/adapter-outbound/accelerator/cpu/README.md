@@ -4,10 +4,9 @@ This directory owns mandatory deterministic CPU execution capacity for
 hardware-neutral accelerator contracts.
 
 `CpuExactPrimitiveAdapter` implements classic ten-trit `rotate` and `crazy`
-independently from the Rust lookup tables. It is intentionally simple: optional
-CUDA/ROCm implementations must preserve the same exact operation semantics
-before
-their throughput is relevant.
+independently from the Rust lookup tables. It is intentionally simple:
+optional CUDA implementations must preserve the same exact operation
+semantics before their throughput is relevant.
 
 `CpuCandidateEvaluationAdapter` and `CpuSearchExecutionAdapter` bind an explicit
 evaluator or algorithm identity to a deterministic CPU callback. The callback is

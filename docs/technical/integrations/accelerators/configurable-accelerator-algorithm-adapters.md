@@ -8,8 +8,8 @@ Completed bounded adapter milestone
 
 Separate optimization/search strategy from accelerator hardware. Define common
 algorithm ports for enumerative, stochastic, Monte Carlo, evolutionary, learned,
-hybrid, pruning, and future strategies, and let CPU, CUDA, ROCm, or later
-hardware adapters provide execution capacity for those strategies. Select
+hybrid, pruning, and future strategies, and let the supported CPU and CUDA
+adapters provide execution capacity for those strategies. Select
 algorithms and hardware through deterministic configuration with optional CLI
 overrides, record the exact combination in benchmark evidence, and permit side-
 by-side comparison without recompiling or modifying compiler semantics.
@@ -587,9 +587,9 @@ records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x CUDA
 ticket improvements over same-run ordinary routes, all with 15/15 paired wins;
 CUDA prepared remains 9.137x faster than the ticket. Resident or fused
 evaluation-selection remains a later option only if exact equivalence stays
-explicit. Synthesis and guided strategies, ROCm search implementations, richer
-orchestration, and broader representative benchmark evidence remain follow-on
-work rather than requirements of this bounded adapter milestone.
+explicit. Synthesis and guided strategies, richer orchestration, and broader
+representative benchmark evidence remain follow-on work rather than requirements
+of this bounded adapter milestone.
 
 ## Invariants
 

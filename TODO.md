@@ -499,12 +499,3 @@ effectiveness.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc](docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc)
-
-### TODO - ROCm adapter contract reservation
-
-Reserve a hardware-neutral ROCm adapter identity and capability boundary
-without implementing, packaging, benchmarking, or advertising ROCm support
-until supported AMD hardware and an explicit maintainer are available.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/rocm-accelerator-adapter.mdc](docs/todo/open/accelerator/rocm-accelerator-adapter.mdc)

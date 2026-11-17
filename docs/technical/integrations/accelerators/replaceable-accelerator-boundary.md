@@ -1659,15 +1659,15 @@ route. Other hosts, Python versions, driver builds, devices, and workloads
 remain
 
 open. The global synchronous default does not change.
-Other CUDA/ROCm strategies, event-instrumentation controls, additional
-admission profiles, and other kernel/callback workloads remain open.
+Other CUDA strategies, event-instrumentation controls, additional admission
+profiles, and other kernel/callback workloads remain open.
 
 ### Completion Boundary
 
 The hardware-neutral port, mandatory CPU reference, optional CUDA adapter,
 profiled VM routes, candidate/search/verification-assist protocols, prepared
 state, submission lifetimes, fallback behavior, admission evidence, and retained
-benchmark methodology are implemented. Additional CUDA kernels, ROCm support,
+benchmark methodology are implemented. Additional CUDA kernels,
 long-running services, new search strategies, and broader hardware evidence are
 extensions owned by their own typed work; they do not reopen this base
 substitution contract.
@@ -1675,8 +1675,8 @@ substitution contract.
 ## Invariants
 
 - Compiler/verifier code depends on a hardware-neutral capability contract;
-  CUDA/ROCm/CPU adapters can be substituted without changing compiler semantics
-  or candidate validity rules.
+  supported CUDA and CPU adapters can be substituted without changing compiler
+  semantics or candidate validity rules.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 
@@ -1866,10 +1866,9 @@ fails explicitly without changing correctness rules.
   handling,
   and three live CUDA routes for exact hints and teardown-driven empty
   completion.
-- Remaining evidence includes other CUDA/ROCm search and hint tickets, ROCm
-  candidate tickets and VM substitution, instrumentation controls, additional
-  device/workload admission profiles, broader hardware evidence, and matched
-  measurements for other workloads.
+- Remaining evidence includes other CUDA search and hint tickets,
+  instrumentation controls, additional device/workload admission profiles,
+  broader hardware evidence, and matched measurements for other workloads.
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 ## References

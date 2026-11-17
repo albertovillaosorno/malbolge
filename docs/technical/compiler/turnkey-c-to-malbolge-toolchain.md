@@ -37,7 +37,6 @@ compiles to `.malbolge`.
 - CUDA availability changes performance only, never semantic acceptance.
 - Windows and Linux use exact manifest-selected dependencies.
 - Privileged host drivers are detected and diagnosed, not installed silently.
-- ROCm remains a reserved adapter contract and is not a completion dependency.
 - Jig remains maintainer governance tooling outside the public bootstrap.
 
 ## Failure Behavior

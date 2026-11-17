@@ -35,24 +35,22 @@ A defect reported later on real AArch64 hardware is a compatibility bug to fix,
 not a reason to weaken the portable execution contract.
 
 GPU acceleration is named by the software runtime boundary that the repository
-integrates. CUDA is the supported NVIDIA GPU adapter. ROCm reserves a possible
-future AMD
-GPU adapter identity without claiming implementation. CPU, CUDA, and future
-adapters implement replaceable
-capability ports; none of them is required for semantic correctness beyond the
-portable CPU baseline.
+integrates. CUDA is the supported NVIDIA GPU adapter. CPU and CUDA implement
+replaceable capability ports; neither an additional GPU backend nor a reserved
+vendor adapter is part of the current product scope. The portable CPU baseline
+alone is sufficient for semantic correctness.
 
 The initial host baseline does not promise 32-bit x86 or AArch32 support. Adding
-a new host ISA or accelerator runtime requires explicit evidence for the same
-semantic and verifier contracts rather than widening shared code with platform
-conditionals by accident.
+a new host ISA or accelerator runtime requires separate owner authorization and
+explicit evidence for the same semantic and verifier contracts rather than
+widening shared code with platform conditionals by accident.
 
 ## Advantages
 
 - x86-64 and AArch64 receive equal architectural status before implementation
   choices make one of them a retrofit.
-- CUDA and ROCm identify concrete software/runtime integration boundaries
-  instead of conflating a GPU vendor with an API contract.
+- CUDA identifies a concrete software/runtime integration boundary rather
+  than conflating a GPU vendor with an API contract.
 - The CPU path remains a portable correctness and fallback baseline when no GPU
   is available.
 - Native code generation and accelerator search can evolve independently from
@@ -67,14 +65,12 @@ conditionals by accident.
 
 ## Consequences
 
-- `accelerator/cpu/`, `accelerator/cuda/`, and `accelerator/rocm/` are the first
-  adapter scaffold identities.
+- `accelerator/cpu/` and `accelerator/cuda/` are the supported adapter
+  scaffold identities.
 - CPU reference tests and performance evidence identify whether results came
   from x86-64 or AArch64.
 - Native cache identity includes host architecture and cannot reuse x86-64 code
   on AArch64 or vice versa.
-- ROCm replaces the vague `AMD` adapter name throughout planning and technical
-  documentation.
 - Unsupported host or accelerator hardware changes available acceleration, not
   the acceptance semantics of a valid `.malbolge` program.
 
@@ -87,16 +83,14 @@ conditionals by accident.
   the compiler/runtime interface implemented by the adapter.
 - Requiring a GPU was rejected because compiler correctness and VM execution
   must remain available on the CPU baseline.
-- Treating CUDA or ROCm as compiler semantics was rejected because emitted
+- Treating CUDA as compiler semantics was rejected because emitted
   `.malbolge` artifacts must not depend on the machine that optimized them.
 
 ## Evidence
 
 - `accelerator/cpu/`
 - `accelerator/cuda/`
-- `accelerator/rocm/`
 - `docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md`
 - `docs/technical/adr/tiered-native-execution.md`
 - `docs/bibliography/platforms-and-runtimes/aarch64.md`
 - `docs/bibliography/platforms-and-runtimes/x86-64.md`
-- `docs/bibliography/platforms-and-runtimes/rocm.md`

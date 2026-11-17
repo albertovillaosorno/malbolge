@@ -41,8 +41,8 @@ must expose the state and layout contract required for safe linking.
   provenance, and verifier identity.
 - Lookup never substitutes a block whose complete composition contract does not
   match the requested operation and current linker assumptions.
-- Catalogue entries remain independently verifiable and reproducible across CPU,
-  CUDA, ROCm, and later search backends.
+- Catalogue entries remain independently verifiable and reproducible across
+  the supported CPU and CUDA search backends.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and

@@ -11,10 +11,10 @@ GPU and accelerator hardware.
 
 ## Repository Use
 
-ROCm is the reserved software/runtime identity for a possible future AMD-family
-adapter. The
-adapter may provide batch VM execution, candidate evaluation, search, and
-superoptimization capacity without becoming a semantic dependency.
+This is an external software-platform bibliography record, not an active
+adapter reservation or a feature in the Malbolge roadmap. An earlier proposal
+to reserve an AMD-family adapter was withdrawn from project scope in 2026.
+No ROCm support, integration or future delivery is planned.
 
 ## Provenance
 
@@ -39,17 +39,17 @@ vendored component requires its own dependency/license review.
 
 ## Evidence
 
-- ROCm is a concrete software/runtime stack rather than a generic vendor label.
-- Its compilers, runtimes, libraries, and tooling make `rocm` the appropriate
-  adapter identity for this repository.
-- Backend availability and performance are hardware/runtime facts and cannot
-  alter Malbolge semantic acceptance.
+- ROCm is a concrete external software/runtime stack, not a generic vendor.
+- The vendor documentation identifies its compilers, runtimes, libraries,
+  and tooling; this does not commit Malbolge to an adapter implementation.
+- Backend availability and performance are hardware/runtime facts, not part
+  of Malbolge's semantic acceptance rules.
 
 ### Unresolved
 
 Supported-device matrices, runtime availability, and performance vary by ROCm
-release and hardware. Malbolge acceptance and throughput claims therefore still
-require versioned local adapter evidence.
+release and hardware. This record makes no Malbolge compatibility, integration,
+throughput or future-support claim.
 
 ## Sources
 

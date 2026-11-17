@@ -327,6 +327,24 @@ def test_phase_task_dependencies_and_contracts_are_resolvable() -> None:
             assert dependency in identifiers, (path, dependency)
 
 
+def test_unapproved_gpu_adapter_has_no_active_reservation() -> None:
+    """Removed scope must not return as a placeholder or future commitment."""
+    reserved = "rocm-accelerator-adapter"
+    assert not (OPEN_ROOT / "accelerator" / f"{reserved}.mdc").exists()
+    assert not (
+        ROOT / "docs/technical/integrations/accelerators" / f"{reserved}.md"
+    ).exists()
+    for document in (
+        TODO_PATH,
+        PHASES_ROOT,
+        ROOT / "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md",
+        ROOT / "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md",
+    ):
+        contents = document.read_text(encoding="utf-8")
+        assert "rocm" not in contents.lower(), document
+    assert all(reserved not in path.name for path in OPEN_ROOT.rglob("*.mdc"))
+
+
 def test_phase_gates_include_every_current_phase_and_real_release() -> None:
     """No gate is silently removed and the CPU-only milestone remains named."""
     roadmap = PHASES_ROOT.read_text(encoding="utf-8")

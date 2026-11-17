@@ -55,7 +55,7 @@ supported deterministic-C subset must be explicit and tested end to end.
 
 ## Non-goals
 
-Cross-platform packaging, native x86-64/AArch64 backends, CUDA/ROCm,
+Cross-platform packaging, native x86-64/AArch64 backends, CUDA,
 accelerated compilation, DOOM playability, arbitrary C, self-hosting and
 paper-grade adversarial matrices are later, separately owned work. The
 existing [turnkey toolchain contract](turnkey-c-to-malbolge-toolchain.md)

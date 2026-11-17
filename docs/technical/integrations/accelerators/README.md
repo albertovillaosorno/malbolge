@@ -22,4 +22,3 @@ External source authority, research conclusions, legal analysis, or TODO state.
 - `deterministic-cpu-optimizer.md`
 - `replaceable-accelerator-boundary.md`
 - `reusable-block-catalogue.md`
-- `rocm-accelerator-adapter.md`

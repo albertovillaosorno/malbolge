@@ -3,8 +3,8 @@
 ## Why this roadmap exists
 
 As of 2026-11-16, the unfinished [TODO index](../../TODO.md) groups
-**51 open typed records**.
-They represent real work but are not 51 equally urgent steps. The old P2
+**50 open typed records**.
+They represent real work but are not 50 equally urgent steps. The old P2
 mixed compiler correctness with native execution and benchmark research.
 This plan makes the earliest product milestone explicit: **a CPU-only
 compiler that actually executes a useful C program inside Malbolge**.
@@ -193,10 +193,10 @@ results. Effective transcendental mathematics is an independent paper,
 not a shipping prerequisite.
 
 **Optional, not part of the first release:** hexagonal authoring, the
-source-bound diff generator, ROCm reservation, and higher-arity symmetry
-work. Promote a task from this parking area only with measured impact,
-supported hardware and maintainership, a reproducible defect or a paper
-claim that requires it. ROCm does not require owning AMD hardware today.
+source-bound diff generator, and higher-arity symmetry work. Promote an
+optional task only when a measured bottleneck, a reproducible defect or
+an explicit paper claim requires it. Additional GPU backends have no
+reserved slot or implementation obligation in this roadmap.
 
 ## Progress accounting and stop rules
 

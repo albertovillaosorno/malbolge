@@ -1922,12 +1922,11 @@ over CUDA ordinary, both with 15/15 paired wins; prepared remains 9.137x faster
 than the ticket. No cross-device, compiler, synthesis, kernel-overlap, or
 independent-stream claim is made.
 
-Broader live-hardware evidence, synthesis/search strategies, resident search
-  designs, and ROCm remain follow-on work rather than completion requirements of
-this bounded exact-CUDA VM adapter milestone. Strategy breadth belongs to
+Broader live-hardware evidence, synthesis/search strategies, and resident
+search designs remain follow-on work rather than completion requirements of this
+bounded exact-CUDA VM adapter milestone. Strategy breadth belongs to
 `configurable-accelerator-algorithm-adapters`; adaptive capacity policy belongs
-to `adaptive-accelerator-resource-budgeting`; ROCm has its own reserved adapter
-TODO.
+to `adaptive-accelerator-resource-budgeting`.
 
 Additional devices or workload profiles require new retained evidence before
 any broader performance claim.
