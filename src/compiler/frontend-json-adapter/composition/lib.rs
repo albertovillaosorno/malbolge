@@ -3003,6 +3003,9 @@ pub fn canonical_guest_typed_ir_with_source(
     if source_byte_echo::is_unchecked_local_eof_echo(bytes, source) {
         return Err(FrontendJsonError::Unsupported);
     }
+    if source_byte_echo::is_unchecked_direct_loop_eof_echo(bytes) {
+        return Err(FrontendJsonError::Unsupported);
+    }
     if source_byte_echo::is_unchecked_counter_loop_signed_eof_output(bytes) {
         return Err(FrontendJsonError::Unsupported);
     }

@@ -28,6 +28,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Direct counted-loop signed EOF publication (2026-11-17)
+
+The previously accepted complete C23 `input_unsigned_loop.c` unrolls four
+`putchar(getchar())` calls. On empty stdin its genuine 9-step N15 guest
+published `6a6a6a6a`, while native C23 `-O0`/`-O2` requires `ffffffff`;
+short streams exhibit the same wrong EOF residue. The red-first five-vector
+regression records normative guest execution and two UBSan native oracles.
+
+The adapter now recognizes a signed `getchar` nested inside a `putchar` with
+a source/Clang-proven `for` ancestor, including conditional and unbraced
+bodies. It refuses before successful-byte-only lowering, without guest
+publication. The frozen golden source remains historical successful-byte
+evidence, **not** proof that arbitrary stdin conforms to C23. This is a
+scoped soundness fix, not a guest signed EOF conversion or general mutable
+C support; the P2 checksum still refuses declaration `29:5`.
+
 ### Single-output signed EOF inside counted C loops (2026-11-17)
 
 One complete C23 source now demonstrates that a **single** output of a signed

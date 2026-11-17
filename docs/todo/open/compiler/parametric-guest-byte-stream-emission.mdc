@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the checked-in four-trip `input_unsigned_loop.c` compiled
+  to a real nine-step N15 guest that emitted `6a6a6a6a` on empty stdin,
+  violating native C23 `ffffffff`. A red-first five-vector, two-mode
+  UBSan-native and normative-guest-or-no-publication test reproduced this
+  public defect. The adapter now refuses direct nested signed `getchar`
+  output under a Clang-authenticated `for` ancestor before byte-only
+  lowering; its 123 Rust unit tests and the focused C23 test pass. This
+  prevents an unsound output, not guest-side EOF conversion. The frozen
+  mutable checksum still refuses its first declaration at `29:5`.
+
 - On 2026-11-17, a complete three-trip C23 counted loop with one
   counter-selected `putchar(current)` of a signed `getchar` local compiled
   to a real 1,087-byte, five-step guest that emitted `6a` on empty and

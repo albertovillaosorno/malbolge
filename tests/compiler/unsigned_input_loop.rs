@@ -61,12 +61,13 @@ const SOURCE: &[u8] =
     include_bytes!("c-frontend/accepted/input_unsigned_loop.c");
 
 #[test]
-fn unsigned_loop_projects_four_runtime_input_output_pairs() {
-    let (_typed, mode) =
-        canonical_guest_typed_ir_with_source(JSON, Some(SOURCE)).expect(
-            "pinned unsigned loop should preserve four runtime input effects",
-        );
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
+fn unsigned_loop_refuses_direct_signed_eof_publication() {
+    // Four successful inputs are not a whole-C proof. On empty stdin,
+    // putchar(getchar()) must write ff, not the guest EOF residue 6a.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(JSON, Some(SOURCE)),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]

@@ -453,6 +453,69 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     signed_outputs > 0
 }
 
+// Unrolling a bounded for loop cannot remove the observable EOF result of
+// putchar(getchar()). Even though every successful read is a guest byte,
+// exhausted C23 stdin makes getchar return -1 and putchar write 0xff.
+// Reject a signed input nested inside an output directly in a for-loop body
+// before the successful-u8 projection can publish a false executable.
+// This is a conservative refusal only: it cannot authorize a C lowering.
+pub(super) fn is_unchecked_direct_loop_eof_echo(bytes: &[u8]) -> bool {
+    let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
+        return false;
+    };
+    let nodes = &artifact.nodes;
+    let by_id: HashMap<u32, &Node> =
+        nodes.iter().map(|node| (node.id, node)).collect();
+    nodes.iter().any(|output| {
+        if output.kind != "call-expression"
+            || output.reference.as_deref() != Some("external:putchar")
+        {
+            return false;
+        }
+        // An if/switch or a nested brace does not guard a freshly read
+        // getchar inside putchar: the input has not occurred until output
+        // evaluation. Walk the original Clang parent identities to include
+        // braced, unbraced and conditionally selected loop outputs.
+        let mut parent = output.parent;
+        let enclosed_by_for = (0..MAX_NESTED_LOCAL_DEPTH).any(|_| {
+            let Some(ancestor) = by_id.get(&parent) else {
+                return false;
+            };
+            parent = ancestor.parent;
+            ancestor.kind == "for-statement"
+        });
+        if !enclosed_by_for {
+            return false;
+        }
+        nodes.iter().any(|input| {
+            if input.kind != "call-expression"
+                || input.reference.as_deref() != Some("external:getchar")
+                || input.type_name.as_deref() != Some("i32")
+                || input.span.begin.byte < output.span.begin.byte
+                || input.span.end.byte > output.span.end.byte
+            {
+                return false;
+            }
+            let mut parent = input.parent;
+            for _ in 0..MAX_BYTE_IDENTITY_DEPTH {
+                if parent == output.id {
+                    return true;
+                }
+                let Some(ancestor) = by_id.get(&parent) else {
+                    break;
+                };
+                if ancestor.span.begin.byte < output.span.begin.byte
+                    || ancestor.span.end.byte > output.span.end.byte
+                {
+                    break;
+                }
+                parent = ancestor.parent;
+            }
+            false
+        })
+    })
+}
+
 // A statically unrolled loop does not prove its signed getchar values are
 // successful bytes. Even a single counter-selected output of an unguarded
 // signed local writes 0xff at EOF in C, but the current
