@@ -32,11 +32,22 @@ ownership rules stated by its governing decisions.
 
 Not implemented. This proposed contract does not claim executable support yet.
 
+## Bounded Acceptance (2026-11-16)
+
+- Verification covers the expressly admitted target profile, supported IR
+  operations, and stated local/finite semantics. A checked proof rule or
+  bounded exhaustive state obligation may establish equivalence; sampling
+  and fuzzing cannot by themselves certify arbitrary looping C semantics.
+- An unknown or unproved candidate fails closed before artifact admission.
+  Positive and mutated negative fixtures record the accepted assumptions,
+  verified state relation and rejected unsound rewrites.
+
 ## Invariants
 
-- Each compiled block/program is checked against its source IR contract after
-  optimization; an untrusted optimizer cannot make an invalid candidate
-  acceptable by its own verdict.
+- Each admitted block/program is checked against a stated local or bounded
+  source IR relation after optimization; unknown global/unbounded claims are
+  rejected, not inferred from finite output samples. An untrusted optimizer
+  cannot make an invalid candidate acceptable by its own verdict.
 - The verifier is tested against valid cases and deliberately mutated invalid
   cases so acceptance and rejection boundaries are evidenced independently.
 

@@ -1385,6 +1385,19 @@ JSON, portable checkpoint envelopes, or payload bytes outside each stage's
 existing admission boundary. The future top-level compiler/CLI must compose
 these selectors once a product C-to-Malbolge pipeline exists.
 
+## Bounded Acceptance (2026-11-16)
+
+- The durable sidecar/profile/source identity is portable. Opaque solver
+  continuation state is backend/codec-specific unless the schema advertises
+  and proves a compatible cross-backend codec. Accepted CPU/CUDA-equal
+  checkpoint records below are evidence for *those* strategies only, not
+  proof that all future search algorithms share identical checkpoints.
+- P2 is satisfied by a real CPU stage checkpoint/restart, atomic generations,
+  compatible-resume rejection and no partial final program. A GPU job may
+  restart using a supported backend-specific checkpoint, or start fresh when
+  no compatible codec exists. New CPU/GPU schedules may produce different
+  independently verified artifacts; equal bytes are not a general contract.
+
 ## Invariants
 
 - Checkpoint and partial generations are immutable and sequence-addressed.
@@ -1476,11 +1489,14 @@ these selectors once a product C-to-Malbolge pipeline exists.
   revision, toolchain fingerprint, algorithm version, seed, and checkpoint
   schema.
   Any mismatch is rejected unless an explicit reviewed migration exists.
-- Device-local memory is never the only copy of resumable state. GPU jobs emit a
-  backend-neutral durable checkpoint sufficient for CPU inspection and exact
-  compatibility checks. `malbolge-checkpoint-v1` carries no backend or device
-  identity; backend-specific state must be normalized by the owning state codec
-  before publication.
+- Device-local memory is not the only copy for jobs that promise recovery.
+  GPU jobs emit a versioned checkpoint with portable source/semantic metadata
+  and a declared state codec. A CPU reader can inspect the metadata and reject
+  an incompatible codec; it need not decode arbitrary GPU-native state.
+  Cross-backend restoration requires proven codec compatibility, not a promise
+  of identical GPU/CPU scheduling. `malbolge-checkpoint-v1` carries no backend
+  or device identity; an opaque payload is canonical within its owning codec
+  and must not be mistaken for universally portable solver state.
 - `active_elapsed_ns` is accumulated from monotonic clock segments. UTC wall
   timestamps provide chronology but never replace monotonic duration
   measurement.

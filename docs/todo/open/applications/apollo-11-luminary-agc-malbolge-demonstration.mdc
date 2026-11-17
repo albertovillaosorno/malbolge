@@ -59,6 +59,12 @@ Block II AGC interpreter that is itself compiled to and executed as
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Stage evidence: first compile the one existing AGC interpreter C file and
+  match its smoke result; then bind the pinned historical rope image and one
+  bounded deterministic mission scenario with an independent instruction
+  trace oracle. Machine-specific format loaders and DSKY fixtures are test
+  data/adapters, not a second C-to-Malbolge compiler or a general AGC product.
+
 
 ## Evidence
 

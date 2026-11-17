@@ -39,10 +39,20 @@ execution of the final generated `.malbolge` payload.
 
 Not implemented. No six-target native capability-runner matrix is claimed yet.
 
+## Bounded Acceptance (2026-11-16)
+
+- The intended Windows/macOS/Linux x86-64/AArch64 matrix is a staged target,
+  not an assertion that six runtime pairs already work. Every officially
+  supported pair requires host-real capability and negative-case evidence;
+  cross-build-only pairs remain explicitly unsupported until measured.
+  Start with available Windows/Linux x86-64 and AArch64 pairs, then expand
+  without altering the single guest capability/semantic contract.
+
 ## Invariants
 
-- Supported runners cover 64-bit Windows, macOS, and Linux on x86-64 and AArch64
-  using the same versioned host-capability semantic contract.
+- The intended coverage is 64-bit Windows, macOS and Linux on x86-64/AArch64;
+  each pair is declared supported only after host-real capability-frame
+  conformance, not merely cross-compilation or source-level admission.
 - The same `.malbolge` payload and target-profile identity are accepted across
   supported runners; guest source does not select operating-system branches to
   compensate for adapter differences.
@@ -72,10 +82,9 @@ apparent compatibility.
 
 ## Verification
 
-- Execute the same canonical capability-frame corpus on every supported
-  OS/architecture pair and compare guest memory, results, diagnostics, and
-  effect
-  ordering.
+- Execute the same canonical capability-frame corpus on each declared
+  supported OS/architecture pair and compare guest memory, results,
+  diagnostics, and effect ordering.
 - Run malformed-frame, invalid-range, unavailable-capability, startup, and
   shutdown fixtures on every runner.
 - Prove generated-program startup/execution does not depend on LLVM/Clang or an

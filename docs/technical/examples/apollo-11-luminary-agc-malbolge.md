@@ -58,6 +58,15 @@ attribution/provenance, and review under the repository legal boundary.
 The AGC interpreter is new project-authored Apache-2.0 code. No third-party AGC
 emulator implementation is copied into the runner.
 
+## Bounded Acceptance (2026-11-16)
+
+- First accept the ordinary compilation and actual guest execution of the
+  single `apollo_agc_runner.c` C interpreter against native controls.
+  Independently stage the historically pinned Luminary rope image and a
+  finite mission/DSKY trace with independent AGC oracle. Do not require an
+  unrelated simulator, second C compiler, general AGC environment, or
+  unbounded historical mission execution.
+
 ## Invariants
 
 - AGC instruction execution, memory banking, arithmetic, scheduler-relevant

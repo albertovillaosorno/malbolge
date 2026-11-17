@@ -49,6 +49,14 @@ Prior-work claims must resolve through canonical records under
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
 
+## Bounded Acceptance (2026-11-16)
+
+This record owns reusable workload/measurement plumbing and raw Pareto and
+capacity-curve reporting for a finite representative algorithm set. The
+separate empirical synthesis-scaling study owns complexity-model fits and
+scientific interpretation. The arena does not require every optional GPU,
+model or native backend before it is useful.
+
 ## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,

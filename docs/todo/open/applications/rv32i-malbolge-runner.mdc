@@ -57,6 +57,13 @@ RV32I interpreter that is itself compiled to and executed as `malbolge-2026`.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Pin the unprivileged RV32I base ISA revision, deterministic memory/loader
+  capacity, trap/exit conventions, one compiler-built test binary, and exact
+  resource budget. Privileged ISA modes, extensions, an operating system,
+  Linux syscall ABI and general platform emulation are outside the declared
+  runner workload unless separately proven necessary. Only `rv32i_runner.c`
+  is the C guest compilation target.
+
 
 ## Evidence
 

@@ -31,15 +31,22 @@ trusting a large heuristic backend.
 
 ## Acceptance
 
-- Each compiled block/program is checked against its source IR contract after
-  optimization; an untrusted optimizer cannot make an invalid candidate
-  acceptable by its own verdict.
+- Each *admitted* block/program carries an explicit semantic relation and
+  trust boundary. Local proof rules or exhaustive checks may establish bounded
+  obligations; unsupported, resource-unbounded or unproved obligations fail
+  closed, not by pretending arbitrary C/program equivalence was decided.
+- An untrusted optimizer cannot admit its own proposal, and tests/fuzzing are
+  supplementary evidence rather than a universal equivalence proof.
 - The verifier is tested against valid cases and deliberately mutated invalid
   cases so acceptance and rejection boundaries are evidenced independently.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Positive and deliberately mutated negative fixtures name the admitted
+  profile, state assumptions and checked obligations; report unsupported proof
+  cases explicitly instead of inferring correctness from output samples.
+
 
 ## Evidence
 

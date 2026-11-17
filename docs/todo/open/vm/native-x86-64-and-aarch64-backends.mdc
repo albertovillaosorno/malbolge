@@ -45,6 +45,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Label host-real runtime evidence separately from ISA-verified cross-built
+  objects; cross-compilation and disassembly alone cannot be represented as
+  measured AArch64 runtime performance. All advertised host-runner tuples
+  need their own supported-machine tests before claiming support.
+
 
 ## Evidence
 

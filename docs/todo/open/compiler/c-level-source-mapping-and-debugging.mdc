@@ -30,9 +30,11 @@ for implementation and verification.
 
 ## Acceptance
 
-- Source maps preserve C file/line/function/variable provenance through
-  IR/lowering/layout so stepping and diagnostics can reconstruct C-level
-  execution without requiring raw A/C/D inspection.
+- Source maps preserve admitted C file/function/line/IR-region identity
+  through lowering and address-sensitive layout with deterministic reverse
+  lookup and boundary/error cases. Variable values and high-level stepping
+  are reported only when recoverable from verified state/provenance; full C
+  variable debugging is not a P3 release requirement.
 - Source maps provide deterministic boundaries for an optional annotated
   Malbolge view so generated output can mirror C translation units, functions,
   blocks, and source lines without changing canonical target bytes.
@@ -43,6 +45,11 @@ for implementation and verification.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- A minimal compiled real-C fixture demonstrates correct source-address
+  diagnostics through self-modification and relocation. Complete interactive
+  source debugger UI, breakpoint protocol and optimizer-aware variable
+  reconstruction are not prerequisites of the P3/P5 compiler.
+
 
 ## Evidence
 

@@ -117,6 +117,13 @@ decompiler/reverse-engineering
 annotations may layer on that mapping without turning comments into executable
 metadata.
 
+## Bounded Acceptance (2026-11-16)
+
+- Annotated syntax must canonicalize byte-exactly to the selected raw
+  `.malbolge` profile and must never define a second execution format.
+  A graphical editor, full C decompiler, interactive debugger or recovery of
+  optimized-away C variables is not part of this formatting task or P5.
+
 ## Invariants
 
 - `canonicalize(annotated)` is an ordinary canonical Malbolge byte sequence.

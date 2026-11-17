@@ -44,6 +44,18 @@ baseline for accelerator implementations.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- CPU synthesis/exact candidate evaluation uses a versioned hardware-neutral
+  candidate batch: fixed-width state fields, explicit bounds, deterministic
+  cost/pruning rules and no pointer-rich or host-callback-only algorithm
+  assumptions. Separate CPU and CUDA execution layouts may be optimized
+  without changing this semantic contract.
+- Before P6 locks in its search representation, demonstrate one bounded
+  real candidate-batch projection to the existing CUDA execution port and
+  compare CPU/CUDA results on supported hardware. If a GPU is unavailable,
+  retain a validated kernel-shape/transfer feasibility record and mark live
+  GPU proof open for P8, never falsely claim device parity. CPU correctness
+  and P5 do not wait for GPU hardware.
+
 
 ## Evidence
 

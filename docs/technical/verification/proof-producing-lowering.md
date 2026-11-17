@@ -32,6 +32,13 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 Not implemented. This proposed contract does not claim executable support yet.
 
+## Bounded Acceptance (2026-11-16)
+
+- Provide independently checkable proof witnesses for a finite family of
+  actually used lowering rewrites under explicit source/profile, aliasing,
+  memory and resource assumptions. The task does not require a universal
+  theorem prover or a decision procedure for all terminating C programs.
+
 ## Invariants
 
 - Selected lowering steps emit compact proof/equivalence evidence that a smaller

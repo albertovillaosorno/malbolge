@@ -39,6 +39,11 @@ historical attribution and compatibility evidence explicit.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Reuse pinned historical interpreter evidence, existing P8/P9 generated
+  programs and self-hosting receipts in a reproducible script or report.
+  No independent museum app, GUI, alternate emulator or additional paper is
+  required; this task produces evidence for the single final P10 manuscript.
+
 
 ## Evidence
 

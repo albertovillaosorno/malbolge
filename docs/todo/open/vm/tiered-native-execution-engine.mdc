@@ -61,6 +61,11 @@ behavior.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Keep 1.1x as the admission threshold for a measured in-process hot region,
+  never as an assumption that every translated region can accelerate. Publish
+  the benchmark family, warm-up, paired samples and conservative rejection
+  behavior; a slow region must remain interpretable without JIT promotion.
+
 
 ## Evidence
 

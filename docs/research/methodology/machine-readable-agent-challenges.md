@@ -43,6 +43,14 @@ Prior-work claims must resolve through canonical records under
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
 
+## Bounded Acceptance (2026-11-16)
+
+The deliverable is one offline, versioned challenge/result schema with
+verifier-controlled admission, replay/negative test fixtures and bounded input.
+Externally generated candidate records may be consumed by existing tools; an
+autonomous agent runtime, LLM hosting/training, scheduler, API service and web
+frontend are not deliverables.
+
 ## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,

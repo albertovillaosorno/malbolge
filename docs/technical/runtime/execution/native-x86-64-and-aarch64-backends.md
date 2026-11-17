@@ -3178,6 +3178,13 @@ fused-template coverage, concrete
 executable-memory and foreign-call adapters, runtime integration, and concrete
 instruction-cache synchronization remain incomplete.
 
+## Bounded Acceptance (2026-11-16)
+
+- Admission of a cross-built AArch64 object is backend correctness evidence,
+  never a claim of native AArch64 runtime performance. Only host-real runs
+  admit a platform runner to the supported-host matrix, with platform and
+  execution mode labeled in retained measurements.
+
 ## Invariants
 
 - x86-64 and AArch64 are first-class host targets, consume the same portable

@@ -32,6 +32,10 @@ The current critical path starts at **P2**, under
 targets the **P5 CPU-first usable compiler release**. Follow the
 [phase gates in TODO.md](TODO.md) instead of scheduling native tiers,
 CUDA, DOOM or publication before a real stateful C program runs in the guest.
+The CPU optimizer's candidate-batch semantics, exact pruning/cost policy and
+verifier boundary must be CUDA-projectable before P6 fixes its data model.
+CPU code does not need to be GPU-fast, but CUDA must not require a second
+compiler algorithm. P8 requires measured real-device speedups, not a GPU label.
 The older versioned corpus is evidence, not a roadmap for incrementing N.
 Escalate unclear priorities before another homogeneous byte-count example.
 

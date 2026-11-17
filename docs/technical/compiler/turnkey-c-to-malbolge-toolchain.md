@@ -31,11 +31,25 @@ and single-command user workflow remain unfinished.
 Not implemented. This contract does not claim that arbitrary supported C already
 compiles to `.malbolge`.
 
+## Bounded Acceptance (2026-11-16)
+
+- The supported Windows/Linux C compiler/bootstrap must run without GPU or
+  native JIT; it uses an ordinary interpreter/verifier-backed `.malbolge`
+  build. CUDA provisioning, NVIDIA kernel drivers and the six-pair native
+  capability-runner matrix are separate integrations, not prerequisites for
+  compiling C in the supported CPU path.
+- Offline reuse means exact toolchains and public archives are already
+  cached for the declared supported host. Uncached content, missing licensed
+  components or privileged drivers fail with explicit diagnostics instead of
+  a false universal offline-installation promise.
+
 ## Invariants
 
 - CPU compilation works without a GPU.
 - CUDA availability changes performance only, never semantic acceptance.
-- Windows and Linux use exact manifest-selected dependencies.
+- Supported Windows/Linux compiler hosts use exact manifest-selected
+  public dependencies with an explicit supported-host matrix. Native runner
+  coverage and CUDA device availability are reported separately.
 - Privileged host drivers are detected and diagnosed, not installed silently.
 - Jig remains maintainer governance tooling outside the public bootstrap.
 
@@ -48,10 +62,11 @@ semantic or verification failure never does.
 
 ## Verification
 
-Completion requires deterministic bootstrap identity, offline reuse after exact
-archives are cached, end-to-end CPU fixtures, Linux NVIDIA selection and
-fallback evidence, atomic output tests, and byte-exact verified `.malbolge`
-artifacts.
+Completion requires deterministic bootstrap identity, offline reuse after
+exact archives are cached, end-to-end CPU fixtures, explicit missing-CUDA
+fallback, atomic output tests, and verified `.malbolge` artifacts. Live Linux
+NVIDIA selection and throughput are separately reported when hardware exists;
+no GPU test is a P7 public-compiler prerequisite.
 
 ## References
 

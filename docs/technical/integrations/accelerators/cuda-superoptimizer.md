@@ -32,6 +32,20 @@ ownership rules stated by its governing decisions.
 
 Not implemented. This proposed contract does not claim executable support yet.
 
+## Bounded Acceptance (2026-11-16)
+
+- CUDA candidate generation, exact evaluation, pruning and block stitching
+  consume the same versioned finite candidate/proof contract as the CPU
+  optimizer. Algorithms and GPU execution are separate ports: deterministic
+  GPU search works without stochastic or learned search. Keep GPU batches
+  packed/resident where beneficial rather than cloning every N15 VM image.
+- One predeclared large-candidate class on supported NVIDIA hardware must
+  achieve at least 1.25x paired median *end-to-end* speedup against its CPU
+  reference over >= 15 matched samples; measure >= 3 growing workload points,
+  full transfer/preparation/verification cost, peak VRAM and crossover. A
+  primitive-only speedup or an unavailable GPU does not close the P8 CUDA
+  scaling gate. Each CUDA candidate still needs independent verification.
+
 ## Invariants
 
 - GPU candidate generation/evaluation can be disabled without changing
@@ -55,8 +69,9 @@ fails explicitly without changing correctness rules.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `cuda-exact-vm-adapter`,
-  `stochastic-and-guided-search`, `search-pruning-and-state-canonicalization`,
-  `translation-validation`.
+  `search-pruning-and-state-canonicalization`, `translation-validation`,
+  `resumable-compilation-progress-sidecars`. Stochastic/learned search is
+  optional and not a CUDA execution dependency.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

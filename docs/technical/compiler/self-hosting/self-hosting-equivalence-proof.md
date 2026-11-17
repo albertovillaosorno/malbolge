@@ -30,6 +30,14 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 Not implemented. This proposed contract does not claim executable support yet.
 
+## Bounded Acceptance (2026-11-16)
+
+Equivalence is claimed only for the declared supported C source/target
+  profile, resource bounds and observable relation. Compare actual native
+  and Malbolge-hosted translation on a representative adversarial corpus
+  through a trusted verifier; no universal theorem about arbitrary C nor
+  mere artifact-hash agreement is required.
+
 ## Invariants
 
 - Native and Malbolge-hosted compiler outputs are compared by canonical artifact

@@ -44,6 +44,14 @@ self-modification analysis.
 Not implemented. This proposed contract does not claim a resident compiler,
 hot reload, or zero-latency recompilation today.
 
+## Bounded Acceptance (2026-11-16)
+
+- Keep this project goal but require evidence that cold compilation and
+  verified reuse suffer a measured expensive invalidation/recomputation
+  bottleneck before building the resident service or WAL. No speculative
+  network service, distributed build coordinator or external database is
+  required. If the measured benefit is absent, this TODO stays deferred.
+
 ## Invariants
 
 - Resident and cold compilation of the same declared inputs are semantically

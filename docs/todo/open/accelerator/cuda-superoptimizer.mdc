@@ -8,7 +8,6 @@ task: "TODO - CUDA superoptimizer"
 contract: "docs/technical/integrations/accelerators/cuda-superoptimizer.md"
 depends_on:
   - "cuda-exact-vm-adapter"
-  - "stochastic-and-guided-search"
   - "search-pruning-and-state-canonicalization"
   - "translation-validation"
   - "resumable-compilation-progress-sidecars"
@@ -46,6 +45,19 @@ evaluation, and verified block stitching.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Consume the same versioned semantic candidate batch, exact pruning/cost
+  rules and independent verifier used by the CPU optimizer. GPU-friendly
+  packed state and resident batching must be evidenced; copying one complete
+  15-trit VM memory image for every tiny candidate is not an assumed scalable
+  strategy. CUDA does not depend on stochastic/learned search completion.
+- Prove live NVIDIA hardware acceleration on a predeclared representative
+  large-candidate workload: compare >= 3 growing batch/difficulty points and
+  >= 15 paired complete CPU/CUDA samples with transfer, preparation, memory,
+  verification and total time separated. At least one large-workload end-to-end
+  median must be >= 1.25x faster on CUDA with matched verification and no
+  omitted overhead; otherwise the P8 scaling gate remains open. Do not invent
+  CUDA availability or extrapolate from primitive-kernel microbenchmarks.
+
 
 ## Evidence
 
@@ -54,8 +66,9 @@ evaluation, and verified block stitching.
 - Required evidence: CPU/reference differential results, device/resource
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `cuda-exact-vm-adapter`,
-  `stochastic-and-guided-search`, `search-pruning-and-state-canonicalization`,
-  `translation-validation`.
+  `search-pruning-and-state-canonicalization`, `translation-validation`,
+  `resumable-compilation-progress-sidecars`. Stochastic/learned search remains
+  an optional proposal policy, never a prerequisite of CUDA evaluation.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.

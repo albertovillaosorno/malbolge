@@ -31,11 +31,19 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 Not implemented. This proposed contract does not claim executable support yet.
 
+## Bounded Acceptance (2026-11-16)
+
+- P3 requires deterministic file/function/line/IR-region to target-address
+  mapping and usable source diagnostics on a verified compiled C fixture.
+  High-level stepping, reconstructed optimized-away variable values, a GUI,
+  and an interactive breakpoint protocol are optional future debugger work.
+
 ## Invariants
 
-- Source maps preserve C file/line/function/variable provenance through
-  IR/lowering/layout so stepping and diagnostics can reconstruct C-level
-  execution without requiring raw A/C/D inspection.
+- Source maps preserve admitted C file/function/line/region provenance
+  through IR/lowering/layout; diagnostic reconstruction need not expose raw
+  A/C/D state. Variable values and stepping are only reported where valid
+  verified debug locations survive optimization.
 - The stage has deterministic input/output form, rejects malformed or
   unsupported input explicitly, and preserves source/profile provenance needed
   downstream.

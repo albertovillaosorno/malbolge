@@ -390,3 +390,102 @@ def test_open_records_do_not_retain_migrated_root_detail() -> None:
     for path in OPEN_ROOT.rglob("*.mdc"):
         text = path.read_text(encoding="utf-8")
         assert MIGRATED_ROOT_DETAIL not in text
+
+
+def test_accelerator_reuses_cpu_contract_and_requires_real_speedup() -> None:
+    """GPU-compatible CPU design must precede optional large-scale CUDA work."""
+    cpu = (OPEN_ROOT / "accelerator/deterministic-cpu-optimizer.mdc").read_text(
+        encoding="utf-8"
+    )
+    cuda = (OPEN_ROOT / "accelerator/cuda-superoptimizer.mdc").read_text(
+        encoding="utf-8"
+    )
+    port = (
+        ROOT / "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+    ).read_text(encoding="utf-8")
+    cuda_contract = (
+        ROOT / "docs/technical/integrations/accelerators/cuda-superoptimizer.md"
+    ).read_text(encoding="utf-8")
+    roadmap = TODO_PATH.read_text(encoding="utf-8")
+    assert "versioned hardware-neutral" in cpu
+    assert "bounded" in cpu and "CUDA" in cpu
+    assert "GPU-projectable" in port
+    assert ">= 1.25x" in cuda
+    assert "1.25x" in cuda_contract
+    assert "paired" in cuda and "end-to-end" in cuda
+    assert "CUDA acceleration is" in roadmap
+    assert "stochastic-and-guided-search" not in _dependencies(cuda)
+
+
+def test_optional_infrastructure_cannot_block_baseline_milestones() -> None:
+    """Optional research, residency and DOOM do not gate CPU deliverables."""
+    dependency_edges = (
+        (
+            "accelerator/compilation-latency-performance-budget.mdc",
+            ("resident-incremental-compiler-and-wal",),
+        ),
+        (
+            "applications/real-program-benchmark-suite.mdc",
+            ("doom-playable-generated-code-performance",),
+        ),
+        (
+            "compiler/turnkey-c-to-malbolge-toolchain.mdc",
+            (
+                "cross-platform-native-capability-runners",
+                "cuda-linux-runtime-and-hermetic-toolchain",
+            ),
+        ),
+    )
+    for name, prohibited in dependency_edges:
+        text = (OPEN_ROOT / name).read_text(encoding="utf-8")
+        assert not set(_dependencies(text)).intersection(prohibited), name
+    latency = (
+        OPEN_ROOT / "accelerator/compilation-latency-performance-budget.mdc"
+    ).read_text(encoding="utf-8")
+    assert "CPU cold-build budget first" in latency
+    assert "N/A" in latency
+
+
+def test_backend_identity_and_proof_scopes_are_not_universalized() -> None:
+    """Only fixed replay promises byte identity; proofs have stated bounds."""
+    artifacts = (
+        OPEN_ROOT / "applications/deterministic-cross-backend-artifact-hashing.mdc"
+    ).read_text(encoding="utf-8")
+    resume = (
+        OPEN_ROOT / "compiler/resumable-compilation-progress-sidecars.mdc"
+    ).read_text(encoding="utf-8")
+    verifier = (OPEN_ROOT / "verification/translation-validation.mdc").read_text(
+        encoding="utf-8"
+    )
+    artifact_contract = (
+        ROOT / "docs/technical/contracts/deterministic-artifact-hashing.md"
+    ).read_text(encoding="utf-8")
+    assert "Different valid optimizers" in artifacts
+    assert "Different valid CPU/CUDA" in artifact_contract
+    assert "backend-specific opaque search state" in resume
+    assert "uninterrupted run" in resume
+    assert "unsupported, resource-unbounded or unproved" in verifier
+    assert "fail" in verifier
+
+
+def test_large_applications_and_single_paper_have_bounded_acceptance() -> None:
+    """DOOM/ISA demos and the publication retain a finite evidence boundary."""
+    doom = (
+        OPEN_ROOT / "applications/doom-playable-generated-code-performance.mdc"
+    ).read_text(encoding="utf-8")
+    apollo = (
+        OPEN_ROOT / "applications/apollo-11-luminary-agc-malbolge-demonstration.mdc"
+    ).read_text(encoding="utf-8")
+    rv32i = (OPEN_ROOT / "applications/rv32i-malbolge-runner.mdc").read_text(
+        encoding="utf-8"
+    )
+    paper = (
+        OPEN_ROOT / "research/malbolge-machine-model-and-c-compilation-paper.mdc"
+    ).read_text(encoding="utf-8")
+    assert "60-second" in doom and "p95" in doom
+    assert "`doom.c`" in doom and "generated guest" in doom
+    assert "one existing AGC interpreter C file" in apollo
+    assert "Only `rv32i_runner.c`" in rv32i
+    assert "Privileged ISA" in rv32i
+    assert "sole P10 manuscript" in paper
+    assert "negative DOOM latency measurements" in paper

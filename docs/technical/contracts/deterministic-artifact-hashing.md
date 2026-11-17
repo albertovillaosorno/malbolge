@@ -6,9 +6,11 @@ Proposed
 
 ## Intent
 
-Require byte-identical outputs and hashes across backends for declared
-deterministic workloads, including versioned example artifacts and compiler-
-produced `.malbolge` artifacts where deterministic builds are promised.
+Require exact artifact hashes for deterministic replay of the *same*
+versioned compiler, selected algorithm/seed/configuration, source/profile and
+backend policy. Different valid optimizers or CPU/CUDA candidate order may
+produce different bytes and hashes, but must satisfy the same independently
+checked source semantics.
 
 ## Contract
 
@@ -21,9 +23,11 @@ behavior, trust boundary, or ownership rules stated by its governing decisions.
 
 ### Invariants
 
-- For builds promised deterministic, CPU/GPU/optimizer/execution choices yield
-  byte-identical committed artifacts or a documented normalization rule whose
-  canonical hash is identical.
+- Identical declared source/profile/compiler/algorithm/seed/backend policy
+  yields reproducible artifact bytes or a stated canonical normalization.
+- Different valid CPU/CUDA/optimizer choices may yield different artifacts,
+  each with its own hash and independently checked source-IR equivalence;
+  cross-backend byte identity is required only when explicitly guaranteed.
 - The end-to-end fixture demonstrates the intended behavior from admitted
   source/input through the actual generated/executed Malbolge path.
 

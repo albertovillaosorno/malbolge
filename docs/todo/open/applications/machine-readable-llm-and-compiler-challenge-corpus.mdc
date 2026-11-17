@@ -51,6 +51,11 @@ admitted result.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- The deliverable is one offline, versioned, schema-validated challenge and
+  result interchange with replay and rejected-input tests. It does not host
+  agents, train an LLM, schedule autonomous jobs, provide a web service, or
+  grant external agents verifier authority.
+
 
 ## Evidence
 

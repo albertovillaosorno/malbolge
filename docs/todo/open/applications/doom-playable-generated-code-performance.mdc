@@ -61,6 +61,19 @@ oracle; no Malbolge performance claim starts until the compiler generates
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Pin a fixed gameplay level/trace, target profile, hardware class, display
+  mode, audio/input capabilities and a >= 60-second interaction window *before*
+  tuning. Declare an objective playability gate (for example median >= 20
+  rendered frames/s and p95 input-to-present <= 150 ms), with genuine output
+  produced by the generated guest; publish the selected thresholds first,
+  measured p50/p95, dropped frames, guest VM steps and native-C equivalence.
+  A preselected alternative must not be weakened post hoc to claim completion.
+- The accepted `doom.c` and existing transformations stay the only DOOM
+  input path. No game rewrite, host-executed game logic, alternate engine,
+  external multiplayer feature, or new graphics framework is required.
+  Failure to reach the frozen performance budget is reported as an open
+  guest-performance problem, not proof that native DOOM equals Malbolge DOOM.
+
 
 ## Evidence
 

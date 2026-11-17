@@ -59,6 +59,11 @@ by the selected profile loader.
 - Evidence is durable enough to retire this TODO without losing the
   raw/canonical
   compatibility boundary.
+- Keep annotated syntax a presentation-only format with a tested byte-exact
+  canonicalization boundary; a complete C-level decompiler, graphical editor,
+  or richly aligned variable debugger is outside this TODO and never blocks
+  CPU-first compilation or independent verifier correctness.
+
 
 ## Evidence
 

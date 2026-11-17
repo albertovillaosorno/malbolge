@@ -31,6 +31,14 @@ behavior, trust boundary, or ownership rules stated by its governing decisions.
 
 Not implemented. This proposed contract does not claim executable support yet.
 
+## Bounded Acceptance (2026-11-16)
+
+The portable compiler defines an exact freestanding C subset, versioned
+  input/output stream format, finite program/resource limits and explicit
+  unsupported errors. No LLVM, GPU API, guest filesystem, threads, new
+  programming language or host compiler RPC may perform the essential guest
+  translation work.
+
 ## Invariants
 
 - The essential compiler algorithm fits the admitted C profile and does not

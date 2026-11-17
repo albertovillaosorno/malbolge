@@ -38,6 +38,20 @@ behavior, trust boundary, or ownership rules stated by its governing decisions.
 
 Not implemented. This proposed contract does not claim executable support yet.
 
+## Bounded Acceptance (2026-11-16)
+
+- Freeze a deterministic >= 60-second DOOM level/interaction workload,
+  target/runner identity, display/input/audio contract, host class and
+  objective frame/input-latency thresholds *before* tuning. An example
+  acceptable declared budget is >= 20 median guest-rendered frames/s and
+  <= 150 ms p95 input-to-present; any different acceptance threshold must
+  be frozen before experiments, not weakened to pass afterward.
+- Count only frames/game behavior produced by generated `doom.malbolge` and
+  its admitted host capability transport. Report median and tail frame/input
+  latency, actual guest VM steps, discarded frames, resources and independent
+  native-C comparison. Native-C DOOM playability, host game logic or a
+  rewritten game engine never constitutes guest performance acceptance.
+
 ## Invariants
 
 - Success requires an objectively documented interactive/playability budget for

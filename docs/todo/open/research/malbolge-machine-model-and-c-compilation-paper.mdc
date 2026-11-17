@@ -65,6 +65,12 @@ results, including real measurements, negative evidence and limitations.
 - The final paper is the **last** open TODO in P10, reached only after P2-P9
   delivery evidence and P9 research/hardening records are reviewed.
 - No separate transcendental theorem paper or human-scale study is required.
+- The sole P10 manuscript is evidence-bounded: report unavailable GPU
+  hardware, negative DOOM latency measurements and uncompleted experimental
+  hypotheses as limitations rather than requiring a fabricated success or
+  a second publication track. Incorporate the completed P2-P9 artifacts and
+  cite the precise supported subset; do not claim arbitrary C correctness.
+
 
 ## Evidence
 

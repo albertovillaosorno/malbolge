@@ -10,9 +10,7 @@ depends_on:
   - "benchmark-and-statistical-evidence-protocol"
   - "malbolge-layout-and-encoding-backend"
   - "deterministic-cpu-optimizer"
-  - "resident-incremental-compiler-and-wal"
   - "resumable-compilation-progress-sidecars"
-  - "empirical-malbolge-synthesis-scaling-law"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
@@ -41,14 +39,17 @@ target rather than a promised property of Malbolge synthesis.
 
 - Budgets are expressed per workload, difficulty, target profile, cache state,
   and resource class rather than as one repository-wide number.
-- Measurements separate parsing/lowering, invalidation, raw search, catalogue
-  reuse, verification, linking, serialization, IPC, and artifact emission.
+- Measurements separate the implemented stages: parsing/lowering, search,
+  verifier, linking and output at minimum. Invalidation, resident reuse,
+  serialization and IPC are reported only when implemented;
+  unsupported stages are marked N/A, not fabricated as zero or blockers.
 - Cold and warm results are never conflated, and a resident-cache fast path is
   not presented as the asymptotic cost of raw synthesis.
 - CPU/reference execution remains sufficient for correctness; accelerator or
   resident-server failure changes performance rather than semantic acceptance.
-- Claims about scaling cite the empirical scaling study and the exact measured
-  regime instead of asserting linear or exponential behavior without evidence.
+- Set a measured CPU cold-build budget first, independently of the resident
+  compiler or full scaling study. Use exact sample/host identity for any stated
+  growth model; incorporate later empirical and resident evidence when present.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
 
@@ -64,5 +65,5 @@ target rather than a promised property of Malbolge synthesis.
 - Prerequisite completion evidence:
   `benchmark-and-statistical-evidence-protocol`,
   `malbolge-layout-and-encoding-backend`, `deterministic-cpu-optimizer`,
-  `resident-incremental-compiler-and-wal`,
-  `empirical-malbolge-synthesis-scaling-law`.
+  `resumable-compilation-progress-sidecars`.
+  Resident caching and the empirical study provide optional later comparisons.

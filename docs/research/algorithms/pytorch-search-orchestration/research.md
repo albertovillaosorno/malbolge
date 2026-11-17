@@ -34,6 +34,14 @@ retain exact semantic execution where tensor operations are a poor fit.
   or provides no meaningful advantage over the declared baseline on the admitted
   challenge distribution.
 
+## Bounded Acceptance (2026-11-16)
+
+PyTorch is optional algorithm guidance, not a required tensor VM, service,
+model zoo or training cluster. Accept its adoption only after held-out,
+predeclared workloads show a net gain in verifier-approved results or capacity
+including preparation, inference and transfer. A reproducible no-benefit
+result must be recorded; it does not change compiler correctness.
+
 ## Method
 
 The executable mirror lives at `algorithms/pytorch-search-orchestration/`.

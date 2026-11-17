@@ -42,11 +42,14 @@ Malbolge artifact and resolving host modules without changing guest bytes.
 
 ## Acceptance
 
-- Windows, macOS, and Linux runners on x86-64 and AArch64 implement the same
-  versioned capability-frame semantics behind host-only adapters.
-- The same `.malbolge` payload/profile passes differential capability fixtures
-  on
-  every supported runner without guest OS-selection code or host ABI leakage.
+- Define an explicit supported OS/ISA matrix and expand it in measured
+  stages toward Windows, macOS, and Linux on x86-64/AArch64. Each pair claimed
+  supported must have real host execution of the same capability-frame corpus;
+  cross-built or simulator-only pairs remain marked unverified and unsupported
+  rather than silently counted as completed runners.
+- A single canonical `.malbolge` payload/profile passes differential
+  capability fixtures on every *declared supported* tuple without guest
+  OS-selection code or host ABI leakage.
 - Capability discovery, invalid ranges/frames, unavailable services, host
   failures, blocking/partial progress, startup, and shutdown fail/complete with
   the same declared guest-visible rules across the matrix.
@@ -59,6 +62,11 @@ Malbolge artifact and resolving host modules without changing guest bytes.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Begin with a reproducible Windows/Linux x86-64 and available AArch64
+  smoke/byte-I/O capability matrix; widen the supported pairs only after
+  real-machine admission. Host availability may limit the asserted support
+  set but does not license fictional cross-platform pass results.
+
 
 ## Evidence
 

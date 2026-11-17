@@ -42,6 +42,13 @@ when the underlying uncached search remains expensive.
 
 Not implemented. No latency target or scaling law is currently claimed.
 
+## Bounded Acceptance (2026-11-16)
+
+- Establish the first cold CPU reference budget before resident compilation,
+  CUDA and the empirical scaling law are complete. Report only implemented
+  timing stages; absent IPC, cache, invalidation or accelerator lanes are N/A,
+  not zero, not a hidden prerequisite, and never omitted from method notes.
+
 ## Invariants
 
 - Cold, warm, incremental, and novel-search measurements are labeled separately.
@@ -61,14 +68,14 @@ changing the workload or excluding failed searches.
 
 ## Verification
 
-- Benchmarks retain raw cold/warm/incremental samples with exact software and
-  hardware identity.
-- Resident and cold builds are differentially compared for semantic/artifact
-  equivalence where promised.
+- Baseline benchmarks retain raw CPU cold samples with exact software and
+  hardware identity; warm/incremental samples are added once those modes exist.
+- Resident and cold builds are compared if resident compilation exists;
+  they cannot block the initial CPU compile-time budget.
 - Failure/fallback runs prove accelerator and server unavailability affect only
   performance.
-- Results link to the empirical synthesis-scaling study rather than inferring a
-  complexity class from a few successful builds.
+- Scaling claims cite empirical measurements if available; a budget alone
+  does not assert any asymptotic complexity class.
 
 ## References
 

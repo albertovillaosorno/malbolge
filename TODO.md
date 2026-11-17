@@ -17,6 +17,12 @@ AOT/JIT, CUDA, DOOM, resident scaling, self-hosting, and papers do not block
 this first usable delivery. CUDA is nevertheless required for P8 scaling
 evidence on ambitious programs; CPU remains the reference for correctness.
 The final cross-platform turnkey toolchain is P7, distinct from the P5 release.
+The **CPU optimizer must remain CUDA-projectable**: common indexed candidate
+batches, exact pruning/cost semantics, bounded state and one independent
+verifier. A small CPU/CUDA parity experiment belongs before P6 representation
+lock-in wherever hardware exists; P8 still owns live-device throughput and
+large-program performance acceptance. Do not treat translating an arbitrary
+CPU call graph to a CUDA kernel as an architecture plan.
 
 **Start here:** compile the complete mutable EOF checksum, capture the first
 real compiler failure, fix that capability, and rerun the *same* source on the
@@ -51,9 +57,10 @@ paragraph and one link to its typed authority. Completed work stays under
 - **P3 — Supported deterministic C:** accepted tidy source always lowers;
   variable-length binary byte I/O, EOF and negative cases match native
   controls with explicit limitations and reproducible source locations.
-- **P4 — Verified translation:** independent source-to-guest checking,
-  address-sensitive layout and self-modification equivalence, reproducible
-  artifacts, deterministic builds and genuine guest-state tests.
+- **P4 — Verified translation:** independent bounded source-to-guest
+  checking, layout/self-modification proof obligations, repeatable build
+  identities, and a GPU-projectable CPU candidate batch. Different valid
+  algorithms may emit different hashes while preserving verified semantics.
 - **P5 — First usable release:** a pinned Linux bootstrap and one stable
   compile command produce safe, verified Malbolge artifacts for two distinct
   real C programs; native oracles match on binary/EOF inputs. CPU only.
@@ -64,10 +71,12 @@ paragraph and one link to its typed authority. Completed work stays under
   equivalent to the interpreter on mutable-code and I/O tests. Final
   turnkey Windows/Linux packaging preserves deterministic CPU fallback.
 - **P8 — CUDA and large programs:** **real NVIDIA CUDA acceleration is
-  mandatory for the scaling goal**; verify proposals independently against
-  CPU, measure real hardware, code size and compilation cost, and test
-  generated DOOM playability and ordinary C-compiled Apollo AGC runners.
-  PyTorch, stochastic search and symmetry pruning stay later than P5.
+  mandatory for the scaling goal**, independently of stochastic/PyTorch
+  research. Compare >= 3 difficulty/batch points and >= 15 paired samples;
+  a predeclared large class must demonstrate >= 1.25x end-to-end speedup
+  including transfer and verification. Retain source/IR equivalence and CPU
+  fallback. Test actual generated DOOM playability and the ordinary Apollo
+  AGC C runner. PyTorch, stochastic search and symmetry remain optional.
 - **P9 — Self-hosting and applications:** the Malbolge-hosted compiler must
   compile another supported C program with independent equivalence proof.
   Independently compile the ordinary RV32I C runner; prove its real guest
@@ -86,9 +95,14 @@ record exact before/after source and artifact identities. Add seeded
 boundary cases only after that full program works. Do not replace general
 compiler progress with more literal `emit-N` examples.
 
-**Scope control:** CPU is the correctness baseline. CUDA is required for P8,
-not P5. The accepted source-bound diff generator remains completed and
-maintained for DOOM, with no open generic expansion. Apollo and RV32I each
+**Scope control:** CPU is the correctness baseline, not an intentionally
+unportable algorithm prototype. CUDA is required for P8 performance, not P5
+correctness. Identical artifact bytes are promised for identical compiler,
+algorithm, seed, backend policy and source/profile, not across different
+valid CPU/GPU algorithms. Checkpoints may retain backend-specific opaque
+continuation state; verified semantics remain portable. The accepted
+source-bound diff generator remains completed and maintained for DOOM, with
+no open generic expansion. Apollo and RV32I each
 have only one C **guest compilation target**; their parity and whole-program
 tests are separate host validation inputs, never special translators. Only
 one final P10 paper is planned.

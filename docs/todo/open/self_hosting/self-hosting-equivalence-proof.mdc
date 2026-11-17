@@ -40,6 +40,12 @@ artifacts and prove self-hosting does not silently change compilation meaning.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- State the supported deterministic C subset, target-profile assumptions,
+  input/resource bounds and checked observational relation. Prove individual
+  admitted rewrites where possible and compare representative/adversarial
+  native-vs-hosted compilations through the independent verifier; do not claim
+  a theorem about all C programs or treat matching bytes as sufficient.
+
 
 ## Evidence
 

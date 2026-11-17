@@ -39,6 +39,11 @@ stochastic search, or superoptimization implementations.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Select a bounded family of actually used lowering rewrites, define the
+  exact state/aliasing/loop assumptions of each proof witness, and have a
+  small independent checker verify good and mutated witnesses. This task
+  does not require a general theorem prover for arbitrary C programs.
+
 
 ## Evidence
 

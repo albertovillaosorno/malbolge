@@ -77,6 +77,15 @@ failure preserves verified-artifact, IR, and loader evidence without dispatch.
 A concrete same-process memory adapter/runner and JIT guest dispatch remain
 unimplemented.
 
+## Bounded Acceptance (2026-11-16)
+
+- The 1.1x threshold applies to a *selected* guarded hot-region promotion,
+  not to every program. Predeclare representative same-work interpreter and
+  in-process native samples, host, warm-up, repetition count and dispersion.
+  Regions that cannot demonstrate that gate stay on the correct interpreter
+  without holding up bounded JIT infrastructure. Process/IPC speedups never
+  authorize promotion.
+
 ## Invariants
 
 - Every speculative native specialization has explicit code-state guards and a
@@ -87,9 +96,10 @@ unimplemented.
 - Synchronous compilation has an explicit resource/time budget. Exhaustion,
   cancellation, or unsupported specialization falls back to the interpreter.
 - Tail latency, compilation/admission cost, and steady-state execution are
-  measured separately. Promotion requires paired equivalent interpreter and
-  in-process-native aggregate latency evidence proving at least 11/10 (1.1x)
-  speedup; callers may require a stricter ratio but never a weaker one.
+  measured separately. Hot-region promotion requires predeclared paired
+  interpreter/in-process-native evidence with at least 11/10 (1.1x) median
+  speedup after warm-up and noise/dispersion checks; unsuccessful regions
+  retain interpreter fallback. Callers may demand a stricter promotion ratio.
 - Process/IPC native measurements never authorize JIT promotion, even if a
   larger fused region amortizes IPC enough to exceed the numeric speedup gate.
   Such measurements remain pipeline and benchmark evidence only.

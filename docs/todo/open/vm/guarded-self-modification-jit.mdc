@@ -48,11 +48,13 @@ but discovery never changes observable Malbolge behavior by itself.
 - Synchronous JIT work has an explicit resource/time budget. Budget exhaustion,
   cancellation, or unsupported specialization returns to the interpreter rather
   than extending guest critical-path latency without bound.
-- Benchmarks report tail latency and compile/admission cost separately from
-  steady-state execution. JIT promotion requires equivalent interpreter and
-  in-process-native aggregate evidence proving at least 11/10 (1.1x) speedup.
-  Process/IPC native evidence is never promotion authority, even when larger
-  fused regions amortize that boundary.
+- Benchmarks separately report tail latency, compilation/admission cost and
+  steady state. For a predeclared hot-region workload, JIT *promotion* requires
+  paired interpreter vs in-process native samples showing >= 1.1x median
+  speedup after noise/dispersion checks; record repetitions, host identity,
+  warm-up and confidence/observed range. Process/IPC speedup is never
+  promotion authority. Slower regions remain correct interpreter fallbacks;
+  no fixed speedup is promised for every possible guest program.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 - Performance conclusions use equivalent workloads and report raw-sample

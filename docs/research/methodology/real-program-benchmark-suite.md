@@ -35,6 +35,14 @@ Prior-work claims must resolve through canonical records under
   provenance, resource budgets, dispersion/uncertainty, and failure/success
   behavior rather than only a best-case number.
 
+## Bounded Acceptance (2026-11-16)
+
+Build the initial benchmark matrix from fixed supported C programs and
+one parametrized family with actual verified Malbolge artifacts. DOOM,
+CUDA, AOT/JIT and other application measurements join only after their
+genuine guest path executes. Unavailable modes are labeled N/A, not zero,
+and DOOM playability is not a prerequisite of measuring baseline programs.
+
 ## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,

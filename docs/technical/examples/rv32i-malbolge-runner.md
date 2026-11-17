@@ -55,6 +55,15 @@ RISC-V ISA contract rather than copied from another emulator. The RISC-V
 Instruction Set Manual is published under CC-BY-4.0; repository documentation
 must retain standards attribution while implementation code remains independent.
 
+## Bounded Acceptance (2026-11-16)
+
+- The supported machine contract is a pinned unprivileged RV32I base ISA
+  revision with fixed memory geometry, deterministic binary loading and
+  explicit trap/exit behavior. Prove one toolchain-built RV32I binary under
+  real guest execution against an independent oracle. No privileged modes,
+  arbitrary ISA extensions, general OS, Linux syscall ABI, or second guest
+  C translation target is part of this demonstration.
+
 ## Invariants
 
 - The runner implements RV32I instruction semantics inside guest execution.

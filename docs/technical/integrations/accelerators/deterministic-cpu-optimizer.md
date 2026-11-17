@@ -76,6 +76,19 @@ Real synthesis generators, translation-validation integration, and performance
 benchmarks remain open. Host-real AArch64 execution is optional compatibility
 evidence rather than an acceptance gate.
 
+## Bounded Acceptance (2026-11-16)
+
+- The CPU reference retains a versioned candidate-batch semantic contract,
+  fixed-width/indexable state fields, explicit bounds and exact pruning/cost
+  policy that can be projected to CUDA without translating a pointer-heavy
+  host algorithm. Backend-specific packed layouts are permitted when their
+  common semantics and verifier identities match.
+- Before P6 representation choices become fixed, run one bounded candidate
+  batch through the available CUDA adapter and compare native CPU outputs
+  against the same verified requests. If no supported NVIDIA hardware is
+  present, retain a feasible transfer/layout test and mark device evidence
+  open for P8; CPU/P5 correctness never waits on a live GPU.
+
 ## Invariants
 
 - The CPU-only optimizer/search path produces and verifies candidates without

@@ -62,6 +62,11 @@ owning `out/` directories.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Treat the corpus as a curated compatibility/teaching surface, not an
+  indefinite fixture-count ladder: complete one real mutable-C guest and a
+  limited, representative semantic set before adding optional pairs. The
+  acceptance boundary is the documented distinct behaviors, not pair count.
+
 
 ## Evidence
 

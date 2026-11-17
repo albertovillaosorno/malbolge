@@ -27,6 +27,15 @@ Algorithm adapters describe enumerative, stochastic, Monte Carlo, evolutionary,
 learned, hybrid, pruning, or future strategies independently from the hardware
 that executes their batches.
 
+The early CPU optimizer must express its candidate batches, exact state
+identity, pruning and cost semantics in bounded, indexable GPU-projectable
+records. CPU-native and CUDA-native memory layouts or workgroup schedules may
+differ, but one common candidate/verifier contract must survive projection.
+Exercise a bounded real CPU/CUDA batch when hardware is available before P6
+locks in representation choices; if CUDA is unavailable, record a feasibility
+mapping without fabricating a device result. P8 requires a measured live-device
+scaling benefit, not merely a CUDA-compatible interface.
+
 Runtime resource budgeting adapts batch size, state layout, caches, and search
 breadth to measured device capacity rather than fixed VRAM assumptions.
 

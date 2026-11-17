@@ -17,8 +17,6 @@ depends_on:
   - "translation-validation"
   - "required-profile-diagnostics"
   - "resumable-compilation-progress-sidecars"
-  - "cuda-linux-runtime-and-hermetic-toolchain"
-  - "cross-platform-native-capability-runners"
 adr_paths:
   - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
   - "docs/technical/adr/deterministic-c-surface-and-clang-tooling.md"
@@ -61,15 +59,19 @@ optional accelerator on Windows and Linux and never changes semantic acceptance.
 - The CPU/reference path works without a GPU. A supported NVIDIA GPU may
   accelerate search or optimization on Windows or Linux, including headless
   Linux servers, while missing CUDA falls back explicitly to CPU execution.
-- Re-running bootstrap and compilation is deterministic, offline-capable after
-  the exact archives are cached, and produces provenance sufficient to reproduce
-  the toolchain and artifact identity.
-- End-to-end fixtures cover a minimal C program, byte I/O, an unsupported-C
-  diagnostic, CPU-only compilation, Linux NVIDIA selection/fallback, and output
-  path collision or partial-write failure.
-- Completion requires all dependencies above and represents the user-facing
-  project completion gate: a clean checkout can become a working C-to-Malbolge
-  compiler without undocumented manual setup.
+- Re-running bootstrap and the same pinned compilation is deterministic;
+  offline reuse is supported after exact public archives/toolchains are
+  cached for the declared host. No claim is made to provision drivers,
+  licenses, unsupported hosts or missing uncached artifacts offline.
+- End-to-end fixtures cover a minimal C program, byte I/O, unsupported-C
+  diagnostics, CPU-only compilation, CUDA-unavailable fallback, and output
+  collision or partial-write failure. Real NVIDIA selection/throughput is
+  measured when hardware exists and belongs to the P8 accelerator gate.
+- Completion requires the *supported Windows/Linux compiler* host matrix,
+  pinned public bootstrap and genuine interpreter-run `.malbolge` oracles.
+  Native AOT/JIT runner matrix and optional GPU driver/optimizer installation
+  are separately tested capabilities, not blocking prerequisites of the
+  compiler command. Unknown host prerequisites fail with exact diagnostics.
 
 ## Evidence
 

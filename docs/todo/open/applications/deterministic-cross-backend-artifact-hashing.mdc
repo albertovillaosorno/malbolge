@@ -31,9 +31,13 @@ produced `.malbolge` artifacts where deterministic builds are promised.
 
 ## Acceptance
 
-- For builds promised deterministic, CPU/GPU/optimizer/execution choices yield
-  byte-identical committed artifacts or a documented normalization rule whose
-  canonical hash is identical.
+- Identical declared source/profile, compiler version, selected algorithm,
+  seed, configuration and backend policy reproduce byte-identical output or
+  an explicitly specified canonical form. Different valid optimizers/CPU/CUDA
+  proposal orders may emit different bytes; each artifact carries its own hash
+  and independently checked semantic equivalence to the same source IR.
+- Cross-backend fixtures distinguish deterministic replay from equivalent
+  but nonidentical artifacts and reject a semantically divergent candidate.
 - The end-to-end fixture demonstrates the intended behavior from admitted
   source/input through the actual generated/executed Malbolge path.
 - The declared scope contains no unresolved placeholder implementation or

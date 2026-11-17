@@ -49,6 +49,15 @@ recompile only the semantic invalidation closure of an edit.
   compiler acceptance semantics.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Before a resident service or WAL becomes necessary, benchmark a pinned
+  cold-build baseline and a bounded verified reuse candidate. Record a
+  reproducible semantic invalidation or latency bottleneck that justifies
+  residency. If no improvement is evidenced, keep the service deferred rather
+  than implementing a speculative daemon; this task stays open.
+- When implemented, use local bounded IPC and a versioned discardable cache;
+  no remote multi-user service, distributed scheduler, new source language or
+  separate database product is part of acceptance.
+
 
 ## Evidence
 

@@ -42,6 +42,14 @@ Prior-work claims must resolve through canonical records under
   `docs/research/algorithms/<id>/` and `algorithms/<id>/`; ordinary product
   engineering is not forced into that mirror.
 
+## Bounded Acceptance (2026-11-16)
+
+The single comprehensive P10 paper incorporates accepted P2-P9 evidence
+and explicitly reports unavailable device measurements, failed performance
+experiments, precise supported-C limits and negative results. This method
+does not create a second publication task, require arbitrary-C correctness,
+or mandate success of every performance hypothesis.
+
 ## Method
 
 Work under this record uses stable identities, explicit inputs and assumptions,

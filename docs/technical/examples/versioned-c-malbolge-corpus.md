@@ -140,6 +140,14 @@ The corpus-wide VM matrix also replays each output-only capsule with
 nonempty binary stdin (NUL, 0x80 and 0xff), requiring unchanged output and
 step count. This input-independence test does not prove guest input lowering.
 
+## Bounded Acceptance (2026-11-16)
+
+- The corpus is a bounded, curated set of distinct semantic/compatibility
+  boundaries, not a linear increase in emitted-byte examples. Retain one
+  genuine mutable-C/EOF guest and a finite set of representative examples
+  with independently verified raw artifacts; additional examples need a
+  new capability or historical compatibility claim.
+
 ## Invariants
 
 - Every committed `.c`/`.malbolge` pair is an intentional documentation artifact

@@ -45,6 +45,12 @@ retain exact semantic execution where tensor operations are a poor fit.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Adopt PyTorch only after a bounded held-out experiment demonstrates an
+  improvement in verified time-to-solution, quality, or search capacity after
+  training, inference and data-transfer costs. A reproducible no-benefit result
+  is a legitimate research outcome; a mandatory training service, model zoo,
+  multi-GPU cluster or tensor-based VM is outside project scope.
+
 
 ## Evidence
 

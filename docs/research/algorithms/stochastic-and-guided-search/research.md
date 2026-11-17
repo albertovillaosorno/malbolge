@@ -33,6 +33,14 @@ search with deterministic final verification and reproducible research seeds.
   or provides no meaningful advantage over the declared baseline on the admitted
   challenge distribution.
 
+## Bounded Acceptance (2026-11-16)
+
+Begin with a declared deterministic baseline and one bounded guided or
+stochastic challenger; compare verified solutions, failures and costs over
+seeded fixed budgets. Monte Carlo, evolution, STOKE-like search and learned
+methods are candidate families, not a mandatory implementation checklist.
+Deterministic CUDA candidate evaluation is independent of this study.
+
 ## Method
 
 The executable mirror lives at `algorithms/stochastic-and-guided-search/`.

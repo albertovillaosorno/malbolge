@@ -65,6 +65,12 @@ missing verification of an executable `.malbolge` candidate.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Deliver reproducible workload ingestion, measurement schemas, raw samples,
+  and Pareto/capacity reporting for a small representative algorithm set.
+  The arena provides the instrument; `empirical-malbolge-synthesis-scaling-law`
+  owns inference/model fitting. Do not implement another experiment platform
+  or require every optional backend before closing the arena.
+
 
 ## Evidence
 

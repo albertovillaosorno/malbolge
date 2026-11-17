@@ -48,8 +48,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 - Checkpoint generations are atomically published without replacement, and
   sidecars are atomically replaced; incompatible or corrupted resume attempts
   fail closed.
-- CPU and accelerator jobs can resume from backend-neutral durable state and
-  produce the same independently verified artifact as uninterrupted execution.
+- Each supported job resumes from a versioned, compatible checkpoint, with
+  backend-specific opaque search state where necessary. Shared source/profile,
+  target semantics, and verifier identities are portable, but scheduler state,
+  candidate order, and final artifact bytes need not match CPU/GPU or an
+  uninterrupted run; independently verified behavior must match.
+- P2 acceptance proves at least one real CPU checkpoint/restart and explicit
+  incompatible-backend rejection. GPU-native restoration is conditional on
+  a compatible CUDA backend and is not required to finish the P2 milestone.
 - The requested final `.malbolge` path appears only after complete verification;
   partial state uses explicit `.partial`, `.checkpoint`, and `.progress.json`
   paths.
@@ -57,6 +63,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   covered by deterministic tests.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- Power-loss and cancellation simulation preserve exact source identities,
+  monotonic committed generations, and no partial final artifact; no test may
+  imply a GPU continuation exists before a matching backend/codec does.
+
 
 ## Evidence
 
