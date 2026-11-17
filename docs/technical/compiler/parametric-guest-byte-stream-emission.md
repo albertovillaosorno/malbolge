@@ -45,10 +45,12 @@ refusals, then validated the corrected pipeline: pinned C23 Clang UBSan
 `-O0`/`-O2` over five binary inputs per source, real N15 guest capsules
 with two or three signed `GetcharI32` effects, exact three/four VM steps,
 and empty/high-byte stdin parity. The values are never observed; no C local
-storage or EOF-dependent output is synthesized. Two companion full C23
-programs that `putchar` the last signed local still return typed
-`Unsupported` with **no** guest published, while independent native EOF
-output is `ff`. The frozen mutable EOF checksum continues to refuse its
+storage or EOF-dependent output is synthesized. Three companion full C23
+programs that `putchar` the last signed local or a fresh unguarded signed
+`getchar()` now return typed `Unsupported` with **no** guest published,
+while independent native EOF output is `ff`. The fresh-output form was
+first caught as a real 1,087-byte mispublication and repaired before the
+byte-only projection. The frozen mutable EOF checksum continues to refuse its
 first declaration at `29:5`; it requires *observable* runtime storage,
 branching, arithmetic and EOF termination. This is bounded real guest
 execution progress, not P2 completion.

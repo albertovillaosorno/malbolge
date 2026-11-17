@@ -174,9 +174,10 @@ class UnobservedSignedLocalTests(unittest.TestCase):
                         )
 
     def test_observable_signed_eof_local_must_refuse(self) -> None:
-        for body in (
-            "int value = getchar(); value = getchar(); putchar(value);",
-            "int value = getchar(); value = getchar(); putchar(value); return;",
+        for body, observed_index in (
+            ("int value = getchar(); value = getchar(); putchar(value);", 1),
+            ("int value = getchar(); value = getchar(); putchar(value); return;", 1),
+            ("int value = getchar(); value = getchar(); putchar(getchar());", 2),
         ):
             with (
                 self.subTest(body=body),
@@ -208,7 +209,13 @@ class UnobservedSignedLocalTests(unittest.TestCase):
                 self.assertFalse(target.exists())
                 for optimization in ("-O0", "-O2"):
                     native = native_binary(directory, source, optimization)
-                    for data, expected in ((b"", b"\xff"), (b"\x00\x80", b"\x80")):
+                    for data, expected in (
+                        (b"", b"\xff"),
+                        (
+                            b"\x00\x80\xfe",
+                            bytes((0, 128, 254))[observed_index : observed_index + 1],
+                        ),
+                    ):
                         result = subprocess.run(
                             [str(native)],
                             input=data,

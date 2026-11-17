@@ -79,7 +79,8 @@ evidence describe the old priority scheme, not the current phase.
   and execute real signed `GetcharI32` guest effects. Five binary stdin
   cases per source match pinned native C23 UBSan `-O0`/`-O2`; N15 guest
   empty/high-byte runs halt at the exact read-count-plus-one VM step. Two
-  observable signed local output variants still refuse without publication.
+  observable signed local output variants and an unguarded subsequent
+  direct signed `putchar(getchar())` now refuse without publication.
   The checksum's source declaration/observable storage and EOF-driven branch
   remain unsupported, so this is not the P2 whole-program acceptance.
 

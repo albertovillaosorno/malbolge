@@ -505,6 +505,14 @@ pub(super) fn is_unchecked_local_eof_echo(
     previous = local.declaration_end;
     let mut outputs = 0usize;
     while let Some(first) = remaining.first() {
+        // A fresh, unguarded putchar(getchar()) after local reads still
+        // observes signed EOF. The independent direct-output ancestry
+        // proof must reject it before the successful-byte projection.
+        if unchecked_direct_signed_output_width(remaining, body, previous)
+            .is_some()
+        {
+            return true;
+        }
         // A later statement cannot undo an already emitted wrong EOF byte.
         if outputs > 0 {
             return true;
