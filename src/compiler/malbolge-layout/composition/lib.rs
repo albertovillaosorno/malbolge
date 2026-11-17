@@ -80,7 +80,8 @@ pub enum LinearOpcode {
     },
     /// The canonical explicit `o` no-operation instruction.
     NoOperation,
-    /// A graphical data byte in an unreachable forward-jump gap.
+    /// A graphical data byte in an unreachable forward-jump gap or in the
+    /// exact two-cell loader seed after a reached terminal halt.
     ///
     /// It is never executed; its byte becomes a real guest memory operand.
     SkippedDataByte {
@@ -196,7 +197,7 @@ pub enum LinearLayoutError {
         /// Zero-based position of the first altered source cell.
         position: usize,
     },
-    /// A halt before the final code position would leave dead instructions.
+    /// A halt before the final code position would leave unapproved code.
     EarlyHalt {
         /// Zero-based position of the first premature halt.
         position: usize,
@@ -726,16 +727,25 @@ fn validate_shape(
     {
         return Err(LinearLayoutError::TooLong);
     }
-    if operations.last() != Some(&LinearOpcode::Halt) {
-        return Err(LinearLayoutError::MissingHalt);
-    }
-    let before_last = operations.len().saturating_sub(1);
-    if let Some(position) = operations
+    let Some(halt_position) = operations
         .iter()
-        .take(before_last)
-        .position(|op| *op == LinearOpcode::Halt)
+        .position(|operation| *operation == LinearOpcode::Halt)
+    else {
+        return Err(LinearLayoutError::MissingHalt);
+    };
+    // Two unreachable but graphical source bytes may follow a reached
+    // halt. The loader still consumes them as the recurrence seed for all
+    // expanded memory; no other dead code or partial seed is accepted.
+    let suffix = &operations[halt_position + 1..];
+    if !suffix.is_empty()
+        && !(suffix.len() == 2
+            && suffix.iter().all(|operation| {
+                matches!(operation, LinearOpcode::SkippedDataByte { .. })
+            }))
     {
-        return Err(LinearLayoutError::EarlyHalt { position });
+        return Err(LinearLayoutError::EarlyHalt {
+            position: halt_position,
+        });
     }
     // Geometry alone cannot decide arithmetic safety. After a forward jump,
     // D may trail C and an arithmetic write can target a past source cell.
@@ -771,8 +781,13 @@ fn validate_jump_shape(
             }
         }
     }
+    let seed_start = operations
+        .iter()
+        .position(|operation| *operation == LinearOpcode::Halt)
+        .map_or(operations.len(), |halt| halt.saturating_add(1));
     if operations.iter().enumerate().any(|(position, operation)| {
         matches!(operation, LinearOpcode::SkippedDataByte { .. })
+            && position < seed_start
             && !skipped_data[position]
     }) {
         return Err(LinearLayoutError::JumpPathUnsupported);

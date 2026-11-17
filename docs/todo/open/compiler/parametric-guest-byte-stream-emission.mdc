@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the source-derived N15 EOF operands also occur at
+  **adjacent** loader phases four and five (addresses 95/96 of the frozen
+  91-cell `Iy` source). A new exact two-cell post-halt loader-seed
+  admission proves those source bytes are never executed, and a genuine
+  89-step VM guest relocates D to 95 and rotates word `7174404` there
+  once while preserving adjacent word `121`. Adversarial tail mutations,
+  partial/triple seeds, early halt and executed skipped bytes refuse.
+  The full conversion still needs eight more guest rotations, pointer
+  restoration and live signed EOF handling. The P2 C checksum retains
+  its original declaration refusal; this is a backend prerequisite only.
+
 - On 2026-11-17, an independently checked source-loader construction
   improves the earlier negative *untouched* operand study. A 91-cell
   graphical source with 89 canonical no-ops and tail `Iy` is accepted by

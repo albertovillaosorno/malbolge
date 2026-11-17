@@ -56,6 +56,21 @@ mispublication, and the frozen mutable-EOF checksum still refuses its
 first declaration at `29:5`. Neither source-C observable signed EOF
 conversion nor the P2 stateful checksum has been implemented.
 
+### Exact post-halt loader-seed admission (2026-11-17)
+
+A source-loadable backend increment now admits two exact graphical
+loader-seed bytes **after** the reached final halt, without executing those
+bytes. An independently admitted 91-cell `Iy` source performs one genuine
+`j` relocation to expanded address 95 and one `*` write there. The
+normative N15 VM traces 89 steps, source memory and the adjacent unchanged
+word at 96 for empty and binary input. The algebraically valid adjacent
+two-`p` operand pair is `(7138732, 121)`: the first operand starts as
+`7174404` at loader phase four (address 95) and needs nine rotations,
+while phase five (address 96) already contains `121`. The emitted guest
+executes only **one** rotation, not nine; returning D for eight more writes,
+followed by live signed-EOF input/p/p/output, is unimplemented. The
+source-C checksum still fails at its first mutable declaration.
+
 ### Exhausted passive-loader signed EOF operands (2026-11-17)
 
 The frozen mutable-EOF checksum still explicitly refuses its first observed

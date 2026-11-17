@@ -12,6 +12,28 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Exact post-halt loader seeds
+
+The independently checked linear encoder admits an optional **exactly two**
+`SkippedDataByte` cells after the reached terminal `Halt`. Both cells must
+be printable and decode as a loader-valid opcode at their source addresses.
+They are not executed instructions: the verifier terminates at the first
+halt and rejects any other early halt, partial seed or unclaimed skipped
+cell. Unlike a forward-jump padding gap, these trailing bytes deliberately
+set the two original source words that determine every loader-expanded
+cell. Original source identity and full physical source length still govern
+data placement and write nonaliasing.
+
+`tests/compiler/layout/trailing_loader_seed.rs` exercises one 91-cell
+N15 source: an actual `j` at position 40 reads code byte 94 and places
+`D=95`, a real `*` at position 41 changes loader word 7,174,404, and
+the program halts at position 88 before its `Iy` seed at 89..90.
+The normative VM proves the write at 95 and untouched adjacent word 121
+at 96 with empty and binary input. The independent signed-EOF algebra
+shows that nine rotations of word 95 yield a valid adjacent two-`p`
+conversion pair, but the layout executes only the first rotation. No
+nine-write loop, operand revisit, or source-C conversion is claimed.
+
 ### Opt-in bounded revisiting source admission
 
 `composition/bounded_revisit.rs` separately admits an independently supplied

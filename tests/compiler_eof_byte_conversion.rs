@@ -290,7 +290,14 @@ fn source_loaded_rotated_operands_admit_signed_eof_conversion() {
             "the normative loader disagrees at address {address}"
         );
     }
-    let mut first = words[2];
+    // The same loader word recurs at phase four, immediately before
+    // phase five. Thus addresses 95 and 96, unlike 91 and 96, can be
+    // consumed by consecutive p steps once the nine writes are realized.
+    assert_eq!(words[6], words[2]);
+    assert_eq!(words[7], 121);
+    assert_eq!(machine.memory_word(95), Ok(words[6]));
+    assert_eq!(machine.memory_word(96), Ok(words[7]));
+    let mut first = words[6];
     for _ in 0..9 {
         let independently_rotated = first.div_euclid(3)
             + first.rem_euclid(3) * profile.word_modulus().div_euclid(3);

@@ -2606,3 +2606,6 @@ fn distant_loader_operand_replays_exact_guest_state()
 
 #[path = "compiler/layout/source_scratch.rs"]
 mod source_scratch_tests;
+
+#[path = "compiler/layout/trailing_loader_seed.rs"]
+mod trailing_loader_seed_tests;
