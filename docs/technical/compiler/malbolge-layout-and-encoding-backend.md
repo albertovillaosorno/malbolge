@@ -103,6 +103,13 @@ with the first expanded cell, so an untouched loader word at any address
 requires at most six recurrence steps instead of long-prefix checkpoints.
 The rule applies componentwise to both 10- and 15-trit profiles; direct
 normative VM comparisons cover near, middle and final memory addresses.
+The independent scalar regression now exhausts all 8,836 printable
+source-tail pairs on each canonical profile, checks the first twelve exact
+loader words and their six-step cycle, and proves fixed-phase far-address
+queries agree with the production shortcut. Four real source-loaded VM cases
+(lengths 91 and 118 on both profiles) additionally compare near, distant and
+final guest-memory words against that scalar oracle, then reach genuine halt.
+This checks unchanged loader words, not an executable signed-EOF C loop.
 Every new D pointer uses exact profile-memory wraparound. Subsequent
 arithmetic writes must remain in expanded memory or behind executing C.
 A penultimate `j` may point inside source, because only halt remains.
@@ -872,7 +879,6 @@ or raw `.malbolge` artifacts with source maps. This work remains active.
 
 Malformed IR, unsatisfied proof obligations, impossible layout, or unsupported
 profile requirements fail closed before emitting accepted target code.
-
 
 ### Six loader-controlled arithmetic regions (2026-11-11)
 

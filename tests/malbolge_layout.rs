@@ -2626,3 +2626,6 @@ mod loader_seed_selection_tests;
 
 #[path = "compiler/layout/eof_reset_geometry.rs"]
 mod eof_reset_geometry_tests;
+
+#[path = "compiler/layout/loader_recurrence.rs"]
+mod loader_recurrence_tests;
