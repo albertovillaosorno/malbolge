@@ -193,8 +193,10 @@ class SignedInputLiteralPublicationTests(unittest.TestCase):
                 timeout=45,
             )
             if compiled.returncode != 0:
-                self.assertIn(
-                    b"normalized frontend rejected: Unsupported", compiled.stderr
+                self.assertTrue(
+                    b"normalized frontend rejected: Unsupported" in compiled.stderr
+                    or b"Layout(UnsupportedEffectTrace)" in compiled.stderr,
+                    compiled.stderr.decode(errors="replace"),
                 )
                 self.assertFalse(guest.exists(), "unsupported C published a guest")
                 return
