@@ -55,7 +55,6 @@ pub use eof_output_plan::{
     C23SignedOutputWordPlan, C23SignedOutputWordPlanError,
     CURRENT_C23_SIGNED_OUTPUT_WORDS, admit_c23_signed_output_word_plan,
 };
-
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 
@@ -87,7 +86,8 @@ pub enum LinearOpcode {
     ///
     /// It is never executed; its byte becomes a real guest memory operand.
     SkippedDataByte {
-        /// Exact printable source word, independently checked for reachability.
+        /// Exact printable source word, independently checked for
+        /// reachability.
         byte: u32,
     },
     /// Emit one byte using the profile's output instruction.
@@ -105,7 +105,9 @@ impl LinearOpcode {
             Self::InputWord => profile.input_instruction(),
             Self::JumpForward { .. } => b'i',
             Self::OutputByte => profile.output_instruction(),
-            Self::NoOperation | Self::SkippedDataByte { .. } => NO_OP_INSTRUCTION,
+            Self::NoOperation | Self::SkippedDataByte { .. } => {
+                NO_OP_INSTRUCTION
+            },
             Self::Halt => HALT_INSTRUCTION,
             Self::RelocateDataPointer => b'j',
             Self::RotateData => b'*',
@@ -127,7 +129,8 @@ pub struct LinearLayout {
 
 impl LinearLayout {
     /// Returns the data-pointer address read by each statically reachable step.
-    /// A jump reads its data-pointer cell even when code and data have diverged.
+    /// A jump reads its data-pointer cell even when code and data have
+    /// diverged.
     #[must_use]
     pub fn data_pointer_positions(&self) -> &[u32] {
         &self.data_pointer_positions
@@ -434,10 +437,11 @@ impl ForwardPaddingBuilder<'_> {
             && self.relocated
             && self.data_pointer >= self.operations.len()
         {
-            preset_expanded_operand.or(self.proven_expanded_relocation_operand(
-                self.operations.len(),
-                remaining,
-            )?)
+            preset_expanded_operand.or(self
+                .proven_expanded_relocation_operand(
+                    self.operations.len(),
+                    remaining,
+                )?)
         } else {
             preset_expanded_operand
         };
@@ -648,13 +652,12 @@ impl ForwardPaddingBuilder<'_> {
         {
             return Ok(None);
         }
-        let maybe_operand = if let Some((_, value)) =
-            self.expanded_write_at_data_pointer()
-        {
-            *value
-        } else {
-            self.unwritten_expanded_operand(length, remaining)?
-        };
+        let maybe_operand =
+            if let Some((_, value)) = self.expanded_write_at_data_pointer() {
+                *value
+            } else {
+                self.unwritten_expanded_operand(length, remaining)?
+            };
         let Some(word) = maybe_operand else {
             return Ok(None);
         };
@@ -775,9 +778,7 @@ fn validate_shape(
                 matches!(operation, LinearOpcode::SkippedDataByte { .. })
             }))
     {
-        return Err(LinearLayoutError::EarlyHalt {
-            position: halt_position,
-        });
+        return Err(LinearLayoutError::EarlyHalt { position: halt_position });
     }
     // Geometry alone cannot decide arithmetic safety. After a forward jump,
     // D may trail C and an arithmetic write can target a past source cell.
@@ -851,11 +852,13 @@ fn unique_graphical_cell(
         return u8::try_from(byte)
             .map_err(|_error| LinearLayoutError::NoEncoding { position });
     }
-    let address = u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?;
+    let address =
+        u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?;
     let decoded = operation.decoded(profile);
     let mut candidate = None;
     for byte in GRAPHICAL_START..=GRAPHICAL_END {
-        if decode_profile_instruction(u32::from(byte), address) == Some(decoded) {
+        if decode_profile_instruction(u32::from(byte), address) == Some(decoded)
+        {
             if candidate.is_some() {
                 return Err(LinearLayoutError::AmbiguousEncoding { position });
             }
@@ -875,8 +878,8 @@ fn jump_successor(
     }
     let encryption = usize::try_from(target.saturating_sub(1))
         .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
-    let successor =
-        usize::try_from(target).map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+    let successor = usize::try_from(target)
+        .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
     Ok(JumpSuccessor {
         encryption,
         position: successor,
@@ -895,7 +898,8 @@ fn planned_data_write(
     ) {
         return Ok(None);
     }
-    let code_end = u32::try_from(source_length).map_err(|_error| LinearLayoutError::TooLong)?;
+    let code_end = u32::try_from(source_length)
+        .map_err(|_error| LinearLayoutError::TooLong)?;
     if data_address < code_end && data_address >= code_address {
         // Never overwrite the executing instruction or future source code.
         // Forward-only control flow guarantees no return to a past cell.
@@ -1117,49 +1121,48 @@ fn derive_execution_positions(
         };
         let memory_words = usize::try_from(profile.memory_words())
             .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-        let next_data_pointer = if *operation
-            == LinearOpcode::RelocateDataPointer
-        {
-            let expanded_operand = data_pointer >= source.len();
-            let data_word = usize::try_from(known_control_operand(
-                ControlOperandMemory {
-                    profile,
-                    source,
-                    source_shadow: &code_cells,
-                    expanded_shadow: &expanded_shadow,
-                },
-                data_pointer,
-                LinearLayoutError::UnsafeDataPlacement,
-            )?)
-            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-            let next = data_word.saturating_add(1) % memory_words;
-            // A proven expanded control operand can also select graphical
-            // scratch behind C: only a source-backed operand must itself
-            // lie behind C. Later arithmetic is checked against pending
-            // source code separately, regardless of the operand's origin.
-            let past_source_scratch = next < position
-                && (expanded_operand || data_pointer < position);
-            // A j reads the operand and then increments D. The pointer
-            // *after* that increment, not the raw operand, must avoid
-            // pending source code (unless scratch is already behind C).
-            // In particular, operand == source.len() - 1 safely selects
-            // the first loader-expanded word at D == source.len().
-            // A j immediately before a reached halt cannot affect
-            // output, even when two unreachable loader-seed cells follow
-            // the halt in the physical source. Earlier relocations into
-            // source must be proven scratch strictly behind C.
-            if !matches!(
-                operations.get(position.saturating_add(1)),
-                Some(LinearOpcode::Halt)
-            ) && next < source.len()
-                && !past_source_scratch
-            {
-                return Err(LinearLayoutError::UnsafeDataPlacement);
-            }
-            next
-        } else {
-            data_pointer.saturating_add(1) % memory_words
-        };
+        let next_data_pointer =
+            if *operation == LinearOpcode::RelocateDataPointer {
+                let expanded_operand = data_pointer >= source.len();
+                let data_word = usize::try_from(known_control_operand(
+                    ControlOperandMemory {
+                        profile,
+                        source,
+                        source_shadow: &code_cells,
+                        expanded_shadow: &expanded_shadow,
+                    },
+                    data_pointer,
+                    LinearLayoutError::UnsafeDataPlacement,
+                )?)
+                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
+                let next = data_word.saturating_add(1) % memory_words;
+                // A proven expanded control operand can also select graphical
+                // scratch behind C: only a source-backed operand must itself
+                // lie behind C. Later arithmetic is checked against pending
+                // source code separately, regardless of the operand's origin.
+                let past_source_scratch = next < position
+                    && (expanded_operand || data_pointer < position);
+                // A j reads the operand and then increments D. The pointer
+                // *after* that increment, not the raw operand, must avoid
+                // pending source code (unless scratch is already behind C).
+                // In particular, operand == source.len() - 1 safely selects
+                // the first loader-expanded word at D == source.len().
+                // A j immediately before a reached halt cannot affect
+                // output, even when two unreachable loader-seed cells follow
+                // the halt in the physical source. Earlier relocations into
+                // source must be proven scratch strictly behind C.
+                if !matches!(
+                    operations.get(position.saturating_add(1)),
+                    Some(LinearOpcode::Halt)
+                ) && next < source.len()
+                    && !past_source_scratch
+                {
+                    return Err(LinearLayoutError::UnsafeDataPlacement);
+                }
+                next
+            } else {
+                data_pointer.saturating_add(1) % memory_words
+            };
         let code_cell = code_cells
             .get_mut(encryption_address)
             .ok_or(LinearLayoutError::JumpPathUnsupported)?;
@@ -1198,13 +1201,17 @@ pub fn admit_linear_layout(
     identity: LinearProfileIdentity<'_>,
 ) -> Result<LinearLayout, LinearLayoutError> {
     validate_shape(profile, operations)?;
-    if identity.id != profile.id() || identity.fingerprint != profile.fingerprint() {
+    if identity.id != profile.id()
+        || identity.fingerprint != profile.fingerprint()
+    {
         return Err(LinearLayoutError::ProfileMismatch);
     }
     if source.len() != operations.len() {
         return Err(LinearLayoutError::SourceLengthMismatch);
     }
-    for (position, (operation, byte)) in operations.iter().zip(source.iter()).enumerate() {
+    for (position, (operation, byte)) in
+        operations.iter().zip(source.iter()).enumerate()
+    {
         if *byte != unique_graphical_cell(profile, *operation, position)? {
             return Err(LinearLayoutError::DecodeMismatch { position });
         }
@@ -1243,17 +1250,14 @@ pub fn encode_linear_layout(
     let source = operations
         .iter()
         .enumerate()
-        .map(|(position, operation)| unique_graphical_cell(profile, *operation, position))
+        .map(|(position, operation)| {
+            unique_graphical_cell(profile, *operation, position)
+        })
         .collect::<Result<Vec<_>, _>>()?;
-    admit_linear_layout(
-        profile,
-        operations,
-        &source,
-        LinearProfileIdentity {
-            fingerprint: profile.fingerprint(),
-            id: profile.id(),
-        },
-    )
+    admit_linear_layout(profile, operations, &source, LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    })
 }
 
 fn push_padded_cell(
@@ -1272,11 +1276,15 @@ fn push_padded_cell(
     Ok(position)
 }
 
-fn encrypt_padded_cell(shadow: &mut [u32], address: usize) -> Result<(), LinearLayoutError> {
+fn encrypt_padded_cell(
+    shadow: &mut [u32],
+    address: usize,
+) -> Result<(), LinearLayoutError> {
     let cell = shadow
         .get_mut(address)
         .ok_or(LinearLayoutError::JumpPathUnsupported)?;
-    *cell = malbolge::encrypt_profile_cell(*cell).ok_or(LinearLayoutError::JumpPathUnsupported)?;
+    *cell = malbolge::encrypt_profile_cell(*cell)
+        .ok_or(LinearLayoutError::JumpPathUnsupported)?;
     Ok(())
 }
 
@@ -1578,8 +1586,11 @@ fn encode_auto_padded_forward_layout_impl(
     // The existing independent admission controls final source length,
     // dynamic D placement, exact decode identity, skipped gaps and halt.
     let layout = encode_linear_layout(profile, &builder.operations)?;
-    let source_cell_origins =
-        proven_source_origins(&layout, &builder.positions, &builder.operations)?;
+    let source_cell_origins = proven_source_origins(
+        &layout,
+        &builder.positions,
+        &builder.operations,
+    )?;
     Ok(PaddedForwardLayout {
         layout,
         logical_code_positions: builder.positions,
