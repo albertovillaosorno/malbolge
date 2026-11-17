@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, genuine one- and two-trip C23 counted loops with a
+  directly output signed `getchar` local published three-/five-step N15
+  guests emitting `6a`/`6a6a` on empty stdin; pinned UBSan Clang `-O0`
+  and `-O2` require `ff`/`ffff`. The red-first two-length, five-vector
+  native/guest-or-no-publication regression failed before the repair.
+  A source- and Clang-bound loop-local output gate now refuses those
+  direct signed outputs; the previous bitwise and short-circuit positive
+  fixtures also fail closed because static induction never proves input
+  availability. All 123 normalized frontend unit tests pass. This is a
+  soundness repair, not guest signed EOF conversion or mutable checksum
+  support; the frozen source still refuses declaration `29:5`.
+
 - On 2026-11-17, the preceding nine-rotation backend was composed with
   real input-dependent `p` arithmetic and guest output in one 29-cell N15
   program. A `Z(` source tail places data words `7174413`/`40` at D=41/42;

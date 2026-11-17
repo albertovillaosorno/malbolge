@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Direct signed `getchar` local in counted loops (2026-11-17)
+
+A complete C23 one-trip `for` loop with `int current = getchar();`
+followed by unconditional `putchar(current);` previously compiled to a
+1,071-byte, three-step N15 guest. The real VM emitted `6a` on empty stdin;
+pinned Clang C23 UBSan at `-O0` and `-O2` emitted `ff`. A two-trip variant
+published a 1,087-byte, five-step guest emitting `6a6a` instead of `ffff`.
+The new red-first test checks both loop lengths against five binary inputs
+and independent native controls.
+
+The source/Clang-anchored counted-loop signed-local gate now also refuses
+direct outputs inside the loop body, not only outputs selected by a static
+counter `if` statement. A preflight refusal produces no `.malbolge` file.
+The historical successful-input-only unsigned bitwise and short-circuit
+examples containing this direct output now also refuse rather than publish
+an EOF-unsound guest; their typed tests and native C23 controls were
+updated. All 123 normalized frontend Rust tests and the focused C23 Python
+regressions pass. General guest signed EOF conversion, mutable C storage,
+and the full EOF checksum (still refused at `29:5`) remain unfinished.
+
 ### Repeated guest writes followed by live ternary I/O (2026-11-17)
 
 A complete 29-cell N15 graphical source with terminal loader tail `Z(`

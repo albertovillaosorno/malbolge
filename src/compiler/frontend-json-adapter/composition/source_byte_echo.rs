@@ -579,6 +579,17 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
         let Some(output) = by_id.get(&cast.parent) else {
             continue;
         };
+        // A direct putchar in the same counted-loop body is unsafe even
+        // without a counter-selected if arm. Static unrolling proves the
+        // number of reads, not that any signed getchar avoids EOF.
+        if cast.kind == "cast-expression"
+            && cast.type_name.as_deref() == Some("i32")
+            && output.kind == "call-expression"
+            && output.reference.as_deref() == Some("external:putchar")
+            && signed_inputs.contains(&(output.parent, reference))
+        {
+            return true;
+        }
         let Some(arm) = by_id.get(&output.parent) else {
             continue;
         };

@@ -11,6 +11,20 @@ dependency-free crate remains unchanged.
 
 ## Supported slice
 
+### Direct counted-loop signed EOF refusal (2026-11-17)
+
+A one-trip C23 source with `int current = getchar(); putchar(current);`
+inside a statically bounded `for` loop previously published a real three-step
+guest emitting `0x6a` on empty stdin, versus C23 `putchar(-1)`'s `0xff`.
+A two-trip source likewise published `6a6a` instead of `ffff`. The
+source/Clang-checked signed-local gate now refuses directly output loop
+locals as well as counter-selected output arms. The five-input native
+`-O0`/`-O2` UBSan regression requires either exact guest parity or typed
+refusal with no artifact. Former successful-byte-only bitwise/short-circuit
+examples with direct signed output now refuse until guest EOF conversion is
+implemented. General C mutable state and the complete EOF checksum remain
+unsupported.
+
 ### Single-output counted-loop signed EOF refusal (2026-11-17)
 
 A three-trip C23 `for` loop with one `putchar(current)` selected by

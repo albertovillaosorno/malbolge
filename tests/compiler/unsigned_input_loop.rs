@@ -631,26 +631,16 @@ const UNSIGNED_SKIPPED_DIVISION_JSON: &[u8] = include_bytes!(
 );
 
 #[test]
-fn unsigned_short_circuit_skips_unreachable_zero_divisor() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        UNSIGNED_SKIPPED_DIVISION_JSON,
-        Some(UNSIGNED_SKIPPED_DIVISION_SOURCE),
-    )
-    .expect("source-proven break skips undefined unsigned division");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let decoded = canonical_module(&wire).expect("canonical typed module");
-    let block = decoded.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in block {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 1);
-    assert_eq!(writes, reads);
+fn unsigned_short_circuit_still_requires_signed_eof_conversion() {
+    // A source-proven break makes division unreachable, but it does not
+    // prove getchar succeeds. On empty input the direct putchar writes ff.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_SKIPPED_DIVISION_JSON,
+            Some(UNSIGNED_SKIPPED_DIVISION_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]
@@ -1072,29 +1062,16 @@ const UNSIGNED_BITWISE_TRUTH_JSON: &[u8] =
     include_bytes!("c-frontend/golden/unsigned_bitwise_truth_live_input.json");
 
 #[test]
-fn unsigned_bitwise_predicates_preserve_runtime_byte_provenance() {
-    let (wire, mode) = canonical_guest_typed_ir_with_source(
-        UNSIGNED_BITWISE_TRUTH_JSON,
-        Some(UNSIGNED_BITWISE_TRUTH_SOURCE),
-    )
-    .expect("source-proven unsigned &, ^ and | guards should lower");
-    assert_eq!(mode, FrontendGuestMode::LatestRead);
-    let module = canonical_module(&wire).expect("typed module must round-trip");
-    let effects = module.functions()[0].blocks()[0].instructions();
-    let mut reads = Vec::new();
-    let mut writes = Vec::new();
-    for effect in effects {
-        match effect.instruction() {
-            Instruction::ByteInput { result, .. } => reads.push(*result),
-            Instruction::ByteOutput { value } => writes.push(*value),
-            other => panic!("unexpected guest effect: {other:?}"),
-        }
-    }
-    assert_eq!(reads.len(), 4);
-    assert_eq!(writes, vec![
-        reads[0], reads[0], reads[1], reads[1], reads[1], reads[1], reads[2],
-        reads[2], reads[3], reads[3], reads[3], reads[3],
-    ]);
+fn unsigned_bitwise_predicates_refuse_unconverted_signed_eof_output() {
+    // Source-time bitwise induction selects the outputs, but the final
+    // direct putchar(current) would publish raw guest EOF as 0x6a.
+    assert!(matches!(
+        canonical_guest_typed_ir_with_source(
+            UNSIGNED_BITWISE_TRUTH_JSON,
+            Some(UNSIGNED_BITWISE_TRUTH_SOURCE),
+        ),
+        Err(FrontendJsonError::Unsupported)
+    ));
 }
 
 #[test]

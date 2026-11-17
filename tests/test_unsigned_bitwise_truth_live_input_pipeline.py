@@ -9,21 +9,21 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Pinned C23 unsigned bitwise guard parity against actual Malbolge.
+#   - C23 unsigned bitwise parity or explicit safe guest refusal.
 # - Must-Not:
-#   - Replace guest execution with host stdout or trust Clang output alone.
+#   - Claim full-stream C23 parity from successful-byte guest outputs.
 # - Allows:
-#   - Inputs: source-authenticated &, ^, | guards and four guest input bytes.
-#   - Outputs: an independently computed twelve-byte trace per input vector.
-#   - Side effects: ignored temporary capsules and isolated guest VM runs.
+#   - Inputs: source-authenticated &, ^, | guards and exhausted stdin.
+#   - Outputs: native C23 oracle parity and no unsafe guest publication.
+#   - Side effects: ignored temp files and isolated native C23 processes.
 # - Split-When:
 #   - General runtime C bitwise semantics replace static induction selection.
 # - Merge-When:
 #   - Source-time induction parity uses a shared seeded full-program matrix.
 # - Summary:
-#   - Validate source-time bitwise selection without predicting guest bytes.
+#   - Preserve bitwise source proof without mispublishing signed EOF.
 
-"""Real Malbolge guest parity for source-authenticated unsigned bitwise C."""
+"""C23 bitwise guest admission must account for signed getchar EOF."""
 
 from __future__ import annotations
 
@@ -35,7 +35,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TypedDict, cast, final
 
@@ -46,14 +45,14 @@ FRONTEND = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-front
 RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 CLANG = ROOT / ".dependencies/llvm/22.1.8/bin/clang"
 RUST_BIN = ROOT / ".cache/rust/target/debug"
-VM = RUST_BIN / "malbolge"
 
 
 def oracle(data: bytes) -> bytes:
-    """C loop index, not guest byte value, selects each output count."""
+    """C23 signed EOF converts to 0xff regardless of loop induction."""
     return b"".join(
-        bytes((byte,)) * (1 + bool(index & 1) + bool(index ^ 2) + bool(index))
-        for index, byte in enumerate(data)
+        bytes((data[index] if index < len(data) else 255,))
+        * (1 + bool(index & 1) + bool(index ^ 2) + bool(index))
+        for index in range(4)
     )
 
 
@@ -86,12 +85,11 @@ class UnsignedBitwiseTruthGuestParityTests(unittest.TestCase):
             hashlib.sha256(SOURCE.read_bytes()).hexdigest(),
         )
 
-    def test_complete_c_program_on_actual_guest_vm(self) -> None:
+    def test_bitwise_c23_native_parity_or_no_guest_publication(self) -> None:
         required = (
             FRONTEND,
             RUST_BIN / "c2malbolge_json",
             RUST_BIN / "malbolge_layout",
-            VM,
         )
         if not all(path.is_file() for path in required) or not RESOURCE.is_dir():
             self.skipTest("pinned C frontend, layout, VM, and runtime required")
@@ -114,8 +112,11 @@ class UnsignedBitwiseTruthGuestParityTests(unittest.TestCase):
                 check=False,
                 timeout=120,
             )
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
-            self.assertTrue(capsule.is_file())
+            # The unguarded putchar(current) is reached even after EOF.
+            # C23 emits ff there, not the raw N15 guest EOF residue 6a.
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"Unsupported", compiled.stderr)
+            self.assertFalse(capsule.exists())
 
             native: list[Path] = []
             if CLANG.is_file():
@@ -157,6 +158,9 @@ class UnsignedBitwiseTruthGuestParityTests(unittest.TestCase):
 
             seeded = random.Random(0xB17B175E)
             inputs = [
+                b"",
+                b"A",
+                b"\x00\xff",
                 b"ABCD",
                 b"\x00\xff\x80\x01",
                 b"\xff\xff\xff\xff",
@@ -167,36 +171,19 @@ class UnsignedBitwiseTruthGuestParityTests(unittest.TestCase):
                 bytes(seeded.getrandbits(8) for _ in range(4)) for _ in range(8)
             )
 
-            def run_guest(data: bytes) -> subprocess.CompletedProcess[bytes]:
-                return subprocess.run(
-                    [str(VM), str(capsule), "--input-stdin", "--report-steps"],
-                    input=data,
-                    capture_output=True,
-                    check=False,
-                    timeout=45,
-                )
-
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                for data, executed in zip(
-                    inputs, executor.map(run_guest, inputs), strict=True
-                ):
-                    with self.subTest(input=data.hex()):
-                        expected = oracle(data)
-                        self.assertEqual(executed.returncode, 0, executed.stderr)
-                        self.assertEqual(executed.stdout, expected)
-                        self.assertEqual(executed.stderr, b"malbolge-steps-v1:17\n")
-                        for executable in native:
-                            reproduced = subprocess.run(
-                                [str(executable)],
-                                input=data,
-                                capture_output=True,
-                                check=False,
-                                timeout=10,
-                            )
-                            self.assertEqual(
-                                reproduced.returncode, 0, reproduced.stderr
-                            )
-                            self.assertEqual(reproduced.stdout, expected)
+            for data in inputs:
+                expected = oracle(data)
+                for executable in native:
+                    reproduced = subprocess.run(
+                        [str(executable)],
+                        input=data,
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    with self.subTest(input=data.hex(), native=executable.name):
+                        self.assertEqual(reproduced.returncode, 0, reproduced.stderr)
+                        self.assertEqual(reproduced.stdout, expected)
 
 
 if __name__ == "__main__":

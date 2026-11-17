@@ -61,7 +61,11 @@ UNSUPPORTED_MARKER = b"Unsupported"
 # successful reads; on exhausted stdin they emitted 0x6a instead of C23 ff.
 # Their unsigned induction proofs remain historical, not EOF conversion.
 SIGNED_EOF_REFUSALS = frozenset(
-    {"unsigned_modulo_live_input", "unsigned_radix_live_input"}
+    {
+        "unsigned_modulo_live_input",
+        "unsigned_radix_live_input",
+        "unsigned_short_circuit_zero_divisor",
+    }
 )
 CASES = (
     ("triple_control_live_input", 7, 16),
