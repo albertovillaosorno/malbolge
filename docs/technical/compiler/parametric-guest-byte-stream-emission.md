@@ -93,6 +93,34 @@ local declaration still refuses at `29:5` without publishing a guest.
 There is no general signed EOF-to-unsigned-char output lowering, guest C
 mutable storage, input-driven branches or dynamic EOF loop yet.
 
+### Repeated signed C input-to-output at EOF (2026-11-17)
+
+The same compiler/source-C pipeline incorrectly published a real 1,087-byte
+five-step capsule for two adjacent `putchar(getchar())` calls. At empty
+stdin, the normative guest emitted hex `6a6a` (the profile EOF word's low
+byte) while separately compiled Clang C23 `-O0` and `-O2` emitted `ffff`
+(C's specified `putchar(-1)` conversion to `unsigned char`). Three calls
+similarly emitted `6a6a6a` rather than `ffffff`; an explicit terminal
+`return;` did not repair the two-call mismatch. These were actual emitted
+guest programs, not hypothetical or byte-array-only comparisons.
+
+The source/Clang-bound refusal now recognizes up to 128 direct signed
+`getchar`-to-`putchar` outputs, with bounded discarded reads before,
+between, or after them and an optional terminal return. This rejects
+instead of silently projecting signed `i32` EOF as a successful `u8`.
+A red-first Python regression checks five complete sources across five
+binary inputs against the independent pinned native C23 `-O0`/`-O2`
+oracles, accepting only exact real-VM parity or typed `Unsupported`
+without artifact publication. An older public source-C test that only
+exercised full-length input was corrected to expect refusal for one,
+three, and sixteen unguarded calls; an input-specific successful-byte
+bridge remains a separate contract, not portable C EOF behavior.
+
+The front-end's 123 Rust unit tests and both focused Python refusal tests
+pass. This is a bounded **soundness repair**, not implementation of
+signed EOF output conversion or guest-side branching. The frozen mutable
+EOF checksum still fails at its first declaration; P2 remains open.
+
 ### Typed representation of EOF-aware C input (2026-11-16)
 
 The portable version-one typed-IR now distinguishes

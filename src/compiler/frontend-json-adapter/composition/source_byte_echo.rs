@@ -407,18 +407,19 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     let mut remaining = nodes;
     let mut previous = body.span.begin.byte;
     let mut discarded_reads = 0;
-    let mut found_output = false;
-    // C evaluates standalone unused reads on either side of its one
-    // terminal signed-output expression. Both orders leave the output's
-    // EOF conversion observable, even though their input counts differ.
+    let mut signed_outputs = 0;
+    // Every independent signed getchar-to-putchar output observes C's EOF
+    // conversion. A finite series of such calls is no safer than one call:
+    // after input exhaustion every additional output must be 0xff, not the
+    // guest profile EOF word's low byte. Discarded reads may occur anywhere.
     while !remaining.is_empty() {
-        if !found_output
+        if signed_outputs < MAX_ECHO_CALLS
             && let Some(width) =
                 unchecked_direct_signed_output_width(remaining, body, previous)
         {
             previous = remaining[0].span.end.byte;
             remaining = &remaining[width..];
-            found_output = true;
+            signed_outputs += 1;
             continue;
         }
         // A trailing `return;` changes neither the signed getchar result
@@ -426,7 +427,7 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
         // successful-byte backend can publish 0x6a instead of C's 0xff.
         // Only reject the proven direct-echo prefix; a return by itself is
         // not evidence of an observable EOF output.
-        if found_output
+        if signed_outputs > 0
             && let [last] = remaining
             && last.kind == "return-statement"
             && last.parent == body.id
@@ -449,7 +450,7 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
         remaining = tail;
         discarded_reads += 1;
     }
-    found_output
+    signed_outputs > 0
 }
 
 // A source-proven getchar() is a guest effect even when its result

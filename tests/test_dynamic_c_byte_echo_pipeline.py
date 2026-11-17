@@ -147,7 +147,11 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
             "}\n"
         )
 
-    def test_successful_binary_input_reaches_guest(self) -> None:
+    def test_direct_signed_byte_echo_refuses_without_eof_lowering(self) -> None:
+        # Full-input success on a finite vector does not make the same
+        # source C correct when stdin ends early. Preserve the successful-u8
+        # MCTI/MCTR bridge separately; the public C path must first realize
+        # C's defined EOF-to-unsigned-char conversion or refuse to publish.
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as folder:
             for count in (1, 3, 16):
                 with self.subTest(count=count):
@@ -155,41 +159,11 @@ class DynamicCByteEchoPipelineTests(unittest.TestCase):
                     target = Path(folder) / f"echo-{count}.malbolge"
                     source.write_text(self.source(count))
                     built = self.compile(source, target)
-                    self.assertEqual(built.returncode, 0, built.stderr)
-                    self.assertTrue(target.is_file())
-                    seed = random.Random(0xC2B017)
-                    samples = [
-                        bytes((0, 255, 128, 10, 65, 127, 1, 254)) * 2,
-                        bytes(range(16)),
-                    ]
-                    if count == 16:
-                        samples.extend(
-                            bytes(range(offset, offset + 16))
-                            for offset in range(0, 256, 16)
-                        )
-                        samples.extend(
-                            bytes(seed.randrange(256) for _ in range(16))
-                            for _ in range(16)
-                        )
-                    for sample in samples:
-                        with self.subTest(count=count, sample=sample):
-                            vm = subprocess.run(
-                                [
-                                    str(TOOLS[3]),
-                                    str(target),
-                                    "--input-stdin",
-                                    "--report-steps",
-                                ],
-                                input=sample[:count],
-                                capture_output=True,
-                                check=False,
-                                timeout=20,
-                            )
-                            self.assertEqual(vm.returncode, 0, vm.stderr)
-                            self.assertEqual(vm.stdout, sample[:count])
-                            self.assertRegex(
-                                vm.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
-                            )
+                    self.assertNotEqual(built.returncode, 0)
+                    self.assertIn(
+                        b"normalized frontend rejected: Unsupported", built.stderr
+                    )
+                    self.assertFalse(target.exists())
 
     def test_source_local_input_reads_reach_guest(self) -> None:
         # Clang must keep runtime input live even after it flows through a C

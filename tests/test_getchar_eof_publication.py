@@ -291,6 +291,127 @@ class GetcharEofPublicationTests(unittest.TestCase):
                     self.assertEqual(guest.returncode, 0, guest.stderr)
                     self.assertEqual(guest.stdout, expected)
 
+    def test_repeated_direct_signed_echo_refuses_without_eof_lowering(self) -> None:
+        """A valid multi-read C echo cannot publish EOF's profile low byte."""
+        if not all(
+            binary.is_file() for binary in (CLANG, FRONTEND, ADAPTER, LAYOUT, VM)
+        ):
+            self.skipTest("pinned Clang and real compiler/VM required")
+        variants = (
+            ("two", "putchar(getchar()); putchar(getchar());", (0, 1)),
+            ("three", "putchar(getchar()); " * 3, (0, 1, 2)),
+            ("return", "putchar(getchar()); putchar(getchar()); return;", (0, 1)),
+            (
+                "interleaved",
+                "putchar(getchar()); getchar(); putchar(getchar());",
+                (0, 2),
+            ),
+            (
+                "discarded-edges",
+                "getchar(); putchar(getchar()); getchar(); putchar(getchar());",
+                (1, 3),
+            ),
+        )
+        vectors = (b"", b"A", b"A\x00", b"\xff", b"\x00\x80\xffA")
+        env = os.environ.copy()
+        llvm_lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+            directory = Path(raw)
+            for name, statement, read_indices in variants:
+                with self.subTest(source=name):
+                    source = directory / f"{name}.c"
+                    _ = source.write_text(
+                        f"#include <stdio.h>\nvoid emit(void) {{ {statement} }}\n",
+                        encoding="utf-8",
+                    )
+                    wrapper = directory / f"{name}-main.c"
+                    _ = wrapper.write_text(
+                        f'#include "{name}.c"\nint main(void) {{ emit(); return 0; }}\n',
+                        encoding="utf-8",
+                    )
+                    expected = [
+                        bytes(
+                            data[index] if index < len(data) else 255
+                            for index in read_indices
+                        )
+                        for data in vectors
+                    ]
+                    for optimization in ("-O0", "-O2"):
+                        binary = directory / f"{name}-{optimization[2:]}"
+                        built = subprocess.run(
+                            [
+                                str(CLANG),
+                                "-std=c23",
+                                optimization,
+                                "-Wall",
+                                "-Wextra",
+                                "-Werror",
+                                str(wrapper),
+                                "-o",
+                                str(binary),
+                            ],
+                            env=env,
+                            capture_output=True,
+                            check=False,
+                            timeout=15,
+                        )
+                        self.assertEqual(built.returncode, 0, built.stderr)
+                        for data, oracle in zip(vectors, expected, strict=True):
+                            native = subprocess.run(
+                                [str(binary)],
+                                input=data,
+                                capture_output=True,
+                                check=False,
+                                timeout=10,
+                            )
+                            self.assertEqual(native.returncode, 0, native.stderr)
+                            self.assertEqual(native.stdout, oracle)
+                    target = directory / f"{name}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--capsule",
+                            "--max-wall-seconds",
+                            "70",
+                            "--output",
+                            str(target),
+                            str(source),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=75,
+                    )
+                    if compiled.returncode != 0:
+                        self.assertIn(
+                            b"normalized frontend rejected: Unsupported",
+                            compiled.stderr,
+                        )
+                        self.assertFalse(target.exists())
+                        continue
+                    self.assertTrue(target.is_file())
+                    for data, oracle in zip(vectors, expected, strict=True):
+                        guest = subprocess.run(
+                            [
+                                str(VM),
+                                str(target),
+                                "--input-stdin",
+                                "--max-steps",
+                                "1000",
+                            ],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=15,
+                        )
+                        self.assertEqual(guest.returncode, 0, guest.stderr)
+                        self.assertEqual(guest.stdout, oracle)
+
     # Safe refusal is mandatory until guest output can convert signed EOF.
     def test_source_c_eof_conversion_executes_correctly_or_refuses(
         self,
