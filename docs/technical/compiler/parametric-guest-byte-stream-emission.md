@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two signed discarded reads before a constant (2026-11-17)
+
+The complete C23 source `discarded_two_input_literal.c` performs two
+`getchar()` calls followed by an independent `putchar(223)` effect. Pinned
+Clang `-O0` and `-O2` produce `df` for empty stdin, one-byte, high-byte, and
+three-byte streams. The current source-C compiler refuses the second read at
+normalized frontend admission and publishes no `.malbolge` artifact.
+
+An experimental extension authenticated both calls and propagated distinct
+signed SSA identities into the ternary layout stage, but its bounded search
+failed to publish a verified guest in the session. A separately emitted
+six-step raw layout (`input; input; relocate; rotate; output; halt`) ran on
+the normative VM and emitted `df` at EOF; this machine-level witness is not
+source-C compilation and does not establish arbitrary byte-stream parity.
+The red-first whole-C regression now requires either the precise typed refusal
+with no artifact or native/guest byte parity if the capability is implemented.
+This preserves the gap without pretending that a host oracle or raw handoff
+implements the P2 mutable checksum, still refused at `29:5`.
+
 ### Source-checked discarded input followed by an independent byte (2026-11-17)
 
 A new closed mixed-effect C23 slice admits the complete source form
