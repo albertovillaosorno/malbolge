@@ -35,20 +35,20 @@ use layout::{
 use malbolge::{current_profile, historical_profile, profile_crazy};
 
 fn scalar_crazy(data: u32, accumulator: u32, trits: u8) -> u32 {
-    let mut a = accumulator;
-    let mut d = data;
+    let mut accumulator_word = accumulator;
+    let mut data_word = data;
     let mut place = 1u32;
     let mut output = 0u32;
     for _ in 0..trits {
-        let value = match (d % 3, a % 3) {
+        let value = match (data_word % 3, accumulator_word % 3) {
             (0 | 1, 0) | (2, 2) => 1,
             (1, 2) | (2, 0 | 1) => 2,
             _ => 0,
         };
         output += value * place;
         place *= 3;
-        d /= 3;
-        a /= 3;
+        data_word /= 3;
+        accumulator_word /= 3;
     }
     output
 }
@@ -116,6 +116,73 @@ fn wrong_or_unplaceable_operands_do_not_acquire_a_conversion_proof() {
     }
 }
 
+// A candidate only converts C23 signed getchar if *every* successful
+// byte and EOF has the exact putchar unsigned-char result.
+fn converts_c23_getchar_to_putchar(
+    operands: &[u32],
+    trits: u8,
+    eof: u32,
+) -> bool {
+    (0..=256u32).all(|input| {
+        let word = if input == 256 {
+            eof
+        } else {
+            input
+        };
+        let result = operands.iter().fold(word, |accumulator, &data| {
+            scalar_crazy(data, accumulator, trits)
+        });
+        result % 256
+            == if input == 256 {
+                255
+            } else {
+                input
+            }
+    })
+}
+
+// Screen every untouched loader phase and 2..12 adjacent operands. The
+// sample counter is only a filter; a four-sample pass is checked against
+// all 257 possible C23 getchar outcomes before it counts as a solution.
+fn passive_loader_candidate_counts(
+    memory: &[u32; 26],
+    trits: u8,
+    eof: u32,
+) -> ([usize; 11], usize) {
+    let mut sample_counts = [0usize; 11];
+    let mut complete_count = 0usize;
+    let samples = [0, 1, 255, eof];
+    let expected = [0, 1, 255, 255];
+    // Every expanded-word phase repeats every 12 transitions. The first
+    // phase begins at address 2, and the 12-word witness stays in bounds.
+    for start in 2..14 {
+        let mut observed = samples;
+        for length in 1..=12usize {
+            let operand = memory[start + length - 1];
+            for accumulator in &mut observed {
+                *accumulator = scalar_crazy(operand, *accumulator, trits);
+            }
+            if length < 2
+                || observed
+                    .iter()
+                    .zip(expected)
+                    .any(|(&value, expected)| value % 256 != expected)
+            {
+                continue;
+            }
+            sample_counts[length - 2] += 1;
+            if converts_c23_getchar_to_putchar(
+                &memory[start..start + length],
+                trits,
+                eof,
+            ) {
+                complete_count += 1;
+            }
+        }
+    }
+    (sample_counts, complete_count)
+}
+
 // The loader's ternary recurrence operates independently on each trit.
 // Each ordered pair of trits enters a 3- or 4-cycle after at most one
 // transition; their least common period is 12. Exhaust every graphical
@@ -125,8 +192,6 @@ fn wrong_or_unplaceable_operands_do_not_acquire_a_conversion_proof() {
 fn passive_loader_words_cannot_convert_signed_eof_in_twelve_crazy_steps() {
     let profile = current_profile();
     let eof = profile.eof_word();
-    let samples = [0, 1, 255, eof];
-    let expected = [0, 1, 255, 255];
     let mut four_sample_matches = [0usize; 11];
     let mut complete_matches = 0usize;
 
@@ -149,59 +214,18 @@ fn passive_loader_words_cannot_convert_signed_eof_in_twelve_crazy_steps() {
                 &memory[13..26],
                 "graphical tail ({first},{second}) violated the 12-cycle"
             );
-            // The first expanded pair begins at address 2. The later
-            // phases 2..13 span the complete period; 12 writes fit inside
-            // this frozen 26-word witness without wrapping the VM memory.
-            for start in 2..14 {
-                let mut observed = samples;
-                for length in 1..=12usize {
-                    let operand = memory[start + length - 1];
-                    for accumulator in &mut observed {
-                        *accumulator = scalar_crazy(
-                            operand,
-                            *accumulator,
-                            profile.word_trits(),
-                        );
-                    }
-                    if length < 2
-                        || observed
-                            .iter()
-                            .zip(expected)
-                            .any(|(&value, expected)| value % 256 != expected)
-                    {
-                        continue;
-                    }
-                    four_sample_matches[length - 2] += 1;
-                    // Passing four witnesses is only a candidate, never a
-                    // conversion proof. Check every byte and actual EOF.
-                    let converts_every_input = (0..=256u32).all(|input| {
-                        let word = if input == 256 {
-                            eof
-                        } else {
-                            input
-                        };
-                        let result = memory[start..start + length].iter().fold(
-                            word,
-                            |accumulator, &data| {
-                                scalar_crazy(
-                                    data,
-                                    accumulator,
-                                    profile.word_trits(),
-                                )
-                            },
-                        );
-                        result % 256
-                            == if input == 256 {
-                                255
-                            } else {
-                                input
-                            }
-                    });
-                    if converts_every_input {
-                        complete_matches += 1;
-                    }
-                }
+            let (sample_counts, complete_count) =
+                passive_loader_candidate_counts(
+                    &memory,
+                    profile.word_trits(),
+                    eof,
+                );
+            for (count, subtotal) in
+                four_sample_matches.iter_mut().zip(sample_counts)
+            {
+                *count += subtotal;
             }
+            complete_matches += complete_count;
         }
     }
     assert_eq!(
