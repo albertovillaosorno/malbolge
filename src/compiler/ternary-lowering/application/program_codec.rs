@@ -823,6 +823,10 @@ fn decode_operation(
         0 => decode_bitwise_operation(decoder, 0)?,
         1 => decode_byte_input(decoder)?,
         2 => decode_byte_output(decoder)?,
+        85 => TernaryOperation::GetcharI32 {
+            result: decoder.u32()?,
+            span: decode_span(decoder)?,
+        },
         3 => TernaryOperation::MaterializeI32 {
             result: decoder.u32()?,
             scalar: decoder.scalar()?,
@@ -1576,6 +1580,12 @@ fn encode_byte_effect(encoder: &mut Encoder, operation: TernaryOperation) {
         encode_byte_input(encoder, result, span);
         return;
     }
+    if let TernaryOperation::GetcharI32 { result, span } = operation {
+        encoder.u8(85);
+        encoder.u32(result);
+        encode_span(encoder, span);
+        return;
+    }
     if let TernaryOperation::ByteOutput { span, value } = operation {
         encode_byte_output(encoder, span, value);
         return;
@@ -1765,6 +1775,7 @@ fn encode_non_word_operation(
     if matches!(
         operation,
         TernaryOperation::ByteInput { .. }
+            | TernaryOperation::GetcharI32 { .. }
             | TernaryOperation::ByteOutput { .. }
     ) {
         encode_byte_effect(encoder, operation);
@@ -1905,6 +1916,7 @@ const fn operation_span_secondary(
     | Op::U32ToBool { span, .. }
     | Op::U8ToBool { span, .. }
     | Op::ByteInput { span, .. }
+    | Op::GetcharI32 { span, .. }
     | Op::ByteOutput { span, .. }
     | Op::MaterializeBool { span, .. }
     | Op::ReturnVoid { span }
@@ -2305,6 +2317,9 @@ fn validate_byte_effect_operation(
     if let TernaryOperation::ByteInput { result, .. } = operation {
         return insert_value(values, result, ValueKind::Byte).map(|()| false);
     }
+    if let TernaryOperation::GetcharI32 { result, .. } = operation {
+        return insert_value(values, result, ValueKind::I32).map(|()| false);
+    }
     if let TernaryOperation::ByteOutput { value, .. } = operation {
         return require_value(values, value, ValueKind::Byte).map(|()| false);
     }
@@ -2678,6 +2693,7 @@ fn validate_operation(
     if matches!(
         operation,
         TernaryOperation::ByteInput { .. }
+            | TernaryOperation::GetcharI32 { .. }
             | TernaryOperation::ByteOutput { .. }
     ) {
         return validate_byte_effect_operation(operation, values);

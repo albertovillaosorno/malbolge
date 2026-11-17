@@ -283,6 +283,15 @@ pub enum InputInstruction {
         /// Admitted scalar type category.
         type_kind: InputScalarType,
     },
+    /// Read C `getchar()` as one signed `i32`: byte 0..255 or EOF -1.
+    Getchar {
+        /// Upstream signed SSA result identity.
+        result: u32,
+        /// Exact normalized source provenance.
+        span: InputSourceSpan,
+        /// Must be signed 32-bit.
+        type_kind: InputScalarType,
+    },
     /// Emit one deterministic guest byte effect.
     ByteOutput {
         /// Exact normalized source provenance.

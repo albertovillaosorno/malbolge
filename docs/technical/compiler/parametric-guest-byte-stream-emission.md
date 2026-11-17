@@ -39,12 +39,24 @@ types, unknown wire tags, and accidental publication by the successful-byte
 Malbolge echo adapter. Existing `ByteInput` remains strictly `u8`; a
 profile-specific EOF word must not be truncated into a fabricated C result.
 
-**This is an IR contract only, not an implemented guest `getchar`**. The source
-adapter still stops the frozen mutable checksum at its first declaration,
-and the nonlinear guest backend cannot yet execute this operation, local
-storage, runtime branching, or EOF-driven looping. The first executable
-acceptance remains pending; no host computation is substituted for guest
-semantics.
+The ternary pre-layout stage also preserves this distinction as
+`GetcharI32 { result, span }` in canonical MCTR opcode 85. A validated
+typed-IR `Getchar` is projected as a signed `i32`, its source coordinates
+and SSA identity are retained, and invalid type projections or duplicate
+SSA definitions are rejected. The raw/capsule artifact CLI rejects an
+otherwise valid MCTR `GetcharI32` program before publication; it never
+silently substitutes the successful-byte echo bridge. The independent
+runtime C conformance exercises all 256 input bytes plus the EOF word,
+invalid words, and unchanged caller state after invalid inputs. Source-bound
+checkpoint restoration also refuses to replace `GetcharI32` with a valid
+constant `i32` whose source coordinates, SSA and provenance still match.
+
+**These are IR contracts only, not an implemented guest `getchar`**. The
+source adapter still stops the frozen mutable checksum at its first
+declaration, and the nonlinear guest backend cannot yet execute this
+operation, local storage, runtime branching, or EOF-driven looping. The
+first executable acceptance remains pending; no host computation is
+substituted for guest semantics.
 
 ### Frozen mutable-C EOF checksum acceptance witness (2026-11-16)
 

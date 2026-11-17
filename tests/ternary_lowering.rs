@@ -9125,6 +9125,13 @@ fn input_instruction(
             type_kind: input_scalar_type(module, *type_id),
         };
     }
+    if let Instruction::Getchar { result, type_id } = instruction.instruction() {
+        return InputInstruction::Getchar {
+            result: result.value(),
+            span: input_span(instruction.span()),
+            type_kind: input_scalar_type(module, *type_id),
+        };
+    }
     if let Instruction::ByteOutput { value } = instruction.instruction() {
         return InputInstruction::ByteOutput {
             span: input_span(instruction.span()),
@@ -9254,6 +9261,128 @@ fn projected_byte_io_fixture() -> Result<TypedIrInput, String> {
 fn projected_low_byte_fixture() -> Result<TypedIrInput, String> {
     let module = admitted_low_byte_fixture()?;
     project_typed_ir(&module)
+}
+
+fn signed_getchar_fixture() -> Module {
+    let block = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::Getchar {
+                result: ValueId::new(0),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(0, 1),
+        )],
+        phis: Vec::new(),
+        span: fixture_span(0, 2),
+        terminator: Terminator::Return { value: Some(ValueId::new(0)) },
+        terminator_span: fixture_span(1, 2),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![block],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("read_signed_or_eof"),
+            parameters: Vec::new(),
+            signature: TypeId::new(2),
+            span: fixture_span(0, 2),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/getchar.c"),
+        source_sha256: [0x72; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: byte_function_types(false),
+    })
+}
+
+#[test]
+fn signed_getchar_lowers_to_distinct_ternary_operation() -> Result<(), String> {
+    let module = signed_getchar_fixture();
+    let typed = canonical_bytes(&module)
+        .map_err(|error| format!("canonical getchar typed IR: {error:?}"))?;
+    let admitted = canonical_module(&typed)
+        .map_err(|error| format!("restore getchar typed IR: {error:?}"))?;
+    let input = project_typed_ir(&admitted)?;
+    let program = lower_typed_ir(&input)
+        .map_err(|error| format!("lower signed getchar: {error:?}"))?;
+    let function = program.functions.first().ok_or("missing signed getchar function")?;
+    if function.operations.first() != Some(&TernaryOperation::GetcharI32 {
+        result: 0,
+        span: output_span(fixture_span(0, 1)),
+    }) {
+        return Err(String::from("guest signed getchar was not preserved"));
+    }
+    let wire = canonical_ternary_bytes(&program)
+        .map_err(|error| format!("encode signed getchar: {error:?}"))?;
+    if canonical_ternary_program(&wire) != Ok(program.clone()) {
+        return Err(String::from("signed getchar changed on ternary round trip"));
+    }
+    let pattern = [85u8, 0, 0, 0, 0];
+    let offset = wire.windows(pattern.len())
+        .position(|window| window == pattern)
+        .ok_or("signed getchar ternary opcode missing")?;
+    // Retagging an EOF-bearing signed read as successful-byte input must
+    // invalidate the signed return use instead of silently narrowing EOF.
+    let mut retagged = wire.clone();
+    *retagged.get_mut(offset).ok_or("tag index outside wire")? = 1;
+    if canonical_ternary_program(&retagged)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        ))
+    {
+        return Err(String::from("EOF-aware read was accepted as a byte"));
+    }
+    let mut duplicate = wire.clone();
+    duplicate.get_mut(offset + 1..offset + 5)
+        .ok_or("signed result outside wire")?
+        .copy_from_slice(&1u32.to_le_bytes());
+    if canonical_ternary_program(&duplicate)
+        != Err(TernaryProgramCodecError::Validation(
+            TernaryProgramValidationError::SsaValue,
+        ))
+    {
+        return Err(String::from("noncanonical getchar result was decoded"));
+    }
+    let mut tampered = wire;
+    *tampered.get_mut(offset).ok_or("tag index outside wire")? = 86;
+    if canonical_ternary_program(&tampered)
+        != Err(TernaryProgramCodecError::UnknownTag)
+    {
+        return Err(String::from("unknown signed getchar opcode was admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn signed_getchar_refuses_untyped_and_duplicate_ssa() -> Result<(), String> {
+    let mut input = project_typed_ir(&signed_getchar_fixture())?;
+    let instruction = input.functions.first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.first_mut())
+        .ok_or("signed getchar instruction missing")?;
+    let InputInstruction::Getchar { type_kind, .. } = instruction else {
+        return Err(String::from("getchar was erased by typed projection"));
+    };
+    *type_kind = InputScalarType::U8;
+    if lower_typed_ir(&input) != Err(TernaryLoweringError::UnsupportedInstruction) {
+        return Err(String::from("wrong-width EOF result was lowered"));
+    }
+    let instruction = input.functions.first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .and_then(|block| block.instructions.first_mut())
+        .ok_or("getchar instruction missing")?;
+    if let InputInstruction::Getchar { result, type_kind, .. } = instruction {
+        *type_kind = InputScalarType::I32;
+        *result = 1;
+    }
+    if lower_typed_ir(&input) != Err(TernaryLoweringError::InvalidProjection) {
+        return Err(String::from("noncanonical getchar SSA was lowered"));
+    }
+    Ok(())
 }
 
 #[test]
@@ -11262,7 +11391,7 @@ fn assert_entire_unassigned_tag_space_rejected(
     if bytes.get(offset) != Some(&expected_tag) {
         return Err(format!("expected first opcode {expected_tag} not found"));
     }
-    for tag in 84u8..=u8::MAX {
+    for tag in (84u8..=u8::MAX).filter(|tag| *tag != 85) {
         *bytes
             .get_mut(offset)
             .ok_or_else(|| String::from("opcode offset absent"))? = tag;
@@ -11991,7 +12120,7 @@ fn ternary_progress_inspector_rejects_entire_unassigned_tag_domain()
     if bytes.get(offset) != Some(&61u8) {
         return Err(String::from("inspector halfword fixture tag changed"));
     }
-    for opcode in 84u8..=u8::MAX {
+    for opcode in (84u8..=u8::MAX).filter(|tag| *tag != 85) {
         let forged = mutate_fixture_wire_byte(&bytes, offset, opcode)?;
         let label = format!("inspector-reserved-tag-{opcode}");
         assert_inspector_rejects_stage_error(
@@ -13620,6 +13749,41 @@ fn ternary_progress_for_source_accepts_all_supported_binary_kinds()
         }
     }
     Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_does_not_replace_getchar_with_host_literal()
+-> Result<(), String> {
+    let expected = project_typed_ir(&signed_getchar_fixture())?;
+    let original = lower_typed_ir(&expected)
+        .map_err(|error| format!("lower source-bound getchar: {error:?}"))?;
+    assert_source_bound_program_roundtrip("signed-getchar", &expected, &original)?;
+    let mut forged = original;
+    let operation = forged.functions.first_mut()
+        .and_then(|function| function.operations.first_mut())
+        .ok_or("signed getchar operation missing")?;
+    let TernaryOperation::GetcharI32 { result, span } = *operation else {
+        return Err(String::from("signed getchar operation was erased"));
+    };
+    *operation = TernaryOperation::MaterializeI32 {
+        result,
+        scalar: ternary_lowering::TernaryI32Scalar::from_bits(0),
+        span,
+    };
+    let bytes = canonical_ternary_bytes(&forged)
+        .map_err(|error| format!("encode valid forged literal: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("getchar-replaced-by-literal", &bytes)?;
+    let check = assert_source_matched_ternary_failure(
+        &expected,
+        &progress_inspector(),
+        (&repository_python(), &progress),
+        TernaryProgressCheckpointError::IdentityMismatch,
+    );
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean signed getchar checkpoint: {error}"));
+    check?;
+    cleanup
 }
 
 #[test]

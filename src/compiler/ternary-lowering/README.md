@@ -29,7 +29,12 @@ constants/returns, `i32` bitwise AND, `i32`-to-`u8` truncation, and
 deterministic typed-IR `ByteInput`/`ByteOutput` effects. Exact 32-bit bit
 patterns become fixed-width 21-trit scalars while source, ABI, typed-IR version,
 source digest, and target-profile provenance are preserved. Byte effects remain
-successful `u8` semantics.
+successful `u8` semantics. A separate `GetcharI32` effect (canonical MCTR
+opcode 85) now carries C `getchar()` as a signed `i32`, preserving `0..255`
+and `EOF == -1` without equating the profile sentinel to a byte. The
+pre-layout projection and codec are implemented; **guest execution and
+profile-word-to-signed-value decoding are not**. Both raw and capsule layout
+publication refuse the valid signed effect until executable lowering exists.
 
 The current symbolic operation family also preserves exact `i32`/`u32`
 bitwise arithmetic, division/remainder, shifts, same-kind and cross-kind
@@ -172,8 +177,9 @@ operation tags, exact source spans, and 21 one-byte trits per `i32` scalar.
 Restoration rejects malformed, truncated, unknown-tag, noncanonical, or
 semantic-invalid state before returning a program.
 A 23-program adversarial corpus checks every checkpoint prefix, trailing
-bytes, all single-bit mutations, and each unassigned opcode `84..255` at a
-structural tag offset.
+bytes, all single-bit mutations, and each unassigned opcode `84` or
+`86..255` at a structural tag offset. Opcode `85` is the separate signed
+`GetcharI32` read.
 
 Header tests reject invalid magic/version/UTF-8, identities and oversized
 counts; the source SHA-256 field is preserved provenance, not authentication.
@@ -184,7 +190,8 @@ while post-publication sidecar or portable-envelope tampering is rejected
 at the outer integrity boundary before stage admission.
 
 Inspector tests also reject two-function identity/SSA forgeries, truncated
-or extended records for all 23 families and all 172 closed successor tags.
+or extended records for all 23 families and all 171 still-unassigned
+tags (`84` and `86..255`).
 Freshly republished source-digest changes remain admitted provenance; edits
 to an already committed envelope fail outer integrity verification.
 

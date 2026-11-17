@@ -1076,6 +1076,14 @@ pub enum TernaryOperation {
         /// Original instruction provenance.
         span: TernarySourceSpan,
     },
+    /// Read signed C `getchar` as byte 0..255 or EOF -1 at runtime.
+    /// Guest layout and actual profile-word decoding are not implemented.
+    GetcharI32 {
+        /// Upstream signed `i32` SSA result identity.
+        result: u32,
+        /// Original instruction provenance.
+        span: TernarySourceSpan,
+    },
     /// Emit one exact guest `u8` byte effect.
     ByteOutput {
         /// Original instruction provenance.

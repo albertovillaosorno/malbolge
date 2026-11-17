@@ -230,9 +230,10 @@ A mutated checkpoint either fails admission or must be independently
 validated and re-encode to the exact mutated bytes; byte changes are not
 presumed semantically equivalent to the unmodified program.
 
-The complete remaining version-one opcode range `84..255` is independently
+The remaining version-one opcode set `84` and `86..255` is independently
 rejected as `UnknownTag` in scalar, void-return, byte-effect and comparison
-fixtures. These tests locate actual operation offsets through wire structure,
+fixtures. Opcode `85` now represents signed `GetcharI32` (a symbolic runtime
+effect, not an executable guest layout operation). These tests locate actual operation offsets through wire structure,
 not arbitrary byte-pattern occurrences within metadata or source spans.
 
 Real progress-inspector admission now covers the same 23 canonical
@@ -267,7 +268,7 @@ and the first unknown tag; each retains the exact decoder error category.
 
 For every canonical program family, the progress bridge also rejects empty,
 middle-cut and last-byte-truncated records, plus an appended payload byte.
-All `172` closed successor operation tags from `84` through `255` are
+All `171` unassigned operation tags (`84` and `86..255`) are
 independently rejected after actual portable checkpoint publication.
 
 Republishing each of the 32 separately modified embedded source-digest bytes

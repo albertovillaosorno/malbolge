@@ -196,6 +196,7 @@ pub(super) const fn projected_instruction_span(
         | InputInstruction::BinaryXor { span, .. }
         | InputInstruction::BoolToSigned { span, .. }
         | InputInstruction::ByteInput { span, .. }
+        | InputInstruction::Getchar { span, .. }
         | InputInstruction::ByteOutput { span, .. }
         | InputInstruction::CompareEqual { span, .. }
         | InputInstruction::CompareNotEqual { span, .. }
@@ -1201,6 +1202,7 @@ fn lower_instruction(
         },
         InputInstruction::BoolToSigned { .. }
         | InputInstruction::ByteInput { .. }
+        | InputInstruction::Getchar { .. }
         | InputInstruction::ByteOutput { .. }
         | InputInstruction::IntegerBitcast { .. }
         | InputInstruction::IntegerToBool { .. }
@@ -1658,6 +1660,21 @@ fn lower_other_instruction(
     match instruction {
         InputInstruction::ByteInput { result, span, type_kind } => {
             lower_byte_input((*result, *span, *type_kind), state)
+        },
+        InputInstruction::Getchar { result, span, type_kind } => {
+            if *type_kind != InputScalarType::I32 {
+                return Err(TernaryLoweringError::UnsupportedInstruction);
+            }
+            ensure_new_value(state, *result)?;
+            let inserted = state.signed.insert(*result);
+            debug_assert!(
+                inserted,
+                "new signed getchar SSA already preflighted"
+            );
+            Ok(TernaryOperation::GetcharI32 {
+                result: *result,
+                span: copy_span(*span),
+            })
         },
         InputInstruction::ByteOutput { span, value } => {
             lower_byte_output(*span, *value, state)

@@ -258,6 +258,45 @@ fn valid_but_unsupported_ternary_operation_is_rejected() -> TestResult<()> {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "signed EOF-aware effect has no guest layout realization"
+)]
+fn signed_getchar_wire_refuses_guest_publication_in_both_formats() -> TestResult<()> {
+    let fixture = Fixture::new()?;
+    let mut program = echoed_program(1)?;
+    let function = program.functions.first_mut().ok_or("missing function")?;
+    function.operations = vec![
+        TernaryOperation::GetcharI32 {
+            result: 0,
+            span: span(0, 1),
+        },
+        TernaryOperation::Return {
+            span: span(1, 3),
+            value: 0,
+        },
+    ];
+    let wire = fixture.path("signed-getchar.mctr");
+    let _encoded = save_wire(&wire, &program)?;
+    for capsule in [false, true] {
+        let target = fixture.path(if capsule {
+            "signed-getchar-capsule.malbolge"
+        } else {
+            "signed-getchar-raw.malbolge"
+        });
+        let rejected = invoke("malbolge-2026", &target, &wire, capsule)?;
+        assert!(!rejected.status.success());
+        assert!(!target.exists());
+        assert!(
+            String::from_utf8_lossy(&rejected.stderr).contains("UnsupportedEffectTrace"),
+            "{}",
+            String::from_utf8_lossy(&rejected.stderr)
+        );
+    }
+    Ok(())
+}
+
+#[test]
 #[expect(clippy::panic_in_result_fn, reason = "hard byte bound and path guard")]
 fn oversized_ternary_wire_is_rejected_without_creating_output() -> TestResult<()> {
     let fixture = Fixture::new()?;
