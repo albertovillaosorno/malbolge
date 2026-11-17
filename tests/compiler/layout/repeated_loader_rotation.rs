@@ -26,7 +26,7 @@
 //! An untouched loader word can reset D between nine genuine guest writes.
 //! These operands do not implement C23 EOF conversion or source-C storage.
 
-use malbolge::{Termination, profile_rotate};
+use malbolge::Termination;
 
 use super::*;
 
@@ -51,6 +51,12 @@ fn repeated_rotation_operations() -> Vec<LinearOpcode> {
         byte: u32::from(LOADER_SEED[1]),
     };
     operations
+}
+
+// Independent base-three right rotation: the VM operation is not the oracle.
+fn scalar_rotate_right(word: u32, trits: u8) -> u32 {
+    let high_place = 3u32.pow(u32::from(trits.saturating_sub(1)));
+    word / 3 + (word % 3) * high_place
 }
 
 fn verify_nine_guest_writes(source: &[u8]) -> Result<(), String> {
@@ -81,7 +87,7 @@ fn verify_nine_guest_writes(source: &[u8]) -> Result<(), String> {
             let write = step.memory_delta.data.ok_or("missing guest write")?;
             assert_eq!(write.address, ROTATE_DATA);
             assert_eq!(write.before, rotated);
-            rotated = profile_rotate(rotated, profile.word_modulus());
+            rotated = scalar_rotate_right(rotated, profile.word_trits());
             assert_eq!(write.after, rotated);
             let step = &traces[reset];
             assert_eq!(step.before.registers.data_pointer, RESET_DATA);
@@ -90,6 +96,9 @@ fn verify_nine_guest_writes(source: &[u8]) -> Result<(), String> {
             assert_eq!(step.after.registers.data_pointer, ROTATE_DATA);
         }
         assert_eq!(machine.memory_word(ROTATE_DATA), Ok(rotated));
+        // This is a data-write witness only, not the two-operand C23
+        // signed-getchar conversion that would require a different seed.
+        assert_ne!(rotated, 7_138_732);
         assert_eq!(machine.memory_word(RESET_DATA), Ok(40));
         assert_eq!(machine.input_consumed(), 0);
         assert!(machine.output().is_empty());
