@@ -12,7 +12,7 @@
   },
   "source": {
     "id": "fixtures/basic.c",
-    "sha256": "3db0a62c22044ee613ae8b16b665cd355c3e8a1a9e56cb59785750e447c5b8bd"
+    "sha256": "4aaf07bc644e1d12c20ce781259499c890465ac1eb4431c11da6150d56b72b65"
   },
   "nodes": [
     {
@@ -21,12 +21,12 @@
       "kind": "typedef-declaration",
       "span": {
         "begin": {
-          "byte": 1135,
+          "byte": 1124,
           "line": 35,
           "column": 1
         },
         "end": {
-          "byte": 1161,
+          "byte": 1150,
           "line": 35,
           "column": 27
         }
@@ -40,17 +40,17 @@
       "kind": "enum-declaration",
       "span": {
         "begin": {
-          "byte": 1163,
+          "byte": 1152,
           "line": 36,
           "column": 1
         },
         "end": {
-          "byte": 1189,
+          "byte": 1178,
           "line": 36,
           "column": 27
         }
       },
-      "type": "enum(@1163)",
+      "type": "enum(@1152)",
       "definition": "definition",
       "enum_fixed": false,
       "enum_underlying": "i32"
@@ -61,12 +61,12 @@
       "kind": "enum-constant-declaration",
       "span": {
         "begin": {
-          "byte": 1170,
+          "byte": 1159,
           "line": 36,
           "column": 8
         },
         "end": {
-          "byte": 1187,
+          "byte": 1176,
           "line": 36,
           "column": 25
         }
@@ -81,12 +81,12 @@
       "kind": "constant-expression",
       "span": {
         "begin": {
-          "byte": 1178,
+          "byte": 1167,
           "line": 36,
           "column": 16
         },
         "end": {
-          "byte": 1187,
+          "byte": 1176,
           "line": 36,
           "column": 25
         }
@@ -100,12 +100,12 @@
       "kind": "binary-expression",
       "span": {
         "begin": {
-          "byte": 1178,
+          "byte": 1167,
           "line": 36,
           "column": 16
         },
         "end": {
-          "byte": 1187,
+          "byte": 1176,
           "line": 36,
           "column": 25
         }
@@ -120,12 +120,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1178,
+          "byte": 1167,
           "line": 36,
           "column": 16
         },
         "end": {
-          "byte": 1179,
+          "byte": 1168,
           "line": 36,
           "column": 17
         }
@@ -140,12 +140,12 @@
       "kind": "binary-expression",
       "span": {
         "begin": {
-          "byte": 1182,
+          "byte": 1171,
           "line": 36,
           "column": 20
         },
         "end": {
-          "byte": 1187,
+          "byte": 1176,
           "line": 36,
           "column": 25
         }
@@ -160,12 +160,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1182,
+          "byte": 1171,
           "line": 36,
           "column": 20
         },
         "end": {
-          "byte": 1183,
+          "byte": 1172,
           "line": 36,
           "column": 21
         }
@@ -180,12 +180,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1186,
+          "byte": 1175,
           "line": 36,
           "column": 24
         },
         "end": {
-          "byte": 1187,
+          "byte": 1176,
           "line": 36,
           "column": 25
         }
@@ -200,12 +200,12 @@
       "kind": "record-declaration",
       "span": {
         "begin": {
-          "byte": 1191,
+          "byte": 1180,
           "line": 37,
           "column": 1
         },
         "end": {
-          "byte": 1232,
+          "byte": 1221,
           "line": 37,
           "column": 42
         }
@@ -221,12 +221,12 @@
       "kind": "field-declaration",
       "span": {
         "begin": {
-          "byte": 1205,
+          "byte": 1194,
           "line": 37,
           "column": 15
         },
         "end": {
-          "byte": 1213,
+          "byte": 1202,
           "line": 37,
           "column": 23
         }
@@ -240,12 +240,12 @@
       "kind": "field-declaration",
       "span": {
         "begin": {
-          "byte": 1215,
+          "byte": 1204,
           "line": 37,
           "column": 25
         },
         "end": {
-          "byte": 1229,
+          "byte": 1218,
           "line": 37,
           "column": 39
         }
@@ -259,12 +259,12 @@
       "kind": "function-declaration",
       "span": {
         "begin": {
-          "byte": 1234,
+          "byte": 1223,
           "line": 38,
           "column": 1
         },
         "end": {
-          "byte": 1294,
+          "byte": 1283,
           "line": 38,
           "column": 61
         }
@@ -282,19 +282,19 @@
       "kind": "parameter-declaration",
       "span": {
         "begin": {
-          "byte": 1249,
+          "byte": 1238,
           "line": 38,
           "column": 16
         },
         "end": {
-          "byte": 1257,
+          "byte": 1246,
           "line": 38,
           "column": 24
         }
       },
       "name": "left",
       "type": "i32",
-      "reference": "left@1253",
+      "reference": "left@1242",
       "linkage": "none",
       "storage_class": "none",
       "storage_duration": "automatic"
@@ -305,19 +305,19 @@
       "kind": "parameter-declaration",
       "span": {
         "begin": {
-          "byte": 1259,
+          "byte": 1248,
           "line": 38,
           "column": 26
         },
         "end": {
-          "byte": 1268,
+          "byte": 1257,
           "line": 38,
           "column": 35
         }
       },
       "name": "right",
       "type": "i32",
-      "reference": "right@1263",
+      "reference": "right@1252",
       "linkage": "none",
       "storage_class": "none",
       "storage_duration": "automatic"
@@ -328,12 +328,12 @@
       "kind": "compound-statement",
       "span": {
         "begin": {
-          "byte": 1270,
+          "byte": 1259,
           "line": 38,
           "column": 37
         },
         "end": {
-          "byte": 1294,
+          "byte": 1283,
           "line": 38,
           "column": 61
         }
@@ -345,12 +345,12 @@
       "kind": "return-statement",
       "span": {
         "begin": {
-          "byte": 1272,
+          "byte": 1261,
           "line": 38,
           "column": 39
         },
         "end": {
-          "byte": 1291,
+          "byte": 1280,
           "line": 38,
           "column": 58
         }
@@ -362,12 +362,12 @@
       "kind": "binary-expression",
       "span": {
         "begin": {
-          "byte": 1279,
+          "byte": 1268,
           "line": 38,
           "column": 46
         },
         "end": {
-          "byte": 1291,
+          "byte": 1280,
           "line": 38,
           "column": 58
         }
@@ -381,12 +381,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1279,
+          "byte": 1268,
           "line": 38,
           "column": 46
         },
         "end": {
-          "byte": 1283,
+          "byte": 1272,
           "line": 38,
           "column": 50
         }
@@ -400,18 +400,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1279,
+          "byte": 1268,
           "line": 38,
           "column": 46
         },
         "end": {
-          "byte": 1283,
+          "byte": 1272,
           "line": 38,
           "column": 50
         }
       },
       "type": "i32",
-      "reference": "left@1253"
+      "reference": "left@1242"
     },
     {
       "id": 21,
@@ -419,12 +419,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1286,
+          "byte": 1275,
           "line": 38,
           "column": 53
         },
         "end": {
-          "byte": 1291,
+          "byte": 1280,
           "line": 38,
           "column": 58
         }
@@ -438,18 +438,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1286,
+          "byte": 1275,
           "line": 38,
           "column": 53
         },
         "end": {
-          "byte": 1291,
+          "byte": 1280,
           "line": 38,
           "column": 58
         }
       },
       "type": "i32",
-      "reference": "right@1263"
+      "reference": "right@1252"
     },
     {
       "id": 23,
@@ -457,12 +457,12 @@
       "kind": "function-declaration",
       "span": {
         "begin": {
-          "byte": 1295,
+          "byte": 1284,
           "line": 39,
           "column": 1
         },
         "end": {
-          "byte": 1529,
+          "byte": 1518,
           "line": 46,
           "column": 2
         }
@@ -480,12 +480,12 @@
       "kind": "compound-statement",
       "span": {
         "begin": {
-          "byte": 1310,
+          "byte": 1299,
           "line": 39,
           "column": 16
         },
         "end": {
-          "byte": 1529,
+          "byte": 1518,
           "line": 46,
           "column": 2
         }
@@ -497,12 +497,12 @@
       "kind": "declaration-statement",
       "span": {
         "begin": {
-          "byte": 1316,
+          "byte": 1305,
           "line": 40,
           "column": 5
         },
         "end": {
-          "byte": 1376,
+          "byte": 1365,
           "line": 40,
           "column": 65
         }
@@ -514,19 +514,19 @@
       "kind": "variable-declaration",
       "span": {
         "begin": {
-          "byte": 1316,
+          "byte": 1305,
           "line": 40,
           "column": 5
         },
         "end": {
-          "byte": 1375,
+          "byte": 1364,
           "line": 40,
           "column": 64
         }
       },
       "name": "pair",
       "type": "struct(Pair)",
-      "reference": "pair@1328",
+      "reference": "pair@1317",
       "definition": "definition",
       "linkage": "none",
       "storage_class": "none",
@@ -538,12 +538,12 @@
       "kind": "initializer-list-expression",
       "span": {
         "begin": {
-          "byte": 1335,
+          "byte": 1324,
           "line": 40,
           "column": 24
         },
         "end": {
-          "byte": 1375,
+          "byte": 1364,
           "line": 40,
           "column": 64
         }
@@ -556,12 +556,12 @@
       "kind": "designated-initializer-expression",
       "span": {
         "begin": {
-          "byte": 1337,
+          "byte": 1326,
           "line": 40,
           "column": 26
         },
         "end": {
-          "byte": 1350,
+          "byte": 1339,
           "line": 40,
           "column": 39
         }
@@ -574,18 +574,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1345,
+          "byte": 1334,
           "line": 40,
           "column": 34
         },
         "end": {
-          "byte": 1350,
+          "byte": 1339,
           "line": 40,
           "column": 39
         }
       },
       "type": "i32",
-      "reference": "COUNT@1170",
+      "reference": "COUNT@1159",
       "constant_integer": "7"
     },
     {
@@ -594,12 +594,12 @@
       "kind": "designated-initializer-expression",
       "span": {
         "begin": {
-          "byte": 1352,
+          "byte": 1341,
           "line": 40,
           "column": 41
         },
         "end": {
-          "byte": 1373,
+          "byte": 1362,
           "line": 40,
           "column": 62
         }
@@ -612,12 +612,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1361,
+          "byte": 1350,
           "line": 40,
           "column": 50
         },
         "end": {
-          "byte": 1373,
+          "byte": 1362,
           "line": 40,
           "column": 62
         }
@@ -632,12 +632,12 @@
       "kind": "unary-type-trait-expression",
       "span": {
         "begin": {
-          "byte": 1361,
+          "byte": 1350,
           "line": 40,
           "column": 50
         },
         "end": {
-          "byte": 1373,
+          "byte": 1362,
           "line": 40,
           "column": 62
         }
@@ -652,12 +652,12 @@
       "kind": "declaration-statement",
       "span": {
         "begin": {
-          "byte": 1381,
+          "byte": 1370,
           "line": 41,
           "column": 5
         },
         "end": {
-          "byte": 1395,
+          "byte": 1384,
           "line": 41,
           "column": 19
         }
@@ -669,19 +669,19 @@
       "kind": "variable-declaration",
       "span": {
         "begin": {
-          "byte": 1381,
+          "byte": 1370,
           "line": 41,
           "column": 5
         },
         "end": {
-          "byte": 1394,
+          "byte": 1383,
           "line": 41,
           "column": 18
         }
       },
       "name": "total",
       "type": "i32",
-      "reference": "total@1385",
+      "reference": "total@1374",
       "definition": "definition",
       "linkage": "none",
       "storage_class": "none",
@@ -693,12 +693,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1393,
+          "byte": 1382,
           "line": 41,
           "column": 17
         },
         "end": {
-          "byte": 1394,
+          "byte": 1383,
           "line": 41,
           "column": 18
         }
@@ -713,12 +713,12 @@
       "kind": "for-statement",
       "span": {
         "begin": {
-          "byte": 1400,
+          "byte": 1389,
           "line": 42,
           "column": 5
         },
         "end": {
-          "byte": 1491,
+          "byte": 1480,
           "line": 44,
           "column": 6
         }
@@ -730,12 +730,12 @@
       "kind": "declaration-statement",
       "span": {
         "begin": {
-          "byte": 1405,
+          "byte": 1394,
           "line": 42,
           "column": 10
         },
         "end": {
-          "byte": 1419,
+          "byte": 1408,
           "line": 42,
           "column": 24
         }
@@ -747,19 +747,19 @@
       "kind": "variable-declaration",
       "span": {
         "begin": {
-          "byte": 1405,
+          "byte": 1394,
           "line": 42,
           "column": 10
         },
         "end": {
-          "byte": 1418,
+          "byte": 1407,
           "line": 42,
           "column": 23
         }
       },
       "name": "index",
       "type": "i32",
-      "reference": "index@1409",
+      "reference": "index@1398",
       "definition": "definition",
       "linkage": "none",
       "storage_class": "none",
@@ -771,12 +771,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1417,
+          "byte": 1406,
           "line": 42,
           "column": 22
         },
         "end": {
-          "byte": 1418,
+          "byte": 1407,
           "line": 42,
           "column": 23
         }
@@ -791,12 +791,12 @@
       "kind": "binary-expression",
       "span": {
         "begin": {
-          "byte": 1420,
+          "byte": 1409,
           "line": 42,
           "column": 25
         },
         "end": {
-          "byte": 1433,
+          "byte": 1422,
           "line": 42,
           "column": 38
         }
@@ -810,12 +810,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1420,
+          "byte": 1409,
           "line": 42,
           "column": 25
         },
         "end": {
-          "byte": 1425,
+          "byte": 1414,
           "line": 42,
           "column": 30
         }
@@ -829,18 +829,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1420,
+          "byte": 1409,
           "line": 42,
           "column": 25
         },
         "end": {
-          "byte": 1425,
+          "byte": 1414,
           "line": 42,
           "column": 30
         }
       },
       "type": "i32",
-      "reference": "index@1409"
+      "reference": "index@1398"
     },
     {
       "id": 43,
@@ -848,18 +848,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1428,
+          "byte": 1417,
           "line": 42,
           "column": 33
         },
         "end": {
-          "byte": 1433,
+          "byte": 1422,
           "line": 42,
           "column": 38
         }
       },
       "type": "i32",
-      "reference": "COUNT@1170",
+      "reference": "COUNT@1159",
       "constant_integer": "7"
     },
     {
@@ -868,12 +868,12 @@
       "kind": "unary-expression",
       "span": {
         "begin": {
-          "byte": 1435,
+          "byte": 1424,
           "line": 42,
           "column": 40
         },
         "end": {
-          "byte": 1442,
+          "byte": 1431,
           "line": 42,
           "column": 47
         }
@@ -887,18 +887,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1437,
+          "byte": 1426,
           "line": 42,
           "column": 42
         },
         "end": {
-          "byte": 1442,
+          "byte": 1431,
           "line": 42,
           "column": 47
         }
       },
       "type": "i32",
-      "reference": "index@1409"
+      "reference": "index@1398"
     },
     {
       "id": 46,
@@ -906,12 +906,12 @@
       "kind": "compound-statement",
       "span": {
         "begin": {
-          "byte": 1444,
+          "byte": 1433,
           "line": 42,
           "column": 49
         },
         "end": {
-          "byte": 1491,
+          "byte": 1480,
           "line": 44,
           "column": 6
         }
@@ -923,12 +923,12 @@
       "kind": "compound-assignment-expression",
       "span": {
         "begin": {
-          "byte": 1454,
+          "byte": 1443,
           "line": 43,
           "column": 9
         },
         "end": {
-          "byte": 1484,
+          "byte": 1473,
           "line": 43,
           "column": 39
         }
@@ -942,18 +942,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1454,
+          "byte": 1443,
           "line": 43,
           "column": 9
         },
         "end": {
-          "byte": 1459,
+          "byte": 1448,
           "line": 43,
           "column": 14
         }
       },
       "type": "i32",
-      "reference": "total@1385"
+      "reference": "total@1374"
     },
     {
       "id": 49,
@@ -961,18 +961,18 @@
       "kind": "call-expression",
       "span": {
         "begin": {
-          "byte": 1463,
+          "byte": 1452,
           "line": 43,
           "column": 18
         },
         "end": {
-          "byte": 1484,
+          "byte": 1473,
           "line": 43,
           "column": 39
         }
       },
       "type": "i32",
-      "reference": "add@1245"
+      "reference": "add@1234"
     },
     {
       "id": 50,
@@ -980,12 +980,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1463,
+          "byte": 1452,
           "line": 43,
           "column": 18
         },
         "end": {
-          "byte": 1466,
+          "byte": 1455,
           "line": 43,
           "column": 21
         }
@@ -999,18 +999,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1463,
+          "byte": 1452,
           "line": 43,
           "column": 18
         },
         "end": {
-          "byte": 1466,
+          "byte": 1455,
           "line": 43,
           "column": 21
         }
       },
       "type": "fn(i32,i32)->i32",
-      "reference": "add@1245"
+      "reference": "add@1234"
     },
     {
       "id": 52,
@@ -1018,12 +1018,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1467,
+          "byte": 1456,
           "line": 43,
           "column": 22
         },
         "end": {
-          "byte": 1476,
+          "byte": 1465,
           "line": 43,
           "column": 31
         }
@@ -1037,18 +1037,18 @@
       "kind": "member-expression",
       "span": {
         "begin": {
-          "byte": 1467,
+          "byte": 1456,
           "line": 43,
           "column": 22
         },
         "end": {
-          "byte": 1476,
+          "byte": 1465,
           "line": 43,
           "column": 31
         }
       },
       "type": "i32",
-      "reference": "left@1209"
+      "reference": "left@1198"
     },
     {
       "id": 54,
@@ -1056,18 +1056,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1467,
+          "byte": 1456,
           "line": 43,
           "column": 22
         },
         "end": {
-          "byte": 1471,
+          "byte": 1460,
           "line": 43,
           "column": 26
         }
       },
       "type": "struct(Pair)",
-      "reference": "pair@1328"
+      "reference": "pair@1317"
     },
     {
       "id": 55,
@@ -1075,12 +1075,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1478,
+          "byte": 1467,
           "line": 43,
           "column": 33
         },
         "end": {
-          "byte": 1483,
+          "byte": 1472,
           "line": 43,
           "column": 38
         }
@@ -1094,18 +1094,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1478,
+          "byte": 1467,
           "line": 43,
           "column": 33
         },
         "end": {
-          "byte": 1483,
+          "byte": 1472,
           "line": 43,
           "column": 38
         }
       },
       "type": "i32",
-      "reference": "index@1409"
+      "reference": "index@1398"
     },
     {
       "id": 57,
@@ -1113,12 +1113,12 @@
       "kind": "return-statement",
       "span": {
         "begin": {
-          "byte": 1496,
+          "byte": 1485,
           "line": 45,
           "column": 5
         },
         "end": {
-          "byte": 1526,
+          "byte": 1515,
           "line": 45,
           "column": 35
         }
@@ -1130,12 +1130,12 @@
       "kind": "conditional-expression",
       "span": {
         "begin": {
-          "byte": 1503,
+          "byte": 1492,
           "line": 45,
           "column": 12
         },
         "end": {
-          "byte": 1526,
+          "byte": 1515,
           "line": 45,
           "column": 35
         }
@@ -1148,12 +1148,12 @@
       "kind": "binary-expression",
       "span": {
         "begin": {
-          "byte": 1503,
+          "byte": 1492,
           "line": 45,
           "column": 12
         },
         "end": {
-          "byte": 1513,
+          "byte": 1502,
           "line": 45,
           "column": 22
         }
@@ -1167,12 +1167,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1503,
+          "byte": 1492,
           "line": 45,
           "column": 12
         },
         "end": {
-          "byte": 1508,
+          "byte": 1497,
           "line": 45,
           "column": 17
         }
@@ -1186,18 +1186,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1503,
+          "byte": 1492,
           "line": 45,
           "column": 12
         },
         "end": {
-          "byte": 1508,
+          "byte": 1497,
           "line": 45,
           "column": 17
         }
       },
       "type": "i32",
-      "reference": "total@1385"
+      "reference": "total@1374"
     },
     {
       "id": 62,
@@ -1205,12 +1205,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1511,
+          "byte": 1500,
           "line": 45,
           "column": 20
         },
         "end": {
-          "byte": 1513,
+          "byte": 1502,
           "line": 45,
           "column": 22
         }
@@ -1225,12 +1225,12 @@
       "kind": "cast-expression",
       "span": {
         "begin": {
-          "byte": 1516,
+          "byte": 1505,
           "line": 45,
           "column": 25
         },
         "end": {
-          "byte": 1521,
+          "byte": 1510,
           "line": 45,
           "column": 30
         }
@@ -1244,18 +1244,18 @@
       "kind": "declaration-reference-expression",
       "span": {
         "begin": {
-          "byte": 1516,
+          "byte": 1505,
           "line": 45,
           "column": 25
         },
         "end": {
-          "byte": 1521,
+          "byte": 1510,
           "line": 45,
           "column": 30
         }
       },
       "type": "i32",
-      "reference": "total@1385"
+      "reference": "total@1374"
     },
     {
       "id": 65,
@@ -1263,12 +1263,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1524,
+          "byte": 1513,
           "line": 45,
           "column": 33
         },
         "end": {
-          "byte": 1526,
+          "byte": 1515,
           "line": 45,
           "column": 35
         }
