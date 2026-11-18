@@ -761,20 +761,23 @@ fn original_checksum_binds_all_dynamic_operations_to_disjoint_guest_cells() {
     use super::typed_cfg_adapter::typed::{Instruction, canonical_module};
 
     let (wire, mode) =
-        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE))
+            .expect("frozen checksum source contract");
     assert_eq!(mode, FrontendGuestMode::DynamicEofChecksum);
-    let typed = canonical_module(&wire).unwrap();
-    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
+    let typed =
+        canonical_module(&wire).expect("frozen checksum source contract");
+    let plan = prepare_canonical_dynamic_cfg(&wire)
+        .expect("frozen checksum source contract");
     assert_eq!(plan.operation_blocks.len(), 7);
-    let frame = &plan.state_frames[0];
-    let mut observed = 0;
-    let mut input_count = 0;
-    let mut output_count = 0;
-    let mut branching = 0;
+    let frame = plan.state_frames.first().expect("one state frame");
+    let mut observed = 0usize;
+    let mut input_count = 0usize;
+    let mut output_count = 0usize;
+    let mut branching = 0usize;
     for (bound, original) in plan
         .operation_blocks
         .iter()
-        .zip(typed.functions()[0].blocks())
+        .zip(typed.functions().first().expect("one function").blocks())
     {
         assert_eq!(bound.function, 0);
         assert_eq!(bound.block, original.id().value());
@@ -786,7 +789,11 @@ fn original_checksum_binds_all_dynamic_operations_to_disjoint_guest_cells() {
             assert_eq!(binding.span, located.span());
             observed += 1;
             for slot in binding.reads.iter().chain(binding.write.as_ref()) {
-                assert!(slot.offset + slot.words <= frame.scratch_offset);
+                assert!(
+                    slot.offset
+                        .checked_add(slot.words)
+                        .is_some_and(|end| end <= frame.scratch_offset)
+                );
                 assert_eq!(
                     frame.values.iter().find(|saved| saved.value == slot.value),
                     Some(slot),
@@ -794,7 +801,8 @@ fn original_checksum_binds_all_dynamic_operations_to_disjoint_guest_cells() {
             }
             if matches!(binding.instruction, Instruction::Getchar { .. }) {
                 input_count += 1;
-                let dest = binding.write.unwrap();
+                let dest =
+                    binding.write.expect("frozen checksum source contract");
                 assert_eq!(
                     dest.words, 2,
                     "signed EOF must retain its high cell"
@@ -835,14 +843,17 @@ fn checksum_literal_cell_bindings_keep_exact_c32_bits_and_source_order() {
     use super::typed_cfg_adapter::typed::{Instruction, canonical_module};
 
     let (wire, _) =
-        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
-    let original = canonical_module(&wire).unwrap();
-    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
-    let mut constant_count = 0;
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE))
+            .expect("frozen checksum source contract");
+    let original =
+        canonical_module(&wire).expect("frozen checksum source contract");
+    let plan = prepare_canonical_dynamic_cfg(&wire)
+        .expect("frozen checksum source contract");
+    let mut constant_count = 0usize;
     for (bound, typed) in plan
         .operation_blocks
         .iter()
-        .zip(original.functions()[0].blocks())
+        .zip(original.functions().first().expect("one function").blocks())
     {
         for (binding, located) in
             bound.instructions.iter().zip(typed.instructions())
@@ -865,9 +876,12 @@ fn checksum_literal_cell_bindings_keep_exact_c32_bits_and_source_order() {
                     expected_reads.push(value.value());
                     None
                 },
-                other => {
-                    panic!("unexpected source checksum operation {other:?}")
-                },
+                Instruction::AddressOffset { .. }
+                | Instruction::AutomaticAllocate { .. }
+                | Instruction::Call { .. }
+                | Instruction::FunctionAddress { .. }
+                | Instruction::Load { .. }
+                | Instruction::Store { .. } => None,
             };
             assert_eq!(
                 binding
@@ -882,14 +896,24 @@ fn checksum_literal_cell_bindings_keep_exact_c32_bits_and_source_order() {
                 located.instruction()
             {
                 constant_count += 1;
-                let slot = binding.write.unwrap();
-                assert_eq!(binding.constant_cells.len(), slot.words as usize);
-                let mut observed = [0_u32; 2];
+                let slot =
+                    binding.write.expect("frozen checksum source contract");
+                assert_eq!(
+                    binding.constant_cells.len(),
+                    usize::try_from(slot.words).expect("N15 slot width")
+                );
+                let mut observed = [0u32; 2];
                 for (offset, cell) in binding.constant_cells.iter().enumerate()
                 {
-                    assert_eq!(cell.destination, slot.offset + offset as u32);
+                    assert_eq!(
+                        Some(cell.destination),
+                        u32::try_from(offset)
+                            .ok()
+                            .and_then(|index| slot.offset.checked_add(index))
+                    );
                     assert!(cell.word < 14_348_907);
-                    observed[offset] = cell.word;
+                    *observed.get_mut(offset).expect("literal cell extent") =
+                        cell.word;
                 }
                 let expected = constant
                     .little_endian()
@@ -899,9 +923,10 @@ fn checksum_literal_cell_bindings_keep_exact_c32_bits_and_source_order() {
                         acc | (u32::from(*byte) << (index * 8))
                     });
                 let reconstructed = if slot.words == 2 {
-                    decode_i32_cells(observed).unwrap()
+                    decode_i32_cells(observed)
+                        .expect("frozen checksum source contract")
                 } else {
-                    observed[0]
+                    *observed.first().expect("one literal word")
                 };
                 assert_eq!(reconstructed, expected);
             } else {
@@ -922,11 +947,14 @@ fn runtime_operand_binder_rejects_forged_frame_identity_and_cell_geometry() {
     };
 
     let (wire, _) =
-        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
-    let original = canonical_module(&wire).unwrap();
-    let function = &original.functions()[0];
-    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
-    let frame = &plan.state_frames[0];
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE))
+            .expect("frozen checksum source contract");
+    let original =
+        canonical_module(&wire).expect("frozen checksum source contract");
+    let function = original.functions().first().expect("one function");
+    let plan = prepare_canonical_dynamic_cfg(&wire)
+        .expect("frozen checksum source contract");
+    let frame = plan.state_frames.first().expect("one state frame");
     assert_eq!(
         bind_function_operations(&original, function, frame),
         Ok(plan.operation_blocks.clone())
@@ -939,25 +967,26 @@ fn runtime_operand_binder_rejects_forged_frame_identity_and_cell_geometry() {
         refused
     );
     forged = frame.clone();
-    forged.values[0].value = 998;
+    forged.values.first_mut().expect("one slot").value = 998;
     assert_eq!(
         bind_function_operations(&original, function, &forged),
         refused
     );
     forged = frame.clone();
-    forged.values[0].offset += 1;
+    forged.values.first_mut().expect("one slot").offset += 1;
     assert_eq!(
         bind_function_operations(&original, function, &forged),
         refused
     );
     forged = frame.clone();
-    forged.values[0].type_kind = TernaryCfgScalarKind::Bool;
+    forged.values.first_mut().expect("one slot").type_kind =
+        TernaryCfgScalarKind::Bool;
     assert_eq!(
         bind_function_operations(&original, function, &forged),
         refused
     );
     forged = frame.clone();
-    forged.values[0].words += 1;
+    forged.values.first_mut().expect("one slot").words += 1;
     assert_eq!(
         bind_function_operations(&original, function, &forged),
         refused
