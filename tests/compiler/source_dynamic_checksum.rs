@@ -754,3 +754,218 @@ fn all_source_checksum_phi_edges_copy_original_predecessor_values() {
         );
     }
 }
+
+#[test]
+fn original_checksum_binds_all_dynamic_operations_to_disjoint_guest_cells() {
+    use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
+    use super::typed_cfg_adapter::typed::{Instruction, canonical_module};
+
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
+    assert_eq!(mode, FrontendGuestMode::DynamicEofChecksum);
+    let typed = canonical_module(&wire).unwrap();
+    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
+    assert_eq!(plan.operation_blocks.len(), 7);
+    let frame = &plan.state_frames[0];
+    let mut observed = 0;
+    let mut input_count = 0;
+    let mut output_count = 0;
+    let mut branching = 0;
+    for (bound, original) in plan
+        .operation_blocks
+        .iter()
+        .zip(typed.functions()[0].blocks())
+    {
+        assert_eq!(bound.function, 0);
+        assert_eq!(bound.block, original.id().value());
+        assert_eq!(bound.instructions.len(), original.instructions().len());
+        for (binding, located) in
+            bound.instructions.iter().zip(original.instructions())
+        {
+            assert_eq!(&binding.instruction, located.instruction());
+            assert_eq!(binding.span, located.span());
+            observed += 1;
+            for slot in binding.reads.iter().chain(binding.write.as_ref()) {
+                assert!(slot.offset + slot.words <= frame.scratch_offset);
+                assert_eq!(
+                    frame.values.iter().find(|saved| saved.value == slot.value),
+                    Some(slot),
+                );
+            }
+            if matches!(binding.instruction, Instruction::Getchar { .. }) {
+                input_count += 1;
+                let dest = binding.write.unwrap();
+                assert_eq!(
+                    dest.words, 2,
+                    "signed EOF must retain its high cell"
+                );
+                assert!(binding.reads.is_empty());
+            }
+            if matches!(binding.instruction, Instruction::ByteOutput { .. }) {
+                output_count += 1;
+                assert_eq!(binding.reads.len(), 1);
+                assert!(binding.write.is_none());
+            }
+            if matches!(binding.instruction, Instruction::Binary { .. }) {
+                assert_eq!(binding.reads.len(), 2);
+                assert!(binding.write.is_some());
+            }
+        }
+        assert_eq!(&bound.control.terminator, original.terminator());
+        if let Some(condition) = bound.control.condition {
+            branching += 1;
+            assert_eq!(condition.words, 1);
+            assert!(frame.values.contains(&condition));
+        }
+        if let Some(returned) = bound.control.return_value {
+            assert!(frame.values.contains(&returned));
+        }
+    }
+    assert_eq!(observed, 19);
+    assert_eq!(input_count, 2);
+    assert_eq!(output_count, 1);
+    assert_eq!(branching, 2);
+    assert_eq!(prepare_canonical_dynamic_cfg(&wire), Ok(plan));
+}
+
+#[test]
+fn checksum_literal_cell_bindings_keep_exact_c32_bits_and_source_order() {
+    use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
+    use super::typed_cfg_adapter::state_storage::decode_i32_cells;
+    use super::typed_cfg_adapter::typed::{Instruction, canonical_module};
+
+    let (wire, _) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
+    let original = canonical_module(&wire).unwrap();
+    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
+    let mut constant_count = 0;
+    for (bound, typed) in plan
+        .operation_blocks
+        .iter()
+        .zip(original.functions()[0].blocks())
+    {
+        for (binding, located) in
+            bound.instructions.iter().zip(typed.instructions())
+        {
+            let mut expected_reads = Vec::new();
+            let expected_write = match located.instruction() {
+                Instruction::Binary { left, right, result, .. }
+                | Instruction::Compare { left, right, result, .. } => {
+                    expected_reads.extend([left.value(), right.value()]);
+                    Some(result.value())
+                },
+                Instruction::Cast { value, result, .. } => {
+                    expected_reads.push(value.value());
+                    Some(result.value())
+                },
+                Instruction::ConstantInteger { result, .. }
+                | Instruction::ByteInput { result, .. }
+                | Instruction::Getchar { result, .. } => Some(result.value()),
+                Instruction::ByteOutput { value } => {
+                    expected_reads.push(value.value());
+                    None
+                },
+                other => {
+                    panic!("unexpected source checksum operation {other:?}")
+                },
+            };
+            assert_eq!(
+                binding
+                    .reads
+                    .iter()
+                    .map(|slot| slot.value)
+                    .collect::<Vec<_>>(),
+                expected_reads
+            );
+            assert_eq!(binding.write.map(|slot| slot.value), expected_write);
+            if let Instruction::ConstantInteger { constant, .. } =
+                located.instruction()
+            {
+                constant_count += 1;
+                let slot = binding.write.unwrap();
+                assert_eq!(binding.constant_cells.len(), slot.words as usize);
+                let mut observed = [0_u32; 2];
+                for (offset, cell) in binding.constant_cells.iter().enumerate()
+                {
+                    assert_eq!(cell.destination, slot.offset + offset as u32);
+                    assert!(cell.word < 14_348_907);
+                    observed[offset] = cell.word;
+                }
+                let expected = constant
+                    .little_endian()
+                    .iter()
+                    .enumerate()
+                    .fold(0u32, |acc, (index, byte)| {
+                        acc | (u32::from(*byte) << (index * 8))
+                    });
+                let reconstructed = if slot.words == 2 {
+                    decode_i32_cells(observed).unwrap()
+                } else {
+                    observed[0]
+                };
+                assert_eq!(reconstructed, expected);
+            } else {
+                assert!(binding.constant_cells.is_empty());
+            }
+        }
+    }
+    assert!(constant_count >= 3);
+}
+
+#[test]
+fn runtime_operand_binder_rejects_forged_frame_identity_and_cell_geometry() {
+    use super::typed_cfg_adapter::state_operations::bind_function_operations;
+    use super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
+    use super::typed_cfg_adapter::typed::canonical_module;
+    use super::typed_cfg_adapter::{
+        TypedCfgAdapterError, prepare_canonical_dynamic_cfg,
+    };
+
+    let (wire, _) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
+    let original = canonical_module(&wire).unwrap();
+    let function = &original.functions()[0];
+    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
+    let frame = &plan.state_frames[0];
+    assert_eq!(
+        bind_function_operations(&original, function, frame),
+        Ok(plan.operation_blocks.clone())
+    );
+    let refused = Err(TypedCfgAdapterError::GuestStateAllocation);
+    let mut forged = frame.clone();
+    forged.function += 1;
+    assert_eq!(
+        bind_function_operations(&original, function, &forged),
+        refused
+    );
+    forged = frame.clone();
+    forged.values[0].value = 998;
+    assert_eq!(
+        bind_function_operations(&original, function, &forged),
+        refused
+    );
+    forged = frame.clone();
+    forged.values[0].offset += 1;
+    assert_eq!(
+        bind_function_operations(&original, function, &forged),
+        refused
+    );
+    forged = frame.clone();
+    forged.values[0].type_kind = TernaryCfgScalarKind::Bool;
+    assert_eq!(
+        bind_function_operations(&original, function, &forged),
+        refused
+    );
+    forged = frame.clone();
+    forged.values[0].words += 1;
+    assert_eq!(
+        bind_function_operations(&original, function, &forged),
+        refused
+    );
+    forged = frame.clone();
+    _ = forged.values.pop();
+    assert_eq!(
+        bind_function_operations(&original, function, &forged),
+        refused
+    );
+}

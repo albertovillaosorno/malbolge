@@ -71,6 +71,8 @@ pub struct PrelinkCfgPlan {
     pub cell_edges: Vec<super::state_storage::GuestCellEdge>,
     /// Original independently validated and lowered control graph.
     pub cfg: TernaryCfgPlan,
+    /// Canonical block instructions with frame-relative read/write operands.
+    pub operation_blocks: Vec<super::state_operations::GuestOperationBlock>,
     /// All predecessor-sensitive, simultaneous phi writes.
     pub phi_edges: Vec<PhiEdgeTransfers>,
     /// Frame-relative data slots for the current 15-trit profile.

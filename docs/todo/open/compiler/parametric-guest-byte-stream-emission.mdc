@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the original seven-block C23 checksum now carries
+  source-locked *runtime operand bindings* for all 19 typed instructions,
+  both Boolean branches, the return and the source-typed SSA data frame.
+  Its signed EOF input retains two guest cells; literal constants retain
+  exact canonical C bits as future 15-trit cell writes. The prelink planner
+  refuses forged function, slot identity, offsets, widths and missing data;
+  the 16 focused checksum Rust tests pass. No physical instruction realizes
+  these data writes or phi copies, no jumps have been linked, and the source-C
+  pipeline still refuses publishing a guest artifact. P2 remains open.
+
 - On 2026-11-18, source-authenticated dynamic checksum prelink now
   reserves an exact, relocatable 15-trit state frame. The original seven
   blocks define 21 SSA values in 39 data words; a four-word scratch region

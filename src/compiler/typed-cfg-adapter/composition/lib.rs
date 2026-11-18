@@ -37,6 +37,8 @@
 
 #[path = "phi_edge_transfers.rs"]
 mod phi_edge_transfers;
+#[path = "state_operations.rs"]
+pub mod state_operations;
 #[path = "state_storage.rs"]
 pub mod state_storage;
 
@@ -46,7 +48,6 @@ pub mod ternary;
 pub mod typed;
 
 pub use phi_edge_transfers::{PhiEdgeMove, PhiEdgeTransfers, PrelinkCfgPlan};
-
 use ternary::{
     InputBlock, InputDynamicBlockPhis, InputDynamicPhi, InputFunction,
     InputInstruction, InputOrderedComparison, InputPhiIncoming,
@@ -549,6 +550,12 @@ pub fn prepare_canonical_dynamic_cfg(
             state_storage::plan_frame(&module, function, &phi_edges)
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let mut operation_blocks = Vec::new();
+    for (function, frame) in module.functions().iter().zip(&state_frames) {
+        operation_blocks.extend(state_operations::bind_function_operations(
+            &module, function, frame,
+        )?);
+    }
     let mut cell_edges = Vec::new();
     for edge in &phi_edges {
         let frame = state_frames
@@ -560,6 +567,7 @@ pub fn prepare_canonical_dynamic_cfg(
     Ok(PrelinkCfgPlan {
         cell_edges,
         cfg,
+        operation_blocks,
         phi_edges,
         state_frames,
     })

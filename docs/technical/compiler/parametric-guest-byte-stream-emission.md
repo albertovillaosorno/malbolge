@@ -28,6 +28,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked dynamic checksum operand bindings (2026-11-18)
+
+The prelink `state_operations` stage now binds **every instruction and
+terminator of the unchanged C23 checksum** to the previously verified
+function-local SSA frame. Its seven ordered blocks carry 19 original typed
+instructions, exact source spans, 32-bit operand/destination cell ranges,
+signed `getchar` input destinations, one `putchar` source and both Boolean
+branch-condition slots. Constants carry explicit per-cell 15-trit values
+computed from the canonical typed integer bytes; a 32-bit value is never
+silently truncated into one N15 word. The source-to-slot map is produced by
+`prepare_canonical_dynamic_cfg`, not a caller-supplied lowering fixture.
+
+The binding checker regenerates the canonical SSA reservation and refuses
+substituted function IDs, missing or altered value slots, changed scalar
+widths, and malformed Boolean/input/output operand categories. The focused
+source-locked regression checks exact typed instruction and operand order,
+constant reconstruction, branch inputs, deterministic re-planning, and
+forged-frame refusal. It preserves the separate phi scratch-copy plan.
+
+**These bindings are obligations for a future physical linker**, not guest
+memory contents or executable Malbolge instructions. Runtime arithmetic,
+constant materialization, guest cell-copy instructions, conditional/backward
+jump relocation, and independent five-stream VM parity are still missing.
+The source-C driver still refuses artifact publication, and P2 remains open.
+
 ### Relocatable checksum SSA frame and safe phi staging (2026-11-18)
 
 The source-authenticated prelink path now computes **guest-word-relative

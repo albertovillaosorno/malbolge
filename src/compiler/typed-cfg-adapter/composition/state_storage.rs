@@ -125,7 +125,7 @@ pub struct GuestFramePlacement {
 type InstructionDefinition =
     Result<Option<(u32, TypeId)>, TypedCfgAdapterError>;
 
-type GuestSlotMap<'frame> = BTreeMap<u32, &'frame GuestStorageValue>;
+pub(super) type GuestSlotMap<'frame> = BTreeMap<u32, &'frame GuestStorageValue>;
 
 struct EdgeCopies<'frame> {
     commits: Vec<GuestCellCopy>,
@@ -391,6 +391,22 @@ fn validated_slots(
         return Err(TypedCfgAdapterError::GuestStateAllocation);
     }
     Ok(slots)
+}
+
+/// Authorize cell bindings only for the same canonical function and its
+/// exact ordered SSA reservations, never for caller-substituted offsets.
+pub(super) fn bindable_slots<'frame>(
+    module: &Module,
+    function: &Function,
+    frame: &'frame GuestStateFrame,
+) -> Result<GuestSlotMap<'frame>, TypedCfgAdapterError> {
+    let expected = reserve_function_values(module, function)?;
+    if frame.function != function.id().value()
+        || frame.values != expected.values
+    {
+        return Err(TypedCfgAdapterError::GuestStateAllocation);
+    }
+    validated_slots(frame)
 }
 
 /// Schedule all phi sources into scratch, then copy to destinations.
