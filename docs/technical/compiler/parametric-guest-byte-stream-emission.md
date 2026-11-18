@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Admitted physical scratch regions for source-bound guest paths (2026-11-18)
+
+The existing one-read N15 EOF/byte control source physically writes near its
+132-cell source and at remote addresses around 7.17 million. The nonlinear
+path verifier now retains every actually reached `p` and `*` destination,
+including writes that happen to leave the memory value unchanged. Its new
+`verify_bounded_guest_data_regions` gate checks small, ordered, disjoint,
+source-external data intervals against normative path fetches, encryption
+addresses and all mutating instruction destinations. It uses the verified
+profile memory bound, not a caller-supplied memory capacity.
+
+For five independently admitted physical paths (empty, NUL, high byte, mixed
+three-byte input and another byte), the executable control helper's writes
+fit `[132,146)` and `[7,174,344,7,174,386)`. Dropping the remote interval,
+allowing source/data overlap, or forging over-budget/out-of-range intervals
+fails closed. The test had an initial red compile before the API existed.
+The intervals identify **helper scratch**, not mapped C SSA values; they do
+not provide literal initialization, guest arithmetic, phi copies, a live
+checksum loop, or any of the five required checksum-output VM traces.
+
 ### Checked absolute checksum data relocation (2026-11-18)
 
 A new source-locked `state_relocation` stage re-derives the original

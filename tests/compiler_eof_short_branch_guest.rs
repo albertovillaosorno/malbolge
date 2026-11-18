@@ -926,6 +926,107 @@ fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
     )
     .map_err(|error| format!("mixed guest batch: {error:?}"))?;
     assert_eq!(admitted.len(), cases.len());
+    // The physical control helper writes both close to its 132-cell source
+    // and at remote loader addresses. A future state frame must not alias
+    // either helper bank or an executed/encrypted code cell.
+    use layout::{
+        BoundedGuestDataRegion as Region,
+        BoundedGuestRegionsError as RegionsError,
+    };
+    let helper_regions = [
+        Region {
+            start: 132,
+            end_exclusive: 146,
+        },
+        Region {
+            start: 7_174_344,
+            end_exclusive: 7_174_386,
+        },
+    ];
+    for path in &admitted {
+        assert_eq!(
+            path.mutation_targets().len(),
+            12 + 6
+                + 1
+                + 1
+                + if path.input_consumed() == 0 {
+                    1
+                } else {
+                    3
+                },
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &helper_regions),
+            Ok(())
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(
+                path,
+                &helper_regions[..1]
+            ),
+            Err(RegionsError::UnreservedWrite),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &[
+                Region {
+                    start: 0,
+                    end_exclusive: 132
+                },
+                helper_regions[0],
+            ]),
+            Err(RegionsError::InvalidRegions),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &[
+                helper_regions[0],
+                Region {
+                    start: 145,
+                    end_exclusive: 148
+                },
+            ]),
+            Err(RegionsError::InvalidRegions),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &[
+                helper_regions[0],
+                Region {
+                    start: profile.memory_words() - 1,
+                    end_exclusive: profile.memory_words() + 1
+                },
+            ]),
+            Err(RegionsError::InvalidRegions),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &[
+                helper_regions[0],
+                Region {
+                    start: helper_regions[1].start,
+                    end_exclusive: helper_regions[1].start
+                },
+            ]),
+            Err(RegionsError::InvalidRegions),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &[Region {
+                start: 132,
+                end_exclusive: 132 + layout::MAX_GUEST_RESERVED_WORDS + 1
+            },]),
+            Err(RegionsError::InvalidRegions),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &[
+                helper_regions[1],
+                helper_regions[0],
+            ]),
+            Err(RegionsError::InvalidRegions),
+        );
+        let over_budget =
+            [helper_regions[0]; layout::MAX_GUEST_DATA_REGIONS + 1];
+        assert_eq!(
+            layout::verify_bounded_guest_data_regions(path, &over_budget),
+            Err(RegionsError::InvalidRegions),
+        );
+    }
     for (actual, case) in admitted.iter().zip(&cases) {
         assert_eq!(actual.code_positions(), case.path);
         assert_eq!(actual.io_events(), case.io_events);

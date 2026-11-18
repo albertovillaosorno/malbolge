@@ -52,6 +52,10 @@ pub const MAX_REVISIT_SOURCE_CELLS: usize = 4096;
 pub const MAX_REVISIT_STEPS: usize = 512;
 /// Maximum independent, distinct binary streams in one finite guest check.
 pub const MAX_REVISIT_CASES: usize = 8;
+/// Maximum disjoint reserved data intervals in a finite physical-path proof.
+pub const MAX_GUEST_DATA_REGIONS: usize = 8;
+/// Maximum total words reserved by a finite physical-path proof.
+pub const MAX_GUEST_RESERVED_WORDS: u32 = 4096;
 
 /// One committed guest I/O operation, preserving read/write ordering.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -115,6 +119,8 @@ pub struct BoundedRevisitLayout {
     input_events: Vec<TraceInput>,
     io_events: Vec<BoundedRevisitIoEvent>,
     data_writes: Vec<BoundedRevisitDataWrite>,
+    memory_words: u32,
+    mutation_targets: Vec<u32>,
 }
 
 impl BoundedRevisitLayout {
@@ -140,6 +146,13 @@ impl BoundedRevisitLayout {
     #[must_use]
     pub fn encrypted_positions(&self) -> &[Option<u32>] {
         &self.encrypted_positions
+    }
+
+    /// Every reached `p`/`*` destination, even when the guest writes the
+    /// word already present and the trace has no changed-value delta.
+    #[must_use]
+    pub fn mutation_targets(&self) -> &[u32] {
+        &self.mutation_targets
     }
 
     /// Exactly the guest bytes committed before the observed halt.
@@ -173,6 +186,30 @@ impl BoundedRevisitLayout {
     }
 }
 
+/// A physical guest-memory interval reserved exclusively for data writes.
+///
+/// Ranges are half-open and use absolute target-word addresses. Callers must
+/// submit intervals in increasing non-overlapping order; code is never data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BoundedGuestDataRegion {
+    /// First unreserved address immediately after the data interval.
+    pub end_exclusive: u32,
+    /// Inclusive first reserved guest-memory word.
+    pub start: u32,
+}
+
+/// A physical-path data footprint did not fit declared isolated reservations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundedGuestRegionsError {
+    /// A reached instruction fetch or post-instruction encryption uses data.
+    CodeDataCollision,
+    /// Ranges are empty, unordered, overlapping, in code, outside the target,
+    /// or exceed the finite interval/word ceilings.
+    InvalidRegions,
+    /// A reached mutating instruction targets an unreserved data word.
+    UnreservedWrite,
+}
+
 /// Stable reason a bounded, input-specific nonlinear witness was not admitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BoundedRevisitError {
@@ -204,6 +241,78 @@ pub enum BoundedRevisitError {
     DataWritesMismatch,
     /// A multi-input check needs 2..8 distinct input streams.
     InvalidBatch,
+}
+
+/// Check isolated guest-data reservations against one *normative* path trace.
+///
+/// Only independently admitted [`BoundedRevisitLayout`] evidence can reach
+/// this function. All actual data writes must lie inside the small, disjoint
+/// declared intervals (including unchanged-value writes), and no observed
+/// instruction fetch or encryption may touch any interval. Validity is
+/// bounded to the exact admitted input; it
+/// does not initialize the reserved cells, prove future code paths, check
+/// C-state operations, or create executable guest instructions.
+///
+/// # Errors
+///
+/// Refuses malformed/over-budget intervals, observed code/data collisions,
+/// and any physical data write without an explicit reservation.
+pub fn verify_bounded_guest_data_regions(
+    admitted: &BoundedRevisitLayout,
+    regions: &[BoundedGuestDataRegion],
+) -> Result<(), BoundedGuestRegionsError> {
+    if regions.is_empty() || regions.len() > MAX_GUEST_DATA_REGIONS {
+        return Err(BoundedGuestRegionsError::InvalidRegions);
+    }
+    let source_cells = u32::try_from(admitted.source.len())
+        .map_err(|_error| BoundedGuestRegionsError::InvalidRegions)?;
+    let mut last_end = source_cells;
+    let mut reserved_words = u32::default();
+    for region in regions {
+        let words = region
+            .end_exclusive
+            .checked_sub(region.start)
+            .filter(|words| *words > 0)
+            .ok_or(BoundedGuestRegionsError::InvalidRegions)?;
+        reserved_words = reserved_words
+            .checked_add(words)
+            .filter(|sum| *sum <= MAX_GUEST_RESERVED_WORDS)
+            .ok_or(BoundedGuestRegionsError::InvalidRegions)?;
+        if region.start < last_end
+            || region.end_exclusive > admitted.memory_words
+        {
+            return Err(BoundedGuestRegionsError::InvalidRegions);
+        }
+        last_end = region.end_exclusive;
+    }
+    let in_data = |address| {
+        regions.iter().any(|region| {
+            region.start <= address && address < region.end_exclusive
+        })
+    };
+    if admitted.code_positions.iter().copied().any(in_data)
+        || admitted
+            .encrypted_positions
+            .iter()
+            .flatten()
+            .copied()
+            .any(in_data)
+    {
+        return Err(BoundedGuestRegionsError::CodeDataCollision);
+    }
+    if admitted
+        .mutation_targets
+        .iter()
+        .copied()
+        .any(|address| !in_data(address))
+        || admitted
+            .data_writes
+            .iter()
+            .any(|write| !in_data(write.address))
+    {
+        return Err(BoundedGuestRegionsError::UnreservedWrite);
+    }
+    Ok(())
 }
 
 /// Admits only one *complete*, exact-profile, bounded path with a genuine
@@ -312,6 +421,7 @@ fn admit_bounded_guest_path_impl(
     let mut input_events = Vec::with_capacity(expected.input_events.len());
     let mut io_events = Vec::with_capacity(expected.io_events.len());
     let mut data_writes = Vec::with_capacity(expected.data_writes.len());
+    let mut mutation_targets = Vec::new();
     for (index, &code) in expected.code_positions.iter().enumerate() {
         let before = machine.registers();
         if before.code_pointer != code {
@@ -343,6 +453,11 @@ fn admit_bounded_guest_path_impl(
                 step: u32::try_from(index).unwrap_or(u32::MAX),
                 effect: BoundedRevisitIoEffect::Output(output_byte),
             });
+        }
+        // The VM's memory delta excludes idempotent writes, so preserve the
+        // decoded mutating instruction's operand address separately.
+        if matches!(observed.decoded, Some(b'p' | b'*')) {
+            mutation_targets.push(before.data_pointer);
         }
         if let Some(data) = observed.memory_delta.data {
             data_writes.push(BoundedRevisitDataWrite {
@@ -396,6 +511,8 @@ fn admit_bounded_guest_path_impl(
         input_events,
         io_events,
         data_writes,
+        memory_words: profile.memory_words(),
+        mutation_targets,
     })
 }
 

@@ -233,6 +233,19 @@ I/O/data-write oracle. The mixed-arm source-bound regression uses five
 streams, but it does not supply the missing C checksum code or its five
 normative guest parity traces.
 
+`verify_bounded_guest_data_regions` separately checks actual, admitted
+nonlinear guest paths against 1..8 ordered, disjoint memory intervals (at most
+4,096 reserved N15 words total). Every reached `p`/`*` operand is protected,
+including an idempotent write omitted from changed-word VM deltas. The check
+rejects source overlap, memory overrun, a reached code/encryption collision,
+and any write outside the declared intervals. It uses the memory geometry
+retained from the normative guest admission rather than trusting caller
+capacity. On the physical two-arm classifier, the five-stream batch needs a
+near-source helper bank `[132,146)` **and** a remote loader bank
+`[7,174,344,7,174,386)`. Removing either one refuses. These are helper
+scratch writes, not the checksum's 43-word C-state frame, and the gate proves
+neither initialization nor semantic correctness of guest C operations.
+
 `build_signed_eof_branch_source` separately constructs a 132-cell graphical
 current-N15 **candidate**, with all 256 byte classes entering C=45 and EOF
 entering C=126. The builder is not a source-C compiler, a general conditional

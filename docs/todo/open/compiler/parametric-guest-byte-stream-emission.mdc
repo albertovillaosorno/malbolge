@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a new source-bound, bounded physical-data-region
+  verifier detects the real 132-cell EOF classifier's split scratch
+  footprint: `[132,146)` and `[7,174,344,7,174,386)` in 15-trit guest
+  addresses. Five normative marker-path traces pass with both disjoint
+  reservations. Forged source overlap, missing remote writes, unsorted,
+  overlapping, empty and out-of-range intervals refuse. The verifier also
+  records reached `p`/`*` targets even for idempotent writes, and excludes
+  reached code fetch/encryption from data reservations. The physical writes
+  are **not** the checksum's 43-word SSA state; no arithmetic, phi-copy or
+  EOF loop has been linked for the original C program, and the five required
+  guest checksum oracles remain missing. P2 stays open.
+
 - On 2026-11-18, the unchanged canonical C23 checksum gained a checked
   *absolute data relocation* stage. For a **hypothetical** final code
   length of 2,048 and frame base 4,096, all 19 typed instructions,
