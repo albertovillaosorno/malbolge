@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a single 91-cell graphical N15 guest physically
+  prepares both one-write EOF operands at once: `728` at M[97] and
+  `7,174,332` at M[95]. Four independent normative 82-step traces
+  verify the eleven rotations, five post-first-write arithmetic steps,
+  source-cell encryption, and relocated data reads. The guest emits
+  `0xbc` without consuming input; 257-case byte/EOF discrimination
+  is still an independent scalar oracle, **not** executed input
+  control. Signed guest input, conditional `i`, dynamic C state and
+  the complete mutable EOF checksum remain unimplemented; P2 is open.
+
 - On 2026-11-18, a 91-cell graphical N15 guest physically prepares the
   previously rotation-impossible second word 728 by eleven `*` rotations,
   thirty real `j` resets and a final `p` reading loader word

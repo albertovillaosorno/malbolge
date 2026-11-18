@@ -130,6 +130,26 @@ A shared-source operand plan, input-dependent `p` writes, relocation
 and a conditional `i` remain unsolved.
 The frozen C checksum still refuses target lowering; P2 stays open.
 
+### Both EOF operands prepared in one physical guest (2026-11-18)
+
+A second 91-cell graphical source uses the same `44/72` loader tail to
+prepare **both** reduced-plan operands in one normative N15 execution.
+Eleven real `*` rotations and one `p` first write `728` at M[97].
+A further rotation at M[95] and four reached `p` writes then leave
+`7,174,332` at M[95], with the original `728` still intact at M[97].
+The intermediate writes are `108` at M[95], `7,174,408` at M[102],
+and `125` at M[103]; the final `p` writes `7,174,332` at M[95].
+
+An 82-step normative guest trace verifies these exact addresses, reads,
+mutations, and the `j` relocation chain after source cell M[62] is
+encrypted. Four empty/nonempty input cases produce the same output
+`0xbc` and consume **no input**. The independent 257-case scalar
+plan proves the prepared words *could* classify bytes versus EOF;
+**no signed read, two data-dependent `p` writes, or conditional `i`
+is reached in this source**. The frozen mutable-C checksum still
+refuses target lowering. Joint preparation is not a guest branch and
+P2 remains open.
+
 ### Rotation-only synthesis cannot produce the second EOF operand
 
 The reduced one-write pair also has a stronger, position-independent

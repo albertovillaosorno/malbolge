@@ -543,3 +543,151 @@ fn physical_guest_synthesizes_728_with_rotations_and_crazy()
     }
     Ok(())
 }
+
+// A single physical N15 guest prepares both operands of the independently
+// admitted reduced EOF discriminator. The two writes occur before any input;
+// this is not yet a 257-input classifier or a reached conditional jump.
+fn joined_eof_operand_source() -> Result<Vec<u8>, String> {
+    use malbolge::decode_profile_instruction;
+
+    const LENGTH: usize = 91;
+    let encode = |opcode: u8, position: usize| -> Result<u8, String> {
+        (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(
+                    u32::from(*byte),
+                    u32::try_from(position).expect("bounded code position"),
+                ) == Some(opcode)
+            })
+            .ok_or_else(|| format!("no encoding for {opcode} at {position}"))
+    };
+    let mut code = (0..LENGTH)
+        .map(|position| encode(b'o', position))
+        .collect::<Result<Vec<_>, _>>()?;
+    code[1] = 39; // D=1 -> D=40.
+    code[2] = encode(b'j', 2)?; // M[40]=94 -> D=95.
+    for round in 0..10 {
+        let start = 3 + round * 4;
+        code[start] = encode(b'*', start)?;
+        for position in start + 1..=start + 3 {
+            code[position] = encode(b'j', position)?;
+        }
+    }
+    code[43] = encode(b'*', 43)?;
+    code[45] = encode(b'p', 45)?; // M[97] becomes 728.
+    for position in [48, 49, 50, 52, 53, 54, 64, 68, 69, 70, 71, 72, 73] {
+        code[position] = encode(b'j', position)?;
+    }
+    code[51] = encode(b'*', 51)?; // M[95] rotated once more.
+    code[55] = encode(b'p', 55)?; // M[95]: 7,174,561 -> 108.
+    code[62] = encode(b'p', 62)?; // M[102]=72 -> 7,174,408.
+    code[63] = encode(b'p', 63)?; // M[103]=7,174,493 -> 125.
+    code[79] = encode(b'p', 79)?; // M[95]=108 -> 7,174,332.
+    code[80] = encode(b'<', 80)?;
+    code[81] = encode(b'v', 81)?;
+    // Reset chain: untouched M[73]=61 -> M[62]=94 -> D=95;
+    // after C62 encrypts M[62]=57, M[58]'s prior encryption to 89
+    // gives the alternate D=90 -> D=95 continuation at C68..C78.
+    code[40] = 94;
+    code[62] = 94;
+    code[73] = 61;
+    code[89] = 44;
+    code[90] = 72;
+    for (position, byte) in code.iter().enumerate() {
+        let decoded = decode_profile_instruction(
+            u32::from(*byte),
+            u32::try_from(position).expect("bounded position"),
+        );
+        if !matches!(
+            decoded,
+            Some(b'j' | b'i' | b'*' | b'p' | b'o' | b'<' | b'/' | b'v')
+        ) {
+            return Err(format!("invalid source at {position}: {decoded:?}"));
+        }
+    }
+    Ok(code)
+}
+
+#[test]
+fn physical_guest_prepares_both_eof_operands_in_one_run() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = joined_eof_operand_source()?;
+    let proved =
+        admit_c23_eof_control_word_plan(profile, [7_174_332, 728], [728, 485]);
+    assert!(proved.is_ok(), "257-case scalar plan: {proved:?}");
+    for input in [vec![], vec![0], vec![0x80], vec![0xff]] {
+        let mut vm = ProfileMachine::from_source(profile, &source, input)
+            .map_err(|error| error.to_string())?;
+        for (address, expected) in [
+            (95, 7_174_457),
+            (96, 72),
+            (97, 7_174_493),
+            (98, 36),
+            (99, 7_174_493),
+            (100, 72),
+            (102, 72),
+            (103, 7_174_493),
+            (104, 36),
+        ] {
+            assert_eq!(vm.memory_word(address), Ok(expected), "M[{address}]");
+        }
+        let mut trace = vec![];
+        let outcome = vm
+            .run_traced(100, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 82,
+        });
+        for (position, opcode, address, operand) in [
+            (45, b'p', 97, 7_174_493),
+            (51, b'*', 95, 7_174_777),
+            (55, b'p', 95, 7_174_561),
+            (62, b'p', 102, 72),
+            (63, b'p', 103, 7_174_493),
+            (79, b'p', 95, 108),
+        ] {
+            let step = &trace[position];
+            assert_eq!(step.decoded, Some(opcode), "C={position}");
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((address, operand)),
+                "C={position}",
+            );
+        }
+        for (position, address, operand) in [
+            (48, 100, 72),
+            (49, 73, 61),
+            (50, 62, 94),
+            (64, 104, 36),
+            (68, 40, 57),
+            (69, 58, 89),
+            (70, 90, 72),
+            (71, 73, 61),
+            (72, 62, 57),
+            (73, 58, 89),
+        ] {
+            let step = &trace[position];
+            assert_eq!(step.decoded, Some(b'j'), "C={position}");
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((address, operand)),
+                "C={position}",
+            );
+        }
+        assert_eq!(vm.memory_word(95), Ok(7_174_332));
+        assert_eq!(vm.memory_word(97), Ok(728));
+        assert_eq!(vm.memory_word(96), Ok(72));
+        assert_eq!(
+            vm.output(),
+            &[u8::try_from(7_174_332 % 256).expect("byte")]
+        );
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}

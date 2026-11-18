@@ -61,14 +61,16 @@ missing `728` word with eleven real `*` rotations, thirty `j`
 pointer resets and a final reached `p` on loader word `7,174,493`.
 The digit-table result is `crazy(7,174,493, 7,174,777) = 728`;
 48 VM steps emit `0xd8` without consuming input. This guest uses
-loader tail `44/72`, **not** the `Q}` tail needed for the proposed
-first EOF operand `7,174,332`. An independent arithmetic witness
-now derives that first operand from the **same** `44/72` seed through
-fourteen further rotations and two `p` applications with the untouched
-`7,174,493`/`36` words. It proves only scalar reachability, not a
-physically scheduled unified guest or input-dependent branch. Both
-original operand preparations have been executed separately, but no
-combined EOF branch or source-C lowering is admitted.
+loader tail `44/72`, distinct from the `Q}` tail that directly
+supplies the proposed first operand `7,174,332`. A second, independently
+executed 91-cell source now physically prepares **both** operands in
+one 82-step N15 guest. After writing `728` at M[97], one further
+rotation and four real `p` writes prepare `7,174,332` at M[95] while
+preserving M[97]. Four normative runs verify both final words, source
+self-encryption and relocation, and emit `0xbc` without input. The
+previous fourteen-rotation/two-`p` algebraic path was not used.
+The joint source still has no input-dependent `p`, conditional `i` or
+source-C dynamic lowering; P2 remains open.
 
 ### Real all-byte versus EOF output classifier (no jump)
 
