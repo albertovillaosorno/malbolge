@@ -100,6 +100,13 @@ operand order, branch outcome, canonical wires, source-bound resume and
 non-absorbing-constant refusal. These symbolic ALU operations still require
 independent executable guest realization.
 
+Four additional signed `GetcharI32` typed-CFG cases preserve the distinct
+EOF-bearing read (including `-1`) through same-SSA XOR/subtract and a static
+zero guard. Their independent successful-byte input/output effects remain
+separate. Canonical typed/ternary wires, source-bound resume, mistyped
+`getchar` refusal, and non-reflexive arithmetic refusal pass. This is only
+symbolic lowering; the signed input still has no executable guest layout.
+
 Unsigned and signed constant arithmetic also includes conservative signed
 shift proofs: nonnegative signed left operands only when the shifted result
 fits `i32`, and nonnegative arithmetic-right-shift operands with counts below

@@ -26107,6 +26107,166 @@ fn live_absorbing_alu_selects_only_proven_branch() -> Result<(), String> {
     Ok(())
 }
 
+// A signed C getchar result can be EOF (-1), not a successful input byte.
+// Pure same-SSA algebra is still valid for that full signed domain. Keep the
+// signed read separate from the successful byte feeding selected output.
+fn guest_signed_eof_self_alu_branch_module(
+    operation: BinaryOp,
+    compare_equal: bool,
+) -> Module {
+    let base = guest_self_annihilating_alu_branch_module(
+        operation,
+        true,
+        compare_equal,
+    );
+    let original = &base.functions()[0];
+    let mut blocks = original.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    instructions[2] = LocatedInstruction::new(
+        Instruction::Getchar {
+            result: ValueId::new(2),
+            type_id: TypeId::new(1),
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: entry.terminator().clone(),
+        terminator_span: entry.terminator_span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![Function::new(FunctionSpec {
+            blocks,
+            entry: original.entry(),
+            id: original.id(),
+            name: String::from(original.name()),
+            parameters: original.parameters().to_vec(),
+            signature: original.signature(),
+            span: original.span(),
+        })],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    })
+}
+
+#[test]
+fn signed_getchar_eof_preserves_self_alu_static_guard_and_guest_effects()
+-> Result<(), String> {
+    for operation in [BinaryOp::Xor, BinaryOp::Subtract] {
+        for compare_equal in [false, true] {
+            let source = guest_signed_eof_self_alu_branch_module(
+                operation,
+                compare_equal,
+            );
+            validate_module(&source).map_err(|error| {
+                format!("admit signed EOF guard: {error:?}")
+            })?;
+            let typed_wire = canonical_bytes(&source)
+                .map_err(|error| format!("encode EOF typed IR: {error:?}"))?;
+            assert_eq!(canonical_module(&typed_wire), Ok(source.clone()));
+            let projection = project_typed_ir(&source)?;
+            let target = lower_typed_ir(&projection).map_err(|error| {
+                format!("lower signed EOF guard: {error:?}")
+            })?;
+            let ops = &target.functions[0].operations;
+            assert_eq!(
+                ops.iter()
+                    .filter(|op| matches!(
+                        op,
+                        TernaryOperation::GetcharI32 { .. }
+                    ))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                ops.iter()
+                    .filter(|op| matches!(
+                        op,
+                        TernaryOperation::ByteInput { .. }
+                    ))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                ops.iter()
+                    .filter(|op| matches!(
+                        op,
+                        TernaryOperation::ByteOutput { .. }
+                    ))
+                    .count(),
+                if compare_equal {
+                    2
+                } else {
+                    1
+                }
+            );
+            assert!(ops.iter().any(|op| matches!(
+                (operation, op),
+                (BinaryOp::Xor, TernaryOperation::XorI32 { .. })
+                    | (
+                        BinaryOp::Subtract,
+                        TernaryOperation::SubtractI32 { .. }
+                    )
+            )));
+            let wire = canonical_ternary_bytes(&target).map_err(|error| {
+                format!("encode signed EOF target: {error:?}")
+            })?;
+            assert_eq!(canonical_ternary_program(&wire), Ok(target.clone()));
+            let label = format!("signed-eof-{operation:?}-{compare_equal}");
+            let (progress, directory) =
+                publish_ternary_progress_fixture(&label, &wire)?;
+            assert_eq!(
+                resume_ternary_from_progress_for_source(
+                    &repository_python(),
+                    &progress_inspector(),
+                    &progress,
+                    &projection,
+                ),
+                Ok(target),
+            );
+            remove_dir_all(&directory).map_err(|error| {
+                format!("clean signed EOF fixture: {error}")
+            })?;
+            // A differently typed signed read cannot silently become u8.
+            let mut forged = projection.clone();
+            match &mut forged.functions[0].blocks[0].instructions[2] {
+                InputInstruction::Getchar { type_kind, .. } => {
+                    *type_kind = InputScalarType::U8;
+                },
+                _ => {
+                    return Err(String::from("missing signed EOF instruction"));
+                },
+            }
+            assert_eq!(
+                lower_typed_ir(&forged),
+                Err(TernaryLoweringError::UnsupportedInstruction),
+            );
+            // Distinct SSA values are not interchangeable at EOF or byte input.
+            let mut distinct = projection.clone();
+            match &mut distinct.functions[0].blocks[0].instructions[4] {
+                InputInstruction::BinaryXor { right, .. }
+                | InputInstruction::BinarySubtract { right, .. } => *right = 3,
+                _ => return Err(String::from("missing signed EOF ALU")),
+            }
+            assert_eq!(
+                lower_typed_ir(&distinct),
+                Err(TernaryLoweringError::UnsupportedTerminator),
+            );
+        }
+    }
+    Ok(())
+}
+
 // Two independent guest input instructions are never interchangeable just
 // because a particular test vector might feed them equal byte values.
 fn guest_independent_input_comparison_branch_module(

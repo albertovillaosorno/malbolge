@@ -209,6 +209,14 @@ outcomes and refuse mutations to non-absorbing constants. The proof does
 not implement executable target ALU operations, guest-dependent control
 flow, or signed EOF conversion.
 
+Four signed-input typed-CFG cases additionally replace the live arithmetic
+operand with a real symbolic `GetcharI32` result, which may be C EOF `-1`.
+They prove the same-SSA XOR/subtract zero guard without narrowing EOF into
+successful byte input, preserve distinct `GetcharI32` and `ByteInput` effects,
+and cover canonical typed/ternary restoration, source-bound checkpoint replay,
+wrong-width `getchar` refusal and distinct-SSA refusal. This remains
+pre-layout evidence: no executable signed-read guest realization is claimed.
+
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every
 `u32` bit pattern, while 21 trits cover the complete 32-bit representation
