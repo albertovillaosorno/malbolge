@@ -48,6 +48,25 @@ and writes that word for empty/NUL/high-byte input. It does **not** place
 the second operand or execute an `i` branch. `compiler_eof_guest_control`
 checks that first physical write with normative VM traces.
 
+### Physically executed input-dependent branch, restricted to two bytes
+
+A separate 136-cell current N15 graphical guest shows that nonlinear input
+control *can* execute on the normative VM, independently of the unplaced
+EOF discriminator. An initial `i` enters code at 99 and encrypts a skipped
+source cell; one real input `/`, two earlier-code operand `p` writes, and
+three actual `j` relocations place the final dynamic result under `D`.
+A reached `i` at C=135 reads 6 for NUL and 7 for byte `01`, selecting
+previously skipped C=7 or C=8 respectively. A 40-step trace emits `00 06`
+for NUL; a 39-step trace emits `00` for `01` and both halt. The test checks
+every intermediate guest data read as well as the real divergent paths.
+
+These **two tested input words** are not C23 EOF control. The raw guest is
+not a compiled C source, and arbitrary binary inputs cannot be admitted by
+this witness. The tested operand pair is 81/43, not the required
+7,174,332/728, so all 257 signed `getchar` results, byte/EOF branches,
+and the mutable checksum remain unimplemented. This is an instruction-level
+branch-enabling result, not a change in the linear emitter's supported API.
+
 ### Position-constrained loader seed selection
 
 `select_rotated_loader_seed(profile, length, data_address, rotations, pair)`

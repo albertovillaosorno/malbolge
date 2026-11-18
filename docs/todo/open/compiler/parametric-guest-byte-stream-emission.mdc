@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a separate 136-cell N15 guest proves the first real
+  dynamic input-dependent `i` path through two actual `p` writes and
+  relocation back to its mutated control word. Input NUL yields `00 06`
+  in 40 steps and input `01` yields `00` in 39 steps; both independently
+  verified VM traces read operands 81/43 and jump to untouched skipped
+  code at C=7/8. This is restricted binary branching, **not** signed
+  EOF discrimination: the 257-case candidate second operand 728 is still
+  unplaced. Original mutable checksum guest compilation remains refused.
+
 - On 2026-11-18, an independently admitted two-`p` discriminator with
   operands `[7,174,332, 728]` and word outputs `[728, 485]` reduces the
   necessary pre-read writes from two to one. The first operand is reached

@@ -63,6 +63,28 @@ EOF/NUL/128/255. No second operand or dynamic jump is placed, and the
 complete mutable checksum still refuses target lowering. The next stage
 must synthesize 728 in a safe guest cell and then prove both jump paths.
 
+### Input-dependent guest branch with two physical crazy writes (2026-11-18)
+
+A separate 136-cell N15 instruction-level experiment now executes an actual
+input-dependent `i`, rather than stopping at the scalar branch proposal. An
+initial `i` skips source cells 7/8 and 98 while encrypting cell 98, then a
+real `/` consumes one byte. Two real `j` relocations reach the encrypted
+source operands 81 and 43; consecutive `p` writes at passed code addresses
+98/99 produce control words 6 (NUL) or 7 (byte `01`). A third `j` reads a
+known scratch word 98 and repositions `D` on the newly written result. The
+normative `i` consequently visits code address 7 (outputs `06`, then halts)
+or address 8 (halts directly). Exact normative outputs are `00 06` and `00`
+in 40 and 39 guest steps; both cases consume one byte.
+
+This is genuine **dynamic guest branching**, including input-dependent data
+writes, post-instruction encryption, a backward jump to previously skipped
+code and two distinguishable output paths. It is deliberately **not** the
+all-257-case signed EOF predicate: the operands are 81 and 43, not the
+proposed 7,174,332 and 728, and other byte inputs/EOF are unsupported by
+this finite witness. The complete mutable checksum still refuses target
+lowering. `compiler_eof_guest_control` verifies the physical reads, control
+addresses, paths, step counts and outputs without C-host simulation.
+
 ### Exhaustive EOF control-word algebra, not a guest (2026-11-18)
 
 The *unchanged* complete mutable EOF checksum still reaches the seven-block
