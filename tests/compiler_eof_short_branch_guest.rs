@@ -26,9 +26,11 @@
 //! One real branch arm is executable after four data-dependent guest writes.
 //! EOF still fails before the destination can execute.
 
+use std::iter::once;
+
 use malbolge::{
-    ProfileMachine, RunOutcome, Termination, current_profile,
-    decode_profile_instruction,
+    ProfileMachine, ProfileRegisters, RunOutcome, Termination, TraceInput,
+    current_profile, decode_profile_instruction,
 };
 
 const LENGTH: usize = 132;
@@ -157,7 +159,7 @@ fn independent_c23_byte_and_eof_control_words() {
     clippy::panic_in_result_fn,
     reason = "bounded normative guest-trace assertion matrix"
 )]
-fn all_successful_bytes_reach_graphical_output_arm_but_eof_does_not()
+fn all_257_signed_inputs_execute_the_correct_branch_boundary()
 -> Result<(), String> {
     let profile = current_profile();
     let source = guest_source()?;
@@ -175,16 +177,35 @@ fn all_successful_bytes_reach_graphical_output_arm_but_eof_does_not()
             return Err(format!("invalid graphical instruction at {position}"));
         }
     }
-    for input in [vec![0], vec![1], vec![0x80], vec![0xff], vec![]] {
+    // Load the entire N15 image once, then execute each byte and EOF from
+    // a fresh VM-validated state. The arithmetic oracle alone is not guest
+    // execution evidence for the physical success arm.
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for input in
+        once(Vec::new()).chain((u8::MIN..=u8::MAX).map(|byte| vec![byte]))
+    {
         let eof = input.is_empty();
         let word = input
             .first()
             .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
-        let mut vm =
-            ProfileMachine::from_source(profile, &source, input.clone())
-                .map_err(|error| error.to_string())?;
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
         let mut trace = vec![];
         let outcome = vm.run_traced(82, &mut |step| trace.push(*step));
+        let input_step = trace.get(53).ok_or("missing signed input step")?;
+        assert_eq!(input_step.decoded, Some(profile.input_instruction()));
+        assert_eq!(
+            input_step.input,
+            Some(input.first().map_or(TraceInput::EndOfInput, |byte| {
+                TraceInput::Byte(*byte)
+            }))
+        );
         for (position, address, operand) in [
             (64u32, 134u32, FIRST_OPERAND),
             (65, 135, ROTATED_OPERAND),
@@ -248,7 +269,7 @@ fn all_successful_bytes_reach_graphical_output_arm_but_eof_does_not()
         assert_eq!(vm.input_consumed(), usize::from(!input.is_empty()));
         assert_eq!(branch.after.registers.code_pointer, 126);
         assert_eq!(trace.last().map(|step| step.decoded), Some(Some(b'v')));
-        assert_eq!(vm.output(), b"}");
+        assert_eq!(vm.output(), b"}", "input {input:?}");
     }
     Ok(())
 }

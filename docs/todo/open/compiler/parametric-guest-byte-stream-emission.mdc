@@ -73,6 +73,13 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the four-`p` signed EOF guest now executes
+  **all 257 cases** through a real N15 VM: every successful byte emits
+  `0x7d` in 81 steps and EOF rejects its non-graphical encryption target.
+  One loaded memory image feeds fresh validated states; the independent
+  oracle remains separate. Focused Rust tests passed in 87.44 s.
+  Neither the EOF arm nor dynamic C lowering is implemented; P2 is open.
+
 - On 2026-11-18, the earlier physically reached three-`p` EOF `i`
   witness now runs **all 257 guest inputs** (every byte and empty stdin)
   through fresh validated N15 states after one complete memory load.
