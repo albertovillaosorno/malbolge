@@ -12,6 +12,27 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Bounded physical helper and future C-frame isolation
+
+A complete finite path admitted by the nonlinear normative N15 guest verifier
+now records exact data-memory **read** addresses in addition to code fetch,
+encryption, and reached `p`/`*` destinations (including unchanged writes).
+`verify_bounded_guest_state_isolation` checks that a future mutable C frame
+lies outside all of those accesses. Unlike the helper's own writable scratch,
+this state region must not be read by the helper: the real EOF branch reads
+untouched loader M[148], which becomes unsafe if reused for mutable C state.
+
+`place_bounded_guest_state_frame` derives a deterministic lowest-addressed
+candidate from the union of up to eight source/profile-identical, bounded
+paths. It refuses zero/oversized reservations and physically occupied cells.
+A focused test reuses the original checksum's independently verified 43-word
+SSA/phi requirement and checks a safe candidate across five VM paths.
+Relocation of its seven blocks and four phi edges remains a separate,
+source-locked prelink proof, not linked to this candidate. The candidate
+remains uninitialized, has no linked guest arithmetic or copied phi cells,
+and proves nothing about a future source modification or untested input.
+The original C checksum still cannot run.
+
 ### EOF versus byte control-word prerequisite
 
 An independently checked current N15 two-`p` **data-only** proposal uses

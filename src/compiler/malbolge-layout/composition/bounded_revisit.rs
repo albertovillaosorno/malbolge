@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Bounded exact-profile admission of source paths revisiting code cells.
+//   - Bounded exact-profile path and isolated C-state address admission.
 // - Must-Not:
 //   - Claim arbitrary input semantics, synthesize C branches, or relax the
 //     forward-only layout verifier.
@@ -23,7 +23,7 @@
 // - Merge-When:
 //   - A complete backend admits all nonlinear guest traces under this gate.
 // - Summary:
-//   - Admits finite backward-jump witnesses including re-encrypted code.
+//   - Verifies finite nonlinear paths and unused mutable-state candidates.
 // - Description:
 //   - Checks a complete finite source path against actual profile VM steps.
 // - Usage:
@@ -113,6 +113,7 @@ pub struct BoundedRevisitLayout {
     source: Vec<u8>,
     code_positions: Vec<u32>,
     data_positions: Vec<u32>,
+    data_read_positions: Vec<Option<u32>>,
     encrypted_positions: Vec<Option<u32>>,
     output: Vec<u8>,
     input_consumed: usize,
@@ -121,6 +122,8 @@ pub struct BoundedRevisitLayout {
     data_writes: Vec<BoundedRevisitDataWrite>,
     memory_words: u32,
     mutation_targets: Vec<u32>,
+    profile_fingerprint: &'static str,
+    profile_id: &'static str,
 }
 
 impl BoundedRevisitLayout {
@@ -140,6 +143,14 @@ impl BoundedRevisitLayout {
     #[must_use]
     pub fn data_positions(&self) -> &[u32] {
         &self.data_positions
+    }
+
+    /// Actual guest data-memory read addresses, absent on steps without a
+    /// data-cell read. Unlike the data pointer, these are normative read
+    /// events and can establish isolation of a future mutable state frame.
+    #[must_use]
+    pub fn data_read_positions(&self) -> &[Option<u32>] {
+        &self.data_read_positions
     }
 
     /// Actual code-encryption addresses, or none on the halting step.
@@ -208,6 +219,10 @@ pub enum BoundedGuestRegionsError {
     InvalidRegions,
     /// A reached mutating instruction targets an unreserved data word.
     UnreservedWrite,
+    /// A reached helper data read or write touches a reserved state frame.
+    StateDataAccessCollision,
+    /// No full isolated state frame fits the verified target address space.
+    NoStateFrameSpace,
 }
 
 /// Stable reason a bounded, input-specific nonlinear witness was not admitted.
@@ -243,21 +258,9 @@ pub enum BoundedRevisitError {
     InvalidBatch,
 }
 
-/// Check isolated guest-data reservations against one *normative* path trace.
-///
-/// Only independently admitted [`BoundedRevisitLayout`] evidence can reach
-/// this function. All actual data writes must lie inside the small, disjoint
-/// declared intervals (including unchanged-value writes), and no observed
-/// instruction fetch or encryption may touch any interval. Validity is
-/// bounded to the exact admitted input; it
-/// does not initialize the reserved cells, prove future code paths, check
-/// C-state operations, or create executable guest instructions.
-///
-/// # Errors
-///
-/// Refuses malformed/over-budget intervals, observed code/data collisions,
-/// and any physical data write without an explicit reservation.
-pub fn verify_bounded_guest_data_regions(
+// Apply the same finite, source-external address rules to both physical
+// helper scratch and the later C-state frame before examining guest traces.
+fn validate_guest_regions(
     admitted: &BoundedRevisitLayout,
     regions: &[BoundedGuestDataRegion],
 ) -> Result<(), BoundedGuestRegionsError> {
@@ -285,11 +288,33 @@ pub fn verify_bounded_guest_data_regions(
         }
         last_end = region.end_exclusive;
     }
-    let in_data = |address| {
-        regions.iter().any(|region| {
-            region.start <= address && address < region.end_exclusive
-        })
-    };
+    Ok(())
+}
+
+fn in_guest_regions(regions: &[BoundedGuestDataRegion], address: u32) -> bool {
+    regions
+        .iter()
+        .any(|region| region.start <= address && address < region.end_exclusive)
+}
+
+/// Check isolated guest-data reservations against one *normative* path trace.
+///
+/// All actual data writes must lie inside the declared intervals (including
+/// unchanged-value writes), and no executed/encrypted code may touch them.
+/// This does not establish that a separate, future mutable C state frame is
+/// safe from the helper's data *reads*: use
+/// [`verify_bounded_guest_state_isolation`] for that distinct obligation.
+///
+/// # Errors
+///
+/// Refuses malformed/over-budget intervals, observed code/data collisions,
+/// and any physical data write without an explicit reservation.
+pub fn verify_bounded_guest_data_regions(
+    admitted: &BoundedRevisitLayout,
+    regions: &[BoundedGuestDataRegion],
+) -> Result<(), BoundedGuestRegionsError> {
+    validate_guest_regions(admitted, regions)?;
+    let in_data = |address| in_guest_regions(regions, address);
     if admitted.code_positions.iter().copied().any(in_data)
         || admitted
             .encrypted_positions
@@ -313,6 +338,132 @@ pub fn verify_bounded_guest_data_regions(
         return Err(BoundedGuestRegionsError::UnreservedWrite);
     }
     Ok(())
+}
+
+/// Check that a proposed mutable state frame is entirely untouched by this
+/// independently admitted, complete helper path. Unlike the helper's own
+/// scratch reservations, state words must not be read *or* written by helper
+/// instructions: reading an initially harmless loader word would become a
+/// mutable-state dependency once the C program updates that address.
+///
+/// The check uses real traced data reads, including `i`/`j` pointer reads,
+/// not speculative accesses from the data-pointer register. It separately
+/// rejects fetched/encrypted code and all mutating `p`/`*` destinations,
+/// including idempotent writes. Only this one input/path is covered: a
+/// complete compiler must repeat the check for every admitted path and prove
+/// any subsequent guest code that intentionally accesses the state frame.
+///
+/// # Errors
+///
+/// Rejects invalid intervals, code/encryption collisions and any reached
+/// physical helper data read or write inside a proposed mutable state frame.
+pub fn verify_bounded_guest_state_isolation(
+    admitted: &BoundedRevisitLayout,
+    state_regions: &[BoundedGuestDataRegion],
+) -> Result<(), BoundedGuestRegionsError> {
+    validate_guest_regions(admitted, state_regions)?;
+    let in_state = |address| in_guest_regions(state_regions, address);
+    if admitted.code_positions.iter().copied().any(in_state)
+        || admitted
+            .encrypted_positions
+            .iter()
+            .flatten()
+            .copied()
+            .any(in_state)
+    {
+        return Err(BoundedGuestRegionsError::CodeDataCollision);
+    }
+    if admitted
+        .data_read_positions
+        .iter()
+        .flatten()
+        .copied()
+        .any(in_state)
+        || admitted.mutation_targets.iter().copied().any(in_state)
+        || admitted
+            .data_writes
+            .iter()
+            .any(|write| in_state(write.address))
+    {
+        return Err(BoundedGuestRegionsError::StateDataAccessCollision);
+    }
+    Ok(())
+}
+
+/// Find the lowest-addressed candidate frame that avoids the exact memory
+/// access footprints of all supplied, independently admitted helper paths.
+///
+/// The search is finite and source-bound: it excludes every graphical source
+/// cell and every observed fetch, encryption, data read and `p`/`*` write,
+/// including unchanged-value writes. Only complete traces from the same
+/// source and target geometry may be combined. Different inputs can take
+/// different paths; the result is safe only for those supplied paths.
+///
+/// This produces an *uninitialized* frame reservation. It does not initialize
+/// C variables, realize phi transfers, authorize new guest instructions, or
+/// prove an unbounded EOF loop. A later linker must independently check all
+/// executable operations and the final source bytes.
+///
+/// # Errors
+///
+/// Refuses absent or excessive path evidence, different source/target
+/// identities, invalid frame widths, or exhaustion of N15 address space.
+pub fn place_bounded_guest_state_frame(
+    admitted: &[BoundedRevisitLayout],
+    required_words: u32,
+) -> Result<BoundedGuestDataRegion, BoundedGuestRegionsError> {
+    if admitted.is_empty()
+        || admitted.len() > MAX_REVISIT_CASES
+        || required_words == 0
+        || required_words > MAX_GUEST_RESERVED_WORDS
+    {
+        return Err(BoundedGuestRegionsError::InvalidRegions);
+    }
+    let first = &admitted[0];
+    if admitted.iter().skip(1).any(|path| {
+        path.source != first.source
+            || path.memory_words != first.memory_words
+            || path.profile_id != first.profile_id
+            || path.profile_fingerprint != first.profile_fingerprint
+    }) {
+        return Err(BoundedGuestRegionsError::InvalidRegions);
+    }
+    let source_end = u32::try_from(first.source.len())
+        .map_err(|_error| BoundedGuestRegionsError::InvalidRegions)?;
+    let mut occupied = BTreeSet::new();
+    for path in admitted {
+        occupied.extend(path.code_positions.iter().copied());
+        occupied.extend(path.encrypted_positions.iter().flatten().copied());
+        occupied.extend(path.data_read_positions.iter().flatten().copied());
+        occupied.extend(path.mutation_targets.iter().copied());
+        occupied.extend(path.data_writes.iter().map(|write| write.address));
+    }
+    let end_for = |start: u32| {
+        start
+            .checked_add(required_words)
+            .filter(|end| *end <= first.memory_words)
+            .ok_or(BoundedGuestRegionsError::NoStateFrameSpace)
+    };
+    let mut start = source_end;
+    for busy in occupied {
+        if busy < start {
+            continue;
+        }
+        if busy >= end_for(start)? {
+            break;
+        }
+        start = busy
+            .checked_add(1)
+            .ok_or(BoundedGuestRegionsError::NoStateFrameSpace)?;
+    }
+    let frame = BoundedGuestDataRegion {
+        start,
+        end_exclusive: end_for(start)?,
+    };
+    for path in admitted {
+        verify_bounded_guest_state_isolation(path, &[frame])?;
+    }
+    Ok(frame)
 }
 
 /// Admits only one *complete*, exact-profile, bounded path with a genuine
@@ -416,6 +567,8 @@ fn admit_bounded_guest_path_impl(
     let mut revisited = false;
     let mut code_positions = Vec::with_capacity(expected.code_positions.len());
     let mut data_positions = Vec::with_capacity(expected.code_positions.len());
+    let mut data_read_positions =
+        Vec::with_capacity(expected.code_positions.len());
     let mut encrypted_positions =
         Vec::with_capacity(expected.code_positions.len());
     let mut input_events = Vec::with_capacity(expected.input_events.len());
@@ -469,6 +622,8 @@ fn admit_bounded_guest_path_impl(
         }
         code_positions.push(code);
         data_positions.push(before.data_pointer);
+        data_read_positions
+            .push(observed.memory_reads.data.map(|read| read.address));
         encrypted_positions.push(
             observed
                 .memory_delta
@@ -505,6 +660,7 @@ fn admit_bounded_guest_path_impl(
         source: source.to_vec(),
         code_positions,
         data_positions,
+        data_read_positions,
         encrypted_positions,
         output: machine.output().to_vec(),
         input_consumed: machine.input_consumed(),
@@ -513,6 +669,8 @@ fn admit_bounded_guest_path_impl(
         data_writes,
         memory_words: profile.memory_words(),
         mutation_targets,
+        profile_fingerprint: profile.fingerprint(),
+        profile_id: profile.id(),
     })
 }
 

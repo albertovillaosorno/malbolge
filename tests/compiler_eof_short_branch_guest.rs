@@ -926,6 +926,52 @@ fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
     )
     .map_err(|error| format!("mixed guest batch: {error:?}"))?;
     assert_eq!(admitted.len(), cases.len());
+    // The original source-locked CFG independently reserves a 43-word
+    // SSA/phi frame. Search for a candidate around the actually executed
+    // helper, rather than trusting an invented static free-space interval.
+    // No physical C-state writes or CFG operations are linked yet.
+    const CHECKSUM_STATE_WORDS: u32 = 43;
+    let state_frame = layout::place_bounded_guest_state_frame(
+        &admitted,
+        CHECKSUM_STATE_WORDS,
+    )
+    .map_err(|error| format!("guest frame search: {error:?}"))?;
+    assert_eq!(
+        state_frame.end_exclusive - state_frame.start,
+        CHECKSUM_STATE_WORDS
+    );
+    assert!(state_frame.start >= 132);
+    assert!(state_frame.end_exclusive <= profile.memory_words());
+    assert_eq!(
+        layout::place_bounded_guest_state_frame(
+            &admitted.iter().rev().cloned().collect::<Vec<_>>(),
+            43
+        ),
+        Ok(state_frame),
+    );
+    assert_eq!(
+        layout::place_bounded_guest_state_frame(&admitted, 0),
+        Err(layout::BoundedGuestRegionsError::InvalidRegions),
+    );
+    assert_eq!(
+        layout::place_bounded_guest_state_frame(
+            &admitted,
+            layout::MAX_GUEST_RESERVED_WORDS + 1
+        ),
+        Err(layout::BoundedGuestRegionsError::InvalidRegions),
+    );
+    // Every smaller legal source-external base must hit a reached helper
+    // access. Independent trace verification checks search minimality.
+    for base in 132..state_frame.start {
+        let candidate = layout::BoundedGuestDataRegion {
+            start: base,
+            end_exclusive: base + 43,
+        };
+        assert!(admitted.iter().any(|path| {
+            layout::verify_bounded_guest_state_isolation(path, &[candidate])
+                .is_err()
+        }));
+    }
     // The physical control helper writes both close to its 132-cell source
     // and at remote loader addresses. A future state frame must not alias
     // either helper bank or an executed/encrypted code cell.
@@ -958,6 +1004,36 @@ fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
         assert_eq!(
             layout::verify_bounded_guest_data_regions(path, &helper_regions),
             Ok(())
+        );
+        // The 43-word checksum SSA frame is a separate future writable bank.
+        // Prove the *physical* helper cannot read, write or execute that bank.
+        let checksum_frame = Region {
+            start: 4096,
+            end_exclusive: 4139,
+        };
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(path, &[
+                checksum_frame
+            ]),
+            Ok(())
+        );
+        // M[148] is read by the real pointer-reset sequence, but never
+        // mutated. Checking writes alone would wrongly admit this frame.
+        assert!(path.data_read_positions().contains(&Some(148)));
+        assert!(!path.mutation_targets().contains(&148));
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(path, &[Region {
+                start: 148,
+                end_exclusive: 191,
+            }]),
+            Err(RegionsError::StateDataAccessCollision),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(path, &[Region {
+                start: 139,
+                end_exclusive: 182,
+            }]),
+            Err(RegionsError::StateDataAccessCollision),
         );
         assert_eq!(
             layout::verify_bounded_guest_data_regions(

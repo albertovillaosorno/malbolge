@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Read-safe candidate placement of the checksum state frame (2026-11-18)
+
+The nonlinear physical-path admission now retains **actual data-cell reads**
+from the normative VM, distinct from its data-pointer register. A checked
+isolation gate prevents a proposed mutable C state frame from aliasing any
+reached helper data read, `p`/`*` write (including an idempotent write),
+code fetch, or encryption address. This closes a real dependency hazard:
+the 132-cell signed EOF classifier reads virgin M[148] while resetting its
+data pointer; a state frame covering 148 could alter later control behavior
+even if the helper never wrote that address.
+
+For the five independently admitted EOF/byte helper paths, a bounded
+source- and profile-identity-checked first-fit placement now derives one
+43-cell *unused* state region from the union of real physical accesses. It
+also refuses malformed or oversized requests and is deterministic under case
+reordering. The 43-cell width comes from the independently tested original
+source-authenticated checksum SSA/phi plan. An independent per-path verifier
+rejects every smaller source-external placement because of a reached helper
+access. Full typed-operation and phi address relocation remains separately
+verified with a hypothetical code length, not this physical source candidate.
+
+**This is an isolated address candidate, not a linked checksum:** the
+132-cell helper still emits only EOF/byte markers, does not initialize or
+modify a single checksum SSA cell, and does not execute a checksum branch or
+loop. The path evidence is finite, not a proof for arbitrary inputs or a
+future modified source. C-source target publication remains refused and the
+five required checksum-output VM oracles are still absent. P2 stays open.
+
 ### Admitted physical scratch regions for source-bound guest paths (2026-11-18)
 
 The existing one-read N15 EOF/byte control source physically writes near its

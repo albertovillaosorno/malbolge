@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, real normative EOF helper traces now capture every
+  reached data *read*, not only its writes. An independently checked
+  first-fit state-frame reservation avoids helper reads, mutating writes,
+  fetched code and encryption across five source/profile-identical guest
+  paths. The 43-word width matches the original source-locked checksum's
+  separately checked SSA/phi frame. M[148] is an explicit read-only
+  collision and every smaller legal base is refused. Full typed relocation
+  has not yet been linked to this physical candidate.
+  No checksum state cell is physically initialized or updated, no C loop
+  executes, and five checksum-output VM traces are still missing. P2 stays
+  open.
+
 - On 2026-11-18, a new source-bound, bounded physical-data-region
   verifier detects the real 132-cell EOF classifier's split scratch
   footprint: `[132,146)` and `[7,174,344,7,174,386)` in 15-trit guest
