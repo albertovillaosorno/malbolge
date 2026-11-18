@@ -28,6 +28,50 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Relocatable checksum SSA frame and safe phi staging (2026-11-18)
+
+The source-authenticated prelink path now computes **guest-word-relative
+storage reservations**, rather than stopping at unscheduled symbolic phi
+assignments. Its `state_storage` stage walks the independently validated
+canonical typed CFG, reserves disjoint value intervals and computes scratch
+space sufficient for the largest predecessor-specific parallel phi edge.
+
+In the current 15-trit N15 profile, Boolean and unsigned byte values reserve
+one word, while complete signed/unsigned 32-bit words reserve two; no
+`getchar` EOF bits are narrowed to a successful byte. An exact C32 word is
+split into two profile words by quotient/remainder with base
+`3^15 = 14,348,907`. Reconstruction rejects noncanonical or out-of-range
+cells rather than silently truncating. These are **frame offsets**, not guest
+addresses.
+
+For the frozen complete EOF checksum, the authenticated seven-block CFG
+contains **21** distinct SSA value definitions occupying **39** 15-trit data
+cells. Its four predecessor-specific phi edges require a maximum **four**
+snapshot cells, for a **43-cell** frame-relative plan. Each edge schedules
+*all* source-to-scratch cell copies before *any* scratch-to-destination
+commits, preserving loop-carried value swaps and simultaneous phi semantics.
+
+The plan retains all source/function/block/SSA identities and rejects forged
+IDs, type-width mismatches, duplicate targets, overlapping slots and
+undersized scratch capacity. Tests cover signed EOF preservation, exact
+reproducibility, synthetic cross-swaps and invalid frame/edge inputs.
+
+An optional relocation check accepts a caller-supplied **final source
+length** and a proposed frame base; it proves the entire 43-cell interval is
+disjoint from graphical source code and inside N15 memory, without
+wraparound. It rejects placements one cell below the source boundary or one
+cell beyond the VM's last address. This is an address-range validator, not a
+source-aware linker or a guest data initialization method.
+
+No complete physical code/data layout or executable placement of these 43
+cells exists yet. The planner does not simulate runtime branches or modify
+values on the host; future guest instructions must implement the staged
+copies and arithmetic and relocate real conditional/backward jumps.
+Production `c2malbolge_json` continues to **refuse** publication *before*
+launching its layout backend; the five-vector native C23 `-O0`/`-O2` oracle
+and rejection gate still pass. This stage does **not** satisfy P2 guest-VM
+parity or produce an MCTR-v1 program.
+
 ### Source-authenticated typed-to-ternary CFG composition (2026-11-18)
 
 The actual `c2malbolge_json` executable now consumes the whole original
@@ -44,9 +88,10 @@ The next prelink preparation now records the full incoming phi transfers on
 every static predecessor edge, without evaluating a runtime branch. For the
 original checksum the canonical graph yields four predecessor-specific edge
 sets and six source-typed **simultaneous assignments**: two on entry, two on
-the loop backedge, and one on each arm of the checksum merge. These are
-unallocated SSA transfer requirements, not sequential writes or realized
-guest instructions.
+the loop backedge, and one on each arm of the checksum merge. The subsequent
+frame-relative planner now reserves disjoint guest-word slots and a scratch
+bank for two-phase copies; these are still not placed or realized guest
+instructions.
 
 The source-C driver now reaches this **unlinked pre-layout plan** before
 explicitly refusing publication, rather than refusing at the older typed
@@ -58,8 +103,9 @@ is required to reject the unsupported guest state.
 
 The original C23 `-O0`/`-O2` five-vector oracle and the
 no-artifact refusal regression still pass. The next missing stage is **real
-guest state allocation and control/phi backedge relocation**, followed by
-actual guest integer arithmetic and five-stream normative VM parity.
+physical guest code/data placement and realized state/phi copy instructions**
+with control/backedge relocation, followed by actual guest integer
+arithmetic and five-stream normative VM parity.
 Neither an MCTR-v1 image nor a runnable checksum has been produced; P2
 remains open.
 

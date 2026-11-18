@@ -29,6 +29,8 @@
 // - Defaults:
 //   - Unlinked dynamic CFG never counts as published guest code.
 
+//! Source-locked checksum CFG, staged guest state and refusal regression.
+
 use serde_json::{Value, json};
 
 use super::typed::{
@@ -186,14 +188,18 @@ fn original_checksum_phi_edges_are_unselected_parallel_guest_transfers() {
     let prelink = prepare_canonical_dynamic_cfg(&wire)
         .expect("all checksum phi edges must be independently validated");
     let edges = &prelink.phi_edges;
-    let summary = edges.iter().map(|edge| {
-        (edge.predecessor, edge.successor, edge.simultaneous.len())
-    }).collect::<Vec<_>>();
-    assert_eq!(summary, vec![
-        (0, 1, 2), (3, 5, 1), (4, 5, 1), (5, 1, 2),
-    ]);
-    assert_eq!(edges.iter().map(|edge| edge.simultaneous.len())
-        .sum::<usize>(), 6);
+    let summary = edges
+        .iter()
+        .map(|edge| (edge.predecessor, edge.successor, edge.simultaneous.len()))
+        .collect::<Vec<_>>();
+    assert_eq!(summary, vec![(0, 1, 2), (3, 5, 1), (4, 5, 1), (5, 1, 2),]);
+    assert_eq!(
+        edges
+            .iter()
+            .map(|edge| edge.simultaneous.len())
+            .sum::<usize>(),
+        6
+    );
     for edge in edges {
         assert_eq!(edge.function, 0);
         let destination = &prelink.cfg.functions[0].blocks
@@ -203,9 +209,13 @@ fn original_checksum_phi_edges_are_unselected_parallel_guest_transfers() {
         for (move_op, phi) in edge.simultaneous.iter().zip(&destination.phis) {
             assert_eq!(move_op.result, phi.result);
             assert_eq!(move_op.type_kind, phi.type_kind);
-            assert_eq!(phi.incoming.iter()
-                .find(|(predecessor, _)| *predecessor == edge.predecessor)
-                .map(|(_, value)| *value), Some(move_op.source));
+            assert_eq!(
+                phi.incoming
+                    .iter()
+                    .find(|(predecessor, _)| *predecessor == edge.predecessor)
+                    .map(|(_, value)| *value),
+                Some(move_op.source)
+            );
         }
     }
     assert_eq!(prepare_canonical_dynamic_cfg(&wire), Ok(prelink));
@@ -443,4 +453,246 @@ fn source_checksum_typed_cfg_matches_five_c23_eof_binary_controls() {
         assert_eq!(output, [independent_c23_checksum(input)], "{name}");
         assert_eq!(reads, input.len(), "{name}: consumes through EOF");
     }
+}
+
+#[test]
+fn original_checksum_state_frame_preserves_signed_eof_and_parallel_loop_phi() {
+    use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
+    use super::typed_cfg_adapter::state_storage::{
+        decode_i32_cells, encode_i32_cells,
+    };
+
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
+    assert_eq!(mode, FrontendGuestMode::DynamicEofChecksum);
+    let prelink = prepare_canonical_dynamic_cfg(&wire).unwrap();
+    let frame = &prelink.state_frames[0];
+    assert_eq!(frame.values.len(), 21);
+    assert_eq!(frame.scratch_offset, 39);
+    assert_eq!(frame.scratch_words, 4);
+    assert_eq!(frame.total_words, 43);
+    assert_eq!(prelink.cell_edges.len(), 4);
+    assert_eq!(frame.function, 0);
+    assert!(frame.values.iter().any(|value| value.words == 2));
+    assert!(frame.scratch_words >= 2);
+    assert!(frame.total_words > frame.scratch_offset);
+    for value in &frame.values {
+        assert!(
+            value.offset.checked_add(value.words).unwrap()
+                <= frame.scratch_offset
+        );
+    }
+    for bits in [0, 1, 255, 256, 0x8000_0000, 0xffff_ffff] {
+        let cells = encode_i32_cells(bits);
+        assert!(cells.iter().all(|value| *value < 14_348_907));
+        assert_eq!(decode_i32_cells(cells), Some(bits));
+    }
+    assert_eq!(decode_i32_cells([0, 14_348_906]), None);
+    let backedge = prelink
+        .cell_edges
+        .iter()
+        .find(|edge| {
+            edge.function == 0 && edge.predecessor == 5 && edge.successor == 1
+        })
+        .unwrap();
+    // All sources are copied into a disjoint scratch region before the first
+    // destination is overwritten, even when SSA values depend on each other.
+    assert_eq!(backedge.snapshots.len(), 4);
+    assert_eq!(backedge.commits.len(), 4);
+    assert!(backedge.snapshots.iter().all(|item| {
+        item.source < frame.scratch_offset
+            && item.destination >= frame.scratch_offset
+    }));
+    assert!(backedge.commits.iter().all(|item| {
+        item.source >= frame.scratch_offset
+            && item.destination < frame.scratch_offset
+    }));
+    assert_eq!(prepare_canonical_dynamic_cfg(&wire), Ok(prelink));
+}
+
+#[test]
+fn parallel_cell_copies_preserve_cross_swaps_without_host_branching() {
+    use super::typed_cfg_adapter::state_storage::{
+        GuestStateFrame, GuestStorageValue, plan_cell_edge,
+    };
+    use super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
+    use super::typed_cfg_adapter::{PhiEdgeMove, PhiEdgeTransfers};
+
+    let frame = GuestStateFrame {
+        function: 0,
+        values: vec![
+            GuestStorageValue {
+                value: 0,
+                offset: 0,
+                words: 2,
+                type_kind: TernaryCfgScalarKind::I32,
+            },
+            GuestStorageValue {
+                value: 1,
+                offset: 2,
+                words: 2,
+                type_kind: TernaryCfgScalarKind::I32,
+            },
+        ],
+        scratch_offset: 4,
+        scratch_words: 4,
+        total_words: 8,
+    };
+    let edge = PhiEdgeTransfers {
+        function: 0,
+        predecessor: 1,
+        successor: 0,
+        simultaneous: vec![
+            PhiEdgeMove {
+                result: 0,
+                source: 1,
+                type_kind: TernaryCfgScalarKind::I32,
+            },
+            PhiEdgeMove {
+                result: 1,
+                source: 0,
+                type_kind: TernaryCfgScalarKind::I32,
+            },
+        ],
+    };
+    let scheduled = plan_cell_edge(&frame, &edge).unwrap();
+    let mut bank = vec![12, 13, 21, 22, 0, 0, 0, 0];
+    for copy in scheduled.snapshots.iter().chain(&scheduled.commits) {
+        bank[copy.destination as usize] = bank[copy.source as usize];
+    }
+    assert_eq!(bank[..4], [21, 22, 12, 13]);
+    assert_eq!(bank[4..], [21, 22, 12, 13]);
+}
+
+#[test]
+fn guest_cell_copy_planner_rejects_forged_slots_and_phi_sources() {
+    use super::typed_cfg_adapter::state_storage::{
+        GuestStateFrame, GuestStorageValue, plan_cell_edge,
+    };
+    use super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
+    use super::typed_cfg_adapter::{
+        PhiEdgeMove, PhiEdgeTransfers, TypedCfgAdapterError,
+    };
+
+    let frame = GuestStateFrame {
+        function: 3,
+        values: vec![
+            GuestStorageValue {
+                value: 8,
+                offset: 0,
+                words: 2,
+                type_kind: TernaryCfgScalarKind::I32,
+            },
+            GuestStorageValue {
+                value: 9,
+                offset: 2,
+                words: 2,
+                type_kind: TernaryCfgScalarKind::I32,
+            },
+        ],
+        scratch_offset: 4,
+        scratch_words: 2,
+        total_words: 6,
+    };
+    let edge = PhiEdgeTransfers {
+        function: 3,
+        predecessor: 0,
+        successor: 1,
+        simultaneous: vec![PhiEdgeMove {
+            result: 9,
+            source: 8,
+            type_kind: TernaryCfgScalarKind::I32,
+        }],
+    };
+    assert!(plan_cell_edge(&frame, &edge).is_ok());
+    let rejected = Err(TypedCfgAdapterError::GuestStateAllocation);
+    let mut forged = edge.clone();
+    forged.function = 4;
+    assert_eq!(plan_cell_edge(&frame, &forged), rejected);
+    forged = edge.clone();
+    forged.simultaneous[0].source = 99;
+    assert_eq!(plan_cell_edge(&frame, &forged), rejected);
+    forged = edge.clone();
+    forged.simultaneous[0].type_kind = TernaryCfgScalarKind::U32;
+    assert_eq!(plan_cell_edge(&frame, &forged), rejected);
+    forged = edge.clone();
+    forged.simultaneous.push(forged.simultaneous[0]);
+    assert_eq!(plan_cell_edge(&frame, &forged), rejected);
+    let mut forged_frame = frame.clone();
+    forged_frame.values[1].offset = 1;
+    assert_eq!(plan_cell_edge(&forged_frame, &edge), rejected);
+    forged_frame = frame.clone();
+    forged_frame.values[1].value = 8;
+    assert_eq!(plan_cell_edge(&forged_frame, &edge), rejected);
+    forged_frame = frame.clone();
+    forged_frame.total_words = 5;
+    assert_eq!(plan_cell_edge(&forged_frame, &edge), rejected);
+    forged_frame = frame.clone();
+    forged_frame.scratch_words = 1;
+    forged_frame.total_words = 5;
+    assert_eq!(plan_cell_edge(&forged_frame, &edge), rejected);
+}
+
+#[test]
+fn frame_placement_proves_no_source_overlap_and_no_memory_wrap() {
+    use super::typed_cfg_adapter::state_storage::{
+        CURRENT_WORD_COUNT, placed_cell, validate_frame_placement,
+    };
+    use super::typed_cfg_adapter::{
+        TypedCfgAdapterError, prepare_canonical_dynamic_cfg,
+    };
+
+    let (wire, _) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
+    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
+    let frame = &plan.state_frames[0];
+    let placement = validate_frame_placement(frame, 200, 200).unwrap();
+    assert_eq!(placement.base, 200);
+    assert_eq!(placement.end_exclusive, 243);
+    assert_eq!(placed_cell(placement, frame, 0), Ok(200));
+    assert_eq!(placed_cell(placement, frame, 42), Ok(242));
+    let rejected = Err(TypedCfgAdapterError::GuestStateAllocation);
+    assert_eq!(placed_cell(placement, frame, 43), rejected);
+    assert_eq!(
+        validate_frame_placement(frame, 200, 199).err(),
+        rejected.err()
+    );
+    assert_eq!(
+        validate_frame_placement(frame, 1, 200).err(),
+        rejected.err()
+    );
+    assert_eq!(
+        validate_frame_placement(frame, 200, CURRENT_WORD_COUNT - 42).err(),
+        rejected.err()
+    );
+    let last =
+        validate_frame_placement(frame, 200, CURRENT_WORD_COUNT - 43).unwrap();
+    assert_eq!(last.end_exclusive, CURRENT_WORD_COUNT);
+    assert_eq!(placed_cell(last, frame, 42), Ok(CURRENT_WORD_COUNT - 1));
+    let mut forged = last;
+    forged.end_exclusive -= 1;
+    assert_eq!(placed_cell(forged, frame, 1), rejected);
+}
+
+#[test]
+fn c32_guest_cell_encoding_roundtrips_all_signed_input_classes() {
+    use super::typed_cfg_adapter::state_storage::{
+        CURRENT_WORD_COUNT, decode_i32_cells, encode_i32_cells,
+    };
+
+    let all_inputs = (0_u32..=255).chain(std::iter::once(u32::MAX));
+    for bits in all_inputs {
+        let encoded = encode_i32_cells(bits);
+        assert!(encoded.iter().all(|cell| *cell < CURRENT_WORD_COUNT));
+        assert_eq!(decode_i32_cells(encoded), Some(bits));
+    }
+    // A deterministic full-word set probes the entire 32-bit range, not only
+    // inputs that happen to fit in the first 15-trit cell.
+    let mut bits = 0x6d_2b_79_f5_u32;
+    for _ in 0..4096 {
+        bits = bits.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        assert_eq!(decode_i32_cells(encode_i32_cells(bits)), Some(bits));
+    }
+    assert_eq!(decode_i32_cells([CURRENT_WORD_COUNT, 0]), None);
+    assert_eq!(decode_i32_cells([0, CURRENT_WORD_COUNT]), None);
 }

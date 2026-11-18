@@ -30,6 +30,7 @@
 // - Defaults:
 //   - An invalid edge or missing incoming value fails closed.
 //
+
 //! Pre-layout phi edge transfers; still no physical guest memory locations.
 
 use super::TypedCfgAdapterError;
@@ -56,20 +57,24 @@ pub struct PhiEdgeTransfers {
     pub function: u32,
     /// Static predecessor, never a host-selected runtime branch.
     pub predecessor: u32,
-    /// Destination block carrying these phi merges.
-    pub successor: u32,
     /// Parallel assignment set, in the target block's canonical phi order.
     pub simultaneous: Vec<PhiEdgeMove>,
+    /// Destination block carrying these phi merges.
+    pub successor: u32,
 }
 
-/// A source-backed CFG and explicit unresolved phi-edge transfer sets.
-/// This does not allocate slots, schedule copies, or link guest code.
+/// A source-backed CFG with frame-relative cell reservations and phi copies.
+/// Neither the frame base nor guest code has been physically linked.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrelinkCfgPlan {
+    /// Two-phase word copies for each parallel phi assignment edge.
+    pub cell_edges: Vec<super::state_storage::GuestCellEdge>,
     /// Original independently validated and lowered control graph.
     pub cfg: TernaryCfgPlan,
     /// All predecessor-sensitive, simultaneous phi writes.
     pub phi_edges: Vec<PhiEdgeTransfers>,
+    /// Frame-relative data slots for the current 15-trit profile.
+    pub state_frames: Vec<super::state_storage::GuestStateFrame>,
 }
 
 /// Extract the exact phi semantics on every static CFG edge. The caller
@@ -108,7 +113,9 @@ pub(super) fn plan_phi_edges(
                     let source = phi
                         .incoming
                         .iter()
-                        .find(|(block, _)| *block == predecessor.id)
+                        .find(|(incoming_block, _)| {
+                            *incoming_block == predecessor.id
+                        })
                         .map(|(_, value)| *value)
                         .ok_or(TypedCfgAdapterError::Lowering(
                             TernaryLoweringError::InvalidProjection,

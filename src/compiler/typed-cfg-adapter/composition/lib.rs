@@ -32,10 +32,14 @@
 // - Defaults:
 //   - Unsupported source effects fail closed before target layout.
 //
+
 //! Validated typed compiler IR to unlinked ternary CFG composition.
 
 #[path = "phi_edge_transfers.rs"]
 mod phi_edge_transfers;
+#[path = "state_storage.rs"]
+pub mod state_storage;
+
 pub use phi_edge_transfers::{PhiEdgeMove, PhiEdgeTransfers, PrelinkCfgPlan};
 
 #[path = "../../ternary-lowering/composition/lib.rs"]
@@ -65,6 +69,8 @@ pub enum TypedCfgAdapterError {
     UnsupportedTypedIr,
     /// The symbolic ternary CFG rejected an invalid or unsupported projection.
     Lowering(TernaryLoweringError),
+    /// Relocatable guest frame allocation or parallel-copy proof failed.
+    GuestStateAllocation,
 }
 
 const fn position(value: SourcePosition) -> InputSourcePosition {
@@ -519,7 +525,8 @@ pub fn lower_canonical_dynamic_cfg(
         .map_err(TypedCfgAdapterError::Lowering)
 }
 
-/// Also plans edge-specific phi assignments for future guest state linkage.
+/// Also reserves disjoint frame-relative state cells and stages parallel phi
+/// assignments for future physical guest state and control linkage.
 ///
 /// # Errors
 ///
@@ -529,6 +536,31 @@ pub fn prepare_canonical_dynamic_cfg(
     canonical: &[u8],
 ) -> Result<PrelinkCfgPlan, TypedCfgAdapterError> {
     let cfg = lower_canonical_dynamic_cfg(canonical)?;
+    if cfg.target_profile != "malbolge-2026" {
+        return Err(TypedCfgAdapterError::UnsupportedTypedIr);
+    }
     let phi_edges = phi_edge_transfers::plan_phi_edges(&cfg)?;
-    Ok(PrelinkCfgPlan { cfg, phi_edges })
+    let module = canonical_module(canonical)
+        .map_err(TypedCfgAdapterError::InvalidTypedIr)?;
+    let state_frames = module
+        .functions()
+        .iter()
+        .map(|function| {
+            state_storage::plan_frame(&module, function, &phi_edges)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut cell_edges = Vec::new();
+    for edge in &phi_edges {
+        let frame = state_frames
+            .iter()
+            .find(|frame| frame.function == edge.function)
+            .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
+        cell_edges.push(state_storage::plan_cell_edge(frame, edge)?);
+    }
+    Ok(PrelinkCfgPlan {
+        cfg,
+        phi_edges,
+        state_frames,
+        cell_edges,
+    })
 }

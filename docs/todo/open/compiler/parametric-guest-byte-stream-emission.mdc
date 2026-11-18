@@ -73,6 +73,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, source-authenticated dynamic checksum prelink now
+  reserves an exact, relocatable 15-trit state frame. The original seven
+  blocks define 21 SSA values in 39 data words; a four-word scratch region
+  stages every predecessor-specific phi edge in two phases, for 43 total
+  frame-relative words. Exact 32-bit guest-word splitting preserves signed
+  EOF `-1` and rejects malformed high cells; swapped phi sources remain
+  simultaneous. Focused tests cover all four edges, deterministic replanning
+  and forged slots/types/capacity. A separate optional final-source-length
+  placement check rejects overlapping or out-of-range absolute reservations,
+  but **no executable code/data linker or guest writes exist**, and the
+  source-C CLI still refuses publication before
+  backend execution. P2 remains open until the full checksum executes and
+  produces the five required normative VM output traces.
+
 - On 2026-11-18, a direct compiler-executable refusal test feeds the
   original normalized checksum plus matching C source to
   `c2malbolge_json` with a nonexistent target backend. The compiler
