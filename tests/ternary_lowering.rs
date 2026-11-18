@@ -25892,6 +25892,221 @@ fn live_self_annihilating_alu_selects_branch_without_erasing_guest_work()
     Ok(())
 }
 
+// An exact absorbing constant can settle a guard even when the other ALU
+// operand is a live guest word. The live operand must remain an SSA effect.
+fn guest_absorbing_alu_branch_module(
+    operation: BinaryOp,
+    signed: bool,
+    compare_equal: bool,
+    swapped: bool,
+) -> Module {
+    let base = guest_self_annihilating_alu_branch_module(
+        operation,
+        signed,
+        compare_equal,
+    );
+    let original = &base.functions()[0];
+    let mut blocks = original.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    let type_id = TypeId::new(if signed {
+        1
+    } else {
+        4
+    });
+    let absorbed = if operation == BinaryOp::Or {
+        u32::MAX
+    } else {
+        0
+    };
+    instructions[3] = LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(32, absorbed.to_le_bytes().to_vec()),
+            result: ValueId::new(3),
+            type_id,
+        },
+        fixture_span(1, 2),
+    );
+    instructions[4] = LocatedInstruction::new(
+        Instruction::Binary {
+            left: ValueId::new(if swapped {
+                3
+            } else if signed {
+                2
+            } else {
+                1
+            }),
+            operation,
+            result: ValueId::new(4),
+            right: ValueId::new(if swapped {
+                if signed {
+                    2
+                } else {
+                    1
+                }
+            } else {
+                3
+            }),
+            type_id,
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: entry.terminator().clone(),
+        terminator_span: entry.terminator_span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![Function::new(FunctionSpec {
+            blocks,
+            entry: original.entry(),
+            id: original.id(),
+            name: String::from(original.name()),
+            parameters: original.parameters().to_vec(),
+            signature: original.signature(),
+            span: original.span(),
+        })],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    })
+}
+
+#[test]
+fn live_absorbing_alu_selects_only_proven_branch() -> Result<(), String> {
+    for operation in [BinaryOp::And, BinaryOp::Multiply, BinaryOp::Or] {
+        for signed in [false, true] {
+            for compare_equal in [false, true] {
+                for swapped in [false, true] {
+                    let source = guest_absorbing_alu_branch_module(
+                        operation,
+                        signed,
+                        compare_equal,
+                        swapped,
+                    );
+                    validate_module(&source).map_err(|error| {
+                        format!("admit live absorbing ALU: {error:?}")
+                    })?;
+                    let wire = canonical_bytes(&source).map_err(|error| {
+                        format!("encode absorbing source: {error:?}")
+                    })?;
+                    assert_eq!(canonical_module(&wire), Ok(source.clone()));
+                    let projection = project_typed_ir(&source)?;
+                    let target = lower_typed_ir(&projection).map_err(|error| {
+                    format!("lower live absorbing ALU {operation:?}: {error:?}")
+                })?;
+                    let operations = &target.functions[0].operations;
+                    assert_eq!(
+                        operations
+                            .iter()
+                            .filter(|effect| matches!(
+                                effect,
+                                TernaryOperation::ByteInput { .. }
+                            ))
+                            .count(),
+                        1
+                    );
+                    assert_eq!(
+                        operations
+                            .iter()
+                            .filter(|effect| matches!(
+                                effect,
+                                TernaryOperation::ByteOutput { .. }
+                            ))
+                            .count(),
+                        if compare_equal {
+                            2
+                        } else {
+                            1
+                        }
+                    );
+                    assert!(operations.iter().any(|effect| matches!(
+                        (operation, signed, effect),
+                        (BinaryOp::And, false, TernaryOperation::AndU32 { .. })
+                            | (
+                                BinaryOp::And,
+                                true,
+                                TernaryOperation::AndI32 { .. }
+                            )
+                            | (
+                                BinaryOp::Multiply,
+                                false,
+                                TernaryOperation::MultiplyU32 { .. }
+                            )
+                            | (
+                                BinaryOp::Multiply,
+                                true,
+                                TernaryOperation::MultiplyI32 { .. }
+                            )
+                            | (
+                                BinaryOp::Or,
+                                false,
+                                TernaryOperation::OrU32 { .. }
+                            )
+                            | (
+                                BinaryOp::Or,
+                                true,
+                                TernaryOperation::OrI32 { .. }
+                            )
+                    )));
+                    let target_wire = canonical_ternary_bytes(&target)
+                        .map_err(|error| {
+                            format!("encode absorbing target: {error:?}")
+                        })?;
+                    assert_eq!(
+                        canonical_ternary_program(&target_wire),
+                        Ok(target.clone())
+                    );
+                    let label = format!(
+                        "abs-{operation:?}-{signed}-{compare_equal}-{swapped}"
+                    );
+                    let (progress, directory) =
+                        publish_ternary_progress_fixture(&label, &target_wire)?;
+                    assert_eq!(
+                        resume_ternary_from_progress_for_source(
+                            &repository_python(),
+                            &progress_inspector(),
+                            &progress,
+                            &projection,
+                        ),
+                        Ok(target.clone()),
+                    );
+                    remove_dir_all(&directory).map_err(|error| {
+                        format!("clean absorbing fixture: {error}")
+                    })?;
+                    let mut changed = projection.clone();
+                    match &mut changed.functions[0].blocks[0].instructions[3] {
+                        InputInstruction::ConstantInteger {
+                            little_endian,
+                            ..
+                        } => {
+                            little_endian[0] ^= 1;
+                        },
+                        _ => {
+                            return Err(String::from(
+                                "missing absorbing constant",
+                            ));
+                        },
+                    }
+                    assert_eq!(
+                        lower_typed_ir(&changed),
+                        Err(TernaryLoweringError::UnsupportedTerminator),
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // Two independent guest input instructions are never interchangeable just
 // because a particular test vector might feed them equal byte values.
 fn guest_independent_input_comparison_branch_module(

@@ -91,6 +91,15 @@ there is no host evaluation of guest input and no dynamic guest branch.
 Eight typed-CFG cases cover both signedness modes, operations, true/false
 arms, canonical wires and source-bound checkpoint replay.
 
+An independently typed absorbing-word proof also recognizes `x & 0`, `x * 0`
+and `x | UINT32_MAX` for live signed or unsigned 32-bit guest operands, with
+either operand order. The result is source-constant regardless of the guest
+value, so a following equality/inequality guard can select a branch without
+eliding any guest ALU or input effect. Twenty-four cases cover signedness,
+operand order, branch outcome, canonical wires, source-bound resume and
+non-absorbing-constant refusal. These symbolic ALU operations still require
+independent executable guest realization.
+
 Unsigned and signed constant arithmetic also includes conservative signed
 shift proofs: nonnegative signed left operands only when the shifted result
 fits `i32`, and nonnegative arithmetic-right-shift operands with counts below

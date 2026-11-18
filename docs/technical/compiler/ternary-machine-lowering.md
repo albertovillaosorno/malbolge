@@ -200,6 +200,15 @@ signed/unsigned, XOR/subtract, true/false integration cases preserve both
 canonical wires, source-bound resume and rejection of forged SSA or
 non-reflexive operands. Dynamic branch execution remains unavailable.
 
+An analogous exact absorbing-operand proof selects static branches after
+signed/unsigned `x & 0`, `x * 0` and `x | UINT32_MAX`, even when `x` is a live
+guest value. Both operand orders preserve a concrete guest ALU operation;
+only its mathematically fixed result is used by the selector. Twenty-four
+canonical typed/ternary and source-bound checkpoint cases check both guard
+outcomes and refuse mutations to non-absorbing constants. The proof does
+not implement executable target ALU operations, guest-dependent control
+flow, or signed EOF conversion.
+
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every
 `u32` bit pattern, while 21 trits cover the complete 32-bit representation

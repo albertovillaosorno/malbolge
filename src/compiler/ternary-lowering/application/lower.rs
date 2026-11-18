@@ -590,6 +590,54 @@ const fn proven_self_annihilating_word_alu(
     }
 }
 
+// For 32-bit words, zero absorbs AND and multiplication; an all-ones
+// word absorbs OR. Only the absorbing operand must be source-proven.
+// A live guest input can supply the other operand without host evaluation.
+// The ordinary lowerer still emits the ALU operation and validates both SSA
+// operands and their exact types before any target state is published.
+fn proven_absorbing_word_alu(
+    instruction: &InputInstruction,
+    words: &ProvenWordTable,
+) -> Option<ProvenWord> {
+    let (left, right, result, kind, absorbing) = match instruction {
+        InputInstruction::BinaryAnd {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinaryMultiply {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        } => (left, right, result, type_kind, 0),
+        InputInstruction::BinaryOr {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        } => (left, right, result, type_kind, u32::MAX),
+        _ => return None,
+    };
+    if !matches!(kind, InputScalarType::I32 | InputScalarType::U32) {
+        return None;
+    }
+    let known_absorbing = |value: &u32| {
+        words.get(value).is_some_and(|&(word_kind, bits)| {
+            word_kind == *kind && bits == absorbing
+        })
+    };
+    if known_absorbing(left) || known_absorbing(right) {
+        Some((*result, *kind, absorbing))
+    } else {
+        None
+    }
+}
+
 // Preserve exact 32-bit literal arithmetic chains for static CFG selection.
 // Signed overflow and zero divisors cannot prove a successor; unsigned
 // addition/multiplication wrap, while shift counts must be below 32.
@@ -1045,6 +1093,11 @@ pub(super) fn selected_function_blocks(
             }
             if let Some((result, kind, bits)) =
                 proven_self_annihilating_word_alu(instruction)
+            {
+                _ = literal_words.insert(result, (kind, bits));
+            }
+            if let Some((result, kind, bits)) =
+                proven_absorbing_word_alu(instruction, &literal_words)
             {
                 _ = literal_words.insert(result, (kind, bits));
             }

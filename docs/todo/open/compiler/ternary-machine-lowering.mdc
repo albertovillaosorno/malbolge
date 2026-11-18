@@ -908,6 +908,15 @@ instruction.
   forged-SSA and distinct-operand rejection. This is static branch
   simplification, not executable target ALU, arbitrary guest branching,
   signed EOF conversion, or closure of the P2 checksum witness.
+- On 2026-11-17, a separate red-first signed/unsigned typed-CFG witness
+  reached `UnsupportedTerminator` for live `x & 0`, `x * 0` and
+  `x | UINT32_MAX` despite exactly determined results. The lowerer now
+  uses only a source-proven absorbing operand to select the following
+  equality/inequality guard and retains the guest operand, ALU operation,
+  comparison and selected byte effects. All 24 combinations of signedness,
+  operand order, operation and guard polarity pass typed/ternary canonical
+  restoration, source-bound checkpoint replay and mutated-constant refusal.
+  No executable guest ALU, dynamic branch or EOF conversion is claimed.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
