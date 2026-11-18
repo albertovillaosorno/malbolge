@@ -48,6 +48,10 @@ SOURCE: Final = ROOT / "tests/compiler/c-frontend/accepted/mutable_eof_checksum.
 SHA256: Final = "9ae147a9d0e824bafb9322ee4787cdc8a7f45cb84c3f8691ad74f9eef32553c7"
 CLANG: Final = ROOT / ".dependencies/llvm/22.1.8/bin/clang"
 DRIVER: Final = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
+ADAPTER: Final = ROOT / ".cache/rust/target/debug/c2malbolge_json"
+NORMALIZED: Final = ROOT / (
+    "tests/compiler/c-frontend/golden/mutable_eof_checksum_current.json"
+)
 VM: Final = ROOT / ".cache/rust/target/debug/malbolge"
 # Freeze one byte-stream witness for each required semantic boundary.
 VECTORS: Final = (
@@ -85,6 +89,32 @@ class MutableEofChecksumTests(unittest.TestCase):
         self.assertEqual(independent_checksum(b""), b"\x00")
         self.assertEqual(independent_checksum(b"\x00"), b"\x03")
         self.assertEqual(independent_checksum(b"\xff"), b"\x02")
+
+    def test_prelink_does_not_invoke_or_require_backend(self) -> None:
+        """No executable linker may receive unresolved checksum state."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            path = Path(directory)
+            output = path / "unlinked.malbolge"
+            backend = path / "missing-layout-backend"
+            self.assertFalse(backend.exists())
+            admitted = subprocess.run(
+                [
+                    str(ADAPTER),
+                    "--layout-backend",
+                    str(backend),
+                    "--output",
+                    str(output),
+                    "--source",
+                    str(SOURCE),
+                ],
+                input=NORMALIZED.read_bytes(),
+                capture_output=True,
+                check=False,
+                timeout=COMPILER_SECONDS,
+            )
+            self.assertNotEqual(admitted.returncode, 0)
+            self.assertIn(b"dynamic EOF checksum CFG is unlinked", admitted.stderr)
+            self.assertFalse(output.exists())
 
     def test_complete_compiler_and_guest_or_explicit_refusal(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:

@@ -73,6 +73,13 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a direct compiler-executable refusal test feeds the
+  original normalized checksum plus matching C source to
+  `c2malbolge_json` with a nonexistent target backend. The compiler
+  rejects the independently validated but unlinked CFG before any
+  backend invocation or output artifact. This tests the real production
+  trust boundary independently of the existing native oracle driver.
+
 - On 2026-11-18, the original typed checksum's pre-link stage now
   derives four static CFG edges that require phi transfers and records
   six simultaneously evaluated, source-typed assignments. The sets

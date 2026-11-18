@@ -50,7 +50,13 @@ guest instructions.
 
 The source-C driver now reaches this **unlinked pre-layout plan** before
 explicitly refusing publication, rather than refusing at the older typed
-target stage. The original C23 `-O0`/`-O2` five-vector oracle and the
+target stage. The explicit-backend boundary also now has an adversarial test: it feeds
+the full normalized source-locked checksum to `c2malbolge_json` with a
+nonexistent layout backend. The compiler still reaches its prelink stage,
+refuses the unlinked CFG, and creates no target artifact; no backend process
+is required to reject the unsupported guest state.
+
+The original C23 `-O0`/`-O2` five-vector oracle and the
 no-artifact refusal regression still pass. The next missing stage is **real
 guest state allocation and control/phi backedge relocation**, followed by
 actual guest integer arithmetic and five-stream normative VM parity.
