@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the unchanged canonical C23 checksum gained a checked
+  *absolute data relocation* stage. For a **hypothetical** final code
+  length of 2,048 and frame base 4,096, all 19 typed instructions,
+  Boolean control uses, literal-cell write obligations, 43 frame words,
+  and the four two-phase phi edges bind to disjoint in-range N15 cell
+  addresses. Red-first source-locked tests prove exact relocation,
+  deterministic replay, source overlap refusal, invalid canonical bytes,
+  and no end-of-memory wrap. No graphical guest code or physical writes
+  implement those bindings; the C compiler still refuses publication,
+  and five normative VM checksum traces remain missing. P2 remains open.
+
 - On 2026-11-18, the original seven-block C23 checksum now carries
   source-locked *runtime operand bindings* for all 19 typed instructions,
   both Boolean branches, the return and the source-typed SSA data frame.

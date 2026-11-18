@@ -36,6 +36,14 @@ use serde_json::{Value, json};
 use super::typed::{
     BinaryOp, CompareOp, Instruction, Terminator, canonical_module,
 };
+use super::typed_cfg_adapter::state_operations::{
+    GuestOperationBinding, GuestOperationBlock,
+};
+use super::typed_cfg_adapter::state_relocation::{
+    GuestPlacedBlock, GuestPlacedInstruction, GuestPlacedPhiEdge,
+    GuestRelocatedCfgPlan,
+};
+use super::typed_cfg_adapter::state_storage::GuestCellEdge;
 use super::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
 };
@@ -997,4 +1005,222 @@ fn runtime_operand_binder_rejects_forged_frame_identity_and_cell_geometry() {
         bind_function_operations(&original, function, &forged),
         refused
     );
+}
+
+fn source_locked_checksum_wire() -> Result<Vec<u8>, String> {
+    canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE))
+        .map(|(wire, _)| wire)
+        .map_err(|error| format!("frozen checksum source rejected: {error:?}"))
+}
+
+fn relocated_checksum_address(offset: u32) -> u32 {
+    let address = 4096u32.checked_add(offset);
+    assert!(address.is_some(), "checksum data address must fit in N15");
+    address.unwrap_or_default()
+}
+
+fn assert_placed_checksum_instruction(
+    placed: &GuestPlacedInstruction,
+    original: &GuestOperationBinding,
+) {
+    assert_eq!(placed.reads.len(), original.reads.len());
+    for (address, slot) in placed.reads.iter().zip(&original.reads) {
+        assert_eq!(*address, relocated_checksum_address(slot.offset));
+        assert!(
+            *address >= 4096
+                && address
+                    .checked_add(slot.words)
+                    .is_some_and(|end| end <= 4139)
+        );
+    }
+    assert_eq!(
+        placed.write,
+        original
+            .write
+            .map(|slot| relocated_checksum_address(slot.offset))
+    );
+    assert_eq!(placed.constant_cells.len(), original.constant_cells.len());
+    for (word, cell) in
+        placed.constant_cells.iter().zip(&original.constant_cells)
+    {
+        assert_eq!(
+            (word.address, word.word),
+            (relocated_checksum_address(cell.destination), cell.word)
+        );
+    }
+}
+
+fn assert_placed_checksum_block(
+    placed: &GuestPlacedBlock,
+    original: &GuestOperationBlock,
+) {
+    assert_eq!(
+        (placed.function, placed.block),
+        (original.function, original.block)
+    );
+    assert_eq!(placed.instructions.len(), original.instructions.len());
+    for (linked, bound) in
+        placed.instructions.iter().zip(&original.instructions)
+    {
+        assert_placed_checksum_instruction(linked, bound);
+    }
+    assert_eq!(
+        placed.condition,
+        original
+            .control
+            .condition
+            .map(|slot| relocated_checksum_address(slot.offset))
+    );
+    assert_eq!(
+        placed.return_value,
+        original
+            .control
+            .return_value
+            .map(|slot| relocated_checksum_address(slot.offset))
+    );
+}
+
+fn assert_placed_checksum_edge(
+    placed: &GuestPlacedPhiEdge,
+    original: &GuestCellEdge,
+) {
+    assert_eq!(
+        (placed.function, placed.predecessor, placed.successor),
+        (original.function, original.predecessor, original.successor)
+    );
+    assert_eq!(placed.snapshots.len(), original.snapshots.len());
+    assert_eq!(placed.commits.len(), original.commits.len());
+    for (linked, source) in placed.snapshots.iter().zip(&original.snapshots) {
+        assert_eq!(
+            (linked.source, linked.destination),
+            (
+                relocated_checksum_address(source.source),
+                relocated_checksum_address(source.destination)
+            )
+        );
+    }
+    for (linked, source) in placed.commits.iter().zip(&original.commits) {
+        assert_eq!(
+            (linked.source, linked.destination),
+            (
+                relocated_checksum_address(source.source),
+                relocated_checksum_address(source.destination)
+            )
+        );
+    }
+}
+
+fn assert_source_checksum_relocation(
+    relocated: &GuestRelocatedCfgPlan,
+    original: &super::typed_cfg_adapter::PrelinkCfgPlan,
+    wire: &[u8],
+) {
+    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+
+    assert_eq!(&relocated.prelink, original);
+    assert_eq!(relocated.state_placements.len(), 1);
+    assert_eq!(
+        relocated
+            .state_placements
+            .first()
+            .map(|place| (place.base, place.end_exclusive)),
+        Some((4096, 4139))
+    );
+    assert_eq!(relocated.operation_blocks.len(), 7);
+    assert_eq!(relocated.phi_edges.len(), 4);
+    for (placed, bound) in relocated
+        .operation_blocks
+        .iter()
+        .zip(&relocated.prelink.operation_blocks)
+    {
+        assert_placed_checksum_block(placed, bound);
+    }
+    for (placed, bound) in relocated
+        .phi_edges
+        .iter()
+        .zip(&relocated.prelink.cell_edges)
+    {
+        assert_placed_checksum_edge(placed, bound);
+    }
+    assert_eq!(
+        relocate_source_locked_cfg(wire, 2048, 4096),
+        Ok(relocated.clone())
+    );
+}
+
+fn prove_source_checksum_relocation() -> Result<(), String> {
+    use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
+    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+
+    let wire = source_locked_checksum_wire()?;
+    let original = prepare_canonical_dynamic_cfg(&wire).map_err(|error| {
+        format!("canonical checksum prelink rejected: {error:?}")
+    })?;
+    let relocated =
+        relocate_source_locked_cfg(&wire, 2048, 4096).map_err(|error| {
+            format!("source-locked relocation rejected: {error:?}")
+        })?;
+    assert_source_checksum_relocation(&relocated, &original, &wire);
+    Ok(())
+}
+
+#[test]
+fn source_checksum_relocates_operation_control_and_phi_cells() {
+    assert_eq!(prove_source_checksum_relocation(), Ok(()));
+}
+
+fn assert_checksum_relocation_refusals(wire: &[u8]) {
+    use super::typed_cfg_adapter::TypedCfgAdapterError;
+    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+    use super::typed_cfg_adapter::state_storage::CURRENT_WORD_COUNT;
+
+    let refusal = Err(TypedCfgAdapterError::GuestStateAllocation);
+    assert_eq!(relocate_source_locked_cfg(wire, 2048, 2047), refusal);
+    assert_eq!(relocate_source_locked_cfg(wire, 0, 4096), refusal);
+    assert_eq!(relocate_source_locked_cfg(wire, 1, 4096), refusal);
+    assert_eq!(
+        relocate_source_locked_cfg(wire, CURRENT_WORD_COUNT, 4096),
+        refusal
+    );
+    assert_eq!(
+        relocate_source_locked_cfg(wire, 2048, CURRENT_WORD_COUNT - 42),
+        refusal
+    );
+}
+
+fn prove_checksum_relocation_limits() -> Result<(), String> {
+    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+    use super::typed_cfg_adapter::state_storage::CURRENT_WORD_COUNT;
+
+    let mut wire = source_locked_checksum_wire()?;
+    assert_checksum_relocation_refusals(&wire);
+    let last = relocate_source_locked_cfg(&wire, 2048, CURRENT_WORD_COUNT - 43)
+        .map_err(|error| {
+            format!("last valid checksum relocation refused: {error:?}")
+        })?;
+    assert_last_checksum_relocation_address(&last);
+    wire.push(0);
+    assert_corrupted_checksum_refusal(&wire);
+    Ok(())
+}
+
+fn assert_last_checksum_relocation_address(placed: &GuestRelocatedCfgPlan) {
+    use super::typed_cfg_adapter::state_storage::CURRENT_WORD_COUNT;
+    assert_eq!(
+        placed
+            .state_placements
+            .first()
+            .map(|place| place.end_exclusive),
+        Some(CURRENT_WORD_COUNT)
+    );
+}
+
+fn assert_corrupted_checksum_refusal(wire: &[u8]) {
+    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+    assert!(relocate_source_locked_cfg(wire, 2048, 4096).is_err());
+}
+
+#[test]
+fn source_checksum_relocation_refuses_code_collision_and_memory_wrap() {
+    assert_eq!(prove_checksum_relocation_limits(), Ok(()));
 }

@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Checked absolute checksum data relocation (2026-11-18)
+
+A new source-locked `state_relocation` stage re-derives the original
+canonical typed CFG and binds **all data-side addresses** of its seven
+blocks to one proposed N15 frame base. The address plan includes every
+runtime instruction operand and result, full-width literal-cell write
+obligation, both Boolean branch conditions, return slots, and each
+source-to-scratch and scratch-to-phi copy on all four incoming edges.
+Neither the C source nor its SSA values are evaluated by the host.
+
+For a hypothetical **final** graphical source length of 2,048 cells and
+frame base 4,096, the 43-word checksum frame occupies addresses
+4,096 through 4,138 inclusive. The stage checks the frame against the
+source interval, validates each complete typed slot and both ends of
+all copies, rejects an overrun of the 14,348,907-word N15 memory, and
+recomputes deterministic bindings from the canonical source instead of
+accepting a caller-forged prelink plan. Red-first tests verify the entire
+address ledger, invalid source identity, source overlap, and exact
+end-of-memory placement.
+
+**The 2,048-cell code length is a test assumption, not an emitted source.**
+No actual source length, instruction encoding, initialized writable data,
+conditional or backward jump, arithmetic or phi transfer is physically
+linked here. The real source-C compiler still refuses any checksum guest
+artifact before calling a target backend. The five-stream normative VM
+parity acceptance is unresolved; P2 remains open.
+
 ### Source-locked dynamic checksum operand bindings (2026-11-18)
 
 The prelink `state_operations` stage now binds **every instruction and

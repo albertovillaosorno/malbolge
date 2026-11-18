@@ -39,6 +39,8 @@
 mod phi_edge_transfers;
 #[path = "state_operations.rs"]
 pub mod state_operations;
+#[path = "state_relocation.rs"]
+pub mod state_relocation;
 #[path = "state_storage.rs"]
 pub mod state_storage;
 
