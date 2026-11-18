@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, an independently admitted two-`p` discriminator with
+  operands `[7,174,332, 728]` and word outputs `[728, 485]` reduces the
+  necessary pre-read writes from two to one. The first operand is reached
+  in a genuine 38-cell normative N15 guest, with a `Q}` loader seed,
+  signed input, physical `j` relocation and traced `p` data read/write
+  across EOF and binary input. The second word, actual conditional `i`,
+  loop-carried checksum and guest branch remain unimplemented. P2 is open.
+
+
 - On 2026-11-18, a trit-5 loader invariant proved why the previously
   admitted two-`p` EOF word plan still cannot be physical guest control.
   The graphical source-tail seed and every untouched expanded loader word

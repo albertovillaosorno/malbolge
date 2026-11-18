@@ -39,6 +39,15 @@ frozen P2 checksum still refuses dynamic target lowering. The focused
 `compiler_eof_branch_plan` regression checks the independent arithmetic,
 profile mismatch and altered-data/target rejection without guest publication.
 
+An alternative exact 257-case pair `[7,174,332, 728]` yields byte
+control word 728 and EOF control word 485, requiring a trit-5 mutation
+of only the second operand. A 38-cell genuine N15 guest with source-tail
+seed `Q}` proves the first operand at expanded address 38: after a real
+signed `/`, `j` at position 3 relocates `D`, and `p` at position 4 reads
+and writes that word for empty/NUL/high-byte input. It does **not** place
+the second operand or execute an `i` branch. `compiler_eof_guest_control`
+checks that first physical write with normative VM traces.
+
 ### Position-constrained loader seed selection
 
 `select_rotated_loader_seed(profile, length, data_address, rotations, pair)`

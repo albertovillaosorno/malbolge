@@ -51,6 +51,18 @@ exercise this barrier; the five-vector complete checksum still refuses at
 real target lowering. Next work must synthesize operand state through real
 `*`/`p` memory writes, then independently verify relocation and a branch.
 
+### One-write EOF candidate with one real operand (2026-11-18)
+
+A second exhaustive mathematical pair `[7,174,332, 728]` maps all successful
+bytes to 728 and EOF to 485. Its necessary operand-write flags are
+`[false, true]`. The first operand can actually come from `Q}` loader
+seeds at source positions 36 and 37. A 38-cell N15 guest performs real
+signed input, relocation, and an input-dependent `p` reading expanded
+address 38; normative traces establish the read and resulting write on
+EOF/NUL/128/255. No second operand or dynamic jump is placed, and the
+complete mutable checksum still refuses target lowering. The next stage
+must synthesize 728 in a safe guest cell and then prove both jump paths.
+
 ### Exhaustive EOF control-word algebra, not a guest (2026-11-18)
 
 The *unchanged* complete mutable EOF checksum still reaches the seven-block
