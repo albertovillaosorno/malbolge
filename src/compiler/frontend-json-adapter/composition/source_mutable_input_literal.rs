@@ -37,7 +37,11 @@ use super::{
 
 const MAX_UNSIGNED_UPDATES: usize = 2;
 
-fn local_name(node: &Node, type_name: &str, prefix: &str) -> Option<String> {
+pub(super) fn local_name(
+    node: &Node,
+    type_name: &str,
+    prefix: &str,
+) -> Option<String> {
     let name = node.name.as_deref()?;
     if name.is_empty()
         || !name

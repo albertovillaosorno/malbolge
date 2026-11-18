@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Signed EOF-safe algebraic C guard (2026-11-17)
+
+A complete C23 `void emit(void)` reads one signed `int` from `getchar()`,
+then selects different `putchar` literals through a checked `if/else` on
+`(current - current) == 0`. The normalized Clang 26-node source, original
+byte spans, same-local signed SSA identity, both side-effectful output
+arms, and literal values are revalidated before a static arm is selected.
+Both signed subtraction `x - x` and XOR `x ^ x` equal zero, including for
+C23 `EOF == -1`; either `== 0` or `!= 0` can select the proved arm.
+There is no runtime guest branch, evaluation of stdin on the host, or
+false conversion of EOF to a successful input byte.
+
+A real 15-trit Malbolge guest retains the signed `getchar` machine input,
+then emits source-proved byte `0b` and halts. A second complete
+`(current ^ current) != 0` source emits the opposite byte `05` in the
+real guest. Each guest passes five binary/EOF streams, matching independent
+UBSan C23 `-O0`/`-O2` executions. Four arithmetic/comparison
+combinations preserve typed admission and two possible C byte results;
+changed operands, conditions, nested effects, signed output aliases and
+forged source identity refuse without publication. This is a new bounded
+symbolic-branch source capability, not general guest-dependent CFG control,
+local storage or the still-refused mutable EOF checksum at `29:5`.
+
 ### Interleaved signed reads and unsigned updates (2026-11-17)
 
 A complete C23 source declares an unsigned checksum and two independent
