@@ -35,7 +35,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Final, final
+from typing import Final, cast, final
 
 ROOT: Final = Path(__file__).resolve().parents[1]
 SOURCE: Final = (
@@ -201,10 +201,11 @@ class MixedMutableInterleavedReadsTests(unittest.TestCase):
                     self.assertNotIn(b"layout backend", rejected.stderr)
                     self.assertFalse(output.exists())
 
-            forged = json.loads(normalized.stdout)
+            forged = cast(dict[str, object], json.loads(normalized.stdout))
+            nodes = cast(list[dict[str, object]], forged["nodes"])
             read = next(
                 node
-                for node in forged["nodes"]
+                for node in nodes
                 if node["id"] == 16 and node["reference"] == "external:getchar"
             )
             read["reference"] = "external:putchar"
