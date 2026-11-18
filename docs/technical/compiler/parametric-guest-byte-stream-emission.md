@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Reached EOF-dependent guest jump, with unplaced arms (2026-11-18)
+
+A new 132-cell graphical N15 program extends the physically executed
+three-`p` EOF classifier with two genuine `j` data-pointer relocations.
+After the last arithmetic write to M[137], the first `j` reads
+M[138]=7,174,350; the second reads M[7,174,351]=134. Two reached
+no-ops then advance `D` to 137. A real `i` at C=63 reads the **written**
+M[137], selecting C=7,174,224 for every successful `getchar()` byte
+or C=378 for EOF. An independent 257-case digitwise oracle proves the
+control words; five normative 65-step VM traces establish signed input,
+three arithmetic reads, both pointer resets, the reached branch and the
+actual code-pointer change. `compiler_eof_prepared_branch_guest` owns the
+regression, introduced in DCO commit `ea8dd932b`.
+
+**Both destinations are unplaced**: each contains non-graphical loader
+word 7,174,350, and the VM terminates with `NonGraphicalCell` immediately
+after the branch. This proves a real, input-dependent `i`, not an
+executable success or EOF arm, output, source-C CFG lowering, mutable
+runtime state or the frozen checksum. P2 remains active until both arms
+are laid out and real C parity passes.
+
 ### Physical all-byte versus EOF guest classifier (2026-11-18)
 
 A new **132-cell graphical N15 guest** realizes a complete arithmetic

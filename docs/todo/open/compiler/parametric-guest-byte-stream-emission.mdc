@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, DCO `ea8dd932b` extends the physical three-`p`
+  signed EOF classifier with two actual `j` relocations and a **reached**
+  `i` reading the input-dependent result at M[137]. All 256 byte values
+  mathematically select C=7,174,224; EOF selects C=378. Five normative
+  VM traces prove the pointer revisit, branch read, chosen code pointer
+  and subsequent `NonGraphicalCell`: neither target contains executable
+  guest instructions. Original C checksum still refuses target lowering;
+  there is no valid guest branch body, loop or C parity. P2 stays open.
+
 - On 2026-11-18, a single 91-cell graphical N15 guest physically
   prepares both one-write EOF operands at once: `728` at M[97] and
   `7,174,332` at M[95]. Four independent normative 82-step traces
