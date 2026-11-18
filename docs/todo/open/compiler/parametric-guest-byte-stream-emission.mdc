@@ -73,13 +73,28 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the hand-built 132-cell N15 dual-arm guest
+  now physically executes **all 257** signed EOF/byte input classes.
+  Stable C=98/C=105 loader relocations avoid the previously failing
+  mutable M[135] reset, including byte `0x03`. Each binary input
+  follows a reached C=114 `i` to C=45, emits `0x9a` and halts in
+  175 instructions; empty input enters C=126, emits `0x1e` and halts
+  in 119. All 257 normative traces passed in 90.98 seconds with
+  176 instruction and 150-second execution ceilings. Two distinct
+  three-byte streams expose the remaining **second signed input**
+  read at encrypted C=69; this is not lossless stream handling.
+  The original mutable C23 checksum still refuses target lowering,
+  and no guest loop, dynamic checksum arithmetic or C lowering is
+  claimed. P2 is open.
+
 - On 2026-11-18, a bounded **dual-arm N15 guest** now physically
   writes a post-rotation two-`p` control, reaches `i` at C=114,
   and executes distinct byte (`0x9a`, 175 steps) and EOF (`0x1e`,
   119 steps) output/halt arms. EOF, NUL, 1, 2, 255 and one three-byte
-  stream are traced. A real byte `0x03` is a counterexample:
-  an input-dependent M[135] invalidates the attempted pointer reset,
-  so no all-byte executable branch is claimed. The success arm also
+  stream were traced in the earlier layout. Byte `0x03` was a
+  counterexample in that earlier layout: its input-dependent M[135]
+  invalidated the attempted reset, so that version did not establish
+  an all-byte executable branch. The success arm also
   consumes a second input byte when available. A separate 257-case
   scalar oracle does not prove physical generality. The frozen C23
   checksum still refuses at target lowering; P2 is open.

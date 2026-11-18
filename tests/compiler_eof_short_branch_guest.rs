@@ -9,22 +9,22 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - A real all-byte executable arm reached through signed EOF control.
+//   - Two physically executable signed EOF/byte arms under a bounded VM.
 // - Must-Not:
-//   - Claim that the EOF arm, runtime C loop, or checksum is implemented.
+//   - Claim source-C lowering, loop state, or one-read stream semantics.
 // - Allows:
 //   - Inputs: one graphical N15 program and bounded binary/EOF streams.
 //   - Outputs: independently checked arithmetic and normative guest traces.
 //   - Side effects: isolated, bounded in-memory VM runs only.
 // - Split-When:
-//   - EOF also reaches a placed executable arm.
+//   - A general compiler layout takes ownership of this physical witness.
 // - Merge-When:
 //   - The C compiler lowers verified dynamic source branches to these arms.
 // - Summary:
-//   - Four real crazy writes bring successful bytes back into source code.
+//   - Stable resets place both executable arms for 257 signed input cases.
 
-//! One real branch arm is executable after four data-dependent guest writes.
-//! EOF still fails before the destination can execute.
+//! Four writes and two more crazy steps physically branch to byte/EOF arms.
+//! Both execute, but the byte arm still reads a second input on reentry.
 
 use std::iter::once;
 
@@ -414,9 +414,9 @@ fn two_post_rotation_crazy_words_have_short_scalar_targets() {
     assert!(122 < u32::try_from(LENGTH).unwrap_or_default());
 }
 
-// The extra control words are physically readable only on this bounded
-// witness: the reused D=135 source cell is input-dependent after C=65.
-// The byte success arm executes a second / when re-entering encrypted code.
+// A reset through virgin M[148] avoids all input-dependent data words,
+// including the earlier failure at M[135]. The successful-byte arm still
+// executes a second / when re-entering encrypted code.
 fn post_rotation_physical_branch_source() -> Result<Vec<u8>, String> {
     let mut source = guest_source()?;
     // Start with the genuine four-p classifier at M[139]. Rotate it,
@@ -424,11 +424,15 @@ fn post_rotation_physical_branch_source() -> Result<Vec<u8>, String> {
     set(&mut source, 78, b'*')?;
     set(&mut source, 79, b'p')?;
     set(&mut source, 82, b'p')?;
-    for position in 83..=88 {
+    for position in 83..=84 {
         set(&mut source, position, b'j')?;
     }
-    // The first visit rotates M[150]; after self-encryption, C=104
-    // becomes v on the success arm's backwards revisit.
+    // Reach virgin M[148], then follow its stable two-hop loader chain.
+    // The rotated M[7,174,356] at C=104 does not alias the subsequent
+    // reset M[7,174,357], so both input classes reach M[143] at C=114.
+    set(&mut source, 98, b'j')?;
+    // The first visit rotates untouched M[7,174,356]; after encryption,
+    // C=104 becomes v on the success arm's backwards revisit.
     set(&mut source, 104, b'*')?;
     set(&mut source, 105, b'j')?;
     set(&mut source, 114, b'i')?;
@@ -463,24 +467,33 @@ fn physical_post_rotation_scalar_oracle_covers_all_signed_inputs() {
     clippy::cognitive_complexity,
     clippy::too_many_lines,
     clippy::panic_in_result_fn,
-    reason = "bounded physical branch witness and explicit counterexample"
+    reason = "bounded exhaustive guest trace and extra input read"
 )]
-fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
--> Result<(), String> {
+fn all_257_signed_inputs_reach_both_physical_arms() -> Result<(), String> {
     let profile = current_profile();
     let source = post_rotation_physical_branch_source()?;
     assert_eq!(source.len(), LENGTH);
     assert_eq!(source.get(130..), Some(b"-}".as_slice()));
     let loaded = ProfileMachine::from_source(profile, &source, vec![])
         .map_err(|error| error.to_string())?;
-    assert_eq!(loaded.memory_word(140), Ok(7_174_341));
-    assert_eq!(loaded.memory_word(143), Ok(125));
-    assert_eq!(loaded.memory_word(145), Ok(134));
-    assert_eq!(loaded.memory_word(150), Ok(7_174_350));
+    for (address, operand) in [
+        (140, 7_174_341),
+        (143, 125),
+        (145, 134),
+        (148, 7_174_350),
+        (7_174_351, 134),
+        (7_174_356, 7_174_350),
+        (7_174_357, 134),
+    ] {
+        assert_eq!(loaded.memory_word(address), Ok(operand));
+    }
 
-    // One multi-byte case checks the unwanted second successful read.
-    // This cannot be used as a lossless getchar classifier yet.
-    for input in [vec![], vec![0], vec![1], vec![2], vec![255], vec![0, 1, 2]] {
+    // Every signed-input class actually executes in the profile VM.
+    // The extra multi-byte vector exposes the still-unwanted second read.
+    let inputs = once(Vec::new())
+        .chain((u8::MIN..=u8::MAX).map(|byte| vec![byte]))
+        .chain([vec![0, 1, 2], vec![3, 4, 5]]);
+    for input in inputs {
         let eof = input.is_empty();
         let input_word = input
             .first()
@@ -493,7 +506,7 @@ fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
         )
         .map_err(|error| error.to_string())?;
         let mut trace = vec![];
-        let result = vm
+        let outcome = vm
             .run_traced(176, &mut |step| trace.push(*step))
             .map_err(|error| format!("input {input:?}: {error}"))?;
         let steps = if eof {
@@ -501,10 +514,14 @@ fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
         } else {
             175
         };
-        assert_eq!(result, RunOutcome::Terminated {
-            reason: Termination::HaltInstruction,
-            steps,
-        });
+        assert_eq!(
+            outcome,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            },
+            "input {input:?}"
+        );
         assert_eq!(trace.len(), steps);
         assert_eq!(
             vm.output(),
@@ -515,31 +532,35 @@ fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
             }
         );
         assert_eq!(vm.input_consumed(), input.len().min(2));
-        let reads = trace
+        let input_reads = trace
             .iter()
             .filter(|step| step.decoded == Some(profile.input_instruction()))
             .map(|step| step.before.registers.code_pointer)
             .collect::<Vec<_>>();
         assert_eq!(
-            reads,
+            input_reads,
             if eof {
                 &[53][..]
             } else {
                 &[53, 69][..]
             }
         );
+
         for (code, address, operand) in [
             (79, 140, 7_174_341),
             (82, 143, 125),
             (83, 144, 7_174_350),
             (84, 7_174_351, 134),
-            (104, 150, 7_174_350),
-            (105, 151, 134),
+            (98, 148, 7_174_350),
+            (104, 7_174_356, 7_174_350),
+            (105, 7_174_357, 134),
         ] {
             let step = trace
                 .iter()
                 .find(|step| step.before.registers.code_pointer == code)
-                .ok_or_else(|| format!("unreached C={code}"))?;
+                .ok_or_else(|| {
+                    format!("input {input:?}: unreached C={code}")
+                })?;
             assert_eq!(
                 step.memory_reads
                     .data
@@ -548,10 +569,21 @@ fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
                 "input {input:?}, C={code}"
             );
         }
+        // The earlier counterexample at byte 0x03 is now an ordinary
+        // real guest success path: no read of mutated M[135] is needed.
+        assert!(!trace.iter().any(|step| {
+            step.decoded == Some(b'j')
+                && step
+                    .memory_reads
+                    .data
+                    .is_some_and(|read| read.address == 135)
+                && step.before.registers.code_pointer >= 83
+                && step.before.registers.code_pointer <= 114
+        }));
         let branch = trace
             .iter()
             .find(|step| step.before.registers.code_pointer == 114)
-            .ok_or("missing physical i")?;
+            .ok_or("missing physical conditional i")?;
         assert_eq!(branch.decoded, Some(b'i'));
         assert_eq!(branch.before.registers.data_pointer, 143);
         assert_eq!(
@@ -572,7 +604,9 @@ fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
         assert_eq!(
             trace
                 .last()
-                .map(|step| (step.before.registers.code_pointer, step.decoded)),
+                .map(
+                    |step| (step.before.registers.code_pointer, step.decoded,)
+                ),
             Some(if eof {
                 (129, Some(b'v'))
             } else {
@@ -580,32 +614,5 @@ fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
             })
         );
     }
-
-    // The mathematical classifier covers 0x03 too, but the physical
-    // pointer-reset j reads a mutated input-dependent M[135] on this case.
-    // Reject that actual VM failure instead of claiming all-byte parity.
-    let mut vm = ProfileMachine::from_state(
-        profile,
-        loaded.memory().to_vec(),
-        vec![3],
-        ProfileRegisters::default(),
-    )
-    .map_err(|error| error.to_string())?;
-    let mut trace = vec![];
-    let failure = vm
-        .run_traced(176, &mut |step| trace.push(*step))
-        .expect_err("0x03 must not be mistaken for an executable byte arm");
-    assert!(
-        failure
-            .to_string()
-            .contains("self-encryption target 7174350")
-    );
-    assert!(
-        trace
-            .iter()
-            .any(|step| step.before.registers.code_pointer == 114)
-    );
-    assert!(vm.output().is_empty());
-    assert_eq!(vm.input_consumed(), 1);
     Ok(())
 }

@@ -28,6 +28,38 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Complete byte/EOF dual-arm relocation witness (2026-11-18)
+
+The 132-cell physical signed-EOF branch now handles **all 257 input
+classes in the normative N15 VM**: empty stdin takes its own branch to
+C=126, emits `0x1e` and halts at C=129 after 119 instructions. Every
+single-byte input (`0x00` through `0xff`) takes a different real `i`
+branch to C=45, emits `0x9a` and halts on the encrypted C=104 after
+175 instructions. The frozen independent trit oracle continues to
+predict controls 125 and 44, respectively. Each execution starts with
+a fresh VM-validated state cloned from one complete loaded image;
+257 traced runs completed in 90.98 seconds under a 150-second test
+budget, with no per-case instruction count above 175.
+
+This repairs the *previously physical* byte `0x03` failure, not merely
+its mathematical oracle. After two extra real `p` writes, C=83/84
+relocates through M[144]=7,174,350 and M[7,174,351]=134.
+C=98 instead reads untouched M[148]=7,174,350 and advances through
+loader cells to C=104, which rotates M[7,174,356] without disturbing
+the subsequent C=105 reset via M[7,174,357]=134. The pointer then
+advances to the written M[143] control at the reached C=114 `i`.
+No reset reads the modified M[135]. The exhaustive test checks
+physical data reads, selected branch, output, halt and input count.
+
+**This is not a reusable lossless byte-stream classifier.** The byte
+arm re-enters already encrypted C=69 as `/` and attempts another
+input read: two distinct three-byte vectors confirm it consumes their
+first **two** bytes before halting. The test checks this defect rather
+than hiding it. The code is hand-built guest evidence, not the output
+of any source-C lowering. The frozen mutable EOF checksum still
+refuses in the real target backend: no C loop, mutable checksum state,
+second-read continuation, or general C guest parity is established.
+
 ### Physical dynamic rotation after four crazy writes (2026-11-18)
 
 For the `-}` 132-cell seed, the third arithmetic write has trit 5
@@ -63,9 +95,9 @@ C=41 is already traversed and encrypted by the present prologue.
 The next experiment needs real operand synthesis, pointer relocation,
 and a safe source skip/entry layout for both code arms.
 
-### Bounded two-arm guest and pointer-reset counterexample (2026-11-18)
+### Earlier bounded two-arm counterexample (superseded, 2026-11-18)
 
-The 132-cell N15 byte/EOF experiment now has a **separate physical**
+The earlier 132-cell N15 byte/EOF experiment had a **separate physical**
 post-rotation continuation. Its real `*`, two additional `p` writes,
 `j` relocation chain and reached `i` at C=114 can enter two distinct
 source arms. The independent 257-input scalar oracle uses virgin loader
@@ -76,7 +108,7 @@ EOF. The success arm revisits already encrypted C=104, which has
 become `v`; it emits `0x9a` and halts after 175 steps. The EOF arm
 executes its own `*`, `<` and `v`, emitting `0x1e` in 119 steps.
 
-**This is not a complete 257-case guest discriminator.** The first
+**This earlier source was not a 257-case guest discriminator.** The first
 four-`p` classifier has mutated M[135]; the additional `j` loop
 revisits that input-dependent cell. Input `0x03` causes the actual
 normative VM to reject a non-graphical encryption destination at
