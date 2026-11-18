@@ -883,6 +883,103 @@ pub enum RuntimeIntrinsicOperation {
     OutputByte,
 }
 
+/// Scalar classes retained at symbolic CFG joins, separate from port types.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TernaryCfgScalarKind {
+    /// Canonical Boolean SSA result.
+    Bool,
+    /// Signed 32-bit C word.
+    I32,
+    /// Unsigned 32-bit C word.
+    U32,
+    /// Unsigned C byte.
+    U8,
+}
+
+/// One SSA edge merge kept symbolic until guest control flow is linked.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TernaryCfgPhi {
+    /// Predecessor/value pairs; all are evaluated in parallel at block entry.
+    pub incoming: Vec<(u32, u32)>,
+    /// Target SSA result identity.
+    pub result: u32,
+    /// Exact normalized source provenance.
+    pub span: TernarySourceSpan,
+    /// Typed scalar category; this is not a physical guest word location.
+    pub type_kind: TernaryCfgScalarKind,
+}
+
+/// Symbolic control terminator. No branch address has been assigned.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TernaryCfgTerminator {
+    /// Dynamic Boolean-controlled successor choice.
+    Branch {
+        /// Defined Boolean SSA condition.
+        condition: u32,
+        /// False successor block identity.
+        false_target: u32,
+        /// Exact source provenance.
+        span: TernarySourceSpan,
+        /// True successor block identity.
+        true_target: u32,
+    },
+    /// Control transfers without a condition.
+    Jump {
+        /// Exact source provenance.
+        span: TernarySourceSpan,
+        /// Successor block identity.
+        target: u32,
+    },
+    /// Typed return operation at a CFG exit.
+    Return(TernaryOperation),
+}
+
+/// One symbolic pre-layout basic block of executable target operations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TernaryCfgBlock {
+    /// Original typed block identity.
+    pub id: u32,
+    /// Ordered target operations, preserving source effects.
+    pub operations: Vec<TernaryOperation>,
+    /// Parallel edge merges at block entry.
+    pub phis: Vec<TernaryCfgPhi>,
+    /// Exactly one explicit outgoing control transfer.
+    pub terminator: TernaryCfgTerminator,
+}
+
+/// Dynamic symbolic function; not a serialized or guest-executable program.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TernaryCfgFunction {
+    /// All reachable blocks in canonical upstream order.
+    pub blocks: Vec<TernaryCfgBlock>,
+    /// Function entry block.
+    pub entry: u32,
+    /// Canonical function identity.
+    pub id: u32,
+    /// Original function name.
+    pub name: String,
+    /// Function source span.
+    pub span: TernarySourceSpan,
+}
+
+/// Source-bound pre-layout CFG requiring subsequent guest arithmetic/linking.
+/// It cannot be passed to the linear MCTR-v1 codec or guest publisher.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TernaryCfgPlan {
+    /// Exact guest ABI identity.
+    pub abi_id: String,
+    /// Fully lowered symbolic functions.
+    pub functions: Vec<TernaryCfgFunction>,
+    /// Original typed IR wire version.
+    pub input_format_version: u16,
+    /// Canonical source identity.
+    pub source_id: String,
+    /// Original source digest, without modifying or inventing guest output.
+    pub source_sha256: [u8; 32],
+    /// Target profile identity.
+    pub target_profile: String,
+}
+
 /// One deterministic pre-layout ternary operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryOperation {

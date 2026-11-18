@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked dynamic ternary CFG before guest linking (2026-11-18)
+
+The full original mutable C23 EOF checksum now passes a **separate symbolic
+ternary-CFG lowering** test. A frozen 1,572-byte canonical typed-IR wire is
+derived from the accepted original Clang JSON and source witness, not a
+hand-authored branch table. `lower_dynamic_typed_cfg` preserves seven
+reachable blocks, all three SSA phi merges across two blocks, the exact two
+signed `getchar()` effects, arithmetic, nested input-dependent branches and
+final byte output. Its result retains original typed source provenance and
+remains deterministic under re-lowering. Predecessors and incoming phi-edge
+values are validated, SSA definitions must dominate ordinary and edge uses,
+and forged CFG/source coordinates are rejected.
+
+This new **unlinked `TernaryCfgPlan` is intentionally not MCTR-v1 and cannot
+be submitted to the existing byte-trace target publisher**. It has no guest
+instruction addresses, physical mutable-value allocation, backward jump
+relocations, complete integer arithmetic realization or actual VM parity.
+The old linear `lower_typed_ir` and the source-C driver continue refusing
+this checksum rather than treating the symbolic graph as an executable
+artifact. The first remaining integration step is an authenticated
+canonical-typed-IR-to-CFG projection in the compiler composition, followed
+by target control/phi value realization and real VM proof for five streams.
+P2 remains open.
+
 ### Source-stage EOF branch candidate and independent admission (2026-11-18)
 
 The previously test-only two-arm physical N15 branch is now assembled by

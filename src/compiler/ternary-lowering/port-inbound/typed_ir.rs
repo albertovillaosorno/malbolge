@@ -445,6 +445,39 @@ pub enum InputTerminator {
     Unsupported,
 }
 
+/// One incoming predecessor/value pair for a dynamic SSA phi.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InputPhiIncoming {
+    /// Exact incoming predecessor block identity.
+    pub block: u32,
+    /// Exact incoming SSA value identity.
+    pub value: u32,
+}
+
+/// Phi values excluded from the linear MCTR-v1 projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InputDynamicPhi {
+    /// Ordered predecessor/value pairs, one per CFG predecessor.
+    pub incoming: Vec<InputPhiIncoming>,
+    /// Newly defined phi SSA identity.
+    pub result: u32,
+    /// Source provenance from validated typed IR.
+    pub span: InputSourceSpan,
+    /// Exact signed or unsigned scalar type.
+    pub type_kind: InputScalarType,
+}
+
+/// Phi records for one function and block of an existing projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InputDynamicBlockPhis {
+    /// Existing projected basic-block identity.
+    pub block: u32,
+    /// Existing projected function identity.
+    pub function: u32,
+    /// Full ordered phi definitions, not merely a count.
+    pub phis: Vec<InputDynamicPhi>,
+}
+
 /// One projected typed-IR basic block.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InputBlock {

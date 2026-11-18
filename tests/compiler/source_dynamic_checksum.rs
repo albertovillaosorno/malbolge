@@ -96,6 +96,27 @@ fn frozen_eof_checksum_reaches_genuine_dynamic_typed_cfg() {
 }
 
 #[test]
+fn original_c23_checksum_reproduces_frozen_dynamic_typed_wire() {
+    // This fixture must be regenerated only from the source-checked pinned
+    // Clang tree, never from a hand-authored approximation of the checksum.
+    const FROZEN: &str =
+        include_str!("typed-ir/golden/mutable-eof-checksum.hex");
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE))
+            .expect("source-checked original checksum must reach typed IR");
+    assert_eq!(mode, FrontendGuestMode::DynamicEofChecksum);
+    let expected = FROZEN
+        .trim_end_matches('\n')
+        .strip_prefix("malbolge-typed-ir-v1:")
+        .expect("frozen typed wire must declare its version");
+    let actual = wire
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    assert_eq!(actual, expected, "source-bound typed wire snapshot drift");
+}
+
+#[test]
 fn normalized_checksum_without_the_original_source_fails_closed() {
     assert_eq!(
         canonical_guest_typed_ir_with_source(NORMALIZED, None),

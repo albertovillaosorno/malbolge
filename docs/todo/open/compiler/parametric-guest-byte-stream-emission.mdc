@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the source-locked mutable EOF checksum's full typed-CFG
+  witness now lowers through a separately admitted symbolic ternary CFG.
+  The new pre-layout stage preserves all seven blocks, three phi merges,
+  two signed input effects, arithmetic, branch conditions, and one output;
+  it validates predecessor completeness, SSA use dominance, source
+  positions and malformed phi-edge rejection. The frozen canonical typed
+  fixture is derived from the original normalized C23 source witness.
+  This output is **not** an MCTR-v1 artifact and has no real guest
+  arithmetic, phi storage, loop linkage or execution. Source-C publishing
+  deliberately continues to refuse; P2 acceptance and five-stream VM
+  parity still require those later compiler/backend capabilities.
+
 - On 2026-11-18, the 132-cell signed byte/EOF guest has a reusable
   current-N15 source-stage candidate builder rather than test-only
   assembly. The 257-class real-guest witness passes unchanged, and

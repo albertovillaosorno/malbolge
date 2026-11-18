@@ -26991,3 +26991,212 @@ fn repeated_signed_getchar_word_expressions_preserve_eof_read()
     }
     Ok(())
 }
+
+// The frozen source-locked checksum is not a synthetic arithmetic example.
+// Its typed wire is derived from the accepted original C23 program and pinned
+// frontend JSON; no guest I/O or runtime branch is host-selected here.
+fn projected_frozen_eof_checksum()
+-> Result<(TypedIrInput, Vec<ternary_lowering::InputDynamicBlockPhis>), String>
+{
+    let typed = canonical_golden(
+        "tests/compiler/typed-ir/golden/mutable-eof-checksum.hex",
+    )?;
+    let module = canonical_module(&typed)
+        .map_err(|error| format!("decode checksum typed CFG: {error:?}"))?;
+    let projected = project_typed_ir(&module)?;
+    let mut bindings = Vec::new();
+    for function in module.functions() {
+        for block in function.blocks() {
+            if block.phis().is_empty() {
+                continue;
+            }
+            bindings.push(ternary_lowering::InputDynamicBlockPhis {
+                block: block.id().value(),
+                function: function.id().value(),
+                phis: block
+                    .phis()
+                    .iter()
+                    .map(|phi| ternary_lowering::InputDynamicPhi {
+                        incoming: phi
+                            .incoming()
+                            .iter()
+                            .map(|edge| ternary_lowering::InputPhiIncoming {
+                                block: edge.block().value(),
+                                value: edge.value().value(),
+                            })
+                            .collect(),
+                        result: phi.result().value(),
+                        span: input_span(phi.span()),
+                        type_kind: input_scalar_type(&module, phi.type_id()),
+                    })
+                    .collect(),
+            });
+        }
+    }
+    Ok((projected, bindings))
+}
+
+#[test]
+fn original_mutable_eof_checksum_lowers_to_unlinked_dynamic_cfg()
+-> Result<(), String> {
+    let (projected, bindings) = projected_frozen_eof_checksum()?;
+    assert_eq!(projected.functions.len(), 1);
+    assert_eq!(projected.functions[0].blocks.len(), 7);
+    assert_eq!(bindings.len(), 2);
+    assert_eq!(
+        lower_typed_ir(&projected),
+        Err(TernaryLoweringError::UnsupportedFunction),
+        "existing linear publisher must still refuse loop-carried state",
+    );
+    let plan = ternary_lowering::lower_dynamic_typed_cfg(&projected, &bindings)
+        .map_err(|error| format!("lower real checksum CFG: {error:?}"))?;
+    assert_eq!(plan.source_sha256, projected.source_sha256);
+    assert_eq!(plan.target_profile, "malbolge-2026");
+    let [function] = plan.functions.as_slice() else {
+        return Err(String::from(
+            "checksum lowered an unexpected function count",
+        ));
+    };
+    assert_eq!(function.blocks.len(), 7);
+    assert_eq!(function.blocks[1].phis.len(), 2);
+    assert_eq!(function.blocks[5].phis.len(), 1);
+    for phi in &function.blocks[1].phis {
+        assert_eq!(
+            phi.incoming
+                .iter()
+                .map(|(block, _)| *block)
+                .collect::<Vec<_>>(),
+            vec![0, 5],
+            "the loop-carried phi must retain the real backedge",
+        );
+    }
+    assert!(matches!(
+        function.blocks[5].terminator,
+        ternary_lowering::TernaryCfgTerminator::Jump { target: 1, .. }
+    ));
+    assert!(matches!(
+        function.blocks[1].terminator,
+        ternary_lowering::TernaryCfgTerminator::Branch { .. }
+    ));
+    let operations = function
+        .blocks
+        .iter()
+        .flat_map(|block| block.operations.iter())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|op| matches!(op, TernaryOperation::GetcharI32 { .. }))
+            .count(),
+        2,
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|op| matches!(op, TernaryOperation::ByteOutput { .. }))
+            .count(),
+        1,
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|op| matches!(op, TernaryOperation::XorU32 { .. }))
+            .count(),
+        1,
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|op| matches!(op, TernaryOperation::AddU32 { .. }))
+            .count(),
+        2,
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|op| matches!(op, TernaryOperation::AndU32 { .. }))
+            .count(),
+        1,
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|op| matches!(op, TernaryOperation::AndI32 { .. }))
+            .count(),
+        1,
+    );
+    assert_eq!(
+        ternary_lowering::lower_dynamic_typed_cfg(&projected, &bindings),
+        Ok(plan),
+        "the source-bound symbolic CFG must be deterministic",
+    );
+    Ok(())
+}
+
+#[test]
+fn mutable_eof_checksum_dynamic_phi_forgery_fails_closed() -> Result<(), String>
+{
+    let (projected, bindings) = projected_frozen_eof_checksum()?;
+    let reference =
+        ternary_lowering::lower_dynamic_typed_cfg(&projected, &bindings)
+            .map_err(|error| format!("valid checksum: {error:?}"))?;
+    let mut cases = Vec::new();
+    let mut absent = bindings.clone();
+    drop(absent.pop());
+    cases.push(("absent block phis", absent));
+    let mut missing_edge = bindings.clone();
+    _ = missing_edge[0].phis[0].incoming.pop();
+    cases.push(("missing predecessor", missing_edge));
+    let mut forged_edge = bindings.clone();
+    forged_edge[0].phis[0].incoming[1].block = 4;
+    cases.push(("forged predecessor", forged_edge));
+    let mut duplicate_phi_result = bindings.clone();
+    duplicate_phi_result[0].phis[1].result =
+        duplicate_phi_result[0].phis[0].result;
+    cases.push(("redefined phi result", duplicate_phi_result));
+    let mut invalid_kind = bindings.clone();
+    invalid_kind[0].phis[0].type_kind = InputScalarType::Other;
+    cases.push(("invalid phi type", invalid_kind));
+    let mut unresolved = bindings.clone();
+    unresolved[0].phis[0].incoming[1].value = u32::MAX;
+    cases.push(("unresolved incoming value", unresolved));
+    let mut wrong_edge_value = bindings.clone();
+    let alternative = wrong_edge_value[1].phis[0].incoming[1].value;
+    wrong_edge_value[1].phis[0].incoming[0].value = alternative;
+    cases.push(("non-dominating sibling phi value", wrong_edge_value));
+    let mut invalid_edge = bindings.clone();
+    invalid_edge[1].phis[0].incoming[0].block = u32::MAX;
+    cases.push(("out-of-range phi predecessor", invalid_edge));
+    let mut duplicate = bindings.clone();
+    duplicate.push(duplicate[0].clone());
+    cases.push(("duplicate binding", duplicate));
+    for (name, forged) in cases {
+        assert!(
+            ternary_lowering::lower_dynamic_typed_cfg(&projected, &forged)
+                .is_err(),
+            "{name} unexpectedly passed"
+        );
+    }
+    let mut branch_forgery = projected.clone();
+    let later_condition = match branch_forgery.functions[0].blocks[2].terminator
+    {
+        InputTerminator::Branch { condition, .. } => condition,
+        _ => return Err(String::from("missing checksum nested branch")),
+    };
+    match &mut branch_forgery.functions[0].blocks[1].terminator {
+        InputTerminator::Branch { condition, .. } => {
+            *condition = later_condition
+        },
+        _ => return Err(String::from("missing checksum loop branch")),
+    }
+    assert_eq!(
+        ternary_lowering::lower_dynamic_typed_cfg(&branch_forgery, &bindings),
+        Err(TernaryLoweringError::InvalidProjection),
+        "branch cannot read a non-dominating Boolean from its successor",
+    );
+    assert_eq!(
+        ternary_lowering::lower_dynamic_typed_cfg(&projected, &bindings),
+        Ok(reference),
+    );
+    Ok(())
+}

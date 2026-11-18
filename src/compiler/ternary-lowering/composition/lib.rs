@@ -47,6 +47,8 @@ mod input;
 mod instruction_decoder_input;
 #[path = "../application/lower.rs"]
 mod lower;
+#[path = "../application/lower_dynamic_cfg.rs"]
+mod lower_dynamic_cfg;
 #[path = "../application/lower_frame_helper.rs"]
 mod lower_frame_helper;
 #[path = "../application/lower_heap_helper.rs"]
@@ -87,6 +89,8 @@ mod stage;
 mod startup_input;
 #[path = "../port-inbound/target_profile.rs"]
 mod target_profile_input;
+#[path = "../application/validate_dynamic_cfg_ssa.rs"]
+mod validate_dynamic_cfg_ssa;
 
 pub use byte_stream_wrapper_input::ByteStreamWrapperRequest;
 pub use encode_machine_io::{MachineIoEncodingError, encode_machine_io};
@@ -95,6 +99,7 @@ pub use heap_helper_input::HeapHelperRequest;
 pub use input::*;
 pub use instruction_decoder_input::ProfileInstructionDecoder;
 pub use lower::{TernaryLoweringError, lower_typed_ir};
+pub use lower_dynamic_cfg::lower_dynamic_typed_cfg;
 pub use lower_frame_helper::{FrameHelperLoweringError, lower_frame_helper};
 pub use lower_heap_helper::{HeapHelperLoweringError, lower_heap_helper};
 pub use lower_runtime_helper::{

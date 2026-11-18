@@ -105,7 +105,7 @@ enum LiteralCastKind {
 }
 
 #[derive(Default)]
-struct LoweringState {
+pub(super) struct LoweringState {
     bools: BTreeSet<u32>,
     bytes: BTreeSet<u32>,
     signed: BTreeSet<u32>,
@@ -113,6 +113,38 @@ struct LoweringState {
     signed_halves: BTreeSet<u32>,
     unsigned: BTreeSet<u32>,
     unsigned_halves: BTreeSet<u32>,
+}
+
+impl LoweringState {
+    pub(super) fn define_phi(
+        &mut self,
+        result: u32,
+        kind: InputScalarType,
+    ) -> Result<(), TernaryLoweringError> {
+        ensure_new_value(self, result)?;
+        let inserted = match kind {
+            InputScalarType::Bool => self.bools.insert(result),
+            InputScalarType::I32 => self.signed.insert(result),
+            InputScalarType::U32 => self.unsigned.insert(result),
+            InputScalarType::U8 => self.bytes.insert(result),
+            _ => return Err(TernaryLoweringError::UnsupportedInstruction),
+        };
+        debug_assert!(inserted);
+        Ok(())
+    }
+
+    pub(super) fn has_kind(&self, value: u32, kind: InputScalarType) -> bool {
+        match kind {
+            InputScalarType::Bool => self.bools.contains(&value),
+            InputScalarType::I32 => self.signed.contains(&value),
+            InputScalarType::U32 => self.unsigned.contains(&value),
+            InputScalarType::U8 => self.bytes.contains(&value),
+            InputScalarType::I8 => self.signed_bytes.contains(&value),
+            InputScalarType::I16 => self.signed_halves.contains(&value),
+            InputScalarType::U16 => self.unsigned_halves.contains(&value),
+            _ => false,
+        }
+    }
 }
 
 /// Stable failures for the implemented ternary lowering slice.
@@ -130,7 +162,7 @@ pub enum TernaryLoweringError {
     UnsupportedTerminator,
 }
 
-const fn copy_span(span: InputSourceSpan) -> TernarySourceSpan {
+pub(super) const fn copy_span(span: InputSourceSpan) -> TernarySourceSpan {
     TernarySourceSpan {
         begin: TernarySourcePosition {
             byte: span.begin.byte,
@@ -145,7 +177,7 @@ const fn copy_span(span: InputSourceSpan) -> TernarySourceSpan {
     }
 }
 
-const fn valid_projection_span(span: InputSourceSpan) -> bool {
+pub(super) const fn valid_projection_span(span: InputSourceSpan) -> bool {
     let begin = span.begin;
     let end = span.end;
     if begin.line == 0
@@ -178,7 +210,7 @@ const fn projection_position_precedes(
         || (before.line == after.line && before.column <= after.column)
 }
 
-const fn projection_span_contains(
+pub(super) const fn projection_span_contains(
     parent: InputSourceSpan,
     child: InputSourceSpan,
 ) -> bool {
@@ -1315,7 +1347,7 @@ fn lower_function(
     })
 }
 
-fn lower_return_operation(
+pub(super) fn lower_return_operation(
     return_kind: InputScalarType,
     state: &LoweringState,
     return_value: u32,
@@ -1380,7 +1412,7 @@ fn lower_return_operation(
     })
 }
 
-fn lower_instruction(
+pub(super) fn lower_instruction(
     instruction: &InputInstruction,
     state: &mut LoweringState,
 ) -> Result<TernaryOperation, TernaryLoweringError> {
@@ -3114,7 +3146,7 @@ fn validate_projection_function_identities(
     Ok(())
 }
 
-fn validate_projection(
+pub(super) fn validate_projection(
     input: &TypedIrInput,
 ) -> Result<(), TernaryLoweringError> {
     if input.abi_id != ABI_ID
@@ -3127,7 +3159,7 @@ fn validate_projection(
     validate_projection_function_identities(input)
 }
 
-fn validate_projection_source_positions(
+pub(super) fn validate_projection_source_positions(
     input: &TypedIrInput,
 ) -> Result<(), TernaryLoweringError> {
     let mut observed = BTreeMap::new();
