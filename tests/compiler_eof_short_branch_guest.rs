@@ -44,6 +44,75 @@ const FOURTH_OPERAND: u32 = 134;
 const SUCCESS_CONTROL: u32 = 125;
 const EOF_CONTROL: u32 = 368;
 
+// A physical EOF arm is forward-only, while every byte arm revisits code.
+// Batch admission must verify both complete paths for the SAME source, rather
+// than silently applying the revisiting-only restriction to the EOF case.
+struct OwnedBranchPath {
+    input: Vec<u8>,
+    input_events: [TraceInput; 1],
+    io_events: [layout::BoundedRevisitIoEvent; 2],
+    output: [u8; 1],
+    path: Vec<u32>,
+    writes: Vec<layout::BoundedRevisitDataWrite>,
+}
+
+impl OwnedBranchPath {
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.input,
+            code_positions: &self.path,
+            output: &self.output,
+            input_consumed: usize::from(!self.input.is_empty()),
+            input_events: &self.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.writes,
+        }
+    }
+
+    fn new(input: Vec<u8>) -> Self {
+        let eof = input.is_empty();
+        let profile = current_profile();
+        let word = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let read = input
+            .first()
+            .map_or(TraceInput::EndOfInput, |byte| TraceInput::Byte(*byte));
+        let output_byte = if eof {
+            30
+        } else {
+            154
+        };
+        let mut path = (0..=114u32).collect::<Vec<_>>();
+        if eof {
+            path.extend(126..=129);
+        } else {
+            path.extend(45..=104);
+        }
+        Self {
+            input,
+            input_events: [read],
+            io_events: [
+                layout::BoundedRevisitIoEvent {
+                    step: 53,
+                    effect: layout::BoundedRevisitIoEffect::Input(read),
+                },
+                layout::BoundedRevisitIoEvent {
+                    step: if eof {
+                        117
+                    } else {
+                        127
+                    },
+                    effect: layout::BoundedRevisitIoEffect::Output(output_byte),
+                },
+            ],
+            output: [output_byte],
+            path,
+            writes: independent_branch_writes(word, eof),
+        }
+    }
+}
+
 fn encode(opcode: u8, position: usize) -> Result<u8, String> {
     let address = u32::try_from(position)
         .map_err(|error| format!("unrepresentable position: {error}"))?;
@@ -812,5 +881,121 @@ fn assembled_eof_branch_passes_independent_nonlinear_admission()
             );
         }
     }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "finite source-bound full-path and tamper matrix"
+)]
+fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = post_rotation_physical_branch_source()?;
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let cases = [vec![], vec![0], vec![255], vec![3, 4, 5], vec![128]]
+        .into_iter()
+        .map(OwnedBranchPath::new)
+        .collect::<Vec<_>>();
+    let expected = cases
+        .iter()
+        .map(OwnedBranchPath::expectation)
+        .collect::<Vec<_>>();
+    let [eof, nul, high, mixed, _other] = expected.as_slice() else {
+        return Err(String::from("wrong test vector count"));
+    };
+    let [_empty_case, _nul_case, high_case, mixed_case, _other_case] =
+        cases.as_slice()
+    else {
+        return Err(String::from("wrong source case count"));
+    };
+    assert_eq!(
+        layout::admit_bounded_revisit_batch(
+            profile, &source, identity, &expected
+        ),
+        Err(layout::BoundedRevisitError::NotRevisiting),
+    );
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("mixed guest batch: {error:?}"))?;
+    assert_eq!(admitted.len(), cases.len());
+    for (actual, case) in admitted.iter().zip(&cases) {
+        assert_eq!(actual.code_positions(), case.path);
+        assert_eq!(actual.io_events(), case.io_events);
+        assert_eq!(actual.data_writes(), case.writes);
+        assert_eq!(actual.output(), case.output);
+    }
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(profile, &source, identity, &[
+            *eof, *eof
+        ]),
+        Err(layout::BoundedRevisitError::InvalidBatch),
+    );
+    let forged_output = [31];
+    let forged = layout::BoundedRevisitExpectation {
+        output: &forged_output,
+        ..*eof
+    };
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(profile, &source, identity, &[
+            forged, *nul
+        ]),
+        Err(layout::BoundedRevisitError::OutputMismatch),
+    );
+    let mut forged_path = high_case.path.clone();
+    *forged_path.last_mut().ok_or("missing byte path")? = 103;
+    let wrong_path = layout::BoundedRevisitExpectation {
+        code_positions: &forged_path,
+        ..*high
+    };
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(profile, &source, identity, &[
+            *eof, wrong_path
+        ]),
+        Err(layout::BoundedRevisitError::PathMismatch),
+    );
+    let mut forged_writes = mixed_case.writes.clone();
+    let first = forged_writes.first_mut().ok_or("missing guest write")?;
+    first.after ^= 1;
+    let wrong_data = layout::BoundedRevisitExpectation {
+        data_writes: &forged_writes,
+        ..*mixed
+    };
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(profile, &source, identity, &[
+            *eof, wrong_data
+        ]),
+        Err(layout::BoundedRevisitError::DataWritesMismatch),
+    );
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(profile, &source, identity, &[]),
+        Err(layout::BoundedRevisitError::InvalidBatch),
+    );
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(
+            profile,
+            &source,
+            identity,
+            expected.get(..1).ok_or("missing first path")?
+        ),
+        Err(layout::BoundedRevisitError::InvalidBatch),
+    );
+    let over_budget = vec![*eof; layout::MAX_REVISIT_CASES + 1];
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(
+            profile,
+            &source,
+            identity,
+            &over_budget
+        ),
+        Err(layout::BoundedRevisitError::InvalidBatch),
+    );
     Ok(())
 }

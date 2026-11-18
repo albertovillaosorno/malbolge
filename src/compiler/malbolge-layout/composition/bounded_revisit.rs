@@ -414,6 +414,45 @@ pub fn admit_bounded_revisit_batch(
     identity: LinearProfileIdentity<'_>,
     expected: &[BoundedRevisitExpectation<'_>],
 ) -> Result<Vec<BoundedRevisitLayout>, BoundedRevisitError> {
+    admit_bounded_batch_impl(profile, source, identity, expected, true)
+}
+
+/// Admit a finite set of distinct binary streams with complete guest oracles.
+///
+/// Unlike the revisiting-only batch, this also admits a forward-only EOF arm
+/// alongside revisiting byte paths.
+///
+/// Each path is executed independently under the same source/profile with a
+/// fresh normative guest machine.
+///
+/// A successful batch proves only the supplied finite streams, not arbitrary
+/// input, general branching or source-C parity.
+///
+/// # Errors
+///
+/// Refuses a singleton, duplicate or over-budget matrix and propagates the
+/// first failing individual normative guest path admission without publishing
+/// partial results.
+pub fn admit_bounded_guest_path_batch(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    identity: LinearProfileIdentity<'_>,
+    expected: &[BoundedRevisitExpectation<'_>],
+) -> Result<Vec<BoundedRevisitLayout>, BoundedRevisitError> {
+    admit_bounded_batch_impl(profile, source, identity, expected, false)
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "shared internal gate retains the public batch inputs and mode"
+)]
+fn admit_bounded_batch_impl(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    identity: LinearProfileIdentity<'_>,
+    expected: &[BoundedRevisitExpectation<'_>],
+    require_revisit: bool,
+) -> Result<Vec<BoundedRevisitLayout>, BoundedRevisitError> {
     if !(2..=MAX_REVISIT_CASES).contains(&expected.len()) {
         return Err(BoundedRevisitError::InvalidBatch);
     }
@@ -423,8 +462,12 @@ pub fn admit_bounded_revisit_batch(
     }
     let mut admitted = Vec::with_capacity(expected.len());
     for case in expected {
-        admitted.push(admit_bounded_revisit_layout(
-            profile, source, identity, *case,
+        admitted.push(admit_bounded_guest_path_impl(
+            profile,
+            source,
+            identity,
+            *case,
+            require_revisit,
         )?);
     }
     Ok(admitted)

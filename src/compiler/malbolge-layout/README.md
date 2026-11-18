@@ -224,6 +224,15 @@ Both entrypoints require the same profile-bound source, input, expected
 complete code path, ordered input/output events, and exact arithmetic data
 writes; neither emits a source artifact or proves arbitrary input streams.
 
+`admit_bounded_guest_path_batch` applies the general finite path gate to
+2..8 distinct binary streams against one source. It permits a forward-only
+EOF exit and a revisiting byte arm in the **same** all-or-nothing batch;
+`admit_bounded_revisit_batch` deliberately retains its revisiting-only
+contract. Each case independently checks its own complete path and machine
+I/O/data-write oracle. The mixed-arm source-bound regression uses five
+streams, but it does not supply the missing C checksum code or its five
+normative guest parity traces.
+
 `build_signed_eof_branch_source` separately constructs a 132-cell graphical
 current-N15 **candidate**, with all 256 byte classes entering C=45 and EOF
 entering C=126. The builder is not a source-C compiler, a general conditional

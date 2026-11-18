@@ -51,8 +51,8 @@ pub use bounded_revisit::{
     BoundedRevisitDataWrite, BoundedRevisitError, BoundedRevisitExpectation,
     BoundedRevisitIoEffect, BoundedRevisitIoEvent, BoundedRevisitLayout,
     MAX_REVISIT_CASES, MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS,
-    admit_bounded_guest_path, admit_bounded_revisit_batch,
-    admit_bounded_revisit_layout,
+    admit_bounded_guest_path, admit_bounded_guest_path_batch,
+    admit_bounded_revisit_batch, admit_bounded_revisit_layout,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,
