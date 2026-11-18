@@ -27200,3 +27200,100 @@ fn mutable_eof_checksum_dynamic_phi_forgery_fails_closed() -> Result<(), String>
     );
     Ok(())
 }
+
+#[test]
+fn dynamic_cfg_lowers_dominating_definition_after_earlier_numbered_use()
+-> Result<(), String> {
+    // Canonical block numbering is not an execution schedule: block 2 can
+    // dominate block 1 even though the latter appears first in the wire.
+    let mut projection = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let function = projection
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("missing return function"))?;
+    let original = function
+        .blocks
+        .pop()
+        .ok_or_else(|| String::from("missing return block"))?;
+    let InputTerminator::Return { span, .. } = original.terminator else {
+        return Err(String::from("missing return terminator"));
+    };
+    function.blocks = vec![
+        InputBlock {
+            id: 0,
+            instructions: Vec::new(),
+            phi_count: 0,
+            terminator: InputTerminator::Jump { span, target: 2 },
+        },
+        InputBlock {
+            id: 1,
+            instructions: Vec::new(),
+            phi_count: 0,
+            terminator: original.terminator,
+        },
+        InputBlock {
+            id: 2,
+            instructions: original.instructions,
+            phi_count: 0,
+            terminator: InputTerminator::Jump { span, target: 1 },
+        },
+    ];
+    let plan = ternary_lowering::lower_dynamic_typed_cfg(&projection, &[])
+        .map_err(|error| format!("out-of-order CFG refused: {error:?}"))?;
+    let function = plan
+        .functions
+        .first()
+        .ok_or_else(|| String::from("missing target function"))?;
+    assert_eq!(
+        function
+            .blocks
+            .iter()
+            .map(|block| block.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2],
+        "lowering must preserve source block numbering",
+    );
+    assert_eq!(
+        function
+            .blocks
+            .iter()
+            .map(|block| block.operations.len())
+            .collect::<Vec<_>>(),
+        vec![0, 0, 1],
+    );
+    assert_eq!(
+        ternary_lowering::lower_dynamic_typed_cfg(&projection, &[]),
+        Ok(plan),
+        "dominator scheduling must be deterministic",
+    );
+
+    // A different visit order does not authorize sparse SSA identities.
+    let mut sparse = projection;
+    let function = sparse
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("missing sparse function"))?;
+    let definition = function
+        .blocks
+        .get_mut(2)
+        .and_then(|block| block.instructions.first_mut())
+        .ok_or_else(|| String::from("missing sparse definition"))?;
+    let InputInstruction::ConstantInteger { result, .. } = definition else {
+        return Err(String::from("missing sparse integer constant"));
+    };
+    *result = 9;
+    let ret = function
+        .blocks
+        .get_mut(1)
+        .ok_or_else(|| String::from("missing sparse return block"))?;
+    let InputTerminator::Return { value, .. } = &mut ret.terminator else {
+        return Err(String::from("missing sparse return"));
+    };
+    *value = Some(9);
+    assert_eq!(
+        ternary_lowering::lower_dynamic_typed_cfg(&sparse, &[]),
+        Err(TernaryLoweringError::InvalidProjection),
+        "non-dense SSA cannot bypass validation via reordered blocks",
+    );
+    Ok(())
+}

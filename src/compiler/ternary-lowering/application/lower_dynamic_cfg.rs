@@ -31,8 +31,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::input::{
-    InputDynamicBlockPhis, InputDynamicPhi, InputFunction, InputScalarType,
-    InputSourcePosition, InputSourceSpan, InputTerminator, TypedIrInput,
+    InputBlock, InputDynamicBlockPhis, InputDynamicPhi, InputFunction,
+    InputScalarType, InputSourcePosition, InputSourceSpan, InputTerminator,
+    TypedIrInput,
 };
 use super::lower::{
     LoweringState, TernaryLoweringError, copy_span, lower_instruction,
@@ -44,15 +45,19 @@ use super::model::{
     TernaryCfgBlock, TernaryCfgFunction, TernaryCfgPhi, TernaryCfgPlan,
     TernaryCfgScalarKind, TernaryCfgTerminator, TernaryOperation,
 };
-use super::validate_dynamic_cfg_ssa::validate_dynamic_cfg_ssa;
+use super::validate_dynamic_cfg_ssa::{
+    PhiBindings, PredecessorSets, validate_dynamic_cfg_ssa,
+};
 
 const MAX_DYNAMIC_BLOCKS: usize = 256;
+type SourceAnchors = BTreeMap<u32, (u32, u32)>;
+type LoweredBlockPhis = (Vec<TernaryCfgPhi>, Vec<(u32, InputScalarType)>);
 
 // Phi source locations are copied independently from the typed verifier.
 // Require their shared offsets to agree with every anchored function,
 // instruction and terminator position; source ranges alone are insufficient.
 fn register_position(
-    anchors: &mut BTreeMap<u32, (u32, u32)>,
+    anchors: &mut SourceAnchors,
     position: InputSourcePosition,
 ) -> Result<(), TernaryLoweringError> {
     let location = (position.line, position.column);
@@ -66,36 +71,46 @@ fn register_position(
 }
 
 fn register_span(
-    anchors: &mut BTreeMap<u32, (u32, u32)>,
+    anchors: &mut SourceAnchors,
     span: InputSourceSpan,
 ) -> Result<(), TernaryLoweringError> {
     register_position(anchors, span.begin)?;
     register_position(anchors, span.end)
 }
 
+fn register_function_positions(
+    anchors: &mut SourceAnchors,
+    function: &InputFunction,
+) -> Result<(), TernaryLoweringError> {
+    register_span(anchors, function.span)?;
+    for block in &function.blocks {
+        let terminator_span = match block.terminator {
+            InputTerminator::Branch { span, .. }
+            | InputTerminator::Jump { span, .. }
+            | InputTerminator::Return { span, .. } => Some(span),
+            InputTerminator::Unsupported => None,
+        };
+        if let Some(span) = terminator_span {
+            register_span(anchors, span)?;
+        }
+        for instruction in &block.instructions {
+            if let Some(instruction_span) =
+                projected_instruction_span(instruction)
+            {
+                register_span(anchors, instruction_span)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_dynamic_phi_source_positions(
     input: &TypedIrInput,
     bindings: &[InputDynamicBlockPhis],
 ) -> Result<(), TernaryLoweringError> {
-    let mut anchors = BTreeMap::new();
+    let mut anchors = SourceAnchors::new();
     for function in &input.functions {
-        register_span(&mut anchors, function.span)?;
-        for block in &function.blocks {
-            let span = match block.terminator {
-                InputTerminator::Branch { span, .. }
-                | InputTerminator::Jump { span, .. }
-                | InputTerminator::Return { span, .. } => Some(span),
-                InputTerminator::Unsupported => None,
-            };
-            if let Some(span) = span {
-                register_span(&mut anchors, span)?;
-            }
-            for instruction in &block.instructions {
-                if let Some(span) = projected_instruction_span(instruction) {
-                    register_span(&mut anchors, span)?;
-                }
-            }
-        }
+        register_function_positions(&mut anchors, function)?;
     }
     for binding in bindings {
         for phi in &binding.phis {
@@ -123,7 +138,13 @@ fn phi_kind(
         InputScalarType::I32 => Ok(TernaryCfgScalarKind::I32),
         InputScalarType::U32 => Ok(TernaryCfgScalarKind::U32),
         InputScalarType::U8 => Ok(TernaryCfgScalarKind::U8),
-        _ => Err(TernaryLoweringError::UnsupportedInstruction),
+        InputScalarType::I16
+        | InputScalarType::I8
+        | InputScalarType::Other
+        | InputScalarType::U16
+        | InputScalarType::Void => {
+            Err(TernaryLoweringError::UnsupportedInstruction)
+        },
     }
 }
 
@@ -151,7 +172,7 @@ fn successors(
 
 fn predecessor_sets(
     function: &InputFunction,
-) -> Result<Vec<BTreeSet<u32>>, TernaryLoweringError> {
+) -> Result<PredecessorSets, TernaryLoweringError> {
     let count = function.blocks.len();
     if count == 0 || count > MAX_DYNAMIC_BLOCKS || function.parameter_count != 0
     {
@@ -174,16 +195,20 @@ fn predecessor_sets(
             _ = incoming.insert(block.id);
         }
     }
-    if !predecessors[0].is_empty() {
+    if predecessors.first().is_some_and(|entry| !entry.is_empty()) {
         return Err(TernaryLoweringError::InvalidProjection);
     }
     let mut visited = BTreeSet::new();
     let mut pending = vec![function.entry];
     while let Some(block) = pending.pop() {
         if visited.insert(block) {
-            pending.extend(successors(
-                function.blocks[block as usize].terminator,
-            )?);
+            let index = usize::try_from(block)
+                .map_err(|_error| TernaryLoweringError::InvalidProjection)?;
+            let current = function
+                .blocks
+                .get(index)
+                .ok_or(TernaryLoweringError::InvalidProjection)?;
+            pending.extend(successors(current.terminator)?);
         }
     }
     if visited.len() != count {
@@ -195,10 +220,10 @@ fn predecessor_sets(
 fn check_phi(
     phi: &InputDynamicPhi,
     predecessors: &BTreeSet<u32>,
-    function: &InputFunction,
+    function_span: InputSourceSpan,
 ) -> Result<(), TernaryLoweringError> {
     if !valid_projection_span(phi.span)
-        || !projection_span_contains(function.span, phi.span)
+        || !projection_span_contains(function_span, phi.span)
         || phi.incoming.len() != predecessors.len()
         || phi.incoming.is_empty()
     {
@@ -215,16 +240,98 @@ fn check_phi(
     Ok(())
 }
 
+fn lower_cfg_terminator(
+    function: &InputFunction,
+    block: &InputBlock,
+    state: &LoweringState,
+) -> Result<TernaryCfgTerminator, TernaryLoweringError> {
+    let terminator = match block.terminator {
+        InputTerminator::Jump { target, span } => TernaryCfgTerminator::Jump {
+            span: copy_span(span),
+            target,
+        },
+        InputTerminator::Branch {
+            condition,
+            false_target,
+            span,
+            true_target,
+        } => {
+            if !state.has_kind(condition, InputScalarType::Bool) {
+                return Err(TernaryLoweringError::UnsupportedTerminator);
+            }
+            TernaryCfgTerminator::Branch {
+                condition,
+                false_target,
+                span: copy_span(span),
+                true_target,
+            }
+        },
+        InputTerminator::Return { value, span } => {
+            let operation = if function.return_kind == InputScalarType::Void
+                && value.is_none()
+            {
+                TernaryOperation::ReturnVoid { span: copy_span(span) }
+            } else {
+                lower_return_operation(
+                    function.return_kind,
+                    state,
+                    value.ok_or(TernaryLoweringError::UnsupportedTerminator)?,
+                    copy_span(span),
+                )?
+            };
+            TernaryCfgTerminator::Return(operation)
+        },
+        InputTerminator::Unsupported => {
+            return Err(TernaryLoweringError::UnsupportedTerminator);
+        },
+    };
+    Ok(terminator)
+}
+
+fn lower_block_phis(
+    function_span: InputSourceSpan,
+    incoming: &BTreeSet<u32>,
+    binding: &[InputDynamicPhi],
+    state: &mut LoweringState,
+) -> Result<LoweredBlockPhis, TernaryLoweringError> {
+    let mut phis = Vec::with_capacity(binding.len());
+    let mut edge_values = Vec::new();
+    for phi in binding {
+        check_phi(phi, incoming, function_span)?;
+        state.define_phi(phi.result, phi.type_kind)?;
+        let kind = phi_kind(phi.type_kind)?;
+        edge_values.extend(
+            phi.incoming.iter().map(|edge| (edge.value, phi.type_kind)),
+        );
+        phis.push(TernaryCfgPhi {
+            incoming: phi
+                .incoming
+                .iter()
+                .map(|edge| (edge.block, edge.value))
+                .collect(),
+            result: phi.result,
+            span: copy_span(phi.span),
+            type_kind: kind,
+        });
+    }
+    Ok((phis, edge_values))
+}
+
 fn lower_function_cfg(
     function: &InputFunction,
-    phi_bindings: &BTreeMap<(u32, u32), &[InputDynamicPhi]>,
+    phi_bindings: &PhiBindings<'_>,
 ) -> Result<TernaryCfgFunction, TernaryLoweringError> {
     let predecessors = predecessor_sets(function)?;
-    validate_dynamic_cfg_ssa(function, &predecessors, phi_bindings)?;
-    let mut state = LoweringState::default();
-    let mut blocks = Vec::with_capacity(function.blocks.len());
+    let lowering_order =
+        validate_dynamic_cfg_ssa(function, &predecessors, phi_bindings)?;
+    let mut state = LoweringState::for_dynamic_cfg();
+    let mut blocks = BTreeMap::new();
     let mut pending_edges = Vec::new();
-    for block in &function.blocks {
+    for index in lowering_order {
+        let block = function
+            .blocks
+            .get(index)
+            .ok_or(TernaryLoweringError::InvalidProjection)?;
         let binding = phi_bindings
             .get(&(function.id, block.id))
             .copied()
@@ -232,80 +339,29 @@ fn lower_function_cfg(
         if binding.len() != block.phi_count {
             return Err(TernaryLoweringError::InvalidProjection);
         }
-        let mut phis = Vec::new();
-        for phi in binding {
-            check_phi(phi, &predecessors[block.id as usize], function)?;
-            state.define_phi(phi.result, phi.type_kind)?;
-            let kind = phi_kind(phi.type_kind)?;
-            for edge in &phi.incoming {
-                pending_edges.push((edge.value, phi.type_kind));
-            }
-            phis.push(TernaryCfgPhi {
-                incoming: phi
-                    .incoming
-                    .iter()
-                    .map(|edge| (edge.block, edge.value))
-                    .collect(),
-                result: phi.result,
-                span: copy_span(phi.span),
-                type_kind: kind,
-            });
-        }
+        let incoming = predecessors
+            .get(index)
+            .ok_or(TernaryLoweringError::InvalidProjection)?;
+        let (phis, edge_values) =
+            lower_block_phis(function.span, incoming, binding, &mut state)?;
+        pending_edges.extend(edge_values);
         let operations = block
             .instructions
             .iter()
             .map(|instruction| lower_instruction(instruction, &mut state))
             .collect::<Result<Vec<_>, _>>()?;
-        let terminator = match block.terminator {
-            InputTerminator::Jump { target, span } => {
-                TernaryCfgTerminator::Jump {
-                    span: copy_span(span),
-                    target,
-                }
-            },
-            InputTerminator::Branch {
-                condition,
-                false_target,
-                span,
-                true_target,
-            } => {
-                if !state.has_kind(condition, InputScalarType::Bool) {
-                    return Err(TernaryLoweringError::UnsupportedTerminator);
-                }
-                TernaryCfgTerminator::Branch {
-                    condition,
-                    false_target,
-                    span: copy_span(span),
-                    true_target,
-                }
-            },
-            InputTerminator::Return { value, span } => {
-                let operation = if function.return_kind == InputScalarType::Void
-                    && value.is_none()
-                {
-                    TernaryOperation::ReturnVoid { span: copy_span(span) }
-                } else {
-                    lower_return_operation(
-                        function.return_kind,
-                        &state,
-                        value.ok_or(
-                            TernaryLoweringError::UnsupportedTerminator,
-                        )?,
-                        copy_span(span),
-                    )?
-                };
-                TernaryCfgTerminator::Return(operation)
-            },
-            InputTerminator::Unsupported => {
-                return Err(TernaryLoweringError::UnsupportedTerminator);
-            },
-        };
-        blocks.push(TernaryCfgBlock {
-            id: block.id,
-            operations,
-            phis,
-            terminator,
-        });
+        let terminator = lower_cfg_terminator(function, block, &state)?;
+        if blocks
+            .insert(block.id, TernaryCfgBlock {
+                id: block.id,
+                operations,
+                phis,
+                terminator,
+            })
+            .is_some()
+        {
+            return Err(TernaryLoweringError::InvalidProjection);
+        }
     }
     for (value, kind) in pending_edges {
         if !state.has_kind(value, kind) {
@@ -313,7 +369,7 @@ fn lower_function_cfg(
         }
     }
     Ok(TernaryCfgFunction {
-        blocks,
+        blocks: blocks.into_values().collect(),
         entry: function.entry,
         id: function.id,
         name: function.name.clone(),
@@ -339,14 +395,13 @@ pub fn lower_dynamic_typed_cfg(
     }
     validate_projection_source_positions(input)?;
     validate_dynamic_phi_source_positions(input, bindings)?;
-    let mut phi_bindings = BTreeMap::<(u32, u32), &[InputDynamicPhi]>::new();
+    let mut phi_bindings = PhiBindings::new();
     for binding in bindings {
         if binding.phis.is_empty()
             || !input.functions.iter().any(|function| {
                 function.id == binding.function
-                    && usize::try_from(binding.block).ok().is_some_and(
-                        |index| function.blocks.get(index).is_some(),
-                    )
+                    && usize::try_from(binding.block)
+                        .is_ok_and(|index| function.blocks.get(index).is_some())
             })
             || phi_bindings
                 .insert((binding.function, binding.block), &binding.phis)

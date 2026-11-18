@@ -21,6 +21,28 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Domination-ordered symbolic CFG admission (2026-11-18)
+
+A red-first three-block typed-IR witness exposed an artificial refusal:
+block 0 jumps to block 2, which defines an SSA value before jumping to
+block 1, which returns it. Although block 2 dominates the return, the
+symbolic dynamic lowerer previously processed block 1 before the defining
+block 2 merely because its numeric block ID was smaller.
+
+Dynamic CFG admission now independently proves every SSA use and phi edge,
+checks dense unique per-function value IDs, and derives a deterministic
+**dominator-first lowering schedule**. The symbolic target retains its
+original numeric block IDs, source spans, operations and branch edges; no
+host path is chosen. The legacy linear MCTR lowerer retains its stricter
+numeric definition order, while the unlinked CFG lowers proven values in
+this separate dominance order. A sparse result ID remains rejected even
+when its return use and block dominance are otherwise valid.
+
+The complete source-authenticated seven-block mutable EOF checksum again
+lowers to its unchanged pre-layout CFG. This does **not** implement guest
+state writes, arithmetic, jump relocation, loop backedges or an executable
+Malbolge checksum. The P2 five-stream VM parity requirement remains open.
+
 ### Implemented Initial Model
 
 `src/compiler/ternary-lowering/` now owns the first executable pre-layout target

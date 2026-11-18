@@ -106,6 +106,9 @@ enum LiteralCastKind {
 
 #[derive(Default)]
 pub(super) struct LoweringState {
+    // The unlinked CFG has an independent dense-SSA proof and may visit
+    // dominating definitions in an order different from numeric SSA IDs.
+    allow_out_of_order_values: bool,
     bools: BTreeSet<u32>,
     bytes: BTreeSet<u32>,
     signed: BTreeSet<u32>,
@@ -131,6 +134,13 @@ impl LoweringState {
         };
         debug_assert!(inserted);
         Ok(())
+    }
+
+    pub(super) fn for_dynamic_cfg() -> Self {
+        Self {
+            allow_out_of_order_values: true,
+            ..Self::default()
+        }
     }
 
     pub(super) fn has_kind(&self, value: u32, kind: InputScalarType) -> bool {
@@ -3086,23 +3096,28 @@ fn ensure_new_value(
     state: &LoweringState,
     value: u32,
 ) -> Result<(), TernaryLoweringError> {
-    // The canonical MCTR validator requires dense, per-function SSA results.
-    // Reject forged projections here, before returning an unencodable program.
-    let next = [
-        state.bools.len(),
-        state.bytes.len(),
-        state.signed_bytes.len(),
-        state.signed_halves.len(),
-        state.unsigned_halves.len(),
-        state.signed.len(),
-        state.unsigned.len(),
-    ]
-    .into_iter()
-    .try_fold(0usize, usize::checked_add)
-    .and_then(|count| u32::try_from(count).ok())
-    .ok_or(TernaryLoweringError::InvalidProjection)?;
-    if value != next {
-        return Err(TernaryLoweringError::InvalidProjection);
+    // Linear MCTR requires definition order to be dense. Dynamic CFGs prove
+    // dense SSA separately and use a dominator-first lowering schedule.
+    if !state.allow_out_of_order_values {
+        // The canonical MCTR validator requires dense, per-function SSA
+        // results. Reject forged projections here, before returning an
+        // unencodable program.
+        let next = [
+            state.bools.len(),
+            state.bytes.len(),
+            state.signed_bytes.len(),
+            state.signed_halves.len(),
+            state.unsigned_halves.len(),
+            state.signed.len(),
+            state.unsigned.len(),
+        ]
+        .into_iter()
+        .try_fold(0usize, usize::checked_add)
+        .and_then(|count| u32::try_from(count).ok())
+        .ok_or(TernaryLoweringError::InvalidProjection)?;
+        if value != next {
+            return Err(TernaryLoweringError::InvalidProjection);
+        }
     }
     if state.bools.contains(&value)
         || state.bytes.contains(&value)

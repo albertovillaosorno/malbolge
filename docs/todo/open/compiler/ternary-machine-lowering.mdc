@@ -55,6 +55,15 @@ instruction.
 
 ## Evidence
 
+- On 2026-11-18, a red-first valid three-block CFG showed that numeric
+  block order is not a safe lowering schedule: block 2 dominates a return
+  in block 1 and defines its used value. Dynamic lowering now uses an
+  independently validated dominator-first schedule while preserving the
+  original target block IDs and source provenance. Explicit dense-SSA
+  validation rejects sparse aliases; the linear MCTR path retains its
+  numeric definition order. The original seven-block mutable EOF checksum
+  still lowers symbolically, and all 422 ternary tests pass. Physical
+  guest linking, mutable state, and normative checksum parity remain open.
 - All declared prerequisites are completed: `typed-compiler-ir`,
   `guest-runtime-and-allocator`, `malbolge-specific-optimization-mathematics`,
   and `documentation-readiness-and-implementation-gate`.
