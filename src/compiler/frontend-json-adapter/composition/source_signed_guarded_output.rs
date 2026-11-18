@@ -31,6 +31,23 @@ use super::signed_input_literal::{
 use super::source_mutable_input_literal::local_name;
 use super::{Artifact, CanonicalGuestProjection, FrontendJsonError, Node};
 
+// Structural statements carry no expression, declaration, or storage
+// metadata. Source byte equality is not enough when the normalized Clang
+// artifact is supplied through an untrusted serialized boundary.
+fn plain_statement(node: &Node) -> bool {
+    node.name.is_none()
+        && node.type_name.is_none()
+        && node.reference.is_none()
+        && node.operation.is_none()
+        && node.definition.is_none()
+        && node.literal.is_none()
+        && node.constant_integer.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+}
+
 fn decimal_byte(node: &Node, source: &[u8]) -> Option<u8> {
     let digits = source_slice(source, node)?;
     if digits.is_empty()
@@ -93,6 +110,7 @@ fn output_arm(
         body.id == body_id
             && body.parent == 8
             && body.kind == "compound-statement"
+            && plain_statement(body)
             && body.name.is_none()
             && body.type_name.is_none()
             && body.reference.is_none()
@@ -255,6 +273,7 @@ pub(super) fn canonical_signed_guarded_output(
         && body.id == 2
         && body.parent == 1
         && body.kind == "compound-statement"
+        && plain_statement(body)
         && body.name.is_none()
         && body.type_name.is_none()
         && body.reference.is_none()
@@ -311,6 +330,7 @@ pub(super) fn canonical_signed_guarded_output(
         && guard.id == 8
         && guard.parent == 2
         && guard.kind == "if-statement"
+        && plain_statement(guard)
         && guard.type_name.is_none()
         && guard.operation.is_none()
         && guard.reference.is_none()

@@ -28,6 +28,19 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Structural signed-guard AST authentication (2026-11-17)
+
+A red-first regression showed that the bounded signed EOF-safe reflexive
+guard accepted forged normalized Clang metadata on its three compound
+statements and the enclosing `if`. Although the original C source still
+matched, inserted declaration, inline or storage metadata reached the
+backend instead of causing a typed refusal. The source/Clang projector
+now requires those structural nodes to have no nonstructural metadata.
+All four new forged cases refuse without publication; the 123 adapter
+Rust tests and the five dedicated signed C23 guest/source tests pass.
+This is a verifier boundary repair, not guest-dependent branching,
+mutable state or execution of the frozen EOF checksum at `29:5`.
+
 ### Signed EOF-safe algebraic C guard (2026-11-17)
 
 A complete C23 `void emit(void)` reads one signed `int` from `getchar()`,

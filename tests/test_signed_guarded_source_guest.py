@@ -197,6 +197,12 @@ class SignedGuardedSourceGuestTests(unittest.TestCase):
             (25, "constant_integer", "6"),
             (16, "parent", 2),
             (22, "parent", 2),
+            # Structural AST nodes may not carry declarator or literal
+            # metadata: the authenticated source has no such effects.
+            (1, "constant_integer", "0"),
+            (7, "inline_specified", True),
+            (16, "storage_class", "static"),
+            (21, "storage_duration", "automatic"),
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
             destination = Path(raw) / "forged.malbolge"
