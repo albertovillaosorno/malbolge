@@ -413,3 +413,199 @@ fn two_post_rotation_crazy_words_have_short_scalar_targets() {
     assert!(41 < u32::try_from(LENGTH).unwrap_or_default());
     assert!(122 < u32::try_from(LENGTH).unwrap_or_default());
 }
+
+// The extra control words are physically readable only on this bounded
+// witness: the reused D=135 source cell is input-dependent after C=65.
+// The byte success arm executes a second / when re-entering encrypted code.
+fn post_rotation_physical_branch_source() -> Result<Vec<u8>, String> {
+    let mut source = guest_source()?;
+    // Start with the genuine four-p classifier at M[139]. Rotate it,
+    // then read virgin loader operands M[140] and M[143].
+    set(&mut source, 78, b'*')?;
+    set(&mut source, 79, b'p')?;
+    set(&mut source, 82, b'p')?;
+    for position in 83..=88 {
+        set(&mut source, position, b'j')?;
+    }
+    // The first visit rotates M[150]; after self-encryption, C=104
+    // becomes v on the success arm's backwards revisit.
+    set(&mut source, 104, b'*')?;
+    set(&mut source, 105, b'j')?;
+    set(&mut source, 114, b'i')?;
+    // The EOF path skips the encrypted success arm and instead rotates
+    // M[145] and outputs its low byte before halting at C=129.
+    set(&mut source, 126, b'o')?;
+    set(&mut source, 127, b'*')?;
+    set(&mut source, 128, current_profile().output_instruction())?;
+    set(&mut source, 129, b'v')?;
+    Ok(source)
+}
+
+fn independent_post_rotation_control(word: u32) -> u32 {
+    let rotated = scalar_rotate(control(word));
+    let first = scalar_crazy(7_174_341, rotated);
+    scalar_crazy(125, first)
+}
+
+#[test]
+fn physical_post_rotation_scalar_oracle_covers_all_signed_inputs() {
+    let profile = current_profile();
+    for byte in u8::MIN..=u8::MAX {
+        assert_eq!(independent_post_rotation_control(u32::from(byte)), 44);
+    }
+    assert_eq!(independent_post_rotation_control(profile.eof_word()), 125);
+    assert_eq!(scalar_rotate(7_174_350) & 255, 154);
+    assert_eq!(scalar_rotate(134) & 255, 30);
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "bounded physical branch witness and explicit counterexample"
+)]
+fn bounded_dual_arm_execution_and_unplaced_byte_counterexample()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = post_rotation_physical_branch_source()?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(140), Ok(7_174_341));
+    assert_eq!(loaded.memory_word(143), Ok(125));
+    assert_eq!(loaded.memory_word(145), Ok(134));
+    assert_eq!(loaded.memory_word(150), Ok(7_174_350));
+
+    // One multi-byte case checks the unwanted second successful read.
+    // This cannot be used as a lossless getchar classifier yet.
+    for input in [vec![], vec![0], vec![1], vec![2], vec![255], vec![0, 1, 2]] {
+        let eof = input.is_empty();
+        let input_word = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = vec![];
+        let result = vm
+            .run_traced(176, &mut |step| trace.push(*step))
+            .map_err(|error| format!("input {input:?}: {error}"))?;
+        let steps = if eof {
+            119
+        } else {
+            175
+        };
+        assert_eq!(result, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps,
+        });
+        assert_eq!(trace.len(), steps);
+        assert_eq!(
+            vm.output(),
+            if eof {
+                &[30][..]
+            } else {
+                &[154][..]
+            }
+        );
+        assert_eq!(vm.input_consumed(), input.len().min(2));
+        let reads = trace
+            .iter()
+            .filter(|step| step.decoded == Some(profile.input_instruction()))
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            reads,
+            if eof {
+                &[53][..]
+            } else {
+                &[53, 69][..]
+            }
+        );
+        for (code, address, operand) in [
+            (79, 140, 7_174_341),
+            (82, 143, 125),
+            (83, 144, 7_174_350),
+            (84, 7_174_351, 134),
+            (104, 150, 7_174_350),
+            (105, 151, 134),
+        ] {
+            let step = trace
+                .iter()
+                .find(|step| step.before.registers.code_pointer == code)
+                .ok_or_else(|| format!("unreached C={code}"))?;
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((address, operand)),
+                "input {input:?}, C={code}"
+            );
+        }
+        let branch = trace
+            .iter()
+            .find(|step| step.before.registers.code_pointer == 114)
+            .ok_or("missing physical i")?;
+        assert_eq!(branch.decoded, Some(b'i'));
+        assert_eq!(branch.before.registers.data_pointer, 143);
+        assert_eq!(
+            branch
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((143, independent_post_rotation_control(input_word)))
+        );
+        assert_eq!(
+            branch.after.registers.code_pointer,
+            if eof {
+                126
+            } else {
+                45
+            }
+        );
+        assert_eq!(
+            trace
+                .last()
+                .map(|step| (step.before.registers.code_pointer, step.decoded)),
+            Some(if eof {
+                (129, Some(b'v'))
+            } else {
+                (104, Some(b'v'))
+            })
+        );
+    }
+
+    // The mathematical classifier covers 0x03 too, but the physical
+    // pointer-reset j reads a mutated input-dependent M[135] on this case.
+    // Reject that actual VM failure instead of claiming all-byte parity.
+    let mut vm = ProfileMachine::from_state(
+        profile,
+        loaded.memory().to_vec(),
+        vec![3],
+        ProfileRegisters::default(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut trace = vec![];
+    let failure = vm
+        .run_traced(176, &mut |step| trace.push(*step))
+        .expect_err("0x03 must not be mistaken for an executable byte arm");
+    assert!(
+        failure
+            .to_string()
+            .contains("self-encryption target 7174350")
+    );
+    assert!(
+        trace
+            .iter()
+            .any(|step| step.before.registers.code_pointer == 114)
+    );
+    assert!(vm.output().is_empty());
+    assert_eq!(vm.input_consumed(), 1);
+    Ok(())
+}

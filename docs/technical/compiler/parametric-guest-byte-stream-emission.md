@@ -63,6 +63,32 @@ C=41 is already traversed and encrypted by the present prologue.
 The next experiment needs real operand synthesis, pointer relocation,
 and a safe source skip/entry layout for both code arms.
 
+### Bounded two-arm guest and pointer-reset counterexample (2026-11-18)
+
+The 132-cell N15 byte/EOF experiment now has a **separate physical**
+post-rotation continuation. Its real `*`, two additional `p` writes,
+`j` relocation chain and reached `i` at C=114 can enter two distinct
+source arms. The independent 257-input scalar oracle uses virgin loader
+operands M[140]=7,174,341 and M[143]=125 to predict control 44
+for bytes and 125 for signed EOF. Actual guest traces confirm the
+branch to C=45 for input bytes 0, 1, 2 and 255, and to C=126 for
+EOF. The success arm revisits already encrypted C=104, which has
+become `v`; it emits `0x9a` and halts after 175 steps. The EOF arm
+executes its own `*`, `<` and `v`, emitting `0x1e` in 119 steps.
+
+**This is not a complete 257-case guest discriminator.** The first
+four-`p` classifier has mutated M[135]; the additional `j` loop
+revisits that input-dependent cell. Input `0x03` causes the actual
+normative VM to reject a non-graphical encryption destination at
+7,174,350, even though the independent scalar control would be 44.
+The counterexample is retained explicitly. Moreover, the successful
+byte arm revisits an encrypted `/` at C=69 and **consumes a second
+input** if present. A three-byte input verifies this unwanted effect.
+No C source is lowered to these instructions; the frozen checksum
+still refuses dynamic target lowering. P2 remains open until the
+operand relocation is byte-independent, the second read is avoided,
+and the complete C EOF loop obtains independent guest parity.
+
 ### One executable successful-input arm, EOF still unplaced (2026-11-18)
 
 A separate **132-cell graphical N15 guest** adds a fourth physical `p`

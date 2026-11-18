@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a bounded **dual-arm N15 guest** now physically
+  writes a post-rotation two-`p` control, reaches `i` at C=114,
+  and executes distinct byte (`0x9a`, 175 steps) and EOF (`0x1e`,
+  119 steps) output/halt arms. EOF, NUL, 1, 2, 255 and one three-byte
+  stream are traced. A real byte `0x03` is a counterexample:
+  an input-dependent M[135] invalidates the attempted pointer reset,
+  so no all-byte executable branch is claimed. The success arm also
+  consumes a second input byte when available. A separate 257-case
+  scalar oracle does not prove physical generality. The frozen C23
+  checksum still refuses at target lowering; P2 is open.
+
 - On 2026-11-18, a follow-on two-`p` digit-oracle plan maps
   the rotated physical classifier through `[4,782,969, 0]` to
   controls 40 (all bytes) and 121 (EOF) in 257 scalar cases. One
