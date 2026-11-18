@@ -96,6 +96,27 @@ impl C23EofControlWordPlan {
         self.operands
     }
 
+    /// Necessary initial-memory write obligations for the two operand words.
+    ///
+    /// Every graphical source byte is below `3^5 = 243`, so its fifth trit
+    /// (zero-based) is zero. For that trit, the loader recurrence starting
+    /// with `(0, 0)` alternates `(1, 0)` and `(0, 1)`; it never produces 2.
+    /// An operand whose fifth trit is 2 therefore **must** be synthesized
+    /// by a real guest data write before a `p` can read it. A `false` flag
+    /// does NOT prove that the operand is otherwise loadable or reachable.
+    /// This is a necessary condition, not physical placement or a guest.
+    #[must_use]
+    #[expect(
+        clippy::integer_division_remainder_used,
+        reason = "one exact base-three digit of an already-admitted N15 word"
+    )]
+    pub const fn mandatory_runtime_operand_writes(self) -> [bool; 2] {
+        [
+            (self.operands[0] / 243) % 3 == 2,
+            (self.operands[1] / 243) % 3 == 2,
+        ]
+    }
+
     /// Required final `p` accumulator words: byte then EOF.
     #[must_use]
     pub const fn targets(self) -> [u32; 2] {

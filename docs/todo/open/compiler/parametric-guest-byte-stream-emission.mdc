@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a trit-5 loader invariant proved why the previously
+  admitted two-`p` EOF word plan still cannot be physical guest control.
+  The graphical source-tail seed and every untouched expanded loader word
+  have only trit 0/1 at place 243, while **every** two-`p` complete
+  byte-collapse requires a trit 2 in at least one operand. The accepted
+  `[14,348,906, 486]` plan requires real pre-read guest mutation of both
+  operand cells. An independent digit oracle checks the 94-by-94 seed
+  space and operand alternatives; the canonical word admission, C23 native
+  oracle and unchanged complete checksum refusal remain separate. No
+  guest branch, checksum loop or output is claimed; P2 remains active.
+
+
 - On 2026-11-18, a red-first two-crazy EOF control-word checker and
   independent 15-trit digit oracle proved a 257-case mathematical split:
   signed successful `getchar()` bytes `0..255` all map to word `243`, while

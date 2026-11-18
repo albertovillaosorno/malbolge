@@ -94,6 +94,7 @@ fn two_crazy_control_words_distinguish_every_c23_getchar_result() {
     assert_eq!(plan.operands(), [14_348_906, 486]);
     assert_eq!(plan.targets(), [243, 486]);
     assert_eq!(plan.next_code_addresses(), [244, 487]);
+    assert_eq!(plan.mandatory_runtime_operand_writes(), [true, true]);
     // In particular, input 0xff is NOT C's signed EOF sentinel.
     for byte in u8::MIN..=u8::MAX {
         check_input_control(
@@ -173,4 +174,68 @@ fn changed_words_or_targets_are_rejected_before_layout() {
             "mutated operand pair unexpectedly proved an EOF branch: {words:?}"
         );
     }
+}
+
+// Independent digitwise recurrence for the 3^5 plane of graphical source
+// loader seeds. This is not a substituted VM trace or a guest layout.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "small exhaustive arithmetic proof of the graphical seed plane"
+)]
+#[test]
+fn a_complete_eof_discriminator_requires_guest_operand_synthesis() {
+    let trit = |data: u32, accumulator: u32| -> u32 {
+        match (data, accumulator) {
+            (0 | 1, 0) | (2, 2) => 1,
+            (1, 2) | (2, 0 | 1) => 2,
+            _ => 0,
+        }
+    };
+    // Both 0 and 243 are successful C23 getchar bytes. At exactly trit 5
+    // they are 0 and 1; at every other trit they are identical. A two-p
+    // cascade without operand trit 2 in this plane cannot collapse them.
+    for first in 0..=1 {
+        for second in 0..=1 {
+            assert_ne!(
+                trit(second, trit(first, 0)),
+                trit(second, trit(first, 1)),
+                "unmodified loader digits cannot collapse bytes 0 and 243"
+            );
+        }
+    }
+    // Source cells are graphical ASCII. All 94^2 initial seed pairs have
+    // fifth trit zero; the independent recurrence keeps that trit 0 or 1.
+    // This checked finite prefix illustrates the inductive closure
+    // (0,0)->(0,1)->(1,0)->(0,1)... for arbitrarily long expansion.
+    for left in 33u32..=126 {
+        for right in 33u32..=126 {
+            assert_eq!((left / 243) % 3, 0);
+            assert_eq!((right / 243) % 3, 0);
+            let (mut a, mut b) = ((left / 243) % 3, (right / 243) % 3);
+            for _ in 0..32 {
+                let next = trit(a, b);
+                assert_ne!(next, 2, "loader cannot create trit 2 from 0/1");
+                (a, b) = (b, next);
+            }
+        }
+    }
+    let profile = current_profile();
+    let plan = admit_c23_eof_control_word_plan(
+        profile,
+        CURRENT_C23_EOF_CONTROL_WORDS,
+        CURRENT_C23_EOF_TARGET_WORDS,
+    )
+    .expect("existing exhaustive EOF discriminator");
+    assert!(plan.mandatory_runtime_operand_writes().iter().any(|v| *v));
+    assert_eq!(plan.mandatory_runtime_operand_writes(), [true, true]);
+    // An independently chosen lower-magnitude first operand also proves
+    // the same 257-case targets, but cannot bypass operand synthesis.
+    let alternative = admit_c23_eof_control_word_plan(
+        profile,
+        [7_174_817, 486],
+        CURRENT_C23_EOF_TARGET_WORDS,
+    )
+    .expect("alternative two-p discriminator");
+    assert_eq!(alternative.mandatory_runtime_operand_writes(), [true, true]);
 }

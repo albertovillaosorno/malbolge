@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Loader-seed obstruction for a real EOF branch (2026-11-18)
+
+The required physical operands cannot simply be read out of an untouched
+N15 loader image. Every graphical source byte is at most 126, so trit index
+5 (place 243) begins zero in both source-tail seeds. The loader recurrence
+on that digit closes on 0 and 1: `crazy(0,0)=1`,
+`crazy(0,1)=0`, `crazy(1,0)=1`. No unmodified source or expanded loader
+cell can contain a 2 in this digit, regardless of source length or address.
+
+This is also a *general* lower bound on any two-`p` arithmetic discriminator
+that collapses all 256 successful bytes to one word. Byte 0 and byte 243
+differ only at trit 5. A first operand trit 0 or 1 maps those values to
+trits 1 and 0; the second `p` can make those equal only with operand trit
+2. Alternatively, the first operand already has trit 2. Thus **at least
+one operand needs an actual guest mutation** before the two `p` reads;
+for the accepted `[14,348,906, 486]` candidate, both operands need it.
+`mandatory_runtime_operand_writes` exposes these per-word necessary flags
+without claiming a write plan, a source, a reachable `i`, or guest parity.
+An independent 94-by-94 graphical-seed recurrence and the digit-table proof
+exercise this barrier; the five-vector complete checksum still refuses at
+real target lowering. Next work must synthesize operand state through real
+`*`/`p` memory writes, then independently verify relocation and a branch.
+
 ### Exhaustive EOF control-word algebra, not a guest (2026-11-18)
 
 The *unchanged* complete mutable EOF checksum still reaches the seven-block

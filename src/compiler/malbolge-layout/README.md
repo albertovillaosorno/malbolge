@@ -23,6 +23,15 @@ operand words for code addresses 244 and 487 **only after** a real linker
 places the original operands, proves both input-dependent data writes,
 relocates `D` to the resulting word and verifies both jump destinations.
 
+The source loader alone cannot supply these operands: all graphical tail
+bytes have trit index 5 (place 243) equal to 0, and the loader's digit
+recurrence never produces 2 from the initial pair of zero trits. Any
+complete two-`p` byte-collapse plan necessarily needs at least one operand
+with a 2 in that position because successful bytes 0 and 243 differ only
+there. The accepted pair needs **two** pre-`p` guest writes. The checked
+plan reports this necessary condition through
+`mandatory_runtime_operand_writes`; it does not synthesize those writes.
+
 `admit_c23_eof_control_word_plan` checks all 257 cases for any proposed
 operand/target pair. Its result is not a guest, does not prove valid code
 at either destination and cannot compile the mutable EOF checksum. The
