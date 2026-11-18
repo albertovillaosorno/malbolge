@@ -56,6 +56,16 @@ seed/phase/rotation regression in `compiler_eof_branch_plan` independently
 checks this position-free obstruction. An additional guest `p`-based
 preparation or a genuinely different arithmetic plan is needed.
 
+A separate 91-cell normative N15 guest now physically synthesizes the
+missing `728` word with eleven real `*` rotations, thirty `j`
+pointer resets and a final reached `p` on loader word `7,174,493`.
+The digit-table result is `crazy(7,174,493, 7,174,777) = 728`;
+48 VM steps emit `0xd8` without consuming input. This guest uses
+loader tail `44/72`, **not** the `Q}` tail needed for the proposed
+first EOF operand `7,174,332`. Both operand preparations have been
+physically demonstrated separately, but no combined guest EOF
+branch or source-C lowering is admitted.
+
 ### Real all-byte versus EOF output classifier (no jump)
 
 A distinct 132-cell N15 guest uses a source-valid `-}` loader tail,

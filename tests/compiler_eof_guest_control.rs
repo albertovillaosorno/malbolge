@@ -406,3 +406,140 @@ fn physical_guest_distinguishes_every_c23_byte_from_signed_eof()
     }
     Ok(())
 }
+
+// The 728 operand of the reduced EOF pair cannot be obtained from a virgin
+// loader cell by rotation alone. This source actually performs the missing
+// nonlinear write after eleven rotations; the separately required first
+// operand and input-dependent branch are not integrated here.
+fn synthesized_second_eof_operand_source() -> Result<Vec<u8>, String> {
+    use malbolge::decode_profile_instruction;
+
+    const LENGTH: usize = 91;
+    let encode = |opcode: u8, position: usize| -> Result<u8, String> {
+        (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(
+                    u32::from(*byte),
+                    u32::try_from(position).expect("bounded position"),
+                ) == Some(opcode)
+            })
+            .ok_or_else(|| format!("no {opcode} encoding at {position}"))
+    };
+    let mut source = (0..LENGTH)
+        .map(|position| encode(b'o', position))
+        .collect::<Result<Vec<_>, _>>()?;
+    // j at C=1 sees M[1]=39 and sets D=40. The next j sees the
+    // still-unexecuted M[40]=94 and sets D=95.
+    source[1] = 39;
+    source[2] = encode(b'j', 2)?;
+    // M[95]=7,174,457, M[96]=72, M[97]=7,174,493 from the
+    // graphical 44/72 tail. Between rotations, three j instructions
+    // follow 96 -> 73 -> 62 -> 95 using fixed source words.
+    for round in 0..10 {
+        let start = 3 + round * 4;
+        source[start] = encode(b'*', start)?;
+        for position in start + 1..=start + 3 {
+            source[position] = encode(b'j', position)?;
+        }
+    }
+    source[43] = encode(b'*', 43)?;
+    source[44] = encode(b'o', 44)?;
+    source[45] = encode(b'p', 45)?;
+    source[46] = encode(b'<', 46)?;
+    source[47] = encode(b'v', 47)?;
+    // All three reset cells must be physically loader-valid; source[40]
+    // is also *executed* as the j of the tenth rotation.
+    source[40] = 94;
+    source[62] = 94;
+    source[73] = 61;
+    source[89] = 44;
+    source[90] = 72;
+    for (position, byte) in source.iter().enumerate() {
+        let decoded = decode_profile_instruction(
+            u32::from(*byte),
+            u32::try_from(position).expect("bounded position"),
+        );
+        if !matches!(
+            decoded,
+            Some(b'j' | b'i' | b'*' | b'p' | b'o' | b'<' | b'/' | b'v')
+        ) {
+            return Err(format!("invalid source at {position}: {decoded:?}"));
+        }
+    }
+    Ok(source)
+}
+
+#[test]
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "independent fifteen-trit rotation witness"
+)]
+fn physical_guest_synthesizes_728_with_rotations_and_crazy()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = synthesized_second_eof_operand_source()?;
+    let mut rotated = 7_174_457;
+    let mut states = vec![rotated];
+    for _ in 0..11 {
+        rotated = rotated / 3 + (rotated % 3) * (profile.word_modulus() / 3);
+        states.push(rotated);
+    }
+    assert_eq!(rotated, 7_174_777);
+    assert_eq!(independent_crazy(7_174_493, rotated), 728);
+    for input in [vec![], vec![0], vec![0xff]] {
+        let mut vm = ProfileMachine::from_source(profile, &source, input)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(vm.memory_word(95), Ok(7_174_457));
+        assert_eq!(vm.memory_word(96), Ok(72));
+        assert_eq!(vm.memory_word(97), Ok(7_174_493));
+        let mut trace = vec![];
+        let outcome = vm
+            .run_traced(64, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 48,
+        });
+        for (position, address, value) in [(1, 1, 39), (2, 40, 94)] {
+            let step = &trace[position];
+            assert_eq!(step.decoded, Some(b'j'));
+            assert_eq!(
+                step.memory_reads.data.map(|r| (r.address, r.value)),
+                Some((address, value)),
+            );
+        }
+        for round in 0..11 {
+            let start = 3 + round * 4;
+            let rotation = &trace[start];
+            assert_eq!(rotation.decoded, Some(b'*'));
+            assert_eq!(
+                rotation.memory_reads.data.map(|r| (r.address, r.value)),
+                Some((95, states[round])),
+            );
+        }
+        for round in 0..10 {
+            let start = 3 + round * 4;
+            for (offset, address, value) in
+                [(1, 96, 72), (2, 73, 61), (3, 62, 94)]
+            {
+                let reset = &trace[start + offset];
+                assert_eq!(reset.decoded, Some(b'j'));
+                assert_eq!(
+                    reset.memory_reads.data.map(|r| (r.address, r.value)),
+                    Some((address, value)),
+                );
+            }
+        }
+        let write = &trace[45];
+        assert_eq!(write.decoded, Some(b'p'));
+        assert_eq!(
+            write.memory_reads.data.map(|r| (r.address, r.value)),
+            Some((97, 7_174_493)),
+        );
+        assert_eq!(vm.memory_word(95), Ok(rotated));
+        assert_eq!(vm.memory_word(97), Ok(728));
+        assert_eq!(vm.output(), &[216]);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}

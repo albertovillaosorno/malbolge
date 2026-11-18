@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a 91-cell graphical N15 guest physically prepares the
+  previously rotation-impossible second word 728 by eleven `*` rotations,
+  thirty real `j` resets and a final `p` reading loader word
+  `7,174,493`. Three genuine normative 48-step traces produce `0xd8`,
+  consume no input and verify the writes. Its `44/72` loader tail is
+  **incompatible** with the `Q}` tail needed for the first reduced-plan
+  operand `7,174,332`; no unified 257-case guest branch, signed EOF
+  handling or mutable-C checksum was emitted. P2 remains open.
+
 - On 2026-11-18, a 132-cell graphical N15 guest physically executes
   twelve `*` rotations with paired `j` pointer resets, signed input and
   three data-dependent `p` instructions. Its operands

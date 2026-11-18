@@ -97,6 +97,32 @@ EOF/NUL/128/255. No second operand or dynamic jump is placed, and the
 complete mutable checksum still refuses target lowering. The next stage
 must synthesize 728 in a safe guest cell and then prove both jump paths.
 
+### Physical synthesis of the reduced plan's second operand (2026-11-18)
+
+A new 91-cell graphical N15 guest **does** write `728` through a real
+`p`, closing the earlier rotation-only preparation obstruction for a
+*different* loader seed. Source-tail bytes `44/72` expand to
+`M[95]=7,174,457`, `M[96]=72`, and `M[97]=7,174,493`.
+An initial pair of `j` instructions relocates `D` from 1 to 40 to 95.
+Eleven reached `*` instructions rotate `M[95]` to `7,174,777`;
+ten sets of three real `j` instructions reset `D` through
+`96 -> 73 -> 62 -> 95`, using source values `61` and `94` at the
+intermediate cells. A no-op advances `D` to 97 and a reached
+`p` computes `crazy(7,174,493, 7,174,777) = 728`.
+The normative VM executes **48 instructions**, emits `0xd8`
+(the prepared operand modulo 256) and consumes no input under
+empty, NUL and high-byte stdin. The regression checks every operand
+read and reset, the original and final memory cells, and a separate
+digit-table arithmetic oracle.
+
+This is a physical pre-read operand **preparation** milestone, not a
+complete two-`p` EOF discriminator. Its `44/72` seed is distinct from
+`Q}` (`81/125`), which supplies the required *first* word
+`7,174,332` of the reduced `[7,174,332, 728]` plan. Combining both
+operands into one admitted source, then executing input-dependent
+`p` writes, relocation and a conditional `i` remains unsolved.
+The frozen C checksum still refuses target lowering; P2 stays open.
+
 ### Rotation-only synthesis cannot produce the second EOF operand
 
 The reduced one-write pair also has a stronger, position-independent
