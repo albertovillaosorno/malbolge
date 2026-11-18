@@ -23484,6 +23484,16 @@ fn proven_unsigned_alu_chain_selects_branch_without_erasing_guest_alu()
                     type_kind: InputScalarType::U32,
                     value: 0, // A valid U32 value, but derived from guest I/O.
                 };
+            // No absorption proof may turn this nonconstant guest word
+            // into a known result. In particular, AND/multiply by zero and
+            // OR with all ones *are* statically known, so replace the right
+            // literal with an exact non-absorbing operand for this refusal.
+            let InputInstruction::ConstantInteger { little_endian, .. } =
+                &mut dynamic.functions[0].blocks[0].instructions[2]
+            else {
+                return Err(String::from("missing dynamic ALU right literal"));
+            };
+            *little_endian = 0x1234_5678u32.to_le_bytes().to_vec();
             assert_eq!(
                 lower_typed_ir(&dynamic),
                 Err(TernaryLoweringError::UnsupportedTerminator),
