@@ -11,7 +11,7 @@
 // - Owns:
 //   - Two physically executable signed EOF/byte arms under a bounded VM.
 // - Must-Not:
-//   - Claim source-C lowering, loop state, or one-read stream semantics.
+//   - Claim source-C lowering, persistent state, or a repeatable EOF loop.
 // - Allows:
 //   - Inputs: one graphical N15 program and bounded binary/EOF streams.
 //   - Outputs: independently checked arithmetic and normative guest traces.
@@ -21,10 +21,10 @@
 // - Merge-When:
 //   - The C compiler lowers verified dynamic source branches to these arms.
 // - Summary:
-//   - Stable resets place both executable arms for 257 signed input cases.
+//   - Both physical arms now read input exactly once across 257 classes.
 
 //! Four writes and two more crazy steps physically branch to byte/EOF arms.
-//! Both execute, but the byte arm still reads a second input on reentry.
+//! The successful-byte arm preserves unread input on its code revisit.
 
 use std::iter::once;
 
@@ -253,7 +253,7 @@ fn all_257_signed_inputs_execute_the_correct_branch_boundary()
             assert_eq!(trace.len(), 79);
             assert_eq!(vm.memory_word(139), Ok(EOF_CONTROL));
             assert_eq!(vm.memory_word(368), Ok(7_174_341));
-            assert!(vm.output().is_empty());
+            assert_eq!(vm.output(), []);
             assert_eq!(vm.input_consumed(), 0);
             continue;
         }
@@ -415,13 +415,19 @@ fn two_post_rotation_crazy_words_have_short_scalar_targets() {
 }
 
 // A reset through virgin M[148] avoids all input-dependent data words,
-// including the earlier failure at M[135]. The successful-byte arm still
-// executes a second / when re-entering encrypted code.
+// including the earlier failure at M[135]. Move the fourth p away from C=69:
+// its encrypted second-pass / had consumed an unrelated second input byte.
 fn post_rotation_physical_branch_source() -> Result<Vec<u8>, String> {
     let mut source = guest_source()?;
-    // Start with the genuine four-p classifier at M[139]. Rotate it,
-    // then read virgin loader operands M[140] and M[143].
-    set(&mut source, 78, b'*')?;
+    // The alternate untouched M[137]=125 is a valid fourth operand:
+    // bytes collapse to 134 and EOF to 377. C=67 encrypts to an inert
+    // opcode on revisit; C=69 no longer becomes a second input read.
+    set(&mut source, 67, b'p')?;
+    set(&mut source, 69, b'o')?;
+    // C=76 has D=137 after the unchanged C=72/73 pointer resets.
+    // Rotate the written fourth result, then read virgin M[140]/M[143].
+    set(&mut source, 76, b'*')?;
+    set(&mut source, 78, b'o')?;
     set(&mut source, 79, b'p')?;
     set(&mut source, 82, b'p')?;
     for position in 83..=84 {
@@ -446,7 +452,11 @@ fn post_rotation_physical_branch_source() -> Result<Vec<u8>, String> {
 }
 
 fn independent_post_rotation_control(word: u32) -> u32 {
-    let rotated = scalar_rotate(control(word));
+    let third = scalar_crazy(
+        THIRD_OPERAND,
+        scalar_crazy(ROTATED_OPERAND, scalar_crazy(FIRST_OPERAND, word)),
+    );
+    let rotated = scalar_rotate(scalar_crazy(125, third));
     let first = scalar_crazy(7_174_341, rotated);
     scalar_crazy(125, first)
 }
@@ -458,6 +468,16 @@ fn physical_post_rotation_scalar_oracle_covers_all_signed_inputs() {
         assert_eq!(independent_post_rotation_control(u32::from(byte)), 44);
     }
     assert_eq!(independent_post_rotation_control(profile.eof_word()), 125);
+    assert_eq!(
+        scalar_crazy(
+            125,
+            scalar_crazy(
+                THIRD_OPERAND,
+                scalar_crazy(ROTATED_OPERAND, scalar_crazy(FIRST_OPERAND, 0)),
+            )
+        ),
+        134
+    );
     assert_eq!(scalar_rotate(7_174_350) & 255, 154);
     assert_eq!(scalar_rotate(134) & 255, 30);
 }
@@ -467,9 +487,9 @@ fn physical_post_rotation_scalar_oracle_covers_all_signed_inputs() {
     clippy::cognitive_complexity,
     clippy::too_many_lines,
     clippy::panic_in_result_fn,
-    reason = "bounded exhaustive guest trace and extra input read"
+    reason = "bounded exhaustive guest trace and one input instruction"
 )]
-fn all_257_signed_inputs_reach_both_physical_arms() -> Result<(), String> {
+fn all_257_signed_inputs_reach_both_arms_with_one_read() -> Result<(), String> {
     let profile = current_profile();
     let source = post_rotation_physical_branch_source()?;
     assert_eq!(source.len(), LENGTH);
@@ -477,6 +497,7 @@ fn all_257_signed_inputs_reach_both_physical_arms() -> Result<(), String> {
     let loaded = ProfileMachine::from_source(profile, &source, vec![])
         .map_err(|error| error.to_string())?;
     for (address, operand) in [
+        (137, 125),
         (140, 7_174_341),
         (143, 125),
         (145, 134),
@@ -489,7 +510,7 @@ fn all_257_signed_inputs_reach_both_physical_arms() -> Result<(), String> {
     }
 
     // Every signed-input class actually executes in the profile VM.
-    // The extra multi-byte vector exposes the still-unwanted second read.
+    // Multi-byte vectors reject a hidden encrypted-code second read.
     let inputs = once(Vec::new())
         .chain((u8::MIN..=u8::MAX).map(|byte| vec![byte]))
         .chain([vec![0, 1, 2], vec![3, 4, 5]]);
@@ -531,22 +552,25 @@ fn all_257_signed_inputs_reach_both_physical_arms() -> Result<(), String> {
                 &[154][..]
             }
         );
-        assert_eq!(vm.input_consumed(), input.len().min(2));
+        assert_eq!(vm.input_consumed(), input.len().min(1));
         let input_reads = trace
             .iter()
             .filter(|step| step.decoded == Some(profile.input_instruction()))
             .map(|step| step.before.registers.code_pointer)
             .collect::<Vec<_>>();
-        assert_eq!(
-            input_reads,
-            if eof {
-                &[53][..]
-            } else {
-                &[53, 69][..]
-            }
-        );
+        assert_eq!(input_reads, &[53][..]);
 
         for (code, address, operand) in [
+            (67, 137, 125),
+            (
+                76,
+                137,
+                if eof {
+                    377
+                } else {
+                    134
+                },
+            ),
             (79, 140, 7_174_341),
             (82, 143, 125),
             (83, 144, 7_174_350),

@@ -73,8 +73,21 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
-- On 2026-11-18, the hand-built 132-cell N15 dual-arm guest
-  now physically executes **all 257** signed EOF/byte input classes.
+- On 2026-11-18, a red-first one-input-attempt regression detected
+  the earlier physical byte arm's extra encrypted C=69 `/` read.
+  Moving the fourth actual `p` to C=67/M[137]=125 and the rotation
+  to C=76/M[137] preserves real branch controls 44/125 through the
+  existing C=79/82 fifth/sixth writes. All 256 byte inputs and empty
+  stdin execute distinct source-loaded output/halt arms in the 15-trit
+  VM, with exactly one `input` instruction at C=53. Two three-byte
+  streams preserve their unread suffix. Both arms still emit their
+  bounded marker bytes (`0x9a`/`0x1e`) in 175/119 steps. The 257-case
+  normative test passed in 89.33 seconds, within the 176-step and
+  150-second ceilings. This is a single input decision, not a C guest
+  checksum, mutable guest loop or source-C lowering; P2 is still open.
+
+- On 2026-11-18, the earlier hand-built 132-cell N15 dual-arm guest
+  physically executed **all 257** signed EOF/byte input classes.
   Stable C=98/C=105 loader relocations avoid the previously failing
   mutable M[135] reset, including byte `0x03`. Each binary input
   follows a reached C=114 `i` to C=45, emits `0x9a` and halts in
@@ -82,7 +95,8 @@ evidence describe the old priority scheme, not the current phase.
   in 119. All 257 normative traces passed in 90.98 seconds with
   176 instruction and 150-second execution ceilings. Two distinct
   three-byte streams expose the remaining **second signed input**
-  read at encrypted C=69; this is not lossless stream handling.
+  read at encrypted C=69; the later relocation above resolves this
+  particular second-read defect.
   The original mutable C23 checksum still refuses target lowering,
   and no guest loop, dynamic checksum arithmetic or C lowering is
   claimed. P2 is open.

@@ -28,9 +28,41 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
-### Complete byte/EOF dual-arm relocation witness (2026-11-18)
+### One-read executable byte/EOF branch (2026-11-18)
 
-The 132-cell physical signed-EOF branch now handles **all 257 input
+The 132-cell N15 guest now executes **both branches without consuming a
+second input**. An alternate virgin loader operand M[137]=125 lets the
+fourth physical `p` move from C=69 to C=67. For all 256 successful
+input bytes, its written control is 134; for EOF it is 377. The real
+rotation moves from C=78 to C=76, following the unchanged C=72/73
+pointer-reset pair. Two more actual `p` instructions read virgin
+M[140]=7,174,341 and M[143]=125, collapsing both input classes to
+final controls **44** (bytes) and **125** (EOF). The reached C=114 `i`
+therefore branches to C=45 and C=126, respectively.
+
+On the backward byte arm, C=57 emits `0x9a` and the already-encrypted
+C=104 halts in 175 steps. C=69 is now a true source `o`, so its
+second visit does **not** perform the unwanted `/` instruction. EOF
+enters C=126 and emits `0x1e` before halting in 119 steps. A red-first
+one-read regression failed against the earlier two-read layout, then
+passed with the relocated fourth write. All 256 byte values, empty
+stdin, and two three-byte streams ran in the normative profile VM,
+starting from freshly validated states. The 257-class traced test
+passed in 89.33 seconds under 176-step and 150-second ceilings; every
+input executes exactly one physical `/` at C=53. The independently
+computed trit oracle agrees with the two final jump controls.
+
+**This is a single-decision guest classifier, not a byte-stream loop.**
+The untouched suffix of each multi-byte stream remains available only
+within that terminated guest execution; there is no next guest read,
+mutable source-C checksum state, dynamic loop, or source-C lowering.
+The frozen P2 checksum still refuses target lowering. The guest's
+fixed branch marker bytes are not the checksum's oracle outputs, so
+P2 remains open.
+
+### Earlier two-read dual-arm relocation witness (superseded, 2026-11-18)
+
+The earlier 132-cell physical signed-EOF branch handled **all 257 input
 classes in the normative N15 VM**: empty stdin takes its own branch to
 C=126, emits `0x1e` and halts at C=129 after 119 instructions. Every
 single-byte input (`0x00` through `0xff`) takes a different real `i`
@@ -51,13 +83,13 @@ advances to the written M[143] control at the reached C=114 `i`.
 No reset reads the modified M[135]. The exhaustive test checks
 physical data reads, selected branch, output, halt and input count.
 
-**This is not a reusable lossless byte-stream classifier.** The byte
-arm re-enters already encrypted C=69 as `/` and attempts another
+**This layout was not a lossless byte-stream classifier.** The byte
+arm re-entered already encrypted C=69 as `/` and attempted another
 input read: two distinct three-byte vectors confirm it consumes their
-first **two** bytes before halting. The test checks this defect rather
-than hiding it. The code is hand-built guest evidence, not the output
-of any source-C lowering. The frozen mutable EOF checksum still
-refuses in the real target backend: no C loop, mutable checksum state,
+first **two** bytes before halting. The later C=67/M[137] relocation
+corrects this defect; this paragraph preserves its counterexample.
+The code is hand-built guest evidence, not source-C lowering. The frozen
+mutable EOF checksum still refuses in the real target backend: no C loop, mutable checksum state,
 second-read continuation, or general C guest parity is established.
 
 ### Physical dynamic rotation after four crazy writes (2026-11-18)
