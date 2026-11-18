@@ -9125,7 +9125,8 @@ fn input_instruction(
             type_kind: input_scalar_type(module, *type_id),
         };
     }
-    if let Instruction::Getchar { result, type_id } = instruction.instruction() {
+    if let Instruction::Getchar { result, type_id } = instruction.instruction()
+    {
         return InputInstruction::Getchar {
             result: result.value(),
             span: input_span(instruction.span()),
@@ -9275,7 +9276,9 @@ fn signed_getchar_fixture() -> Module {
         )],
         phis: Vec::new(),
         span: fixture_span(0, 2),
-        terminator: Terminator::Return { value: Some(ValueId::new(0)) },
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(0)),
+        },
         terminator_span: fixture_span(1, 2),
     });
     Module::new(ModuleSpec {
@@ -9309,20 +9312,28 @@ fn signed_getchar_lowers_to_distinct_ternary_operation() -> Result<(), String> {
     let input = project_typed_ir(&admitted)?;
     let program = lower_typed_ir(&input)
         .map_err(|error| format!("lower signed getchar: {error:?}"))?;
-    let function = program.functions.first().ok_or("missing signed getchar function")?;
-    if function.operations.first() != Some(&TernaryOperation::GetcharI32 {
-        result: 0,
-        span: output_span(fixture_span(0, 1)),
-    }) {
+    let function = program
+        .functions
+        .first()
+        .ok_or("missing signed getchar function")?;
+    if function.operations.first()
+        != Some(&TernaryOperation::GetcharI32 {
+            result: 0,
+            span: output_span(fixture_span(0, 1)),
+        })
+    {
         return Err(String::from("guest signed getchar was not preserved"));
     }
     let wire = canonical_ternary_bytes(&program)
         .map_err(|error| format!("encode signed getchar: {error:?}"))?;
     if canonical_ternary_program(&wire) != Ok(program.clone()) {
-        return Err(String::from("signed getchar changed on ternary round trip"));
+        return Err(String::from(
+            "signed getchar changed on ternary round trip",
+        ));
     }
     let pattern = [85u8, 0, 0, 0, 0];
-    let offset = wire.windows(pattern.len())
+    let offset = wire
+        .windows(pattern.len())
         .position(|window| window == pattern)
         .ok_or("signed getchar ternary opcode missing")?;
     // Retagging an EOF-bearing signed read as successful-byte input must
@@ -9337,7 +9348,8 @@ fn signed_getchar_lowers_to_distinct_ternary_operation() -> Result<(), String> {
         return Err(String::from("EOF-aware read was accepted as a byte"));
     }
     let mut duplicate = wire.clone();
-    duplicate.get_mut(offset + 1..offset + 5)
+    duplicate
+        .get_mut(offset + 1..offset + 5)
         .ok_or("signed result outside wire")?
         .copy_from_slice(&1u32.to_le_bytes());
     if canonical_ternary_program(&duplicate)
@@ -9360,7 +9372,9 @@ fn signed_getchar_lowers_to_distinct_ternary_operation() -> Result<(), String> {
 #[test]
 fn signed_getchar_refuses_untyped_and_duplicate_ssa() -> Result<(), String> {
     let mut input = project_typed_ir(&signed_getchar_fixture())?;
-    let instruction = input.functions.first_mut()
+    let instruction = input
+        .functions
+        .first_mut()
         .and_then(|function| function.blocks.first_mut())
         .and_then(|block| block.instructions.first_mut())
         .ok_or("signed getchar instruction missing")?;
@@ -9368,10 +9382,14 @@ fn signed_getchar_refuses_untyped_and_duplicate_ssa() -> Result<(), String> {
         return Err(String::from("getchar was erased by typed projection"));
     };
     *type_kind = InputScalarType::U8;
-    if lower_typed_ir(&input) != Err(TernaryLoweringError::UnsupportedInstruction) {
+    if lower_typed_ir(&input)
+        != Err(TernaryLoweringError::UnsupportedInstruction)
+    {
         return Err(String::from("wrong-width EOF result was lowered"));
     }
-    let instruction = input.functions.first_mut()
+    let instruction = input
+        .functions
+        .first_mut()
         .and_then(|function| function.blocks.first_mut())
         .and_then(|block| block.instructions.first_mut())
         .ok_or("getchar instruction missing")?;
@@ -13757,9 +13775,15 @@ fn ternary_progress_for_source_does_not_replace_getchar_with_host_literal()
     let expected = project_typed_ir(&signed_getchar_fixture())?;
     let original = lower_typed_ir(&expected)
         .map_err(|error| format!("lower source-bound getchar: {error:?}"))?;
-    assert_source_bound_program_roundtrip("signed-getchar", &expected, &original)?;
+    assert_source_bound_program_roundtrip(
+        "signed-getchar",
+        &expected,
+        &original,
+    )?;
     let mut forged = original;
-    let operation = forged.functions.first_mut()
+    let operation = forged
+        .functions
+        .first_mut()
         .and_then(|function| function.operations.first_mut())
         .ok_or("signed getchar operation missing")?;
     let TernaryOperation::GetcharI32 { result, span } = *operation else {
@@ -13772,8 +13796,10 @@ fn ternary_progress_for_source_does_not_replace_getchar_with_host_literal()
     };
     let bytes = canonical_ternary_bytes(&forged)
         .map_err(|error| format!("encode valid forged literal: {error:?}"))?;
-    let (progress, directory) =
-        publish_ternary_progress_fixture("getchar-replaced-by-literal", &bytes)?;
+    let (progress, directory) = publish_ternary_progress_fixture(
+        "getchar-replaced-by-literal",
+        &bytes,
+    )?;
     let check = assert_source_matched_ternary_failure(
         &expected,
         &progress_inspector(),
@@ -25608,8 +25634,7 @@ fn guest_reflexive_comparisons_choose_only_proven_branches()
             // cannot pass as a signed/unsigned 32-bit comparison. Control
             // selection is not a substitute for guest type validation.
             let mut mistyped = projected.clone();
-            let forged =
-                &mut mistyped.functions[0].blocks[0].instructions[3];
+            let forged = &mut mistyped.functions[0].blocks[0].instructions[3];
             match forged {
                 InputInstruction::CompareEqual { left, right, .. }
                 | InputInstruction::CompareNotEqual { left, right, .. }
