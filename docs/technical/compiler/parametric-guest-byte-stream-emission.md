@@ -28,6 +28,35 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### One executable successful-input arm, EOF still unplaced (2026-11-18)
+
+A separate **132-cell graphical N15 guest** adds a fourth physical `p`
+operation ahead of an input-dependent `i`. An independent 257-case
+15-trit oracle proves that operands `[7,174,341, 3,618, 7,174,350, 134]`
+collapse every successful C23 `getchar()` byte to control word **125**
+while signed EOF becomes **368**. Both are smaller than the previous
+multi-million-word jump, but only one destination is yet executable.
+
+Twelve genuine `*` rotations prepare M[135]=3,618. A reached `/`, a
+`j` rewind through M[137]=125, and fixed no-ops position four real
+`p` writes at M[134], M[135], M[136], and M[139]. A second genuine
+`j` pair resets `D` to M[139] for the input-dependent `i` at C=78.
+For NUL, byte 1, `0x80` and `0xff`, the `i` encrypts graphical M[125],
+then enters a placed `<` at C=126 and `v` at C=127. Each guest emits
+**`0x7d` in 81 normative VM steps** with one input byte consumed.
+
+EOF also prepares word 368 at M[139], but the normative VM **rejects**
+the attempted `i` transition: its self-encryption target M[368] is
+non-graphical (7,174,341). This is an explicit error before the jump
+commits, **not** a second executable arm or successful EOF handling.
+`tests/compiler_eof_short_branch_guest.rs` checks both paths, actual
+pointer and arithmetic operand reads, and independent 257-value digit
+arithmetic. No compiler-generated source-C branch, mutable checksum
+loop, full binary-stream parity, or P2 acceptance is claimed. The next
+integration task is to arrange a safe executable EOF arm without
+invalidating the loader seed or the reached byte arm, then lower the
+frozen checksum CFG through the real compiler.
+
 ### Reached EOF-dependent guest jump, with unplaced arms (2026-11-18)
 
 A new 132-cell graphical N15 program extends the physically executed

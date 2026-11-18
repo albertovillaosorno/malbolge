@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, `compiler_eof_short_branch_guest` proves a physical
+  fourth-`p` signed-input classifier with one **executable** branch arm.
+  A 257-case independent oracle maps all 256 bytes to control 125 and
+  EOF to 368. Four normative byte traces execute a reached `i`, a real
+  source `<` output and `v` halt (`0x7d`, 81 steps each); EOF rejects
+  before committing `i` because M[368] is non-graphical. This does not
+  implement the EOF arm, guest checksum arithmetic, loop or C lowering,
+  and the P2 acceptance gate remains open.
+
 - On 2026-11-18, DCO `ea8dd932b` extends the physical three-`p`
   signed EOF classifier with two actual `j` relocations and a **reached**
   `i` reading the input-dependent result at M[137]. All 256 byte values
