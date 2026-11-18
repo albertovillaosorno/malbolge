@@ -239,3 +239,55 @@ fn a_complete_eof_discriminator_requires_guest_operand_synthesis() {
     .expect("alternative two-p discriminator");
     assert_eq!(alternative.mandatory_runtime_operand_writes(), [true, true]);
 }
+
+// Strengthens the one-write candidate's lower bound: the required 728
+// contains six 2-trits. Every graphical source word has at most four, and
+// the loader cannot create another in any place >= 3^4. Rotation permutes
+// trits without changing that population, even after repeated rotations.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "independent fixed-width base-three digit and recurrence oracle"
+)]
+#[test]
+fn rotations_of_virgin_loader_words_cannot_supply_728() {
+    const SECOND_OPERAND: u32 = 728;
+    const MODULUS: u32 = 14_348_907;
+    let two_count = |mut word: u32| {
+        let mut count = 0;
+        for _ in 0..15 {
+            count += u32::from(word % 3 == 2);
+            word /= 3;
+        }
+        count
+    };
+    let rotate = |word: u32| word / 3 + (word % 3) * (MODULUS / 3);
+    assert_eq!(two_count(SECOND_OPERAND), 6);
+    for left in 33..=126u32 {
+        for right in 33..=126u32 {
+            let (mut older, mut newer) = (left, right);
+            // All loader addresses begin with these two graphical source
+            // cells. For each trit >= 4, their 0/1-only state is inductive:
+            // independent_crazy(0/1, 0/1) is again 0/1.
+            for _ in 0..8 {
+                assert!(two_count(older) <= 4);
+                let mut rotated = older;
+                for _ in 0..15 {
+                    assert_eq!(two_count(rotated), two_count(older));
+                    assert_ne!(rotated, SECOND_OPERAND);
+                    rotated = rotate(rotated);
+                }
+                assert_eq!(rotated, older);
+                let next = independent_crazy(older, newer);
+                // In addition to the finite phases, this is a complete
+                // recurrence invariant: no 2 trit at positions 4..14.
+                let mut high = next / 81;
+                for _ in 4..15 {
+                    assert_ne!(high % 3, 2);
+                    high /= 3;
+                }
+                (older, newer) = (newer, next);
+            }
+        }
+    }
+}

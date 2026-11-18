@@ -48,6 +48,14 @@ and writes that word for empty/NUL/high-byte input. It does **not** place
 the second operand or execute an `i` branch. `compiler_eof_guest_control`
 checks that first physical write with normative VM traces.
 
+The one-write EOF proposal's second operand **728** cannot come from
+rotating any virgin loader word, however many times. It has six ternary
+2 digits; each graphical source byte and every untouched loader recurrence
+word has at most four, and rotation preserves that count. The exhaustive
+seed/phase/rotation regression in `compiler_eof_branch_plan` independently
+checks this position-free obstruction. An additional guest `p`-based
+preparation or a genuinely different arithmetic plan is needed.
+
 ### Physically executed input-dependent branch, restricted to two bytes
 
 A separate 136-cell current N15 graphical guest shows that nonlinear input

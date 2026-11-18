@@ -63,6 +63,21 @@ EOF/NUL/128/255. No second operand or dynamic jump is placed, and the
 complete mutable checksum still refuses target lowering. The next stage
 must synthesize 728 in a safe guest cell and then prove both jump paths.
 
+### Rotation-only synthesis cannot produce the second EOF operand
+
+The reduced one-write pair also has a stronger, position-independent
+obstruction. Its second operand 728 is six consecutive base-three 2 digits.
+Every graphical source byte (33..126) has at most four 2 digits. In all
+higher digit positions (4 through 14), graphical source cells contain only
+0/1 and the loader `crazy` recurrence preserves that 0/1 set forever.
+Consequently every untouched loader word has at most four 2 digits, while
+`*` rotation can only permute digits. **No number of rotations of any
+virgin source or expanded loader cell can become 728.** The finite
+94-by-94 source-tail regression checks the invariant through eight loader
+phases and all fifteen rotations. This excludes rotation-only preparation,
+not actual guest `p` synthesis or other candidate operand pairs. A real
+pre-read arithmetic write remains necessary for this candidate.
+
 ### Input-dependent guest branch with two physical crazy writes (2026-11-18)
 
 A separate 136-cell N15 instruction-level experiment now executes an actual
