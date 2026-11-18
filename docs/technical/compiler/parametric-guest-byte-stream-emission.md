@@ -55,6 +55,13 @@ checksum's guest branches, runtime state or EOF loop. P2 remains open;
 the next integration must relocate to a written discriminator word,
 prove both `i` destinations and lower the frozen checksum's typed CFG.
 
+A companion top-trit regression also rules out a **single** extra
+`p` as a direct nearby branch-target converter: successful output word
+`7,174,223` has top trit 1 while EOF word `377` has top trit 0. For
+any possible additional operand digit, at least one next word retains
+a nonzero top trit, hence is at least `3^14 = 4,782,969`. Longer
+arithmetic synthesis and a physical control jump remain necessary.
+
 ### Loader-seed obstruction for a real EOF branch (2026-11-18)
 
 The required physical operands cannot simply be read out of an untouched

@@ -74,6 +74,13 @@ execute a conditional `i`, preserve a loop-carried C checksum, or
 lower the source-C program. Linking its final control word into a
 validated branch and then the frozen C checksum remains P2 work.
 
+A further independent top-trit proof bounds direct branch linkage: the
+classifier results have trit 14 equal to `1` and `0`. For **any** one
+additional `p` operand, the crazy table leaves at least one resulting
+word at or above `3^14 = 4,782,969`. A single post-classifier `p` cannot
+turn both outcomes into nearby graphical code destinations.
+
+
 ### Physically executed input-dependent branch, restricted to two bytes
 
 A separate 136-cell current N15 graphical guest shows that nonlinear input

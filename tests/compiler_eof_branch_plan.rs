@@ -291,3 +291,36 @@ fn rotations_of_virgin_loader_words_cannot_supply_728() {
         }
     }
 }
+
+// The physically executed three-p EOF classifier leaves control words
+// 7,174,223 (successful byte) and 377 (EOF). An additional arbitrary p
+// cannot place *both* continuations in a short graphical source: at trit 14,
+// its accumulator inputs are 1 and 0, and no crazy data digit maps both to
+// zero. This is a necessary extra-control-synthesis lower bound, not a guest.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "independent N15 top-trit proof and scalar spot checks"
+)]
+#[test]
+fn one_more_crazy_cannot_turn_physical_eof_outputs_into_near_jumps() {
+    const TRIT_14: u32 = 4_782_969;
+    const SUCCESS: u32 = 7_174_223;
+    const EOF: u32 = 377;
+    assert_eq!((SUCCESS / TRIT_14, EOF / TRIT_14), (1, 0));
+    for trit in 0..3_u32 {
+        let candidate = trit * TRIT_14;
+        let success = independent_crazy(candidate, SUCCESS);
+        let eof = independent_crazy(candidate, EOF);
+        assert!(
+            success >= TRIT_14 || eof >= TRIT_14,
+            "top operand digit {trit} unexpectedly allows both nearby jumps"
+        );
+    }
+    // Low fourteen operand digits do not affect this top-trit argument.
+    for candidate in [0, 1, 2, 125, 3_618, 7_174_350, 14_348_906] {
+        let success = independent_crazy(candidate, SUCCESS);
+        let eof = independent_crazy(candidate, EOF);
+        assert!(success.max(eof) >= TRIT_14);
+    }
+}
