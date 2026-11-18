@@ -324,3 +324,44 @@ fn one_more_crazy_cannot_turn_physical_eof_outputs_into_near_jumps() {
         assert!(success.max(eof) >= TRIT_14);
     }
 }
+
+// A mathematical bridge between the two separately executed operand
+// preparations. The 44/72 tail supplies untouched words 7,174,493 and 36;
+// fourteen rotations of the former, then two p operations, can yield the
+// required first EOF operand 7,174,332. None of these operations have been
+// scheduled together with the real 728-producing guest: no branch is proved.
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "independent fixed-width loader and rotation arithmetic"
+)]
+fn physical_728_seed_also_has_an_algebraic_first_operand_path() {
+    const MODULUS: u32 = 14_348_907;
+    let mut first = 7_174_493_u32;
+    for _ in 0..14 {
+        first = first / 3 + (first % 3) * (MODULUS / 3);
+    }
+    assert_eq!(first, 7_174_573);
+    let intermediate = independent_crazy(7_174_493, first);
+    assert_eq!(intermediate, 203);
+    let first_operand = independent_crazy(36, intermediate);
+    assert_eq!(first_operand, 7_174_332);
+    for byte in u8::MIN..=u8::MAX {
+        assert_eq!(
+            independent_crazy(
+                728,
+                independent_crazy(first_operand, u32::from(byte))
+            ),
+            728,
+            "successful C23 byte {byte}",
+        );
+    }
+    assert_eq!(
+        independent_crazy(
+            728,
+            independent_crazy(first_operand, current_profile().eof_word()),
+        ),
+        485,
+    );
+}

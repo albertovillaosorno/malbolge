@@ -62,9 +62,13 @@ pointer resets and a final reached `p` on loader word `7,174,493`.
 The digit-table result is `crazy(7,174,493, 7,174,777) = 728`;
 48 VM steps emit `0xd8` without consuming input. This guest uses
 loader tail `44/72`, **not** the `Q}` tail needed for the proposed
-first EOF operand `7,174,332`. Both operand preparations have been
-physically demonstrated separately, but no combined guest EOF
-branch or source-C lowering is admitted.
+first EOF operand `7,174,332`. An independent arithmetic witness
+now derives that first operand from the **same** `44/72` seed through
+fourteen further rotations and two `p` applications with the untouched
+`7,174,493`/`36` words. It proves only scalar reachability, not a
+physically scheduled unified guest or input-dependent branch. Both
+original operand preparations have been executed separately, but no
+combined EOF branch or source-C lowering is admitted.
 
 ### Real all-byte versus EOF output classifier (no jump)
 

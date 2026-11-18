@@ -117,10 +117,17 @@ digit-table arithmetic oracle.
 
 This is a physical pre-read operand **preparation** milestone, not a
 complete two-`p` EOF discriminator. Its `44/72` seed is distinct from
-`Q}` (`81/125`), which supplies the required *first* word
-`7,174,332` of the reduced `[7,174,332, 728]` plan. Combining both
-operands into one admitted source, then executing input-dependent
-`p` writes, relocation and a conditional `i` remains unsolved.
+`Q}` (`81/125`), which directly supplies the required *first*
+word `7,174,332` of the reduced `[7,174,332, 728]` plan. A new
+independent arithmetic path shows the same `44/72` loader seed can
+*also* yield that first operand: rotate its `7,174,493` word
+fourteen times to `7,174,573`, compute
+`crazy(7,174,493, 7,174,573) = 203`, and then
+`crazy(36, 203) = 7,174,332`. A 257-case oracle verifies that the
+resulting pair would distinguish all bytes from EOF. **These extra
+operations are not scheduled or physically executed in one guest.**
+A shared-source operand plan, input-dependent `p` writes, relocation
+and a conditional `i` remain unsolved.
 The frozen C checksum still refuses target lowering; P2 stays open.
 
 ### Rotation-only synthesis cannot produce the second EOF operand
