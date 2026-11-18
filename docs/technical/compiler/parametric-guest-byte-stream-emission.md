@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated typed-to-ternary CFG composition (2026-11-18)
+
+The actual `c2malbolge_json` executable now consumes the whole original
+source-locked checksum's validated canonical MCTI and invokes
+`lower_canonical_dynamic_cfg`. This compiler-owned adapter independently
+decodes canonical typed IR and copies full function, block, SSA instruction,
+terminator, phi incoming-edge, scalar type and source-span records into the
+existing strict dynamic CFG lowerer. No test-supplied phi binding, host input
+value, branch selection or source identity is used. The new source-to-plan
+regression admits all seven blocks, three phi merges, signed `getchar()`
+effects and output, rejects malformed typed bytes, and repeats identically.
+
+The source-C driver now reaches this **unlinked pre-layout plan** before
+explicitly refusing publication, rather than refusing at the older typed
+target stage. The original C23 `-O0`/`-O2` five-vector oracle and the
+no-artifact refusal regression still pass. The next missing stage is **real
+guest state allocation and control/phi backedge relocation**, followed by
+actual guest integer arithmetic and five-stream normative VM parity.
+Neither an MCTR-v1 image nor a runnable checksum has been produced; P2
+remains open.
+
 ### Source-locked dynamic ternary CFG before guest linking (2026-11-18)
 
 The full original mutable C23 EOF checksum now passes a **separate symbolic
@@ -45,11 +66,10 @@ This new **unlinked `TernaryCfgPlan` is intentionally not MCTR-v1 and cannot
 be submitted to the existing byte-trace target publisher**. It has no guest
 instruction addresses, physical mutable-value allocation, backward jump
 relocations, complete integer arithmetic realization or actual VM parity.
-The old linear `lower_typed_ir` and the source-C driver continue refusing
-this checksum rather than treating the symbolic graph as an executable
-artifact. The first remaining integration step is an authenticated
-canonical-typed-IR-to-CFG projection in the compiler composition, followed
-by target control/phi value realization and real VM proof for five streams.
+The old linear `lower_typed_ir` still refuses the checksum rather than
+treating this symbolic graph as an executable artifact. The later compiler
+composition now supplies the authenticated projection described above;
+target control/phi realization and five-stream VM proof remain missing.
 P2 remains open.
 
 ### Source-stage EOF branch candidate and independent admission (2026-11-18)

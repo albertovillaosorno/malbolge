@@ -22,6 +22,12 @@
 //   - The P2 complete mutable-checksum guest test can assert every stage.
 // - Summary:
 //   - Checks dynamic C meaning survives real typed SSA without guest output.
+// - Description:
+//   - Source and normalized AST must remain bound at every compiler stage.
+// - Usage:
+//   - Included by the JSON frontend's Rust unit test composition.
+// - Defaults:
+//   - Unlinked dynamic CFG never counts as published guest code.
 
 use serde_json::{Value, json};
 
@@ -93,6 +99,80 @@ fn frozen_eof_checksum_reaches_genuine_dynamic_typed_cfg() {
         assert_eq!(phi.incoming()[0].block().value(), 0);
         assert_eq!(phi.incoming()[1].block().value(), 5);
     }
+}
+
+#[test]
+fn original_checksum_crosses_canonical_typed_to_symbolic_cfg_composition() {
+    use super::typed_cfg_adapter::ternary::{
+        TernaryCfgTerminator, TernaryOperation,
+    };
+    use super::typed_cfg_adapter::{
+        TypedCfgAdapterError, lower_canonical_dynamic_cfg,
+    };
+
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE))
+            .expect("original C23 checksum must reach canonical typed IR");
+    assert_eq!(mode, FrontendGuestMode::DynamicEofChecksum);
+    let plan = lower_canonical_dynamic_cfg(&wire)
+        .expect("validated source-backed canonical IR must lower directly");
+    let [function] = plan.functions.as_slice() else {
+        panic!("one source-authenticated checksum function");
+    };
+    assert_eq!(
+        plan.source_sha256,
+        *canonical_module(&wire).unwrap().source_sha256()
+    );
+    assert_eq!(plan.target_profile, "malbolge-2026");
+    assert_eq!(function.blocks.len(), 7);
+    assert_eq!(function.blocks[1].phis.len(), 2);
+    assert_eq!(function.blocks[5].phis.len(), 1);
+    assert!(matches!(
+        function.blocks[5].terminator,
+        TernaryCfgTerminator::Jump { target: 1, .. },
+    ));
+    let operations = function
+        .blocks
+        .iter()
+        .flat_map(|block| &block.operations)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|operation| matches!(
+                operation,
+                TernaryOperation::GetcharI32 { .. }
+            ))
+            .count(),
+        2
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|operation| matches!(
+                operation,
+                TernaryOperation::ByteOutput { .. }
+            ))
+            .count(),
+        1
+    );
+    assert_eq!(lower_canonical_dynamic_cfg(&wire), Ok(plan));
+
+    let mut forged = wire.clone();
+    forged[0] ^= 0xff;
+    assert!(matches!(
+        lower_canonical_dynamic_cfg(&forged),
+        Err(TypedCfgAdapterError::InvalidTypedIr(_)),
+    ));
+    // An original-source mutation cannot borrow the canonical witness as
+    // an authorization token for a different C translation unit.
+    let mut changed = SOURCE.to_vec();
+    let index = changed.windows(4).position(|word| word == b"255U").unwrap();
+    changed[index] = b'1';
+    assert_eq!(
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(&changed)),
+        Err(FrontendJsonError::Unsupported),
+    );
 }
 
 #[test]

@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, production `c2malbolge_json` now invokes a
+  compiler-owned `lower_canonical_dynamic_cfg` after source-authenticated
+  canonical typed-IR admission. The adapter derives all seven blocks,
+  three incoming-edge phi merges and exact typed scalar operations from
+  the canonical decoder, never caller-written test projections. The CLI
+  demonstrably reaches this separate pre-layout CFG, then refuses an
+  unlinked target with no guest artifact. The five binary C23 `-O0`/`-O2`
+  oracle checks and explicit-refusal gate pass; physical mutable state,
+  guest arithmetic and control/phi backedges still block guest parity.
+
 - On 2026-11-18, the source-locked mutable EOF checksum's full typed-CFG
   witness now lowers through a separately admitted symbolic ternary CFG.
   The new pre-layout stage preserves all seven blocks, three phi merges,

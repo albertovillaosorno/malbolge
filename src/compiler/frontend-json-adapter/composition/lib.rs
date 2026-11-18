@@ -69,6 +69,9 @@ mod source_sha256;
 #[path = "../../../../tests/compiler/source_literal_auth.rs"]
 mod source_literal_auth_tests;
 
+#[path = "../../typed-cfg-adapter/composition/lib.rs"]
+pub mod typed_cfg_adapter;
+
 #[cfg(test)]
 #[path = "../../../../tests/compiler/source_dynamic_checksum.rs"]
 mod source_dynamic_checksum_tests;

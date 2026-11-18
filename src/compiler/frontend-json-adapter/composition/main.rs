@@ -43,7 +43,7 @@ use std::process::{Command, ExitCode, Stdio};
 use malbolge as _;
 use malbolge_c_frontend_json_adapter::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
-    first_unlowered_c_node,
+    first_unlowered_c_node, typed_cfg_adapter::lower_canonical_dynamic_cfg,
 };
 use serde as _;
 use serde_json as _;
@@ -173,9 +173,18 @@ fn execute() -> Result<(), String> {
         FrontendGuestMode::DiscardedGetchar => "--discarded-getchar",
         FrontendGuestMode::DiscardedInputLiteral => "--discarded-input-literal",
         FrontendGuestMode::DynamicEofChecksum => {
-            return Err(String::from(
-                "target lowering rejected: dynamic EOF checksum loops and phi-carried state unsupported",
-            ));
+            // The validated source-derived typed wire is the only authority
+            // for this symbolic CFG; neither stdin nor SSA phi edges may be
+            // supplied by the host. No target image may be published here.
+            let _unlinked = lower_canonical_dynamic_cfg(&typed)
+                .map_err(|error| {
+                    format!("symbolic ternary CFG rejected: {error:?}")
+                })?;
+            return Err(String::from(concat!(
+                "target lowering rejected: dynamic EOF checksum CFG is ",
+                "unlinked; guest control, phi storage and arithmetic ",
+                "unsupported",
+            )));
         },
         FrontendGuestMode::LatestRead => "--latest-byte-trace",
         FrontendGuestMode::EmptyVoid => "--empty-void",

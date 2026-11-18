@@ -22,6 +22,13 @@
 #   - The tracked P2 whole-program regression has one shared native oracle.
 # - Summary:
 #   - A full mutable EOF loop must reach the normative guest or fail closed.
+# - Description:
+#   - Five binary vectors independently check the C23 UBSan oracle and guest
+#     publication boundary without using host execution as a target witness.
+# - Usage:
+#   - Run the source-controlled P2 checksum unittest with pinned Python.
+# - Defaults:
+#   - Fail closed on any unexpected compiler error or output artifact.
 
 """P2 EOF-checksum gate: independently check C, then the actual guest VM."""
 
@@ -153,7 +160,12 @@ class MutableEofChecksumTests(unittest.TestCase):
                 # An explicit target-lowering refusal is an active P2 blocker, not
                 # equivalence evidence. Any different failure must be triaged.
                 self.assertIn(
-                    b"target lowering rejected: dynamic EOF checksum loops and phi-carried state unsupported",
+                    (
+                        b"target lowering rejected: dynamic EOF checksum CFG "
+                        b"is "
+                        b"unlinked; guest control, phi storage and arithmetic "
+                        b"unsupported"
+                    ),
                     compiled.stderr,
                 )
                 self.assertFalse(
