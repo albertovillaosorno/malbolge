@@ -97,59 +97,41 @@ pub struct GuestCellEdge {
     pub successor: u32,
 }
 
-/// Split an exact C32 bit pattern into two current-profile 15-trit words.
-/// The high word is restricted to the unused upper six trits of the C32 value.
-#[must_use]
-pub fn encode_i32_cells(bits: u32) -> [u32; 2] {
-    [
-        bits.checked_rem(CURRENT_WORD_COUNT).unwrap_or_default(),
-        bits.checked_div(CURRENT_WORD_COUNT).unwrap_or_default(),
-    ]
-}
-
-/// Decode only the canonical 32-bit subset of two 15-trit guest words.
-/// Return `None` for malformed cells or values outside the C32 domain.
-#[must_use]
-pub fn decode_i32_cells(cells: [u32; 2]) -> Option<u32> {
-    if cells.iter().any(|word| *word >= CURRENT_WORD_COUNT) {
-        return None;
-    }
-    let bits = u64::from(cells[1])
-        .checked_mul(u64::from(CURRENT_WORD_COUNT))?
-        .checked_add(u64::from(cells[0]))?;
-    u32::try_from(bits).ok()
-}
-
 #[derive(Clone, Copy)]
 struct ScalarLayout {
     kind: TernaryCfgScalarKind,
     words: u32,
 }
 
-fn scalar_layout(
-    module: &Module,
-    id: TypeId,
-) -> Result<ScalarLayout, TypedCfgAdapterError> {
-    let definition = module
-        .types()
-        .iter()
-        .find(|entry| entry.id() == id)
-        .map(super::typed::TypeEntry::definition);
-    let (words, kind) = match definition {
-        Some(TypeDef::Bool) => (1, TernaryCfgScalarKind::Bool),
-        Some(TypeDef::I32) => (2, TernaryCfgScalarKind::I32),
-        Some(TypeDef::U32) => (2, TernaryCfgScalarKind::U32),
-        Some(TypeDef::U8) => (1, TernaryCfgScalarKind::U8),
-        _ => return Err(TypedCfgAdapterError::UnsupportedTypedIr),
-    };
-    Ok(ScalarLayout { kind, words })
+struct FrameBuilder<'module> {
+    module: &'module Module,
+    offset: u32,
+    seen: BTreeSet<u32>,
+    values: Vec<GuestStorageValue>,
 }
 
-struct FrameBuilder<'a> {
-    module: &'a Module,
-    values: Vec<GuestStorageValue>,
-    seen: BTreeSet<u32>,
-    offset: u32,
+/// An optional absolute reservation after an independent code-size witness.
+/// This does not allocate physical guest memory or initialize the cells.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestFramePlacement {
+    /// Proposed first guest-memory word reserved for this frame.
+    pub base: u32,
+    /// First word beyond the reservation; no modulo wrap is allowed.
+    pub end_exclusive: u32,
+    /// Full source-code length against which nonaliasing is checked.
+    pub source_cells: u32,
+}
+
+type InstructionDefinition =
+    Result<Option<(u32, TypeId)>, TypedCfgAdapterError>;
+
+type GuestSlotMap<'frame> = BTreeMap<u32, &'frame GuestStorageValue>;
+
+struct EdgeCopies<'frame> {
+    commits: Vec<GuestCellCopy>,
+    frame: &'frame GuestStateFrame,
+    scratch: u32,
+    snapshots: Vec<GuestCellCopy>,
 }
 
 impl FrameBuilder<'_> {
@@ -178,9 +160,95 @@ impl FrameBuilder<'_> {
     }
 }
 
-fn instruction_definition(
+impl EdgeCopies<'_> {
+    fn snapshot_assignment(
+        &mut self,
+        source: &GuestStorageValue,
+        destination: &GuestStorageValue,
+    ) -> Result<(), TypedCfgAdapterError> {
+        let next = self
+            .scratch
+            .checked_add(source.words)
+            .filter(|value| *value <= self.frame.total_words)
+            .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
+        for word in 0..source.words {
+            let from = source
+                .offset
+                .checked_add(word)
+                .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
+            let to = destination
+                .offset
+                .checked_add(word)
+                .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
+            let temp = self
+                .scratch
+                .checked_add(word)
+                .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
+            if from >= self.frame.scratch_offset
+                || to >= self.frame.scratch_offset
+                || temp >= self.frame.total_words
+            {
+                return Err(TypedCfgAdapterError::GuestStateAllocation);
+            }
+            self.snapshots.push(GuestCellCopy {
+                destination: temp,
+                source: from,
+            });
+            self.commits.push(GuestCellCopy {
+                destination: to,
+                source: temp,
+            });
+        }
+        self.scratch = next;
+        Ok(())
+    }
+}
+
+/// Split an exact C32 bit pattern into two current-profile 15-trit words.
+/// The high word is restricted to the unused upper six trits of the C32 value.
+#[must_use]
+pub fn encode_i32_cells(bits: u32) -> [u32; 2] {
+    [
+        bits.checked_rem(CURRENT_WORD_COUNT).unwrap_or_default(),
+        bits.checked_div(CURRENT_WORD_COUNT).unwrap_or_default(),
+    ]
+}
+
+/// Decode only the canonical 32-bit subset of two 15-trit guest words.
+/// Return `None` for malformed cells or values outside the C32 domain.
+#[must_use]
+pub fn decode_i32_cells(cells: [u32; 2]) -> Option<u32> {
+    if cells.iter().any(|word| *word >= CURRENT_WORD_COUNT) {
+        return None;
+    }
+    let bits = u64::from(cells[1])
+        .checked_mul(u64::from(CURRENT_WORD_COUNT))?
+        .checked_add(u64::from(cells[0]))?;
+    u32::try_from(bits).ok()
+}
+
+fn scalar_layout(
+    module: &Module,
+    id: TypeId,
+) -> Result<ScalarLayout, TypedCfgAdapterError> {
+    let definition = module
+        .types()
+        .iter()
+        .find(|entry| entry.id() == id)
+        .map(super::typed::TypeEntry::definition);
+    let (words, kind) = match definition {
+        Some(TypeDef::Bool) => (1, TernaryCfgScalarKind::Bool),
+        Some(TypeDef::I32) => (2, TernaryCfgScalarKind::I32),
+        Some(TypeDef::U32) => (2, TernaryCfgScalarKind::U32),
+        Some(TypeDef::U8) => (1, TernaryCfgScalarKind::U8),
+        _ => return Err(TypedCfgAdapterError::UnsupportedTypedIr),
+    };
+    Ok(ScalarLayout { kind, words })
+}
+
+const fn instruction_definition(
     instruction: &Instruction,
-) -> Result<Option<(u32, TypeId)>, TypedCfgAdapterError> {
+) -> InstructionDefinition {
     let (result, type_id) = match instruction {
         Instruction::Binary { result, type_id, .. }
         | Instruction::ByteInput { result, type_id }
@@ -203,15 +271,15 @@ fn instruction_definition(
     Ok(Some((result, type_id)))
 }
 
-fn reserve_function_values<'a>(
-    module: &'a Module,
+fn reserve_function_values<'module>(
+    module: &'module Module,
     function: &Function,
-) -> Result<FrameBuilder<'a>, TypedCfgAdapterError> {
+) -> Result<FrameBuilder<'module>, TypedCfgAdapterError> {
     let mut builder = FrameBuilder {
         module,
-        values: Vec::new(),
-        seen: BTreeSet::new(),
         offset: 0,
+        seen: BTreeSet::new(),
+        values: Vec::new(),
     };
     for block in function.blocks() {
         for phi in block.phis() {
@@ -286,15 +354,10 @@ pub(super) fn plan_frame(
     })
 }
 
-/// Schedule one fully validated parallel phi edge as two disjoint passes.
-///
-/// # Errors
-///
-/// Refuses unknown or mistyped slots, duplicate destinations, overlaps and
-/// scratch overflow. Never chooses an input-derived successor on the host.
+/// Revalidate disjoint frame interval geometry and its unique SSA IDs.
 fn validated_slots(
     frame: &GuestStateFrame,
-) -> Result<BTreeMap<u32, &GuestStorageValue>, TypedCfgAdapterError> {
+) -> Result<GuestSlotMap<'_>, TypedCfgAdapterError> {
     if frame.scratch_offset.checked_add(frame.scratch_words)
         != Some(frame.total_words)
         || frame.total_words > CURRENT_WORD_COUNT
@@ -330,48 +393,6 @@ fn validated_slots(
     Ok(slots)
 }
 
-fn snapshot_assignment(
-    frame: &GuestStateFrame,
-    source: &GuestStorageValue,
-    destination: &GuestStorageValue,
-    scratch: u32,
-    snapshots: &mut Vec<GuestCellCopy>,
-    commits: &mut Vec<GuestCellCopy>,
-) -> Result<u32, TypedCfgAdapterError> {
-    let next = scratch
-        .checked_add(source.words)
-        .filter(|value| *value <= frame.total_words)
-        .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
-    for word in 0..source.words {
-        let from = source
-            .offset
-            .checked_add(word)
-            .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
-        let to = destination
-            .offset
-            .checked_add(word)
-            .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
-        let temp = scratch
-            .checked_add(word)
-            .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
-        if from >= frame.scratch_offset
-            || to >= frame.scratch_offset
-            || temp >= frame.total_words
-        {
-            return Err(TypedCfgAdapterError::GuestStateAllocation);
-        }
-        snapshots.push(GuestCellCopy {
-            destination: temp,
-            source: from,
-        });
-        commits.push(GuestCellCopy {
-            destination: to,
-            source: temp,
-        });
-    }
-    Ok(next)
-}
-
 /// Schedule all phi sources into scratch, then copy to destinations.
 ///
 /// # Errors
@@ -387,9 +408,12 @@ pub fn plan_cell_edge(
     }
     // Validate every public interval before assigning any cell copy.
     let slots = validated_slots(frame)?;
-    let mut snapshots = Vec::new();
-    let mut commits = Vec::new();
-    let mut scratch = frame.scratch_offset;
+    let mut copies = EdgeCopies {
+        commits: Vec::new(),
+        frame,
+        scratch: frame.scratch_offset,
+        snapshots: Vec::new(),
+    };
     let mut written = BTreeSet::new();
     for assignment in &edge.simultaneous {
         let source = slots
@@ -405,34 +429,15 @@ pub fn plan_cell_edge(
         {
             return Err(TypedCfgAdapterError::GuestStateAllocation);
         }
-        scratch = snapshot_assignment(
-            frame,
-            source,
-            destination,
-            scratch,
-            &mut snapshots,
-            &mut commits,
-        )?;
+        copies.snapshot_assignment(source, destination)?;
     }
     Ok(GuestCellEdge {
-        commits,
+        commits: copies.commits,
         function: edge.function,
         predecessor: edge.predecessor,
-        snapshots,
+        snapshots: copies.snapshots,
         successor: edge.successor,
     })
-}
-
-/// An optional absolute reservation after an independent code-size witness.
-/// This does not allocate physical guest memory or initialize the cells.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct GuestFramePlacement {
-    /// Proposed first guest-memory word reserved for this frame.
-    pub base: u32,
-    /// First word beyond the reservation; no modulo wrap is allowed.
-    pub end_exclusive: u32,
-    /// Full source-code length against which nonaliasing is checked.
-    pub source_cells: u32,
 }
 
 /// Verify a proposed N15 frame range is disjoint from the entire source.
@@ -450,10 +455,7 @@ pub fn validate_frame_placement(
     base: u32,
 ) -> Result<GuestFramePlacement, TypedCfgAdapterError> {
     let _validated = validated_slots(frame)?;
-    if source_cells < 2
-        || source_cells >= CURRENT_WORD_COUNT
-        || base < source_cells
-    {
+    if !(2..CURRENT_WORD_COUNT).contains(&source_cells) || base < source_cells {
         return Err(TypedCfgAdapterError::GuestStateAllocation);
     }
     let end_exclusive = base

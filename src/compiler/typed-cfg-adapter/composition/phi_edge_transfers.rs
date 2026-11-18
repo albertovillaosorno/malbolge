@@ -129,8 +129,8 @@ pub(super) fn plan_phi_edges(
                 transfers.push(PhiEdgeTransfers {
                     function: function.id,
                     predecessor: predecessor.id,
-                    successor,
                     simultaneous,
+                    successor,
                 });
             }
         }

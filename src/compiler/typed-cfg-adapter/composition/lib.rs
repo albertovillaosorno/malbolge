@@ -40,12 +40,12 @@ mod phi_edge_transfers;
 #[path = "state_storage.rs"]
 pub mod state_storage;
 
-pub use phi_edge_transfers::{PhiEdgeMove, PhiEdgeTransfers, PrelinkCfgPlan};
-
 #[path = "../../ternary-lowering/composition/lib.rs"]
 pub mod ternary;
 #[path = "../../typed-ir/composition/lib.rs"]
 pub mod typed;
+
+pub use phi_edge_transfers::{PhiEdgeMove, PhiEdgeTransfers, PrelinkCfgPlan};
 
 use ternary::{
     InputBlock, InputDynamicBlockPhis, InputDynamicPhi, InputFunction,
@@ -63,14 +63,14 @@ use typed::{
 /// An exact failure before or during canonical dynamic-CFG lowering.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TypedCfgAdapterError {
-    /// The canonical MCTI decoder rejected invalid or noncanonical bytes.
-    InvalidTypedIr(CanonicalDecodeError),
-    /// An independently validated typed operation lacks target semantics.
-    UnsupportedTypedIr,
-    /// The symbolic ternary CFG rejected an invalid or unsupported projection.
-    Lowering(TernaryLoweringError),
     /// Relocatable guest frame allocation or parallel-copy proof failed.
     GuestStateAllocation,
+    /// The canonical MCTI decoder rejected invalid or noncanonical bytes.
+    InvalidTypedIr(CanonicalDecodeError),
+    /// The symbolic ternary CFG rejected an invalid or unsupported projection.
+    Lowering(TernaryLoweringError),
+    /// An independently validated typed operation lacks target semantics.
+    UnsupportedTypedIr,
 }
 
 const fn position(value: SourcePosition) -> InputSourcePosition {
@@ -558,9 +558,9 @@ pub fn prepare_canonical_dynamic_cfg(
         cell_edges.push(state_storage::plan_cell_edge(frame, edge)?);
     }
     Ok(PrelinkCfgPlan {
+        cell_edges,
         cfg,
         phi_edges,
         state_frames,
-        cell_edges,
     })
 }

@@ -696,3 +696,61 @@ fn c32_guest_cell_encoding_roundtrips_all_signed_input_classes() {
     assert_eq!(decode_i32_cells([CURRENT_WORD_COUNT, 0]), None);
     assert_eq!(decode_i32_cells([0, CURRENT_WORD_COUNT]), None);
 }
+
+#[test]
+fn all_source_checksum_phi_edges_copy_original_predecessor_values() {
+    use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
+
+    let (wire, _) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE)).unwrap();
+    let plan = prepare_canonical_dynamic_cfg(&wire).unwrap();
+    let frame = &plan.state_frames[0];
+    let mut initial = vec![0_u32; frame.total_words as usize];
+    for slot in &frame.values {
+        for digit in 0..slot.words {
+            initial[(slot.offset + digit) as usize] =
+                slot.value.wrapping_mul(1_001).wrapping_add(digit);
+        }
+    }
+    for cell_edge in &plan.cell_edges {
+        let incoming = plan
+            .phi_edges
+            .iter()
+            .find(|edge| {
+                edge.function == cell_edge.function
+                    && edge.predecessor == cell_edge.predecessor
+                    && edge.successor == cell_edge.successor
+            })
+            .unwrap();
+        let mut observed = initial.clone();
+        for op in cell_edge.snapshots.iter().chain(&cell_edge.commits) {
+            observed[op.destination as usize] = observed[op.source as usize];
+        }
+        let mut expected = initial.clone();
+        for assignment in &incoming.simultaneous {
+            let from = frame
+                .values
+                .iter()
+                .find(|slot| slot.value == assignment.source)
+                .unwrap();
+            let to = frame
+                .values
+                .iter()
+                .find(|slot| slot.value == assignment.result)
+                .unwrap();
+            assert_eq!(from.words, to.words);
+            for digit in 0..from.words {
+                expected[(to.offset + digit) as usize] =
+                    initial[(from.offset + digit) as usize];
+            }
+        }
+        let live = frame.scratch_offset as usize;
+        assert_eq!(
+            &observed[..live],
+            &expected[..live],
+            "incorrect staged phi transfer for {} -> {}",
+            cell_edge.predecessor,
+            cell_edge.successor
+        );
+    }
+}
