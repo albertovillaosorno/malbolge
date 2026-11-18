@@ -80,7 +80,8 @@ evidence describe the old priority scheme, not the current phase.
   inputs match native UBSan Clang `-O0`/`-O2` exactly for both guests.
   Four `-`/`^` and `==`/`!=` combinations prove
   source-static selection across both signed EOF and successful bytes;
-  tampered expressions and hidden effects refuse. This remains algebraic
+  tampered expressions, hidden effects, and nine forged Clang node
+  identities refuse. This remains algebraic
   branch elimination with a real guest input effect, **not** dynamic guest
   branches, mutable runtime state or completion of the checksum at `29:5`.
 

@@ -47,7 +47,9 @@ real guest. Each guest passes five binary/EOF streams, matching independent
 UBSan C23 `-O0`/`-O2` executions. Four arithmetic/comparison
 combinations preserve typed admission and two possible C byte results;
 changed operands, conditions, nested effects, signed output aliases and
-forged source identity refuse without publication. This is a new bounded
+forged source identity refuse without publication. Nine separate forged Clang
+operand, operation, effect, literal and ancestry fields also refuse before
+calling the layout backend. This is a new bounded
 symbolic-branch source capability, not general guest-dependent CFG control,
 local storage or the still-refused mutable EOF checksum at `29:5`.
 

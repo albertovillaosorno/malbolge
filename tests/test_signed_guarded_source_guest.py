@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -179,6 +180,48 @@ class SignedGuardedSourceGuestTests(unittest.TestCase):
             )
             self.assertIn(b"normalized frontend rejected", refused.stderr)
             self.assertFalse(artifact.exists())
+
+    def test_forged_clang_nodes_refuse_without_publication(self) -> None:
+        normalized = normalize(SOURCE)
+        self.assertEqual(normalized.returncode, 0, normalized.stderr)
+        original = json.loads(normalized.stdout)
+        nodes = original["nodes"]
+        self.assertEqual(len(nodes), 26)
+        cases = (
+            (12, "reference", "different@45"),
+            (14, "reference", "different@45"),
+            (10, "operation", "+"),
+            (8, "operation", "!="),
+            (4, "reference", "external:putchar"),
+            (20, "constant_integer", "12"),
+            (25, "constant_integer", "6"),
+            (16, "parent", 2),
+            (22, "parent", 2),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
+            destination = Path(raw) / "forged.malbolge"
+            for index, key, replacement in cases:
+                with self.subTest(node_id=index + 1, field=key):
+                    altered = json.loads(normalized.stdout)
+                    altered["nodes"][index][key] = replacement
+                    payload = json.dumps(altered, separators=(",", ":")).encode()
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            "/bin/false",
+                            "--output",
+                            str(destination),
+                            "--source",
+                            str(SOURCE),
+                        ],
+                        input=payload,
+                        capture_output=True,
+                        check=False,
+                        timeout=20,
+                    )
+                    self.assertIn(b"normalized frontend rejected", refused.stderr)
+                    self.assertFalse(destination.exists())
 
     def test_reflexive_truth_variants_preserve_signed_eof(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw:
