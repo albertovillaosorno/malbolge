@@ -898,6 +898,16 @@ instruction.
   existing artifacts. The independent ternary regression rejects wrong
   values, forged SSA and foreign profiles. This is not arbitrary 30-byte
   stream support or general C execution.
+- On 2026-11-17, red-first typed-CFG regression proved that distinct
+  effectful successors could not be selected after live `x ^ x` or `x - x`
+  against zero. The lowerer now proves both 32-bit operations produce exact
+  zero for an identical SSA input even with a live byte source, then chooses
+  equality or inequality guards without erasing the symbolic guest input,
+  ALU, comparison or selected byte effects. Eight signed/unsigned cases pass
+  canonical typed and ternary round trips, source-bound checkpoint replay,
+  forged-SSA and distinct-operand rejection. This is static branch
+  simplification, not executable target ALU, arbitrary guest branching,
+  signed EOF conversion, or closure of the P2 checksum witness.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

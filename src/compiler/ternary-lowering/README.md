@@ -80,6 +80,17 @@ and tamper rejection. Six more cases derive known Booleans from exact signed
 the target comparison as well. Guest-derived Boolean conditions still refuse.
 This does not add runtime guest branching.
 
+A separate source-independent algebraic CFG proof now recognizes a signed or
+unsigned 32-bit value XORed with or subtracted from the **same SSA value**.
+Both operations produce zero even when their operand comes from live guest
+input; signed `x - x` is also defined at `INT_MIN`. The selector can decide
+an ensuing equality/inequality guard against zero while retaining the input,
+word ALU, comparison and selected byte effects in the symbolic target program.
+Distinct operands, missing definitions and mistyped instructions are refused;
+there is no host evaluation of guest input and no dynamic guest branch.
+Eight typed-CFG cases cover both signedness modes, operations, true/false
+arms, canonical wires and source-bound checkpoint replay.
+
 Unsigned and signed constant arithmetic also includes conservative signed
 shift proofs: nonnegative signed left operands only when the shifted result
 fits `i32`, and nonnegative arithmetic-right-shift operands with counts below

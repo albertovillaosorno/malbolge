@@ -190,6 +190,16 @@ No guest-dependent branch
 execution, repeated runtime loops or arbitrary C semantics are claimed by
 this CFG simplification.
 
+One additional source-independent proof handles a 32-bit live guest value
+XORed with or subtracted from its identical SSA operand: `x ^ x` and
+`x - x` are exactly zero for every defined signed or unsigned input,
+including `INT_MIN`. This permits a following zero equality/inequality guard
+to choose its static successor. The operand's actual guest I/O, ALU and
+comparison operations remain emitted, with no host-evaluated input. Eight
+signed/unsigned, XOR/subtract, true/false integration cases preserve both
+canonical wires, source-bound resume and rejection of forged SSA or
+non-reflexive operands. Dynamic branch execution remains unavailable.
+
 Exact 32-bit constant bit patterns are converted to a fixed 21-trit,
 least-significant-trit-first scalar. Twenty trits are insufficient for every
 `u32` bit pattern, while 21 trits cover the complete 32-bit representation

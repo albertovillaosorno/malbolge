@@ -25642,6 +25642,256 @@ fn guest_reflexive_comparisons_choose_only_proven_branches()
     Ok(())
 }
 
+// A live word XORed with or subtracted from its own SSA value is zero for
+// every successful guest input. The guest operation must still be emitted;
+// only the already-proven branch choice can be simplified at compile time.
+fn guest_self_annihilating_alu_branch_module(
+    operation: BinaryOp,
+    signed: bool,
+    compare_equal: bool,
+) -> Module {
+    let base =
+        guest_reflexive_comparison_branch_module(CompareOp::Equal, signed);
+    let original = &base.functions()[0];
+    let mut blocks = original.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    let word_type = TypeId::new(if signed {
+        1
+    } else {
+        4
+    });
+    let word = ValueId::new(if signed {
+        2
+    } else {
+        1
+    });
+    let _old_comparison = instructions.pop();
+    instructions.extend([
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(3),
+                type_id: word_type,
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Binary {
+                left: word,
+                operation,
+                result: ValueId::new(4),
+                right: word,
+                type_id: word_type,
+            },
+            fixture_span(1, 2),
+        ),
+        LocatedInstruction::new(
+            Instruction::Compare {
+                left: ValueId::new(4),
+                operation: if compare_equal {
+                    CompareOp::Equal
+                } else {
+                    CompareOp::NotEqual
+                },
+                result: ValueId::new(5),
+                right: ValueId::new(3),
+                type_id: TypeId::new(3),
+            },
+            fixture_span(1, 2),
+        ),
+    ]);
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(5),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let exit = &blocks[3];
+    blocks[3] = BasicBlock::new(BasicBlockSpec {
+        id: exit.id(),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(6),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: exit.span(),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(6)),
+        },
+        terminator_span: exit.terminator_span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![Function::new(FunctionSpec {
+            blocks,
+            entry: original.entry(),
+            id: original.id(),
+            name: String::from(original.name()),
+            parameters: original.parameters().to_vec(),
+            signature: original.signature(),
+            span: original.span(),
+        })],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    })
+}
+
+#[test]
+fn live_self_annihilating_alu_selects_branch_without_erasing_guest_work()
+-> Result<(), String> {
+    for operation in [BinaryOp::Xor, BinaryOp::Subtract] {
+        for signed in [false, true] {
+            for compare_equal in [false, true] {
+                let source = guest_self_annihilating_alu_branch_module(
+                    operation,
+                    signed,
+                    compare_equal,
+                );
+                validate_module(&source)
+                    .map_err(|error| format!("admit live ALU: {error:?}"))?;
+                let wire = canonical_bytes(&source)
+                    .map_err(|error| format!("encode live ALU: {error:?}"))?;
+                assert_eq!(canonical_module(&wire), Ok(source.clone()));
+                let projection = project_typed_ir(&source)?;
+                let target = lower_typed_ir(&projection).map_err(|error| {
+                    format!("lower live ALU {operation:?}: {error:?}")
+                })?;
+                let effects = &target.functions[0].operations;
+                assert_eq!(
+                    effects
+                        .iter()
+                        .filter(|effect| matches!(
+                            effect,
+                            TernaryOperation::ByteInput { .. }
+                        ))
+                        .count(),
+                    1,
+                );
+                assert_eq!(
+                    effects
+                        .iter()
+                        .filter(|effect| matches!(
+                            effect,
+                            TernaryOperation::ByteOutput { .. }
+                        ))
+                        .count(),
+                    if compare_equal {
+                        2
+                    } else {
+                        1
+                    },
+                );
+                assert!(effects.iter().any(|effect| matches!(
+                    (operation, signed, effect),
+                    (BinaryOp::Xor, false, TernaryOperation::XorU32 { .. })
+                        | (
+                            BinaryOp::Xor,
+                            true,
+                            TernaryOperation::XorI32 { .. }
+                        )
+                        | (
+                            BinaryOp::Subtract,
+                            false,
+                            TernaryOperation::SubtractU32 { .. }
+                        )
+                        | (
+                            BinaryOp::Subtract,
+                            true,
+                            TernaryOperation::SubtractI32 { .. }
+                        )
+                )));
+                let target_wire =
+                    canonical_ternary_bytes(&target).map_err(|error| {
+                        format!("encode live ALU target: {error:?}")
+                    })?;
+                assert_eq!(
+                    canonical_ternary_program(&target_wire),
+                    Ok(target.clone())
+                );
+                let label = format!(
+                    "live-annihilation-{operation:?}-{signed}-{compare_equal}"
+                );
+                let (progress, directory) =
+                    publish_ternary_progress_fixture(&label, &target_wire)?;
+                let checked = (|| {
+                    assert_eq!(
+                        resume_ternary_from_progress_for_source(
+                            &repository_python(),
+                            &progress_inspector(),
+                            &progress,
+                            &projection,
+                        ),
+                        Ok(target.clone()),
+                    );
+                    let mut forged = projection.clone();
+                    match &mut forged.functions[0].blocks[0].instructions[4] {
+                        InputInstruction::BinaryXor { left, right, .. }
+                        | InputInstruction::BinarySubtract {
+                            left,
+                            right,
+                            ..
+                        } => {
+                            *left = 99;
+                            *right = 99;
+                        },
+                        _ => return Err(String::from("missing forged ALU")),
+                    }
+                    assert_eq!(
+                        lower_typed_ir(&forged),
+                        Err(TernaryLoweringError::UnsupportedInstruction),
+                    );
+                    assert_eq!(
+                        resume_ternary_from_progress_for_source(
+                            &repository_python(),
+                            &progress_inspector(),
+                            &progress,
+                            &forged,
+                        ),
+                        Err(TernaryProgressCheckpointError::IdentityMismatch),
+                    );
+                    Ok(())
+                })();
+                let cleanup = remove_dir_all(&directory).map_err(|error| {
+                    format!("clean live ALU fixture: {error}")
+                });
+                checked?;
+                cleanup?;
+                // An operand read from a different SSA value is no longer
+                // an algebraically proved zero, even if it is constant.
+                let mut changed = projection.clone();
+                match &mut changed.functions[0].blocks[0].instructions[4] {
+                    InputInstruction::BinaryXor { right, .. }
+                    | InputInstruction::BinarySubtract { right, .. } => {
+                        *right = 3
+                    },
+                    _ => return Err(String::from("missing live ALU")),
+                }
+                assert_eq!(
+                    lower_typed_ir(&changed),
+                    Err(TernaryLoweringError::UnsupportedTerminator),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 // Two independent guest input instructions are never interchangeable just
 // because a particular test vector might feed them equal byte values.
 fn guest_independent_input_comparison_branch_module(

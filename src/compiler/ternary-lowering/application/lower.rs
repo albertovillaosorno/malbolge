@@ -555,6 +555,41 @@ fn proven_literal_comparison(
     Some((result, chosen))
 }
 
+// Same-SSA XOR and subtraction are zero for every 32-bit bit pattern.
+// Unlike ordinary literal propagation, their operand can be a live guest
+// value: the proof uses only a typed identity, never the input's value.
+// These operations are total for x ^ x and x - x, even for signed INT_MIN.
+// Later instruction lowering still checks the operand's definition/type and
+// retains the original guest ALU operation in the emitted target stream.
+const fn proven_self_annihilating_word_alu(
+    instruction: &InputInstruction,
+) -> Option<ProvenWord> {
+    let (left, right, result, kind) = match instruction {
+        InputInstruction::BinaryXor {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        }
+        | InputInstruction::BinarySubtract {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        } => (left, right, result, type_kind),
+        _ => return None,
+    };
+    if *left == *right
+        && matches!(kind, InputScalarType::I32 | InputScalarType::U32)
+    {
+        Some((*result, *kind, 0))
+    } else {
+        None
+    }
+}
+
 // Preserve exact 32-bit literal arithmetic chains for static CFG selection.
 // Signed overflow and zero divisors cannot prove a successor; unsigned
 // addition/multiplication wrap, while shift counts must be below 32.
@@ -1005,6 +1040,11 @@ pub(super) fn selected_function_blocks(
             }
             if let Some((result, kind, bits)) =
                 proven_literal_word_alu(instruction, &literal_words)
+            {
+                _ = literal_words.insert(result, (kind, bits));
+            }
+            if let Some((result, kind, bits)) =
+                proven_self_annihilating_word_alu(instruction)
             {
                 _ = literal_words.insert(result, (kind, bits));
             }
