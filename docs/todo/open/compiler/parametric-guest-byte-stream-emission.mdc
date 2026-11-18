@@ -78,7 +78,7 @@ evidence describe the old priority scheme, not the current phase.
   through fresh validated N15 states after one complete memory load.
   Each of 65 transitions is traced, including signed input, all operand
   reads, real control jump to C=7,174,224 (byte) or C=378 (EOF),
-  and a non-graphical destination. The independent scalar oracle agrees.
+  and a non-graphical destination; the independent scalar oracle agrees.
   Focused Rust execution passed in 94.38 s under a 100 s budget. No
   executable arm, mutable checksum, loop or C target lowering resulted;
   the P2 gate remains open.
