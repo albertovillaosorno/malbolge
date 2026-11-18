@@ -35,6 +35,8 @@ use super::{
     StorageDuration,
 };
 
+const MAX_UNSIGNED_UPDATES: usize = 2;
+
 fn local_name(node: &Node, type_name: &str, prefix: &str) -> Option<String> {
     let name = node.name.as_deref()?;
     if name.is_empty()
@@ -120,25 +122,6 @@ pub(super) fn canonical_mutable_input_literal(
     else {
         return Err(FrontendJsonError::Unsupported);
     };
-    // An exact output subtree has six Clang nodes. Accept one or two
-    // preceding ordered constant mutations with three nodes apiece.
-    let update_count = match remaining.len() {
-        9 => 1,
-        12 => 2,
-        _ => return Err(FrontendJsonError::Unsupported),
-    };
-    let (updates, output) = remaining.split_at(update_count * 3);
-    let [
-        write,
-        write_decay,
-        write_callee,
-        integral_cast,
-        value_cast,
-        value_ref,
-    ] = output
-    else {
-        return Err(FrontendJsonError::Unsupported);
-    };
     let checksum_name = local_name(checksum, "u32", "unsigned ")
         .ok_or(FrontendJsonError::Unsupported)?;
     let current_name = local_name(current, "i32", "int ")
@@ -166,13 +149,91 @@ pub(super) fn canonical_mutable_input_literal(
     );
     let mut last_end = input_decl.span.end.byte;
     let mut last_literal = initial_value;
-    for (index, nodes) in updates.chunks_exact(3).enumerate() {
-        let [update, assigned, delta] = nodes else {
+    let mut read_calls = vec![read];
+    let mut update_count = 0_usize;
+    let mut next_id = 11_u32;
+    let mut remaining = remaining;
+    // Pure, unobserved accumulator changes may cross an input effect;
+    // two actual signed guest reads must retain their source order.
+    while remaining.len() > 6 {
+        if remaining[0].kind == "declaration-statement" && read_calls.len() == 1
+        {
+            let Some((group, rest)) = remaining.split_first_chunk::<5>() else {
+                return Err(FrontendJsonError::Unsupported);
+            };
+            let [declaration, local, second_read, second_decay, second_callee] =
+                group;
+            let second_name = local_name(local, "i32", "int ")
+                .ok_or(FrontendJsonError::Unsupported)?;
+            let spelling = format!("int {second_name} = getchar()");
+            if second_name == checksum_name
+                || second_name == current_name
+                || !node_is(
+                    declaration,
+                    next_id,
+                    2,
+                    "declaration-statement",
+                    None,
+                    None,
+                    None,
+                )
+                || local.id != next_id + 1
+                || local.parent != next_id
+                || !node_is(
+                    second_read,
+                    next_id + 2,
+                    next_id + 1,
+                    "call-expression",
+                    Some("i32"),
+                    Some("external:getchar"),
+                    None,
+                )
+                || !node_is(
+                    second_decay,
+                    next_id + 3,
+                    next_id + 2,
+                    "cast-expression",
+                    Some("ptr(fn()->i32)"),
+                    None,
+                    Some("function-to-pointer"),
+                )
+                || !node_is(
+                    second_callee,
+                    next_id + 4,
+                    next_id + 3,
+                    "declaration-reference-expression",
+                    Some("fn()->i32"),
+                    Some("external:getchar"),
+                    None,
+                )
+                || source_slice(source, declaration)
+                    != Some(format!("{spelling};").as_bytes())
+                || source_slice(source, local) != Some(spelling.as_bytes())
+                || source_slice(source, second_read) != Some(b"getchar()")
+                || source_slice(source, second_decay) != Some(b"getchar")
+                || second_decay.span != second_callee.span
+                || last_end >= declaration.span.begin.byte
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            expected_body.push_str(&format!("    {spelling};\n"));
+            read_calls.push(second_read);
+            last_end = declaration.span.end.byte;
+            remaining = rest;
+            next_id += 5;
+            continue;
+        }
+        if update_count >= MAX_UNSIGNED_UPDATES {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        let Some((nodes, rest)) = remaining.split_first_chunk::<3>() else {
             return Err(FrontendJsonError::Unsupported);
         };
-        let id = 11
-            + u32::try_from(index * 3)
-                .map_err(|_error| FrontendJsonError::Unsupported)?;
+        let [update, assigned, delta] = nodes;
+        if update.kind != "compound-assignment-expression" {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        let id = next_id;
         let operator = update
             .operation
             .as_deref()
@@ -230,15 +291,34 @@ pub(super) fn canonical_mutable_input_literal(
             .push_str(&format!("    {checksum_name} {operator} {decimal}U;\n"));
         last_end = update.span.end.byte;
         last_literal = delta;
+        next_id += 3;
+        update_count += 1;
+        remaining = rest;
+    }
+    // Source spans of typed instructions must remain in effect order.
+    if update_count == 0
+        || last_literal.span.begin.byte
+            < read_calls[read_calls.len() - 1].span.end.byte
+    {
+        return Err(FrontendJsonError::Unsupported);
     }
     // Do not project an out-of-range integer through a guest byte.
     // That would collapse an otherwise observable C conversion distinction.
     let byte = u8::try_from(result)
         .map_err(|_error| FrontendJsonError::Unsupported)?;
     expected_body.push_str(&format!("    putchar((int){checksum_name});\n}}"));
-    let write_id = 11
-        + u32::try_from(update_count * 3)
-            .map_err(|_error| FrontendJsonError::Unsupported)?;
+    let [
+        write,
+        write_decay,
+        write_callee,
+        integral_cast,
+        value_cast,
+        value_ref,
+    ] = remaining
+    else {
+        return Err(FrontendJsonError::Unsupported);
+    };
+    let write_id = next_id;
     let good = function.id == 1
         && function.parent == 0
         && function.kind == "function-declaration"
@@ -408,7 +488,7 @@ pub(super) fn canonical_mutable_input_literal(
         &input,
         function,
         body,
-        &[read],
+        &read_calls,
         last_literal,
         write,
         byte,

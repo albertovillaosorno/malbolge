@@ -24,6 +24,17 @@ No C signed EOF conversion or mutable checksum is implemented.
 
 ## Supported slice
 
+### Interleaved signed input effects and local constant updates
+
+One complete source-authenticated C23 program now interleaves two
+signed `getchar()` local declarations with two ordered literal-only
+unsigned `+=`/`^=` updates. The compiler preserves both real guest
+input operations while proving the independent constant result;
+the normative VM emits `0b` in six steps, matching native UBSan C23
+`-O0`/`-O2` on five binary and EOF streams. Unproved operand
+dependencies, additional reads or updates and altered original C
+fail closed. The original dynamic EOF checksum is still unsupported.
+
 ### Guarded signed loop-local EOF refusal (2026-11-17)
 
 Previously accepted source-proven `if`/`else`, nested guard, `switch`, and

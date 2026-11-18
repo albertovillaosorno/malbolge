@@ -28,6 +28,35 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Interleaved signed reads and unsigned updates (2026-11-17)
+
+A complete C23 source declares an unsigned checksum and two independent
+signed `getchar()` locals, with `checksum += 5U` between the reads and
+`checksum ^= 7U` after the second read. The exact original source and all
+27 pinned Clang nodes are authenticated before the typed adapter admits
+the program. The source-local accumulator is computed in lexical order,
+but both signed inputs remain distinct `GetcharI32` guest effects. The
+source is SHA-256
+`5b394b2594d443796dbe4469b7e5b9e7a4561678349b9b961cfc3459c6fbc908`.
+The backend emitted a real 1,095-byte 15-trit Malbolge capsule that
+performs both reads and outputs `0b` in six VM steps, including EOF
+and five binary stdin vectors. Independently compiled UBSan C23 Clang
+`-O0` and `-O2` output the same byte for all five vectors. An earlier
+adapter run refused the program at its first `29:5` declaration, so
+this is a new source-order/effect-preservation capability, not a
+pre-existing accepted fixture.
+
+The bounded gate permits one or two signed reads, one or two checked
+literal-only unsigned `+=`/`^=` updates, and one independent byte
+output. A second read may occur between the two updates, with complete
+original-source body and Clang identity checks. Dynamic operands,
+observable signed EOF conversions, additional input effects, extra
+updates, forged AST identity and unproved operations must refuse
+without guest publication. No local input value influences the
+accumulator: this is **not** guest mutable storage, dynamic arithmetic,
+EOF branching, or completion of the original P2 checksum. That source
+still refuses declaration `29:5`.
+
 ### Ordered constant-only mutable updates with a real signed read
 
 A C23 source now initializes an unsigned local to `7U`, performs an actual
