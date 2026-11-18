@@ -26562,3 +26562,432 @@ fn independent_live_input_comparisons_require_runtime_guest_branching()
     }
     Ok(())
 }
+
+// Two distinct SSA instructions with the same pure word operation and the
+// same operands compute the same value even when the word comes from stdin.
+// This proof cannot turn two independent reads into one known guest value.
+fn repeated_live_word_alu_branch_module(
+    operation: BinaryOp,
+    signed: bool,
+    comparison: CompareOp,
+    swapped: bool,
+) -> Module {
+    let base =
+        guest_self_annihilating_alu_branch_module(BinaryOp::Xor, signed, true);
+    let original = &base.functions()[0];
+    let mut blocks = original.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    let kind = TypeId::new(if signed {
+        1
+    } else {
+        4
+    });
+    let word = ValueId::new(if signed {
+        2
+    } else {
+        1
+    });
+    instructions[3] = LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(32, vec![0x5a, 0, 0, 0]),
+            result: ValueId::new(3),
+            type_id: kind,
+        },
+        fixture_span(1, 2),
+    );
+    instructions[4] = LocatedInstruction::new(
+        Instruction::Binary {
+            left: word,
+            operation,
+            result: ValueId::new(4),
+            right: ValueId::new(3),
+            type_id: kind,
+        },
+        fixture_span(1, 2),
+    );
+    instructions.insert(
+        5,
+        LocatedInstruction::new(
+            Instruction::Binary {
+                left: if swapped {
+                    ValueId::new(3)
+                } else {
+                    word
+                },
+                operation,
+                result: ValueId::new(5),
+                right: if swapped {
+                    word
+                } else {
+                    ValueId::new(3)
+                },
+                type_id: kind,
+            },
+            fixture_span(1, 2),
+        ),
+    );
+    instructions[6] = LocatedInstruction::new(
+        Instruction::Compare {
+            left: ValueId::new(4),
+            operation: comparison,
+            result: ValueId::new(6),
+            right: ValueId::new(5),
+            type_id: TypeId::new(3),
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: Terminator::Branch {
+            condition: ValueId::new(6),
+            false_target: BlockId::new(1),
+            true_target: BlockId::new(2),
+        },
+        terminator_span: entry.terminator_span(),
+    });
+    let exit = &blocks[3];
+    blocks[3] = BasicBlock::new(BasicBlockSpec {
+        id: exit.id(),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(7),
+                type_id: TypeId::new(1),
+            },
+            fixture_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: exit.span(),
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(7)),
+        },
+        terminator_span: exit.terminator_span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![Function::new(FunctionSpec {
+            blocks,
+            entry: original.entry(),
+            id: original.id(),
+            name: String::from(original.name()),
+            parameters: original.parameters().to_vec(),
+            signature: original.signature(),
+            span: original.span(),
+        })],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    })
+}
+
+#[test]
+fn repeated_live_word_alu_requires_identical_typed_operands()
+-> Result<(), String> {
+    for operation in [BinaryOp::And, BinaryOp::Or, BinaryOp::Xor] {
+        for signed in [false, true] {
+            let comparisons = if signed {
+                [
+                    CompareOp::Equal,
+                    CompareOp::NotEqual,
+                    CompareOp::LessSigned,
+                    CompareOp::LessSignedEqual,
+                ]
+            } else {
+                [
+                    CompareOp::Equal,
+                    CompareOp::NotEqual,
+                    CompareOp::LessUnsigned,
+                    CompareOp::LessUnsignedEqual,
+                ]
+            };
+            for comparison in comparisons {
+                for swapped in [false, true] {
+                    let source = repeated_live_word_alu_branch_module(
+                        operation, signed, comparison, swapped,
+                    );
+                    validate_module(&source).map_err(|error| {
+                        format!("admit repeated live ALU: {error:?}")
+                    })?;
+                    let bytes = canonical_bytes(&source).map_err(|error| {
+                        format!("encode repeated live ALU: {error:?}")
+                    })?;
+                    assert_eq!(canonical_module(&bytes), Ok(source.clone()));
+                    let projection = project_typed_ir(&source)?;
+                    let target =
+                        lower_typed_ir(&projection).map_err(|error| {
+                            format!("lower repeated {operation:?}: {error:?}")
+                        })?;
+                    let ops = &target.functions[0].operations;
+                    assert_eq!(
+                        ops.iter()
+                            .filter(|op| matches!(
+                                op,
+                                TernaryOperation::ByteInput { .. }
+                            ))
+                            .count(),
+                        1
+                    );
+                    assert_eq!(
+                        ops.iter()
+                            .filter(|op| matches!(
+                                op,
+                                TernaryOperation::ByteOutput { .. }
+                            ))
+                            .count(),
+                        if matches!(
+                            comparison,
+                            CompareOp::Equal
+                                | CompareOp::LessSignedEqual
+                                | CompareOp::LessUnsignedEqual
+                        ) {
+                            2
+                        } else {
+                            1
+                        }
+                    );
+                    let wire =
+                        canonical_ternary_bytes(&target).map_err(|error| {
+                            format!("encode repeated target: {error:?}")
+                        })?;
+                    assert_eq!(
+                        canonical_ternary_program(&wire),
+                        Ok(target.clone())
+                    );
+                    assert_eq!(
+                        ops.iter()
+                            .filter(|op| matches!(
+                                (operation, signed, op),
+                                (
+                                    BinaryOp::And,
+                                    false,
+                                    TernaryOperation::AndU32 { .. }
+                                ) | (
+                                    BinaryOp::And,
+                                    true,
+                                    TernaryOperation::AndI32 { .. }
+                                ) | (
+                                    BinaryOp::Or,
+                                    false,
+                                    TernaryOperation::OrU32 { .. }
+                                ) | (
+                                    BinaryOp::Or,
+                                    true,
+                                    TernaryOperation::OrI32 { .. }
+                                ) | (
+                                    BinaryOp::Xor,
+                                    false,
+                                    TernaryOperation::XorU32 { .. }
+                                ) | (
+                                    BinaryOp::Xor,
+                                    true,
+                                    TernaryOperation::XorI32 { .. }
+                                )
+                            ))
+                            .count(),
+                        2,
+                    );
+                    if !swapped {
+                        let label = format!(
+                            "repeated-{operation:?}-{signed}-{comparison:?}"
+                        );
+                        let (progress, directory) =
+                            publish_ternary_progress_fixture(&label, &wire)?;
+                        let verified = resume_ternary_from_progress_for_source(
+                            &repository_python(),
+                            &progress_inspector(),
+                            &progress,
+                            &projection,
+                        );
+                        remove_dir_all(&directory).map_err(|error| {
+                            format!("clean repeated fixture: {error}")
+                        })?;
+                        assert_eq!(verified, Ok(target.clone()));
+                    }
+                    let mut different = projection.clone();
+                    match &mut different.functions[0].blocks[0].instructions[5]
+                    {
+                        InputInstruction::BinaryAnd { left, right, .. }
+                        | InputInstruction::BinaryOr { left, right, .. }
+                        | InputInstruction::BinaryXor { left, right, .. } => {
+                            *left = if signed {
+                                2
+                            } else {
+                                1
+                            };
+                            *right = *left;
+                        },
+                        _ => {
+                            return Err(String::from(
+                                "missing second word ALU",
+                            ));
+                        },
+                    }
+                    assert_eq!(
+                        lower_typed_ir(&different),
+                        Err(TernaryLoweringError::UnsupportedTerminator)
+                    );
+                    let mut changed_operation = projection.clone();
+                    let second = &mut changed_operation.functions[0].blocks[0]
+                        .instructions[5];
+                    let (left, right, result, span, type_kind) = match second {
+                        InputInstruction::BinaryAnd {
+                            left,
+                            right,
+                            result,
+                            span,
+                            type_kind,
+                        }
+                        | InputInstruction::BinaryOr {
+                            left,
+                            right,
+                            result,
+                            span,
+                            type_kind,
+                        }
+                        | InputInstruction::BinaryXor {
+                            left,
+                            right,
+                            result,
+                            span,
+                            type_kind,
+                        } => (*left, *right, *result, *span, *type_kind),
+                        _ => {
+                            return Err(String::from(
+                                "missing second bitwise ALU",
+                            ));
+                        },
+                    };
+                    *second = if operation == BinaryOp::And {
+                        InputInstruction::BinaryOr {
+                            left,
+                            right,
+                            result,
+                            span,
+                            type_kind,
+                        }
+                    } else {
+                        InputInstruction::BinaryAnd {
+                            left,
+                            right,
+                            result,
+                            span,
+                            type_kind,
+                        }
+                    };
+                    assert_eq!(
+                        lower_typed_ir(&changed_operation),
+                        Err(TernaryLoweringError::UnsupportedTerminator)
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn repeated_signed_getchar_word_expressions_preserve_eof_read()
+-> Result<(), String> {
+    for operation in [BinaryOp::And, BinaryOp::Or, BinaryOp::Xor] {
+        for comparison in [CompareOp::Equal, CompareOp::LessSigned] {
+            let source = repeated_live_word_alu_branch_module(
+                operation, true, comparison, true,
+            );
+            let original = &source.functions()[0];
+            let mut blocks = original.blocks().to_vec();
+            let entry = &blocks[0];
+            let mut instructions = entry.instructions().to_vec();
+            instructions[2] = LocatedInstruction::new(
+                Instruction::Getchar {
+                    result: ValueId::new(2),
+                    type_id: TypeId::new(1),
+                },
+                fixture_span(1, 2),
+            );
+            blocks[0] = BasicBlock::new(BasicBlockSpec {
+                id: entry.id(),
+                instructions,
+                phis: Vec::new(),
+                span: entry.span(),
+                terminator: entry.terminator().clone(),
+                terminator_span: entry.terminator_span(),
+            });
+            let modified = Module::new(ModuleSpec {
+                abi_id: String::from(source.abi_id()),
+                format_version: source.format_version(),
+                functions: vec![Function::new(FunctionSpec {
+                    blocks,
+                    entry: original.entry(),
+                    id: original.id(),
+                    name: String::from(original.name()),
+                    parameters: original.parameters().to_vec(),
+                    signature: original.signature(),
+                    span: original.span(),
+                })],
+                globals: source.globals().to_vec(),
+                proof_obligations: source.proof_obligations().to_vec(),
+                source_id: String::from(source.source_id()),
+                source_sha256: *source.source_sha256(),
+                target_profile: String::from(source.target_profile()),
+                types: source.types().to_vec(),
+            });
+            validate_module(&modified).map_err(|error| {
+                format!("admit repeated getchar: {error:?}")
+            })?;
+            let wire = canonical_bytes(&modified).map_err(|error| {
+                format!("encode repeated getchar: {error:?}")
+            })?;
+            assert_eq!(canonical_module(&wire), Ok(modified.clone()));
+            let projected = project_typed_ir(&modified)?;
+            let target = lower_typed_ir(&projected).map_err(|error| {
+                format!("lower repeated getchar: {error:?}")
+            })?;
+            let ops = &target.functions[0].operations;
+            assert_eq!(
+                ops.iter()
+                    .filter(|op| matches!(
+                        op,
+                        TernaryOperation::GetcharI32 { .. }
+                    ))
+                    .count(),
+                1,
+            );
+            assert_eq!(
+                ops.iter()
+                    .filter(|op| matches!(
+                        op,
+                        TernaryOperation::ByteOutput { .. }
+                    ))
+                    .count(),
+                if comparison == CompareOp::Equal {
+                    2
+                } else {
+                    1
+                },
+            );
+            let target_wire = canonical_ternary_bytes(&target)
+                .map_err(|error| format!("encode getchar target: {error:?}"))?;
+            assert_eq!(canonical_ternary_program(&target_wire), Ok(target));
+            let mut forged = projected.clone();
+            match &mut forged.functions[0].blocks[0].instructions[2] {
+                InputInstruction::Getchar { type_kind, .. } => {
+                    *type_kind = InputScalarType::U8;
+                },
+                _ => return Err(String::from("missing EOF-bearing input")),
+            }
+            assert_eq!(
+                lower_typed_ir(&forged),
+                Err(TernaryLoweringError::UnsupportedInstruction),
+            );
+        }
+    }
+    Ok(())
+}

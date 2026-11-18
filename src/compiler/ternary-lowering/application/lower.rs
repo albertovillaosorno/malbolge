@@ -64,6 +64,15 @@ type SourceCoordinatesByByte = BTreeMap<u32, (u32, u32)>;
 type ProvenWord = (u32, InputScalarType, u32);
 type ProvenWordTable = BTreeMap<u32, (InputScalarType, u32)>;
 type LiteralCastIdentity = (u32, u32, InputScalarType, LiteralCastKind);
+// Pure, total word operations can prove two distinct SSA results equal.
+type PureWordSignature = (InputScalarType, PureWordOperation, u32, u32);
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum PureWordOperation {
+    And,
+    Or,
+    Xor,
+}
 
 #[derive(Clone, Copy)]
 enum Bitwise32Kind {
@@ -440,6 +449,105 @@ fn proven_literal_integer(
         _ => return None,
     };
     Some((*result, *type_kind, bits))
+}
+
+// Distinct SSA results of identical typed, total bitwise operations are
+// equal for every live input. Commutativity lets operands appear in either
+// order; the proof includes both operand identities and signedness, and the
+// normal lowerer still checks types and retains both guest operations.
+fn pure_word_signature(
+    instruction: &InputInstruction,
+) -> Option<(u32, PureWordSignature)> {
+    let (left, right, result, kind, operation) = match instruction {
+        InputInstruction::BinaryAnd {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        } => (left, right, result, type_kind, PureWordOperation::And),
+        InputInstruction::BinaryOr {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        } => (left, right, result, type_kind, PureWordOperation::Or),
+        InputInstruction::BinaryXor {
+            left,
+            right,
+            result,
+            type_kind,
+            ..
+        } => (left, right, result, type_kind, PureWordOperation::Xor),
+        _ => return None,
+    };
+    matches!(kind, InputScalarType::I32 | InputScalarType::U32).then_some((
+        *result,
+        (*kind, operation, (*left).min(*right), (*left).max(*right)),
+    ))
+}
+
+fn proven_equal_pure_word_comparison(
+    instruction: &InputInstruction,
+    signatures: &BTreeMap<u32, PureWordSignature>,
+) -> Option<(u32, bool)> {
+    let (left, right, result, chosen, signedness) = match instruction {
+        InputInstruction::CompareEqual {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => (left, right, result, true, None),
+        InputInstruction::CompareNotEqual {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            ..
+        } => (left, right, result, false, None),
+        InputInstruction::CompareOrdered {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            operation: InputOrderedComparison::Signed,
+            ..
+        } => (left, right, result, false, Some(InputScalarType::I32)),
+        InputInstruction::CompareOrdered {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            operation: InputOrderedComparison::SignedEqual,
+            ..
+        } => (left, right, result, true, Some(InputScalarType::I32)),
+        InputInstruction::CompareOrdered {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            operation: InputOrderedComparison::Unsigned,
+            ..
+        } => (left, right, result, false, Some(InputScalarType::U32)),
+        InputInstruction::CompareOrdered {
+            left,
+            right,
+            result,
+            type_kind: InputScalarType::Bool,
+            operation: InputOrderedComparison::UnsignedEqual,
+            ..
+        } => (left, right, result, true, Some(InputScalarType::U32)),
+        _ => return None,
+    };
+    if left == right {
+        return None;
+    }
+    let first = signatures.get(left)?;
+    let second = signatures.get(right)?;
+    (first == second && signedness.is_none_or(|kind| kind == first.0))
+        .then_some((*result, chosen))
 }
 
 // Integer comparison is reflexive for one *identical SSA word*, even if
@@ -1059,6 +1167,7 @@ pub(super) fn selected_function_blocks(
     let mut blocks = Vec::new();
     let mut constants = BTreeMap::new();
     let mut literal_words = BTreeMap::new();
+    let mut pure_word_signatures = BTreeMap::new();
     let mut defined_bools = BTreeSet::new();
     let mut next = function.entry;
     loop {
@@ -1106,10 +1215,21 @@ pub(super) fn selected_function_blocks(
             {
                 _ = literal_words.insert(result, (kind, bits));
             }
+            if let Some((result, signature)) = pure_word_signature(instruction)
+            {
+                _ = pure_word_signatures.insert(result, signature);
+            }
             if let Some((result, value)) =
-                proven_reflexive_comparison(instruction).or_else(|| {
-                    proven_literal_comparison(instruction, &literal_words)
-                })
+                proven_reflexive_comparison(instruction)
+                    .or_else(|| {
+                        proven_literal_comparison(instruction, &literal_words)
+                    })
+                    .or_else(|| {
+                        proven_equal_pure_word_comparison(
+                            instruction,
+                            &pure_word_signatures,
+                        )
+                    })
             {
                 _ = constants.insert(result, value);
             }

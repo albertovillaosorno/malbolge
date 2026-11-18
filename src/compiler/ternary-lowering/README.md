@@ -108,6 +108,18 @@ byte input, ALU, truth cast, and selected output in canonical ternary state.
 A mutated absorbing literal once again requires dynamic branching and is
 rejected, not silently guest-evaluated on the host.
 
+Repeated total 32-bit bitwise expressions can also establish a Boolean
+guard without host execution. Two distinct signed or unsigned SSA results of
+AND, OR or XOR are equal when their operand SSA identities and operation
+coincide, including reversed operands for these commutative operations.
+Equality, inequality, `<` and `<=` then select the proven CFG arm without
+changing either guest input or ALU operation. Forty-eight typed-IR cases check
+both signedness modes, operation families, operand orders and comparisons,
+including canonical source and target wires, source-bound checkpoint replay,
+and fail-closed changed-operand and changed-operation cases. This is an
+algebraic statement about the same guest operands, not a claim that separately
+read inputs are equal, or that general runtime branching is executable.
+
 Four additional signed `GetcharI32` typed-CFG cases preserve the distinct
 EOF-bearing read (including `-1`) through same-SSA XOR/subtract and a static
 zero guard. Their independent successful-byte input/output effects remain
