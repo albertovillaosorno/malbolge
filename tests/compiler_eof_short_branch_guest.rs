@@ -273,3 +273,104 @@ fn all_257_signed_inputs_execute_the_correct_branch_boundary()
     }
     Ok(())
 }
+
+// A follow-on experiment reuses the unchanged four physical p writes and
+// rotates their input-dependent result in real guest memory. It does not
+// yet link either rotated word to executable branch targets.
+fn rotated_discriminator_guest() -> Result<Vec<u8>, String> {
+    let mut source = guest_source()?;
+    set(&mut source, 78, b'*')?;
+    set(&mut source, 79, current_profile().output_instruction())?;
+    set(&mut source, 80, b'v')?;
+    Ok(source)
+}
+
+#[test]
+#[expect(
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    reason = "independent exact trit-position lower bound"
+)]
+fn no_fourth_crazy_operand_places_both_controls_inside_the_source() {
+    const TRITS: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
+    let third = |word| {
+        scalar_crazy(
+            THIRD_OPERAND,
+            scalar_crazy(ROTATED_OPERAND, scalar_crazy(FIRST_OPERAND, word)),
+        )
+    };
+    for byte in u8::MIN..=u8::MAX {
+        assert_eq!((third(u32::from(byte)) / 243) % 3, 2);
+    }
+    assert_eq!((third(current_profile().eof_word()) / 243) % 3, 0);
+    // Because each crazy trit is independent, every possible operand trit
+    // produces a nonzero trit 5 for at least one input class. Therefore
+    // one target is >= 243, beyond this source's 132 cells.
+    for [zero, _, two] in TRITS {
+        assert_ne!((two, zero), (0, 0));
+    }
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "bounded physical guest arithmetic and I/O trace witness"
+)]
+fn physical_rotation_moves_the_eof_bit_and_emits_distinct_guest_bytes()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = rotated_discriminator_guest()?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(loaded.memory_word(139), Ok(FOURTH_OPERAND));
+
+    for input in [vec![], vec![0], vec![1], vec![0x80], vec![0xff]] {
+        let word = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let before = control(word);
+        let rotated = scalar_rotate(before);
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let result = vm
+            .run_traced(81, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(result, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 81,
+        });
+        let rotation = trace.get(78).ok_or("missing reached rotation")?;
+        assert_eq!(rotation.decoded, Some(b'*'));
+        assert_eq!(rotation.before.registers.code_pointer, 78);
+        assert_eq!(rotation.before.registers.data_pointer, 139);
+        assert_eq!(rotation.before.registers.accumulator, before);
+        assert_eq!(
+            rotation
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((139, before))
+        );
+        assert_eq!(rotation.after.registers.accumulator, rotated);
+        assert_eq!(vm.memory_word(139), Ok(rotated));
+        assert_eq!(trace.get(79).map(|step| step.decoded), Some(Some(b'<')));
+        assert_eq!(trace.get(80).map(|step| step.decoded), Some(Some(b'v')));
+        assert_eq!(vm.output(), &[
+            u8::try_from(rotated & 255).unwrap_or_default()
+        ]);
+        assert_eq!(vm.input_consumed(), usize::from(!input.is_empty()));
+    }
+    assert_eq!(scalar_rotate(SUCCESS_CONTROL), 9_565_979);
+    assert_eq!(scalar_rotate(EOF_CONTROL), 9_566_060);
+    assert_eq!(scalar_rotate(SUCCESS_CONTROL) & 255, 27);
+    assert_eq!(scalar_rotate(EOF_CONTROL) & 255, 108);
+    Ok(())
+}

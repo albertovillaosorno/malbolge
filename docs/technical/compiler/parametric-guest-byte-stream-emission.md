@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical dynamic rotation after four crazy writes (2026-11-18)
+
+For the `-}` 132-cell seed, the third arithmetic write has trit 5
+(place 243) equal to 2 for every successful input and 0 for EOF.
+The independent crazy table proves that **no possible fourth `p`
+operand** can leave both classes with control words below 243, so
+both branch destinations cannot fit within this 132-cell source.
+This is a bound on the present four-write scheme, not on arbitrary
+Malbolge branches or longer layouts.
+
+A genuine N15 follow-on guest keeps the same four real `p` writes,
+then reaches `*` with `D=139` and rotates the written control word.
+The memory mutation yields 9,565,979 for every successful byte and
+9,566,060 for EOF, shifting their difference from place 243 to 81.
+The guest then executes `<` and `v`: empty, NUL, 1, 128 and 255
+produce actual output `0x6c`, `0x1b`, `0x1b`, `0x1b`, `0x1b`,
+respectively, in 81 normative steps each. It does not jump to either
+rotated control word; both are well outside source memory and are
+not valid branch destinations without further placement and reduction.
+The independent digit oracle and reached `*` memory reads are checked
+in `compiler_eof_short_branch_guest`. No mutable-C checksum guest
+or complete executable EOF branch is claimed.
+
 ### One executable successful-input arm, EOF still unplaced (2026-11-18)
 
 A separate **132-cell graphical N15 guest** adds a fourth physical `p`

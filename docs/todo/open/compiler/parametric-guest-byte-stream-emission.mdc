@@ -73,6 +73,14 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a real fourth-`p` classifier successor rotates
+  its written memory word at M[139] with one reached guest `*`.
+  Five 81-step normative inputs emit `0x1b` for bytes and `0x6c`
+  for EOF, confirming controls 9,565,979/9,566,060. An independent
+  trit-5 proof excludes placing both fourth-`p` control words
+  inside the existing 132-cell source. The rotated targets also
+  remain unplaced; there is no C EOF loop or two-arm guest yet.
+
 - On 2026-11-18, the four-`p` signed EOF guest now executes
   **all 257 cases** through a real N15 VM: every successful byte emits
   `0x7d` in 81 steps and EOF rejects its non-graphical encryption target.
