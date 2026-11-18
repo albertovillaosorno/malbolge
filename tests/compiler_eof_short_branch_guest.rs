@@ -754,6 +754,45 @@ fn assembled_eof_branch_passes_independent_nonlinear_admission()
         assert_eq!(admitted.input_consumed(), usize::from(!eof));
         assert_eq!(admitted.output(), output);
         if eof {
+            let forged_output = [output_byte ^ 1];
+            assert_eq!(
+                layout::admit_bounded_guest_path(
+                    profile,
+                    &source,
+                    identity,
+                    layout::BoundedRevisitExpectation {
+                        input: &input,
+                        code_positions: &path,
+                        output: &forged_output,
+                        input_consumed: 0,
+                        input_events: &input_events,
+                        io_events: &io_events,
+                        data_writes: &data_writes,
+                    },
+                ),
+                Err(layout::BoundedRevisitError::OutputMismatch),
+            );
+            let mut forged_path = path.clone();
+            if let Some(destination) = forged_path.last_mut() {
+                *destination = 128;
+            }
+            assert_eq!(
+                layout::admit_bounded_guest_path(
+                    profile,
+                    &source,
+                    identity,
+                    layout::BoundedRevisitExpectation {
+                        input: &input,
+                        code_positions: &forged_path,
+                        output: &output,
+                        input_consumed: 0,
+                        input_events: &input_events,
+                        io_events: &io_events,
+                        data_writes: &data_writes,
+                    },
+                ),
+                Err(layout::BoundedRevisitError::PathMismatch),
+            );
             assert_eq!(
                 layout::admit_bounded_revisit_layout(
                     profile,
