@@ -217,6 +217,25 @@ nonrevisiting candidates and exceeded bounds. This is input-specific
 machine-control evidence, **not** runtime-conditional branching, repeated
 successful reads, compiled C state, or EOF-driven checksum termination.
 
+The same independent gate now exposes `admit_bounded_guest_path` for an
+exactly supplied *complete* path without a mandatory code revisit. The
+existing `admit_bounded_revisit_layout` retains the stricter revisit rule.
+Both entrypoints require the same profile-bound source, input, expected
+complete code path, ordered input/output events, and exact arithmetic data
+writes; neither emits a source artifact or proves arbitrary input streams.
+
+`build_signed_eof_branch_source` separately constructs a 132-cell graphical
+current-N15 **candidate**, with all 256 byte classes entering C=45 and EOF
+entering C=126. The builder is not a source-C compiler, a general conditional
+layout solver, or an independent verifier. Its real 257-class VM regression
+checks the complete machine actions, and an additional four-case independent
+nonlinear admission verifies both terminal arms using a separate 15-trit
+arithmetic oracle, frozen code paths and I/O positions. In particular EOF
+passes the general path gate but still fails the revisiting-only gate, while
+the backward byte arm passes both path validity and the source VM checks.
+Successful byte input preserves its unread suffix on the same bounded run.
+The outputs are **fixed markers**, not the dynamic checksum acceptance bytes.
+
 ### Canonical effect-free function
 
 The opt-in `--empty-void --typed-file PATH` (or `--ternary-file PATH`,

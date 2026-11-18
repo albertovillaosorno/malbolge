@@ -103,7 +103,7 @@ pub struct BoundedRevisitExpectation<'input> {
     pub data_writes: &'input [BoundedRevisitDataWrite],
 }
 
-/// An admitted, input-specific guest path with at least one revisited cell.
+/// An admitted, input-specific complete guest path; it may revisit cells.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BoundedRevisitLayout {
     source: Vec<u8>,
@@ -224,6 +224,37 @@ pub fn admit_bounded_revisit_layout(
     identity: LinearProfileIdentity<'_>,
     expected: BoundedRevisitExpectation<'_>,
 ) -> Result<BoundedRevisitLayout, BoundedRevisitError> {
+    admit_bounded_guest_path_impl(profile, source, identity, expected, true)
+}
+
+/// Verify one complete finite guest path, including straight-line EOF arms.
+///
+/// Uses the same normative VM, exact source/profile binding, and independent
+/// path, I/O and data-write oracles as the stricter revisiting entrypoint.
+/// Unlike `admit_bounded_revisit_layout`, a genuine forward-only terminal
+/// path is admitted; the caller must still provide every executed step.
+/// This is input-specific evidence, not an arbitrary-input proof or linker.
+///
+/// # Errors
+///
+/// Rejects source/profile drift, incomplete or forged witnesses, transition
+/// errors and every observable guest mismatch under the same finite budget.
+pub fn admit_bounded_guest_path(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    identity: LinearProfileIdentity<'_>,
+    expected: BoundedRevisitExpectation<'_>,
+) -> Result<BoundedRevisitLayout, BoundedRevisitError> {
+    admit_bounded_guest_path_impl(profile, source, identity, expected, false)
+}
+
+fn admit_bounded_guest_path_impl(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    identity: LinearProfileIdentity<'_>,
+    expected: BoundedRevisitExpectation<'_>,
+    require_revisit: bool,
+) -> Result<BoundedRevisitLayout, BoundedRevisitError> {
     if identity.id != profile.id()
         || identity.fingerprint != profile.fingerprint()
     {
@@ -337,7 +368,7 @@ pub fn admit_bounded_revisit_layout(
             _ => return Err(BoundedRevisitError::TerminationMismatch),
         }
     }
-    if !revisited {
+    if require_revisit && !revisited {
         return Err(BoundedRevisitError::NotRevisiting);
     }
     if machine.output() != expected.output {

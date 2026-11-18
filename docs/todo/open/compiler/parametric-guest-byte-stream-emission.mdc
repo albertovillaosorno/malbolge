@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the 132-cell signed byte/EOF guest has a reusable
+  current-N15 source-stage candidate builder rather than test-only
+  assembly. The 257-class real-guest witness passes unchanged, and
+  independent finite admission now checks complete code paths, event
+  ordering, input consumption and a separately derived arithmetic
+  write ledger for EOF, NUL, `03 04 05` and `ff`. The EOF path exits
+  forward-only; a new exact bounded-path verifier admits it while the
+  original revisiting-only verifier correctly rejects it. The
+  unchanged five-stream native C23 checksum gate still refuses target
+  lowering, so the general mutable EOF loop and P2 acceptance remain
+  open.
+
 - On 2026-11-18, a red-first one-input-attempt regression detected
   the earlier physical byte arm's extra encrypted C=69 `/` read.
   Moving the fourth actual `p` to C=67/M[137]=125 and the rotation

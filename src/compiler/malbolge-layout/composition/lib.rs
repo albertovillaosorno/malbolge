@@ -45,12 +45,14 @@ mod bounded_revisit;
 mod eof_branch_plan;
 mod eof_output_plan;
 mod loader_seed;
+mod signed_eof_branch_source;
 
 pub use bounded_revisit::{
     BoundedRevisitDataWrite, BoundedRevisitError, BoundedRevisitExpectation,
     BoundedRevisitIoEffect, BoundedRevisitIoEvent, BoundedRevisitLayout,
     MAX_REVISIT_CASES, MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS,
-    admit_bounded_revisit_batch, admit_bounded_revisit_layout,
+    admit_bounded_guest_path, admit_bounded_revisit_batch,
+    admit_bounded_revisit_layout,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,
@@ -63,6 +65,9 @@ pub use eof_output_plan::{
 };
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
+pub use signed_eof_branch_source::{
+    SignedEofBranchSourceError, build_signed_eof_branch_source,
+};
 
 const GRAPHICAL_START: u8 = 33;
 const GRAPHICAL_END: u8 = 126;

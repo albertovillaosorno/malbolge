@@ -26,6 +26,9 @@
 //! Four writes and two more crazy steps physically branch to byte/EOF arms.
 //! The successful-byte arm preserves unread input on its code revisit.
 
+#[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
+pub mod layout;
+
 use std::iter::once;
 
 use malbolge::{
@@ -418,37 +421,16 @@ fn two_post_rotation_crazy_words_have_short_scalar_targets() {
 // including the earlier failure at M[135]. Move the fourth p away from C=69:
 // its encrypted second-pass / had consumed an unrelated second input byte.
 fn post_rotation_physical_branch_source() -> Result<Vec<u8>, String> {
-    let mut source = guest_source()?;
-    // The alternate untouched M[137]=125 is a valid fourth operand:
-    // bytes collapse to 134 and EOF to 377. C=67 encrypts to an inert
-    // opcode on revisit; C=69 no longer becomes a second input read.
-    set(&mut source, 67, b'p')?;
-    set(&mut source, 69, b'o')?;
-    // C=76 has D=137 after the unchanged C=72/73 pointer resets.
-    // Rotate the written fourth result, then read virgin M[140]/M[143].
-    set(&mut source, 76, b'*')?;
-    set(&mut source, 78, b'o')?;
-    set(&mut source, 79, b'p')?;
-    set(&mut source, 82, b'p')?;
-    for position in 83..=84 {
-        set(&mut source, position, b'j')?;
-    }
-    // Reach virgin M[148], then follow its stable two-hop loader chain.
-    // The rotated M[7,174,356] at C=104 does not alias the subsequent
-    // reset M[7,174,357], so both input classes reach M[143] at C=114.
-    set(&mut source, 98, b'j')?;
-    // The first visit rotates untouched M[7,174,356]; after encryption,
-    // C=104 becomes v on the success arm's backwards revisit.
-    set(&mut source, 104, b'*')?;
-    set(&mut source, 105, b'j')?;
-    set(&mut source, 114, b'i')?;
-    // The EOF path skips the encrypted success arm and instead rotates
-    // M[145] and outputs its low byte before halting at C=129.
-    set(&mut source, 126, b'o')?;
-    set(&mut source, 127, b'*')?;
-    set(&mut source, 128, current_profile().output_instruction())?;
-    set(&mut source, 129, b'v')?;
-    Ok(source)
+    layout::build_signed_eof_branch_source(current_profile())
+        .map_err(|error| format!("signed EOF source: {error:?}"))
+}
+
+#[test]
+fn branch_candidate_requires_exact_current_profile() {
+    assert_eq!(
+        layout::build_signed_eof_branch_source(malbolge::historical_profile()),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
 }
 
 fn independent_post_rotation_control(word: u32) -> u32 {
@@ -637,6 +619,159 @@ fn all_257_signed_inputs_reach_both_arms_with_one_read() -> Result<(), String> {
                 (104, Some(b'v'))
             })
         );
+    }
+    Ok(())
+}
+
+// The nonlinear layout admission is separate from executable source assembly.
+// It uses an independent trit oracle for every arithmetic memory write, plus
+// frozen code paths and I/O positions; no expected trace is copied from the VM.
+fn independent_branch_writes(
+    input_word: u32,
+    eof: bool,
+) -> Vec<layout::BoundedRevisitDataWrite> {
+    let mut writes = Vec::new();
+    let mut add = |step, address, before, after| {
+        if before != after {
+            writes.push(layout::BoundedRevisitDataWrite {
+                step,
+                address,
+                before,
+                after,
+            });
+        }
+    };
+    let mut rotated_seed = 134;
+    for round in 0u32..12 {
+        let after = scalar_rotate(rotated_seed);
+        add(
+            17u32.saturating_add(round.saturating_mul(3)),
+            135,
+            rotated_seed,
+            after,
+        );
+        rotated_seed = after;
+    }
+    assert_eq!(rotated_seed, ROTATED_OPERAND);
+    let first = scalar_crazy(FIRST_OPERAND, input_word);
+    let second = scalar_crazy(rotated_seed, first);
+    let third = scalar_crazy(THIRD_OPERAND, second);
+    let fourth = scalar_crazy(125, third);
+    let rotated = scalar_rotate(fourth);
+    let fifth = scalar_crazy(FIRST_OPERAND, rotated);
+    let sixth = scalar_crazy(125, fifth);
+    add(64, 134, FIRST_OPERAND, first);
+    add(65, 135, rotated_seed, second);
+    add(66, 136, THIRD_OPERAND, third);
+    add(67, 137, 125, fourth);
+    add(76, 137, fourth, rotated);
+    add(79, 140, FIRST_OPERAND, fifth);
+    add(82, 143, 125, sixth);
+    add(104, 7_174_356, THIRD_OPERAND, scalar_rotate(THIRD_OPERAND));
+    if eof {
+        add(116, 145, 134, scalar_rotate(134));
+    } else {
+        let revisited_rotated = scalar_rotate(THIRD_OPERAND);
+        let revisited_crazy = scalar_crazy(THIRD_OPERAND, revisited_rotated);
+        add(126, 7_174_344, THIRD_OPERAND, revisited_rotated);
+        add(130, 7_174_348, THIRD_OPERAND, revisited_crazy);
+        add(167, 7_174_385, 125, scalar_crazy(125, revisited_crazy));
+    }
+    writes
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "independent arithmetic and path oracle for guest"
+)]
+fn assembled_eof_branch_passes_independent_nonlinear_admission()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = post_rotation_physical_branch_source()?;
+    let identity = layout::LinearProfileIdentity {
+        id: profile.id(),
+        fingerprint: profile.fingerprint(),
+    };
+    for input in [vec![], vec![0], vec![3, 4, 5], vec![0xff]] {
+        let eof = input.is_empty();
+        let input_event = input
+            .first()
+            .map_or(TraceInput::EndOfInput, |byte| TraceInput::Byte(*byte));
+        let output_byte = if eof {
+            30
+        } else {
+            154
+        };
+        let output = [output_byte];
+        let input_events = [input_event];
+        let io_events = [
+            layout::BoundedRevisitIoEvent {
+                step: 53,
+                effect: layout::BoundedRevisitIoEffect::Input(input_event),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: if eof {
+                    117
+                } else {
+                    127
+                },
+                effect: layout::BoundedRevisitIoEffect::Output(output_byte),
+            },
+        ];
+        let mut path = (0..=114u32).collect::<Vec<_>>();
+        if eof {
+            path.extend(126..=129);
+        } else {
+            path.extend(45..=104);
+        }
+        let input_word = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let data_writes = independent_branch_writes(input_word, eof);
+        let admitted = layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                input: &input,
+                code_positions: &path,
+                output: &output,
+                input_consumed: usize::from(!eof),
+                input_events: &input_events,
+                io_events: &io_events,
+                data_writes: &data_writes,
+            },
+        )
+        .map_err(|error| {
+            format!("independent admission for {input:?}: {error:?}")
+        })?;
+        assert_eq!(admitted.code_positions(), path);
+        assert_eq!(admitted.data_writes(), data_writes);
+        assert_eq!(admitted.io_events(), io_events);
+        assert_eq!(admitted.input_consumed(), usize::from(!eof));
+        assert_eq!(admitted.output(), output);
+        if eof {
+            assert_eq!(
+                layout::admit_bounded_revisit_layout(
+                    profile,
+                    &source,
+                    identity,
+                    layout::BoundedRevisitExpectation {
+                        input: &input,
+                        code_positions: &path,
+                        output: &output,
+                        input_consumed: 0,
+                        input_events: &input_events,
+                        io_events: &io_events,
+                        data_writes: &data_writes,
+                    },
+                ),
+                Err(layout::BoundedRevisitError::NotRevisiting),
+            );
+        }
     }
     Ok(())
 }

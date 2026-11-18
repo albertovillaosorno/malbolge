@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-stage EOF branch candidate and independent admission (2026-11-18)
+
+The previously test-only two-arm physical N15 branch is now assembled by
+`build_signed_eof_branch_source` in the layout responsibility. It returns an
+exactly position-encoded 132-cell graphical **candidate** for the current
+profile, refusing foreign profile descriptors; it does not publish a C guest.
+The existing 257-class traced VM regression (256 byte values, empty input,
+and two additional multibyte streams) passes against the generated source.
+
+A second bounded check supplies independent scalar 15-trit write oracles,
+exact code paths and input/output events to the nonlinear layout verifier.
+It admits EOF, NUL, `0x03 0x04 0x05`, and `0xff` with 119/175 steps and
+correct branch markers/consumption. The original revisiting-only verifier
+cannot accept the forward-only EOF arm, so the layout now exposes a
+`admit_bounded_guest_path` entrypoint with identical strict guest checks
+except for the mandatory revisit. The old API still rejects that EOF path
+as `NotRevisiting`. Neither API simulates C state, accepts an unbounded
+input language or bypasses independently checked guest execution.
+
+The frozen complete C23 EOF checksum has been retried with its native
+`-O0`/`-O2` oracle and still refuses at target lowering for phi-carried
+mutable state and dynamic loops. There is no guest checksum or general
+loop backedge; P2 remains open.
+
 ### One-read executable byte/EOF branch (2026-11-18)
 
 The 132-cell N15 guest now executes **both branches without consuming a
