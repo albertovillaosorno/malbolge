@@ -49,6 +49,9 @@ mod signed_input_literal;
 
 #[path = "source_mutable_input_literal.rs"]
 mod source_mutable_input_literal;
+
+#[path = "source_dynamic_eof_checksum.rs"]
+mod source_dynamic_eof_checksum;
 #[path = "source_signed_guarded_output.rs"]
 mod source_signed_guarded_output;
 
@@ -65,6 +68,10 @@ mod source_sha256;
 #[cfg(test)]
 #[path = "../../../../tests/compiler/source_literal_auth.rs"]
 mod source_literal_auth_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/source_dynamic_checksum.rs"]
+mod source_dynamic_checksum_tests;
 
 #[cfg(test)]
 use malbolge as _;
@@ -171,6 +178,8 @@ pub enum FrontendGuestMode {
     DiscardedGetchar,
     /// One real signed getchar, then a source-checked independent byte output.
     DiscardedInputLiteral,
+    /// Source-authenticated dynamic EOF checksum typed CFG; target lowering unsupported.
+    DynamicEofChecksum,
     /// Exactly three independently VM-witnessed different bytes.
     DistinctLiteralTriple,
     /// Exactly four independently VM-witnessed printable bytes.
@@ -3002,8 +3011,18 @@ pub fn canonical_guest_typed_ir_with_source(
             .map_err(|_error| FrontendJsonError::Malformed)?;
         if source_digest(&artifact.source.sha256)?
             != source_sha256::sha256(witness)
-            || !source_scalar_tokens_match(bytes, witness)
         {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        // `EOF` is Clang's signed -1, not a source-spelled u64 literal.
+        // The full source-locked dynamic checksum authenticates that macro's
+        // unary ancestry before the generic scalar token gate runs.
+        if let Ok(wire) =
+            source_dynamic_eof_checksum::canonical_dynamic_eof_checksum(bytes, witness)
+        {
+            return Ok((wire, FrontendGuestMode::DynamicEofChecksum));
+        }
+        if !source_scalar_tokens_match(bytes, witness) {
             return Err(FrontendJsonError::Unsupported);
         }
     }

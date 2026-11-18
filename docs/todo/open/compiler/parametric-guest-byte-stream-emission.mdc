@@ -73,6 +73,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-17, the **unchanged** frozen mutable EOF checksum with
+  source SHA-256 `9ae147a9d0e824bafb9322ee4787cdc8a7f45cb84c3f8691ad74f9eef32553c7`
+  moved from the `29:5` JSON-adapter refusal to source/58-node-Clang-proven,
+  independently re-admitted **seven-block typed CFG**. It preserves the
+  signed EOF sentinel, dynamic parity branches, checksum/current phi merges,
+  ordered arithmetic and second read in a 1,572-byte MCTI artifact. A
+  bounded test-only typed interpreter matches the five original independent
+  checksum byte oracles; Clang UBSan C23 `-O0`/`-O2` matches the same inputs.
+  Twelve AST forgeries and source tampering refuse. Rust adapter 127/127 and
+  the two-test Python native/refusal gate pass. The real compilation now
+  explicitly refuses **target lowering** for runtime loops and phi-carried state, without
+  publishing Malbolge output. This is **not guest parity or P2 completion**;
+  no output has been simulated as guest execution.
+
 - On 2026-11-17, red-first normalized AST forgeries proved the new
   EOF-safe signed reflexive guard accepted extra expression, declaration,
   inline, or storage metadata on otherwise source-matched compound/if

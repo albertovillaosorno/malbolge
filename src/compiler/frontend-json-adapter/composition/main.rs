@@ -172,6 +172,11 @@ fn execute() -> Result<(), String> {
         FrontendGuestMode::AdjacentEcho => "",
         FrontendGuestMode::DiscardedGetchar => "--discarded-getchar",
         FrontendGuestMode::DiscardedInputLiteral => "--discarded-input-literal",
+        FrontendGuestMode::DynamicEofChecksum => {
+            return Err(String::from(
+                "target lowering rejected: dynamic EOF checksum loops and phi-carried state unsupported",
+            ));
+        },
         FrontendGuestMode::LatestRead => "--latest-byte-trace",
         FrontendGuestMode::EmptyVoid => "--empty-void",
         FrontendGuestMode::InitialZeroOutput => "--initial-zero-output",

@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Complete EOF checksum now reaches dynamic typed CFG (2026-11-17)
+
+The *unchanged* frozen P2 C23 checksum (source SHA-256
+`9ae147a9d0e824bafb9322ee4787cdc8a7f45cb84c3f8691ad74f9eef32553c7`)
+originally refused the first `unsigned checksum` declaration at `29:5`.
+The pinned Clang 22.1.8 normalized source has 58 preorder nodes. A new,
+deliberately narrow original-C/source-SHA/complete-Clang-tree proof admits
+this source's genuine **seven-block typed-IR CFG**, including signed
+`getchar()`/EOF `-1`, two loop-carried phi values (`current`, `checksum`),
+two different parity branches, runtime `u32` XOR/add, `+3` and `&255`, a
+second signed read on the backedge, and one final byte output. No input
+value is collapsed into a constant byte. The 1,572-byte MCTI record
+re-admits under the independent typed validator.
+
+A test-only interpreter of the *serialized typed instructions* checks those
+branches and evolving values against an independently written checksum
+oracle on the five frozen input vectors (empty, NUL, high, mixed, truncated
+EOF), including input consumption. Clang UBSan C23 at both `-O0`/`-O2`
+passes the same five input controls; twelve forged AST-node changes and
+source omissions/edits refuse typed publication. The frontend suite passes
+127 tests, including four new focused checks, and the frozen two-test
+source/native-or-guest harness passes.
+
+The real `c2malbolge.py --repository-tools --capsule` pipeline now **refuses
+later**, with `guest layout rejected: dynamic EOF checksum control and state
+unsupported`; it still creates **no** `.malbolge` artifact. The missing
+capability is dynamic ternary/guest control flow and mutable arithmetic/storage,
+not basic typed CFG syntax. The test-only interpreter and native C are
+**not** a substitute for a real normative-Malbolge VM trace. P2 stays open;
+this closed proof is one source/CFG witness, not a general C implementation.
+
 ### Structural signed-guard AST authentication (2026-11-17)
 
 A red-first regression showed that the bounded signed EOF-safe reflexive
@@ -721,9 +752,11 @@ per-process bound. The compiler has a 75-second per-process bound; any
 future guest publication must pass every vector through the normative VM,
 with at most 100,000 steps and 15 seconds per execution.
 
-The pinned frontend accepted this exact source. The compiled JSON adapter
-refused at `29:5`, node 3, with `Unsupported` and the diagnostic
-`unlowered C declaration-statement`. No guest artifact was published.
+At the initial frozen acceptance probe, the pinned frontend accepted this
+exact source, but the compiled JSON adapter refused at `29:5`, node 3,
+with `Unsupported` and `unlowered C declaration-statement`. The newer
+seven-block typed-CFG proof described above advances beyond that refusal,
+but target lowering still fails closed without an artifact.
 This is a **non-pass** for P2 until real VM parity is proved. It does not
 establish guest EOF, storage or arithmetic. The test deliberately changes
 from an exact

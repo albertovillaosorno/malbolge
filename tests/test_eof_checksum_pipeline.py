@@ -150,13 +150,11 @@ class MutableEofChecksumTests(unittest.TestCase):
                 timeout=COMPILER_SECONDS,
             )
             if compiled.returncode != 0:
-                # An explicit typed failure is an active P2 blocker, not
+                # An explicit target-lowering refusal is an active P2 blocker, not
                 # equivalence evidence. Any different failure must be triaged.
                 self.assertIn(
-                    b"normalized frontend rejected: Unsupported", compiled.stderr
-                )
-                self.assertIn(
-                    b"unlowered C declaration-statement at 29:5", compiled.stderr
+                    b"target lowering rejected: dynamic EOF checksum loops and phi-carried state unsupported",
+                    compiled.stderr,
                 )
                 self.assertFalse(
                     target.exists(), "unsupported compiler published a guest"
