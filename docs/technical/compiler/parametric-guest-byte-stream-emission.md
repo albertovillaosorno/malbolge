@@ -78,6 +78,17 @@ executable success or EOF arm, output, source-C CFG lowering, mutable
 runtime state or the frozen checksum. P2 remains active until both arms
 are laid out and real C parity passes.
 
+The same source has now completed **257 normative VM executions** (all
+256 input byte values plus empty input), each with 65 traced transitions,
+the actual signed `/` input observation, physical `p` and `j` data reads,
+a reached `i`, and the correct distinct unplaced destination. An
+independent 257-case trit oracle checks the control word for each input.
+The test loads the full 15-trit image once, then copies it into a fresh
+*validated* VM state per input; it does not replace guest execution with a
+host arithmetic simulation. The focused test completed in **94.38 s**
+under a 100 s command budget on 2026-11-18. This expands finite coverage,
+not the compiler's supported C surface or either executable branch arm.
+
 ### Physical all-byte versus EOF guest classifier (2026-11-18)
 
 A new **132-cell graphical N15 guest** realizes a complete arithmetic

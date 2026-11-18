@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the earlier physically reached three-`p` EOF `i`
+  witness now runs **all 257 guest inputs** (every byte and empty stdin)
+  through fresh validated N15 states after one complete memory load.
+  Each of 65 transitions is traced, including signed input, all operand
+  reads, real control jump to C=7,174,224 (byte) or C=378 (EOF),
+  and a non-graphical destination. The independent scalar oracle agrees.
+  Focused Rust execution passed in 94.38 s under a 100 s budget. No
+  executable arm, mutable checksum, loop or C target lowering resulted;
+  the P2 gate remains open.
+
 - On 2026-11-18, `compiler_eof_short_branch_guest` proves a physical
   fourth-`p` signed-input classifier with one **executable** branch arm.
   A 257-case independent oracle maps all 256 bytes to control 125 and
