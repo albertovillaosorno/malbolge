@@ -374,3 +374,42 @@ fn physical_rotation_moves_the_eof_bit_and_emits_distinct_guest_bytes()
     assert_eq!(scalar_rotate(EOF_CONTROL) & 255, 108);
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    reason = "exact ternary-position bound, separate from guest execution"
+)]
+fn two_post_rotation_crazy_words_have_short_scalar_targets() {
+    const HIGH_PLACE: u32 = 4_782_969;
+    const POST_ROTATION_OPERANDS: [u32; 2] = [HIGH_PLACE, 0];
+    // The real rotation leaves both classes with trit 13 equal to zero.
+    // Every first crazy operand maps input trit zero to one or two, so
+    // one additional crazy cannot produce a short control word.
+    for word in [SUCCESS_CONTROL, EOF_CONTROL] {
+        let rotated = scalar_rotate(word);
+        assert_eq!((rotated / 1_594_323) % 3, 0);
+    }
+    for operand_trit in 0..3u32 {
+        let first = scalar_crazy(
+            operand_trit * 1_594_323,
+            scalar_rotate(SUCCESS_CONTROL),
+        );
+        assert_ne!((first / 1_594_323) % 3, 0);
+    }
+    let project = |word| {
+        let rotated = scalar_rotate(control(word));
+        let first = scalar_crazy(POST_ROTATION_OPERANDS[0], rotated);
+        scalar_crazy(POST_ROTATION_OPERANDS[1], first)
+    };
+    for byte in u8::MIN..=u8::MAX {
+        assert_eq!(project(u32::from(byte)), 40);
+    }
+    assert_eq!(project(current_profile().eof_word()), 121);
+    // These are only hypothetical i controls: the actual source's C=41
+    // is already encrypted by the time it reaches C=78. Both future
+    // operands and valid executable arm entries need separate guest work.
+    assert!(41 < u32::try_from(LENGTH).unwrap_or_default());
+    assert!(122 < u32::try_from(LENGTH).unwrap_or_default());
+}

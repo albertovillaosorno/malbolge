@@ -73,6 +73,13 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a follow-on two-`p` digit-oracle plan maps
+  the rotated physical classifier through `[4,782,969, 0]` to
+  controls 40 (all bytes) and 121 (EOF) in 257 scalar cases. One
+  `p` cannot reduce both rotated classes below 1,594,323 because
+  both have trit 13 zero. The operands, C=41/C=122 arm layout and
+  complete C checksum remain unexecuted; P2 remains open.
+
 - On 2026-11-18, a real fourth-`p` classifier successor rotates
   its written memory word at M[139] with one reached guest `*`.
   Five 81-step normative inputs emit `0x1b` for bytes and `0x6c`

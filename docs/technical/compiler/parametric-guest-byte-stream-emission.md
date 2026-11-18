@@ -51,6 +51,18 @@ The independent digit oracle and reached `*` memory reads are checked
 in `compiler_eof_short_branch_guest`. No mutable-C checksum guest
 or complete executable EOF branch is claimed.
 
+An independent two-`p` arithmetic proposal after that physical rotation
+uses operands `[4,782,969, 0]`. A complete 257-input scalar oracle
+collapses every byte to control word 40 and EOF to 121, which would
+make hypothetical `i` entries C=41 and C=122 inside the 132-cell
+source. One extra `p` alone cannot do this: rotated trit 13 is zero
+in both classes and any crazy operand maps a zero accumulator trit
+only to 1 or 2, leaving the result above 1,594,323. The two proposed
+operands have **not** been prepared or read in a physical guest, and
+C=41 is already traversed and encrypted by the present prologue.
+The next experiment needs real operand synthesis, pointer relocation,
+and a safe source skip/entry layout for both code arms.
+
 ### One executable successful-input arm, EOF still unplaced (2026-11-18)
 
 A separate **132-cell graphical N15 guest** adds a fourth physical `p`
