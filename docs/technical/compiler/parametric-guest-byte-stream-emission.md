@@ -40,6 +40,14 @@ value, branch selection or source identity is used. The new source-to-plan
 regression admits all seven blocks, three phi merges, signed `getchar()`
 effects and output, rejects malformed typed bytes, and repeats identically.
 
+The next prelink preparation now records the full incoming phi transfers on
+every static predecessor edge, without evaluating a runtime branch. For the
+original checksum the canonical graph yields four predecessor-specific edge
+sets and six source-typed **simultaneous assignments**: two on entry, two on
+the loop backedge, and one on each arm of the checksum merge. These are
+unallocated SSA transfer requirements, not sequential writes or realized
+guest instructions.
+
 The source-C driver now reaches this **unlinked pre-layout plan** before
 explicitly refusing publication, rather than refusing at the older typed
 target stage. The original C23 `-O0`/`-O2` five-vector oracle and the

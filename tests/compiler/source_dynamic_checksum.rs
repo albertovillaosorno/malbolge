@@ -176,6 +176,42 @@ fn original_checksum_crosses_canonical_typed_to_symbolic_cfg_composition() {
 }
 
 #[test]
+fn original_checksum_phi_edges_are_unselected_parallel_guest_transfers() {
+    use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
+
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(NORMALIZED, Some(SOURCE))
+            .expect("whole-source authenticated checksum");
+    assert_eq!(mode, FrontendGuestMode::DynamicEofChecksum);
+    let prelink = prepare_canonical_dynamic_cfg(&wire)
+        .expect("all checksum phi edges must be independently validated");
+    let edges = &prelink.phi_edges;
+    let summary = edges.iter().map(|edge| {
+        (edge.predecessor, edge.successor, edge.simultaneous.len())
+    }).collect::<Vec<_>>();
+    assert_eq!(summary, vec![
+        (0, 1, 2), (3, 5, 1), (4, 5, 1), (5, 1, 2),
+    ]);
+    assert_eq!(edges.iter().map(|edge| edge.simultaneous.len())
+        .sum::<usize>(), 6);
+    for edge in edges {
+        assert_eq!(edge.function, 0);
+        let destination = &prelink.cfg.functions[0].blocks
+            [usize::try_from(edge.successor).unwrap()];
+        assert_eq!(destination.id, edge.successor);
+        assert_eq!(edge.simultaneous.len(), destination.phis.len());
+        for (move_op, phi) in edge.simultaneous.iter().zip(&destination.phis) {
+            assert_eq!(move_op.result, phi.result);
+            assert_eq!(move_op.type_kind, phi.type_kind);
+            assert_eq!(phi.incoming.iter()
+                .find(|(predecessor, _)| *predecessor == edge.predecessor)
+                .map(|(_, value)| *value), Some(move_op.source));
+        }
+    }
+    assert_eq!(prepare_canonical_dynamic_cfg(&wire), Ok(prelink));
+}
+
+#[test]
 fn original_c23_checksum_reproduces_frozen_dynamic_typed_wire() {
     // This fixture must be regenerated only from the source-checked pinned
     // Clang tree, never from a hand-authored approximation of the checksum.

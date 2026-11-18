@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the original typed checksum's pre-link stage now
+  derives four static CFG edges that require phi transfers and records
+  six simultaneously evaluated, source-typed assignments. The sets
+  preserve both conditional checksum arms and the loop backedge without
+  choosing a host path or pretending to allocate guest memory. They are
+  checked against each canonical phi incoming source and reproduced
+  deterministically before the source-C driver refuses physical linking.
+  No guest code or EOF parity is claimed.
+
 - On 2026-11-18, production `c2malbolge_json` now invokes a
   compiler-owned `lower_canonical_dynamic_cfg` after source-authenticated
   canonical typed-IR admission. The adapter derives all seven blocks,

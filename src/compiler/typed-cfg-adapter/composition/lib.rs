@@ -34,6 +34,10 @@
 //
 //! Validated typed compiler IR to unlinked ternary CFG composition.
 
+#[path = "phi_edge_transfers.rs"]
+mod phi_edge_transfers;
+pub use phi_edge_transfers::{PhiEdgeMove, PhiEdgeTransfers, PrelinkCfgPlan};
+
 #[path = "../../ternary-lowering/composition/lib.rs"]
 pub mod ternary;
 #[path = "../../typed-ir/composition/lib.rs"]
@@ -513,4 +517,18 @@ pub fn lower_canonical_dynamic_cfg(
     };
     lower_dynamic_typed_cfg(&input, &bindings)
         .map_err(TypedCfgAdapterError::Lowering)
+}
+
+/// Also plans edge-specific phi assignments for future guest state linkage.
+///
+/// # Errors
+///
+/// Propagates canonical typed decoding, symbolic CFG lowering and phi-edge
+/// consistency errors, without creating guest source or a physical layout.
+pub fn prepare_canonical_dynamic_cfg(
+    canonical: &[u8],
+) -> Result<PrelinkCfgPlan, TypedCfgAdapterError> {
+    let cfg = lower_canonical_dynamic_cfg(canonical)?;
+    let phi_edges = phi_edge_transfers::plan_phi_edges(&cfg)?;
+    Ok(PrelinkCfgPlan { cfg, phi_edges })
 }

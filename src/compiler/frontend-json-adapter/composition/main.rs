@@ -43,7 +43,7 @@ use std::process::{Command, ExitCode, Stdio};
 use malbolge as _;
 use malbolge_c_frontend_json_adapter::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
-    first_unlowered_c_node, typed_cfg_adapter::lower_canonical_dynamic_cfg,
+    first_unlowered_c_node, typed_cfg_adapter::prepare_canonical_dynamic_cfg,
 };
 use serde as _;
 use serde_json as _;
@@ -176,7 +176,7 @@ fn execute() -> Result<(), String> {
             // The validated source-derived typed wire is the only authority
             // for this symbolic CFG; neither stdin nor SSA phi edges may be
             // supplied by the host. No target image may be published here.
-            let _unlinked = lower_canonical_dynamic_cfg(&typed)
+            let _unlinked = prepare_canonical_dynamic_cfg(&typed)
                 .map_err(|error| {
                     format!("symbolic ternary CFG rejected: {error:?}")
                 })?;
