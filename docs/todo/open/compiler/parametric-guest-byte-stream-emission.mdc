@@ -73,8 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a red-first two-crazy EOF control-word checker and
+  independent 15-trit digit oracle proved a 257-case mathematical split:
+  signed successful `getchar()` bytes `0..255` all map to word `243`, while
+  the N15 EOF sentinel maps to `486`, from operands `14,348,906` and `486`.
+  Hypothetical `i` destinations would be 244 and 487. Wrong profile,
+  operands, targets, byte result and EOF result reject. The *unchanged*
+  complete checksum still refuses target lowering; **no guest memory
+  placement, input-dependent `i` jump, loop or output has been emitted**.
+  P2 remains active pending real guest execution and independent parity.
+
 - On 2026-11-17, the **unchanged** frozen mutable EOF checksum with
-  source SHA-256 `9ae147a9d0e824bafb9322ee4787cdc8a7f45cb84c3f8691ad74f9eef32553c7`
+  source SHA-256
+  `9ae147a9d0e824bafb9322ee4787cdc8a7f45cb84c3f8691ad74f9eef32553c7`
   moved from the `29:5` JSON-adapter refusal to source/58-node-Clang-proven,
   independently re-admitted **seven-block typed CFG**. It preserves the
   signed EOF sentinel, dynamic parity branches, checksum/current phi merges,
@@ -83,7 +94,8 @@ evidence describe the old priority scheme, not the current phase.
   checksum byte oracles; Clang UBSan C23 `-O0`/`-O2` matches the same inputs.
   Twelve AST forgeries and source tampering refuse. Rust adapter 127/127 and
   the two-test Python native/refusal gate pass. The real compilation now
-  explicitly refuses **target lowering** for runtime loops and phi-carried state, without
+  explicitly refuses **target lowering** for runtime loops and phi-carried
+  state, without
   publishing Malbolge output. This is **not guest parity or P2 completion**;
   no output has been simulated as guest execution.
 

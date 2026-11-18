@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exhaustive EOF control-word algebra, not a guest (2026-11-18)
+
+The *unchanged* complete mutable EOF checksum still reaches the seven-block
+typed CFG but explicitly refuses at target lowering; the native C23 `-O0`
+and `-O2`/no-publication two-test gate remains green. A focused N15
+arithmetic experiment identified a potential **runtime EOF distinction**:
+two successive `crazy` operations with data words `14,348,906` and `486`
+map each of the 256 successful `getchar()` words to `243`, but the exact
+signed EOF sentinel to `486`. The independently checked hypothetical
+`i` continuation addresses are 244 and 487. The new
+`admit_c23_eof_control_word_plan` checker proves all 257 cases with
+explicit invalid-profile, operand, target, byte and EOF rejections; a
+separate digit-table oracle agrees with the normative primitive.
+
+This is **not** executable Malbolge branching. Neither operand has been
+placed in live guest memory, and the final accumulator value has not been
+written to the future `i` data cell. No reachable source, jump destinations,
+parity branch, loop-carried state, mutable checksum arithmetic or guest
+output is proved. Next P2 work must realize and independently trace the
+physical `p` data writes, `D` relocation and conditional `i` before it can
+use these words in the unchanged complete C program. The finite algebraic
+proof does not change P2 status.
+
 ### Complete EOF checksum now reaches dynamic typed CFG (2026-11-17)
 
 The *unchanged* frozen P2 C23 checksum (source SHA-256

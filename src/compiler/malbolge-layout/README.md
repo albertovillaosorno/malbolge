@@ -12,6 +12,24 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### EOF versus byte control-word prerequisite
+
+An independently checked current N15 two-`p` **data-only** proposal uses
+operand words `14,348,906` then `486`. Exhaustive scalar admission and a
+separate digit-table oracle prove that every successful signed C23
+`getchar()` byte (0 through 255, including 255) yields word `243`, whereas
+the exact profile EOF word yields `486`. These could become distinct `i`
+operand words for code addresses 244 and 487 **only after** a real linker
+places the original operands, proves both input-dependent data writes,
+relocates `D` to the resulting word and verifies both jump destinations.
+
+`admit_c23_eof_control_word_plan` checks all 257 cases for any proposed
+operand/target pair. Its result is not a guest, does not prove valid code
+at either destination and cannot compile the mutable EOF checksum. The
+frozen P2 checksum still refuses dynamic target lowering. The focused
+`compiler_eof_branch_plan` regression checks the independent arithmetic,
+profile mismatch and altered-data/target rejection without guest publication.
+
 ### Position-constrained loader seed selection
 
 `select_rotated_loader_seed(profile, length, data_address, rotations, pair)`

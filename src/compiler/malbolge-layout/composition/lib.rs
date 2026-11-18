@@ -42,6 +42,7 @@
 //! when the exact evolving data-pointer cells and skipped padding prove them.
 
 mod bounded_revisit;
+mod eof_branch_plan;
 mod eof_output_plan;
 mod loader_seed;
 
@@ -50,6 +51,11 @@ pub use bounded_revisit::{
     BoundedRevisitIoEffect, BoundedRevisitIoEvent, BoundedRevisitLayout,
     MAX_REVISIT_CASES, MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS,
     admit_bounded_revisit_batch, admit_bounded_revisit_layout,
+};
+pub use eof_branch_plan::{
+    C23EofControlWordError, C23EofControlWordPlan,
+    CURRENT_C23_EOF_CONTROL_WORDS, CURRENT_C23_EOF_TARGET_WORDS,
+    admit_c23_eof_control_word_plan,
 };
 pub use eof_output_plan::{
     C23SignedOutputWordPlan, C23SignedOutputWordPlanError,
