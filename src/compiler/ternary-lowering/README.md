@@ -100,6 +100,14 @@ operand order, branch outcome, canonical wires, source-bound resume and
 non-absorbing-constant refusal. These symbolic ALU operations still require
 independent executable guest realization.
 
+Twelve additional source-bound cases compose these absorbing-word proofs with
+an explicit symbolic `IntegerToBool` cast instead of a word comparison.
+For AND/multiplication by zero the condition is false; for OR by all-ones
+it is true. Both typed signedness lanes and operand orders retain the real
+byte input, ALU, truth cast, and selected output in canonical ternary state.
+A mutated absorbing literal once again requires dynamic branching and is
+rejected, not silently guest-evaluated on the host.
+
 Four additional signed `GetcharI32` typed-CFG cases preserve the distinct
 EOF-bearing read (including `-1`) through same-SSA XOR/subtract and a static
 zero guard. Their independent successful-byte input/output effects remain

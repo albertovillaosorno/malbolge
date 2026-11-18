@@ -26107,6 +26107,145 @@ fn live_absorbing_alu_selects_only_proven_branch() -> Result<(), String> {
     Ok(())
 }
 
+// Compose the source-independent absorbing rule with the existing exact
+// integer-to-Boolean truth rule without host-evaluating the guest word.
+fn guest_absorbing_truth_branch_module(
+    operation: BinaryOp,
+    signed: bool,
+    swapped: bool,
+) -> Module {
+    let base =
+        guest_absorbing_alu_branch_module(operation, signed, true, swapped);
+    let original = &base.functions()[0];
+    let mut blocks = original.blocks().to_vec();
+    let entry = &blocks[0];
+    let mut instructions = entry.instructions().to_vec();
+    instructions[5] = LocatedInstruction::new(
+        Instruction::Cast {
+            operation: CastOp::IntegerToBool,
+            result: ValueId::new(5),
+            type_id: TypeId::new(3),
+            value: ValueId::new(4),
+        },
+        fixture_span(1, 2),
+    );
+    blocks[0] = BasicBlock::new(BasicBlockSpec {
+        id: entry.id(),
+        instructions,
+        phis: Vec::new(),
+        span: entry.span(),
+        terminator: entry.terminator().clone(),
+        terminator_span: entry.terminator_span(),
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![Function::new(FunctionSpec {
+            blocks,
+            entry: original.entry(),
+            id: original.id(),
+            name: String::from(original.name()),
+            parameters: original.parameters().to_vec(),
+            signature: original.signature(),
+            span: original.span(),
+        })],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    })
+}
+
+#[test]
+fn live_absorbing_alu_composes_with_integer_truth_guard() -> Result<(), String>
+{
+    for operation in [BinaryOp::And, BinaryOp::Multiply, BinaryOp::Or] {
+        for signed in [false, true] {
+            for swapped in [false, true] {
+                let source = guest_absorbing_truth_branch_module(
+                    operation, signed, swapped,
+                );
+                validate_module(&source)
+                    .map_err(|error| format!("admit live truth: {error:?}"))?;
+                let typed = canonical_bytes(&source)
+                    .map_err(|error| format!("encode live truth: {error:?}"))?;
+                assert_eq!(canonical_module(&typed), Ok(source.clone()));
+                let projection = project_typed_ir(&source)?;
+                let target = lower_typed_ir(&projection)
+                    .map_err(|error| format!("lower live truth: {error:?}"))?;
+                let effects = &target.functions[0].operations;
+                assert_eq!(
+                    effects
+                        .iter()
+                        .filter(|effect| matches!(
+                            effect,
+                            TernaryOperation::ByteInput { .. }
+                        ))
+                        .count(),
+                    1
+                );
+                assert_eq!(
+                    effects
+                        .iter()
+                        .filter(|effect| matches!(
+                            effect,
+                            TernaryOperation::ByteOutput { .. }
+                        ))
+                        .count(),
+                    if operation == BinaryOp::Or {
+                        2
+                    } else {
+                        1
+                    }
+                );
+                assert!(effects.iter().any(|effect| matches!(
+                    (signed, effect),
+                    (false, TernaryOperation::U32ToBool { .. })
+                        | (true, TernaryOperation::I32ToBool { .. })
+                )));
+                let wire =
+                    canonical_ternary_bytes(&target).map_err(|error| {
+                        format!("encode truth target: {error:?}")
+                    })?;
+                assert_eq!(
+                    canonical_ternary_program(&wire),
+                    Ok(target.clone())
+                );
+                let label = format!("truth-{operation:?}-{signed}-{swapped}");
+                let (progress, directory) =
+                    publish_ternary_progress_fixture(&label, &wire)?;
+                assert_eq!(
+                    resume_ternary_from_progress_for_source(
+                        &repository_python(),
+                        &progress_inspector(),
+                        &progress,
+                        &projection,
+                    ),
+                    Ok(target),
+                );
+                remove_dir_all(&directory)
+                    .map_err(|error| format!("clean truth fixture: {error}"))?;
+                let mut changed = projection.clone();
+                match &mut changed.functions[0].blocks[0].instructions[3] {
+                    InputInstruction::ConstantInteger {
+                        little_endian, ..
+                    } => {
+                        little_endian[0] ^= 1;
+                    },
+                    _ => return Err(String::from("missing truth constant")),
+                }
+                assert_eq!(
+                    lower_typed_ir(&changed),
+                    Err(TernaryLoweringError::UnsupportedTerminator),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 // A signed C getchar result can be EOF (-1), not a successful input byte.
 // Pure same-SSA algebra is still valid for that full signed domain. Keep the
 // signed read separate from the successful byte feeding selected output.

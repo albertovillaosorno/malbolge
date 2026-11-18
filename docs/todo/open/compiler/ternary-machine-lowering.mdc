@@ -924,6 +924,12 @@ instruction.
   wires, source-bound replay, wrong-width signed read refusal and
   non-reflexive-operand refusal pass. No executable signed input guest or
   unrestricted EOF-dependent branching is inferred.
+- Twelve more typed-CFG cases prove these exact absorbing-word results
+  survive a symbolic `IntegerToBool` cast before branch selection. Both
+  signedness lanes, all three operations, and both operand orders preserve
+  canonical typed/ternary wires, real byte effects, source-bound replay,
+  and refusal after mutating the absorbing operand. Boolean-to-guest
+  branching is not thereby implemented.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

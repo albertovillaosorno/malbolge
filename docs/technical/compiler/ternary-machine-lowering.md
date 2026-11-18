@@ -209,6 +209,12 @@ outcomes and refuse mutations to non-absorbing constants. The proof does
 not implement executable target ALU operations, guest-dependent control
 flow, or signed EOF conversion.
 
+Twelve further tests compose the absorbing-word identity with symbolic
+`IntegerToBool`: `x & 0` and `x * 0` select false, while `x | UINT32_MAX`
+selects true, for either signedness and operand order. Guest input, ALU,
+truth conversion and selected byte effects remain explicit and canonical;
+source-bound checkpoint resume and non-absorbing literal rejection pass.
+
 Four signed-input typed-CFG cases additionally replace the live arithmetic
 operand with a real symbolic `GetcharI32` result, which may be C EOF `-1`.
 They prove the same-SSA XOR/subtract zero guard without narrowing EOF into
