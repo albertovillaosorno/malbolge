@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a 132-cell graphical N15 guest physically executes
+  twelve `*` rotations with paired `j` pointer resets, signed input and
+  three data-dependent `p` instructions. Its operands
+  `[3,618, 7,174,350, 125]` map every successful C23 input byte to word
+  `7,174,223` and EOF to `377` by an independent 257-case digit oracle.
+  Five real normative 61-step VM traces produce `0x4f` for tested bytes
+  and `0x79` for EOF. This is physical guest EOF **output** classification,
+  not a conditional `i` jump, compiler-generated C control, runtime
+  checksum arithmetic or the complete C program. P2 remains open.
+
 - On 2026-11-18, an independent base-three invariant excludes
   rotation-only synthesis of the reduced EOF plan's second word 728.
   Every graphical source and untouched loader cell has at most four 2

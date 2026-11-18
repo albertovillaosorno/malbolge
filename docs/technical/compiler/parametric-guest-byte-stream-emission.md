@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical all-byte versus EOF guest classifier (2026-11-18)
+
+A new **132-cell graphical N15 guest** realizes a complete arithmetic
+signed-EOF discriminator in the normative VM, using a distinct three-`p`
+plan rather than the rotation-impossible two-`p` operand 728. The `-}`
+source tail seeds loader-expanded memory at addresses 135..137 with
+`134`, `7,174,350`, and `125`. Twelve real `*` writes to the first word
+are followed by two actual `j` relocations per round, returning `D=135`.
+
+The rotated first word is `3,618`. A genuine signed `/` and three reached
+`p` instructions then read `[3,618, 7,174,350, 125]` in order.
+
+An independent 15-trit truth-table oracle proves every successful C23
+`getchar()` byte `0..255` maps to accumulator word `7,174,223`, while the
+N15 EOF sentinel maps to `377`. The guest emits their low bytes `0x4f`
+versus `0x79` and halts in **61 real VM instructions**. Five normative VM
+runs (empty, NUL, `0x01`, `0x80`, `0xff`) check actual loader data, twelve
+rotation reads, relocation operands, three `p` reads and writes, consumed
+input and output. The witness lives in `compiler_eof_guest_control`.
+
+This is a genuine guest arithmetic **output classifier**, not a reached
+input-dependent `i`: both input classes take the same instruction path.
+It is neither generated from source C nor integrated with the mutable
+checksum's guest branches, runtime state or EOF loop. P2 remains open;
+the next integration must relocate to a written discriminator word,
+prove both `i` destinations and lower the frozen checksum's typed CFG.
+
 ### Loader-seed obstruction for a real EOF branch (2026-11-18)
 
 The required physical operands cannot simply be read out of an untouched

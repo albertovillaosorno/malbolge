@@ -227,3 +227,182 @@ fn binary_input_takes_two_real_crazy_and_distinct_guest_jump_paths()
     }
     Ok(())
 }
+
+// A standalone real guest classifier, not yet linked to the C frontend or
+// control-flow lowering. It leaves the successful-byte and EOF outcomes in
+// distinct accumulator words and emits their low bytes. Both outcomes have
+// been checked for *every* C23 getchar value by an independent trit oracle.
+fn executable_eof_classifier_source() -> Result<Vec<u8>, String> {
+    use malbolge::decode_profile_instruction;
+
+    const LENGTH: usize = 132;
+    let encode = |opcode: u8, position: usize| -> Result<u8, String> {
+        (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(
+                    u32::from(*byte),
+                    u32::try_from(position).expect("bounded code position"),
+                ) == Some(opcode)
+            })
+            .ok_or_else(|| format!("no {opcode} encoding at {position}"))
+    };
+    let mut source = (0..LENGTH)
+        .map(|position| encode(b'o', position))
+        .collect::<Result<Vec<_>, _>>()?;
+    // The first j moves D=8 to D=127. Eight no-ops advance it to 135.
+    source[8] = encode(b'j', 8)?;
+    assert_eq!(source[8], 126);
+    // The loader seed '-}' gives M[135]=134, M[136]=7,174,350 and
+    // M[7,174,351]=134. The two j instructions per rotation therefore
+    // return D to 135 without changing the rotated operand or its neighbor.
+    for round in 0..12 {
+        source[17 + round * 3] = encode(b'*', 17 + round * 3)?;
+        source[18 + round * 3] = encode(b'j', 18 + round * 3)?;
+        source[19 + round * 3] = encode(b'j', 19 + round * 3)?;
+    }
+    source[53] = encode(current_profile().input_instruction(), 53)?;
+    source[54] = encode(b'j', 54)?;
+    source[55] = encode(b'j', 55)?;
+    source[56] = encode(b'p', 56)?;
+    source[57] = encode(b'p', 57)?;
+    source[58] = encode(b'p', 58)?;
+    source[59] = encode(b'<', 59)?;
+    source[60] = encode(b'v', 60)?;
+    source[130] = 45;
+    source[131] = 125;
+    for (position, byte) in source.iter().enumerate() {
+        let decoded = decode_profile_instruction(
+            u32::from(*byte),
+            u32::try_from(position).expect("bounded source position"),
+        );
+        if !matches!(
+            decoded,
+            Some(b'j' | b'i' | b'*' | b'p' | b'o' | b'<' | b'/' | b'v')
+        ) {
+            return Err(format!(
+                "invalid physical source at {position}: {decoded:?}"
+            ));
+        }
+    }
+    Ok(source)
+}
+
+// Separate digitwise table, not an invocation of the normative VM primitive.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "fixed-width 15-trit independent arithmetic proof"
+)]
+fn independent_crazy(mut data: u32, mut accumulator: u32) -> u32 {
+    const TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
+    let mut result = 0;
+    let mut power = 1;
+    for _ in 0..15 {
+        result +=
+            TABLE[(data % 3) as usize][(accumulator % 3) as usize] * power;
+        data /= 3;
+        accumulator /= 3;
+        power *= 3;
+    }
+    result
+}
+
+#[test]
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "independent rotation oracle over exactly fifteen trits"
+)]
+fn physical_guest_distinguishes_every_c23_byte_from_signed_eof()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = executable_eof_classifier_source()?;
+    let mut rotated = 134;
+    let mut rotation_states = vec![rotated];
+    for _ in 0..12 {
+        rotated = rotated / 3 + (rotated % 3) * (profile.word_modulus() / 3);
+        rotation_states.push(rotated);
+    }
+    assert_eq!(rotated, 3_618);
+    let classify = |word| {
+        independent_crazy(
+            125,
+            independent_crazy(7_174_350, independent_crazy(rotated, word)),
+        )
+    };
+    // Full 257-case proof; five of these cases also execute the real guest.
+    for byte in u8::MIN..=u8::MAX {
+        assert_eq!(classify(u32::from(byte)), 7_174_223, "byte {byte}");
+    }
+    assert_eq!(classify(profile.eof_word()), 377);
+    assert_eq!((7_174_223_u32 % 256, 377_u32 % 256), (79, 121));
+
+    for input in [vec![], vec![0], vec![1], vec![0x80], vec![0xff]] {
+        let input_word = input
+            .first()
+            .map_or(profile.eof_word(), |byte| u32::from(*byte));
+        let first = independent_crazy(rotated, input_word);
+        let second = independent_crazy(7_174_350, first);
+        let final_word = independent_crazy(125, second);
+        let mut vm =
+            ProfileMachine::from_source(profile, &source, input.clone())
+                .map_err(|error| error.to_string())?;
+        assert_eq!(vm.memory_word(135), Ok(134));
+        assert_eq!(vm.memory_word(136), Ok(7_174_350));
+        assert_eq!(vm.memory_word(137), Ok(125));
+        assert_eq!(vm.memory_word(7_174_351), Ok(134));
+        let mut trace = vec![];
+        let result = vm
+            .run_traced(96, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(result, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 61,
+        });
+        assert_eq!(trace[8].decoded, Some(b'j'));
+        assert_eq!(
+            trace[8].memory_reads.data.map(|r| (r.address, r.value)),
+            Some((8, 126))
+        );
+        for round in 0..12 {
+            let rotation = &trace[17 + round * 3];
+            assert_eq!(rotation.decoded, Some(b'*'));
+            assert_eq!(
+                rotation.memory_reads.data.map(|r| (r.address, r.value)),
+                Some((135, rotation_states[round]))
+            );
+            let forward = &trace[18 + round * 3];
+            assert_eq!(forward.decoded, Some(b'j'));
+            assert_eq!(
+                forward.memory_reads.data.map(|r| (r.address, r.value)),
+                Some((136, 7_174_350))
+            );
+            let back = &trace[19 + round * 3];
+            assert_eq!(back.decoded, Some(b'j'));
+            assert_eq!(
+                back.memory_reads.data.map(|r| (r.address, r.value)),
+                Some((7_174_351, 134))
+            );
+        }
+        assert_eq!(trace[53].decoded, Some(profile.input_instruction()));
+        for (position, address, operand) in
+            [(56, 135, rotated), (57, 136, 7_174_350), (58, 137, 125)]
+        {
+            assert_eq!(trace[position].decoded, Some(b'p'));
+            assert_eq!(
+                trace[position]
+                    .memory_reads
+                    .data
+                    .map(|r| (r.address, r.value)),
+                Some((address, operand))
+            );
+        }
+        assert_eq!(vm.memory_word(135), Ok(first));
+        assert_eq!(vm.memory_word(136), Ok(second));
+        assert_eq!(vm.memory_word(137), Ok(final_word));
+        assert_eq!(vm.output(), &[
+            u8::try_from(final_word % 256).expect("normalized output byte")
+        ]);
+        assert_eq!(vm.input_consumed(), usize::from(!input.is_empty()));
+    }
+    Ok(())
+}

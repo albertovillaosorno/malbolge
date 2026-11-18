@@ -56,6 +56,24 @@ seed/phase/rotation regression in `compiler_eof_branch_plan` independently
 checks this position-free obstruction. An additional guest `p`-based
 preparation or a genuinely different arithmetic plan is needed.
 
+### Real all-byte versus EOF output classifier (no jump)
+
+A distinct 132-cell N15 guest uses a source-valid `-}` loader tail,
+twelve actual rotations of expanded cell 135 and two `j` relocations
+per rotation to prepare word `3,618`. A signed input and three genuine
+`p` instructions read `[3,618, 7,174,350, 125]`. An independent
+15-trit oracle proves that all 256 successful bytes yield word
+`7,174,223` (`0x4f` output) and EOF yields `377` (`0x79` output).
+Five real 61-step normative VM traces confirm those effects for empty,
+NUL, `0x01`, `0x80`, and `0xff` input. The `compiler_eof_guest_control`
+test verifies each rotation, relocation and input-dependent data write.
+
+Unlike the earlier two-`p` plan that requires operand 728, this
+three-`p` plan physically executes its arithmetic. It does **not**
+execute a conditional `i`, preserve a loop-carried C checksum, or
+lower the source-C program. Linking its final control word into a
+validated branch and then the frozen C checksum remains P2 work.
+
 ### Physically executed input-dependent branch, restricted to two bytes
 
 A separate 136-cell current N15 graphical guest shows that nonlinear input
