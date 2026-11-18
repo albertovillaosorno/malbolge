@@ -255,7 +255,14 @@ class MixedMutableInterleavedReadsTests(unittest.TestCase):
             for name, data in VECTORS:
                 with self.subTest(name=name):
                     guest = subprocess.run(
-                        [str(VM), str(target), "--report-steps", "--max-steps", "1000"],
+                        [
+                            str(VM),
+                            str(target),
+                            "--input-stdin",
+                            "--report-steps",
+                            "--max-steps",
+                            "1000",
+                        ],
                         input=data,
                         capture_output=True,
                         check=False,
