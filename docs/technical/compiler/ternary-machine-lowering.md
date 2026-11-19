@@ -21,6 +21,27 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Narrow scalar joins and placed state (2026-11-19)
+
+A red-first four-block typed-CFG diamond showed that otherwise admitted
+`i8`, `i16` and `u16` constants could not cross a phi merge into the
+source-authenticated pre-layout plan. The dynamic CFG phi kind and lowerer
+now retain those exact signedness categories, and the frame planner reserves
+one 15-trit word for each narrow SSA value. Exact eight- or sixteen-bit
+little-endian integer patterns are preserved as physical literal-write
+obligations, without host evaluation or implicit sign extension.
+
+Three typed-IR and ternary CFG witnesses check one-width slots, two exact
+predecessor-specific parallel phi copies and the relocated operand addresses
+for a fixed 91-cell hypothetical source and base 128. The five-cell frame
+occupies `[128,133)`; the phi scratch cell is 132, with its result at 131.
+Another three invalid constant-width cases fail at typed-IR admission;
+placing the frame inside the code region also fails. The original complete
+seven-block mutable EOF checksum still lowers to its prior unchanged
+symbolic plan and continues to refuse executable publication. These new
+witnesses prove **prelink representation and relocation only**: no guest
+narrow-value write, branch, phi copy or checksum execution has been linked.
+
 ### Domination-ordered symbolic CFG admission (2026-11-18)
 
 A red-first three-block typed-IR witness exposed an artificial refusal:

@@ -55,6 +55,15 @@ instruction.
 
 ## Evidence
 
+- On 2026-11-19, a red-first four-block dynamic CFG with `i8`, `i16` and
+  `u16` phi joins exposed an unsupported narrow scalar state category. The
+  symbolic CFG, source-authenticated frame planner and physical data-address
+  relocation now preserve each original bit width in a single 15-trit word.
+  Three valid canonical typed witnesses prove distinct phi transfers, exact
+  unsigned source bit patterns and deterministic 91-cell source-relative
+  addresses; invalid widths and code/frame overlap refuse. This does **not**
+  emit guest writes or change the unlinked mutable EOF checksum, which still
+  requires executable branch, state, arithmetic and loop linkage.
 - On 2026-11-18, a red-first valid three-block CFG showed that numeric
   block order is not a safe lowering schedule: block 2 dominates a return
   in block 1 and defines its used value. Dynamic lowering now uses an

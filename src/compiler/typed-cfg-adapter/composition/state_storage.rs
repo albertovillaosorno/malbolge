@@ -238,9 +238,12 @@ fn scalar_layout(
         .map(super::typed::TypeEntry::definition);
     let (words, kind) = match definition {
         Some(TypeDef::Bool) => (1, TernaryCfgScalarKind::Bool),
+        Some(TypeDef::I8) => (1, TernaryCfgScalarKind::I8),
+        Some(TypeDef::I16) => (1, TernaryCfgScalarKind::I16),
         Some(TypeDef::I32) => (2, TernaryCfgScalarKind::I32),
-        Some(TypeDef::U32) => (2, TernaryCfgScalarKind::U32),
         Some(TypeDef::U8) => (1, TernaryCfgScalarKind::U8),
+        Some(TypeDef::U16) => (1, TernaryCfgScalarKind::U16),
+        Some(TypeDef::U32) => (2, TernaryCfgScalarKind::U32),
         _ => return Err(TypedCfgAdapterError::UnsupportedTypedIr),
     };
     Ok(ScalarLayout { kind, words })
@@ -369,7 +372,11 @@ fn validated_slots(
     let mut next = 0u32;
     for slot in intervals {
         let expected = match slot.type_kind {
-            TernaryCfgScalarKind::Bool | TernaryCfgScalarKind::U8 => 1,
+            TernaryCfgScalarKind::Bool
+            | TernaryCfgScalarKind::I8
+            | TernaryCfgScalarKind::I16
+            | TernaryCfgScalarKind::U8
+            | TernaryCfgScalarKind::U16 => 1,
             TernaryCfgScalarKind::I32 | TernaryCfgScalarKind::U32 => 2,
         };
         if slot.offset != next || slot.words != expected {

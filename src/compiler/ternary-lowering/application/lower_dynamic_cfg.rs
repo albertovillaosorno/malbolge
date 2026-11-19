@@ -135,14 +135,13 @@ fn phi_kind(
 ) -> Result<TernaryCfgScalarKind, TernaryLoweringError> {
     match kind {
         InputScalarType::Bool => Ok(TernaryCfgScalarKind::Bool),
+        InputScalarType::I8 => Ok(TernaryCfgScalarKind::I8),
+        InputScalarType::I16 => Ok(TernaryCfgScalarKind::I16),
         InputScalarType::I32 => Ok(TernaryCfgScalarKind::I32),
-        InputScalarType::U32 => Ok(TernaryCfgScalarKind::U32),
         InputScalarType::U8 => Ok(TernaryCfgScalarKind::U8),
-        InputScalarType::I16
-        | InputScalarType::I8
-        | InputScalarType::Other
-        | InputScalarType::U16
-        | InputScalarType::Void => {
+        InputScalarType::U16 => Ok(TernaryCfgScalarKind::U16),
+        InputScalarType::U32 => Ok(TernaryCfgScalarKind::U32),
+        InputScalarType::Other | InputScalarType::Void => {
             Err(TernaryLoweringError::UnsupportedInstruction)
         },
     }

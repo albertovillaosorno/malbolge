@@ -118,7 +118,14 @@ fn literal_cells(
     let bytes = constant.little_endian();
     let words = match (slot.type_kind, constant.bit_width(), bytes) {
         (TernaryCfgScalarKind::Bool, 1, [value @ 0..=1])
-        | (TernaryCfgScalarKind::U8, 8, [value]) => vec![u32::from(*value)],
+        | (TernaryCfgScalarKind::I8 | TernaryCfgScalarKind::U8, 8, [value]) => {
+            vec![u32::from(*value)]
+        },
+        (
+            TernaryCfgScalarKind::I16 | TernaryCfgScalarKind::U16,
+            16,
+            [low, high],
+        ) => vec![u32::from(u16::from_le_bytes([*low, *high]))],
         (
             TernaryCfgScalarKind::I32 | TernaryCfgScalarKind::U32,
             32,

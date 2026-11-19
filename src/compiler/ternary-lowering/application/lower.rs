@@ -127,10 +127,15 @@ impl LoweringState {
         ensure_new_value(self, result)?;
         let inserted = match kind {
             InputScalarType::Bool => self.bools.insert(result),
+            InputScalarType::I8 => self.signed_bytes.insert(result),
+            InputScalarType::I16 => self.signed_halves.insert(result),
             InputScalarType::I32 => self.signed.insert(result),
-            InputScalarType::U32 => self.unsigned.insert(result),
             InputScalarType::U8 => self.bytes.insert(result),
-            _ => return Err(TernaryLoweringError::UnsupportedInstruction),
+            InputScalarType::U16 => self.unsigned_halves.insert(result),
+            InputScalarType::U32 => self.unsigned.insert(result),
+            InputScalarType::Other | InputScalarType::Void => {
+                return Err(TernaryLoweringError::UnsupportedInstruction);
+            },
         };
         debug_assert!(inserted);
         Ok(())

@@ -1224,3 +1224,233 @@ fn assert_corrupted_checksum_refusal(wire: &[u8]) {
 fn source_checksum_relocation_refuses_code_collision_and_memory_wrap() {
     assert_eq!(prove_checksum_relocation_limits(), Ok(()));
 }
+
+// A narrow local can cross a real CFG merge without widening its original
+// C type or claiming that a physical guest branch has been linked.
+fn narrow_join_typed_module(
+    kind: super::typed::TypeDef,
+    width: u16,
+    alternatives: [u16; 2],
+) -> super::typed::Module {
+    use super::typed::{
+        BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
+        FunctionSpec, IntegerConstant, LocatedInstruction, Module, ModuleSpec,
+        Phi, PhiIncoming, SourcePosition, SourceSpan, TypeDef, TypeEntry,
+        TypeId, ValueId,
+    };
+
+    let span = |start: u32, end: u32| {
+        SourceSpan::new(
+            SourcePosition::new(start, 1, start + 1),
+            SourcePosition::new(end, 1, end + 1),
+        )
+    };
+    let literal = |result: u32, value: u16, at: u32| {
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(
+                    width,
+                    value.to_le_bytes()[..usize::from(width / 8)].to_vec(),
+                ),
+                result: ValueId::new(result),
+                type_id: TypeId::new(1),
+            },
+            span(at, at + 1),
+        )
+    };
+    let block = |id, instructions, phis, terminator| {
+        BasicBlock::new(BasicBlockSpec {
+            id: BlockId::new(id),
+            instructions,
+            phis,
+            span: span(id * 2, id * 2 + 2),
+            terminator,
+            terminator_span: span(id * 2 + 1, id * 2 + 2),
+        })
+    };
+    Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: super::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![
+                block(
+                    0,
+                    vec![LocatedInstruction::new(
+                        Instruction::ConstantInteger {
+                            constant: IntegerConstant::new(1, vec![1]),
+                            result: ValueId::new(0),
+                            type_id: TypeId::new(0),
+                        },
+                        span(0, 1),
+                    )],
+                    Vec::new(),
+                    Terminator::Branch {
+                        condition: ValueId::new(0),
+                        false_target: BlockId::new(2),
+                        true_target: BlockId::new(1),
+                    },
+                ),
+                block(
+                    1,
+                    vec![literal(1, alternatives[0], 2)],
+                    Vec::new(),
+                    Terminator::Jump { target: BlockId::new(3) },
+                ),
+                block(
+                    2,
+                    vec![literal(2, alternatives[1], 4)],
+                    Vec::new(),
+                    Terminator::Jump { target: BlockId::new(3) },
+                ),
+                block(
+                    3,
+                    Vec::new(),
+                    vec![Phi::new(
+                        ValueId::new(3),
+                        TypeId::new(1),
+                        vec![
+                            PhiIncoming::new(BlockId::new(1), ValueId::new(1)),
+                            PhiIncoming::new(BlockId::new(2), ValueId::new(2)),
+                        ],
+                        span(6, 7),
+                    )],
+                    Terminator::Return {
+                        value: Some(ValueId::new(3)),
+                    },
+                ),
+            ],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("narrow_join"),
+            parameters: Vec::new(),
+            signature: TypeId::new(2),
+            span: span(0, 8),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/narrow-join.c"),
+        source_sha256: [0x53; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::Bool),
+            TypeEntry::new(TypeId::new(1), kind),
+            TypeEntry::new(
+                TypeId::new(2),
+                TypeDef::function(Vec::new(), Some(TypeId::new(1)), false),
+            ),
+        ],
+    })
+}
+
+#[test]
+fn narrow_signed_and_unsigned_phi_joins_preserve_guest_storage_widths() {
+    use super::typed::{TypeDef, canonical_bytes, validate_module};
+    use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
+    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+    use super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
+
+    for (kind, width, alternatives, target) in [
+        (TypeDef::I8, 8, [0x80, 0x7f], TernaryCfgScalarKind::I8),
+        (
+            TypeDef::I16,
+            16,
+            [0x8000, 0x7fff],
+            TernaryCfgScalarKind::I16,
+        ),
+        (TypeDef::U16, 16, [0xffff, 0x100], TernaryCfgScalarKind::U16),
+    ] {
+        let module = narrow_join_typed_module(kind, width, alternatives);
+        validate_module(&module).expect("valid narrow typed CFG");
+        let wire = canonical_bytes(&module).expect("canonical typed CFG");
+        assert_eq!(canonical_module(&wire), Ok(module));
+        let prepared = prepare_canonical_dynamic_cfg(&wire)
+            .expect("narrow phi must preserve original width");
+        let [frame] = prepared.state_frames.as_slice() else {
+            panic!("one source CFG frame");
+        };
+        assert_eq!(frame.values.len(), 4);
+        assert_eq!(frame.values[3].type_kind, target);
+        assert!(frame.values.iter().all(|slot| slot.words == 1));
+        assert_eq!(
+            (frame.scratch_offset, frame.scratch_words, frame.total_words),
+            (4, 1, 5)
+        );
+        assert_eq!(prepared.phi_edges.len(), 2);
+        assert_eq!(prepared.cell_edges.len(), 2);
+        for edge in &prepared.cell_edges {
+            assert_eq!(edge.snapshots.len(), 1);
+            assert_eq!(edge.commits.len(), 1);
+            assert_eq!(edge.commits[0].destination, 3);
+        }
+        let literal_words = prepared
+            .operation_blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .flat_map(|instruction| &instruction.constant_cells)
+            .map(|cell| cell.word)
+            .collect::<Vec<_>>();
+        assert_eq!(literal_words, vec![
+            1,
+            u32::from(alternatives[0]),
+            u32::from(alternatives[1])
+        ]);
+        assert_eq!(prepare_canonical_dynamic_cfg(&wire), Ok(prepared));
+        // These are exact data obligations, never guest instructions.
+        let relocated = relocate_source_locked_cfg(&wire, 91, 128)
+            .expect("narrow phi can be placed beyond the guest source");
+        assert_eq!(relocated.state_placements.len(), 1);
+        assert_eq!(relocated.state_placements[0].base, 128);
+        assert_eq!(relocated.state_placements[0].end_exclusive, 133);
+        assert_eq!(relocated.phi_edges.len(), 2);
+        for edge in &relocated.phi_edges {
+            assert_eq!(edge.snapshots.len(), 1);
+            assert_eq!(edge.commits.len(), 1);
+            assert_eq!(edge.snapshots[0].destination, 132);
+            assert_eq!(edge.commits[0].source, 132);
+            assert_eq!(edge.commits[0].destination, 131);
+        }
+        let physical_literals = relocated
+            .operation_blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .flat_map(|instruction| &instruction.constant_cells)
+            .map(|cell| (cell.address, cell.word))
+            .collect::<Vec<_>>();
+        assert_eq!(physical_literals, vec![
+            (128, 1),
+            (129, u32::from(alternatives[0])),
+            (130, u32::from(alternatives[1])),
+        ]);
+        assert_eq!(relocate_source_locked_cfg(&wire, 91, 128), Ok(relocated));
+    }
+}
+
+#[test]
+fn narrow_phi_rejects_invalid_constant_width_and_storage_overlap() {
+    use super::typed::{TypeDef, canonical_bytes, validate_module};
+    use super::typed_cfg_adapter::TypedCfgAdapterError;
+    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+
+    for (kind, wrong_width) in
+        [(TypeDef::I8, 16), (TypeDef::I16, 8), (TypeDef::U16, 8)]
+    {
+        let mismatched = narrow_join_typed_module(kind, wrong_width, [1, 2]);
+        assert!(validate_module(&mismatched).is_err());
+        assert!(canonical_bytes(&mismatched).is_err());
+    }
+    let valid = narrow_join_typed_module(TypeDef::I16, 16, [0x8000, 0x7fff]);
+    let wire =
+        canonical_bytes(&valid).expect("valid source-based typed witness");
+    let rejected = Err(TypedCfgAdapterError::GuestStateAllocation);
+    assert_eq!(relocate_source_locked_cfg(&wire, 91, 90), rejected);
+    let touching = relocate_source_locked_cfg(&wire, 91, 91)
+        .expect("a frame may begin immediately after the full source");
+    assert_eq!(touching.state_placements[0].end_exclusive, 96);
+    assert_eq!(
+        relocate_source_locked_cfg(&wire, 91, 92)
+            .expect("adjacent non-overlapping data placement")
+            .state_placements[0]
+            .base,
+        92,
+    );
+}

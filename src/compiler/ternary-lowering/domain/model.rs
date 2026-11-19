@@ -888,12 +888,18 @@ pub enum RuntimeIntrinsicOperation {
 pub enum TernaryCfgScalarKind {
     /// Canonical Boolean SSA result.
     Bool,
+    /// Signed eight-bit C scalar, preserved without promotion.
+    I8,
+    /// Signed sixteen-bit C scalar, preserved without promotion.
+    I16,
     /// Signed 32-bit C word.
     I32,
-    /// Unsigned 32-bit C word.
-    U32,
     /// Unsigned C byte.
     U8,
+    /// Unsigned sixteen-bit C scalar, preserved without promotion.
+    U16,
+    /// Unsigned 32-bit C word.
+    U32,
 }
 
 /// One SSA edge merge kept symbolic until guest control flow is linked.
