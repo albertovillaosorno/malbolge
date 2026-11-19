@@ -2440,3 +2440,55 @@ fn guarded_echo_requires_complete_independent_io_and_write_oracles()
     );
     Ok(())
 }
+
+// Output must depend on the actual byte domain, rather than passing only
+// selected first-byte values or echoing a host-authored fixture. The second
+// physical read sees an independently varied next byte on every success arm.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded exhaustive normative 256-byte guest domain"
+)]
+fn guarded_echo_preserves_all_256_first_bytes_and_second_input_events()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_guarded_signed_eof_echo_and_second_read_source(profile)
+            .map_err(|error| format!("echo source: {error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for first in u8::MIN..=u8::MAX {
+        let second = first ^ 0xa5;
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            vec![first, second],
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(175, &mut |step| trace.push(*step))
+                .map_err(|error| format!("byte {first}: {error}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 175,
+            },
+            "first={first} second={second}",
+        );
+        assert_eq!(vm.output(), &[first, 154], "first={first}");
+        assert_eq!(vm.input_consumed(), 2, "first={first}");
+        assert_eq!(
+            trace.get(54).and_then(|step| step.output),
+            Some(first),
+            "first={first}",
+        );
+        assert_eq!(
+            trace.get(171).and_then(|step| step.input),
+            Some(TraceInput::Byte(second)),
+            "second={second}",
+        );
+        assert_eq!(trace.get(174).and_then(|step| step.decoded), Some(b'v'),);
+    }
+    Ok(())
+}

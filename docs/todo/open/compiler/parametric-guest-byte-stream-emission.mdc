@@ -82,8 +82,11 @@ evidence describe the old priority scheme, not the current phase.
   the untouched future C state frame; forged byte output or shifted
   events refuse. Initial EOF emits `[0x6a, 0x1e]` in 119 steps with only
   one read attempt; first byte `b` emits `[b, 0x9a]` in 175 steps with
-  two attempts. These are **not C23 checksum bytes**: the sentinel is a
-  target word, the marker remains and no C locals, arithmetic, phi copy,
+  two attempts. A separate exhaustive 256-case VM test covers every
+  possible first byte with a varied second byte, verifying true byte
+  echo and exact input provenance at the second read. These are **not
+  C23 checksum bytes**: the sentinel is a target word, the marker remains,
+  and no C locals, arithmetic, phi copy,
   loop or checksum output executes. The original checksum still refuses
   publication and P2 remains open.
 

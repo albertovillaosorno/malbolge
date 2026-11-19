@@ -43,6 +43,9 @@ a second real input attempt before halting at 175 steps.
 
 Six bounded binary/EOF streams match actual traced inputs, outputs, step
 positions, and complete independent `p`/`*` instruction-write oracles.
+An exhaustive 256-case normative guest run separately varies both input
+bytes and proves the first-byte echo, second read and exact 175-step halt
+for every successful first-byte value.
 Forged output bytes and shifted I/O effect positions fail source-bound
 admission, and the future 43-word C frame remains isolated. The new source
 must not reuse the old source-bound state placement without fresh admission.

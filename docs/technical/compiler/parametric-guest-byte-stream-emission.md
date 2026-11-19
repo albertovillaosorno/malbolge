@@ -41,7 +41,11 @@ C=101 and halts after 175 steps. The second input is not echoed.
 
 Six independent byte/EOF traces admit the exact output and I/O order,
 code path, full `p`/`*` writes, and isolation of the future 43-word
-checksum frame. Wrong first output and shifted effect timing refuse.
+checksum frame. An additional exhaustive 256-case normative VM run pairs
+each possible first byte with a separately varied second input byte and
+verifies the exact first-byte echo, second physical input event, and
+175-step halt for every first-byte class. Wrong first output and
+shifted effect timing refuse.
 This is a real data-dependent **guest** stdout byte, not host-simulated
 C semantics. EOF is not normalized to signed C23 `-1`, the output includes
 non-C markers, and there is still no linked C state, arithmetic, backedge
