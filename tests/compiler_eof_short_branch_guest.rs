@@ -931,6 +931,184 @@ fn physical_two_signed_reads_echo_second_word_and_halt() -> Result<(), String> {
     Ok(())
 }
 
+// The first input selects whether C=101 is ever revisited. This uses a
+// source cell whose first-pass p self-encrypts into the second-pass /:
+// real signed EOF must halt without reading again, but all successful
+// first bytes perform the next input *inside* the guest before halting.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "complete finite normative two-pass signed input witness"
+)]
+fn conditional_second_read_executes_only_after_first_success()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_guarded_signed_eof_second_read_source(profile)
+            .map_err(|error| format!("construct guarded source: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(
+        source.get(101).copied().map(u32::from)
+            .and_then(|byte| decode_profile_instruction(byte, 101)),
+        Some(b'p')
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("load guarded source: {error}"))?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255, 17],
+        vec![255, 0],
+        vec![128, 128],
+        vec![3, 4],
+    ] {
+        let eof = input.is_empty();
+        let expected_steps = if eof {
+            119
+        } else {
+            175
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(expected_steps, &mut |step| trace.push(*step))
+                .map_err(|error| format!("guarded input {input:?}: {error}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: expected_steps,
+            },
+            "input {input:?}"
+        );
+        let expected_first = input
+            .first()
+            .copied()
+            .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let mut expected_reads = vec![(53, expected_first)];
+        if !eof {
+            let second = input
+                .get(1)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+            expected_reads.push((101, second));
+        }
+        let actual_reads = trace
+            .iter()
+            .filter_map(|step| {
+                step.input
+                    .map(|event| (step.before.registers.code_pointer, event))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual_reads, expected_reads, "input {input:?}");
+        assert_eq!(
+            vm.input_consumed(),
+            input.len().min(if eof {
+                0
+            } else {
+                2
+            })
+        );
+        let expected_output = if eof {
+            (128, 30)
+        } else {
+            (57, 154)
+        };
+        let actual_outputs = trace
+            .iter()
+            .filter_map(|step| {
+                step.output
+                    .map(|byte| (step.before.registers.code_pointer, byte))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual_outputs, [expected_output], "input {input:?}");
+        assert_eq!(vm.output(), &[expected_output.1]);
+        let mut expected_path = (0..=114u32).collect::<Vec<_>>();
+        if eof {
+            expected_path.extend(126..=129);
+        } else {
+            expected_path.extend(45..=104);
+            assert_eq!(trace.get(101).and_then(|step| step.decoded), Some(b'p'));
+            assert_eq!(trace.get(171).and_then(|step| step.decoded), Some(profile.input_instruction()));
+        }
+        assert_eq!(
+            trace
+                .iter()
+                .map(|step| step.before.registers.code_pointer)
+                .collect::<Vec<_>>(),
+            expected_path,
+            "input {input:?}"
+        );
+    }
+    Ok(())
+}
+
+// The original exact EOF/byte classifier covers the entire signed getchar
+// domain, not merely the finite examples used to inspect the second read.
+// The guarded source must preserve both arms for every first byte and retain
+// its second-read effect even if the next input is a genuine EOF.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exhaustive finite first-byte guest I/O admission"
+)]
+fn guarded_second_read_preserves_every_first_byte_class() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = layout::build_guarded_signed_eof_second_read_source(profile)
+        .map_err(|error| format!("guarded source: {error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for first in u8::MIN..=u8::MAX {
+        let input = vec![first];
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(175, &mut |step| trace.push(*step))
+                .map_err(|error| format!("first byte {first}: {error}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 175,
+            },
+            "first byte {first}"
+        );
+        assert_eq!(vm.output(), &[154], "first byte {first}");
+        assert_eq!(vm.input_consumed(), 1, "first byte {first}");
+        let reads = trace
+            .iter()
+            .filter_map(|step| {
+                step.input
+                    .map(|event| (step.before.registers.code_pointer, event))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            reads,
+            [(53, TraceInput::Byte(first)), (101, TraceInput::EndOfInput)],
+            "first byte {first}"
+        );
+        assert_eq!(
+            trace.last().map(|step| step.before.registers.code_pointer),
+            Some(104),
+            "first byte {first}"
+        );
+    }
+    Ok(())
+}
+
 // The nonlinear layout admission is separate from executable source assembly.
 // It uses an independent trit oracle for every arithmetic memory write, plus
 // frozen code paths and I/O positions; no expected trace is copied from the VM.

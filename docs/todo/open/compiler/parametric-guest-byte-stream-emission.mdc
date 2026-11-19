@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the 132-cell normative N15 signed EOF helper gained
+  an actual *guarded* second read on the successful-byte revisit.
+  A graphical C=101 `p` self-encrypts into `/` only on that revisited
+  path. An initial EOF takes the original 119-step terminal arm without
+  a second read. All 256 first-byte values take the 175-step path with
+  two physical input events (the second is true EOF when no further
+  byte is available). Seven pinned binary streams also check second
+  bytes, unread suffixes and outputs. This advances guest-dependent
+  input sequencing but does not implement repeated EOF loops,
+  signed-C23 state normalization, arithmetic or checksum output.
+  The original C23 checksum still refuses publication; P2 stays open.
+
 - On 2026-11-18, a physical 132-cell N15 guest extension now performs
   two distinct `/` input operations and two `<` outputs, halting in 130
   steps on six fixed binary/EOF streams. The actual VM reveals the target

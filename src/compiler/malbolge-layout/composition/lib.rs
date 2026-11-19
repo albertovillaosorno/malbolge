@@ -81,7 +81,8 @@ pub use guest_state_placement::{
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 pub use signed_eof_branch_source::{
-    SignedEofBranchSourceError, build_signed_eof_branch_source,
+    SignedEofBranchSourceError, build_guarded_signed_eof_second_read_source,
+    build_signed_eof_branch_source,
 };
 
 const GRAPHICAL_START: u8 = 33;

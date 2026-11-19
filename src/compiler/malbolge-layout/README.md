@@ -12,6 +12,23 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Guest-controlled second read after a successful signed input
+
+The exact 132-cell signed EOF classifier has an additional source
+construction, `build_guarded_signed_eof_second_read_source`. It replaces
+C=101 with a position-checked dual-phase graphical instruction: the first
+pass executes `p`, and post-step encryption turns that code cell into `/`
+on the successful-byte arm's revisit. EOF on the first input skips the
+revisit, terminates after 119 steps and consumes no second input.
+Exhaustive normative runs for all 256 successful first bytes instead
+execute the second `/` at C=101 and halt after 175 steps. Samples with
+a second byte, second EOF and an unread input suffix preserve exact
+guest input provenance and the byte/EOF marker outputs.
+
+This is not a guest C input loop. It reads at most twice, computes no
+checksum, and has not relocated C state or generated a C backedge. Any
+further instruction changes need fresh source/VM admission.
+
 ### Bounded physical helper and future C-frame isolation
 
 A complete path also retains each reached `p`/`*` instruction's

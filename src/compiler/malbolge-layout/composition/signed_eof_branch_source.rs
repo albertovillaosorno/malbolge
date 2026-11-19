@@ -32,6 +32,7 @@
 
 use malbolge::{
     ProfileDescriptor, current_profile, decode_profile_instruction,
+    encrypt_profile_cell,
 };
 
 const SOURCE_LENGTH: usize = 132;
@@ -39,8 +40,6 @@ const SOURCE_LENGTH: usize = 132;
 /// Failure to construct the exact experimental N15 branch candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SignedEofBranchSourceError {
-    /// This assembly depends on current-profile geometry and loader words.
-    UnsupportedProfile,
     /// A source edit escaped the fixed 132-cell candidate bounds.
     InvalidPosition {
         /// Source position outside the fixed candidate.
@@ -53,6 +52,17 @@ pub enum SignedEofBranchSourceError {
         /// Requested decoded instruction.
         opcode: u8,
     },
+    /// No graphical byte executes two required opcodes across encryption.
+    MissingRevisitedEncoding {
+        /// Source position reached on both passes.
+        position: usize,
+        /// Opcode executed before the first post-step encryption.
+        first: u8,
+        /// Opcode decoded from the encrypted cell on its next visit.
+        second: u8,
+    },
+    /// This assembly depends on current-profile geometry and loader words.
+    UnsupportedProfile,
 }
 
 fn encode(
@@ -83,6 +93,64 @@ fn put(
         .ok_or(SignedEofBranchSourceError::InvalidPosition { position })?;
     *cell = byte;
     Ok(())
+}
+
+/// Change one graphical code cell into a checked two-pass instruction.
+///
+/// The current VM encrypts the code cell on its first execution. A revisit
+/// must decode the encrypted byte at the *same* code pointer, so selecting
+/// the first opcode alone is not sufficient.
+fn put_revisited(
+    source: &mut [u8],
+    position: usize,
+    first: u8,
+    second: u8,
+) -> Result<(), SignedEofBranchSourceError> {
+    let code_pointer = u32::try_from(position).unwrap_or(u32::MAX);
+    let byte = (33..=126u8)
+        .find(|candidate| {
+            decode_profile_instruction(u32::from(*candidate), code_pointer)
+                == Some(first)
+                && encrypt_profile_cell(u32::from(*candidate)).is_some_and(
+                    |encrypted| {
+                        decode_profile_instruction(encrypted, code_pointer)
+                            == Some(second)
+                    },
+                )
+        })
+        .ok_or(SignedEofBranchSourceError::MissingRevisitedEncoding {
+            position,
+            first,
+            second,
+        })?;
+    *source
+        .get_mut(position)
+        .ok_or(SignedEofBranchSourceError::InvalidPosition { position })? =
+        byte;
+    Ok(())
+}
+
+/// Build a physically executable EOF-guarded second signed input.
+///
+/// A first successful byte executes the original byte arm, revisits C=101,
+/// and reads the next byte (or true EOF) via an encrypted first-pass p.
+/// A first EOF instead reaches the terminal EOF arm before that revisit,
+/// so it never issues a second read. Both arms still output fixed markers;
+/// this is bounded physical control, not a C checksum or an arbitrary loop.
+///
+/// # Errors
+///
+/// Refuses other target profiles and positions lacking a valid two-pass
+/// graphical source cell. Actual VM path admission is required separately.
+pub fn build_guarded_signed_eof_second_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source = build_signed_eof_branch_source(profile)?;
+    // The first traversal of C=101 is p, after the classifier has already
+    // formed its branch word. Only the byte arm revisits C=101; XLAT2 then
+    // decodes the same cell as /, while the EOF arm skips it entirely.
+    put_revisited(&mut source, 101, b'p', profile.input_instruction())?;
+    Ok(source)
 }
 
 /// Build a physical, bounded N15 byte-versus-EOF branch candidate.

@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Conditional second signed read on physical byte arm (2026-11-18)
+
+A 132-cell N15 guest now conditionally performs a *second* physical `/`
+after the first successful signed input. C=101 decodes as `p` during
+the common forward traversal, then self-encrypts into `/` only on the
+byte arm's C=45..104 revisit. A first EOF takes the C=126..129 arm
+and halts in 119 steps after one input event and marker `0x1e`.
+All 256 successful first-byte values instead halt in 175 steps, after
+the original C=53 input and a second real `/` at C=101; an absent
+second byte produces the actual target EOF event, not a host sentinel.
+The byte arm emits `0x9a` at C=57. Seven additional finite streams
+cover NUL, high bytes, second-byte EOF and unread binary suffixes.
+
+This is a genuine input-dependent *read count*, unlike the earlier
+unconditional two-read source. The output is still a fixed branch
+marker, no source-C state is materialized, no third loop iteration
+exists, and the original mutable EOF checksum still refuses
+publication. The guest's EOF sentinel is not the signed C23 `-1`.
+
 ### Two real signed input reads on one physical guest path (2026-11-18)
 
 A new bounded N15 experiment keeps the same 132-cell graphical EOF helper
