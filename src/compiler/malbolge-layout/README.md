@@ -29,6 +29,21 @@ This is not a guest C input loop. It reads at most twice, computes no
 checksum, and has not relocated C state or generated a C backedge. Any
 further instruction changes need fresh source/VM admission.
 
+### Independent admission of guarded second-input paths
+
+The guarded second-input source now passes a six-stream mixed forward/revisit
+batch with externally constructed per-step source paths, signed input/EOF
+attempts, ordered output effects and complete trit arithmetic write oracles.
+On both arms, the first traversal of C=101 executes a `p` that writes
+M[7,174,353]; the byte arm alone revisits C=101 as the second `/`. Missing or
+shifted reads and forged physical writes refuse. Exact helper/source/profile
+identity remains necessary; no checksum state mutation or EOF loop is linked.
+
+The two-pass source encoder requires a loader-valid first opcode. In
+particular, C=103 could encrypt into `<` only from a non-loadable first
+opcode, so it cannot simply echo the second input in the current layout.
+The real guest output remains the *first* byte/EOF arm marker, not C23 output.
+
 ### Bounded physical helper and future C-frame isolation
 
 A complete path also retains each reached `p`/`*` instruction's

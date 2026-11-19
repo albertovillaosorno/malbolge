@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Independently admitted guarded two-read guest paths (2026-11-18)
+
+The 132-cell physical signed EOF source now has six complete, separately
+constructed nonlinear guest-path oracles: empty, NUL, high byte, two
+mixed-byte streams and a repeated high byte. Each witness fixes the exact
+119/175-step code sequence, real input events, first-arm output, source
+identity, and all reached `p`/`*` effects. The extra first-pass `p` at C=101
+writes the independent `crazy(134, A)` result into M[7,174,353] before that
+source cell encrypts into the second-pass `/`. The oracle derives `A` from
+the earlier step-82 crazy result, without reading expected values from the
+normative VM. A second input at step 171 is admitted only on the byte arm,
+after its fixed output marker. An initial EOF has no second input event.
+
+The VM-independent path admission and complete instruction-write checks
+pass all six streams. Forged second-byte/EOF provenance, shifted or missing
+second input effects, and an altered physical `p` result fail closed. The
+43-word future checksum frame `[153,196)` remains isolated from every
+admitted helper access. The two-pass source encoder also refuses a first
+opcode that the strict graphical loader cannot admit, even if its encrypted
+successor decodes to a useful instruction. At C=103 an apparent encrypted
+`<` echo needs such an invalid first opcode, so it is not a usable guest
+output mechanism. This is not the original checksum, guest arithmetic on
+C locals, a third read, or a repeatable EOF loop; P2 remains open.
+
 ### Conditional second signed read on physical byte arm (2026-11-18)
 
 A 132-cell N15 guest now conditionally performs a *second* physical `/`

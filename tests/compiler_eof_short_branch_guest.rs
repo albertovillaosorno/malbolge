@@ -951,7 +951,10 @@ fn conditional_second_read_executes_only_after_first_success()
     assert_eq!(source.len(), LENGTH);
     assert_eq!(source.get(130..), Some(b"-}".as_slice()));
     assert_eq!(
-        source.get(101).copied().map(u32::from)
+        source
+            .get(101)
+            .copied()
+            .map(u32::from)
             .and_then(|byte| decode_profile_instruction(byte, 101)),
         Some(b'p')
     );
@@ -1036,8 +1039,14 @@ fn conditional_second_read_executes_only_after_first_success()
             expected_path.extend(126..=129);
         } else {
             expected_path.extend(45..=104);
-            assert_eq!(trace.get(101).and_then(|step| step.decoded), Some(b'p'));
-            assert_eq!(trace.get(171).and_then(|step| step.decoded), Some(profile.input_instruction()));
+            assert_eq!(
+                trace.get(101).and_then(|step| step.decoded),
+                Some(b'p')
+            );
+            assert_eq!(
+                trace.get(171).and_then(|step| step.decoded),
+                Some(profile.input_instruction())
+            );
         }
         assert_eq!(
             trace
@@ -1839,12 +1848,7 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
         after: 125,
     };
     assert!(eof_path.instruction_writes().contains(&eof_store));
-    assert!(
-        !eof_path
-            .data_writes()
-            .iter()
-            .any(|write| write.step == 82)
-    );
+    assert!(!eof_path.data_writes().iter().any(|write| write.step == 82));
     assert_eq!(
         layout::verify_bounded_guest_instruction_writes(&eof_path, &[
             eof_store
@@ -1870,11 +1874,10 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
         .get_mut(step_index)
         .ok_or("missing checksum write result")?
         .after ^= 1;
+    let actual_bad_result =
+        layout::verify_bounded_guest_instruction_writes(&eof_path, &bad_result);
     assert_eq!(
-        layout::verify_bounded_guest_instruction_writes(
-            &eof_path,
-            &bad_result,
-        ),
+        actual_bad_result,
         Err(layout::BoundedRevisitError::InstructionWritesMismatch),
     );
     let mut bad_opcode = eof_case.instruction_writes.clone();
@@ -1882,11 +1885,10 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
         .get_mut(step_index)
         .ok_or("missing checksum write opcode")?
         .opcode = b'*';
+    let actual_bad_opcode =
+        layout::verify_bounded_guest_instruction_writes(&eof_path, &bad_opcode);
     assert_eq!(
-        layout::verify_bounded_guest_instruction_writes(
-            &eof_path,
-            &bad_opcode,
-        ),
+        actual_bad_opcode,
         Err(layout::BoundedRevisitError::InstructionWritesMismatch),
     );
     let mut reordered = eof_case.instruction_writes.clone();
@@ -1895,10 +1897,7 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
         step_index,
     );
     assert_eq!(
-        layout::verify_bounded_guest_instruction_writes(
-            &eof_path,
-            &reordered,
-        ),
+        layout::verify_bounded_guest_instruction_writes(&eof_path, &reordered,),
         Err(layout::BoundedRevisitError::InvalidExpectation),
     );
     let mut out_of_range = eof_case.instruction_writes.clone();
@@ -1985,5 +1984,237 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
         candidate.state_region().start <= *address
             && *address < candidate.state_region().end_exclusive
     }));
+    Ok(())
+}
+
+// Independent of the VM trace: the extra first-pass p at C=101 writes
+// one exact helper word and encrypts into / for the successful-byte revisit.
+// The second input occurs AFTER the byte-arm marker has already been output.
+struct OwnedGuardedBranchPath {
+    base: OwnedBranchPath,
+    input_events: Vec<TraceInput>,
+    io_events: Vec<layout::BoundedRevisitIoEvent>,
+}
+
+impl OwnedGuardedBranchPath {
+    fn new(input: Vec<u8>) -> Result<Self, String> {
+        let mut base = OwnedBranchPath::new(input.clone());
+        let eof = input.is_empty();
+        let prior_accumulator = base
+            .instruction_writes
+            .iter()
+            .find(|write| write.step == 82)
+            .ok_or("independent first-pass crazy oracle missing C=82")?
+            .after;
+        let next_accumulator = scalar_crazy(134, prior_accumulator);
+        let extra = layout::BoundedRevisitInstructionWrite {
+            step: 101,
+            opcode: b'p',
+            address: 7_174_353,
+            before: 134,
+            after: next_accumulator,
+        };
+        let insertion = base
+            .instruction_writes
+            .partition_point(|write| write.step < 101);
+        base.instruction_writes.insert(insertion, extra);
+        let insertion = base.writes.partition_point(|write| write.step < 101);
+        base.writes
+            .insert(insertion, layout::BoundedRevisitDataWrite {
+                step: extra.step,
+                address: extra.address,
+                before: extra.before,
+                after: extra.after,
+            });
+        let input_events = if eof {
+            vec![TraceInput::EndOfInput]
+        } else {
+            vec![
+                TraceInput::Byte(
+                    input.first().copied().ok_or("missing initial byte")?,
+                ),
+                input
+                    .get(1)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+            ]
+        };
+        let mut io_events = base.io_events.to_vec();
+        if let Some(second) = input_events.get(1) {
+            io_events.push(layout::BoundedRevisitIoEvent {
+                step: 171,
+                effect: layout::BoundedRevisitIoEffect::Input(*second),
+            });
+        }
+        Ok(Self {
+            base,
+            input_events,
+            io_events,
+        })
+    }
+
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        let mut expectation = self.base.expectation();
+        expectation.input_events = &self.input_events;
+        expectation.io_events = &self.io_events;
+        expectation.input_consumed = self.base.input.len().min(2);
+        expectation
+    }
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "independently constructed complete physical two-read path oracles"
+)]
+fn guarded_two_read_paths_match_independent_write_and_io_oracles()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_guarded_signed_eof_second_read_source(profile)
+        .map_err(|error| format!("guarded candidate: {error:?}"))?;
+    let identity = layout::LinearProfileIdentity {
+        id: profile.id(),
+        fingerprint: profile.fingerprint(),
+    };
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255, 17],
+        vec![255, 0],
+        vec![128, 128],
+    ]
+    .into_iter()
+    .map(OwnedGuardedBranchPath::new)
+    .collect::<Result<Vec<_>, _>>()?;
+    let expected = cases
+        .iter()
+        .map(OwnedGuardedBranchPath::expectation)
+        .collect::<Vec<_>>();
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("independent guarded batch: {error:?}"))?;
+    assert_eq!(admitted.len(), cases.len());
+    for (path, case) in admitted.iter().zip(&cases) {
+        assert_eq!(path.input_events(), case.input_events);
+        assert_eq!(path.io_events(), case.io_events);
+        assert_eq!(path.code_positions(), case.base.path);
+        assert_eq!(path.data_writes(), case.base.writes);
+        assert_eq!(path.output(), case.base.output);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                path,
+                &case.base.instruction_writes,
+            ),
+            Ok(())
+        );
+        assert_eq!(path.input_consumed(), case.base.input.len().min(2));
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(path, &[
+                layout::BoundedGuestDataRegion {
+                    start: CHECKSUM_FRAME_START,
+                    end_exclusive: CHECKSUM_FRAME_END,
+                }
+            ],),
+            Ok(())
+        );
+    }
+    let [_eof, _nul, _high, mixed, _high_zero, _repeat] = cases.as_slice()
+    else {
+        return Err(String::from("wrong expected guest case count"));
+    };
+    let [
+        eof,
+        _nul_expect,
+        high,
+        mixed_expect,
+        _high_zero_expect,
+        _repeat_expect,
+    ] = expected.as_slice()
+    else {
+        return Err(String::from("wrong expected layout case count"));
+    };
+    // A forged second read can never be substituted for true guest EOF/byte
+    // provenance, even when the output marker is unchanged.
+    let fake_reads = [TraceInput::Byte(0), TraceInput::EndOfInput];
+    let forged_input = layout::BoundedRevisitExpectation {
+        input_events: &fake_reads,
+        ..*mixed_expect
+    };
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            forged_input,
+        ),
+        Err(layout::BoundedRevisitError::InputEventsMismatch)
+    );
+    let mut fake_io = mixed.io_events.clone();
+    fake_io
+        .last_mut()
+        .ok_or("missing second input effect")?
+        .step = 170;
+    let forged_io = layout::BoundedRevisitExpectation {
+        io_events: &fake_io,
+        ..*mixed_expect
+    };
+    let actual_forged_io =
+        layout::admit_bounded_guest_path(profile, &source, identity, forged_io);
+    assert_eq!(
+        actual_forged_io,
+        Err(layout::BoundedRevisitError::IoEventsMismatch),
+    );
+    let truncated_io = &mixed.io_events[..2];
+    let forged_missing_read = layout::BoundedRevisitExpectation {
+        io_events: truncated_io,
+        ..*mixed_expect
+    };
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            forged_missing_read,
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch)
+    );
+    let mut fake_writes = mixed.base.writes.clone();
+    let new_p = fake_writes
+        .iter_mut()
+        .find(|write| write.step == 101)
+        .ok_or("missing new physical p write")?;
+    new_p.after ^= 1;
+    let forged_write = layout::BoundedRevisitExpectation {
+        data_writes: &fake_writes,
+        ..*mixed_expect
+    };
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            forged_write,
+        ),
+        Err(layout::BoundedRevisitError::DataWritesMismatch)
+    );
+    // The EOF arm has one and only one signed input attempt.
+    assert_eq!(eof.input_events, [TraceInput::EndOfInput]);
+    assert_eq!(high.input_events.len(), 2);
+    assert_eq!(admitted[0].code_positions().last(), Some(&129));
+    assert_eq!(admitted[3].code_positions().last(), Some(&104));
+    // A claimed impossible second-pass echo cell is not a valid source:
+    // C=103 would need a first-pass unknown opcode before XLAT2 yields <.
+    let impossible_pair = (33..=126_u8).any(|byte| {
+        decode_profile_instruction(u32::from(byte), 103)
+            .is_some_and(|first| b"oijp*/<v".contains(&first))
+            && malbolge::encrypt_profile_cell(u32::from(byte)).and_then(
+                |encrypted| decode_profile_instruction(encrypted, 103),
+            ) == Some(profile.output_instruction())
+    });
+    assert!(!impossible_pair);
     Ok(())
 }

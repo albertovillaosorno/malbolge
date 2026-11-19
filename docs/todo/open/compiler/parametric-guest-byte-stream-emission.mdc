@@ -73,6 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, six source-identical normative N15 guest streams now
+  pass independent *complete* nonlinear path admission for the physical
+  EOF-guarded second read. The external trit oracle checks the additional
+  first-pass `p` write at C=101/M[7,174,353] and every earlier/later
+  mutating instruction; each input and output effect, including the actual
+  second read after byte-arm output, has a separately frozen step. Forged
+  byte/EOF events, missing/shifted I/O and altered writes refuse. The
+  strict loader also blocks an attractive but invalid twice-visited C=103
+  echo character. This is bounded physical input sequencing, not C
+  checksum output, state initialization, backedge or a real EOF loop.
+  The five required source-C checksum guest parity traces remain absent;
+  P2 stays open.
+
 - On 2026-11-18, the 132-cell normative N15 signed EOF helper gained
   an actual *guarded* second read on the successful-byte revisit.
   A graphical C=101 `p` self-encrypts into `/` only on that revisited

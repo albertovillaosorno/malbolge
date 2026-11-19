@@ -106,6 +106,17 @@ fn put_revisited(
     first: u8,
     second: u8,
 ) -> Result<(), SignedEofBranchSourceError> {
+    // A second-pass decode is worthless unless the first-pass source byte
+    // itself is a loader-valid target instruction. A graphical byte that
+    // first decodes to an unknown opcode is rejected during source loading,
+    // even when its encrypted successor decodes to the requested opcode.
+    if !b"oijp*/<v".contains(&first) {
+        return Err(SignedEofBranchSourceError::MissingRevisitedEncoding {
+            position,
+            first,
+            second,
+        });
+    }
     let code_pointer = u32::try_from(position).unwrap_or(u32::MAX);
     let byte = (33..=126u8)
         .find(|candidate| {
