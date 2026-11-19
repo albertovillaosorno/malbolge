@@ -36,6 +36,7 @@ When the source-bound checksum placer joins paths, it rejects repeated input
 streams rather than counting one replayed path as multiple evidence cases.
 The returned candidate preserves the exact admitted input streams in sorted
 order; reversed witness order yields the same candidate and identity record.
+
 A red-first regression demonstrated the former duplicate-path acceptance,
 then proved the refusal with the original five C23 checksum input cases.
 The existing 257-class normative input test also now checks that the

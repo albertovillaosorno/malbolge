@@ -608,10 +608,22 @@ fn all_257_signed_inputs_reach_both_arms_with_one_read() -> Result<(), String> {
         };
         for step in &trace {
             assert!(
-                !step.memory_reads.fetch.is_some_and(|read| in_frame(read.address))
-                    && !step.memory_reads.data.is_some_and(|read| in_frame(read.address))
-                    && !step.memory_delta.encryption.is_some_and(|write| in_frame(write.address))
-                    && !step.memory_delta.data.is_some_and(|write| in_frame(write.address))
+                !step
+                    .memory_reads
+                    .fetch
+                    .is_some_and(|read| in_frame(read.address))
+                    && !step
+                        .memory_reads
+                        .data
+                        .is_some_and(|read| in_frame(read.address))
+                    && !step
+                        .memory_delta
+                        .encryption
+                        .is_some_and(|write| in_frame(write.address))
+                    && !step
+                        .memory_delta
+                        .data
+                        .is_some_and(|write| in_frame(write.address))
                     && !(matches!(step.decoded, Some(b'p' | b'*'))
                         && in_frame(step.before.registers.data_pointer)),
                 "helper accessed isolated C frame on input {input:?} at C={}",
