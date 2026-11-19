@@ -893,6 +893,12 @@ fn assembled_eof_branch_passes_independent_nonlinear_admission()
 )]
 fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
 -> Result<(), String> {
+    use layout::{
+        BoundedGuestDataRegion as Region,
+        BoundedGuestRegionsError as RegionsError,
+    };
+    const CHECKSUM_STATE_WORDS: u32 = 43;
+
     let profile = current_profile();
     let source = post_rotation_physical_branch_source()?;
     let identity = layout::LinearProfileIdentity {
@@ -926,13 +932,23 @@ fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
     )
     .map_err(|error| format!("mixed guest batch: {error:?}"))?;
     assert_eq!(admitted.len(), cases.len());
+    // Declare the physical helper's entire scratch footprint *before*
+    // selecting source-C state, including reserved but unvisited cells.
+    let helper_regions = [
+        Region {
+            end_exclusive: 146,
+            start: 132,
+        },
+        Region {
+            end_exclusive: 7_174_386,
+            start: 7_174_344,
+        },
+    ];
     // The original source-locked CFG independently reserves a 43-word
-    // SSA/phi frame. Search for a candidate around the actually executed
-    // helper, rather than trusting an invented static free-space interval.
-    // No physical C-state writes or CFG operations are linked yet.
-    const CHECKSUM_STATE_WORDS: u32 = 43;
+    // SSA/phi frame. Search around the actual helper, not invented free space.
     let state_frame = layout::place_bounded_guest_state_frame(
         &admitted,
+        &helper_regions,
         CHECKSUM_STATE_WORDS,
     )
     .map_err(|error| format!("guest frame search: {error:?}"))?;
@@ -942,53 +958,101 @@ fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
     );
     assert!(state_frame.start >= 132);
     assert!(state_frame.end_exclusive <= profile.memory_words());
+    assert!(helper_regions.iter().all(|scratch| {
+        state_frame.end_exclusive <= scratch.start
+            || scratch.end_exclusive <= state_frame.start
+    }));
     assert_eq!(
         layout::place_bounded_guest_state_frame(
             &admitted.iter().rev().cloned().collect::<Vec<_>>(),
-            43
+            &helper_regions,
+            CHECKSUM_STATE_WORDS
         ),
         Ok(state_frame),
     );
     assert_eq!(
-        layout::place_bounded_guest_state_frame(&admitted, 0),
-        Err(layout::BoundedGuestRegionsError::InvalidRegions),
+        layout::place_bounded_guest_state_frame(&admitted, &helper_regions, 0),
+        Err(RegionsError::InvalidRegions),
     );
     assert_eq!(
         layout::place_bounded_guest_state_frame(
             &admitted,
+            &helper_regions,
             layout::MAX_GUEST_RESERVED_WORDS + 1
         ),
-        Err(layout::BoundedGuestRegionsError::InvalidRegions),
+        Err(RegionsError::InvalidRegions),
     );
-    // Every smaller legal source-external base must hit a reached helper
-    // access. Independent trace verification checks search minimality.
+    // Every smaller candidate must collide with a helper access OR a
+    // declared scratch word, even one that this finite batch never touched.
     for base in 132..state_frame.start {
-        let candidate = layout::BoundedGuestDataRegion {
+        let candidate = Region {
+            end_exclusive: base + CHECKSUM_STATE_WORDS,
             start: base,
-            end_exclusive: base + 43,
         };
-        assert!(admitted.iter().any(|path| {
-            layout::verify_bounded_guest_state_isolation(path, &[candidate])
-                .is_err()
-        }));
+        assert!(
+            admitted.iter().any(|path| {
+                layout::verify_bounded_guest_state_isolation(path, &[candidate])
+                    .is_err()
+            }) || helper_regions.iter().any(|scratch| {
+                candidate.start < scratch.end_exclusive
+                    && scratch.start < candidate.end_exclusive
+            })
+        );
     }
-    // The physical control helper writes both close to its 132-cell source
-    // and at remote loader addresses. A future state frame must not alias
-    // either helper bank or an executed/encrypted code cell.
-    use layout::{
-        BoundedGuestDataRegion as Region,
-        BoundedGuestRegionsError as RegionsError,
-    };
-    let helper_regions = [
+    // An otherwise untouched, declared helper-owned word must never be
+    // repurposed as a future C local merely because the selected inputs
+    // happened not to visit it. The reservation shifts deterministically.
+    let supplementary = [
+        helper_regions[0],
         Region {
-            start: 132,
-            end_exclusive: 146,
+            end_exclusive: state_frame.end_exclusive,
+            start: 146,
         },
-        Region {
-            start: 7_174_344,
-            end_exclusive: 7_174_386,
-        },
+        helper_regions[1],
     ];
+    let shifted = layout::place_bounded_guest_state_frame(
+        &admitted,
+        &supplementary,
+        CHECKSUM_STATE_WORDS,
+    )
+    .map_err(|error| format!("supplementary scratch: {error:?}"))?;
+    assert!(shifted.start >= state_frame.end_exclusive);
+    // Helper scratch alone fits the finite ceiling, but adding the C frame
+    // crosses it. The two banks cannot spend the same memory budget twice.
+    let near_limit_scratch = [
+        helper_regions[0],
+        Region {
+            end_exclusive: 4170,
+            start: 146,
+        },
+        helper_regions[1],
+    ];
+    assert_eq!(
+        layout::place_bounded_guest_state_frame(
+            &admitted,
+            &near_limit_scratch,
+            CHECKSUM_STATE_WORDS,
+        ),
+        Err(RegionsError::InvalidRegions),
+    );
+    assert_eq!(
+        layout::place_bounded_guest_state_frame(
+            &admitted,
+            &helper_regions[..1],
+            CHECKSUM_STATE_WORDS,
+        ),
+        Err(RegionsError::UnreservedWrite),
+    );
+    assert_eq!(
+        layout::place_bounded_guest_state_frame(
+            &admitted,
+            &[helper_regions[1], helper_regions[0]],
+            CHECKSUM_STATE_WORDS,
+        ),
+        Err(RegionsError::InvalidRegions),
+    );
+    // No physical C-state initialization, guest arithmetic, or phi copy is
+    // linked just because this strict frame/scratch reservation succeeds.
     for path in &admitted {
         assert_eq!(
             path.mutation_targets().len(),

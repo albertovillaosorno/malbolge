@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, the five-path normative EOF helper's 43-word C-state
+  first-fit reservation now requires independently checked, complete helper
+  scratch intervals. It excludes *all declared* scratch, including words
+  untouched by those five paths, and counts helper/state words together
+  under the 4,096-word finite ceiling. Extra unused scratch shifts the
+  candidate; missing remote writes, invalid ordering and collisions
+  refuse. A red-first signature test, actual five-path guest regression
+  and all-target compiler check passed. No typed checksum operation is
+  physically linked, and no checksum byte is emitted; P2 remains open.
+
 - On 2026-11-18, real normative EOF helper traces now capture every
   reached data *read*, not only its writes. An independently checked
   first-fit state-frame reservation avoids helper reads, mutating writes,

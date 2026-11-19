@@ -24,9 +24,15 @@ untouched loader M[148], which becomes unsafe if reused for mutable C state.
 
 `place_bounded_guest_state_frame` derives a deterministic lowest-addressed
 candidate from the union of up to eight source/profile-identical, bounded
-paths. It refuses zero/oversized reservations and physically occupied cells.
+paths **and a required, independently verified helper scratch reservation**.
+It first checks that the declared helper intervals cover every reached
+physical write without touching fetched/encrypted code. Every declared
+helper-owned word stays unavailable to C state even if the supplied paths
+did not use it; helper scratch plus future state share a 4,096-word ceiling.
 A focused test reuses the original checksum's independently verified 43-word
-SSA/phi requirement and checks a safe candidate across five VM paths.
+SSA/phi requirement, verifies a safe candidate across five VM paths, then
+proves that adding unused helper scratch shifts the candidate. Invalid,
+incomplete and unsorted helper declarations refuse.
 Relocation of its seven blocks and four phi edges remains a separate,
 source-locked prelink proof, not linked to this candidate. The candidate
 remains uninitialized, has no linked guest arithmetic or copied phi cells,

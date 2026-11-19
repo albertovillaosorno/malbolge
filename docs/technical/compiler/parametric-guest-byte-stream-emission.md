@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Declared-helper scratch excluded from future C state (2026-11-18)
+
+The five-path physical-state placer now **requires the helper's declared
+scratch intervals** rather than inferring available state memory solely from
+the cells touched by those five paths. Each interval is source-external,
+ordered and within the current N15 profile's memory; together they must cover
+every reached mutating instruction target without a code/encryption collision.
+The helper and future state frame share one 4,096-word reservation ceiling.
+
+A deliberate extra scratch reservation beyond the reached writes shifts the
+first-fit 43-word state frame. Missing remote helper scratch, scrambled
+intervals and over-budget reservations fail closed. The actual five-path
+guest test independently checks that each smaller frame candidate conflicts
+with either reached VM accesses or declared scratch, even when the scratch
+word was not visited in these inputs. Source/profile identity still binds
+all five paths.
+
+This closes a *planning alias hazard*, not a C execution gap: the helper's
+declared unused scratch may be needed by a later code path. The 43-word frame
+remains uninitialized; no guest checksum operations, state write, phi copy or
+runtime loop is linked. The original source-locked checksum still refuses
+publication, and the five checksum-output VM traces remain missing.
+
 ### Read-safe candidate placement of the checksum state frame (2026-11-18)
 
 The nonlinear physical-path admission now retains **actual data-cell reads**
@@ -46,7 +69,8 @@ also refuses malformed or oversized requests and is deterministic under case
 reordering. The 43-cell width comes from the independently tested original
 source-authenticated checksum SSA/phi plan. An independent per-path verifier
 rejects every smaller source-external placement because of a reached helper
-access. Full typed-operation and phi address relocation remains separately
+access or declared helper scratch. Full typed-operation and phi address
+relocation remains separately
 verified with a hypothetical code length, not this physical source candidate.
 
 **This is an isolated address candidate, not a linked checksum:** the

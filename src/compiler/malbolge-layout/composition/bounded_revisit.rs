@@ -390,14 +390,54 @@ pub fn verify_bounded_guest_state_isolation(
     Ok(())
 }
 
+// A helper's declared scratch footprint is an ownership boundary, not just
+// the subset of words reached in a finite trace. Check all paths and charge
+// helper scratch and prospective C state against one bounded address budget.
+fn occupied_bounded_guest_cells(
+    admitted: &[BoundedRevisitLayout],
+    helper_regions: &[BoundedGuestDataRegion],
+    required_words: u32,
+) -> Result<BTreeSet<u32>, BoundedGuestRegionsError> {
+    for path in admitted {
+        verify_bounded_guest_data_regions(path, helper_regions)?;
+    }
+    let helper_words = helper_regions.iter().try_fold(0u32, |sum, region| {
+        region
+            .end_exclusive
+            .checked_sub(region.start)
+            .and_then(|words| sum.checked_add(words))
+    });
+    if helper_words
+        .and_then(|total| total.checked_add(required_words))
+        .is_none_or(|total| total > MAX_GUEST_RESERVED_WORDS)
+    {
+        return Err(BoundedGuestRegionsError::InvalidRegions);
+    }
+    let mut occupied = BTreeSet::new();
+    for region in helper_regions {
+        occupied.extend(region.start..region.end_exclusive);
+    }
+    for path in admitted {
+        occupied.extend(path.code_positions.iter().copied());
+        occupied.extend(path.encrypted_positions.iter().flatten().copied());
+        occupied.extend(path.data_read_positions.iter().flatten().copied());
+        occupied.extend(path.mutation_targets.iter().copied());
+        occupied.extend(path.data_writes.iter().map(|write| write.address));
+    }
+    Ok(occupied)
+}
+
 /// Find the lowest-addressed candidate frame that avoids the exact memory
 /// access footprints of all supplied, independently admitted helper paths.
 ///
 /// The search is finite and source-bound: it excludes every graphical source
-/// cell and every observed fetch, encryption, data read and `p`/`*` write,
-/// including unchanged-value writes. Only complete traces from the same
-/// source and target geometry may be combined. Different inputs can take
-/// different paths; the result is safe only for those supplied paths.
+/// cell, every *declared helper scratch word* (including words not touched on
+/// these paths), and every observed fetch, encryption, data read and
+/// `p`/`*` write, including unchanged-value writes. Helper scratch must
+/// independently cover all reached mutating targets without code collisions.
+/// Only complete traces from the same source and target geometry may be
+/// combined. Different inputs can take different paths; the result is safe
+/// only for those supplied paths.
 ///
 /// This produces an *uninitialized* frame reservation. It does not initialize
 /// C variables, realize phi transfers, authorize new guest instructions, or
@@ -407,9 +447,11 @@ pub fn verify_bounded_guest_state_isolation(
 /// # Errors
 ///
 /// Refuses absent or excessive path evidence, different source/target
-/// identities, invalid frame widths, or exhaustion of N15 address space.
+/// identities, invalid/incomplete helper reservations, invalid frame widths,
+/// or exhaustion of N15 address space.
 pub fn place_bounded_guest_state_frame(
     admitted: &[BoundedRevisitLayout],
+    helper_regions: &[BoundedGuestDataRegion],
     required_words: u32,
 ) -> Result<BoundedGuestDataRegion, BoundedGuestRegionsError> {
     if admitted.is_empty()
@@ -419,7 +461,9 @@ pub fn place_bounded_guest_state_frame(
     {
         return Err(BoundedGuestRegionsError::InvalidRegions);
     }
-    let first = &admitted[0];
+    let first = admitted
+        .first()
+        .ok_or(BoundedGuestRegionsError::InvalidRegions)?;
     if admitted.iter().skip(1).any(|path| {
         path.source != first.source
             || path.memory_words != first.memory_words
@@ -428,16 +472,10 @@ pub fn place_bounded_guest_state_frame(
     }) {
         return Err(BoundedGuestRegionsError::InvalidRegions);
     }
+    let occupied =
+        occupied_bounded_guest_cells(admitted, helper_regions, required_words)?;
     let source_end = u32::try_from(first.source.len())
         .map_err(|_error| BoundedGuestRegionsError::InvalidRegions)?;
-    let mut occupied = BTreeSet::new();
-    for path in admitted {
-        occupied.extend(path.code_positions.iter().copied());
-        occupied.extend(path.encrypted_positions.iter().flatten().copied());
-        occupied.extend(path.data_read_positions.iter().flatten().copied());
-        occupied.extend(path.mutation_targets.iter().copied());
-        occupied.extend(path.data_writes.iter().map(|write| write.address));
-    }
     let end_for = |start: u32| {
         start
             .checked_add(required_words)
@@ -457,8 +495,8 @@ pub fn place_bounded_guest_state_frame(
             .ok_or(BoundedGuestRegionsError::NoStateFrameSpace)?;
     }
     let frame = BoundedGuestDataRegion {
-        start,
         end_exclusive: end_for(start)?,
+        start,
     };
     for path in admitted {
         verify_bounded_guest_state_isolation(path, &[frame])?;
