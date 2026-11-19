@@ -43,6 +43,11 @@ const THIRD_OPERAND: u32 = 7_174_350;
 const FOURTH_OPERAND: u32 = 134;
 const SUCCESS_CONTROL: u32 = 125;
 const EOF_CONTROL: u32 = 368;
+// Exact five-path source-bound C23 checksum placement. If the source or
+// allocator changes, both this exhaustive path witness and the typed-frame
+// placement must be rechecked before the interval may move.
+const CHECKSUM_FRAME_START: u32 = 153;
+const CHECKSUM_FRAME_END: u32 = 196;
 
 // A physical EOF arm is forward-only, while every byte arm revisits code.
 // Batch admission must verify both complete paths for the SAME source, rather
@@ -595,6 +600,27 @@ fn all_257_signed_inputs_reach_both_arms_with_one_read() -> Result<(), String> {
             "input {input:?}"
         );
         assert_eq!(trace.len(), steps);
+        // The five-path checksum placement must survive *all* 257 signed
+        // first-input classes: no actual helper fetch, read, encryption or
+        // mutable write may reach its still-uninitialized 43-word frame.
+        let in_frame = |address| {
+            (CHECKSUM_FRAME_START..CHECKSUM_FRAME_END).contains(&address)
+        };
+        for step in &trace {
+            assert!(
+                !step.memory_reads.fetch.is_some_and(|read| in_frame(read.address))
+                    && !step.memory_reads.data.is_some_and(|read| in_frame(read.address))
+                    && !step.memory_delta.encryption.is_some_and(|write| in_frame(write.address))
+                    && !step.memory_delta.data.is_some_and(|write| in_frame(write.address))
+                    && !(matches!(step.decoded, Some(b'p' | b'*'))
+                        && in_frame(step.before.registers.data_pointer)),
+                "helper accessed isolated C frame on input {input:?} at C={}",
+                step.before.registers.code_pointer
+            );
+        }
+        for address in CHECKSUM_FRAME_START..CHECKSUM_FRAME_END {
+            assert_eq!(vm.memory_word(address), loaded.memory_word(address));
+        }
         assert_eq!(
             vm.output(),
             if eof {
@@ -1270,6 +1296,9 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
         profile, &source, identity, &expected,
     )
     .map_err(|error| format!("normative paths: {error:?}"))?;
+    for (path, case) in admitted.iter().zip(&cases) {
+        assert_eq!(path.input(), case.input);
+    }
     let helper_regions = [
         Region {
             start: 132,
@@ -1315,7 +1344,18 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
     );
     assert_eq!(candidate.state_region().start, frame.base);
     assert_eq!(candidate.state_region().end_exclusive, frame.end_exclusive);
+    assert_eq!(candidate.state_region(), Region {
+        start: CHECKSUM_FRAME_START,
+        end_exclusive: CHECKSUM_FRAME_END,
+    });
     assert_eq!(candidate.source(), source);
+    assert_eq!(candidate.admitted_inputs(), &[
+        vec![],
+        vec![0],
+        vec![3, 4, 5],
+        vec![128],
+        vec![255],
+    ]);
     assert_eq!(candidate.relocated().operation_blocks.len(), 7);
     assert_eq!(candidate.relocated().phi_edges.len(), 4);
     assert_eq!(candidate.helper_regions(), helper_regions);
@@ -1383,6 +1423,18 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
         }),
         Err(PlacementError::PhysicalRegion(
             layout::BoundedGuestRegionsError::UnreservedWrite,
+        ))
+    );
+    // Distinct guest-input evidence is essential: repeating the same
+    // accepted path must not masquerade as two independent input cases.
+    let duplicate = vec![admitted[0].clone(), admitted[0].clone()];
+    assert_eq!(
+        layout::place_source_bound_guest_state(Request {
+            admitted: &duplicate,
+            ..request
+        }),
+        Err(PlacementError::PhysicalRegion(
+            layout::BoundedGuestRegionsError::InvalidRegions,
         ))
     );
     let reversed = admitted.iter().rev().cloned().collect::<Vec<_>>();

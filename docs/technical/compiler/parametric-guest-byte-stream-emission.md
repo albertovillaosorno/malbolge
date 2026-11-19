@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Distinct physical path provenance (2026-11-18)
+
+Physical guest-path admission now retains the exact binary input in each
+immutable normative path witness, including any suffix left unread at halt.
+When the source-bound checksum placer joins paths, it rejects repeated input
+streams rather than counting one replayed path as multiple evidence cases.
+The returned candidate preserves the exact admitted input streams in sorted
+order; reversed witness order yields the same candidate and identity record.
+A red-first regression demonstrated the former duplicate-path acceptance,
+then proved the refusal with the original five C23 checksum input cases.
+The existing 257-class normative input test also now checks that the
+five-path allocated C frame `[153,196)` is never fetched, encrypted, read or
+written by any reached byte/EOF helper step. All 257 first-input classes
+passed under the existing finite guest-step bound; this does not establish
+arbitrary multi-byte or loop behavior.
+
+This is an evidence-integrity correction, not executable C-state linking.
+Five distinct inputs do not prove general stdin behavior. The physical helper
+still only emits fixed byte/EOF markers, and no checksum guest trace exists.
+
 ### Physical-source-bound checksum data placement (2026-11-18)
 
 The existing 132-cell signed byte/EOF helper now has a *joint* data-placement

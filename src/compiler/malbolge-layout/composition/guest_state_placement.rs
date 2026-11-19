@@ -68,6 +68,7 @@ pub enum GuestStatePlacementError {
 /// result. In particular, no admitted helper path mutates these C-state cells.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GuestStatePlacementCandidate {
+    admitted_inputs: Vec<Vec<u8>>,
     helper_regions: Vec<BoundedGuestDataRegion>,
     relocated: GuestRelocatedCfgPlan,
     source: Vec<u8>,
@@ -75,6 +76,13 @@ pub struct GuestStatePlacementCandidate {
 }
 
 impl GuestStatePlacementCandidate {
+    /// Sorted exact input streams covered by the supplied normative paths.
+    /// This is finite evidence, not arbitrary-stream guest C semantics.
+    #[must_use]
+    pub fn admitted_inputs(&self) -> &[Vec<u8>] {
+        &self.admitted_inputs
+    }
+
     /// Exact original graphical source used by every admitted helper path.
     #[must_use]
     pub fn source(&self) -> &[u8] {
@@ -188,7 +196,13 @@ pub fn place_source_bound_guest_state(
     {
         return Err(GuestStatePlacementError::FrameMismatch);
     }
+    let mut admitted_inputs = admitted
+        .iter()
+        .map(|path| path.input().to_vec())
+        .collect::<Vec<_>>();
+    admitted_inputs.sort_unstable();
     Ok(GuestStatePlacementCandidate {
+        admitted_inputs,
         helper_regions: helper_regions.to_vec(),
         relocated,
         source: source.to_vec(),

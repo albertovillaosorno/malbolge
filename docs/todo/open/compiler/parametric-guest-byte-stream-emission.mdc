@@ -73,6 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, source-bound physical state placement now preserves exact
+  binary input provenance for each independently admitted normative guest
+  path, including unread suffixes. Repeating the same path no longer passes
+  as distinct input evidence; a red-first checksum test showed the old
+  acceptance and now checks typed rejection. The relocated 43-word candidate
+  retains its five covered input streams in stable sorted order when paths
+  are permuted. The existing all-257 first-input normative regression now
+  independently checks that no reached helper memory access touches the
+  five-path C frame `[153,196)`: all classes passed in 98.71 seconds.
+  This protects finite evidence accounting, not actual guest
+  arithmetic, C-state writes, EOF loop linkage, or checksum-output parity.
+  P2 remains open.
+
 - On 2026-11-18, real-source-bound guest state placement now joins the
   independently admitted 132-cell EOF helper with the original authenticated
   C23 checksum's 43-word SSA/phi data relocation. Five normative paths and

@@ -111,6 +111,7 @@ pub struct BoundedRevisitExpectation<'input> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BoundedRevisitLayout {
     source: Vec<u8>,
+    input: Vec<u8>,
     code_positions: Vec<u32>,
     data_positions: Vec<u32>,
     data_read_positions: Vec<Option<u32>>,
@@ -143,6 +144,12 @@ impl BoundedRevisitLayout {
     #[must_use]
     pub fn source(&self) -> &[u8] {
         &self.source
+    }
+
+    /// Exact independently admitted binary input, including unread suffixes.
+    #[must_use]
+    pub fn input(&self) -> &[u8] {
+        &self.input
     }
 
     /// Actual ordered code addresses, which may repeat.
@@ -484,6 +491,15 @@ pub fn place_bounded_guest_state_frame(
     }) {
         return Err(BoundedGuestRegionsError::InvalidRegions);
     }
+    // Identical stdin witnesses cannot establish independent path coverage.
+    // Preserve unread suffixes: they distinguish distinct finite input cases.
+    let mut distinct_inputs = BTreeSet::new();
+    if admitted
+        .iter()
+        .any(|path| !distinct_inputs.insert(path.input.as_slice()))
+    {
+        return Err(BoundedGuestRegionsError::InvalidRegions);
+    }
     let occupied =
         occupied_bounded_guest_cells(admitted, helper_regions, required_words)?;
     let source_end = u32::try_from(first.source.len())
@@ -708,6 +724,7 @@ fn admit_bounded_guest_path_impl(
     }
     Ok(BoundedRevisitLayout {
         source: source.to_vec(),
+        input: expected.input.to_vec(),
         code_positions,
         data_positions,
         data_read_positions,
