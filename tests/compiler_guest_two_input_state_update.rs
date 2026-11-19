@@ -146,6 +146,29 @@ fn second_guest_input_mutates_state_left_by_first_guest_input()
             steps: 54,
         });
         assert_eq!(trace.len(), 54);
+        let mut prepared = INITIAL_WORD;
+        for position in [3usize, 7, 11, 15, 19, 23, 27, 31, 35] {
+            let step =
+                trace.get(position).ok_or("missing physical rotation")?;
+            assert_eq!(step.decoded, Some(b'*'));
+            assert_eq!(step.before.registers.data_pointer, TARGET);
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((TARGET, prepared))
+            );
+            let next = scalar_rotate(prepared);
+            assert_eq!(step.after.registers.accumulator, next);
+            assert_eq!(
+                step.memory_delta.data.map(|write| {
+                    (write.address, write.before, write.after)
+                }),
+                (prepared != next).then_some((TARGET, prepared, next)),
+            );
+            prepared = next;
+        }
+        assert_eq!(prepared, rotated);
         for (position, value) in [(39usize, first), (47, second)] {
             let step = trace.get(position).ok_or("missing guest input")?;
             assert_eq!(step.decoded, Some(profile.input_instruction()));
