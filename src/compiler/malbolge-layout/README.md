@@ -12,6 +12,24 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Repeated physical loader-word rotations (fixed pointer-reset geometry)
+
+`build_repeated_loader_rotation_source` now produces a 91-cell graphical N15
+candidate for each count from 1 through 15 reached rotations of M[95]. The
+`,H` tail loads 7,174,457 at M[95] and 72 at M[96]. Three genuine `j`
+operations return D through 73 and 62 to 95 between rotations; C40 is a
+source-dependent pointer constant, so exactly ten rounds need an extra
+reached jump before the final output. Each candidate outputs the resulting
+word's low byte with real `<` and halts. Fifteen independent normative VM
+runs check every reached `*`, source pointer, data read, intermediate
+accumulator, final memory word, byte and halt. Counts zero and 16 refuse.
+
+This is real repeatable guest arithmetic, **not** signed C23 normalization.
+The required first C23 operand begins at 7,174,404 (`Iy`), whereas this
+reset chain requires the distinct `,H` loader seed. Substituting `Iy`
+changes the pointer reset from M[95] to M[158] after the first rotation.
+Neither EOF branching nor source-C checksum linkage has been implemented.
+
 ### Two physical `p` writes from C23 converter loader words
 
 `build_c23_operand_probe_source` constructs a 279-cell graphical N15

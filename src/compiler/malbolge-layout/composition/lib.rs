@@ -51,6 +51,7 @@ mod eof_branch_plan;
 mod eof_c23_conversion_source;
 mod eof_output_plan;
 mod guest_state_placement;
+mod loader_rotation_source;
 mod loader_seed;
 mod signed_eof_branch_source;
 
@@ -81,6 +82,9 @@ pub use eof_output_plan::{
 pub use guest_state_placement::{
     GuestStatePlacementCandidate, GuestStatePlacementError,
     GuestStatePlacementRequest, place_source_bound_guest_state,
+};
+pub use loader_rotation_source::{
+    RepeatedLoaderRotationError, build_repeated_loader_rotation_source,
 };
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};

@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a production 91-cell graphical N15 source builder
+  emits 1..15 physical same-cell `*` rotations with a reached three-`j`
+  pointer reset. Fifteen normative guest traces independently check each
+  rotation's address, read, accumulator and final output; out-of-range
+  counts and historical profile refuse. The `,H` loader seed produces
+  M[95]=7,174,457, **not** the C23 converter's required 7,174,404.
+  An attempted direct `Iy` substitution instead resets D to M[158] after
+  one rotation, so the proposed nine rotations and `/`, `p`, `p` linkage
+  cannot be claimed. The original C23 mutable checksum still refuses
+  dynamic target linkage. No five-vector checksum guest parity exists;
+  P2 stays open.
+
 - On 2026-11-18, a distinct 279-cell graphical N15 source ending in
   `Iy` physically performs signed `/` at C=164 and two input-dependent
   `p` writes at C=165 and C=166, using virgin loader M[283]=7,174,404
