@@ -29,6 +29,26 @@ This is not a guest C input loop. It reads at most twice, computes no
 checksum, and has not relocated C state or generated a C backedge. Any
 further instruction changes need fresh source/VM admission.
 
+### Physical first-byte echo before the guarded second read
+
+`build_guarded_signed_eof_echo_and_second_read_source` adds a real `<`
+at C=54 immediately after the first `/` at C=53. The first N15 input
+word, not a host-supplied output, is emitted before arithmetic destroys its
+original accumulator value. Post-step encryption makes C=54 an inactive
+opcode on the byte-arm revisit, so it cannot emit an extra stale byte.
+The original byte/EOF classification and second input at C=101 survive:
+an initial EOF produces `[0x6a, 0x1e]` and stops after one input attempt
+at 119 steps; a successful first byte `b` produces `[b, 0x9a]` and makes
+a second real input attempt before halting at 175 steps.
+
+Six bounded binary/EOF streams match actual traced inputs, outputs, step
+positions, and complete independent `p`/`*` instruction-write oracles.
+Forged output bytes and shifted I/O effect positions fail source-bound
+admission, and the future 43-word C frame remains isolated. The new source
+must not reuse the old source-bound state placement without fresh admission.
+This is one input-dependent guest output plus conditional read sequencing,
+not C23 EOF normalization, arbitrary echo, checksum arithmetic or a loop.
+
 ### Independent admission of guarded second-input paths
 
 The guarded second-input source now passes a six-stream mixed forward/revisit

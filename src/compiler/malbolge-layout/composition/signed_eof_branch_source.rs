@@ -164,6 +164,31 @@ pub fn build_guarded_signed_eof_second_read_source(
     Ok(source)
 }
 
+/// Build a physical signed-byte echo with an EOF-guarded second input.
+///
+/// C=53 reads one byte (or the actual N15 EOF sentinel). C=54 then emits
+/// that input word's low byte before any classifier arithmetic. On the byte
+/// arm C=54 is revisited after encryption, where it decodes as an inactive
+/// instruction instead of echoing the stale accumulator a second time.
+/// The existing branch then emits its fixed class marker and conditionally
+/// reads the next physical input at C=101. On initial EOF it halts without
+/// reading again. This is not source-C EOF normalization, a checksum, or
+/// an unbounded loop; every candidate requires independent VM admission.
+///
+/// # Errors
+///
+/// Rejects other target profiles and invalid graphical encodings.
+pub fn build_guarded_signed_eof_echo_and_second_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source = build_guarded_signed_eof_second_read_source(profile)?;
+    // C=54's first-pass < encrypts into a no-op at its byte-arm revisit.
+    // Thus the first signed input is emitted once without disturbing A/D
+    // before the existing exact EOF discriminator runs.
+    put(&mut source, 54, profile.output_instruction())?;
+    Ok(source)
+}
+
 /// Build a physical, bounded N15 byte-versus-EOF branch candidate.
 ///
 /// This is the already-executed *one-read* control skeleton. Its fixed

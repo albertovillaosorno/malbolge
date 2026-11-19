@@ -2062,6 +2062,41 @@ impl OwnedGuardedBranchPath {
     }
 }
 
+// Emit the first actual signed input word before the branch computes its
+// two-way control. On the successful-byte revisit C=54 must be a no-op,
+// rather than a second echo of the stale control or marker accumulator.
+struct OwnedGuardedEchoPath {
+    base: OwnedGuardedBranchPath,
+    io_events: Vec<layout::BoundedRevisitIoEvent>,
+    output: Vec<u8>,
+}
+
+impl OwnedGuardedEchoPath {
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            output: &self.output,
+            io_events: &self.io_events,
+            ..self.base.expectation()
+        }
+    }
+
+    fn new(input: Vec<u8>) -> Result<Self, String> {
+        let base = OwnedGuardedBranchPath::new(input)?;
+        let first = base.base.input.first().copied().unwrap_or_else(|| {
+            u8::try_from(current_profile().eof_word() & 255).unwrap_or_default()
+        });
+        let marker =
+            *base.base.output.first().ok_or("missing branch marker")?;
+        let output = vec![first, marker];
+        let mut io_events = base.io_events.clone();
+        io_events.insert(1, layout::BoundedRevisitIoEvent {
+            step: 54,
+            effect: layout::BoundedRevisitIoEffect::Output(first),
+        });
+        Ok(Self { base, io_events, output })
+    }
+}
+
 #[test]
 #[expect(
     clippy::cognitive_complexity,
@@ -2216,5 +2251,192 @@ fn guarded_two_read_paths_match_independent_write_and_io_oracles()
             ) == Some(profile.output_instruction())
     });
     assert!(!impossible_pair);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "finite normative dynamic-output and guarded-input evidence"
+)]
+fn guarded_echo_executes_data_dependent_output_and_real_second_read()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_guarded_signed_eof_echo_and_second_read_source(profile)
+            .map_err(|error| format!("echo source: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    let echo_cell = *source.get(54).ok_or("missing echo code cell")?;
+    assert_eq!(
+        decode_profile_instruction(u32::from(echo_cell), 54),
+        Some(profile.output_instruction()),
+    );
+    let encrypted = malbolge::encrypt_profile_cell(u32::from(echo_cell))
+        .ok_or("no echo encryption")?;
+    assert!(malbolge::profile_cell_decodes_to_no_operation(
+        encrypted, 54,
+    ));
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255, 17],
+        vec![255, 0],
+        vec![128, 128],
+    ];
+    for input in cases {
+        let oracle = OwnedGuardedEchoPath::new(input.clone())?;
+        let expected_steps = if input.is_empty() {
+            119
+        } else {
+            175
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(expected_steps, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: expected_steps,
+            },
+            "input {input:?}",
+        );
+        assert_eq!(vm.output(), oracle.output, "input {input:?}");
+        assert_eq!(vm.input_consumed(), input.len().min(2));
+        let actual_io = trace
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                let step = u32::try_from(index).unwrap_or(u32::MAX);
+                event
+                    .input
+                    .map(|read_event| layout::BoundedRevisitIoEvent {
+                        step,
+                        effect: layout::BoundedRevisitIoEffect::Input(
+                            read_event,
+                        ),
+                    })
+                    .or_else(|| {
+                        event.output.map(|byte| layout::BoundedRevisitIoEvent {
+                            step,
+                            effect: layout::BoundedRevisitIoEffect::Output(
+                                byte,
+                            ),
+                        })
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual_io, oracle.io_events, "input {input:?}");
+        assert_eq!(
+            trace
+                .iter()
+                .map(|event| event.before.registers.code_pointer)
+                .collect::<Vec<_>>(),
+            oracle.base.base.path,
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "complete independent nonlinear path and tamper admission"
+)]
+fn guarded_echo_requires_complete_independent_io_and_write_oracles()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_guarded_signed_eof_echo_and_second_read_source(profile)
+            .map_err(|error| format!("echo source: {error:?}"))?;
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255, 17],
+        vec![255, 0],
+        vec![128, 128],
+    ]
+    .into_iter()
+    .map(OwnedGuardedEchoPath::new)
+    .collect::<Result<Vec<_>, _>>()?;
+    let expected = cases
+        .iter()
+        .map(OwnedGuardedEchoPath::expectation)
+        .collect::<Vec<_>>();
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("echo path admission: {error:?}"))?;
+    assert_eq!(admitted.len(), cases.len());
+    for (path, case) in admitted.iter().zip(&cases) {
+        assert_eq!(path.output(), case.output);
+        assert_eq!(path.io_events(), case.io_events);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                path,
+                &case.base.base.instruction_writes,
+            ),
+            Ok(()),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(path, &[
+                layout::BoundedGuestDataRegion {
+                    end_exclusive: CHECKSUM_FRAME_END,
+                    start: CHECKSUM_FRAME_START,
+                },
+            ]),
+            Ok(()),
+        );
+    }
+    let first = expected.get(3).ok_or("no mixed input oracle")?;
+    let forged_output = [1u8, 154u8];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                output: &forged_output,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::OutputMismatch),
+    );
+    let mut forged_io = cases
+        .get(3)
+        .ok_or("missing mixed stream")?
+        .io_events
+        .clone();
+    forged_io.get_mut(1).ok_or("missing echo effect")?.step = 55;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                io_events: &forged_io,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch),
+    );
     Ok(())
 }

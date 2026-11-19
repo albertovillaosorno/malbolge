@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### First physically input-dependent output with guarded continuation
+
+A distinct 132-cell graphical N15 source now emits the actual first signed
+input word's low byte at C=54 before the classifier overwrites the
+accumulator. The first-pass `<` self-encrypts into an inactive instruction
+on the successful-byte revisit. Empty input emits the target's real EOF
+sentinel low byte `0x6a` and the fixed EOF marker `0x1e`, with one input
+attempt and a 119-step halt. Any first successful byte `b` emits
+`[b, 0x9a]`, then performs the guarded second physical input attempt at
+C=101 and halts after 175 steps. The second input is not echoed.
+
+Six independent byte/EOF traces admit the exact output and I/O order,
+code path, full `p`/`*` writes, and isolation of the future 43-word
+checksum frame. Wrong first output and shifted effect timing refuse.
+This is a real data-dependent **guest** stdout byte, not host-simulated
+C semantics. EOF is not normalized to signed C23 `-1`, the output includes
+non-C markers, and there is still no linked C state, arithmetic, backedge
+or checksum-output parity. The changed source requires fresh source-bound
+state placement if it is ever linked to typed checksum operations. P2
+remains open.
+
 ### Independently admitted guarded two-read guest paths (2026-11-18)
 
 The 132-cell physical signed EOF source now has six complete, separately

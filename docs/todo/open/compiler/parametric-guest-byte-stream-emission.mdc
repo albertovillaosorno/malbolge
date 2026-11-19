@@ -73,6 +73,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a distinct 132-cell normative N15 guest candidate
+  now emits its first **physical input-dependent** byte at C=54, ahead of
+  the already-proven EOF classifier, while guarding the second actual `/`
+  at C=101. Its first-pass output encrypts to an inactive instruction
+  on the byte-arm revisit. Six independent binary/EOF streams verify
+  complete VM paths, input/output effect order, all mutating writes and
+  the untouched future C state frame; forged byte output or shifted
+  events refuse. Initial EOF emits `[0x6a, 0x1e]` in 119 steps with only
+  one read attempt; first byte `b` emits `[b, 0x9a]` in 175 steps with
+  two attempts. These are **not C23 checksum bytes**: the sentinel is a
+  target word, the marker remains and no C locals, arithmetic, phi copy,
+  loop or checksum output executes. The original checksum still refuses
+  publication and P2 remains open.
+
 - On 2026-11-18, six source-identical normative N15 guest streams now
   pass independent *complete* nonlinear path admission for the physical
   EOF-guarded second read. The external trit oracle checks the additional
