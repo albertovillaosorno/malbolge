@@ -73,6 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, normative nonlinear guest paths now expose full physical
+  instruction-store effects (`p`/`*` opcode, step, address, before/after) in
+  addition to changed-memory deltas and reached destinations. The original
+  five independent EOF-checksum helper streams match an independent complete
+  21/23-store arithmetic oracle, including an idempotent EOF `p` at step 82
+  which the prior delta omitted. A separate 36-step N15 guest proves a
+  graphical code/data alias: `*` changes M[34] from 99 to 33 immediately
+  before code encryption, with no separate changed-data delta. Missing,
+  forged, reordered and out-of-range write claims refuse. This is physical
+  helper execution evidence, not initialization or execution of the 43-word
+  source-C frame. The C23 checksum still refuses guest publication; the five
+  required checksum-output VM traces do not exist. P2 remains open.
+
 - On 2026-11-18, source-bound physical state placement now preserves exact
   binary input provenance for each independently admitted normative guest
   path, including unread suffixes. Repeating the same path no longer passes

@@ -59,6 +59,7 @@ struct OwnedBranchPath {
     output: [u8; 1],
     path: Vec<u32>,
     writes: Vec<layout::BoundedRevisitDataWrite>,
+    instruction_writes: Vec<layout::BoundedRevisitInstructionWrite>,
 }
 
 impl OwnedBranchPath {
@@ -94,6 +95,18 @@ impl OwnedBranchPath {
         } else {
             path.extend(45..=104);
         }
+        let instruction_writes =
+            independent_branch_instruction_writes(word, eof);
+        let writes = instruction_writes
+            .iter()
+            .filter(|write| write.before != write.after)
+            .map(|write| layout::BoundedRevisitDataWrite {
+                step: write.step,
+                address: write.address,
+                before: write.before,
+                after: write.after,
+            })
+            .collect();
         Self {
             input,
             input_events: [read],
@@ -113,7 +126,8 @@ impl OwnedBranchPath {
             ],
             output: [output_byte],
             path,
-            writes: independent_branch_writes(word, eof),
+            writes,
+            instruction_writes,
         }
     }
 }
@@ -499,6 +513,68 @@ fn post_rotation_physical_branch_source() -> Result<Vec<u8>, String> {
         .map_err(|error| format!("signed EOF source: {error:?}"))
 }
 
+// A reached rotation can write its own instruction cell before XLAT2
+// encryption overwrites it. Changed-memory deltas alone cannot prove the
+// intermediate guest arithmetic effect needed by a code/data linker.
+#[test]
+fn physical_instruction_write_keeps_pre_encryption_code_alias()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut source = (0..36)
+        .map(|position| encode(b'o', position))
+        .collect::<Result<Vec<_>, _>>()?;
+    *source.get_mut(34).ok_or("missing alias store cell")? = encode(b'*', 34)?;
+    *source.get_mut(35).ok_or("missing alias halt cell")? = encode(b'v', 35)?;
+    assert_eq!(source.get(34), Some(&99));
+    let identity = layout::LinearProfileIdentity {
+        id: profile.id(),
+        fingerprint: profile.fingerprint(),
+    };
+    let expected = layout::BoundedRevisitInstructionWrite {
+        step: 34,
+        opcode: b'*',
+        address: 34,
+        before: 99,
+        after: scalar_rotate(99),
+    };
+    assert_eq!(expected.after, 33);
+    let code_positions = (0..=35).collect::<Vec<u32>>();
+    let path = layout::admit_bounded_guest_path(
+        profile,
+        &source,
+        identity,
+        layout::BoundedRevisitExpectation {
+            input: &[],
+            code_positions: &code_positions,
+            output: &[],
+            input_consumed: 0,
+            input_events: &[],
+            io_events: &[],
+            data_writes: &[],
+        },
+    )
+    .map_err(|error| format!("source-code alias: {error:?}"))?;
+    assert_eq!(path.mutation_targets(), &[34]);
+    assert!(path.data_writes().is_empty());
+    assert_eq!(path.instruction_writes(), &[expected]);
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(&path, &[expected]),
+        Ok(()),
+    );
+    let encrypted = malbolge::encrypt_profile_cell(expected.after)
+        .ok_or("missing post-write source encryption")?;
+    let mut vm = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    let result = vm.run(36).map_err(|error| error.to_string())?;
+    assert_eq!(result, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 36,
+    });
+    assert_eq!(vm.memory_word(34), Ok(encrypted));
+    assert_ne!(vm.memory_word(34), Ok(expected.after));
+    Ok(())
+}
+
 #[test]
 fn branch_candidate_requires_exact_current_profile() {
     assert_eq!(
@@ -733,26 +809,26 @@ fn all_257_signed_inputs_reach_both_arms_with_one_read() -> Result<(), String> {
 // The nonlinear layout admission is separate from executable source assembly.
 // It uses an independent trit oracle for every arithmetic memory write, plus
 // frozen code paths and I/O positions; no expected trace is copied from the VM.
-fn independent_branch_writes(
+fn independent_branch_instruction_writes(
     input_word: u32,
     eof: bool,
-) -> Vec<layout::BoundedRevisitDataWrite> {
+) -> Vec<layout::BoundedRevisitInstructionWrite> {
     let mut writes = Vec::new();
-    let mut add = |step, address, before, after| {
-        if before != after {
-            writes.push(layout::BoundedRevisitDataWrite {
-                step,
-                address,
-                before,
-                after,
-            });
-        }
+    let mut add = |step, opcode, address, before, after| {
+        writes.push(layout::BoundedRevisitInstructionWrite {
+            step,
+            opcode,
+            address,
+            before,
+            after,
+        });
     };
     let mut rotated_seed = 134;
     for round in 0u32..12 {
         let after = scalar_rotate(rotated_seed);
         add(
             17u32.saturating_add(round.saturating_mul(3)),
+            b'*',
             135,
             rotated_seed,
             after,
@@ -767,24 +843,52 @@ fn independent_branch_writes(
     let rotated = scalar_rotate(fourth);
     let fifth = scalar_crazy(FIRST_OPERAND, rotated);
     let sixth = scalar_crazy(125, fifth);
-    add(64, 134, FIRST_OPERAND, first);
-    add(65, 135, rotated_seed, second);
-    add(66, 136, THIRD_OPERAND, third);
-    add(67, 137, 125, fourth);
-    add(76, 137, fourth, rotated);
-    add(79, 140, FIRST_OPERAND, fifth);
-    add(82, 143, 125, sixth);
-    add(104, 7_174_356, THIRD_OPERAND, scalar_rotate(THIRD_OPERAND));
+    add(64, b'p', 134, FIRST_OPERAND, first);
+    add(65, b'p', 135, rotated_seed, second);
+    add(66, b'p', 136, THIRD_OPERAND, third);
+    add(67, b'p', 137, 125, fourth);
+    add(76, b'*', 137, fourth, rotated);
+    add(79, b'p', 140, FIRST_OPERAND, fifth);
+    add(82, b'p', 143, 125, sixth);
+    add(
+        104,
+        b'*',
+        7_174_356,
+        THIRD_OPERAND,
+        scalar_rotate(THIRD_OPERAND),
+    );
     if eof {
-        add(116, 145, 134, scalar_rotate(134));
+        add(116, b'*', 145, 134, scalar_rotate(134));
     } else {
         let revisited_rotated = scalar_rotate(THIRD_OPERAND);
         let revisited_crazy = scalar_crazy(THIRD_OPERAND, revisited_rotated);
-        add(126, 7_174_344, THIRD_OPERAND, revisited_rotated);
-        add(130, 7_174_348, THIRD_OPERAND, revisited_crazy);
-        add(167, 7_174_385, 125, scalar_crazy(125, revisited_crazy));
+        add(126, b'*', 7_174_344, THIRD_OPERAND, revisited_rotated);
+        add(130, b'p', 7_174_348, THIRD_OPERAND, revisited_crazy);
+        add(
+            167,
+            b'p',
+            7_174_385,
+            125,
+            scalar_crazy(125, revisited_crazy),
+        );
     }
     writes
+}
+
+fn independent_branch_writes(
+    input_word: u32,
+    eof: bool,
+) -> Vec<layout::BoundedRevisitDataWrite> {
+    independent_branch_instruction_writes(input_word, eof)
+        .into_iter()
+        .filter(|write| write.before != write.after)
+        .map(|write| layout::BoundedRevisitDataWrite {
+            step: write.step,
+            address: write.address,
+            before: write.before,
+            after: write.after,
+        })
+        .collect()
 }
 
 #[test]
@@ -1310,6 +1414,18 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
     .map_err(|error| format!("normative paths: {error:?}"))?;
     for (path, case) in admitted.iter().zip(&cases) {
         assert_eq!(path.input(), case.input);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                path,
+                &case.instruction_writes,
+            ),
+            Ok(())
+        );
+        assert_eq!(path.instruction_writes(), case.instruction_writes);
+        assert_eq!(
+            path.mutation_targets().len(),
+            case.instruction_writes.len()
+        );
     }
     let helper_regions = [
         Region {
@@ -1408,6 +1524,92 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
             Ok(())
         );
     }
+    // An unchanged p still writes guest memory: it must be visible to the
+    // future typed-state effect linker, not hidden by changed-cell deltas.
+    let eof_path = admitted.first().ok_or("missing EOF guest path")?;
+    let eof_case = cases.first().ok_or("missing EOF oracle")?;
+    let eof_store = layout::BoundedRevisitInstructionWrite {
+        step: 82,
+        opcode: b'p',
+        address: 143,
+        before: 125,
+        after: 125,
+    };
+    assert!(eof_path.instruction_writes().contains(&eof_store));
+    assert!(
+        !eof_path
+            .data_writes()
+            .iter()
+            .any(|write| write.step == 82)
+    );
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(&eof_path, &[
+            eof_store
+        ]),
+        Err(layout::BoundedRevisitError::InstructionWritesMismatch),
+    );
+    let mut missing_idempotent = eof_case.instruction_writes.clone();
+    missing_idempotent.retain(|write| write.step != eof_store.step);
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(
+            &eof_path,
+            &missing_idempotent,
+        ),
+        Err(layout::BoundedRevisitError::InstructionWritesMismatch),
+    );
+    let step_index = eof_case
+        .instruction_writes
+        .iter()
+        .position(|write| *write == eof_store)
+        .ok_or("independent EOF oracle lost idempotent p")?;
+    let mut bad_result = eof_case.instruction_writes.clone();
+    bad_result
+        .get_mut(step_index)
+        .ok_or("missing checksum write result")?
+        .after ^= 1;
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(
+            &eof_path,
+            &bad_result,
+        ),
+        Err(layout::BoundedRevisitError::InstructionWritesMismatch),
+    );
+    let mut bad_opcode = eof_case.instruction_writes.clone();
+    bad_opcode
+        .get_mut(step_index)
+        .ok_or("missing checksum write opcode")?
+        .opcode = b'*';
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(
+            &eof_path,
+            &bad_opcode,
+        ),
+        Err(layout::BoundedRevisitError::InstructionWritesMismatch),
+    );
+    let mut reordered = eof_case.instruction_writes.clone();
+    reordered.swap(
+        step_index.checked_sub(1).ok_or("missing preceding write")?,
+        step_index,
+    );
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(
+            &eof_path,
+            &reordered,
+        ),
+        Err(layout::BoundedRevisitError::InvalidExpectation),
+    );
+    let mut out_of_range = eof_case.instruction_writes.clone();
+    out_of_range
+        .get_mut(step_index)
+        .ok_or("missing checksum write address")?
+        .address = profile.memory_words();
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(
+            &eof_path,
+            &out_of_range,
+        ),
+        Err(layout::BoundedRevisitError::InvalidExpectation),
+    );
     assert_eq!(
         layout::place_source_bound_guest_state(request),
         Ok(candidate.clone())

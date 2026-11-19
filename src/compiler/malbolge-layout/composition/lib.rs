@@ -55,13 +55,15 @@ mod signed_eof_branch_source;
 
 pub use bounded_revisit::{
     BoundedGuestDataRegion, BoundedGuestRegionsError, BoundedRevisitDataWrite,
-    BoundedRevisitError, BoundedRevisitExpectation, BoundedRevisitIoEffect,
+    BoundedRevisitError, BoundedRevisitExpectation,
+    BoundedRevisitInstructionWrite, BoundedRevisitIoEffect,
     BoundedRevisitIoEvent, BoundedRevisitLayout, MAX_GUEST_DATA_REGIONS,
     MAX_GUEST_RESERVED_WORDS, MAX_REVISIT_CASES, MAX_REVISIT_SOURCE_CELLS,
     MAX_REVISIT_STEPS, admit_bounded_guest_path,
     admit_bounded_guest_path_batch, admit_bounded_revisit_batch,
     admit_bounded_revisit_layout, place_bounded_guest_state_frame,
-    verify_bounded_guest_data_regions, verify_bounded_guest_state_isolation,
+    verify_bounded_guest_data_regions, verify_bounded_guest_instruction_writes,
+    verify_bounded_guest_state_isolation,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

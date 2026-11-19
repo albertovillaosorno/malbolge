@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-bound physical instruction-write effects (2026-11-18)
+
+The independent nonlinear guest-path boundary now preserves *every* reached
+`p`/`*` instruction's decoded opcode, step, operand address, operand word and
+pre-encryption result. Changed-memory deltas alone lose valid effects: the
+real EOF helper executes an idempotent `p` at step 82 (M[143] stays 125),
+while a separate 36-step N15 guest rotates graphical code M[34] from 99 to
+33 before XLAT2 encrypts that same address. Both cases are actual normative
+VM executions, not host-produced target outputs.
+
+`verify_bounded_guest_instruction_writes` compares a complete ordered
+physical write sequence with an independent oracle, refusing missing
+idempotent writes, altered opcodes/results, unsorted steps and out-of-range
+words. The original checksum's five source/profile-identical helper paths
+match a separately computed trit arithmetic/write oracle; the protected
+43-word C frame remains untouched. This supplies a physical write-effects
+boundary for a future typed-operation linker, **not** a guest C-state write,
+phi transfer, arithmetic backedge or emitted checksum. P2 remains open.
+
 ### Distinct physical path provenance (2026-11-18)
 
 Physical guest-path admission now retains the exact binary input in each

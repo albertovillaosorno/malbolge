@@ -14,6 +14,15 @@ automatically emitted conditional branch, backward jump, or helper.
 
 ### Bounded physical helper and future C-frame isolation
 
+A complete path also retains each reached `p`/`*` instruction's
+pre-encryption word result and operand, even if the store was idempotent or
+its data destination was subsequently encrypted as code. The independent
+`verify_bounded_guest_instruction_writes` gate requires an entire ordered
+oracle rather than trusting changed-value deltas. The actual signed EOF
+helper has an idempotent `p` (step 82, M[143]=125), and a separate genuine
+36-step graphical guest rotates its own M[34] code cell before XLAT2.
+Neither physical effect is a C-state write or a linked checksum operation.
+
 A complete finite path admitted by the nonlinear normative N15 guest verifier
 now records exact data-memory **read** addresses in addition to code fetch,
 encryption, and reached `p`/`*` destinations (including unchanged writes).

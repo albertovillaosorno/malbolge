@@ -88,6 +88,25 @@ pub struct BoundedRevisitDataWrite {
     pub after: u32,
 }
 
+/// Every committed physical `p`/`*` store, including unchanged values.
+///
+/// `after` is the instruction's computed word *before* XLAT2 encryption.
+/// When data and encrypted code share an address, the final memory word may
+/// instead be the encrypted code word; consumers must retain that distinction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BoundedRevisitInstructionWrite {
+    /// Data-pointer address that the instruction committed to.
+    pub address: u32,
+    /// Computed instruction result stored before any code encryption.
+    pub after: u32,
+    /// Operand word read before the instruction's write.
+    pub before: u32,
+    /// Reached decoded data-writing opcode (`p` or `*`).
+    pub opcode: u8,
+    /// Actual step in the independently admitted complete guest path.
+    pub step: u32,
+}
+
 /// Complete, input-specific oracle: code visits, output, byte reads and EOF.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BoundedRevisitExpectation<'input> {
@@ -121,6 +140,7 @@ pub struct BoundedRevisitLayout {
     input_events: Vec<TraceInput>,
     io_events: Vec<BoundedRevisitIoEvent>,
     data_writes: Vec<BoundedRevisitDataWrite>,
+    instruction_writes: Vec<BoundedRevisitInstructionWrite>,
     memory_words: u32,
     mutation_targets: Vec<u32>,
     profile_fingerprint: &'static str,
@@ -176,6 +196,14 @@ impl BoundedRevisitLayout {
     #[must_use]
     pub fn encrypted_positions(&self) -> &[Option<u32>] {
         &self.encrypted_positions
+    }
+
+    /// Every reached physical data-store effect, retaining the opcode,
+    /// complete pre/post word and step even for an idempotent `p`/`*`.
+    /// The source and profile were verified by normative guest execution.
+    #[must_use]
+    pub fn instruction_writes(&self) -> &[BoundedRevisitInstructionWrite] {
+        &self.instruction_writes
     }
 
     /// Every reached `p`/`*` destination, even when the guest writes the
@@ -273,8 +301,50 @@ pub enum BoundedRevisitError {
     IoEventsMismatch,
     /// Runtime guest data mutation differs from the independent oracle.
     DataWritesMismatch,
+    /// Complete physical instruction-write effects disagree with a separate
+    /// source/guest operation oracle, including unchanged-value stores.
+    InstructionWritesMismatch,
     /// A multi-input check needs 2..8 distinct input streams.
     InvalidBatch,
+}
+
+/// Compare every reached `p`/`*` against a complete, independent write oracle.
+///
+/// Includes idempotent stores missing from changed-memory deltas. The source
+/// and profile are those admitted by the normative guest, not a host-simulated
+/// transition.
+///
+/// This proves only exact physical instruction effects for one path. It does
+/// not translate a C operation or bind this path to any C source by itself.
+///
+/// # Errors
+///
+/// Refuses malformed, out-of-order, oversized or non-writing events, or any
+/// difference from the reached physical instruction effects.
+pub fn verify_bounded_guest_instruction_writes(
+    admitted: &BoundedRevisitLayout,
+    expected: &[BoundedRevisitInstructionWrite],
+) -> Result<(), BoundedRevisitError> {
+    if expected.len() > MAX_REVISIT_STEPS
+        || expected.windows(2).any(|pair| match pair {
+            [earlier, later] => earlier.step >= later.step,
+            _ => true,
+        })
+        || expected.iter().any(|write| {
+            !matches!(write.opcode, b'p' | b'*')
+                || usize::try_from(write.step).unwrap_or(usize::MAX)
+                    >= admitted.code_positions.len()
+                || write.address >= admitted.memory_words
+                || write.before >= admitted.memory_words
+                || write.after >= admitted.memory_words
+        })
+    {
+        return Err(BoundedRevisitError::InvalidExpectation);
+    }
+    if admitted.instruction_writes != expected {
+        return Err(BoundedRevisitError::InstructionWritesMismatch);
+    }
+    Ok(())
 }
 
 // Apply the same finite, source-external address rules to both physical
@@ -640,6 +710,7 @@ fn admit_bounded_guest_path_impl(
     let mut input_events = Vec::with_capacity(expected.input_events.len());
     let mut io_events = Vec::with_capacity(expected.io_events.len());
     let mut data_writes = Vec::with_capacity(expected.data_writes.len());
+    let mut instruction_writes = Vec::new();
     let mut mutation_targets = Vec::new();
     for (index, &code) in expected.code_positions.iter().enumerate() {
         let before = machine.registers();
@@ -673,10 +744,26 @@ fn admit_bounded_guest_path_impl(
                 effect: BoundedRevisitIoEffect::Output(output_byte),
             });
         }
-        // The VM's memory delta excludes idempotent writes, so preserve the
-        // decoded mutating instruction's operand address separately.
-        if matches!(observed.decoded, Some(b'p' | b'*')) {
-            mutation_targets.push(before.data_pointer);
+        // Changed-memory deltas omit idempotent data stores and stores
+        // followed by encryption of the *same* target. Capture the complete
+        // committed instruction effect from the normative data read and
+        // resulting accumulator, prior to XLAT2 encryption.
+        if let Some(opcode @ (b'p' | b'*')) = observed.decoded {
+            let read = observed
+                .memory_reads
+                .data
+                .ok_or(BoundedRevisitError::GuestStep)?;
+            if read.address != before.data_pointer {
+                return Err(BoundedRevisitError::GuestStep);
+            }
+            instruction_writes.push(BoundedRevisitInstructionWrite {
+                step: u32::try_from(index).unwrap_or(u32::MAX),
+                opcode,
+                address: read.address,
+                before: read.value,
+                after: observed.after.registers.accumulator,
+            });
+            mutation_targets.push(read.address);
         }
         if let Some(data) = observed.memory_delta.data {
             data_writes.push(BoundedRevisitDataWrite {
@@ -734,6 +821,7 @@ fn admit_bounded_guest_path_impl(
         input_events,
         io_events,
         data_writes,
+        instruction_writes,
         memory_words: profile.memory_words(),
         mutation_targets,
         profile_fingerprint: profile.fingerprint(),
