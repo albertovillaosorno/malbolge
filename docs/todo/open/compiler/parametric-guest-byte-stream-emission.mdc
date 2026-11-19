@@ -73,6 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a source-valid 91-cell N15 `Iy` guest completes all
+  nine physical rotations of M95 and then performs a second real signed
+  input read at C69. A newly composed self-encryption-aware pointer path
+  uses the reached M67=85, virgin M87=69, encrypted M70=81, M82=80
+  and M81=94 to execute two actual `p` writes at C79/C80 against
+  M95=7,138,732 and M96=121. All 259 normative VM streams, including
+  256 second-byte classes, EOF and unread suffix, match independently
+  computed 15-trit C23 conversion results modulo 256. The mandatory
+  M81=94 decodes to `v` at C81, halting after 82 steps with **no**
+  guest output. The first C37 read remains discarded by rotations.
+  Output relocation, guest checksum state and the original five native
+  checksum guest traces remain missing; P2 stays open.
+
 - On 2026-11-19, a source-valid 91-cell `Iy` N15 experiment joins nine
   physically reached rotations of the exact M[95] C23 loader operand with
   **two** actual signed guest reads (C37/C73), two reached `p` writes

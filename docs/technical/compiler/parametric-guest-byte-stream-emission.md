@@ -28,6 +28,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Nine-rotation physical C23 conversion without output (2026-11-19)
+
+A 91-cell, strict-loader-admitted `Iy` source now executes nine real
+rotations of M95 to 7,138,732, reads the second signed input at C69,
+then uses actual pointer relocation through encrypted M70 and M67 to
+reach M95 and M96=121. Two reached `p` instructions at C79/C80
+compute the exact C23 signed input-to-byte result, including EOF, in
+the guest accumulator and memory. An independent scalar oracle agrees
+with 259 complete normative VM traces; the first C37 input is consumed
+during the rotation precursor. C81 must retain source value 94 to
+support earlier pointer resets, so its reached `v` halts after 82
+steps **without output**. The source is not a C compiler artifact.
+Relocating emission, retaining mutable locals and linking the original
+five-vector EOF checksum are outstanding P2 work.
+
 ### Finite adjacent-loader EOF conversion rotation bound (2026-11-18)
 
 An independent exhaustive scalar check now screens all 94-by-94 printable

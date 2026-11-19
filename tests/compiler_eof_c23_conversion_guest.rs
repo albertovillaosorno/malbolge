@@ -476,3 +476,136 @@ fn nine_rotations_feed_crazy_after_second_input_but_not_c23()
     assert!(c23_mismatches > 0, "encrypted M68 does not reach C23 data");
     Ok(())
 }
+
+// Physically correct C23 signed conversion, still blocked at output linkage.
+// The first input is consumed at C37 before the final four rotations.
+// The second input drives p/p on the prepared M95/M96 pair at C79/C80;
+// M81=94 remains a mandatory halt cell, so no guest output is published.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "257 independent signed-input conversion paths in the real VM"
+)]
+fn nine_real_rotations_convert_second_signed_input_without_output()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    assert_eq!(source.get(81), Some(&94));
+    assert_eq!(source.get(87), Some(&69));
+    assert_eq!(
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            historical_profile(),
+        ),
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(95), Ok(INITIAL_FIRST));
+    assert_eq!(loaded.memory_word(96), Ok(INITIAL_SECOND));
+    let mut cases: usize = 0;
+    for input in once(Vec::new())
+        .chain(once(vec![0x5a]))
+        .chain((u8::MIN..=u8::MAX).map(|byte| vec![0x5a, byte]))
+        .chain(once(vec![0x5a, 0x81, 0x00, 0xff]))
+    {
+        let first = input.first().copied();
+        let second = input.get(1).copied();
+        let raw = second.map_or_else(|| profile.eof_word(), u32::from);
+        let converted_first = scalar_crazy(7_138_732, raw);
+        let converted_second = scalar_crazy(INITIAL_SECOND, converted_first);
+        assert_eq!(converted_second % 256, u32::from(second.unwrap_or(255)));
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(82, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 82,
+        });
+        assert_eq!(trace.len(), 82);
+        let mut rotated = INITIAL_FIRST;
+        for position in [12usize, 18, 24, 30, 36, 44, 51, 58, 65] {
+            let step = trace.get(position).ok_or("missing rotation")?;
+            assert_eq!(step.decoded, Some(b'*'));
+            assert_eq!(step.before.registers.data_pointer, 95);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(rotated)
+            );
+            rotated = independent_rotate(rotated);
+            assert_eq!(step.after.registers.accumulator, rotated);
+        }
+        assert_eq!(rotated, 7_138_732);
+        for (position, expected) in [(37usize, first), (69, second)] {
+            let step = trace.get(position).ok_or("missing real signed read")?;
+            assert_eq!(step.decoded, Some(profile.input_instruction()));
+            assert_eq!(
+                step.input,
+                Some(expected.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+            );
+        }
+        for (position, address, value) in [
+            (66usize, 96u32, 121u32),
+            (67, 122, 157),
+            (70, 160, 157),
+            (71, 158, 36),
+            (72, 37, 66),
+            (73, 67, 85),
+            (75, 87, 69),
+            (76, 70, 81),
+            (77, 82, 80),
+            (78, 81, 94),
+        ] {
+            let step =
+                trace.get(position).ok_or("missing physical pointer jump")?;
+            assert_eq!(step.decoded, Some(b'j'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(value)
+            );
+        }
+        for (position, address, before, after) in [
+            (79usize, 95u32, 7_138_732u32, converted_first),
+            (80, 96, INITIAL_SECOND, converted_second),
+        ] {
+            let step = trace
+                .get(position)
+                .ok_or("missing signed conversion write")?;
+            assert_eq!(step.decoded, Some(b'p'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(before)
+            );
+            assert_eq!(step.after.registers.accumulator, after);
+            assert_eq!(vm.memory_word(address), Ok(after));
+        }
+        assert_eq!(trace.get(81).and_then(|step| step.decoded), Some(b'v'));
+        assert!(trace.iter().all(|step| step.output.is_none()));
+        assert!(vm.output().is_empty());
+        assert_eq!(
+            vm.input_consumed(),
+            usize::from(first.is_some()) + usize::from(second.is_some())
+        );
+        cases = cases.saturating_add(1);
+    }
+    assert_eq!(cases, 259);
+    Ok(())
+}

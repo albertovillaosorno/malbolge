@@ -227,3 +227,50 @@ pub fn build_c23_nine_rotated_second_input_crazy_probe_source(
     }
     Ok(source)
 }
+
+/// Execute the complete signed C23 two-crazy conversion **without output**.
+///
+/// Nine real `*` instructions prepare M95=7,138,732 from the `Iy` seed.
+/// The mandatory earlier input at C37 is discarded by later rotations.
+/// A second physical `/` at C69 reads the value to convert. After two
+/// reset jumps and a five-jump source/encryption-aware pointer chain,
+/// C79 and C80 execute `p` against M95 and M96=121 respectively.
+/// Source-required M81=94 decodes as `v` and halts at C81 before `<` can
+/// emit the converted result. This is guest arithmetic, **not** C I/O
+/// lowering or the P2 checksum; relocating the output remains necessary.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles and invalid source encoding. Normative
+/// VM execution must verify input provenance and both actual writes.
+pub fn build_c23_nine_rotated_signed_conversion_without_output_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    if profile != current_profile() {
+        return Err(C23OperandProbeSourceError::UnsupportedProfile);
+    }
+    let mut source = build_c23_seed_nine_rotated_operand_source(profile)
+        .map_err(|error| C23OperandProbeSourceError::RotationPreparation {
+            error,
+        })?;
+    for (position, opcode) in [
+        (66, b'j'),
+        (69, profile.input_instruction()),
+        (70, b'j'),
+        (71, b'j'),
+        (72, b'j'),
+        (73, b'j'),
+        (74, b'o'),
+        (75, b'j'),
+        (76, b'j'),
+        (77, b'j'),
+        (78, b'j'),
+        (79, b'p'),
+        (80, b'p'),
+        // This unexecuted source/data cell supplies the C75 j operand.
+        (87, b'p'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
