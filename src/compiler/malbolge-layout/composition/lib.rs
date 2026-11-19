@@ -92,6 +92,7 @@ pub use loader_rotation_source::{
     build_c23_seed_rotated_input_echo_source,
     build_repeated_loader_rotation_source,
     build_seeded_repeated_loader_rotation_source,
+    build_seeded_repeated_state_write_source,
     build_seeded_rotated_input_crazy_source,
 };
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};

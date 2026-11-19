@@ -214,6 +214,39 @@ pub fn build_seeded_rotated_input_crazy_source(
     Ok(source)
 }
 
+/// Physically write one input-dependent guest word twice in the *same* cell.
+///
+/// This is a physical mutable-state **precursor**, not C32 arithmetic or a
+/// compiled C loop. Nine genuine `*` instructions prepare loader M95; `/`
+/// at C39 reads a real byte or profile EOF. `p` at C43 updates M95. Three
+/// reached `j` operations at C44..C46 follow M96=72, M73=61, M62=94 and
+/// reset D to M95. A second `p` at C47 reads the **first write** and updates
+/// the same cell again. C48 outputs the final accumulator; C49 halts. No
+/// branch, phi edge, C variable binding, or C23 conversion is implemented.
+///
+/// # Errors
+///
+/// Rejects unavailable graphical encodings, non-current profiles or loader
+/// tails outside the independently checked pointer-reset seed family. Actual
+/// state writes require independent normative VM trace admission.
+pub fn build_seeded_repeated_state_write_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_seeded_rotated_input_crazy_source(profile, tail)?;
+    for (position, opcode) in [
+        (44, b'j'),
+        (45, b'j'),
+        (46, b'j'),
+        (47, b'p'),
+        (48, profile.output_instruction()),
+        (49, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Repair the C23 seed's loader pointer trap and perform physical rotations.
 ///
 /// The `Iy` tail initializes M[95]=7,174,404 and M[96]=121. A reached

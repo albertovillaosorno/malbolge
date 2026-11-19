@@ -1563,6 +1563,18 @@ The finite `--distinct-literal-forty-two` mode checks exact canonical
 MCTI/MCTR effects, 42 distinct real VM bytes and 97 guest steps, with
 zero consumed input before atomic raw/capsule publication.
 
+### Same-cell input-dependent guest mutation precursor
+
+`build_seeded_repeated_state_write_source` emits a 91-cell current-profile
+program with nine real rotations, one signed input and two physical `p`
+writes to the **same** M95 address. Three reached `j` instructions reset the
+data pointer between writes, so the second operation consumes the first
+written guest value. The 50-step VM trace is independently checked for EOF,
+all 256 byte inputs and an unread-suffix case in
+`tests/compiler_guest_repeated_state_write.rs`. A non-current profile or
+incompatible loader tail is refused. This proves bounded guest state
+mutation only; it neither binds M95 to a C variable nor links a C program.
+
 ### Verified forty-three-byte source bridge
 
 The bounded `--distinct-literal-forty-three` mode independently admits
