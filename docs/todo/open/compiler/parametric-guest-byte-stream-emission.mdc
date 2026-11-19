@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, an exhaustive independent scalar search covered all
+  94-by-94 graphical two-byte loader tails, 12 adjacent-data phases, and
+  all 15 cyclic rotations of **both** operands: 23,857,200 candidates.
+  Only eight source-tail/phase witnesses pass all 257 signed C23 output
+  cases; all require nine rotations of the first word and none of the
+  second, yielding `[7_138_732, 121]`. The previously admitted graphical
+  `Iy` loader seed is one of them. This only bounds independently rotated
+  adjacent loader words, not arbitrary guest synthesis. There are no
+  physical nine-rotation writes, pointer reset, subsequent guest `p` writes,
+  checksum state operations or normative checksum output traces. P2 stays open.
+
 - On 2026-11-18, an independent 132-cell N15 guest source now performs
   two real, unconditional signed reads at C=53 and C=104 and echoes the
   physical input words at C=54 and C=114. Six distinct streams, including

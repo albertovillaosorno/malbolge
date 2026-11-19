@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Finite adjacent-loader EOF conversion rotation bound (2026-11-18)
+
+An independent exhaustive scalar check now screens all 94-by-94 printable
+source tails, all 12 phases of the adjacent loader recurrence, and all
+15 cyclic rotations of *each* of two consecutive operand words. Of the
+23,857,200 candidate pairs, only eight survive a four-input filter and
+all 257 exact C23 output checks: each requires nine rotations of the first
+word and none of the second. The eight cases use tail first byte 72, 73,
+75, or 76, tail second byte 121, and phase four or ten. Every case yields
+final operands `[7_138_732, 121]`. Source-position admission still limits
+which tails can be loaded; the existing graphical `Iy` tail at positions
+89 and 90 works for physical data words 95 and 96.
+
+This is a **finite restriction of one candidate operand family**, not a
+minimum operation count for arbitrary guest programs. No guest has executed
+the required nine same-cell rotations, restored its data pointer, or applied
+both `p` instructions to the live input. The independently established
+physical two-read echoes still produce the target EOF low byte `0x6a`, so
+the original complete C checksum cannot be published and P2 stays open.
+
 ### Two independent physical input-word echoes (2026-11-18)
 
 A separate bounded 132-cell N15 source now executes two *unconditional*
