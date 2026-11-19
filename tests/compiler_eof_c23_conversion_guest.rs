@@ -337,3 +337,142 @@ fn five_real_rotations_feed_two_live_signed_crazy_writes() -> Result<(), String>
     }
     Ok(())
 }
+
+// All nine correct Iy rotations, followed by another real signed read and
+// two physical crazy writes, reveal a code-encryption pointer trap. The
+// second read is genuine but the operands are *not* the C23 converter pair.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "257 independent two-input, 79-step physical guest paths"
+)]
+fn nine_rotations_feed_crazy_after_second_input_but_not_c23()
+-> Result<(), String> {
+    const ROTATED_FIRST: u32 = 7_138_732;
+    const REACHED_FIRST: u32 = 104;
+    const REACHED_SECOND: u32 = 104;
+    let profile = current_profile();
+    let source =
+        layout::build_c23_nine_rotated_second_input_crazy_probe_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    assert_eq!(
+        [
+            source.get(37).copied(),
+            source.get(67).copied(),
+            source.get(68).copied(),
+        ],
+        [Some(80), Some(67), Some(94)],
+    );
+    assert_eq!(
+        layout::build_c23_nine_rotated_second_input_crazy_probe_source(
+            historical_profile(),
+        ),
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(95), Ok(INITIAL_FIRST));
+    assert_eq!(loaded.memory_word(96), Ok(INITIAL_SECOND));
+    let mut c23_mismatches = 0usize;
+    for input in once(Vec::new())
+        .chain(once(vec![0x5a]))
+        .chain((u8::MIN..=u8::MAX).map(|second| vec![0x5a, second]))
+        .chain(once(vec![0x5a, 0xfe, 0x07, 0x09]))
+    {
+        let first = input.first().copied();
+        let second = input.get(1).copied();
+        let raw = second.map_or_else(|| profile.eof_word(), u32::from);
+        let first_crazy = scalar_crazy(REACHED_FIRST, raw);
+        let second_crazy = scalar_crazy(REACHED_SECOND, first_crazy);
+        let output = u8::try_from(second_crazy % 256)
+            .map_err(|error| error.to_string())?;
+        c23_mismatches += usize::from(output != second.unwrap_or(255));
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(79, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 79,
+        });
+        assert_eq!(trace.len(), 79);
+        let mut rotated = INITIAL_FIRST;
+        for position in [12usize, 18, 24, 30, 36, 44, 51, 58, 65] {
+            let step = trace.get(position).ok_or("missing guest operation")?;
+            assert_eq!(step.decoded, Some(b'*'));
+            assert_eq!(step.before.registers.data_pointer, 95);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(rotated),
+            );
+            rotated = independent_rotate(rotated);
+            assert_eq!(step.after.registers.accumulator, rotated);
+        }
+        assert_eq!(rotated, ROTATED_FIRST);
+        for (position, expected_input) in [(37usize, first), (73, second)] {
+            let step = trace.get(position).ok_or("missing guest operation")?;
+            assert_eq!(step.decoded, Some(profile.input_instruction()));
+            assert_eq!(
+                step.input,
+                Some(
+                    expected_input
+                        .map_or(TraceInput::EndOfInput, TraceInput::Byte,)
+                ),
+            );
+        }
+        for (position, address, value) in [
+            (66usize, 96u32, 121u32),
+            (67, 122, 157),
+            (70, 160, 157),
+            (71, 158, 36),
+            (72, 37, 66),
+            (74, 68, 57),
+        ] {
+            let step = trace.get(position).ok_or("missing guest operation")?;
+            assert_eq!(step.decoded, Some(b'j'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(value)
+            );
+        }
+        assert_eq!(trace.get(68).and_then(|step| step.decoded), Some(b'o'));
+        assert_eq!(trace.get(69).and_then(|step| step.decoded), Some(b'o'));
+        for (position, address, before, after) in [
+            (75usize, 58u32, REACHED_FIRST, first_crazy),
+            (76, 59, REACHED_SECOND, second_crazy),
+        ] {
+            let step = trace.get(position).ok_or("missing guest operation")?;
+            assert_eq!(step.decoded, Some(b'p'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(before)
+            );
+            assert_eq!(step.after.registers.accumulator, after);
+            assert_eq!(vm.memory_word(address), Ok(after));
+        }
+        assert_eq!(trace.get(77).and_then(|step| step.output), Some(output));
+        assert_eq!(vm.output(), &[output]);
+        assert_eq!(vm.memory_word(95), Ok(ROTATED_FIRST));
+        assert_eq!(vm.memory_word(96), Ok(INITIAL_SECOND));
+        assert_eq!(
+            vm.input_consumed(),
+            usize::from(first.is_some()) + usize::from(second.is_some()),
+        );
+    }
+    assert!(c23_mismatches > 0, "encrypted M68 does not reach C23 data");
+    Ok(())
+}

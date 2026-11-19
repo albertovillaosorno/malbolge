@@ -100,6 +100,21 @@ read occurs before the last four rotations and its value is overwritten;
 no input-dependent converter `p` pair, mutable locals or checksum loop
 executes. The original source-C checksum remains explicitly unlinked.
 
+### Nine rotations and a second signed input: code-encryption trap
+
+`build_c23_nine_rotated_second_input_crazy_probe_source` extends the correct
+`Iy` nine-rotation guest with a second physical `/` and two reached `p`
+writes. The first `/` at C37 consumes a byte or EOF during rotation;
+C73 reads the next signed input. The second input is guest-observable,
+but the pointer reset does **not** reach the rotated M[95]. Source M[68]=94
+executes as an `o` at C68 and self-encrypts to 57 before C74 reads it.
+Consequently the two `p` writes actually consume M[58]=104 and M[59]=104,
+not the required converter operands 7,138,732 and 121. A real `<` and `v`
+finish after 79 guest steps. All 256 second bytes, second EOF, an empty
+stream and a trailing unread suffix match an independent trit oracle and
+complete normative VM paths. This is a negative self-modification/linker
+witness, not a working C23 converter or source-C checksum.
+
 ### Physical nine-rotation signed-input arithmetic chain (not C23)
 
 `build_seeded_rotated_input_crazy_source` reuses the eight source-loadable

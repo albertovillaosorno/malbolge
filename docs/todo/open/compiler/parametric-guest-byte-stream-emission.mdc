@@ -73,6 +73,21 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a source-valid 91-cell `Iy` N15 experiment joins nine
+  physically reached rotations of the exact M[95] C23 loader operand with
+  **two** actual signed guest reads (C37/C73), two reached `p` writes
+  (C75/C76), physical output and halt in 79 steps. An independent trit
+  oracle and 259 complete VM paths cover every possible second byte,
+  second EOF, empty input and unread suffix; the first read is consumed
+  during the rotations. A proposed return to M[95] was rejected by the
+  actual guest: the necessary M[68]=94 pointer constant also executes
+  at C68 and self-encrypts into **57**. The later C74 `j` therefore
+  reads 57 and reaches M[58], so both `p` instructions use 104-valued
+  source cells M[58]/M[59], not converter operands 7,138,732 and 121.
+  Its output does not normalize C23 EOF, and the original five-vector
+  mutable checksum remains unlinked. This is precise negative target
+  evidence, not checksum parity or P2 completion.
+
 - On 2026-11-19, a 91-cell source-valid N15 `Iy` guest now combines
   five **physical** rotations of the correct C23 loader M[95] word
   (7,174,404 -> 4,281,052), a real signed `/`, five pointer-reset `j`

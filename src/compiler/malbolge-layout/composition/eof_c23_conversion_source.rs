@@ -37,7 +37,8 @@ use malbolge::{
 };
 
 use super::loader_rotation_source::{
-    RepeatedLoaderRotationError, build_c23_seed_rotated_input_echo_source,
+    RepeatedLoaderRotationError, build_c23_seed_nine_rotated_operand_source,
+    build_c23_seed_rotated_input_echo_source,
 };
 
 const SOURCE_CELLS: usize = 279;
@@ -57,7 +58,7 @@ pub enum C23OperandProbeSourceError {
         /// Requested decoded opcode.
         opcode: u8,
     },
-    /// The separately proved five-rotation Iy seed could not be prepared.
+    /// The source-locked Iy rotation seed could not be prepared.
     RotationPreparation {
         /// Exact failure in the source-locked rotation stage.
         error: RepeatedLoaderRotationError,
@@ -175,6 +176,52 @@ pub fn build_c23_five_rotated_signed_crazy_source(
         (45, b'p'),
         (46, profile.output_instruction()),
         (47, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
+/// Observe a second signed input after nine physical Iy rotations.
+///
+/// The `Iy` seed undergoes nine actual M95 rotations and the source's
+/// mandatory first `/` at C37. After the last `*`, C66/C67 follow M96
+/// and M122; the source-locked M68=94 then executes as a no-op at C68,
+/// where self-encryption changes it into 57. C69 advances D to M160,
+/// and C70..C72 reset D via M158 and the encrypted M37. C73 reads the
+/// *second* input. C74 `j` follows the now-encrypted M68=57 to M58,
+/// not the originally intended M95. Two genuine `p` writes therefore
+/// consume M58=104 and M59=104, before `<` and `v` at C77/C78.
+/// This source is a **negative C23 conversion probe**: it never links
+/// mutable C state and cannot implement ordinary single-read getchar.
+///
+/// # Errors
+///
+/// Refuses noncanonical profiles, malformed loader preparation or an
+/// unavailable graphical opcode. Normative guest execution remains the
+/// independent evidence for all physical effects.
+pub fn build_c23_nine_rotated_second_input_crazy_probe_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    if profile != current_profile() {
+        return Err(C23OperandProbeSourceError::UnsupportedProfile);
+    }
+    let mut source = build_c23_seed_nine_rotated_operand_source(profile)
+        .map_err(|error| C23OperandProbeSourceError::RotationPreparation {
+            error,
+        })?;
+    for (position, opcode) in [
+        (66, b'j'),
+        (69, b'o'),
+        (70, b'j'),
+        (71, b'j'),
+        (72, b'j'),
+        (73, profile.input_instruction()),
+        (74, b'j'),
+        (75, b'p'),
+        (76, b'p'),
+        (77, profile.output_instruction()),
+        (78, b'v'),
     ] {
         set(&mut source, position, opcode)?;
     }
