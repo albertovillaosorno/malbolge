@@ -167,3 +167,137 @@ fn c23_seed_does_not_inherit_repeated_rotation_reset() -> Result<(), String> {
     assert_ne!(trace[7].before.registers.data_pointer, 95);
     Ok(())
 }
+
+// Exhaust the finite source-tail family rather than assuming that the one
+// convenient `,H` tail is the only repeatable operand seed. The eight
+// admitted tails yield distinct pre-rotation words but the same real M[96]
+// pointer reset; this does not make them signed-C23 conversion operands.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independently checked finite seed class and physical VM traces"
+)]
+fn seeded_rotation_admits_exact_loader_tail_family() -> Result<(), String> {
+    let expected = [
+        ([44, 72], 7_174_457),
+        ([45, 72], 7_174_462),
+        ([67, 72], 7_174_480),
+        ([73, 72], 7_174_489),
+        ([86, 72], 7_174_418),
+        ([103, 72], 7_174_435),
+        ([104, 72], 7_174_436),
+        ([122, 72], 7_174_454),
+    ];
+    let mut admitted = vec![];
+    for first in 33u8..=126 {
+        for second in 33u8..=126 {
+            let tail = [first, second];
+            match layout::build_seeded_repeated_loader_rotation_source(
+                current_profile(),
+                9,
+                tail,
+            ) {
+                Ok(source) => {
+                    assert_eq!(&source[89..91], &tail);
+                    admitted.push(tail);
+                },
+                Err(
+                    layout::RepeatedLoaderRotationError::InvalidResetSeed {
+                        tail: rejected,
+                    },
+                ) => assert_eq!(rejected, tail),
+                Err(error) => {
+                    return Err(format!("unexpected seed error: {error:?}"));
+                },
+            }
+        }
+    }
+    assert_eq!(
+        admitted,
+        expected.map(|(tail, _)| tail).to_vec(),
+        "only source-valid tails with M[96]=72 may reset D to M[95]",
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "eight physical nine-rotation guest traces with scalar oracle"
+)]
+fn seeded_rotation_synthesizes_distinct_loader_words() -> Result<(), String> {
+    let expected = [
+        ([44, 72], 7_174_457),
+        ([45, 72], 7_174_462),
+        ([67, 72], 7_174_480),
+        ([73, 72], 7_174_489),
+        ([86, 72], 7_174_418),
+        ([103, 72], 7_174_435),
+        ([104, 72], 7_174_436),
+        ([122, 72], 7_174_454),
+    ];
+    for (tail, first_word) in expected {
+        let rounds = 9u8;
+        let source = layout::build_seeded_repeated_loader_rotation_source(
+            current_profile(),
+            rounds,
+            tail,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), &source, vec![])
+                .map_err(|error| error.to_string())?;
+        assert_eq!(vm.memory_word(95), Ok(first_word));
+        assert_eq!(vm.memory_word(96), Ok(72));
+        let mut steps = vec![];
+        let outcome = vm
+            .run_traced(64, &mut |step| steps.push(*step))
+            .map_err(|error| error.to_string())?;
+        let output_at = usize::from(rounds) * 4;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: output_at + 2,
+        });
+        let mut word = first_word;
+        for round in 0..usize::from(rounds) {
+            let trace = &steps[3 + round * 4];
+            assert_eq!(trace.decoded, Some(b'*'));
+            assert_eq!(trace.before.registers.data_pointer, 95);
+            assert_eq!(
+                trace.memory_reads.data.map(|read| read.value),
+                Some(word),
+            );
+            word = scalar_rotate(word);
+            assert_eq!(trace.after.registers.accumulator, word);
+        }
+        assert_eq!(vm.memory_word(95), Ok(word));
+        assert_eq!(vm.memory_word(96), Ok(72));
+        assert_eq!(vm.output(), &[(word % 256) as u8]);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
+}
+
+#[test]
+fn invalid_seed_refuses_even_when_rotation_count_is_valid() {
+    assert_eq!(
+        layout::build_seeded_repeated_loader_rotation_source(
+            current_profile(),
+            9,
+            *b"Iy",
+        ),
+        Err(layout::RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b"Iy",
+        }),
+    );
+    assert_eq!(
+        layout::build_seeded_repeated_loader_rotation_source(
+            current_profile(),
+            9,
+            [0, 72],
+        ),
+        Err(layout::RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: [0, 72],
+        }),
+    );
+}

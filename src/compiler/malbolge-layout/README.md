@@ -30,6 +30,18 @@ reset chain requires the distinct `,H` loader seed. Substituting `Iy`
 changes the pointer reset from M[95] to M[158] after the first rotation.
 Neither EOF branching nor source-C checksum linkage has been implemented.
 
+`build_seeded_repeated_loader_rotation_source` now validates a caller-supplied
+pair of graphical source-tail bytes against the *actual* loader recurrence and
+the same fixed physical reset. An exhaustive 94-by-94 tail admission check
+finds exactly eight loadable seeds, all ending in `H`: first bytes `,`, `-`,
+`C`, `I`, `V`, `g`, `h`, and `z`. Their first expanded operand words at M[95]
+are respectively 7,174,457, 7,174,462, 7,174,480, 7,174,489, 7,174,418,
+7,174,435, 7,174,436 and 7,174,454; M[96] remains 72. Eight normative VM
+runs each prove nine real same-cell rotations, read identity, output byte and
+halt against an independent scalar oracle. Unloadable tails, including `Iy`,
+refuse before source publication; the original `,H` API remains unchanged.
+This broadens physical operand seeds, not signed-C23 conversion or C lowering.
+
 ### Two physical `p` writes from C23 converter loader words
 
 `build_c23_operand_probe_source` constructs a 279-cell graphical N15

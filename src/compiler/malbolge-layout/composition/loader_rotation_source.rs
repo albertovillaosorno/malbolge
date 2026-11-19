@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Physical N15 repeated rotations with source-bound pointer relocation.
+//   - Physical N15 repeated rotations with checked loader-seed relocation.
 // - Must-Not:
 //   - Treat the rotated seed as a signed C23 converter or source-C compiler.
 // - Allows:
@@ -25,7 +25,9 @@
 
 //! Physically repeat one loader-cell rotation through a three-jump reset.
 //!
-//! Source tail `,H` expands M[95]=7,174,457, M[96]=72. Executed `j`
+//! The default `,H` tail expands M[95]=7,174,457, M[96]=72.
+//! Other admitted graphical tails may supply different first operands as long
+//! as the exact M[96]=72 reset chain remains valid. Executed `j`
 //! instructions reset D through M[96]=72, M[73]=61 and M[62]=94, returning
 //! to M[95] for each subsequent `*`. Source[40]=94 sets up the original
 //! jump from D=40 and can itself execute as a `j` after the tenth rotate.
@@ -34,6 +36,8 @@
 use malbolge::{
     ProfileDescriptor, current_profile, decode_profile_instruction,
 };
+
+use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
 
 const SOURCE_CELLS: usize = 91;
 const MAX_ROTATIONS: u8 = 15;
@@ -55,6 +59,11 @@ pub enum RepeatedLoaderRotationError {
     },
     /// The fixed geometry belongs to the current 15-trit profile.
     UnsupportedProfile,
+    /// The supplied tail is unloadable or changes the exact pointer reset.
+    InvalidResetSeed {
+        /// Exact candidate source tail.
+        tail: [u8; 2],
+    },
 }
 
 fn encode(
@@ -98,6 +107,25 @@ pub fn build_repeated_loader_rotation_source(
     profile: &ProfileDescriptor,
     rotations: u8,
 ) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    build_seeded_repeated_loader_rotation_source(profile, rotations, *b",H")
+}
+
+/// Build an exact same-cell rotation witness for a graphical loader tail.
+///
+/// The reset is valid only when the *actual* loader recurrence at M[96] is
+/// 72: `j` then follows M[73]=61 and M[62]=94 back to operand M[95].
+/// Both tail cells must decode as admitted source instructions at positions
+/// 89 and 90. No host value substitutes for any executed rotation.
+///
+/// # Errors
+///
+/// Refuses invalid profiles, rotation budgets and source/loader tails whose
+/// actual pointer chain cannot preserve the repeated operand address.
+pub fn build_seeded_repeated_loader_rotation_source(
+    profile: &ProfileDescriptor,
+    rotations: u8,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
     if profile != current_profile() {
         return Err(RepeatedLoaderRotationError::UnsupportedProfile);
     }
@@ -133,6 +161,16 @@ pub fn build_repeated_loader_rotation_source(
     source[40] = 94;
     source[62] = 94;
     source[73] = 61;
-    source[89..91].copy_from_slice(b",H");
+    source[89..91].copy_from_slice(&tail);
+    let decodable = tail.iter().enumerate().all(|(offset, &byte)| {
+        unique_graphical_cell(
+            profile,
+            LinearOpcode::SkippedDataByte { byte: u32::from(byte) },
+            89 + offset,
+        ) == Ok(byte)
+    });
+    if !decodable || unwritten_loader_word(&source, 96, profile) != Ok(72) {
+        return Err(RepeatedLoaderRotationError::InvalidResetSeed { tail });
+    }
     Ok(source)
 }

@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, the fixed 91-cell physical pointer-reset builder now
+  admits all eight independently enumerated source-loadable graphical
+  tails ending in `H`, not only `,H`. Every accepted tail preserves the
+  M[96]=72 -> M[73]=61 -> M[62]=94 reset, while supplying a distinct
+  M[95] loader word. Exhaustive 94-by-94 admission and eight actual N15
+  nine-rotation VM traces check exact reads, intermediate accumulator,
+  emitted byte and halt against independent arithmetic. `Iy` still refuses
+  this reset because its M[96]=121; none of the eight seeds implements the
+  C23 signed converter, and the five full-checksum guest traces are still
+  missing. P2 remains open.
+
 - On 2026-11-19, a production 91-cell graphical N15 source builder
   emits 1..15 physical same-cell `*` rotations with a reached three-`j`
   pointer reset. Fifteen normative guest traces independently check each
