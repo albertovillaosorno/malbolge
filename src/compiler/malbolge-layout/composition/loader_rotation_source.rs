@@ -274,3 +274,79 @@ pub fn build_c23_seed_rotated_input_echo_source(
     source[89..91].copy_from_slice(b"Iy");
     Ok(source)
 }
+
+/// Physically rotate the correct C23 `Iy` loader operand nine times.
+///
+/// The exact source-required M[37]=80 is `/` at C37. This necessarily
+/// consumes an extra input attempt after five rotations and encrypts M37
+/// to 66. The *post-encryption* pointer return therefore needs M[67]=67
+/// (`j` when reached) and M[68]=94 (`o` when reached), instead of the
+/// original M[81]=94. After the intermediate input, five `j` operations
+/// return D to M95; subsequent six-jump resets complete nine physical
+/// `*` writes, whose last result is output with `<` and halted with `v`.
+/// All source cells are loadable; the ninth physical operand reaches
+/// 7,138,732. This is **not** C23 byte conversion: the forced input is
+/// discarded by later rotations, no two input-dependent `p` operations
+/// execute, and the resulting output is a fixed operand probe byte.
+///
+/// # Errors
+///
+/// Refuses other profiles. Independently admitted normative VM execution is
+/// necessary to establish all pointer returns and physical writes.
+pub fn build_c23_seed_nine_rotated_operand_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    if profile != current_profile() {
+        return Err(RepeatedLoaderRotationError::UnsupportedProfile);
+    }
+    let mut source = (0..SOURCE_CELLS)
+        .map(|position| encode(position, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (position, opcode) in [
+        (0, b'j'),
+        (1, b'j'),
+        (2, b'p'),
+        (4, b'j'),
+        (5, b'j'),
+        (6, b'p'),
+        (8, b'j'),
+        (9, b'j'),
+        (10, b'j'),
+        (11, b'j'),
+        (37, profile.input_instruction()),
+        (39, b'j'),
+        (40, b'j'),
+        (41, b'j'),
+        (42, b'j'),
+        (43, b'j'),
+        (66, profile.output_instruction()),
+        (67, b'j'),
+        (69, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    for (round, position) in [12usize, 18, 24, 30, 36, 44, 51, 58, 65]
+        .into_iter()
+        .enumerate()
+    {
+        set(&mut source, position, b'*')?;
+        if round != 4 && round != 8 {
+            let reset_count = if round < 4 {
+                5
+            } else {
+                6
+            };
+            for reset in position + 1..=position + reset_count {
+                set(&mut source, reset, b'j')?;
+            }
+        }
+    }
+    source[0] = 40;
+    source[37] = 80;
+    source[41] = 93;
+    source[67] = 67;
+    source[68] = 94;
+    source[81] = 94;
+    source[89..91].copy_from_slice(b"Iy");
+    Ok(source)
+}

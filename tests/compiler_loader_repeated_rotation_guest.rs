@@ -624,3 +624,134 @@ fn c23_seed_pointer_repair_refuses_historical_profile() {
         Err(layout::RepeatedLoaderRotationError::UnsupportedProfile),
     );
 }
+
+// Correct Iy loader operand: nine real rotations with a *different* pointer
+// chain after the source's forced C37 input self-encrypts from 80 into 66.
+// The final byte is a rotated loader operand probe, not converted input.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "independent nine-write, source-locked physical guest trace"
+)]
+fn c23_seed_nine_rotations_follow_encrypted_pointer_path() -> Result<(), String>
+{
+    use malbolge::{ProfileRegisters, TraceInput};
+
+    let profile = current_profile();
+    let source = layout::build_c23_seed_nine_rotated_operand_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(&source[89..], b"Iy");
+    assert_eq!(source[37], 80);
+    assert_eq!(source[67], 67);
+    assert_eq!(source[68], 94);
+    let loader = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    for (address, value) in
+        [(94, 157), (95, 7_174_404), (96, 121), (98, 157), (158, 157)]
+    {
+        assert_eq!(loader.memory_word(address), Ok(value));
+    }
+    for input in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![127],
+        vec![128],
+        vec![255],
+        vec![5, 0, 128, 254],
+        vec![1, 255, 0],
+    ] {
+        let first = input.first().copied();
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loader.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut steps = vec![];
+        let outcome = vm
+            .run_traced(70, &mut |step| steps.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 70,
+        });
+        for (index, address, after) in
+            [(2usize, 94u32, 7_174_489u32), (6, 158, 36)]
+        {
+            assert_eq!(steps[index].decoded, Some(b'p'));
+            assert_eq!(steps[index].before.registers.data_pointer, address);
+            assert_eq!(
+                steps[index].memory_delta.data.map(|d| d.after),
+                Some(after)
+            );
+        }
+        let mut operand = 7_174_404;
+        for position in [12usize, 18, 24, 30, 36, 44, 51, 58, 65] {
+            let step = &steps[position];
+            assert_eq!(step.decoded, Some(b'*'));
+            assert_eq!(step.before.registers.data_pointer, 95);
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((95, operand)),
+            );
+            operand = scalar_rotate(operand);
+            assert_eq!(step.after.registers.accumulator, operand);
+            assert_eq!(step.memory_delta.data.map(|d| d.after), Some(operand));
+        }
+        assert_eq!(operand, 7_138_732);
+        assert_eq!(vm.memory_word(95), Ok(operand));
+        assert_eq!(vm.memory_word(96), Ok(121));
+        assert_eq!(vm.memory_word(37), Ok(66));
+        for (position, address, value) in [
+            (39usize, 98u32, 157u32),
+            (40, 158, 36),
+            (41, 37, 66),
+            (42, 67, 67),
+            (43, 68, 94),
+            (45, 96, 121),
+            (46, 122, 157),
+            (47, 158, 36),
+            (48, 37, 66),
+            (49, 67, 67),
+            (50, 68, 94),
+        ] {
+            assert_eq!(steps[position].decoded, Some(b'j'));
+            assert_eq!(steps[position].before.registers.data_pointer, address);
+            assert_eq!(
+                steps[position].memory_reads.data.map(|r| r.value),
+                Some(value)
+            );
+        }
+        assert_eq!(steps[37].decoded, Some(profile.input_instruction()));
+        assert_eq!(
+            steps[37].input,
+            Some(first.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+        );
+        assert_eq!(steps[38].decoded, Some(b'o'));
+        assert_eq!(steps[66].decoded, Some(profile.output_instruction()));
+        assert_eq!(steps[66].output, Some((operand % 256) as u8));
+        assert_eq!(steps[67].decoded, Some(b'j'));
+        assert_eq!(steps[68].decoded, Some(b'o'));
+        assert_eq!(steps[69].decoded, Some(b'v'));
+        assert_eq!(vm.output(), &[(operand % 256) as u8]);
+        assert_eq!(vm.input_consumed(), usize::from(first.is_some()));
+    }
+    Ok(())
+}
+
+#[test]
+fn c23_seed_nine_rotation_probe_refuses_historical_profile() {
+    let actual = layout::build_c23_seed_nine_rotated_operand_source(
+        historical_profile(),
+    );
+    assert_eq!(
+        actual,
+        Err(layout::RepeatedLoaderRotationError::UnsupportedProfile),
+    );
+}

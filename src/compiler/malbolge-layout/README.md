@@ -62,6 +62,28 @@ M[95]=7,138,732 and two subsequent input-dependent `p` operations. The
 raw EOF output still differs from C23 `0xff`; no checksum C state,
 conditional loop, or complete source-C artifact is emitted.
 
+### Nine reached rotations of the real C23 operand (not conversion)
+
+`build_c23_seed_nine_rotated_operand_source` now completes nine physical
+same-cell `*` writes for the **actual** `Iy` 91-cell loader seed. The
+original M[95]=7,174,404 reaches exactly M[95]=7,138,732 while
+M[96]=121 remains untouched. The pointer repair first changes M[94]
+and M[158] with physical `p` writes, then uses five reached `j` resets
+through M[37]=80/M[81]=94 for the first five rotations. C37 must execute
+as `/`, consuming one real signed input attempt and self-encrypting M[37]
+from 80 to 66. The repaired return then follows M[67]=67 and M[68]=94;
+four further rotations use six reached `j` operations each. A real `<`
+emits the final rotated word's low byte, and the source halts in 70 steps.
+
+Eight independently checked N15 VM paths include EOF, NUL, 0x7f, 0x80,
+0xff and unread suffixes. Each checks the loader words, the initial two
+`p` writes, all nine `*` reads/writes against independent scalar rotation,
+post-encryption pointer transitions, the only input event, final output
+and termination. This **does not** normalize C23 signed input: the first
+read occurs before the last four rotations and its value is overwritten;
+no input-dependent converter `p` pair, mutable locals or checksum loop
+executes. The original source-C checksum remains explicitly unlinked.
+
 ### Physical nine-rotation signed-input arithmetic chain (not C23)
 
 `build_seeded_rotated_input_crazy_source` reuses the eight source-loadable

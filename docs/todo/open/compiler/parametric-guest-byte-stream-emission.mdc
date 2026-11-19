@@ -73,6 +73,21 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a distinct source-valid 91-cell N15 `Iy` guest now
+  physically completes all nine rotations of the **correct** C23 seed
+  M[95]=7,174,404 -> 7,138,732, preserving M[96]=121. The mandatory
+  C37 `/` consumes an early real input and encrypts M[37]=80 into 66;
+  after that change, pointer reset follows M[67]=67 and M[68]=94 instead
+  of incorrectly reusing the pre-input M[81]=94 chain. Eight independent
+  full 70-step VM paths check nine actual `*` writes, both pointer-repair
+  `p` writes, all reset stages, real EOF/binary input, physical output
+  and halt. Since the early signed input is overwritten by subsequent
+  rotations, this guest is **not** the C23 converter; it performs no
+  post-input `p` pair, EOF branch, mutable checksum or source-C linkage.
+  The original five checksum cases still fail closed at dynamic CFG.
+  P2 remains open.
+
+
 - On 2026-11-19, a separate 91-cell source-valid N15 guest using the
   actual C23 `Iy` loader seed now repairs a real data-pointer trap with
   two reached `p` writes: M[94]=157 -> 7,174,489 and M[158]=157 -> 36.
