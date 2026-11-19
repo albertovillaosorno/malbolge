@@ -127,6 +127,18 @@ pub struct BoundedRevisitLayout {
 }
 
 impl BoundedRevisitLayout {
+    /// Exact verified guest target profile ID.
+    #[must_use]
+    pub const fn profile_id(&self) -> &str {
+        self.profile_id
+    }
+
+    /// Exact versioned target-profile fingerprint of the normative path.
+    #[must_use]
+    pub const fn profile_fingerprint(&self) -> &str {
+        self.profile_fingerprint
+    }
+
     /// Exact admitted graphical guest source, without a capsule wrapper.
     #[must_use]
     pub fn source(&self) -> &[u8] {

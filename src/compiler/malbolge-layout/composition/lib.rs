@@ -41,9 +41,15 @@
 //! require normative VM validation. Forward code jumps are admitted only
 //! when the exact evolving data-pointer cells and skipped padding prove them.
 
+// The existing canonical typed-CFG adapter is included once here so the
+// source-bound physical placement can independently rederive SSA widths.
+#[path = "../../typed-cfg-adapter/composition/lib.rs"]
+pub mod typed_cfg_adapter;
+
 mod bounded_revisit;
 mod eof_branch_plan;
 mod eof_output_plan;
+mod guest_state_placement;
 mod loader_seed;
 mod signed_eof_branch_source;
 
@@ -65,6 +71,10 @@ pub use eof_branch_plan::{
 pub use eof_output_plan::{
     C23SignedOutputWordPlan, C23SignedOutputWordPlanError,
     CURRENT_C23_SIGNED_OUTPUT_WORDS, admit_c23_signed_output_word_plan,
+};
+pub use guest_state_placement::{
+    GuestStatePlacementCandidate, GuestStatePlacementError,
+    GuestStatePlacementRequest, place_source_bound_guest_state,
 };
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};

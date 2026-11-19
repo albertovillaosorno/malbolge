@@ -1240,3 +1240,181 @@ fn source_bound_mixed_eof_and_byte_batch_requires_exact_path_oracles()
     );
     Ok(())
 }
+
+// The source-authenticated checksum and the physical byte/EOF helper must
+// share one *real* source-length-bound address reservation. Neither a fixed
+// 43-word constant nor an imaginary 2,048-cell source is linker evidence.
+#[test]
+fn original_checksum_state_placement_uses_real_guest_source_and_paths()
+-> Result<(), String> {
+    use layout::{
+        BoundedGuestDataRegion as Region,
+        GuestStatePlacementError as PlacementError,
+        GuestStatePlacementRequest as Request,
+    };
+    let profile = current_profile();
+    let source = post_rotation_physical_branch_source()?;
+    let identity = layout::LinearProfileIdentity {
+        id: profile.id(),
+        fingerprint: profile.fingerprint(),
+    };
+    let cases = [vec![], vec![0], vec![255], vec![3, 4, 5], vec![128]]
+        .into_iter()
+        .map(OwnedBranchPath::new)
+        .collect::<Vec<_>>();
+    let expected = cases
+        .iter()
+        .map(OwnedBranchPath::expectation)
+        .collect::<Vec<_>>();
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("normative paths: {error:?}"))?;
+    let helper_regions = [
+        Region {
+            start: 132,
+            end_exclusive: 146,
+        },
+        Region {
+            start: 7_174_344,
+            end_exclusive: 7_174_386,
+        },
+    ];
+    let frozen =
+        include_str!("compiler/typed-ir/golden/mutable-eof-checksum.hex");
+    let hex = frozen
+        .trim_end()
+        .strip_prefix("malbolge-typed-ir-v1:")
+        .ok_or("missing source-authenticated typed snapshot")?;
+    let wire = hex
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            u8::from_str_radix(
+                std::str::from_utf8(pair).map_err(|error| error.to_string())?,
+                16,
+            )
+            .map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let request = Request {
+        canonical: &wire,
+        admitted: &admitted,
+        helper_regions: &helper_regions,
+        profile,
+        source: &source,
+    };
+    let candidate = layout::place_source_bound_guest_state(request)
+        .map_err(|error| format!("real-source state reservation: {error:?}"))?;
+    let [frame] = candidate.relocated().state_placements.as_slice() else {
+        return Err("source checksum must use one checked frame".to_owned());
+    };
+    assert_eq!(
+        candidate.relocated().prelink.state_frames[0].total_words,
+        43
+    );
+    assert_eq!(candidate.state_region().start, frame.base);
+    assert_eq!(candidate.state_region().end_exclusive, frame.end_exclusive);
+    assert_eq!(candidate.source(), source);
+    assert_eq!(candidate.relocated().operation_blocks.len(), 7);
+    assert_eq!(candidate.relocated().phi_edges.len(), 4);
+    assert_eq!(candidate.helper_regions(), helper_regions);
+    assert_eq!(frame.source_cells, u32::try_from(source.len()).unwrap());
+    // Every typed operand, literal and two-phase phi transfer is physically
+    // inside the isolated state frame, rather than the helper scratch.
+    let state = candidate.state_region();
+    let in_state =
+        |address| state.start <= address && address < state.end_exclusive;
+    let mut instruction_count = 0usize;
+    for block in &candidate.relocated().operation_blocks {
+        for instruction in &block.instructions {
+            instruction_count += 1;
+            assert!(instruction.reads.iter().copied().all(in_state));
+            assert!(instruction.write.is_none_or(in_state));
+            assert!(
+                instruction
+                    .constant_cells
+                    .iter()
+                    .all(|cell| in_state(cell.address))
+            );
+        }
+        assert!(block.condition.is_none_or(in_state));
+        assert!(block.return_value.is_none_or(in_state));
+    }
+    assert_eq!(instruction_count, 19);
+    for edge in &candidate.relocated().phi_edges {
+        for copy in edge.snapshots.iter().chain(&edge.commits) {
+            assert!(in_state(copy.source));
+            assert!(in_state(copy.destination));
+        }
+    }
+    for path in &admitted {
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(path, &[
+                candidate.state_region()
+            ],),
+            Ok(())
+        );
+    }
+    assert_eq!(
+        layout::place_source_bound_guest_state(request),
+        Ok(candidate.clone())
+    );
+    let mut other_source = source.clone();
+    other_source[9] ^= 1;
+    assert_eq!(
+        layout::place_source_bound_guest_state(Request {
+            source: &other_source,
+            ..request
+        }),
+        Err(PlacementError::SourceMismatch)
+    );
+    assert_eq!(
+        layout::place_source_bound_guest_state(Request {
+            profile: malbolge::historical_profile(),
+            ..request
+        }),
+        Err(PlacementError::UnsupportedProfile)
+    );
+    assert_eq!(
+        layout::place_source_bound_guest_state(Request {
+            helper_regions: &helper_regions[..1],
+            ..request
+        }),
+        Err(PlacementError::PhysicalRegion(
+            layout::BoundedGuestRegionsError::UnreservedWrite,
+        ))
+    );
+    let reversed = admitted.iter().rev().cloned().collect::<Vec<_>>();
+    assert_eq!(
+        layout::place_source_bound_guest_state(Request {
+            admitted: &reversed,
+            ..request
+        }),
+        Ok(candidate.clone())
+    );
+    assert_eq!(
+        layout::place_source_bound_guest_state(Request {
+            admitted: &[],
+            ..request
+        }),
+        Err(PlacementError::SourceMismatch)
+    );
+    let mut forged_wire = wire.clone();
+    forged_wire[0] ^= 1;
+    assert!(matches!(
+        layout::place_source_bound_guest_state(Request {
+            canonical: &forged_wire,
+            ..request
+        }),
+        Err(PlacementError::TypedCfg(_))
+    ));
+    // A successfully relocated SSA slot is still *uninitialized*: the
+    // physical helper only emits class markers, not the checksum byte.
+    assert_eq!(admitted[0].output(), &[30]);
+    assert!(!admitted[0].mutation_targets().iter().any(|address| {
+        candidate.state_region().start <= *address
+            && *address < candidate.state_region().end_exclusive
+    }));
+    Ok(())
+}

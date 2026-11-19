@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical-source-bound checksum data placement (2026-11-18)
+
+The existing 132-cell signed byte/EOF helper now has a *joint* data-placement
+witness for the source-authenticated original C23 mutable checksum. A checked
+request supplies its exact graphical helper source, five independently
+admitted normative VM paths, complete helper scratch intervals, a target
+profile, and the checksum's already-authenticated canonical typed wire.
+The linker boundary verifies path/source/profile identity instead of reusing
+traces of another helper. It derives the complete frame width from the typed
+CFG, checks the helper's reached accesses and all declared scratch, then
+relocates 19 typed operations, branch conditions, literal-word obligations
+and four staged phi edges into one physically isolated 43-word state frame.
+Unlike the earlier assumed 2,048-cell length, the relocation uses the real
+132-cell source length and the exact first-fit state base.
+
+A source-bound red-first Rust regression loads the canonical checksum wire
+from its source-checked frozen snapshot and independently admits EOF, NUL,
+255, mixed three-byte input and 128 through the real N15 VM. It verifies
+that each relocated scalar or phi-copy address lies in the isolated frame.
+Reordered paths reproduce the result; changed graphical bytes, missing
+scratch, a foreign target profile and corrupt typed IR refuse.
+
+**This does not compile or execute the checksum.** The helper still outputs
+only fixed EOF/byte markers. It never initializes or updates a C SSA word,
+performs a checksum arithmetic operation, copies any loop phi or executes a
+C backedge. The provided wire must already be authenticated against source C
+upstream, and any later physical-source edit requires fresh normative path
+admission and relocation. The five required checksum-output guest traces are
+still absent and P2 remains open.
+
+
 ### Declared-helper scratch excluded from future C state (2026-11-18)
 
 The five-path physical-state placer now **requires the helper's declared

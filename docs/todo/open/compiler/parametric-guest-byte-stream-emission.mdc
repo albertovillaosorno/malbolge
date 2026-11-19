@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, real-source-bound guest state placement now joins the
+  independently admitted 132-cell EOF helper with the original authenticated
+  C23 checksum's 43-word SSA/phi data relocation. Five normative paths and
+  complete helper scratch determine the exact source-external frame, and the
+  resulting seven blocks, 19 operations and four staged phi edges bind to
+  its real addresses rather than a hypothetical code size. Reordered paths
+  reproduce the result; source drift, missing scratch, profile mismatch and
+  damaged typed wire refuse. A red-first source-locked test and stable
+  compilation pass. The helper still writes no C state, emits only markers,
+  and cannot execute the checksum's arithmetic/backedge. No checksum-output
+  guest trace exists, so P2 remains open.
+
 - On 2026-11-18, the five-path normative EOF helper's 43-word C-state
   first-fit reservation now requires independently checked, complete helper
   scratch intervals. It excludes *all declared* scratch, including words

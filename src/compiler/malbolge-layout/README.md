@@ -33,11 +33,23 @@ A focused test reuses the original checksum's independently verified 43-word
 SSA/phi requirement, verifies a safe candidate across five VM paths, then
 proves that adding unused helper scratch shifts the candidate. Invalid,
 incomplete and unsorted helper declarations refuse.
-Relocation of its seven blocks and four phi edges remains a separate,
-source-locked prelink proof, not linked to this candidate. The candidate
-remains uninitialized, has no linked guest arithmetic or copied phi cells,
-and proves nothing about a future source modification or untested input.
-The original C checksum still cannot run.
+`place_source_bound_guest_state` now joins these two independently
+admitted boundaries for the *exact physical source*. It re-derives the
+source-authenticated typed CFG and its complete frame width, checks physical
+source/profile identity across all supplied normative paths, allocates the
+full frame outside helper scratch, and relocates all seven checksum blocks,
+19 typed operations and four phi-copy edges at that actual candidate base.
+The integration regression uses five normative source-identical paths and
+checks every relocated operand/control/copy address, source drift, altered
+canonical bytes, missing scratch, and deterministic path reordering.
+
+This is a **placement-only** witness: the typed program's C-source identity
+was checked upstream, not derived from the helper's Malbolge characters.
+The 132-cell source is still an EOF/byte marker program, not checksum code.
+The frame is uninitialized; neither its literal writes nor its arithmetic,
+phi transfers, loop backedge or final C output is physically implemented.
+Changing the source or adding new helper accesses invalidates the witness.
+The original mutable C checksum still cannot run in the guest.
 
 ### EOF versus byte control-word prerequisite
 
