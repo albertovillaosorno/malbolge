@@ -42,6 +42,27 @@ halt against an independent scalar oracle. Unloadable tails, including `Iy`,
 refuse before source publication; the original `,H` API remains unchanged.
 This broadens physical operand seeds, not signed-C23 conversion or C lowering.
 
+### Physical nine-rotation signed-input arithmetic chain (not C23)
+
+`build_seeded_rotated_input_crazy_source` reuses the eight source-loadable
+91-cell N15 rotation seeds and performs **nine actual same-cell `*` writes**
+at M[95]. After an executed three-`j` reset, `/` reads the actual signed
+input/EOF word. C40 then executes as `j` (and remains the required source
+constant 94); two more `j` operations reset D for consecutive `p` writes
+using M[95] and M[96]. A real `<` emits the final low byte, and `v` halts
+after exactly 47 VM steps. No host output substitutes for target arithmetic.
+
+The independent 15-trit oracle and normative VM agree on 307 complete paths:
+all 257 first-input classes plus an unread suffix for the `,H` seed, and
+seven representative paths for each of the other seven seeds. Every path
+checks all nine rotation reads/results, six relocation steps, the physical
+input event, both `p` reads/results, emitted byte, halt and consumption.
+The first operand's rotated value depends on the loader seed, but every
+admitted seed leaves M[96]=72, while C23 needs the **different** pair
+`[7,138,732, 121]`. The real `,H` EOF output is `0x24`, **not** `0xff`;
+this is a composition primitive, not a working signed C23 converter, loop,
+or the source-locked mutable checksum. P2 remains open.
+
 ### Two physical `p` writes from C23 converter loader words
 
 `build_c23_operand_probe_source` constructs a 279-cell graphical N15

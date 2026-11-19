@@ -174,3 +174,42 @@ pub fn build_seeded_repeated_loader_rotation_source(
     }
     Ok(source)
 }
+
+/// Compose nine physical loader rotations with one actual signed guest read.
+///
+/// After the ninth `*`, three reached `j` operations reset D to M[95]
+/// for `/`. The unmodified source constant at C40 then executes as a `j`,
+/// starting a second reset to M[95] for two adjacent input-dependent `p`
+/// writes at M[95] and M[96]. `<` emits the resulting low byte and `v`
+/// halts after 47 actual guest steps. The eight admitted graphical tails
+/// leave M[96]=72, **not** the C23 conversion operand 121. Consequently
+/// this source is an experimental signed-input arithmetic probe, never a
+/// C23 conversion or a compiled mutable-C program.
+///
+/// # Errors
+///
+/// Rejects historical profiles, unloadable seed tails and positions with
+/// no graphical encoding. Runtime behavior requires independent VM proof.
+pub fn build_seeded_rotated_input_crazy_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source =
+        build_seeded_repeated_loader_rotation_source(profile, 9, tail)?;
+    for (position, opcode) in [
+        (36, b'j'),
+        (37, b'j'),
+        (38, b'j'),
+        (39, profile.input_instruction()),
+        // Source[40]=94 is a reached `j` and a pointer constant.
+        (41, b'j'),
+        (42, b'j'),
+        (43, b'p'),
+        (44, b'p'),
+        (45, profile.output_instruction()),
+        (46, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}

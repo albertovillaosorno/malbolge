@@ -73,6 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a source-valid 91-cell N15 guest now joins nine **real**
+  same-cell loader rotations, two three-`j` pointer resets, one physical
+  signed `/`, two adjacent input-dependent `p` writes, `<` and halt in 47
+  normative steps. An independent 15-trit arithmetic oracle agrees on 307
+  binary/EOF paths across all eight loader-valid graphical seeds, including
+  all 257 first-input classes for `,H` and an unread-suffix case. Every path
+  checks the rotated operand reads, six relocations, signed input, both
+  crazy writes, output and halt. This links previously separate guest
+  arithmetic and signed input, but M[96]=72 instead of C23's required 121;
+  actual `,H` EOF output is `0x24`, not `0xff`. No C23 converter, mutable
+  checksum state, guest loop or five checksum parity traces exists. P2 is
+  still open.
+
 - On 2026-11-19, the fixed 91-cell physical pointer-reset builder now
   admits all eight independently enumerated source-loadable graphical
   tails ending in `H`, not only `,H`. Every accepted tail preserves the

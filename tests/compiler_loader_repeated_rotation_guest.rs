@@ -301,3 +301,201 @@ fn invalid_seed_refuses_even_when_rotation_count_is_valid() {
         }),
     );
 }
+
+// Physical composition proof: nine real rotations, one signed input, and
+// two consecutive input-dependent p writes. These are deliberately the
+// wrong operands for the C23 byte conversion used by the mutable checksum.
+#[expect(
+    clippy::integer_division_remainder_used,
+    clippy::arithmetic_side_effects,
+    reason = "independent 15-trit crazy table for normative VM comparison"
+)]
+fn scalar_crazy(mut data: u32, mut accumulator: u32) -> u32 {
+    let mut result = 0u32;
+    let mut place = 1u32;
+    for _ in 0..15 {
+        let trit = match (data % 3, accumulator % 3) {
+            (0 | 1, 0) | (2, 2) => 1,
+            (1, 2) | (2, 0 | 1) => 2,
+            _ => 0,
+        };
+        result += trit * place;
+        data /= 3;
+        accumulator /= 3;
+        place *= 3;
+    }
+    result
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "guest path and effects independently checked"
+)]
+fn prove_seeded_nine_rotations(
+    tail: [u8; 2],
+    seed: u32,
+    inputs: impl Iterator<Item = Vec<u8>>,
+) -> Result<(), String> {
+    use malbolge::{ProfileRegisters, TraceInput};
+
+    let profile = current_profile();
+    let source = layout::build_seeded_rotated_input_crazy_source(profile, tail)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(tail.as_slice()));
+    let loader = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loader.memory_word(95), Ok(seed));
+    assert_eq!(loader.memory_word(96), Ok(72));
+    let rotated = (0..9).fold(seed, |word, _| scalar_rotate(word));
+    for input in inputs {
+        let first_byte = input.first().copied();
+        let guest_word = first_byte.map_or(profile.eof_word(), u32::from);
+        let first_crazy = scalar_crazy(rotated, guest_word);
+        let second_crazy = scalar_crazy(72, first_crazy);
+        let output = u8::try_from(second_crazy % 256)
+            .map_err(|error| error.to_string())?;
+        if first_byte.is_none() {
+            assert_ne!(output, 0xff, "reset seeds do not convert C23 EOF");
+        }
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loader.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut steps = vec![];
+        let outcome = vm
+            .run_traced(47, &mut |step| steps.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 47,
+        });
+        for round in 0..9 {
+            let write = &steps[3 + round * 4];
+            assert_eq!(write.decoded, Some(b'*'));
+            assert_eq!(write.before.registers.data_pointer, 95);
+            let expected = (0..round).fold(seed, |word, _| scalar_rotate(word));
+            assert_eq!(
+                write.memory_reads.data.map(|read| read.value),
+                Some(expected)
+            );
+            assert_eq!(
+                write.after.registers.accumulator,
+                scalar_rotate(expected)
+            );
+        }
+        for (position, data_pointer) in
+            [(36, 96), (37, 73), (38, 62), (40, 96), (41, 73), (42, 62)]
+        {
+            assert_eq!(steps[position].decoded, Some(b'j'));
+            assert_eq!(
+                steps[position].before.registers.data_pointer,
+                data_pointer
+            );
+        }
+        assert_eq!(steps[39].decoded, Some(profile.input_instruction()));
+        assert_eq!(steps[39].before.registers.data_pointer, 95);
+        assert_eq!(
+            steps[39].input,
+            Some(first_byte.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+        );
+        for (position, address, before, after) in
+            [(43, 95, rotated, first_crazy), (44, 96, 72, second_crazy)]
+        {
+            let write = &steps[position];
+            assert_eq!(write.decoded, Some(b'p'));
+            assert_eq!(write.before.registers.data_pointer, address);
+            assert_eq!(
+                write.memory_reads.data.map(|read| read.value),
+                Some(before)
+            );
+            assert_eq!(write.after.registers.accumulator, after);
+            assert_eq!(vm.memory_word(address), Ok(after));
+        }
+        assert_eq!(steps[45].decoded, Some(profile.output_instruction()));
+        assert_eq!(steps[45].output, Some(output));
+        assert_eq!(steps[46].decoded, Some(b'v'));
+        assert_eq!(vm.output(), &[output]);
+        assert_eq!(vm.input_consumed(), usize::from(first_byte.is_some()));
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_nine_rotation_input_byte_00_3f() -> Result<(), String> {
+    // Also exercise true EOF and prove the unread suffix survives the halt.
+    let inputs = std::iter::once(Vec::new())
+        .chain((0..=63u8).map(|byte| vec![byte]))
+        .chain(std::iter::once(vec![127, 128, 255]));
+    prove_seeded_nine_rotations(*b",H", 7_174_457, inputs)
+}
+
+#[test]
+fn seeded_nine_rotation_input_byte_40_7f() -> Result<(), String> {
+    prove_seeded_nine_rotations(
+        *b",H",
+        7_174_457,
+        (64..=127u8).map(|byte| vec![byte]),
+    )
+}
+
+#[test]
+fn seeded_nine_rotation_input_byte_80_bf() -> Result<(), String> {
+    prove_seeded_nine_rotations(
+        *b",H",
+        7_174_457,
+        (128..=191u8).map(|byte| vec![byte]),
+    )
+}
+
+#[test]
+fn seeded_nine_rotation_input_byte_c0_ff() -> Result<(), String> {
+    prove_seeded_nine_rotations(
+        *b",H",
+        7_174_457,
+        (192..=255u8).map(|byte| vec![byte]),
+    )
+}
+
+#[test]
+fn seeded_nine_rotation_other_loader_tails() -> Result<(), String> {
+    for (tail, seed) in [
+        (*b"-H", 7_174_462),
+        (*b"CH", 7_174_480),
+        (*b"IH", 7_174_489),
+        (*b"VH", 7_174_418),
+        (*b"gH", 7_174_435),
+        (*b"hH", 7_174_436),
+        (*b"zH", 7_174_454),
+    ] {
+        let inputs = std::iter::once(Vec::new())
+            .chain([0u8, 1, 127, 128, 255].map(|byte| vec![byte]))
+            .chain(std::iter::once(vec![127, 128, 255]));
+        prove_seeded_nine_rotations(tail, seed, inputs)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn signed_crazy_probe_refuses_invalid_seed_or_profile() {
+    assert_eq!(
+        layout::build_seeded_rotated_input_crazy_source(
+            current_profile(),
+            *b"Iy",
+        ),
+        Err(layout::RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b"Iy",
+        }),
+    );
+    assert_eq!(
+        layout::build_seeded_rotated_input_crazy_source(
+            historical_profile(),
+            *b",H",
+        ),
+        Err(layout::RepeatedLoaderRotationError::UnsupportedProfile),
+    );
+}
