@@ -189,6 +189,31 @@ pub fn build_guarded_signed_eof_echo_and_second_read_source(
     Ok(source)
 }
 
+/// Build two real, distinct signed-input echoes in one physical guest path.
+///
+/// The source's C=53 classifier still performs input-dependent arithmetic,
+/// but the later branch jump is replaced with a second physical `/` at C=104.
+/// C=54 and C=114 output the first and second input accumulator words,
+/// respectively, and the former fixed class marker at C=128 is suppressed.
+/// Both actual EOF attempts use the target's low byte (not C23 `EOF`).
+/// This is a bounded, unconditional two-read primitive, not checksum
+/// lowering, a source-C output conversion or a general EOF loop.
+///
+/// # Errors
+///
+/// Rejects noncanonical target profiles or missing graphical encodings.
+/// The exact source must still be independently checked in the normative VM.
+pub fn build_two_signed_guest_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source = build_signed_eof_branch_source(profile)?;
+    put(&mut source, 54, profile.output_instruction())?;
+    put(&mut source, 104, profile.input_instruction())?;
+    put(&mut source, 114, profile.output_instruction())?;
+    put(&mut source, 128, b'o')?;
+    Ok(source)
+}
+
 /// Build a physical, bounded N15 byte-versus-EOF branch candidate.
 ///
 /// This is the already-executed *one-read* control skeleton. Its fixed

@@ -73,6 +73,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, an independent 132-cell N15 guest source now performs
+  two real, unconditional signed reads at C=53 and C=104 and echoes the
+  physical input words at C=54 and C=114. Six distinct streams, including
+  EOF, NUL, high bytes and an unread suffix, pass complete independent
+  path/I/O/store admission and halt in 130 normative steps. A separate
+  256-case normative matrix varies both input bytes and proves exact
+  physical echo and read event positions. Forged output, I/O timing,
+  instruction writes and duplicate paths refuse. This source
+  emits target EOF low byte `0x6a`, not C23 signed EOF `0xff`; it cannot
+  implement the checksum. Its C=127 rotation touches M[156], so the old
+  `[153,196)` C-state reservation now fails isolation and must not be
+  reused. The original whole-C checksum remains unlinked and P2 is open.
+
+
 - On 2026-11-18, a distinct 132-cell normative N15 guest candidate
   now emits its first **physical input-dependent** byte at C=54, ahead of
   the already-proven EOF classifier, while guarding the second actual `/`

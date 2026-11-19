@@ -12,6 +12,28 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Two actual signed guest-input echoes on one forward path
+
+`build_two_signed_guest_echo_source` uses the existing 132-cell N15
+classifier source but replaces its later rotate with a second physical `/` at
+C=104, outputs the first input word at C=54 and the second at C=114, and
+suppresses the former fixed class marker. All paths halt after 130 steps,
+with physical input attempts at steps 53 and 104 and outputs at steps 54 and
+114. Successful reads preserve all 256 possible binary bytes; EOF attempts
+emit the target sentinel low byte `0x6a`, **not** the C23 EOF-to-unsigned-char
+value `0xff`. An unread suffix is not consumed.
+
+Six distinct real VM streams now pass source/profile-bound complete path
+admission, independent trit arithmetic/store witnesses and exact I/O event
+oracles. A separate 256-case normative test varies the second byte for every
+possible first byte and proves ordered read/echo effects with 130-step halts.
+Forged output, shifted I/O, a tampered final physical rotation and duplicate
+path evidence refuse. Unlike the guarded helper, this source's
+forward C=127 rotation writes M[156]; it **collides** with the previous
+`[153,196)` future C-state placement, so any linker must reserve and re-place
+C state for this exact source. It is two unconditional reads, not a guest
+EOF loop, a C23 signed conversion, or the original mutable C checksum.
+
 ### Guest-controlled second read after a successful signed input
 
 The exact 132-cell signed EOF classifier has an additional source

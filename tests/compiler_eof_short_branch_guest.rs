@@ -2110,8 +2110,8 @@ fn guarded_two_read_paths_match_independent_write_and_io_oracles()
     let source = layout::build_guarded_signed_eof_second_read_source(profile)
         .map_err(|error| format!("guarded candidate: {error:?}"))?;
     let identity = layout::LinearProfileIdentity {
-        id: profile.id(),
         fingerprint: profile.fingerprint(),
+        id: profile.id(),
     };
     let cases = [
         vec![],
@@ -2489,6 +2489,297 @@ fn guarded_echo_preserves_all_256_first_bytes_and_second_input_events()
             "second={second}",
         );
         assert_eq!(trace.get(174).and_then(|step| step.decoded), Some(b'v'),);
+    }
+    Ok(())
+}
+
+// The first and second outputs here are actual input accumulator values, not
+// test-authored markers. This independent control deliberately expects the
+// N15 EOF low byte, not C23's signed -1 / unsigned-char 0xff conversion.
+struct OwnedTwoSignedEchoPath {
+    data_writes: Vec<layout::BoundedRevisitDataWrite>,
+    input: Vec<u8>,
+    input_events: [TraceInput; 2],
+    instruction_writes: Vec<layout::BoundedRevisitInstructionWrite>,
+    io_events: [layout::BoundedRevisitIoEvent; 4],
+    output: [u8; 2],
+    path: Vec<u32>,
+}
+
+impl OwnedTwoSignedEchoPath {
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.input,
+            code_positions: &self.path,
+            output: &self.output,
+            input_consumed: self.input.len().min(2),
+            input_events: &self.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.data_writes,
+        }
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "independent complete fixed-width trit and I/O oracle"
+    )]
+    fn new(input: Vec<u8>) -> Result<Self, String> {
+        let profile = current_profile();
+        let get_word = |index: usize| {
+            input
+                .get(index)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        };
+        let get_event = |index: usize| {
+            input
+                .get(index)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+        };
+        let first = get_word(0);
+        let second = get_word(1);
+        let output = [
+            u8::try_from(first & 255).map_err(|error| error.to_string())?,
+            u8::try_from(second & 255).map_err(|error| error.to_string())?,
+        ];
+        let input_events = [get_event(0), get_event(1)];
+        let io_events = [
+            layout::BoundedRevisitIoEvent {
+                step: 53,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[0]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 54,
+                effect: layout::BoundedRevisitIoEffect::Output(output[0]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 104,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[1]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 114,
+                effect: layout::BoundedRevisitIoEffect::Output(output[1]),
+            },
+        ];
+        // The existing arithmetic classifier writes its real data cells
+        // before C104. The forward continuation replaces C104's rotate with
+        // a second input and writes the exact loader-derived M[156] at C127.
+        let mut instruction_writes =
+            independent_branch_instruction_writes(first, input.is_empty())
+                .into_iter()
+                .filter(|write| write.step < 104)
+                .collect::<Vec<_>>();
+        instruction_writes.push(layout::BoundedRevisitInstructionWrite {
+            address: 156,
+            after: scalar_rotate(THIRD_OPERAND),
+            before: THIRD_OPERAND,
+            opcode: b'*',
+            step: 127,
+        });
+        let data_writes = instruction_writes
+            .iter()
+            .filter(|write| write.before != write.after)
+            .map(|write| layout::BoundedRevisitDataWrite {
+                step: write.step,
+                address: write.address,
+                before: write.before,
+                after: write.after,
+            })
+            .collect();
+        Ok(Self {
+            data_writes,
+            input,
+            input_events,
+            instruction_writes,
+            io_events,
+            output,
+            path: (0..=129u32).collect(),
+        })
+    }
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "bounded two-input normative VM and independent effect matrix"
+)]
+fn two_signed_guest_inputs_have_independently_admitted_ordered_echoes()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_two_signed_guest_echo_source(profile)
+        .map_err(|error| format!("two-echo source: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255, 42],
+        vec![255, 0],
+        vec![128, 128, 0],
+    ]
+    .into_iter()
+    .map(OwnedTwoSignedEchoPath::new)
+    .collect::<Result<Vec<_>, _>>()?;
+    let expected = cases
+        .iter()
+        .map(OwnedTwoSignedEchoPath::expectation)
+        .collect::<Vec<_>>();
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("two signed echoes: {error:?}"))?;
+    assert_eq!(admitted.len(), cases.len());
+    for (path, case) in admitted.iter().zip(&cases) {
+        assert_eq!(path.code_positions(), case.path);
+        assert_eq!(path.input(), case.input);
+        assert_eq!(path.output(), case.output);
+        assert_eq!(path.io_events(), case.io_events);
+        assert_eq!(path.input_events(), case.input_events);
+        assert_eq!(path.input_consumed(), case.input.len().min(2));
+        assert_eq!(path.data_writes(), case.data_writes);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                path,
+                &case.instruction_writes,
+            ),
+            Ok(()),
+        );
+        // Unlike the guarded one-read helper, the new *forward* C127
+        // rotation touches M[156]. Reusing its earlier checksum frame would
+        // silently alias live guest scratch, so the old placement must fail.
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(path, &[
+                layout::BoundedGuestDataRegion {
+                    end_exclusive: CHECKSUM_FRAME_END,
+                    start: CHECKSUM_FRAME_START,
+                }
+            ],),
+            Err(layout::BoundedGuestRegionsError::StateDataAccessCollision),
+        );
+    }
+    let [eof, _, _, mixed, _, _] = expected.as_slice() else {
+        return Err(String::from("wrong two-echo case count"));
+    };
+    let eof_admitted = admitted.first().ok_or("missing EOF echo")?;
+    let nul_admitted = admitted.get(1).ok_or("missing NUL echo")?;
+    let mixed_admitted = admitted.get(3).ok_or("missing mixed echo")?;
+    let mixed_case = cases.get(3).ok_or("missing mixed input")?;
+    assert_eq!(eof_admitted.output(), &[106, 106]);
+    assert_eq!(nul_admitted.output(), &[0, 106]);
+    assert_eq!(mixed_admitted.output(), &[0, 255]);
+    assert_eq!(mixed_admitted.input_consumed(), 2);
+    let wrong_output = [0, 254];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                output: &wrong_output,
+                ..*mixed
+            },
+        ),
+        Err(layout::BoundedRevisitError::OutputMismatch),
+    );
+    let mut wrong_io = mixed_case.io_events;
+    wrong_io[3].step = 115;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                io_events: &wrong_io,
+                ..*mixed
+            },
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch),
+    );
+    let mut wrong_writes = mixed_case.instruction_writes.clone();
+    wrong_writes.last_mut().ok_or("missing C127 write")?.after ^= 1;
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(
+            mixed_admitted,
+            &wrong_writes
+        ),
+        Err(layout::BoundedRevisitError::InstructionWritesMismatch),
+    );
+    assert_eq!(
+        layout::admit_bounded_guest_path_batch(profile, &source, identity, &[
+            *eof, *eof
+        ],),
+        Err(layout::BoundedRevisitError::InvalidBatch),
+    );
+    assert_eq!(
+        layout::build_two_signed_guest_echo_source(
+            malbolge::historical_profile()
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
+    Ok(())
+}
+
+// Confirm the physical two-echo guest is genuinely parametric over the first
+// input, not a finite set of source-specific output bytes or one chosen arm.
+// The independent second-byte permutation changes the successor input on
+// every case, while the source, VM profile and step limit stay fixed.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "frozen exhaustive 256-class two-input normative guest witness"
+)]
+fn two_echo_guest_preserves_all_256_byte_classes() -> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_two_signed_guest_echo_source(profile)
+        .map_err(|error| format!("two-echo source: {error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for first in u8::MIN..=u8::MAX {
+        let second = first.rotate_left(3) ^ 0xa5;
+        let mut machine = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            vec![first, second, 42],
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut actual_reads = Vec::new();
+        let mut actual_outputs = Vec::new();
+        let outcome = machine.run_traced(130, &mut |step| {
+            if let Some(input) = step.input {
+                actual_reads.push((step.before.registers.code_pointer, input));
+            }
+            if let Some(output) = step.output {
+                actual_outputs
+                    .push((step.before.registers.code_pointer, output));
+            }
+        });
+        assert_eq!(
+            outcome.map_err(|error| format!("first={first}: {error}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 130,
+            },
+            "first={first} second={second}"
+        );
+        assert_eq!(machine.output(), &[first, second], "first={first}");
+        assert_eq!(machine.input_consumed(), 2, "first={first}");
+        assert_eq!(
+            actual_reads,
+            [
+                (53, TraceInput::Byte(first)),
+                (104, TraceInput::Byte(second))
+            ],
+            "first={first}"
+        );
+        assert_eq!(actual_outputs, [(54, first), (114, second)]);
     }
     Ok(())
 }

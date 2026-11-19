@@ -84,7 +84,7 @@ pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,
     build_guarded_signed_eof_echo_and_second_read_source,
     build_guarded_signed_eof_second_read_source,
-    build_signed_eof_branch_source,
+    build_signed_eof_branch_source, build_two_signed_guest_echo_source,
 };
 
 const GRAPHICAL_START: u8 = 33;

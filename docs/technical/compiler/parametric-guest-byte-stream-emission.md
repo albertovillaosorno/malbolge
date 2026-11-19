@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two independent physical input-word echoes (2026-11-18)
+
+A separate bounded 132-cell N15 source now executes two *unconditional*
+physical signed reads and echoes each input word through actual guest `<`
+instructions. It outputs at steps 54 and 114 immediately after the real
+reads at steps 53 and 104. Six complete binary/EOF streams pass source-
+and profile-bound normative VM admission, independent trit/store controls,
+exact ordered I/O traces, and negative forgery tests. An additional
+256-case normative VM pass pairs every first-byte class with a varied second
+byte and checks exact ordered input and output events. Every path halts in
+130 steps; only the first two successful bytes are consumed and trailing
+bytes stay unread. The target's EOF low byte is `0x6a` rather than C23's
+`0xff` conversion; this primitive cannot implement `putchar(getchar())`
+without a separate signed conversion proof.
+
+The new source also changes the physical data footprint: its forward C=127
+rotation writes M[156], which collides with the previous checksum scratch-
+free frame `[153,196)`. The isolation test explicitly rejects reusing that
+placement. The earlier source-locked placement and the original input-
+dependent EOF checksum guest **do not** inherit this source's admission.
+There is no linked mutable C state, runtime arithmetic on C locals,
+conditional loop or checksum guest artifact. The complete C source still
+refuses at dynamic guest CFG lowering, and P2 remains open.
+
 ### First physically input-dependent output with guarded continuation
 
 A distinct 132-cell graphical N15 source now emits the actual first signed
