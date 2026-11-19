@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Strict C23 probe admission and a second failed output return (2026-11-19)
+
+The physically converted two-crazy C23 value still reaches M[96] at C80,
+then source-required M[81]=94 halts at C81 without output. Trying to save
+one pointer-reset step by replacing virgin M[82] with 94 would let C77
+return directly to M[95], but source byte 94 at position 82 does **not**
+decode to an admitted graphical instruction. The normative loader rejects
+this candidate, just as it rejects the M[87]=94 direct shortcut. Neither
+candidate proves an alternate layout impossible; the C checksum remains
+unlinked.
+
+The public probe-source checker now enforces the same two-word minimum and
+N15 memory-size ceiling as the normative graphical loader, in addition to
+per-position opcode admission. An empty or one-word source previously
+passed the checker despite failing in the actual VM. A focused regression
+also checks both rejected pointer shortcuts. This corrects pre-execution
+admission only and does not claim guest output or C23 program translation.
+
 ### Stateful guest data across two separate input events (2026-11-19)
 
 The bounded 91-cell `,H` source now completes nine physical rotations

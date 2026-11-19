@@ -12,6 +12,18 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### C23 probe admission and shortened output routes
+
+`admit_c23_probe_graphical_source` now refuses fewer than two source
+cells and any source longer than the current N15 memory domain before
+per-position graphical decoding. This matches the normative loader's
+recurrence-base and size requirements for these whitespace-free probes;
+previously an empty source could pass this local check. Both M[87]=94
+and M[82]=94 proposed shortcuts to the final converter operand fail the
+real loader's position-specific opcode admission. The original nine-
+rotation converter still halts at C81 before output, and the mutable
+EOF checksum still cannot pass the physical CFG linker.
+
 ### Repeated physical loader-word rotations (fixed pointer-reset geometry)
 
 `build_repeated_loader_rotation_source` now produces a 91-cell graphical N15

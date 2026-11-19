@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, the 91-cell C23 converter's second attempted shorter
+  output return (M82=94) also fails strict loader admission; the earlier
+  M87=94 shortcut remains invalid. The public C23 source checker no
+  longer accepts zero/one-cell or over-memory source sequences as valid
+  probes, and a focused regression matches the normative two-word loader
+  refusal. The correctly rotated signed input still reaches two `p`
+  writes but halts at C81 without output. No mutable source-C checksum
+  stream is compiled; P2 remains open.
+
 - On 2026-11-19, a 91-cell N15 `,H` guest now uses two distinct
   signed `/` attempts and physically writes the **same** M95 word twice.
   The first input drives the C43 `p`, and the C51 `p` consumes the

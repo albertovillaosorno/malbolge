@@ -46,6 +46,18 @@ const SOURCE_CELLS: usize = 279;
 /// Failure to construct the exact graphical input/operand experiment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum C23OperandProbeSourceError {
+    /// A graphical probe needs two source cells for loader expansion.
+    InsufficientSourceCells {
+        /// Number of provided source words.
+        cells: usize,
+    },
+    /// Source words must fit the current profile's memory domain.
+    SourceExceedsMemory {
+        /// Number of provided source words.
+        cells: usize,
+        /// Maximum loaded word count.
+        limit: u32,
+    },
     /// An operation escaped the frozen source length.
     InvalidPosition {
         /// Rejected source position.
@@ -115,6 +127,18 @@ fn set(
 pub fn admit_c23_probe_graphical_source(
     source: &[u8],
 ) -> Result<(), C23OperandProbeSourceError> {
+    if source.len() < 2 {
+        return Err(C23OperandProbeSourceError::InsufficientSourceCells {
+            cells: source.len(),
+        });
+    }
+    let limit = current_profile().word_modulus();
+    if source.len() > usize::try_from(limit).unwrap_or(usize::MAX) {
+        return Err(C23OperandProbeSourceError::SourceExceedsMemory {
+            cells: source.len(),
+            limit,
+        });
+    }
     for (position, &byte) in source.iter().enumerate() {
         let address = u32::try_from(position).unwrap_or(u32::MAX);
         if !decode_profile_instruction(u32::from(byte), address)

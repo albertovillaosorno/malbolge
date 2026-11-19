@@ -642,7 +642,58 @@ fn c23_short_output_pointer_shortcut_fails_loader_admission()
             byte: 0,
         }),
     );
-    // This is an exact source-admission obstruction, not an assertion that
+    // The alternative three-jump route via M82=94 also fails source
+    // admission; it cannot replace the existing four-jump path to M95.
+    let mut alternate =
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    alternate[82] = 94;
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&alternate),
+        Err(layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+            position: 82,
+            byte: 94,
+        }),
+    );
+    assert!(ProfileMachine::from_source(profile, &alternate, vec![]).is_err());
+    // These are exact source-admission obstructions, not assertions that
     // no other code/data relocation can ever perform C23 conversion.
+    Ok(())
+}
+
+// Graphical code-cell admission must enforce the VM's loader *length*
+// prerequisite too: no operand probe can load with zero or one source word.
+#[test]
+fn c23_probe_source_checker_rejects_incomplete_loader_recurrence()
+-> Result<(), String> {
+    let source = layout::build_c23_operand_probe_source(current_profile())
+        .map_err(|error| format!("{error:?}"))?;
+    for length in [0usize, 1] {
+        let incomplete = &source[..length];
+        assert_eq!(
+            layout::admit_c23_probe_graphical_source(incomplete),
+            Err(layout::C23OperandProbeSourceError::InsufficientSourceCells {
+                cells: length,
+            }),
+        );
+        assert!(matches!(
+            ProfileMachine::from_source(current_profile(), incomplete, vec![]),
+            Err(malbolge::ProfileMachineError::Load(
+                malbolge::ProfileLoadError::InsufficientRecurrenceBase,
+            )),
+        ));
+    }
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source[..2]), Ok(()));
+    let limit = current_profile().word_modulus();
+    let too_long = vec![0_u8; usize::try_from(limit).unwrap() + 1];
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&too_long),
+        Err(layout::C23OperandProbeSourceError::SourceExceedsMemory {
+            cells: too_long.len(),
+            limit,
+        }),
+    );
     Ok(())
 }
