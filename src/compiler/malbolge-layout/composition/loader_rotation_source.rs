@@ -213,3 +213,64 @@ pub fn build_seeded_rotated_input_crazy_source(
     }
     Ok(source)
 }
+
+/// Repair the C23 seed's loader pointer trap and perform physical rotations.
+///
+/// The `Iy` tail initializes M[95]=7,174,404 and M[96]=121. A reached
+/// `p` at C2 changes loader M[94] into 7,174,489; a second `p` at C6
+/// then changes M[158]=157 into 36. Five physical `j` operations can now
+/// reset D from M[96] through M[122], M[158], M[37], and M[81] to M[95].
+/// This source physically rotates the **correct initial** converter operand
+/// five times before one real signed input and raw echo. C37 is both the
+/// needed source pointer byte 80 and an executed `/`, so the loop cannot
+/// simply be extended to nine rotations. The nine-rotation C23 converter,
+/// two input-dependent `p` operations, and compiled checksum remain absent.
+///
+/// # Errors
+///
+/// Only the current 15-trit profile has this loader recurrence and graphical
+/// layout. Normative VM execution must independently prove all effects.
+pub fn build_c23_seed_rotated_input_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    if profile != current_profile() {
+        return Err(RepeatedLoaderRotationError::UnsupportedProfile);
+    }
+    let mut source = (0..SOURCE_CELLS)
+        .map(|position| encode(position, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (position, opcode) in [
+        (0, b'j'),
+        (1, b'j'),
+        (2, b'p'),
+        (4, b'j'),
+        (5, b'j'),
+        (6, b'p'),
+        (8, b'j'),
+        (9, b'j'),
+        (10, b'j'),
+        (11, b'j'),
+        (37, profile.input_instruction()),
+        (38, profile.output_instruction()),
+        (39, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    for round in 0..5usize {
+        let position = 12 + round * 6;
+        set(&mut source, position, b'*')?;
+        if round != 4 {
+            for reset in position + 1..=position + 5 {
+                set(&mut source, reset, b'j')?;
+            }
+        }
+    }
+    // Source/data overlap is deliberate and each byte is loader-admissible.
+    // M[37]=80 is also the physical `/` at C37 on this forward path.
+    source[0] = 40;
+    source[37] = 80;
+    source[41] = 93;
+    source[81] = 94;
+    source[89..91].copy_from_slice(b"Iy");
+    Ok(source)
+}

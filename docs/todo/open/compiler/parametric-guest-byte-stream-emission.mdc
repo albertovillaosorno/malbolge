@@ -73,6 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a separate 91-cell source-valid N15 guest using the
+  actual C23 `Iy` loader seed now repairs a real data-pointer trap with
+  two reached `p` writes: M[94]=157 -> 7,174,489 and M[158]=157 -> 36.
+  Five `j` operations restore D through the exact loader/code pointer
+  chain, permitting five physical M[95] `*` writes from 7,174,404 to
+  4,281,052; an actual `/`, `<` and halt then finish in 40 steps. Eight
+  pinned binary/EOF paths verify the complete normative trace, and the
+  original immutable C23 checksum still refuses dynamic CFG linkage.
+  Because source-required M[37]=80 itself decodes as `/` on the forward
+  path, four more rotations, post-input C23 `p`/`p`, checksum state and
+  the five accepted checksum-output traces remain unimplemented. P2 is
+  still open.
+
 - On 2026-11-19, a source-valid 91-cell N15 guest now joins nine **real**
   same-cell loader rotations, two three-`j` pointer resets, one physical
   signed `/`, two adjacent input-dependent `p` writes, `<` and halt in 47

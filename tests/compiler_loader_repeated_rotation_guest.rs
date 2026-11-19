@@ -499,3 +499,128 @@ fn signed_crazy_probe_refuses_invalid_seed_or_profile() {
         Err(layout::RepeatedLoaderRotationError::UnsupportedProfile),
     );
 }
+
+// Real source-locked pointer-repair attempt on the correct C23 loader seed.
+// At C37 the required pointer byte decodes as `/`, ending preparation after
+// five rotations rather than silently substituting host-side nine rotations.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "physical seed rotations and input have independent full traces"
+)]
+fn c23_seed_loader_pointer_repair_rotates_and_reads_signed_input()
+-> Result<(), String> {
+    use malbolge::{ProfileRegisters, TraceInput};
+
+    let profile = current_profile();
+    let source = layout::build_c23_seed_rotated_input_echo_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(&source[89..91], b"Iy");
+    let loader = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loader.memory_word(94), Ok(157));
+    assert_eq!(loader.memory_word(95), Ok(7_174_404));
+    assert_eq!(loader.memory_word(96), Ok(121));
+    assert_eq!(loader.memory_word(158), Ok(157));
+    for input in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![127],
+        vec![128],
+        vec![255],
+        vec![1, 0, 128, 254],
+        vec![5, 0, 129],
+    ] {
+        let first = input.first().copied();
+        let word = first.map_or(profile.eof_word(), u32::from);
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loader.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = vec![];
+        let outcome = vm
+            .run_traced(40, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 40,
+        });
+        assert_eq!(trace[2].decoded, Some(b'p'));
+        assert_eq!(trace[2].before.registers.data_pointer, 94);
+        assert_eq!(
+            trace[2].memory_delta.data.map(|delta| delta.after),
+            Some(7_174_489)
+        );
+        assert_eq!(trace[6].decoded, Some(b'p'));
+        assert_eq!(trace[6].before.registers.data_pointer, 158);
+        assert_eq!(
+            trace[6].memory_delta.data.map(|delta| delta.after),
+            Some(36)
+        );
+        for (index, address) in [
+            (0usize, 0u32),
+            (1, 41),
+            (4, 96),
+            (5, 122),
+            (8, 160),
+            (9, 158),
+            (10, 37),
+            (11, 81),
+        ] {
+            assert_eq!(trace[index].decoded, Some(b'j'));
+            assert_eq!(trace[index].before.registers.data_pointer, address);
+        }
+        let mut operand = 7_174_404;
+        for round in 0..5usize {
+            let position = 12 + round * 6;
+            let rotation = &trace[position];
+            assert_eq!(rotation.decoded, Some(b'*'));
+            assert_eq!(rotation.before.registers.data_pointer, 95);
+            assert_eq!(
+                rotation.memory_reads.data.map(|read| read.value),
+                Some(operand)
+            );
+            operand = scalar_rotate(operand);
+            assert_eq!(rotation.after.registers.accumulator, operand);
+            if round != 4 {
+                for (offset, pointer) in
+                    [(1usize, 96u32), (2, 122), (3, 158), (4, 37), (5, 81)]
+                {
+                    let reset = &trace[position + offset];
+                    assert_eq!(reset.decoded, Some(b'j'));
+                    assert_eq!(reset.before.registers.data_pointer, pointer);
+                }
+            }
+        }
+        assert_eq!(operand, 4_281_052);
+        assert_ne!(operand, 7_138_732, "nine rotations are still missing");
+        assert_eq!(vm.memory_word(95), Ok(operand));
+        assert_eq!(vm.memory_word(96), Ok(121));
+        assert_eq!(vm.memory_word(158), Ok(36));
+        assert_eq!(trace[37].decoded, Some(profile.input_instruction()));
+        assert_eq!(trace[37].before.registers.data_pointer, 96);
+        assert_eq!(
+            trace[37].input,
+            Some(first.map_or(TraceInput::EndOfInput, TraceInput::Byte)),
+        );
+        assert_eq!(trace[38].decoded, Some(profile.output_instruction()));
+        assert_eq!(trace[38].output, Some((word % 256) as u8));
+        assert_eq!(trace[39].decoded, Some(b'v'));
+        assert_eq!(vm.output(), &[(word % 256) as u8]);
+        assert_eq!(vm.input_consumed(), usize::from(first.is_some()));
+    }
+    Ok(())
+}
+
+#[test]
+fn c23_seed_pointer_repair_refuses_historical_profile() {
+    assert_eq!(
+        layout::build_c23_seed_rotated_input_echo_source(historical_profile()),
+        Err(layout::RepeatedLoaderRotationError::UnsupportedProfile),
+    );
+}

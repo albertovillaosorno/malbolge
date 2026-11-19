@@ -42,6 +42,26 @@ halt against an independent scalar oracle. Unloadable tails, including `Iy`,
 refuse before source publication; the original `,H` API remains unchanged.
 This broadens physical operand seeds, not signed-C23 conversion or C lowering.
 
+### Physical repair of the correct C23 loader operand (still not C23)
+
+`build_c23_seed_rotated_input_echo_source` is a distinct 91-cell N15
+experiment using the graphical `Iy` seed. Its true loader words are
+M[95]=7,174,404 and M[96]=121, the unrotated C23 converter operands.
+Two reached `p` operations change M[94] to 7,174,489 and M[158] to 36,
+repairing the previously fatal M[158]=157 pointer trap. A five-`j`
+return chain traverses M[96], M[122], M[158], M[37] and M[81] to M[95],
+allowing five genuine same-cell `*` writes to reach M[95]=4,281,052.
+An actual `/` at C37 then reads signed input, `<` at C38 outputs its
+**raw target low byte**, and `v` halts after 40 normative steps.
+
+Eight pinned empty/binary/multi-byte VM paths independently check all
+physical `p`, `j`, `*`, `/`, output and halt effects. The source-required
+pointer M[37]=80 itself decodes as `/` at C37: this layout cannot simply
+repeat the reset for nine rotations. C23 needs nine rotations to
+M[95]=7,138,732 and two subsequent input-dependent `p` operations. The
+raw EOF output still differs from C23 `0xff`; no checksum C state,
+conditional loop, or complete source-C artifact is emitted.
+
 ### Physical nine-rotation signed-input arithmetic chain (not C23)
 
 `build_seeded_rotated_input_crazy_source` reuses the eight source-loadable
