@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Physical N15 repeated rotations with checked loader-seed relocation.
+//   - Repeated rotations and live-input writes with loader-seed relocation.
 // - Must-Not:
 //   - Treat the rotated seed as a signed C23 converter or source-C compiler.
 // - Allows:
@@ -21,7 +21,7 @@
 // - Merge-When:
 //   - A verified physical arithmetic linker uses generic relocatable blocks.
 // - Summary:
-//   - Moves repeatable real pointer-reset rotation out of test-only source.
+//   - Constructs real repeated rotations and same-cell state updates.
 
 //! Physically repeat one loader-cell rotation through a three-jump reset.
 //!
@@ -241,6 +241,41 @@ pub fn build_seeded_repeated_state_write_source(
         (47, b'p'),
         (48, profile.output_instruction()),
         (49, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
+/// Update one physical guest data word using two distinct input events.
+///
+/// Nine reached `*` instructions prepare M95. The first `/` at C39 and
+/// `p` at C43 write a function of that input to M95. The C44..46
+/// reset follows M96=72, M73=61 and M62=94, then C47 reads the second
+/// input. A second C48..50 reset restores D to M95, allowing C51 `p` to
+/// read the first stored result and overwrite the **same** word with a
+/// function of both inputs. C52 `<` emits the final word's low byte and
+/// C53 `v` halts. EOF uses the selected profile's raw word, not C23 -1.
+/// This is physical state and I/O linkage, not a C loop, conditional,
+/// signed byte conversion or compiled mutable checksum.
+///
+/// # Errors
+///
+/// Rejects unsupported profiles, invalid seed tails and missing graphical
+/// encodings. Independent normative VM traces still prove guest effects.
+pub fn build_seeded_two_input_state_update_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_seeded_repeated_state_write_source(profile, tail)?;
+    for (position, opcode) in [
+        (47, profile.input_instruction()),
+        (48, b'j'),
+        (49, b'j'),
+        (50, b'j'),
+        (51, b'p'),
+        (52, profile.output_instruction()),
+        (53, b'v'),
     ] {
         set(&mut source, position, opcode)?;
     }

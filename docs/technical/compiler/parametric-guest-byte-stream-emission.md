@@ -28,6 +28,19 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Stateful guest data across two separate input events (2026-11-19)
+
+The bounded 91-cell `,H` source now completes nine physical rotations
+of M95, then two separate `/` reads and two `p` writes to the **same**
+M95 data word. The first `p` stores a function of the first raw input;
+the second reads that exact stored word and incorporates the second raw
+input before a real `<` and halt. Thirty-nine independently computed
+binary/EOF cases match all 54 normative guest steps, memory reads and
+writes, input consumption, and output. Both inputs influence the result.
+This closes one previously missing *physical* state-retention link, but
+not the source-C CFG or signed C23 `getchar` conversion. The frozen
+five-vector checksum still refuses to publish guest output.
+
 ### Strict-loader obstacle to direct C23 output relocation (2026-11-19)
 
 A direct source-validity experiment tried to shorten the final signed

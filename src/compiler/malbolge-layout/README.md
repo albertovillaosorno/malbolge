@@ -42,6 +42,25 @@ halt against an independent scalar oracle. Unloadable tails, including `Iy`,
 refuse before source publication; the original `,H` API remains unchanged.
 This broadens physical operand seeds, not signed-C23 conversion or C lowering.
 
+### Two independent signed reads updating one physical guest cell
+
+`build_seeded_two_input_state_update_source` extends the verified `,H`
+91-cell reset geometry without making a second output-byte fixture. Nine
+physical rotations prepare M[95]; the first input at C39 drives C43 `p`
+on that cell. Three reached `j` operations restore D to 95, a second
+real `/` at C47 reads a different byte or EOF, and a further three-`j`
+reset makes C51 `p` read and overwrite the **first stored result** at M95.
+A real `<` emits the second result at C52, followed by `v` at C53.
+
+An independent fifteen-trit oracle matches 39 bounded 54-step normative
+VM paths, including both EOF attempts, one-byte truncated input, NUL,
+high-byte and unread-suffix cases. Exact guest read events, all three
+reset chains, both same-address physical writes, memory values, output and
+consumption are verified; both input positions independently affect the
+output. This demonstrates *state across distinct guest inputs*, not a
+source-C local, signed C23 conversion, checksum branch or EOF loop.
+The original full checksum still fails closed at dynamic CFG linkage.
+
 ### Physical repair of the correct C23 loader operand (still not C23)
 
 `build_c23_seed_rotated_input_echo_source` is a distinct 91-cell N15

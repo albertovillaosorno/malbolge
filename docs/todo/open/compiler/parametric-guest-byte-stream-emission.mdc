@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a 91-cell N15 `,H` guest now uses two distinct
+  signed `/` attempts and physically writes the **same** M95 word twice.
+  The first input drives the C43 `p`, and the C51 `p` consumes the
+  first stored result together with the second input. Thirty-nine
+  54-step normative VM paths, including EOF, NUL, high bytes and an
+  unread suffix, match an independent fifteen-trit oracle with exact
+  pointer resets, physical reads, memory changes and emitted output.
+  Both input positions affect the result. The frozen five-case source-C
+  checksum still refuses at dynamic CFG linkage; this probe has no C23
+  signed normalization, branch, phi store or guest loop. P2 remains open.
+
 - On 2026-11-19, a proposed shorter post-conversion return from C75
   directly to M95 was rejected by the strict graphical loader: virgin
   M87=94 cannot load at source position 87. The prior nine-rotation

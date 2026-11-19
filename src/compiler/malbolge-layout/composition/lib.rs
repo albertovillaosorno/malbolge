@@ -94,6 +94,7 @@ pub use loader_rotation_source::{
     build_seeded_repeated_loader_rotation_source,
     build_seeded_repeated_state_write_source,
     build_seeded_rotated_input_crazy_source,
+    build_seeded_two_input_state_update_source,
 };
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
