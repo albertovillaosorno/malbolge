@@ -100,6 +100,17 @@ read occurs before the last four rotations and its value is overwritten;
 no input-dependent converter `p` pair, mutable locals or checksum loop
 executes. The original source-C checksum remains explicitly unlinked.
 
+### Position-sensitive source admission for C23 pointer relocations
+
+`admit_c23_probe_graphical_source` now checks every graphical cell in the
+four physical C23 source builders against the exact loader position and
+admitted instruction alphabet. The direct M87=94 shortcut for returning
+from C75 to M95 fails that guard: source byte 94 at position 87 is not a
+loadable Malbolge instruction. The same mutation fails the normative
+VM loader. The existing 82-step conversion-only source still makes the
+correct signed C23 accumulator but has no output; no executable checksum
+or compiler integration is implied by source admission alone.
+
 ### Nine rotations and a second signed input: code-encryption trap
 
 `build_c23_nine_rotated_second_input_crazy_probe_source` extends the correct

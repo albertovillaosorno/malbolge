@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Strict-loader obstacle to direct C23 output relocation (2026-11-19)
+
+A direct source-validity experiment tried to shorten the final signed
+conversion pointer return: write M87=94, so the reached C75 `j` could
+jump directly to M95 and leave time for `p`, `p` and `<` before the
+mandatory C81 halt. This fails **before execution**: graphical byte 94
+at source position 87 does not decode to a valid loader instruction.
+The short-route candidate must not be published or counted as C23 output.
+
+The C23 probe builders now independently reject invalid graphical source
+cells with a typed position/byte error before returning source. A focused
+regression checks the exact attempted M87=94 placement and the VM loader's
+own rejection. This is source-admission hardening, not a solution to the
+remaining M81=94 execution trap or a proof that other relocations fail.
+The five native C23 checksum vectors still refuse at dynamic CFG linkage;
+no guest checksum artifacts or output parity are claimed.
+
 ### Nine-rotation physical C23 conversion without output (2026-11-19)
 
 A 91-cell, strict-loader-admitted `Iy` source now executes nine real

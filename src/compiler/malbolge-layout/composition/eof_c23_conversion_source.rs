@@ -63,6 +63,13 @@ pub enum C23OperandProbeSourceError {
         /// Exact failure in the source-locked rotation stage.
         error: RepeatedLoaderRotationError,
     },
+    /// A generated graphical cell cannot pass the strict VM loader.
+    InvalidGraphicalSourceCell {
+        /// Invalid exact source position.
+        position: usize,
+        /// Source byte the loader would reject.
+        byte: u8,
+    },
     /// Current 15-trit profile is the only supported loader geometry.
     UnsupportedProfile,
 }
@@ -93,6 +100,34 @@ fn set(
         .get_mut(position)
         .ok_or(C23OperandProbeSourceError::InvalidPosition { position })? =
         byte;
+    Ok(())
+}
+
+/// Reject cells that the strict graphical profile loader would reject.
+///
+/// This checks lexical source admission only. In particular, an instruction
+/// that is valid at its *source* position may encrypt into a different opcode
+/// before a subsequent execution; VM path verification remains separate.
+///
+/// # Errors
+///
+/// Reports the first non-graphical or illegal decoded source cell.
+pub fn admit_c23_probe_graphical_source(
+    source: &[u8],
+) -> Result<(), C23OperandProbeSourceError> {
+    for (position, &byte) in source.iter().enumerate() {
+        let address = u32::try_from(position).unwrap_or(u32::MAX);
+        if !decode_profile_instruction(u32::from(byte), address)
+            .is_some_and(|opcode| b"oijp*/<v".contains(&opcode))
+        {
+            return Err(
+                C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+                    position,
+                    byte,
+                },
+            );
+        }
+    }
     Ok(())
 }
 
@@ -130,6 +165,7 @@ pub fn build_c23_operand_probe_source(
         .get_mut(277..279)
         .ok_or(C23OperandProbeSourceError::InvalidPosition { position: 277 })?
         .copy_from_slice(b"Iy");
+    admit_c23_probe_graphical_source(&source)?;
     Ok(source)
 }
 
@@ -179,6 +215,7 @@ pub fn build_c23_five_rotated_signed_crazy_source(
     ] {
         set(&mut source, position, opcode)?;
     }
+    admit_c23_probe_graphical_source(&source)?;
     Ok(source)
 }
 
@@ -225,6 +262,7 @@ pub fn build_c23_nine_rotated_second_input_crazy_probe_source(
     ] {
         set(&mut source, position, opcode)?;
     }
+    admit_c23_probe_graphical_source(&source)?;
     Ok(source)
 }
 
@@ -272,5 +310,6 @@ pub fn build_c23_nine_rotated_signed_conversion_without_output_source(
     ] {
         set(&mut source, position, opcode)?;
     }
+    admit_c23_probe_graphical_source(&source)?;
     Ok(source)
 }

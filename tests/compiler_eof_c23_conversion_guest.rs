@@ -609,3 +609,40 @@ fn nine_real_rotations_convert_second_signed_input_without_output()
     assert_eq!(cases, 259);
     Ok(())
 }
+
+// The tempting direct 87 -> 95 pointer shortcut is not a source-valid
+// Malbolge instruction. Reject it during generation, not after publication.
+#[test]
+fn c23_short_output_pointer_shortcut_fails_loader_admission()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut source =
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    // C75 j would directly return D=95 if virgin M87 were 94, saving three
+    // operations and leaving space for p/p/<. But source byte 94 at C87
+    // does not decode to any recognized opcode under the strict loader.
+    source[87] = 94;
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&source),
+        Err(layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+            position: 87,
+            byte: 94,
+        }),
+    );
+    assert!(ProfileMachine::from_source(profile, &source, vec![]).is_err());
+    source[87] = 0;
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&source),
+        Err(layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+            position: 87,
+            byte: 0,
+        }),
+    );
+    // This is an exact source-admission obstruction, not an assertion that
+    // no other code/data relocation can ever perform C23 conversion.
+    Ok(())
+}

@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a proposed shorter post-conversion return from C75
+  directly to M95 was rejected by the strict graphical loader: virgin
+  M87=94 cannot load at source position 87. The prior nine-rotation
+  source still converts signed input only in its accumulator and halts
+  before output. All four C23 source builders now validate position-wise
+  graphical opcode admission before returning candidates; a focused
+  regression proves both typed rejection and normative loader rejection.
+  The 55-test focused suite passes. This is a negative placement result,
+  not guest C23 byte output, mutable checksum linkage or P2 completion.
+
 - On 2026-11-19, a source-valid 91-cell N15 `Iy` guest completes all
   nine physical rotations of M95 and then performs a second real signed
   input read at C69. A newly composed self-encryption-aware pointer path
