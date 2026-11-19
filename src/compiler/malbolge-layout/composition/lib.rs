@@ -48,6 +48,7 @@ pub mod typed_cfg_adapter;
 
 mod bounded_revisit;
 mod eof_branch_plan;
+mod eof_c23_conversion_source;
 mod eof_output_plan;
 mod guest_state_placement;
 mod loader_seed;
@@ -69,6 +70,9 @@ pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,
     CURRENT_C23_EOF_CONTROL_WORDS, CURRENT_C23_EOF_TARGET_WORDS,
     admit_c23_eof_control_word_plan,
+};
+pub use eof_c23_conversion_source::{
+    C23OperandProbeSourceError, build_c23_operand_probe_source,
 };
 pub use eof_output_plan::{
     C23SignedOutputWordPlan, C23SignedOutputWordPlanError,

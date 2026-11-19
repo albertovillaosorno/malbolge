@@ -12,6 +12,24 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Two physical `p` writes from C23 converter loader words
+
+`build_c23_operand_probe_source` constructs a 279-cell graphical N15
+source ending in `Iy`. A real `j` at C=8 relocates D, `/` at C=164
+reads the target byte or EOF word, and `p` at C=165 and C=166 reads
+and writes the loader-derived operands M[283]=7,174,404 and M[284]=121.
+The following `<` emits the actual accumulator byte; C=168 halts after
+169 steps. The normative VM and an independent trit oracle agree for all
+256 input bytes, EOF, and an input with an unread suffix. The test checks
+both writes even when a write has an unchanged value.
+
+This does **not** implement C23 signed byte conversion: the first operand
+must undergo nine *physical* rotations to 7,138,732 before the two crazy
+operations can produce C23-compatible output. No such rotations execute
+in this source; EOF currently emits `0x55` instead of `0xff`. The source
+is a verifier-visible operand-placement precursor, not published C code,
+and has no C state, arithmetic loop, or checksum output.
+
 ### Two actual signed guest-input echoes on one forward path
 
 `build_two_signed_guest_echo_source` uses the existing 132-cell N15

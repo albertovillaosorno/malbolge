@@ -73,6 +73,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a distinct 279-cell graphical N15 source ending in
+  `Iy` physically performs signed `/` at C=164 and two input-dependent
+  `p` writes at C=165 and C=166, using virgin loader M[283]=7,174,404
+  and M[284]=121. A real `<` outputs their result; `v` halts after
+  169 normative steps. Independent digit arithmetic and VM traces for
+  all 257 signed input classes plus an unread-suffix stream verify both
+  physical reads, writes (including idempotent stores), input provenance,
+  and actual output. **EOF outputs `0x55`, not C23 `0xff`**: the first
+  operand still needs nine real `*` rotations to 7,138,732. This is a
+  loader-valid unrotated *precursor*, not a C23 converter or executable
+  checksum. The source-locked mutable EOF checksum still refuses target
+  linkage, so the five required checksum guest traces remain absent and
+  P2 stays open.
+
 - On 2026-11-18, an exhaustive independent scalar search covered all
   94-by-94 graphical two-byte loader tails, 12 adjacent-data phases, and
   all 15 cyclic rotations of **both** operands: 23,857,200 candidates.
