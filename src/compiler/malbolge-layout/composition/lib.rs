@@ -73,7 +73,8 @@ pub use eof_branch_plan::{
     admit_c23_eof_control_word_plan,
 };
 pub use eof_c23_conversion_source::{
-    C23OperandProbeSourceError, build_c23_operand_probe_source,
+    C23OperandProbeSourceError, build_c23_five_rotated_signed_crazy_source,
+    build_c23_operand_probe_source,
 };
 pub use eof_output_plan::{
     C23SignedOutputWordPlan, C23SignedOutputWordPlanError,

@@ -73,6 +73,21 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a 91-cell source-valid N15 `Iy` guest now combines
+  five **physical** rotations of the correct C23 loader M[95] word
+  (7,174,404 -> 4,281,052), a real signed `/`, five pointer-reset `j`
+  operations using the encrypted M[37]=66 chain, two subsequent reached
+  input-dependent `p` writes on M[95] and M[96]=121, `<` and `v`.
+  An independent trit oracle and 258 complete 48-step normative paths
+  check all 256 successful input bytes, EOF and an unread binary suffix:
+  actual output exactly echoes all bytes, but EOF emits `0x0f`, not C23
+  `0xff`. This brings the correct loader seed into live guest arithmetic,
+  without falsely claiming the required nine rotations after input,
+  C23 EOF conversion, mutable checksum or dynamic guest control.
+  The original five checksum vectors still refuse at the unlinked CFG,
+  and P2 remains open.
+
+
 - On 2026-11-19, a distinct source-valid 91-cell N15 `Iy` guest now
   physically completes all nine rotations of the **correct** C23 seed
   M[95]=7,174,404 -> 7,138,732, preserving M[96]=121. The mandatory

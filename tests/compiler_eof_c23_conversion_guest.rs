@@ -195,3 +195,145 @@ fn real_two_crazy_writes_execute_but_do_not_convert_c23() -> Result<(), String>
     assert!(wrong_c23 > 0, "unrotated pair must not pass C23 conversion");
     Ok(())
 }
+
+// Independent cyclic digit rotation, with the target width frozen to N15.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    reason = "independent fixed-width 15-trit arithmetic oracle"
+)]
+const fn independent_rotate(word: u32) -> u32 {
+    word / 3 + (word % 3) * (14_348_907 / 3)
+}
+
+// The original C23 loader operand is physically prepared for *five*
+// rotations, then both input-dependent crazy operations execute. This
+// preserves genuine input provenance, unlike host-emitted byte fixtures.
+// The output still differs from C23, so the complete checksum stays blocked.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "257 complete physical paths with independent trit arithmetic"
+)]
+fn five_real_rotations_feed_two_live_signed_crazy_writes() -> Result<(), String>
+{
+    const ROTATED_FIRST: u32 = 4_281_052;
+    let profile = current_profile();
+    let source = layout::build_c23_five_rotated_signed_crazy_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    let rejected = layout::build_c23_five_rotated_signed_crazy_source(
+        historical_profile(),
+    );
+    assert_eq!(
+        rejected,
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(95), Ok(INITIAL_FIRST));
+    assert_eq!(loaded.memory_word(96), Ok(INITIAL_SECOND));
+    assert_eq!(loaded.memory_word(67), Ok(67));
+    assert_eq!(loaded.memory_word(68), Ok(94));
+    assert_eq!(
+        (0usize..5).fold(INITIAL_FIRST, |word, _| independent_rotate(word)),
+        ROTATED_FIRST,
+    );
+    for input in once(Vec::new())
+        .chain((u8::MIN..=u8::MAX).map(|byte| vec![byte]))
+        .chain(once(vec![17, 99, 31]))
+    {
+        let first_input = input.first().copied();
+        let raw = first_input.map_or_else(|| profile.eof_word(), u32::from);
+        let first_crazy = scalar_crazy(ROTATED_FIRST, raw);
+        let second_crazy = scalar_crazy(INITIAL_SECOND, first_crazy);
+        let expected = u8::try_from(second_crazy % 256)
+            .map_err(|error| error.to_string())?;
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(48, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 48,
+        });
+        assert_eq!(trace.len(), 48);
+        let mut word = INITIAL_FIRST;
+        for position in [12, 18, 24, 30, 36] {
+            let operation =
+                trace.get(position).ok_or("missing guest operation")?;
+            assert_eq!(operation.decoded, Some(b'*'));
+            assert_eq!(operation.before.registers.data_pointer, 95);
+            assert_eq!(
+                operation.memory_reads.data.map(|read| read.value),
+                Some(word),
+            );
+            word = independent_rotate(word);
+            assert_eq!(operation.after.registers.accumulator, word);
+        }
+        assert_eq!(word, ROTATED_FIRST);
+        let input_step = trace.get(37).ok_or("missing guest input")?;
+        assert_eq!(input_step.decoded, Some(profile.input_instruction()));
+        assert_eq!(input_step.before.registers.data_pointer, 96);
+        assert_eq!(
+            input_step.input,
+            Some(first_input.map_or(TraceInput::EndOfInput, TraceInput::Byte)),
+        );
+        for (position, address, value) in [
+            (39, 98, 157),
+            (40, 158, 36),
+            (41, 37, 66),
+            (42, 67, 67),
+            (43, 68, 94),
+        ] {
+            let reset = trace.get(position).ok_or("missing guest operation")?;
+            assert_eq!(reset.decoded, Some(b'j'));
+            assert_eq!(reset.before.registers.data_pointer, address);
+            assert_eq!(
+                reset.memory_reads.data.map(|read| read.value),
+                Some(value),
+            );
+        }
+        for (position, address, before, after) in [
+            (44, 95, ROTATED_FIRST, first_crazy),
+            (45, 96, INITIAL_SECOND, second_crazy),
+        ] {
+            let step = trace.get(position).ok_or("missing guest operation")?;
+            assert_eq!(step.decoded, Some(b'p'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(before),
+            );
+            assert_eq!(step.after.registers.accumulator, after);
+            assert_eq!(
+                step.memory_delta.data.map(|delta| {
+                    (delta.address, delta.before, delta.after)
+                }),
+                (before != after).then_some((address, before, after)),
+            );
+            assert_eq!(vm.memory_word(address), Ok(after));
+        }
+        assert_eq!(trace.get(46).and_then(|step| step.output), Some(expected));
+        assert_eq!(vm.output(), &[expected]);
+        assert_eq!(vm.input_consumed(), usize::from(first_input.is_some()));
+        if let Some(byte) = first_input {
+            assert_eq!(expected, byte, "all 256 successful bytes must echo");
+        } else {
+            assert_eq!(expected, 0x0f, "EOF still differs from C23 0xff");
+        }
+    }
+    Ok(())
+}

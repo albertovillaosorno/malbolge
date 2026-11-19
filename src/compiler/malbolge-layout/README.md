@@ -62,6 +62,22 @@ M[95]=7,138,732 and two subsequent input-dependent `p` operations. The
 raw EOF output still differs from C23 `0xff`; no checksum C state,
 conditional loop, or complete source-C artifact is emitted.
 
+### Real signed arithmetic after five Iy rotations (EOF still wrong)
+
+`build_c23_five_rotated_signed_crazy_source` composes the true 91-cell `Iy`
+loader with five physical M[95] rotations to 4,281,052, a real `/` at C37,
+then five reached `j` pointer resets through the *encrypted* M[37]=66,
+M[67]=67 and M[68]=94. Two actual `p` writes use the now-rotated M[95]
+and untouched M[96]=121; `<` emits the result and `v` halts in 48 steps.
+
+A separately implemented 15-trit scalar oracle and 258 full normative VM
+paths prove exact rotation reads, both input-dependent `p` memory writes,
+input events, output and halt for EOF, all 256 bytes and an unread suffix.
+Every successful byte echoes unchanged, but EOF emits **0x0f**, not the C23
+`0xff`. This is genuine guest arithmetic, not C23 signed conversion or the
+original mutable checksum. Four further rotations cannot simply follow
+this input without preserving the input accumulator across `*` writes.
+
 ### Nine reached rotations of the real C23 operand (not conversion)
 
 `build_c23_seed_nine_rotated_operand_source` now completes nine physical
