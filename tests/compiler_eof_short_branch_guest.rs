@@ -806,6 +806,131 @@ fn all_257_signed_inputs_reach_both_arms_with_one_read() -> Result<(), String> {
     Ok(())
 }
 
+// A complete two-read *physical* guest path extends the previous one-read
+// control skeleton. It is deliberately not mapped onto the source-C checksum:
+// the second EOF value retains its target-profile word rather than C's -1.
+// In particular, this test is real guest input, not two host read operations.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "bounded independent two-read normative guest path"
+)]
+fn physical_two_signed_reads_echo_second_word_and_halt() -> Result<(), String> {
+    let profile = current_profile();
+    let mut source = post_rotation_physical_branch_source()?;
+    // The first physical classifier still reads C=53; its first-pass C=104
+    // rotate can be repurposed as a second real input without moving the
+    // source's final two loader seeds. C=114 must no longer revisit C=45:
+    // that replay reaches an ungraphical i target at C=112.
+    set(&mut source, 104, profile.input_instruction())?;
+    set(&mut source, 114, profile.output_instruction())?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("two-read source load: {error}"))?;
+    let cases = [
+        vec![],
+        vec![0],
+        vec![0, 255],
+        vec![255, 0, 42],
+        vec![3, 4],
+        vec![128, 128],
+    ];
+    for input in cases {
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(130, &mut |step| trace.push(*step))
+                .map_err(|error| format!("two reads {input:?}: {error}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 130,
+            },
+            "input {input:?}"
+        );
+        let input_events = trace
+            .iter()
+            .filter_map(|step| {
+                step.input
+                    .map(|effect| (step.before.registers.code_pointer, effect))
+            })
+            .collect::<Vec<_>>();
+        let first = input
+            .first()
+            .copied()
+            .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let second = input
+            .get(1)
+            .copied()
+            .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        assert_eq!(input_events, [(53, first), (104, second)]);
+        assert_eq!(vm.input_consumed(), input.len().min(2));
+        // The second / actually writes the guest accumulator. EOF is the
+        // N15 sentinel; its low byte is not the C23 unsigned-char EOF cast.
+        let second_word = input
+            .get(1)
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let second_low = u8::try_from(second_word & 255)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            trace[104].after.registers.accumulator, second_word,
+            "second input register on {input:?}"
+        );
+        let outputs = trace
+            .iter()
+            .filter_map(|step| {
+                step.output
+                    .map(|byte| (step.before.registers.code_pointer, byte))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(outputs, [(114, second_low), (128, 154)]);
+        assert_eq!(vm.output(), &[second_low, 154]);
+        assert!(trace.iter().enumerate().all(|(index, step)| {
+            step.before.registers.code_pointer
+                == u32::try_from(index).unwrap_or(u32::MAX)
+        }));
+        assert_eq!(
+            trace
+                .last()
+                .map(|step| (step.before.registers.code_pointer, step.decoded)),
+            Some((129, Some(b'v')))
+        );
+    }
+    // Restoring the original branch at C=114 after adding the second read
+    // is not a valid loop: encrypted code at C=112 jumps into noncode data.
+    // Keep that real failed layout attempt as a bounded negative witness.
+    let mut broken = source;
+    set(&mut broken, 114, b'i')?;
+    let mut invalid = ProfileMachine::from_source(profile, &broken, vec![3, 4])
+        .map_err(|error| error.to_string())?;
+    let mut failed_trace = Vec::new();
+    let failure = invalid.run_traced(200, &mut |step| failed_trace.push(*step));
+    assert!(matches!(
+        failure,
+        Err(malbolge::ProfileMachineError::InvalidEncryptionTarget {
+            pointer: 7_174_341,
+            value: 134,
+        })
+    ));
+    assert_eq!(invalid.input_consumed(), 2);
+    assert_eq!(failed_trace.len(), 183);
+    assert_eq!(
+        failed_trace
+            .last()
+            .map(|step| step.before.registers.code_pointer),
+        Some(112)
+    );
+    Ok(())
+}
+
 // The nonlinear layout admission is separate from executable source assembly.
 // It uses an independent trit oracle for every arithmetic memory write, plus
 // frozen code paths and I/O positions; no expected trace is copied from the VM.

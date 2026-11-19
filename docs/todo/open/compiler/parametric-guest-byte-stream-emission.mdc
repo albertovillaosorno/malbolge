@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-18, a physical 132-cell N15 guest extension now performs
+  two distinct `/` input operations and two `<` outputs, halting in 130
+  steps on six fixed binary/EOF streams. The actual VM reveals the target
+  EOF sentinel low byte `0x6a` and verifies the second input at C=104,
+  rather than replaying a host-provided byte. An initial attempt to retain
+  the old conditional return failed at a nongraphical jump target after
+  183 steps; the regression checks that failure and the repaired forward
+  output path. This does not loop, suppress a read after EOF, write the C
+  state frame, or emit the original checksum. P2 remains open.
+
 - On 2026-11-18, normative nonlinear guest paths now expose full physical
   instruction-store effects (`p`/`*` opcode, step, address, before/after) in
   addition to changed-memory deltas and reached destinations. The original

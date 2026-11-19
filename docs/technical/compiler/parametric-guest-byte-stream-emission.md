@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two real signed input reads on one physical guest path (2026-11-18)
+
+A new bounded N15 experiment keeps the same 132-cell graphical EOF helper
+but changes its reached C=104 rotation to a second `/` input, and changes
+C=114's conditional jump to `<` output. The normative guest now executes
+130 complete steps, two input instructions at C=53 and C=104, output at
+C=114 and C=128, and a halt at C=129. Six independent streams exercise
+empty input, NUL, a high byte, multiple bytes and EOF on the second read.
+The observed output is the second input's low byte (the target EOF word's
+low byte `0x6a` when absent), followed by the fixed marker `0x9a`.
+
+The direct attempt to retain C=114's conditional jump after the new read
+failed in the actual VM at step 183: the second traversal executes an `i`
+at C=112 and tries to encrypt nongraphical M[7,174,341]=134. The
+regression preserves this failed path and proves the forward two-read
+candidate halts cleanly instead. Neither version checks EOF *before* the
+second read, updates the C checksum, or links typed operations to guest
+state. It is finite physical I/O evidence, not C semantics or P2 closure.
+
 ### Source-bound physical instruction-write effects (2026-11-18)
 
 The independent nonlinear guest-path boundary now preserves *every* reached
