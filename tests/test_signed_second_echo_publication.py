@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -39,6 +40,15 @@ ROOT: Final = Path(__file__).resolve().parents[1]
 CLANG: Final = ROOT / ".dependencies/llvm/22.1.8/bin/clang"
 DRIVER: Final = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
 VM: Final = ROOT / ".cache/rust/target/debug/malbolge"
+FRONTEND: Final = (
+    ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-frontend"
+)
+ADAPTER: Final = ROOT / ".cache/rust/target/debug/c2malbolge_json"
+LOCAL_SOURCE: Final = (
+    "#include <stdio.h>\n"
+    "void emit(void) { getchar(); int current = getchar(); "
+    "putchar(current); }\n"
+)
 SOURCE: Final = "#include <stdio.h>\nvoid emit(void) { getchar(); putchar(getchar()); }\n"
 VECTORS: Final = (
     ("empty", b"", b"\xff"),
@@ -92,11 +102,130 @@ class SignedSecondEchoPublicationTests(unittest.TestCase):
                     guest = subprocess.run(
                         [str(VM), str(target), "--input-stdin", "--max-steps", "1000",
                          "--report-steps"],
-                        input=stdin, capture_output=True, check=False, timeout=15,
+                        input=stdin,
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
                     )
                     self.assertEqual(guest.returncode, 0, guest.stderr)
                     self.assertEqual(guest.stdout, expected)
                     self.assertIn(b"malbolge-steps-v1:81", guest.stderr)
+
+    def test_second_signed_input_through_automatic_local(self) -> None:
+        """The second read remains live across a genuine C23 int local."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            path = Path(directory)
+            source = path / "local.c"
+            source.write_text(LOCAL_SOURCE, encoding="utf-8")
+            wrapper = path / "main.c"
+            wrapper.write_text(
+                '#include "local.c"\nint main(void) { emit(); return 0; }\n',
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["LD_LIBRARY_PATH"] = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+            for optimization in ("-O0", "-O2"):
+                native = path / f"native-{optimization[2:]}"
+                built = subprocess.run(
+                    [str(CLANG), "-std=c23", optimization, "-Wall", "-Wextra",
+                     "-Werror", "-fsanitize=undefined",
+                     "-fno-sanitize-recover=all",
+                     str(wrapper), "-o", str(native)],
+                    capture_output=True, env=env, check=False, timeout=20,
+                )
+                self.assertEqual(built.returncode, 0, built.stderr)
+                for label, stdin, expected in VECTORS:
+                    with self.subTest(native=optimization, stream=label):
+                        result = subprocess.run(
+                            [str(native)], input=stdin, capture_output=True,
+                            check=False, timeout=10,
+                        )
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(result.stdout, expected)
+            target = path / "local.malbolge"
+            compiled = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--capsule", "--max-wall-seconds", "75", "--output",
+                 str(target), str(source)],
+                capture_output=True, check=False, timeout=85,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(target.is_file())
+            for label, stdin, expected in (VECTORS[0], VECTORS[2], VECTORS[4]):
+                with self.subTest(guest=label):
+                    guest = subprocess.run(
+                        [str(VM), str(target), "--input-stdin", "--max-steps",
+                         "1000", "--report-steps"],
+                        input=stdin,
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
+                    )
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    self.assertEqual(guest.stdout, expected)
+                    self.assertIn(b"malbolge-steps-v1:81", guest.stderr)
+
+    def test_local_alias_refuses_tampered_source_and_clang_nodes(self) -> None:
+        """Neither source edits nor forged local bindings may publish code."""
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+            path = Path(directory)
+            source = path / "local.c"
+            target = path / "forged.malbolge"
+            variants = (
+                LOCAL_SOURCE.replace(
+                    "putchar(current)", "putchar(current + 1)"
+                ),
+                LOCAL_SOURCE.replace(
+                    "putchar(current)", "getchar(); putchar(current)"
+                ),
+                LOCAL_SOURCE.replace("putchar(current)", "putchar(getchar())"),
+                LOCAL_SOURCE.replace(
+                    "int current = getchar()", "int current = 0"
+                ),
+            )
+            for index, variant in enumerate(variants):
+                with self.subTest(unsafe_source=index):
+                    source.write_text(variant, encoding="utf-8")
+                    result = subprocess.run(
+                        [sys.executable, "-B", str(DRIVER),
+                         "--repository-tools", "--capsule",
+                         "--max-wall-seconds", "30", "--output",
+                         str(target), str(source)],
+                        capture_output=True, check=False, timeout=40,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(target.exists())
+            source.write_text(LOCAL_SOURCE, encoding="utf-8")
+            normalized = subprocess.run(
+                [str(FRONTEND), "--guest-include",
+                 str(ROOT / "src/runtime/guest-c-library/contract/include"),
+                 "--resource-dir",
+                 str(ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"),
+                 "--source-id", "local-proof", str(source)],
+                capture_output=True, check=False, timeout=15,
+            )
+            self.assertEqual(normalized.returncode, 0, normalized.stderr)
+            for node_id, field, invalid in (
+                (6, "reference", "current@0"),
+                (14, "reference", "current@1"),
+                (6, "storage_duration", "static"),
+                (13, "operation", "int-to-bool"),
+            ):
+                with self.subTest(forged_node=node_id + 1, field=field):
+                    artifact = json.loads(normalized.stdout)
+                    artifact["nodes"][node_id][field] = invalid
+                    result = subprocess.run(
+                        [str(ADAPTER), "--layout-backend",
+                         str(path / "unavailable-backend"),
+                         "--output", str(target), "--source", str(source)],
+                        input=json.dumps(artifact).encode(),
+                        capture_output=True, check=False, timeout=15,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(
+                        b"normalized frontend rejected", result.stderr
+                    )
+                    self.assertFalse(target.exists())
 
     def test_extra_input_is_not_silently_dropped(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
