@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Relocated guest reset with an output checkpoint (2026-11-19)
+
+A different, source-admitted 91-cell N15 loader tail yields M96=66. The
+physical pointer-reset chain can therefore use M67=67 and M68=94, preserving
+M62 for executable guest code instead of the earlier M96=72, M73=61,
+M62=94 chain. The existing eight-tail M96=72 source constructors and their
+admission policy are unchanged; this relocation is only used by the new
+three-input checkpoint builder.
+
+The physical path completes nine actual loader rotations, then consumes
+three independent signed guest `/` attempts at C39/C51/C59. All three `p`
+operations at C43/C55/C63 read and overwrite the same M95 word. C47 emits
+the first state **before** the second and third input, while C64 emits the
+final state and C65 halts after exactly **66 real VM steps**. The middle
+input changes stored state without generating a byte. All seven three-`j`
+resets read M96=66, M67=67 and M68=94. In particular C62 really executes
+as `j` without encrypting a reset operand, unlike the older M62 chain.
+
+**46 normative guest paths** across two source seeds (five EOF/truncation
+streams and six boundary values at each of three input positions per seed)
+match an independent fifteen-trit oracle for the two output bytes, each
+read, write, pointer return, final memory state and exact input consumption.
+Non-current profiles and incompatible/unloadable tails refuse before any
+artifact is returned. This proves source/data reset relocation and live
+state across an output checkpoint, **not** source-C arithmetic, signed C23
+normalization, a runtime Boolean branch, or the original EOF checksum. P2
+still lacks a full source-locked guest artifact and its five parity traces.
+
 ### Guest-visible state-prefix streaming (2026-11-19)
 
 The bounded 91-cell N15 prefix-fold helper now performs two genuine guest

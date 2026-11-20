@@ -360,6 +360,60 @@ pub fn build_seeded_two_input_prefix_fold_source(
     Ok(source)
 }
 
+/// Emit one checkpoint before two more input-driven guest state updates.
+///
+/// Nine reached rotations prepare M95. The first read at C39 and write at
+/// C43 produce a real output at C47. The next two independent reads at
+/// C51/C59 update that *same* guest memory word at C55/C63. C64 emits the
+/// final state and C65 halts. The middle read does not produce an output;
+/// guest state survives across the first output and multiple later writes.
+/// The M96=66 reset through M67/M68 is essential: source C62 executes as
+/// `j`, so the older M62=94 pointer constant would be destroyed.
+/// These are Malbolge `crazy` folds, not C23 arithmetic or an EOF branch.
+///
+/// # Errors
+///
+/// Refuses tails without the protected 66/67/68 reset chain, non-current
+/// profiles and unavailable source encodings. VM execution must independently
+/// verify the exact source's read/write/output sequence.
+pub fn build_seeded_three_input_checkpoint_fold_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    // Start from the independently checked nine-rotation C39/C43/C47 path.
+    // Relocate only its pointer reset to the alternate loader-66 chain.
+    let mut source =
+        build_seeded_two_input_prefix_fold_source(profile, *b",H")?;
+    source[89..91].copy_from_slice(&tail);
+    let decodable = tail.iter().enumerate().all(|(offset, &byte)| {
+        unique_graphical_cell(
+            profile,
+            LinearOpcode::SkippedDataByte { byte: u32::from(byte) },
+            89 + offset,
+        ) == Ok(byte)
+    });
+    if !decodable || unwritten_loader_word(&source, 96, profile) != Ok(66) {
+        return Err(RepeatedLoaderRotationError::InvalidResetSeed { tail });
+    }
+    source[67] = 67;
+    source[68] = 94;
+    for (position, opcode) in [
+        (56, b'j'),
+        (57, b'j'),
+        (58, b'j'),
+        (59, profile.input_instruction()),
+        (60, b'j'),
+        (61, b'j'),
+        (62, b'j'),
+        (63, b'p'),
+        (64, profile.output_instruction()),
+        (65, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Repair the C23 seed's loader pointer trap and perform physical rotations.
 ///
 /// The `Iy` tail initializes M[95]=7,174,404 and M[96]=121. A reached

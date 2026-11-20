@@ -15,7 +15,7 @@
 // - Allows:
 //   - Inputs: 1..3 signed read events and exact graphical loader seeds.
 //   - Outputs: one M95 fold and optional real guest prefix-stream bytes.
-//   - Side effects: isolated normative N15 VM traces under 62 steps.
+//   - Side effects: isolated normative N15 VM traces under 67 steps.
 // - Split-When:
 //   - The general code/data linker can realize arbitrary fold iterations.
 // - Merge-When:
@@ -522,5 +522,169 @@ fn all_loader_compatible_prefix_fold_seeds_reach_both_outputs()
         }
     }
     assert_eq!(paths, 30);
+    Ok(())
+}
+
+#[test]
+fn checkpoint_reset_refuses_unproved_source_seed_and_profile() {
+    let profile = current_profile();
+    assert_eq!(
+        layout::build_seeded_three_input_checkpoint_fold_source(
+            historical_profile(),
+            *b",B",
+        ),
+        Err(layout::RepeatedLoaderRotationError::UnsupportedProfile),
+    );
+    for tail in [*b",H", *b"Iy", [0u8, b'B']] {
+        assert_eq!(
+            layout::build_seeded_three_input_checkpoint_fold_source(
+                profile, tail,
+            ),
+            Err(layout::RepeatedLoaderRotationError::InvalidResetSeed { tail }),
+        );
+    }
+    // Existing eight-tail reset admission remains exactly unchanged.
+    assert_eq!(
+        layout::build_seeded_guest_input_state_fold_source(profile, *b",B", 3,),
+        Err(layout::RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b",B",
+        }),
+    );
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "independent traced inputs, writes, resets, and outputs"
+)]
+fn relocated_reset_preserves_guest_checkpoint_across_two_later_updates()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut checked = 0usize;
+    for (tail, initial) in [(*b",B", 7_174_448u32), (*b"CB", 7_174_468)] {
+        let source = layout::build_seeded_three_input_checkpoint_fold_source(
+            profile, tail,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(source.len(), 91);
+        assert_eq!(source.get(89..), Some(tail.as_slice()));
+        assert_eq!((source[67], source[68]), (67, 94));
+        assert_ne!(source[62], 94);
+        let loaded = ProfileMachine::from_source(profile, &source, vec![])
+            .map_err(|error| error.to_string())?;
+        assert_eq!(loaded.memory_word(TARGET), Ok(initial));
+        assert_eq!(loaded.memory_word(96), Ok(66));
+        let prepared = (0..9usize).fold(initial, |word, _| rotated(word));
+        let mut streams =
+            vec![vec![], vec![0x81], vec![0, 255], vec![0, 255, 128], vec![
+                0, 255, 128, 17,
+            ]];
+        for position in 0..3 {
+            for byte in [0u8, 1, 127, 128, 254, 255] {
+                let mut input = vec![0x42, 0x81, 0xc3];
+                let slot =
+                    input.get_mut(position).ok_or("missing input slot")?;
+                *slot = byte;
+                streams.push(input);
+            }
+        }
+        for input in streams {
+            let mut states = [0u32; 3];
+            let mut state = prepared;
+            for (position, value) in states.iter_mut().enumerate() {
+                let byte = input.get(position).map_or_else(
+                    || profile.eof_word(),
+                    |byte| u32::from(*byte),
+                );
+                state = crazy(state, byte);
+                *value = state;
+            }
+            let expected = [
+                u8::try_from(states[0] % 256).map_err(|e| e.to_string())?,
+                u8::try_from(states[2] % 256).map_err(|e| e.to_string())?,
+            ];
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                loaded.memory().to_vec(),
+                input.clone(),
+                ProfileRegisters::default(),
+            )
+            .map_err(|error| error.to_string())?;
+            let mut trace = Vec::new();
+            assert_eq!(
+                vm.run_traced(66, &mut |step| trace.push(*step))
+                    .map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 66,
+                }
+            );
+            for (at, position) in [(39usize, 0usize), (51, 1), (59, 2)] {
+                let step = trace.get(at).ok_or("missing input trace")?;
+                assert_eq!(step.decoded, Some(profile.input_instruction()));
+                assert_eq!(step.before.registers.data_pointer, TARGET);
+                assert_eq!(
+                    step.input,
+                    Some(
+                        input
+                            .get(position)
+                            .copied()
+                            .map_or(TraceInput::EndOfInput, TraceInput::Byte,)
+                    ),
+                );
+            }
+            for (at, before, after) in [
+                (43usize, prepared, states[0]),
+                (55, states[0], states[1]),
+                (63, states[1], states[2]),
+            ] {
+                let step = trace.get(at).ok_or("missing write trace")?;
+                assert_eq!(step.decoded, Some(b'p'));
+                assert_eq!(step.before.registers.data_pointer, TARGET);
+                assert_eq!(
+                    step.memory_reads.data.map(|read| read.value),
+                    Some(before)
+                );
+                assert_eq!(step.after.registers.accumulator, after);
+                assert_eq!(
+                    step.memory_delta.data.map(|delta| {
+                        (delta.address, delta.before, delta.after)
+                    }),
+                    (before != after).then_some((TARGET, before, after)),
+                );
+            }
+            for start in [36usize, 40, 44, 48, 52, 56, 60] {
+                for (offset, pointer, word) in
+                    [(0usize, 96u32, 66u32), (1, 67, 67), (2, 68, 94)]
+                {
+                    let step = trace
+                        .get(start + offset)
+                        .ok_or("missing reset trace")?;
+                    assert_eq!(step.decoded, Some(b'j'));
+                    assert_eq!(step.before.registers.data_pointer, pointer);
+                    assert_eq!(
+                        step.memory_reads.data.map(|read| read.value),
+                        Some(word),
+                    );
+                }
+            }
+            for (at, byte) in [(47usize, expected[0]), (64, expected[1])] {
+                let step = trace.get(at).ok_or("missing output trace")?;
+                assert_eq!(step.decoded, Some(profile.output_instruction()));
+                assert_eq!(step.output, Some(byte));
+            }
+            assert_eq!(vm.output(), &expected);
+            assert_eq!(vm.memory_word(TARGET), Ok(states[2]));
+            assert_eq!(vm.memory_word(67), Ok(67));
+            assert_eq!(vm.memory_word(68), Ok(94));
+            assert_eq!(vm.input_consumed(), input.len().min(3));
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 46);
     Ok(())
 }

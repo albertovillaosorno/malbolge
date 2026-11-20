@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a second 91-cell N15 loader reset chain now routes
+  physical D through M96=66, M67=67 and M68=94, freeing executable C62.
+  A real guest performs three `/` reads and three successive M95 `p`
+  state writes while emitting the first state at C47 **before** its two
+  later input events, then the final state at C64. Forty-six independent
+  66-step normative VM traces across two seeds verify reads, pointer
+  resets, writes, both output bytes and final state, including EOF, binary
+  and unread suffix cases. The original eight-tail reset remains unchanged.
+  This is a genuine intermediate-output checkpoint, not C23 conversion,
+  dynamic branching, a runtime loop or guest checksum parity; P2 stays open.
+
 - On 2026-11-19, a new physical two-read N15 prefix fold emits the
   **first mutable M95 state** before attempting the second real input, then
   emits the independently updated second state. One source-valid 91-cell
