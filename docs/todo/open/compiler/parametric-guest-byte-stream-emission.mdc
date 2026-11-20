@@ -84,7 +84,10 @@ evidence describe the old priority scheme, not the current phase.
   emits its low byte and C70 halts in 71 VM steps. An independent
   257-value byte-plus-EOF trit truth table and ten complete normative
   VM streams check input ordering, all five reached `p` writes,
-  preserved earlier state, exact M109 word and output. This is not
+  preserved earlier state, exact M109 word and output. Six more
+  independent complete compiler verifier paths accept the same physical
+  source, with negative controls for an invalid EOF-width word, an
+  in-range forged store, and a forged output byte. This is not
   C23 signed normalization, dynamic EOF control or a compiled C
   checksum; P2 remains open.
 

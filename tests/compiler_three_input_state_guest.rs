@@ -269,6 +269,134 @@ fn bounded_verifier_admits_lossless_three_input_arithmetic()
     Ok(())
 }
 
+/// Re-admit exact raw-third-word recovery through the independent bounded
+/// compiler path gate rather than relying only on a VM trace helper.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "independent roundtrip operand and adversarial path witness"
+)]
+fn bounded_verifier_admits_exact_raw_third_word_recovery() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = layout::build_three_input_signed_roundtrip_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let cases = [
+        vec![],
+        vec![0],
+        vec![0, 0],
+        vec![255, 128, 1],
+        vec![3, 4, 5, 9],
+        vec![255, 0, 128],
+    ]
+    .into_iter()
+    .map(|input| {
+        let mut oracle = ThreeInputOracle::new(input)?;
+        let third_word = oracle
+            .input
+            .get(2)
+            .copied()
+            .map_or_else(|| profile.eof_word(), u32::from);
+        let last = oracle
+            .instruction_writes
+            .last_mut()
+            .ok_or("missing final physical write")?;
+        *last = layout::BoundedRevisitInstructionWrite {
+            address: 109,
+            after: third_word,
+            before: SECOND_SEED,
+            opcode: b'p',
+            step: 68,
+        };
+        oracle.data_writes = oracle
+            .instruction_writes
+            .iter()
+            .filter(|write| write.before != write.after)
+            .map(|write| layout::BoundedRevisitDataWrite {
+                step: write.step,
+                address: write.address,
+                before: write.before,
+                after: write.after,
+            })
+            .collect();
+        oracle.code_positions = (0u32..71).collect();
+        oracle.output = [u8::try_from(third_word % 256)
+            .map_err(|error| error.to_string())?];
+        oracle.io_events[3] = layout::BoundedRevisitIoEvent {
+            step: 69,
+            effect: layout::BoundedRevisitIoEffect::Output(oracle.output[0]),
+        };
+        Ok(oracle)
+    })
+    .collect::<Result<Vec<_>, String>>()?;
+    let expectations = cases
+        .iter()
+        .map(ThreeInputOracle::expectation)
+        .collect::<Vec<_>>();
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile,
+        &source,
+        identity,
+        &expectations,
+    )
+    .map_err(|error| format!("roundtrip verifier: {error:?}"))?;
+    assert_eq!(admitted.len(), cases.len());
+    for (path, oracle) in admitted.iter().zip(cases.iter()) {
+        assert_eq!(path.source(), source);
+        assert_eq!(path.input_events(), oracle.input_events);
+        assert_eq!(path.io_events(), oracle.io_events);
+        assert_eq!(path.data_writes(), oracle.data_writes);
+        assert_eq!(path.output(), oracle.output);
+        assert_eq!(path.code_positions(), oracle.code_positions);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                path,
+                &oracle.instruction_writes,
+            ),
+            Ok(())
+        );
+    }
+    let original = cases.first().ok_or("no roundtrip oracle")?;
+    let first_path = admitted.first().ok_or("no roundtrip path")?;
+    let mut forged = original.instruction_writes.clone();
+    let final_write = forged.last_mut().ok_or("no final instruction")?;
+    // Raw signed EOF is the maximum N15 word. XOR with one produces an
+    // out-of-range candidate: reject its invalid claim *before* comparison.
+    final_write.after ^= 1;
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(first_path, &forged),
+        Err(layout::BoundedRevisitError::InvalidExpectation),
+    );
+    // A separate in-range forge must reach the exact instruction mismatch.
+    forged
+        .last_mut()
+        .ok_or("missing forged final instruction")?
+        .after ^= 3;
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(first_path, &forged),
+        Err(layout::BoundedRevisitError::InstructionWritesMismatch),
+    );
+    let mut wrong_output = original.output;
+    wrong_output[0] ^= 1;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                output: &wrong_output,
+                ..original.expectation()
+            },
+        ),
+        Err(layout::BoundedRevisitError::OutputMismatch),
+    );
+    Ok(())
+}
+
 #[test]
 fn triple_signed_read_rejects_historical_profile() {
     assert_eq!(

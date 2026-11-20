@@ -49,6 +49,12 @@ all 256 possible input bytes and true raw N15 EOF. Ten complete
 normative VM paths compare the recovered M109 word, distinct M103
 encoding, first-two input state, five reached physical `p` writes,
 three read events, emitted low byte, consumed input and 71-step halt.
+A second independent compiler-path verifier now accepts six exact
+source-identical 71-step complete witnesses, checking independently
+constructed loader-rotation and `crazy` writes, three signed read
+attempts, final raw M109 store, and output. Its adversarial controls
+distinguish an **invalid N15 out-of-range EOF-forge** from an in-range
+but wrong physical store; they also reject a forged output byte.
 This is a real lossless guest decoder for the profile's raw input
 word, **not** C23 `int` normalization, an EOF branch, source-bound
 assignment, a dynamic checksum loop or checksum guest-output parity.
