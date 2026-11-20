@@ -42,8 +42,13 @@ and C63 emits the resulting encoded low byte before C64 halts.
 Eight finite normative VM paths check true EOF, NUL, high bytes, trailing
 unread input, exact read sites, all four physical `p` writes, preserved
 first-two cross-fold state M95 and untouched saved second word M97, single
-output and 65-step halt. The independently computed 15-trit truth table
-exposes an explicit collision: third inputs 1 and 2 alias in M96. This
+output and 65-step halt. An additional independent 15-trit oracle groups
+all 256 possible third-input bytes into exactly **36 encoded classes**:
+third inputs 1 and 2 collide, while the true N15 EOF sentinel is outside
+all 36 byte-derived classes. Thirty-six representative bytes and the
+separate true EOF case each execute a complete 65-step normative VM path
+with exact read locations, three saved state cells, output and bounded
+input consumption. This
 is three genuine guest reads and a later distinct state update, **not**
 full-width third-byte storage, C23 arithmetic, conditional input control,
 phi copies or the original checksum EOF loop. P2 remains open.

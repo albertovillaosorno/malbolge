@@ -26,6 +26,8 @@
 //! The first two live signed guest words cross-fold before an independent
 //! third word updates a separate cell; neither a C sum nor EOF loop exists.
 
+use std::collections::BTreeMap;
+
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
 
@@ -194,5 +196,87 @@ fn third_read_preserves_cross_fold_and_updates_separate_word()
     // The third 72-seeded cell cannot represent C23 signed input losslessly;
     // these are distinct real input values, but their encoded states alias.
     assert_eq!(independent_crazy(72, 1), independent_crazy(72, 2));
+    Ok(())
+}
+
+/// Prove all distinct third-word classes independently of the guest VM.
+/// Each representative then executes as a complete 65-step physical guest.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "independent complete byte-class and signed-EOF guest witnesses"
+)]
+fn third_state_classes_and_true_eof_have_complete_guest_paths()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut classes = BTreeMap::new();
+    for byte in u8::MIN..=u8::MAX {
+        let _representative = classes
+            .entry(independent_crazy(72, u32::from(byte)))
+            .or_insert(byte);
+    }
+    // With this exact M96 seed the ternary map is not C23 storage: 256
+    // bytes merge into 36 classes. The real EOF word is a separate class.
+    assert_eq!(classes.len(), 36);
+    let eof = independent_crazy(72, profile.eof_word());
+    assert!(!classes.contains_key(&eof));
+    assert_eq!(independent_crazy(72, 1), independent_crazy(72, 2));
+
+    let source =
+        layout::build_cross_fold_followed_by_third_input_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let first = independent_crazy(FIRST_SEED, 42);
+    let second = independent_crazy(SECOND_SEED, 53);
+    let cross = independent_crazy(first, second);
+    for third in classes.values().copied().map(Some).chain([None]) {
+        let third_word = third.map_or_else(|| profile.eof_word(), u32::from);
+        let state = independent_crazy(72, third_word);
+        let mut stream = vec![42, 53];
+        if let Some(byte) = third {
+            stream.push(byte);
+            // The trailing sentinel is deliberately not consumed.
+            stream.push(77);
+        }
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            stream,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut reads = Vec::new();
+        let outcome = vm
+            .run_traced(65, &mut |step| {
+                if let Some(input) = step.input {
+                    reads.push((step.before.registers.code_pointer, input));
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 65,
+        });
+        assert_eq!(reads, [
+            (39, TraceInput::Byte(42)),
+            (47, TraceInput::Byte(53)),
+            (61, third.map_or(TraceInput::EndOfInput, TraceInput::Byte),),
+        ]);
+        assert_eq!(vm.memory_word(95), Ok(cross));
+        assert_eq!(vm.memory_word(96), Ok(state));
+        assert_eq!(vm.memory_word(97), Ok(second));
+        assert_eq!(vm.output(), &[
+            u8::try_from(state % 256).map_err(|error| error.to_string())?
+        ]);
+        assert_eq!(
+            vm.input_consumed(),
+            if third.is_some() {
+                3
+            } else {
+                2
+            }
+        );
+    }
     Ok(())
 }

@@ -82,8 +82,11 @@ evidence describe the old priority scheme, not the current phase.
   writes the third input's separate `crazy(72, third)` into M96.
   Eight complete 65-step normative VM paths verify ordered reads,
   four state writes, both retained first-two words, encoded third
-  output, EOF and unread suffix. Third inputs 1 and 2 collide, so
-  the M96 fold is not lossless C23 state; no loop, mutable source-C
+  output, EOF and unread suffix. An independent trit truth table groups
+  256 third-input bytes into 36 encoded states (1/2 collide), with true
+  EOF outside all byte states; 36 class representatives plus EOF each
+  pass complete 65-step VM execution and exact state/IO checks. The
+  M96 fold is not lossless C23 state; no loop, mutable source-C
   arithmetic or checksum guest parity is claimed. P2 stays open.
 
 - On 2026-11-20, a bounded 104-candidate source-valid one-cell
