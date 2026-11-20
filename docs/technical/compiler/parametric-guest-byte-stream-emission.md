@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Lossless first-input seed conflicts with the frozen jump chain (2026-11-20)
+
+The complete mutable EOF checksum was retried with its five independent
+C23 native/oracle cases and an explicit no-publication guest refusal. The
+real C32 state, arithmetic, phi, and EOF backedge linker is still missing.
+A new finite guest-storage experiment examines the already-executed 132-cell
+second-input EOF skeleton, rather than treating a saved discriminator as a
+lossless `int` local. The independent 15-trit oracle exhausts all 243
+choices of `o`, `p`, or `*` at C9..C13, with the original graphical tail and
+a C14 `p` preseed. Even allowing code edits that would invalidate the EOF
+arm, the best M132 fold distinguishes only 175 of 256 successful bytes.
+
+Across all 8,836 graphical C130/C131 tails, C14's single preseed yields
+1,763 distinct tails whose M132 fold is injective over all 256 input bytes
+and true EOF. Not one of these tails preserves the existing C18/C19
+loader-derived two-jump restoration of D=135 at C20. In a concrete real-VM
+counterexample, replacing tail `-}` with `b}` gives an injective
+mathematical seed, but the reached C20 data pointer is 122, not 135, and
+the original 119-step second-EOF halt is lost. The three focused Rust
+checks in `tests/compiler_full_width_input_state.rs` distinguish those
+non-executable seeds from real guest effects.
+
+This only excludes the frozen five-cell preseed grammar and the unmodified
+two-jump continuation, not redesigned pointer restoration, other code/data
+layouts, or general C32 guest storage. No lossless first-input operation,
+source-C checksum artifact, or runtime-loop parity is established; P2 remains
+open.
+
 ### Rejected byte-injective seed with broken physical EOF control (2026-11-20)
 
 An independent 15-trit oracle finds a mathematically injective first-input

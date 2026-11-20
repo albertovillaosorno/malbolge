@@ -75,6 +75,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the unchanged mutable EOF checksum still passes its
+  three native/explicit-refusal tests, with no executable guest artifact.
+  An independent 15-trit finite search of all 243 `o`/`p`/`*` C9..C13
+  preseed sequences with the original loader tail yields at most 175
+  distinguishable bytes, not lossless C23 first-input state. Among all
+  8,836 graphical two-cell loader tails, 1,763 offer a mathematical
+  byte-plus-EOF-injective C14/M132 preseed, but **zero** retain the frozen
+  C18/C19 two-jump D=135 restoration at C20. An actual N15 VM run with
+  `b}` tail reaches D=122 at C20 and fails the original 119-step EOF
+  halt. Three dedicated Rust tests pin both exact bounds and this real
+  control counterexample. This excludes only the scoped physical grammar;
+  source-C C32 state, arithmetic, phi, dynamic loop and guest parity remain
+  unlinked. P2 stays open.
+
 - On 2026-11-20, the 132-cell guest's physically pinned loader
   rejects a tempting all-six-one-trit M131 preseed. Altered graphical tail
   `a}` plus C10/C12/C13 `p` creates a 256-byte-plus-EOF-injective
