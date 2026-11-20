@@ -28,6 +28,16 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Published two-read guest parity matrix (2026-11-20)
+
+The exact two-read C23 EOF source, already published through the real compiler,
+now has a frozen 46-case seeded binary matrix. A separately computed C23
+oracle agrees with pinned Clang -O0/-O2 UBSan on all inputs; 12 fixed cases
+also execute as real N15 guest processes and match both output bytes and
+119/175-step halt boundaries. The remaining native-only cases are not claimed
+as guest observations. This is a bounded fixed source grammar, not generalized
+C branching, full-width mutable storage or the original P2 EOF checksum.
+
 ### First-word EOF discriminator survives a second read (2026-11-20)
 
 A new bounded 132-cell N15 source variant changes C62 from inert code to

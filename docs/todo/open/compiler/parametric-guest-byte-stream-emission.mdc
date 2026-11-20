@@ -73,6 +73,14 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the already-published fixed two-read C23 EOF branch
+  passed a deterministic 46-input seeded matrix with an independent oracle.
+  Pinned Clang C23 -O0/-O2 with UBSan matched all 46 binary, EOF and unread
+  suffix streams. One source-authenticated guest artifact matched 12 pinned
+  representative inputs in the normative VM, including exact 119/175-step
+  terminations. This does not create general conditional lowering, C32
+  mutable state or the original checksum runtime loop. P2 remains open.
+
 - On 2026-11-20, C62 `p` in the 132-cell physical second-input branch
   retains a first-input-dependent M132 word before C63 overwrites A.
   Eight complete VM paths bind the exact data write, independent signed
