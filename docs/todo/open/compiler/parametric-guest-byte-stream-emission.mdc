@@ -79,8 +79,12 @@ evidence describe the old priority scheme, not the current phase.
   write. A red-first original-source regression rejected the prior acceptance
   of block 2's terminator at its first cell; all seven blocks independently
   refuse a one-cell-short precontrol reservation and accept the exact
-  necessary minimum. This does not lower a C32 operation or emit the
-  branch, phi copies or checksum; final guest linkage remains refused.
+  necessary minimum. A second red-first check now charges every scalar
+  destination word plus the separately required signed `/` input instruction.
+  All seven original blocks need at least 15/1/3/4/4/7/2 precontrol cells;
+  the former 14-cell entry admission now refuses. This does not lower a
+  C32 operation or emit the branch, phi copies or checksum; final guest
+  linkage remains refused.
 
 - On 2026-11-20, source-authenticated proposed phi pads explicitly bind
   their final successor-transfer code address. The four actual checksum

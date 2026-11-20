@@ -645,11 +645,12 @@ fn validate_code_proposals(
     {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
-    // At least one physical instruction cell is owed by each canonical
-    // runtime operation, and every literal cell is a separate data write.
-    // The control sequence cannot start before those operations fit. This is
-    // only a necessary capacity bound: it does not encode or execute any
-    // guest instruction, nor prove the eventual C32 implementation fits.
+    // Every frame-backed result has a distinct physical word per slot; an
+    // instruction writes at most one guest data cell. Getchar/byte input also
+    // requires a separate real `/` instruction, which only changes A, not
+    // those frame cells. Constants require every addressed literal write.
+    // This is a necessary capacity bound, not a claim that C32 arithmetic
+    // or control flow can actually fit in the proposed source interval.
     for source_block in blocks {
         let placement = starts
             .get(&(source_block.function, source_block.block))
@@ -658,9 +659,19 @@ fn validate_code_proposals(
             .instructions
             .iter()
             .try_fold(0u32, |count, instruction| {
-                let cells =
-                    u32::try_from(instruction.constant_cells.len().max(1))
-                        .ok()?;
+                let literal_writes =
+                    u32::try_from(instruction.constant_cells.len()).ok()?;
+                let destination_writes = instruction
+                    .write
+                    .map_or(0, |destination| destination.words);
+                let input_steps = u32::from(matches!(
+                    instruction.instruction,
+                    Instruction::Getchar { .. } | Instruction::ByteInput { .. }
+                ));
+                let cells = destination_writes
+                    .checked_add(input_steps)?
+                    .max(literal_writes)
+                    .max(1);
                 count.checked_add(cells)
             })
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;

@@ -1516,6 +1516,7 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
         GuestCodePlacementError, GuestCodeProposals,
         bind_source_locked_cfg_code_targets,
     };
+    use super::typed_cfg_adapter::typed::Instruction as GuestTypedInstruction;
 
     let wire =
         source_locked_checksum_wire().expect("original C23 typed source");
@@ -1567,8 +1568,20 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
         let minimum = operation_block
             .instructions
             .iter()
-            .map(|instruction| instruction.constant_cells.len().max(1))
+            .map(|instruction| {
+                let writes = instruction.write.map_or(0, |slot| slot.words);
+                let input = u32::from(matches!(
+                    instruction.instruction,
+                    GuestTypedInstruction::Getchar { .. }
+                        | GuestTypedInstruction::ByteInput { .. }
+                ));
+                usize::try_from(writes + input)
+                    .unwrap()
+                    .max(instruction.constant_cells.len())
+                    .max(1)
+            })
             .sum::<usize>();
+        assert_eq!(minimum, [15, 1, 3, 4, 4, 7, 2][id]);
         if minimum == 0 {
             continue;
         }

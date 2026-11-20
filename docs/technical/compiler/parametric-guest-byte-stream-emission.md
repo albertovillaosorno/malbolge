@@ -39,6 +39,13 @@ acceptance of a control site at block 2's first cell, despite its 32-bit AND
 and Boolean comparison, then checked the exactly-short and minimally admitted
 control starts independently for every one of the seven source blocks.
 
+The lower bound now also counts each destination's distinct frame words:
+C32 arithmetic/casts must reserve at least two guest memory stores, and a
+signed `getchar` additionally reserves a real `/` instruction before its
+two frame writes. The seven original blocks require respectively at least
+15, 1, 3, 4, 4, 7 and 2 precontrol code cells. A second red-first case
+previously accepted a 14-cell entry block; it now refuses that proposal.
+
 This is a **necessary** lower bound on proposed code space, not a guest
 implementation: C32 arithmetic and casts may need many more cells, and no
 actual constant store, operation, conditional branch or EOF loop is linked.
