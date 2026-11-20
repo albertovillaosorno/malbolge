@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, the source-locked placed checksum CFG now attaches
+  each of its two conditional arms, four jumps and one return to the
+  exact addressed phi snapshots and commits of its own predecessor edge.
+  The checked 43-word N15 frame includes four simultaneous word copies
+  on the source backedge, without a host-selected branch. Missing,
+  duplicate and orphan phi bindings reject in the relocator. The
+  red-first whole-source regression and 194 frontend tests pass, as
+  do all three native C23 checksum/refusal tests. No physical guest
+  instruction, dynamic branch, phi write or EOF loop has been linked;
+  five guest checksum parity traces are still missing and P2 stays open.
+
 - On 2026-11-19, the unchanged complete C23 EOF checksum still
   refuses publication at physical target linkage, after all five native
   `-O0`/`-O2` binary-input controls pass. The CLI now derives its rejection

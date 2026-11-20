@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Edge-specific addressed control handoff (2026-11-19)
+
+The complete source-locked seven-block checksum CFG now binds each placed
+block's symbolic `Jump`, `Branch` (both arms), or `Return` to its own
+predecessor-sensitive phi-copy obligations. Each reachable successor has
+an exact block identity; phi-bearing edges carry first all physical N15
+scratch snapshots, then all destination commits, with no host-selected
+branch arm. The relocator independently checks the CFG's phi-bearing
+successors and refuses missing, duplicated, or orphaned transfers rather
+than silently substituting an empty edge. A red-first whole-source test
+covers two branches, four jumps, one return and the four-cell EOF backedge;
+194 frontend tests and the three native-C/checksum refusal tests pass.
+
+This is a more concrete **data-only linker handoff**, not emitted code.
+No guest branch, phi store, checksum arithmetic, EOF loop, or guest checksum
+output exists yet. The unchanged compiler still refuses publication before
+target layout; P2 acceptance remains open.
+
 ### Source-locked dynamic checksum now reports precise prelink obligations
 
 The unchanged C23 mutable EOF checksum passes canonical typed IR, the complete

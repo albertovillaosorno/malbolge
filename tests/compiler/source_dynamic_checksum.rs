@@ -1165,6 +1165,95 @@ fn prove_source_checksum_relocation() -> Result<(), String> {
 }
 
 #[test]
+fn source_checksum_control_edges_bind_their_own_phi_copies() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestPlacedControl, GuestPlacedControlEdge, relocate_source_locked_cfg,
+    };
+    use super::typed_cfg_adapter::typed::Terminator as CfgTerminator;
+
+    let wire =
+        source_locked_checksum_wire().expect("pinned source-backed wire");
+    let relocated = relocate_source_locked_cfg(&wire, 2048, 4096)
+        .expect("source-locked checksum placement");
+    let expected_edge = |function, predecessor, successor| {
+        let phi = relocated.phi_edges.iter().find(|edge| {
+            (edge.function, edge.predecessor, edge.successor)
+                == (function, predecessor, successor)
+        });
+        GuestPlacedControlEdge {
+            successor,
+            snapshots: phi.map_or_else(Vec::new, |edge| edge.snapshots.clone()),
+            commits: phi.map_or_else(Vec::new, |edge| edge.commits.clone()),
+        }
+    };
+    let mut branches = 0;
+    let mut jumps = 0;
+    let mut returns = 0;
+    for (block, original) in relocated
+        .operation_blocks
+        .iter()
+        .zip(&relocated.prelink.operation_blocks)
+    {
+        match (&block.control, &original.control.terminator) {
+            (
+                GuestPlacedControl::Jump { edge },
+                CfgTerminator::Jump { target },
+            ) => {
+                jumps += 1;
+                assert_eq!(
+                    *edge,
+                    expected_edge(block.function, block.block, target.value())
+                );
+            },
+            (
+                GuestPlacedControl::Branch { when_false, when_true },
+                CfgTerminator::Branch {
+                    false_target,
+                    true_target,
+                    ..
+                },
+            ) => {
+                branches += 1;
+                assert_eq!(
+                    *when_false,
+                    expected_edge(
+                        block.function,
+                        block.block,
+                        false_target.value()
+                    )
+                );
+                assert_eq!(
+                    *when_true,
+                    expected_edge(
+                        block.function,
+                        block.block,
+                        true_target.value()
+                    )
+                );
+            },
+            (GuestPlacedControl::Return, CfgTerminator::Return { .. }) => {
+                returns += 1;
+            },
+            _ => panic!("physical data plan lost canonical CFG control"),
+        }
+    }
+    assert_eq!((branches, jumps, returns), (2, 4, 1));
+    // The actual checksum backedge takes snapshots *before* committing the
+    // two carried C32 values. No host-side input selected that edge.
+    let backedge = &relocated.operation_blocks[5];
+    let GuestPlacedControl::Jump { edge } = &backedge.control else {
+        panic!("checksum block 5 must jump back to block 1");
+    };
+    assert_eq!(edge.successor, 1);
+    assert_eq!(edge.snapshots.len(), 4);
+    assert_eq!(edge.commits.len(), 4);
+    assert!(edge.snapshots.iter().all(|copy| {
+        (4096..4139).contains(&copy.source)
+            && (4096..4139).contains(&copy.destination)
+    }));
+}
+
+#[test]
 fn source_checksum_relocates_operation_control_and_phi_cells() {
     assert_eq!(prove_source_checksum_relocation(), Ok(()));
 }
