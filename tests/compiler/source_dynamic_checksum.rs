@@ -1296,6 +1296,7 @@ fn checksum_proposed_code_blocks()
         end_exclusive,
         function: 0,
         start,
+        control_start: end_exclusive - 1,
     })
     .collect()
 }
@@ -1357,6 +1358,21 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     assert_eq!(addressed.edge_pads, pads);
     assert_eq!(addressed.relocated.operation_blocks.len(), 7);
     assert_eq!(addressed.control_edges.len(), 8);
+    assert_eq!(addressed.function_entries, vec![
+        super::typed_cfg_adapter::state_relocation::GuestCodeFunctionEntry {
+            function: 0,
+            block: 0,
+            address: 64,
+        }
+    ]);
+    assert_eq!(addressed.return_sites, vec![
+        super::typed_cfg_adapter::state_relocation::GuestCodeReturnSite {
+            function: 0,
+            block: 6,
+            address: 239,
+            value: None,
+        }
+    ]);
     let mut targets = addressed
         .control_edges
         .iter()
@@ -1376,6 +1392,8 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     let original_edges = &addressed.relocated.phi_edges;
     for GuestCodeControlEdge {
         commits,
+        condition,
+        control_address,
         entry_address,
         function,
         kind,
@@ -1386,6 +1404,15 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     } in &addressed.control_edges
     {
         assert_eq!(*function, 0);
+        let predecessor_block = &addressed.relocated.operation_blocks
+            [usize::try_from(*predecessor).expect("canonical predecessor")];
+        assert_eq!(*condition, predecessor_block.condition);
+        assert_eq!(
+            *control_address,
+            proposed
+                [usize::try_from(*predecessor).expect("canonical predecessor")]
+            .control_start
+        );
         assert_eq!(*kind, match *predecessor {
             1 | 2 if *successor == 2 || *successor == 3 => {
                 GuestCodeEdgeKind::WhenTrue
@@ -1486,6 +1513,17 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     let mut reversed = proposed.clone();
     reversed[0].end_exclusive = reversed[0].start - 1;
     assert_eq!(check(&reversed), refusal);
+    // A proposed control sequence may start at any cell *inside* its block;
+    // the last cell is a fixture choice, not an artificial linker rule.
+    let mut control_at_block_start = proposed.clone();
+    control_at_block_start[2].control_start = proposed[2].start;
+    assert!(check(&control_at_block_start).is_ok());
+    let mut control_before_block = proposed.clone();
+    control_before_block[2].control_start = proposed[2].start - 1;
+    assert_eq!(check(&control_before_block), refusal);
+    let mut control_after_block = proposed.clone();
+    control_after_block[2].control_start = proposed[2].end_exclusive;
+    assert_eq!(check(&control_after_block), refusal);
     let mut collision = proposed.clone();
     collision[1].start = collision[0].start;
     assert_eq!(check(&collision), refusal);

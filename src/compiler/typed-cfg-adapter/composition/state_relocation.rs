@@ -205,6 +205,9 @@ pub struct GuestCodeBlockPlacement {
     pub start: u32,
     /// First guest source address following this block (exclusive).
     pub end_exclusive: u32,
+    /// Proposed first instruction of the terminating control sequence.
+    /// The interval must contain it, but no actual opcode is verified.
+    pub control_start: u32,
 }
 
 /// Which source control outcome must execute one physical edge.
@@ -257,6 +260,10 @@ pub struct GuestCodeProposals<'source> {
 pub struct GuestCodeControlEdge {
     /// Physical scratch-to-phi assignments, after all snapshots.
     pub commits: Vec<GuestPlacedCellCopy>,
+    /// Original typed branch Boolean, absent on unconditional jumps.
+    pub condition: Option<GuestPlacedOperand>,
+    /// Proposed first code position implementing this predecessor's control.
+    pub control_address: u32,
     /// Physical entry to the phi pad, or directly to the successor if none.
     /// This is the proposed address the predecessor must branch to.
     pub entry_address: u32,
@@ -274,6 +281,30 @@ pub struct GuestCodeControlEdge {
     pub target_address: u32,
 }
 
+/// A source-authenticated function's proposed physical code entry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeFunctionEntry {
+    /// Canonical entry block identity, not inferred from code order.
+    pub block: u32,
+    /// Proposed start of this function's entry block.
+    pub address: u32,
+    /// Canonical function identity.
+    pub function: u32,
+}
+
+/// One source return's proposed physical control entry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeReturnSite {
+    /// Canonical block ending in Return.
+    pub block: u32,
+    /// First proposed code cell of this block's return sequence.
+    pub address: u32,
+    /// Canonical function identity.
+    pub function: u32,
+    /// Optional addressed scalar returned by the function.
+    pub value: Option<GuestPlacedOperand>,
+}
+
 /// Addressed code-edge obligations attached to an authenticated data plan.
 ///
 /// The code intervals are supplied *proposals*. No opcode, physical jump,
@@ -286,6 +317,10 @@ pub struct GuestAddressedCfgPlan {
     pub control_edges: Vec<GuestCodeControlEdge>,
     /// Required phi pads, in canonical edge order, disjoint from all blocks.
     pub edge_pads: Vec<GuestCodeEdgePadPlacement>,
+    /// Entry address for each canonical source function, never first by guess.
+    pub function_entries: Vec<GuestCodeFunctionEntry>,
+    /// Every return's separate physical control site and optional scalar.
+    pub return_sites: Vec<GuestCodeReturnSite>,
     /// The unchanged authenticated operation and data relocation obligations.
     pub relocated: GuestRelocatedCfgPlan,
 }
@@ -589,6 +624,8 @@ fn validate_code_proposals(
     let mut starts = BTreeMap::new();
     for block in proposed {
         if block.start >= block.end_exclusive
+            || block.control_start < block.start
+            || block.control_start >= block.end_exclusive
             || block.end_exclusive > source_cells
             || starts
                 .insert((block.function, block.block), *block)
@@ -642,6 +679,8 @@ fn validate_code_proposals(
 fn proposed_code_edge(
     key: (u32, u32, GuestCodeEdgeKind),
     edge: &GuestPlacedControlEdge,
+    control_address: u32,
+    condition: Option<GuestPlacedOperand>,
     index: &mut CodeEdgeIndex<'_>,
 ) -> Result<GuestCodeControlEdge, GuestCodePlacementError> {
     let (function, predecessor, kind) = key;
@@ -665,6 +704,8 @@ fn proposed_code_edge(
     }
     Ok(GuestCodeControlEdge {
         commits: edge.commits.clone(),
+        condition,
+        control_address,
         entry_address: pad.map_or(target_address, |placement| placement.start),
         function,
         kind,
@@ -710,9 +751,26 @@ pub fn bind_source_locked_cfg_code_targets(
         source_cells,
         &relocated.operation_blocks,
     )?;
+    let function_entries = relocated
+        .prelink
+        .cfg
+        .functions
+        .iter()
+        .map(|function| {
+            starts
+                .get(&(function.id, function.entry))
+                .map(|entry| GuestCodeFunctionEntry {
+                    block: function.entry,
+                    address: entry.start,
+                    function: function.id,
+                })
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let mut code_blocks = Vec::with_capacity(proposed.len());
     let mut control_edges = Vec::new();
     let mut edge_pads = Vec::with_capacity(proposed_pads.len());
+    let mut return_sites = Vec::new();
     for block in &relocated.operation_blocks {
         let placement = starts
             .get(&(block.function, block.block))
@@ -728,6 +786,10 @@ pub fn bind_source_locked_cfg_code_targets(
             control_edges.push(proposed_code_edge(
                 (block.function, block.block, kind),
                 edge,
+                placement.control_start,
+                (kind != GuestCodeEdgeKind::Jump)
+                    .then_some(block.condition)
+                    .flatten(),
                 &mut index,
             )?);
             Ok::<(), GuestCodePlacementError>(())
@@ -740,7 +802,14 @@ pub fn bind_source_locked_cfg_code_targets(
             GuestPlacedControl::Jump { edge } => {
                 bind(GuestCodeEdgeKind::Jump, edge)?;
             },
-            GuestPlacedControl::Return => {},
+            GuestPlacedControl::Return => {
+                return_sites.push(GuestCodeReturnSite {
+                    block: block.block,
+                    address: placement.control_start,
+                    function: block.function,
+                    value: block.return_value,
+                });
+            },
         }
     }
     if edge_pads.len() != pads.len() {
@@ -750,6 +819,8 @@ pub fn bind_source_locked_cfg_code_targets(
         code_blocks,
         control_edges,
         edge_pads,
+        function_entries,
+        return_sites,
         relocated,
     })
 }

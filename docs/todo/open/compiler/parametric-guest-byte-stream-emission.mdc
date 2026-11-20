@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, the unchanged source-locked seven-block checksum now
+  carries its **canonical function entry**, one separate **return site**, a
+  source-bounded proposed terminator entry per block and the original typed
+  Boolean on both branch arms. The existing four edge-specific phi pads still
+  protect all parallel writes. Red-first missing-field checks and invalid
+  control-start refusals pass in the focused frontend suite. These are
+  untrusted code-address obligations, with no emitted guest instructions,
+  working branch, checksum loop, VM output or P2 parity claim.
+
 - On 2026-11-19, the original seven-block checksum's eight proposed CFG
   control arms now distinguish successor *targets* from actual predecessor
   *entries*. Four source-bounded, nonoverlapping proposed phi landing pads

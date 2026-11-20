@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked function and terminating-control entry proposals
+
+The unchanged seven-block C23 EOF checksum now exposes one proposed **function
+entry** (block 0 at code address 64) and one **return site** (block 6 at
+address 239) alongside all eight original unselected CFG control edges.
+Every proposed block interval additionally reserves a source-contained
+`control_start` for its terminating control sequence. Each branch arm carries
+the same **original addressed Boolean operand** and predecessor control entry;
+ordinary jumps carry no Boolean, while the separate return record preserves
+its optional typed result. The original four predecessor-specific phi pads and
+two-phase word-copy obligations remain unchanged. Relocation independently
+binds function entries to the canonical CFG, not to caller order, and refuses
+terminator addresses outside their corresponding block intervals.
+
+These are source-backed **address obligations only**: no actual graphical
+instruction decodes at these proposed sites, no binary branch or dynamic loop
+runs, and no C32 checksum arithmetic or source-language return has been linked.
+The full five-vector native C23 test still expects physical-linkage refusal
+without a published guest artifact. P2 guest parity remains open.
+
 ### CFG phi edges now reserve predecessor-specific code entry pads
 
 The original seven-block mutable C23 EOF checksum still refuses physical
