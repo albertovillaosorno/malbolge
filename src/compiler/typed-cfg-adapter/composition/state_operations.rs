@@ -107,7 +107,7 @@ fn cell(
         .ok_or(TypedCfgAdapterError::GuestStateAllocation)
 }
 
-fn literal_cells(
+pub(super) fn literal_cells(
     instruction: &Instruction,
     destination: Option<GuestStorageValue>,
 ) -> Result<Vec<GuestConstantCell>, TypedCfgAdapterError> {

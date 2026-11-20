@@ -807,6 +807,36 @@ fn required_operation_effects(
         {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
+        if let Instruction::ConstantInteger { result, .. } =
+            &instruction.instruction
+        {
+            if destination.value != result.value() {
+                return Err(GuestCodePlacementError::InvalidCodePlacement);
+            }
+            let source_slot = GuestStorageValue {
+                offset: destination.address,
+                type_kind: destination.type_kind,
+                value: destination.value,
+                words: destination.words,
+            };
+            let expected = super::state_operations::literal_cells(
+                &instruction.instruction,
+                Some(source_slot),
+            )
+            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+            let expected_cells = expected
+                .iter()
+                .map(|cell| (cell.destination, cell.word))
+                .collect::<Vec<_>>();
+            let actual_cells = instruction
+                .constant_cells
+                .iter()
+                .map(|cell| (cell.address, cell.word))
+                .collect::<Vec<_>>();
+            if expected_cells != actual_cells {
+                return Err(GuestCodePlacementError::InvalidCodePlacement);
+            }
+        }
         let literal_by_address = instruction
             .constant_cells
             .iter()
@@ -1371,7 +1401,7 @@ mod tests {
                 GuestPlacedLiteralCell { address: first, word: 0 },
                 GuestPlacedLiteralCell {
                     address: first + 1,
-                    word: 299,
+                    word: 0,
                 },
             ],
             instruction: Instruction::ConstantInteger {
@@ -1392,14 +1422,18 @@ mod tests {
                 },
                 GuestCodeOperationEffect::Store {
                     destination: first + 1,
-                    literal: Some(299),
+                    literal: Some(0),
                 },
             ])
         );
         let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+        instruction.constant_cells[1].word = 299;
+        assert_eq!(required_operation_effects(&instruction), refusal);
         instruction.constant_cells[1].word = CURRENT_WORD_COUNT;
         assert_eq!(required_operation_effects(&instruction), refusal);
-        instruction.constant_cells[1].word = 299;
+        instruction.constant_cells[1].word = 0;
+        instruction.write = Some(GuestPlacedOperand { value: 32, ..operand });
+        assert_eq!(required_operation_effects(&instruction), refusal);
         instruction.write = Some(GuestPlacedOperand {
             address: CURRENT_WORD_COUNT - 1,
             ..operand

@@ -49,8 +49,11 @@ The following address-binding guards additionally reject forged input
 SSA identities, widths, signedness, extra input operands, and output sites
 that read a different source SSA value or a multiword non-U8 value. A
 red-first test exercises both input kinds and the checksum-style final
-byte output. These are necessary code-linker invariants, not an executable.
-The two input conversions, unsigned arithmetic/XOR, conditional branches,
+byte output. Code-site literal stores additionally recheck the original
+source integer bits using the same canonical N15 word encoder as typed
+placement; forged literal values, result identities, out-of-memory words,
+and zero-width targets all fail closed. These are necessary code-linker
+invariants, not an executable. The two input conversions, unsigned arithmetic/XOR, conditional branches,
 parallel phi copies and live EOF backedge still lack a unified verified
 executable linker. No checksum guest artifact is emitted; P2 remains open.
 
