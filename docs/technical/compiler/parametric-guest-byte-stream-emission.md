@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-block operations reserve physical cells before control (2026-11-20)
+
+The seven-block original C23 checksum's addressed CFG now rejects a proposed
+terminator that starts before the block's complete typed instruction sequence
+can fit. Each ordered runtime operation requires at least one separate guest
+instruction cell, and a 32-bit constant with two addressed literal writes
+requires at least two. An original-source red-first regression first exposed
+acceptance of a control site at block 2's first cell, despite its 32-bit AND
+and Boolean comparison, then checked the exactly-short and minimally admitted
+control starts independently for every one of the seven source blocks.
+
+This is a **necessary** lower bound on proposed code space, not a guest
+implementation: C32 arithmetic and casts may need many more cells, and no
+actual constant store, operation, conditional branch or EOF loop is linked.
+The full source still refuses publication of an executable checksum; the
+native -O0/-O2 input oracle remains the only whole-program parity evidence.
+
 ### Phi-copy pads bind successor jump sites (2026-11-20)
 
 The addressed source-locked CFG now carries `pad_exit_address` for every

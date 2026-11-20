@@ -645,6 +645,29 @@ fn validate_code_proposals(
     {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
+    // At least one physical instruction cell is owed by each canonical
+    // runtime operation, and every literal cell is a separate data write.
+    // The control sequence cannot start before those operations fit. This is
+    // only a necessary capacity bound: it does not encode or execute any
+    // guest instruction, nor prove the eventual C32 implementation fits.
+    for source_block in blocks {
+        let placement = starts
+            .get(&(source_block.function, source_block.block))
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let required = source_block
+            .instructions
+            .iter()
+            .try_fold(0u32, |count, instruction| {
+                let cells =
+                    u32::try_from(instruction.constant_cells.len().max(1))
+                        .ok()?;
+                count.checked_add(cells)
+            })
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        if placement.control_start - placement.start < required {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
     let mut pads = BTreeMap::new();
     for pad in proposed_pads {
         if pad.start >= pad.end_exclusive

@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the original source-authenticated checksum's proposed
+  block-to-control intervals now reserve at least one physical code cell
+  per typed operation and a separate cell for every mandatory literal word
+  write. A red-first original-source regression rejected the prior acceptance
+  of block 2's terminator at its first cell; all seven blocks independently
+  refuse a one-cell-short precontrol reservation and accept the exact
+  necessary minimum. This does not lower a C32 operation or emit the
+  branch, phi copies or checksum; final guest linkage remains refused.
+
 - On 2026-11-20, source-authenticated proposed phi pads explicitly bind
   their final successor-transfer code address. The four actual checksum
   entry/join/backedge pads yield C279, C303, C327 and C375, whereas all

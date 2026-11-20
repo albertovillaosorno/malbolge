@@ -1551,11 +1551,36 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     let mut reversed = proposed.clone();
     reversed[0].end_exclusive = reversed[0].start - 1;
     assert_eq!(check(&reversed), refusal);
-    // A proposed control sequence may start at any cell *inside* its block;
-    // the last cell is a fixture choice, not an artificial linker rule.
+    // The source's block 2 computes a live condition before branching.
+    // A proposed terminator at its entry leaves no real instruction cell
+    // to realize even the first typed operation: this must fail closed.
     let mut control_at_block_start = proposed.clone();
     control_at_block_start[2].control_start = proposed[2].start;
-    assert!(check(&control_at_block_start).is_ok());
+    assert_eq!(check(&control_at_block_start), refusal);
+    // Each original typed operation requires its own instruction cell, and
+    // multiword constants require a separate cell per mandatory write.
+    // Preserve the final cell for a real terminator, not a host branch.
+    let plan = super::typed_cfg_adapter::prepare_canonical_dynamic_cfg(&wire)
+        .expect("original checksum must have verified typed operations");
+    for operation_block in &plan.operation_blocks {
+        let id = usize::try_from(operation_block.block).unwrap();
+        let minimum = operation_block
+            .instructions
+            .iter()
+            .map(|instruction| instruction.constant_cells.len().max(1))
+            .sum::<usize>();
+        if minimum == 0 {
+            continue;
+        }
+        let mut one_cell_short = proposed.clone();
+        one_cell_short[id].control_start =
+            one_cell_short[id].start + u32::try_from(minimum - 1).unwrap();
+        assert_eq!(check(&one_cell_short), refusal, "block {id}");
+        let mut exact = proposed.clone();
+        exact[id].control_start =
+            exact[id].start + u32::try_from(minimum).unwrap();
+        assert!(check(&exact).is_ok(), "block {id}");
+    }
     let mut control_before_block = proposed.clone();
     control_before_block[2].control_start = proposed[2].start - 1;
     assert_eq!(check(&control_before_block), refusal);
