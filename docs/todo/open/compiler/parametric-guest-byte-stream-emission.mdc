@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a four-cell continuation of the valid guarded
+  third-input guest passed true second-EOF termination but failed on the
+  successful byte arm. C104 `o` and C112 `p` let the path run beyond
+  C101, while C115/C116 reserve output/halt. The unmodified C114 `i`
+  executes a second time with high-memory D and rejects an invalid
+  encryption target before output. Six complete VM byte/EOF inputs
+  pin this defect, including successful second bytes 31/255 and a
+  missing third byte. No invalid third echo is linked, the original
+  mutable EOF checksum still refuses, and P2 stays open.
+
 - On 2026-11-20, the strict source-C23 two-read EOF compiler path now
   authenticates a full program with a **third discarded `getchar()` only
   inside the second-byte success branch**. The real 2,103-byte Malbolge

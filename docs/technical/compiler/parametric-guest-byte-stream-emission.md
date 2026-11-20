@@ -57,6 +57,24 @@ input is intentionally discarded; it is not echoed, used in C arithmetic,
 or C32 state. The original seven-block mutable EOF checksum still has
 no executable operation/phi/backedge linker. P2 remains open.
 
+### Rejected late third-output tail after guarded read (2026-11-20)
+
+The source-valid 132-cell guarded third-read guest can revisit C101 and
+consume a third input without confusing second-byte values 31 or 255 with
+EOF. A separate four-cell continuation experiment changes C104 from `*`
+to inert `o`, C112 from `o` to `p` (avoiding its encrypted `i`), and adds
+an output/halt at C115/C116. Real N15 guest execution preserves the
+119-step second-EOF arm and its two physical input events. However, on
+successful second inputs 4, 31 and 255, the guest executes its third
+physical read at C101 and then revisits the **unmodified C114 `i`** with
+high-memory D. The instruction attempts to encrypt a non-graphical
+C=7,174,350 target and fails before the new output, even when the third
+read itself sees EOF. The focused regression freezes exact read sites,
+stdout, source-cell mutations and rejected continuation. This is a
+bounded failed physical relocation, not a source-C third-byte echo,
+proof of impossibility, or P2 checksum acceptance. Correctly routing
+past C114 still requires a genuine branch-layout change.
+
 ### Failed three-cell EOF/third-output repair (2026-11-20)
 
 A physical branch variant changes C62 into first-pass `j` / second-pass

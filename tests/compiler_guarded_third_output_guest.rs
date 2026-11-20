@@ -173,3 +173,115 @@ fn third_echo_with_extra_jump_still_misclassifies_non_eof_bytes()
     // *successful* second bytes; it must never be published as C23 EOF.
     Ok(())
 }
+
+#[test]
+fn third_read_continuation_cannot_reuse_unrelocated_indirect_jump()
+-> Result<(), String> {
+    let profile = current_profile();
+    let original =
+        layout::build_second_input_guarded_third_read_source(profile)
+            .map_err(|error| format!("physical branch: {error:?}"))?;
+    let mut source = original.clone();
+    // First pass: C104 becomes inert, C112 performs a data write, and
+    // C115/C116 are a proposed byte-output/halt tail. On success the
+    // encrypted revisit of C104 no longer halts, while C112 no longer
+    // decodes as an unintended indirect jump. This does not fix the
+    // *unmodified* C114 indirect jump, which was not self-encrypted when
+    // it transferred on the first pass.
+    for (position, opcode) in
+        [(104, b'o'), (112, b'p'), (115, b'<'), (116, b'v')]
+    {
+        let encoded = graphical_opcode(position, opcode)
+            .ok_or_else(|| format!("missing graphical opcode {opcode} at {position}"))?;
+        let cell = source
+            .get_mut(position)
+            .ok_or_else(|| format!("missing physical cell {position}"))?;
+        *cell = encoded;
+    }
+    assert_eq!(
+        source
+            .iter()
+            .zip(&original)
+            .enumerate()
+            .filter(|(_, (actual, before))| actual != before)
+            .map(|(position, _)| position)
+            .collect::<Vec<_>>(),
+        [104, 112, 115, 116],
+    );
+    assert_eq!(
+        [source.get(104), source.get(112), source.get(115), source.get(116)],
+        [Some(&58), Some(&44), Some(&78), Some(&59)],
+    );
+
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for (input, expected_output) in
+        [(Vec::new(), vec![106, 30]), (vec![3], vec![3, 30])]
+    {
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut read_sites = Vec::new();
+        assert_eq!(
+            vm.run_traced(200, &mut |step| {
+                if step.input.is_some() {
+                    read_sites.push(step.before.registers.code_pointer);
+                }
+            })
+            .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 119,
+            },
+            "true second EOF must still halt for {input:?}",
+        );
+        assert_eq!(vm.output(), expected_output);
+        assert_eq!(vm.input_consumed(), input.len());
+        assert_eq!(read_sites, [53, 63]);
+    }
+
+    // These all take the success arm; the third byte is genuinely read,
+    // including its own true EOF, but never reaches the proposed output.
+    // The unchanged C114 `i` now executes a second time with a high D,
+    // whose loader word is not a graphical code cell. No source-C third
+    // echo may be linked from this tempting partially working candidate.
+    for input in [vec![3, 4, 5], vec![3, 31, 255], vec![3, 255, 31], vec![
+        3, 4,
+    ]] {
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut read_sites = Vec::new();
+        let mut second_pass_indirect = false;
+        let result = vm.run_traced(200, &mut |step| {
+            if step.input.is_some() {
+                read_sites.push(step.before.registers.code_pointer);
+            }
+            if step.before.registers.code_pointer == 114
+                && step.before.registers.data_pointer > 1_000_000
+                && step.decoded == Some(b'i')
+            {
+                second_pass_indirect = true;
+            }
+        });
+        assert_eq!(
+            format!("{result:?}"),
+            "Err(InvalidEncryptionTarget { pointer: 7174350, value: 7174350 })",
+            "unexpected continuation for input {input:?}",
+        );
+        assert!(second_pass_indirect, "missing unsafe C114 revisit");
+        assert_eq!(read_sites, [53, 63, 101]);
+        assert_eq!(vm.input_consumed(), input.len().min(3));
+        assert_eq!(vm.output(), [3, 154]);
+        assert_ne!(vm.output(), expected_c23_control(&input));
+    }
+    Ok(())
+}
