@@ -1274,6 +1274,182 @@ fn source_checksum_control_edges_bind_their_own_phi_copies() {
     }));
 }
 
+// These are proposed *code* intervals for the original seven C23 blocks.
+// No bytes or Malbolge instruction placement are produced by this test.
+fn checksum_proposed_code_blocks()
+-> Vec<super::typed_cfg_adapter::state_relocation::GuestCodeBlockPlacement> {
+    use super::typed_cfg_adapter::state_relocation::GuestCodeBlockPlacement;
+
+    [
+        (64, 80),
+        (80, 100),
+        (104, 116),
+        (128, 144),
+        (144, 152),
+        (160, 200),
+        (224, 240),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(block, (start, end_exclusive))| GuestCodeBlockPlacement {
+        block: u32::try_from(block).expect("seven source blocks"),
+        end_exclusive,
+        function: 0,
+        start,
+    })
+    .collect()
+}
+
+#[test]
+fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeControlEdge, GuestCodeEdgeKind,
+        bind_source_locked_cfg_code_targets,
+    };
+
+    let wire =
+        source_locked_checksum_wire().expect("original C23 typed source");
+    let proposed = checksum_proposed_code_blocks();
+    let mut reordered = proposed.clone();
+    reordered.reverse();
+    let addressed =
+        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, &reordered)
+            .expect("unique, source-contained proposed code intervals");
+    assert_eq!(addressed.code_blocks, proposed);
+    assert_eq!(addressed.relocated.operation_blocks.len(), 7);
+    assert_eq!(addressed.control_edges.len(), 8);
+    let mut targets = addressed
+        .control_edges
+        .iter()
+        .map(|edge| (edge.predecessor, edge.successor, edge.target_address))
+        .collect::<Vec<_>>();
+    targets.sort_unstable();
+    assert_eq!(targets, [
+        (0, 1, 80),
+        (1, 2, 104),
+        (1, 6, 224),
+        (2, 3, 128),
+        (2, 4, 144),
+        (3, 5, 160),
+        (4, 5, 160),
+        (5, 1, 80),
+    ]);
+    let original_edges = &addressed.relocated.phi_edges;
+    for GuestCodeControlEdge {
+        commits,
+        function,
+        kind,
+        predecessor,
+        snapshots,
+        successor,
+        target_address,
+    } in &addressed.control_edges
+    {
+        assert_eq!(*function, 0);
+        assert_eq!(*kind, match *predecessor {
+            1 | 2 if *successor == 2 || *successor == 3 => {
+                GuestCodeEdgeKind::WhenTrue
+            },
+            1 | 2 => GuestCodeEdgeKind::WhenFalse,
+            _ => GuestCodeEdgeKind::Jump,
+        },);
+        assert_eq!(
+            proposed
+                .iter()
+                .find(|block| {
+                    block.function == *function && block.block == *successor
+                })
+                .map(|block| block.start),
+            Some(*target_address)
+        );
+        let phi = original_edges.iter().find(|edge| {
+            (edge.function, edge.predecessor, edge.successor)
+                == (*function, *predecessor, *successor)
+        });
+        assert_eq!(
+            snapshots.as_slice(),
+            phi.map_or(&[][..], |edge| &edge.snapshots)
+        );
+        assert_eq!(
+            commits.as_slice(),
+            phi.map_or(&[][..], |edge| &edge.commits)
+        );
+    }
+    let backedge = addressed.control_edges.last().expect("canonical backedge");
+    assert_eq!((backedge.predecessor, backedge.successor), (5, 1));
+    assert_eq!(backedge.snapshots.len(), 4);
+    assert_eq!(backedge.commits.len(), 4);
+    assert_eq!(
+        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, &proposed),
+        Ok(addressed)
+    );
+}
+
+#[test]
+fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodePlacementError, bind_source_locked_cfg_code_targets,
+    };
+
+    let wire =
+        source_locked_checksum_wire().expect("original C23 typed source");
+    let proposed = checksum_proposed_code_blocks();
+    let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let check = |blocks: &[_]| {
+        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, blocks)
+    };
+    let mut missing = proposed.clone();
+    assert!(missing.pop().is_some());
+    assert_eq!(check(&missing), refusal);
+    let mut duplicate = proposed.clone();
+    duplicate.push(proposed[0]);
+    assert_eq!(check(&duplicate), refusal);
+    let mut foreign_block = proposed.clone();
+    foreign_block[0].block = 100;
+    assert_eq!(check(&foreign_block), refusal);
+    let mut foreign_function = proposed.clone();
+    foreign_function[0].function = 1;
+    assert_eq!(check(&foreign_function), refusal);
+    let mut empty = proposed.clone();
+    empty[0].end_exclusive = empty[0].start;
+    assert_eq!(check(&empty), refusal);
+    let mut reversed = proposed.clone();
+    reversed[0].end_exclusive = reversed[0].start - 1;
+    assert_eq!(check(&reversed), refusal);
+    let mut collision = proposed.clone();
+    collision[1].start = collision[0].start;
+    assert_eq!(check(&collision), refusal);
+    let mut partial_overlap = proposed.clone();
+    partial_overlap[1].start = proposed[0].end_exclusive - 1;
+    assert_eq!(check(&partial_overlap), refusal);
+    let mut out_of_source = proposed.clone();
+    out_of_source[6].end_exclusive = 2049;
+    assert_eq!(check(&out_of_source), refusal);
+    let mut at_source_end = proposed.clone();
+    at_source_end[6].start = 2048;
+    at_source_end[6].end_exclusive = 2049;
+    assert_eq!(check(&at_source_end), refusal);
+    // Code/data reservations are independently validated against the *same*
+    // proposed source length: moving the frame into any code cell refuses.
+    assert_eq!(
+        bind_source_locked_cfg_code_targets(&wire, 2048, 2047, &proposed),
+        Err(GuestCodePlacementError::TypedCfg(
+            super::typed_cfg_adapter::TypedCfgAdapterError::GuestStateAllocation
+        ))
+    );
+    let mut forged_wire = wire;
+    forged_wire.push(0);
+    assert!(matches!(
+        bind_source_locked_cfg_code_targets(
+            &forged_wire,
+            2048,
+            4096,
+            &proposed
+        ),
+        Err(GuestCodePlacementError::TypedCfg(_))
+    ));
+}
+
 #[test]
 fn source_checksum_relocates_operation_control_and_phi_cells() {
     assert_eq!(prove_source_checksum_relocation(), Ok(()));

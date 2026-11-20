@@ -191,6 +191,77 @@ pub struct GuestRelocatedCfgPlan {
     pub state_placements: Vec<GuestFramePlacement>,
 }
 
+/// One proposed contiguous instruction interval for a source CFG block.
+///
+/// The interval is code *space*, not verified instruction bytes. A backend
+/// must independently prove its source, decode and mutation footprint.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeBlockPlacement {
+    /// Canonical function identity.
+    pub function: u32,
+    /// Canonical block identity.
+    pub block: u32,
+    /// First proposed physical instruction address (inclusive).
+    pub start: u32,
+    /// First guest source address following this block (exclusive).
+    pub end_exclusive: u32,
+}
+
+/// Which source control outcome must execute one physical edge.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GuestCodeEdgeKind {
+    /// Unconditional source jump.
+    Jump,
+    /// Branch outcome when its checked Boolean is false.
+    WhenFalse,
+    /// Branch outcome when its checked Boolean is true.
+    WhenTrue,
+}
+
+/// One proposed physical target with its *edge-local* parallel copies.
+///
+/// Neither the target address nor the copies are guest instructions yet.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestCodeControlEdge {
+    /// Physical scratch-to-phi assignments, after all snapshots.
+    pub commits: Vec<GuestPlacedCellCopy>,
+    /// Canonical function containing the predecessor and successor.
+    pub function: u32,
+    /// Exact source control arm, not host-selected.
+    pub kind: GuestCodeEdgeKind,
+    /// Canonical predecessor block identity.
+    pub predecessor: u32,
+    /// Physical source-cell entry of the successor block.
+    pub target_address: u32,
+    /// Copies of all original phi sources into scratch first.
+    pub snapshots: Vec<GuestPlacedCellCopy>,
+    /// Canonical successor block identity.
+    pub successor: u32,
+}
+
+/// Addressed code-edge obligations attached to an authenticated data plan.
+///
+/// The code intervals are supplied *proposals*. No opcode, physical jump,
+/// branch, phi copy or termination has been emitted or accepted by the VM.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestAddressedCfgPlan {
+    /// Nonoverlapping proposed block code intervals in canonical block order.
+    pub code_blocks: Vec<GuestCodeBlockPlacement>,
+    /// Each source branch arm or jump gets an unselected target and copies.
+    pub control_edges: Vec<GuestCodeControlEdge>,
+    /// The unchanged authenticated operation and data relocation obligations.
+    pub relocated: GuestRelocatedCfgPlan,
+}
+
+/// Exact refusal boundary for a proposed physical CFG code placement.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GuestCodePlacementError {
+    /// A proposed code interval or source block identity is invalid.
+    InvalidCodePlacement,
+    /// Original canonical typed CFG or data relocation refused.
+    TypedCfg(TypedCfgAdapterError),
+}
+
 type FramePlacements<'frame> =
     BTreeMap<u32, (&'frame GuestStateFrame, GuestFramePlacement)>;
 type PlacedFrames<'frame> = (Vec<GuestFramePlacement>, FramePlacements<'frame>);
@@ -456,6 +527,113 @@ pub fn relocate_source_locked_cfg(
         phi_edges,
         prelink,
         state_placements,
+    })
+}
+
+fn proposed_code_edge(
+    function: u32,
+    predecessor: u32,
+    kind: GuestCodeEdgeKind,
+    edge: &GuestPlacedControlEdge,
+    starts: &BTreeMap<(u32, u32), GuestCodeBlockPlacement>,
+) -> Result<GuestCodeControlEdge, GuestCodePlacementError> {
+    let target_address = starts
+        .get(&(function, edge.successor))
+        .map(|block| block.start)
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    Ok(GuestCodeControlEdge {
+        commits: edge.commits.clone(),
+        function,
+        kind,
+        predecessor,
+        target_address,
+        snapshots: edge.snapshots.clone(),
+        successor: edge.successor,
+    })
+}
+
+/// Attach exact proposed code entry points to *both* source branch arms,
+/// every jump and their already-addressed predecessor-specific phi copies.
+///
+/// The supplied code positions are deliberately untrusted: this checks the
+/// entire authenticated block set, finite source bounds, nonempty intervals,
+/// unique identities and pairwise nonoverlap. Gaps may hold code helpers or
+/// a prologue. No host branch is selected. The physical linker must still
+/// prove all instructions, jumps and code self-modification independently.
+///
+/// # Errors
+///
+/// Refuses invalid typed source/data placement or a missing, duplicated,
+/// overlapping, empty, unknown or out-of-source proposed code block.
+pub fn bind_source_locked_cfg_code_targets(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    proposed: &[GuestCodeBlockPlacement],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    let relocated =
+        relocate_source_locked_cfg(canonical, source_cells, frame_base)
+            .map_err(GuestCodePlacementError::TypedCfg)?;
+    let mut starts = BTreeMap::new();
+    for block in proposed {
+        if block.start >= block.end_exclusive
+            || block.end_exclusive > source_cells
+            || starts
+                .insert((block.function, block.block), *block)
+                .is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
+    if starts.len() != relocated.operation_blocks.len()
+        || relocated
+            .operation_blocks
+            .iter()
+            .any(|block| !starts.contains_key(&(block.function, block.block)))
+    {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    let mut intervals = proposed.to_vec();
+    intervals.sort_unstable_by_key(|block| block.start);
+    if intervals.windows(2).any(|window| {
+        matches!(window, [left, right] if left.end_exclusive > right.start)
+    })
+    {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    let mut code_blocks = Vec::with_capacity(proposed.len());
+    let mut control_edges = Vec::new();
+    for block in &relocated.operation_blocks {
+        let placement = starts
+            .get(&(block.function, block.block))
+            .copied()
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        code_blocks.push(placement);
+        let mut bind = |kind, edge: &GuestPlacedControlEdge| {
+            control_edges.push(proposed_code_edge(
+                block.function,
+                block.block,
+                kind,
+                edge,
+                &starts,
+            )?);
+            Ok::<(), GuestCodePlacementError>(())
+        };
+        match &block.control {
+            GuestPlacedControl::Branch { when_false, when_true } => {
+                bind(GuestCodeEdgeKind::WhenFalse, when_false)?;
+                bind(GuestCodeEdgeKind::WhenTrue, when_true)?;
+            },
+            GuestPlacedControl::Jump { edge } => {
+                bind(GuestCodeEdgeKind::Jump, edge)?;
+            },
+            GuestPlacedControl::Return => {},
+        }
+    }
+    Ok(GuestAddressedCfgPlan {
+        code_blocks,
+        control_edges,
+        relocated,
     })
 }
 

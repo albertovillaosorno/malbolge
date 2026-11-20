@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, the unchanged seven-block C23 EOF checksum now has a
+  checked code-entry *proposal* handoff in addition to its addressed data
+  obligations. Seven disjoint source-bounded intervals bind both arms of
+  each of two branches and all four jumps to eight successor entries; their
+  original edge-local snapshots and commits survive without host path
+  selection. Positive, reordered and ten invalid-placement regressions
+  pass; the complete original checksum still refuses physical publication.
+  None of the intervals contains emitted/verified guest instructions, so
+  dynamic C arithmetic, backedges and five VM checksum parity paths remain
+  missing and P2 stays open.
+
 - On 2026-11-19, addressed CFG operations now preserve every original
   typed instruction, source span and the full address, width, signedness
   and SSA identity of each read, result and Boolean control operand. The

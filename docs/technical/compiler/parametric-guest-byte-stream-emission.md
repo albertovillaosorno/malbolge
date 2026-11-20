@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked CFG edges now have checked candidate code entry points
+
+The original complete C23 mutable EOF checksum still refuses physical target
+linkage. Its canonical seven-block CFG and 43-word N15 data frame can now
+be paired with **proposed** nonoverlapping code-block intervals within the
+same source-length boundary. The checked `GuestAddressedCfgPlan` binds the
+original two branches' true/false arms and four jumps to eight exact
+successor code entries; every edge carries its own addressed phi snapshot
+and commit obligations. The four-word backedge is still parallel, and
+no host-selected branch or source-specific computed output is substituted.
+
+An explicit invalid-placement error rejects absent, duplicated, foreign,
+empty, overlapping and out-of-source block intervals before producing any
+addressed plan. Reordering a valid set of proposed intervals preserves the
+canonical control-edge order. The source-controlled regression covers all
+seven blocks and eight paths with positive and forged-placement cases, and
+the existing native -O0/-O2 five-vector gate still confirms guest refusal.
+**These code addresses are untrusted suggestions**, not position-sensitive
+Malbolge opcodes: no instruction bytes, branch encoding, self-modification
+proof, guest phi writes, C arithmetic, EOF loop or five guest parity traces
+exist. P2 remains open.
+
 ### Typed relocation retains complete scalar operands (2026-11-19)
 
 The source-locked checksum's located instruction handoff now carries the
