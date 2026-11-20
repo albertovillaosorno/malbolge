@@ -1331,7 +1331,7 @@ fn checksum_proposed_phi_edge_pads()
 #[test]
 fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     use super::typed_cfg_adapter::state_relocation::{
-        GuestCodeControlEdge, GuestCodeEdgeKind,
+        GuestCodeControlEdge, GuestCodeEdgeKind, GuestCodeProposals,
         bind_source_locked_cfg_code_targets,
     };
 
@@ -1347,8 +1347,10 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
         &wire,
         2048,
         4096,
-        &reordered,
-        &reversed_pads,
+        GuestCodeProposals {
+            code_blocks: &reordered,
+            edge_pads: &reversed_pads,
+        },
     )
     .expect("distinct source-contained blocks and phi landing pads");
     assert_eq!(addressed.code_blocks, proposed);
@@ -1431,7 +1433,13 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     assert_eq!((backedge.entry_address, backedge.target_address), (336, 80));
     assert_eq!(
         bind_source_locked_cfg_code_targets(
-            &wire, 2048, 4096, &proposed, &pads
+            &wire,
+            2048,
+            4096,
+            GuestCodeProposals {
+                code_blocks: &proposed,
+                edge_pads: &pads,
+            }
         ),
         Ok(addressed)
     );
@@ -1440,7 +1448,8 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
 #[test]
 fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     use super::typed_cfg_adapter::state_relocation::{
-        GuestCodePlacementError, bind_source_locked_cfg_code_targets,
+        GuestCodePlacementError, GuestCodeProposals,
+        bind_source_locked_cfg_code_targets,
     };
 
     let wire =
@@ -1449,7 +1458,15 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     let pads = checksum_proposed_phi_edge_pads();
     let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
     let check = |blocks: &[_]| {
-        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, blocks, &pads)
+        bind_source_locked_cfg_code_targets(
+            &wire,
+            2048,
+            4096,
+            GuestCodeProposals {
+                code_blocks: blocks,
+                edge_pads: &pads,
+            },
+        )
     };
     let mut missing = proposed.clone();
     assert!(missing.pop().is_some());
@@ -1486,7 +1503,10 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     // proposed source length: moving the frame into any code cell refuses.
     assert_eq!(
         bind_source_locked_cfg_code_targets(
-            &wire, 2048, 2047, &proposed, &pads,
+            &wire, 2048, 2047, GuestCodeProposals {
+            code_blocks: &proposed,
+            edge_pads: &pads,
+        },
         ),
         Err(GuestCodePlacementError::TypedCfg(
             super::typed_cfg_adapter::TypedCfgAdapterError::GuestStateAllocation
@@ -1499,8 +1519,10 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
             &forged_wire,
             2048,
             4096,
-            &proposed,
-            &pads,
+            GuestCodeProposals {
+                code_blocks: &proposed,
+                edge_pads: &pads,
+            },
         ),
         Err(GuestCodePlacementError::TypedCfg(_))
     ));
@@ -1509,7 +1531,7 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
 #[test]
 fn source_checksum_phi_edge_pads_reject_missing_forged_or_aliasing_entries() {
     use super::typed_cfg_adapter::state_relocation::{
-        GuestCodeEdgeKind, GuestCodePlacementError,
+        GuestCodeEdgeKind, GuestCodePlacementError, GuestCodeProposals,
         bind_source_locked_cfg_code_targets,
     };
 
@@ -1519,7 +1541,13 @@ fn source_checksum_phi_edge_pads_reject_missing_forged_or_aliasing_entries() {
     let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
     let check = |candidate: &[_]| {
         bind_source_locked_cfg_code_targets(
-            &wire, 2048, 4096, &blocks, candidate,
+            &wire,
+            2048,
+            4096,
+            GuestCodeProposals {
+                code_blocks: &blocks,
+                edge_pads: candidate,
+            },
         )
     };
     assert_eq!(check(&[]), refusal);
