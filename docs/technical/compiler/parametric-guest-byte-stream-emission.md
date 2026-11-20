@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Fixed guarded-third-output continuation: one-cell bound (2026-11-20)
+
+The source-valid 132-cell second-EOF branch already executes a conditional
+third signed guest read at C101. A previously rejected four-cell tail
+changes C104 to `o`, C112 to `p` and reserves C115/C116 for output/halt;
+its successful-second-byte arm reaches an invalid second-pass C114 `i`.
+A new finite enumeration examines every source-loadable graphical opcode
+at each C102..C114, altering **exactly one** cell after those four edits.
+There are 104 candidates. The same 15-trit loader expansion applies to
+all candidates because none changes the two tail seed cells.
+
+For the fixed stream `03 04 05`, all 104 candidates execute in the
+normative VM under a 220-step ceiling. Only C104=`123` and C114=`97`
+halt after consuming three bytes, but they emit `03 9a` and `03 05`,
+respectively, rather than `03 9a 05`. No candidate supplies the exact
+C53/C63/C101 read sites, third-byte output, bounded halt and a correctly
+terminated true-second-EOF arm together. This rejects the **specified
+one-cell repair grammar only**; multiple changes, code relocation,
+source-C signed conversion, and the full mutable EOF checksum are not
+solved. The independent original checksum still refuses to publish a
+guest artifact, as required while its physical CFG remains unlinked.
+
 ### Cross-word guest arithmetic after two retained inputs (2026-11-20)
 
 The earlier 91-cell dual-storage geometry now performs a real binary

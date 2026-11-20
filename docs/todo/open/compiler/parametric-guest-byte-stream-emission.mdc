@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a bounded 104-candidate source-valid one-cell
+  enumeration after the four-patch C101 guarded-third-read tail found
+  no correct third-byte echo. Every candidate runs the normative N15
+  VM on `03 04 05` with a 220-step bound. Two candidates halt after
+  three consumed bytes, but output only `03 9a` or `03 05`; neither
+  matches the required `03 9a 05` and exact C53/C63/C101 reads.
+  This excludes only the frozen C102..C114 one-cell repair grammar,
+  not a relocated linker or multi-cell solution. The seven-block C23
+  mutable checksum still passes its native/refusal controls and
+  remains without a published guest artifact. P2 stays open.
+
 - On 2026-11-20, the 91-cell dual-storage N15 guest gained a
   physical cross-word arithmetic continuation. Two actual signed reads
   save distinct byte-plus-EOF-injective words at M95 and M97; a
