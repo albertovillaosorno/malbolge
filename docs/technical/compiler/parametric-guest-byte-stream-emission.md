@@ -100,6 +100,28 @@ relocate or replace. It adds no source-C acceptance mode, no checksum
 arithmetic, no parallel phi copy, and no dynamic EOF backedge. P2
 remains open and the original checksum publishes no guest artifact.
 
+### First signed read cannot be saved by one C38/M97 crazy (2026-11-20)
+
+The 91-cell signed-C23 converter's first `/` at C37 leaves D pointing
+at M97=7,174,404. A physical `p` at the immediately following C38 is
+therefore a plausible one-cell attempt to save the first signed input
+before the nine loader rotations overwrite the accumulator. It is **not
+lossless**: the independent 15-trit `crazy(M97, raw)` table has only 37
+distinct results for the 256 successful bytes plus true raw N15 EOF.
+Bytes `0x01` and `0x02` already collide.
+
+An exact graphical C38 `p` substitution is admitted by the real VM.
+Both independent input paths execute the original signed C37 `/`, then
+the same physical C38 `p` at D=M97, and reach the 39-step bounded
+checkpoint with **identical stored M97 words** despite consuming
+different bytes. The regression checks the read events, source loader
+seed, data reads, exact `p` deltas and independent ternary result. No
+later computation can reconstruct which of these bytes was read from
+that one saved word. This rules out **only this single-p save using
+M97's existing seed**, not a relocated lossless store, a modified seed,
+a different data address or a general single-read C23 converter. The
+P2 checksum remains unlinked and produces no guest artifact.
+
 ### Exact third signed-word recovery after guest storage (2026-11-20)
 
 The exact same 91-cell three-input N15 source admits a second physical

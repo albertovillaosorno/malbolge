@@ -1727,3 +1727,86 @@ fn signed_c23_single_read_cannot_replace_only_the_first_input_opcode()
     assert_eq!(enumerated, 7);
     Ok(())
 }
+
+// The existing two-read converter's C38 runs immediately after the first
+// genuine C37 input, with D pointing at the loader's M97=7,174,404. A
+// one-cell `p` save there would be a real guest data write, but its
+// transformation cannot preserve every signed input: raw bytes 1 and 2
+// become the same memory word. Later code cannot reconstruct which arrived.
+// This is a bound on *that* early M97 storage route, not on all possible
+// single-read C23 conversion or relocated pointer geometry.
+#[test]
+fn first_signed_read_cannot_be_saved_losslessly_by_one_c38_p()
+-> Result<(), String> {
+    use std::collections::BTreeSet;
+
+    let profile = current_profile();
+    let original = layout::build_c23_nine_rotated_signed_output_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(original.get(37), Some(&80));
+    let mut candidate = original.clone();
+    let save_opcode = (33..=126u8)
+        .find(|byte| {
+            decode_profile_instruction(u32::from(*byte), 38) == Some(b'p')
+        })
+        .ok_or("C38 lacks graphical p")?;
+    *candidate.get_mut(38).ok_or("missing C38")? = save_opcode;
+    assert_eq!(layout::admit_c23_probe_graphical_source(&candidate), Ok(()));
+    let loaded = ProfileMachine::from_source(profile, &candidate, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let original_word =
+        loaded.memory_word(97).map_err(|error| error.to_string())?;
+    assert_eq!(original_word, 7_174_404);
+
+    let distinct_images = (0..=255u32)
+        .chain(once(profile.eof_word()))
+        .map(|raw| scalar_crazy(original_word, raw))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(distinct_images.len(), 37, "257 inputs lose identity");
+
+    let mut stored = Vec::new();
+    for byte in [1u8, 2] {
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            vec![byte],
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(39, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::BudgetExhausted { steps: 39 });
+        assert_eq!(trace.len(), 39);
+        let read = trace.get(37).ok_or("missing original first read")?;
+        assert_eq!(read.before.registers.code_pointer, 37);
+        assert_eq!(read.decoded, Some(profile.input_instruction()));
+        assert_eq!(read.input, Some(TraceInput::Byte(byte)));
+        let write = trace.get(38).ok_or("missing physical p save")?;
+        assert_eq!(write.before.registers.code_pointer, 38);
+        assert_eq!(write.before.registers.data_pointer, 97);
+        assert_eq!(write.decoded, Some(b'p'));
+        assert_eq!(
+            write
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((97, original_word))
+        );
+        let saved = scalar_crazy(original_word, u32::from(byte));
+        assert_eq!(
+            write
+                .memory_delta
+                .data
+                .map(|delta| { (delta.address, delta.before, delta.after) }),
+            (original_word != saved).then_some((97, original_word, saved))
+        );
+        assert_eq!(vm.memory_word(97), Ok(saved));
+        assert_eq!(vm.input_consumed(), 1);
+        stored.push(saved);
+    }
+    assert_eq!(stored.len(), 2);
+    assert_eq!(stored[0], stored[1], "guest save aliases bytes 1 and 2");
+    Ok(())
+}
