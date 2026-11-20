@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### CFG phi edges now reserve predecessor-specific code entry pads
+
+The original seven-block mutable C23 EOF checksum still refuses physical
+publication. Its source-locked CFG now requires **four disjoint, edge-specific
+code landing pad reservations** in addition to seven proposed source blocks.
+Each of eight original control arms carries a proposed `entry_address`: ordinary
+edges enter the successor directly, while phi-bearing edges first enter the
+reserved predecessor-specific pad. The shared successor's `target_address`
+remains distinct. Thus the four-word parallel backedge cannot accidentally
+bypass its snapshots and commits through the proposed control handoff.
+
+The binder independently rederives required phi edges from canonical source
+and refuses a missing, duplicated, spurious, wrong-arm, wrong-predecessor,
+empty, overlapping or out-of-source pad. Reordering valid code and pad
+proposals retains canonical control order; adjacent intervals are admitted.
+This is an **untrusted physical address plan**, not emitted Malbolge: pads
+contain no decoded instructions or verified copy writes, and jumps, arithmetic,
+EOF termination, mutable control and the five native-C/VM parity paths remain
+unlinked. The unchanged P2 source continues to refuse guest publication.
+
 ### Source-locked CFG edges now have checked candidate code entry points
 
 The original complete C23 mutable EOF checksum still refuses physical target

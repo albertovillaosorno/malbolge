@@ -1300,6 +1300,34 @@ fn checksum_proposed_code_blocks()
     .collect()
 }
 
+// Edge-local phi copies must run before entering a shared successor. These
+// unverified intervals reserve separate predecessor-specific landing pads.
+fn checksum_proposed_phi_edge_pads()
+-> Vec<super::typed_cfg_adapter::state_relocation::GuestCodeEdgePadPlacement> {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEdgeKind, GuestCodeEdgePadPlacement,
+    };
+
+    [
+        (0, 1, 256, 280),
+        (3, 5, 288, 304),
+        (4, 5, 312, 328),
+        (5, 1, 336, 376),
+    ]
+    .into_iter()
+    .map(|(predecessor, successor, start, end_exclusive)| {
+        GuestCodeEdgePadPlacement {
+            end_exclusive,
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor,
+            start,
+            successor,
+        }
+    })
+    .collect()
+}
+
 #[test]
 fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     use super::typed_cfg_adapter::state_relocation::{
@@ -1310,12 +1338,21 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     let wire =
         source_locked_checksum_wire().expect("original C23 typed source");
     let proposed = checksum_proposed_code_blocks();
+    let pads = checksum_proposed_phi_edge_pads();
     let mut reordered = proposed.clone();
     reordered.reverse();
-    let addressed =
-        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, &reordered)
-            .expect("unique, source-contained proposed code intervals");
+    let mut reversed_pads = pads.clone();
+    reversed_pads.reverse();
+    let addressed = bind_source_locked_cfg_code_targets(
+        &wire,
+        2048,
+        4096,
+        &reordered,
+        &reversed_pads,
+    )
+    .expect("distinct source-contained blocks and phi landing pads");
     assert_eq!(addressed.code_blocks, proposed);
+    assert_eq!(addressed.edge_pads, pads);
     assert_eq!(addressed.relocated.operation_blocks.len(), 7);
     assert_eq!(addressed.control_edges.len(), 8);
     let mut targets = addressed
@@ -1337,6 +1374,7 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     let original_edges = &addressed.relocated.phi_edges;
     for GuestCodeControlEdge {
         commits,
+        entry_address,
         function,
         kind,
         predecessor,
@@ -1367,6 +1405,17 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
                 == (*function, *predecessor, *successor)
         });
         assert_eq!(
+            *entry_address,
+            pads.iter()
+                .find(|pad| {
+                    pad.function == *function
+                        && pad.predecessor == *predecessor
+                        && pad.successor == *successor
+                        && pad.kind == *kind
+                })
+                .map_or(*target_address, |pad| pad.start),
+        );
+        assert_eq!(
             snapshots.as_slice(),
             phi.map_or(&[][..], |edge| &edge.snapshots)
         );
@@ -1379,8 +1428,11 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     assert_eq!((backedge.predecessor, backedge.successor), (5, 1));
     assert_eq!(backedge.snapshots.len(), 4);
     assert_eq!(backedge.commits.len(), 4);
+    assert_eq!((backedge.entry_address, backedge.target_address), (336, 80));
     assert_eq!(
-        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, &proposed),
+        bind_source_locked_cfg_code_targets(
+            &wire, 2048, 4096, &proposed, &pads
+        ),
         Ok(addressed)
     );
 }
@@ -1394,9 +1446,10 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     let wire =
         source_locked_checksum_wire().expect("original C23 typed source");
     let proposed = checksum_proposed_code_blocks();
+    let pads = checksum_proposed_phi_edge_pads();
     let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
     let check = |blocks: &[_]| {
-        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, blocks)
+        bind_source_locked_cfg_code_targets(&wire, 2048, 4096, blocks, &pads)
     };
     let mut missing = proposed.clone();
     assert!(missing.pop().is_some());
@@ -1432,7 +1485,9 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     // Code/data reservations are independently validated against the *same*
     // proposed source length: moving the frame into any code cell refuses.
     assert_eq!(
-        bind_source_locked_cfg_code_targets(&wire, 2048, 2047, &proposed),
+        bind_source_locked_cfg_code_targets(
+            &wire, 2048, 2047, &proposed, &pads,
+        ),
         Err(GuestCodePlacementError::TypedCfg(
             super::typed_cfg_adapter::TypedCfgAdapterError::GuestStateAllocation
         ))
@@ -1444,10 +1499,87 @@ fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
             &forged_wire,
             2048,
             4096,
-            &proposed
+            &proposed,
+            &pads,
         ),
         Err(GuestCodePlacementError::TypedCfg(_))
     ));
+}
+
+#[test]
+fn source_checksum_phi_edge_pads_reject_missing_forged_or_aliasing_entries() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEdgeKind, GuestCodePlacementError,
+        bind_source_locked_cfg_code_targets,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original checksum source");
+    let blocks = checksum_proposed_code_blocks();
+    let pads = checksum_proposed_phi_edge_pads();
+    let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let check = |candidate: &[_]| {
+        bind_source_locked_cfg_code_targets(
+            &wire, 2048, 4096, &blocks, candidate,
+        )
+    };
+    assert_eq!(check(&[]), refusal);
+    let mut missing = pads.clone();
+    assert!(missing.pop().is_some());
+    assert_eq!(check(&missing), refusal);
+    let mut duplicate = pads.clone();
+    duplicate.push(pads[0]);
+    assert_eq!(check(&duplicate), refusal);
+    let mut foreign = pads.clone();
+    foreign[0].predecessor = 2;
+    assert_eq!(check(&foreign), refusal);
+    let mut wrong_function = pads.clone();
+    wrong_function[0].function = 100;
+    assert_eq!(check(&wrong_function), refusal);
+    let mut wrong_successor = pads.clone();
+    wrong_successor[0].successor = 2;
+    assert_eq!(check(&wrong_successor), refusal);
+    let mut wrong_arm = pads.clone();
+    wrong_arm[0].kind = GuestCodeEdgeKind::WhenTrue;
+    assert_eq!(check(&wrong_arm), refusal);
+    let mut no_writes = pads.clone();
+    no_writes[0].predecessor = 1;
+    no_writes[0].successor = 2;
+    no_writes[0].kind = GuestCodeEdgeKind::WhenTrue;
+    assert_eq!(check(&no_writes), refusal);
+    // An extra pad on a phi-free branch is not justified by the CFG.
+    let mut extra_pad = pads.clone();
+    let mut spurious = pads[0];
+    spurious.predecessor = 1;
+    spurious.successor = 2;
+    spurious.kind = GuestCodeEdgeKind::WhenTrue;
+    spurious.start = 400;
+    spurious.end_exclusive = 416;
+    extra_pad.push(spurious);
+    assert_eq!(check(&extra_pad), refusal);
+    // Touching code and pad intervals do not overlap.
+    let mut touching = pads.clone();
+    touching[0].start = 240;
+    touching[0].end_exclusive = 256;
+    assert!(check(&touching).is_ok());
+    let mut zero = pads.clone();
+    zero[0].end_exclusive = zero[0].start;
+    assert_eq!(check(&zero), refusal);
+    let mut reversed = pads.clone();
+    reversed[0].end_exclusive = reversed[0].start - 1;
+    assert_eq!(check(&reversed), refusal);
+    let mut overlapping_pad = pads.clone();
+    overlapping_pad[1].start = pads[0].end_exclusive - 1;
+    assert_eq!(check(&overlapping_pad), refusal);
+    let mut overlapping_block = pads.clone();
+    overlapping_block[1].start = blocks[3].start;
+    assert_eq!(check(&overlapping_block), refusal);
+    let mut outside = pads.clone();
+    outside[3].end_exclusive = 2049;
+    assert_eq!(check(&outside), refusal);
+    let mut end_boundary = pads.clone();
+    end_boundary[3].start = 2048;
+    end_boundary[3].end_exclusive = 2049;
+    assert_eq!(check(&end_boundary), refusal);
 }
 
 #[test]

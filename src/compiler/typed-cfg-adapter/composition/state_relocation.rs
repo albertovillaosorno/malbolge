@@ -208,7 +208,7 @@ pub struct GuestCodeBlockPlacement {
 }
 
 /// Which source control outcome must execute one physical edge.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum GuestCodeEdgeKind {
     /// Unconditional source jump.
     Jump,
@@ -218,6 +218,26 @@ pub enum GuestCodeEdgeKind {
     WhenTrue,
 }
 
+/// One proposed predecessor-specific code landing pad for an edge with phi
+/// writes. The future linker must implement both copy phases in this pad,
+/// then transfer control to the shared successor block; no executable bytes
+/// or physical proof are provided by this reservation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeEdgePadPlacement {
+    /// First source address after this reserved landing pad (exclusive).
+    pub end_exclusive: u32,
+    /// Canonical source function identity.
+    pub function: u32,
+    /// Exact source branch arm or unconditional jump identity.
+    pub kind: GuestCodeEdgeKind,
+    /// Canonical predecessor whose live values are to be copied.
+    pub predecessor: u32,
+    /// First proposed source address of this edge-specific landing pad.
+    pub start: u32,
+    /// Canonical successor reached only after completing the phi copies.
+    pub successor: u32,
+}
+
 /// One proposed physical target with its *edge-local* parallel copies.
 ///
 /// Neither the target address nor the copies are guest instructions yet.
@@ -225,6 +245,9 @@ pub enum GuestCodeEdgeKind {
 pub struct GuestCodeControlEdge {
     /// Physical scratch-to-phi assignments, after all snapshots.
     pub commits: Vec<GuestPlacedCellCopy>,
+    /// Physical entry to the phi pad, or directly to the successor if none.
+    /// This is the proposed address the predecessor must branch to.
+    pub entry_address: u32,
     /// Canonical function containing the predecessor and successor.
     pub function: u32,
     /// Exact source control arm, not host-selected.
@@ -247,8 +270,10 @@ pub struct GuestCodeControlEdge {
 pub struct GuestAddressedCfgPlan {
     /// Nonoverlapping proposed block code intervals in canonical block order.
     pub code_blocks: Vec<GuestCodeBlockPlacement>,
-    /// Each source branch arm or jump gets an unselected target and copies.
+    /// Each source branch arm or jump gets an unselected entry and copies.
     pub control_edges: Vec<GuestCodeControlEdge>,
+    /// Required phi pads, in canonical edge order, disjoint from all blocks.
+    pub edge_pads: Vec<GuestCodeEdgePadPlacement>,
     /// The unchanged authenticated operation and data relocation obligations.
     pub relocated: GuestRelocatedCfgPlan,
 }
@@ -530,19 +555,36 @@ pub fn relocate_source_locked_cfg(
     })
 }
 
+type EdgeKey = (u32, u32, GuestCodeEdgeKind, u32);
+
 fn proposed_code_edge(
     function: u32,
     predecessor: u32,
     kind: GuestCodeEdgeKind,
     edge: &GuestPlacedControlEdge,
     starts: &BTreeMap<(u32, u32), GuestCodeBlockPlacement>,
+    pads: &BTreeMap<EdgeKey, GuestCodeEdgePadPlacement>,
+    used_pads: &mut Vec<GuestCodeEdgePadPlacement>,
 ) -> Result<GuestCodeControlEdge, GuestCodePlacementError> {
     let target_address = starts
         .get(&(function, edge.successor))
         .map(|block| block.start)
         .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    let pad = pads
+        .get(&(function, predecessor, kind, edge.successor))
+        .copied();
+    let copies_needed = !edge.snapshots.is_empty() || !edge.commits.is_empty();
+    // A branch may not enter a shared successor before the edge-local phi
+    // snapshots and commits; a pad without phi writes is also unexplained.
+    if copies_needed != pad.is_some() {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    if let Some(placement) = pad {
+        used_pads.push(placement);
+    }
     Ok(GuestCodeControlEdge {
         commits: edge.commits.clone(),
+        entry_address: pad.map_or(target_address, |placement| placement.start),
         function,
         kind,
         predecessor,
@@ -552,24 +594,28 @@ fn proposed_code_edge(
     })
 }
 
-/// Attach exact proposed code entry points to *both* source branch arms,
-/// every jump and their already-addressed predecessor-specific phi copies.
+/// Attach proposed *physical* code entry addresses to each authenticated
+/// source control edge. An edge carrying phi writes must first enter its own
+/// predecessor-specific landing pad; non-phi edges enter their successor
+/// directly. The pad is obligated to snapshot all sources, commit all writes,
+/// then jump to the successor. Neither blocks nor pads contain target bytes.
 ///
-/// The supplied code positions are deliberately untrusted: this checks the
-/// entire authenticated block set, finite source bounds, nonempty intervals,
-/// unique identities and pairwise nonoverlap. Gaps may hold code helpers or
-/// a prologue. No host branch is selected. The physical linker must still
-/// prove all instructions, jumps and code self-modification independently.
+/// Both sets of supplied intervals are untrusted. This verifies that every
+/// source block and required phi pad has exactly one disjoint, nonempty,
+/// source-contained reservation, without host selection of any branch arm.
+/// The physical linker must later prove opcode decode, execution order,
+/// state updates, jumps and self-modification independently.
 ///
 /// # Errors
 ///
-/// Refuses invalid typed source/data placement or a missing, duplicated,
-/// overlapping, empty, unknown or out-of-source proposed code block.
+/// Refuses invalid typed source/data placement, missing or extra intervals,
+/// inconsistent edge identity, duplicates, overlap or source exhaustion.
 pub fn bind_source_locked_cfg_code_targets(
     canonical: &[u8],
     source_cells: u32,
     frame_base: u32,
     proposed: &[GuestCodeBlockPlacement],
+    proposed_pads: &[GuestCodeEdgePadPlacement],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let relocated =
         relocate_source_locked_cfg(canonical, source_cells, frame_base)
@@ -593,16 +639,41 @@ pub fn bind_source_locked_cfg_code_targets(
     {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
-    let mut intervals = proposed.to_vec();
-    intervals.sort_unstable_by_key(|block| block.start);
-    if intervals.windows(2).any(|window| {
-        matches!(window, [left, right] if left.end_exclusive > right.start)
-    })
+    let mut pads = BTreeMap::new();
+    for pad in proposed_pads {
+        if pad.start >= pad.end_exclusive
+            || pad.end_exclusive > source_cells
+            || pads
+                .insert(
+                    (pad.function, pad.predecessor, pad.kind, pad.successor),
+                    *pad,
+                )
+                .is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
+    // Both source blocks and predecessor-owned phi pads occupy *physical*
+    // source cells. They may not alias even if their CFG identities differ.
+    let mut intervals = proposed
+        .iter()
+        .map(|block| (block.start, block.end_exclusive))
+        .chain(
+            proposed_pads
+                .iter()
+                .map(|pad| (pad.start, pad.end_exclusive)),
+        )
+        .collect::<Vec<_>>();
+    intervals.sort_unstable();
+    if intervals
+        .windows(2)
+        .any(|window| matches!(window, [left, right] if left.1 > right.0))
     {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
     let mut code_blocks = Vec::with_capacity(proposed.len());
     let mut control_edges = Vec::new();
+    let mut edge_pads = Vec::with_capacity(proposed_pads.len());
     for block in &relocated.operation_blocks {
         let placement = starts
             .get(&(block.function, block.block))
@@ -616,6 +687,8 @@ pub fn bind_source_locked_cfg_code_targets(
                 kind,
                 edge,
                 &starts,
+                &pads,
+                &mut edge_pads,
             )?);
             Ok::<(), GuestCodePlacementError>(())
         };
@@ -630,9 +703,13 @@ pub fn bind_source_locked_cfg_code_targets(
             GuestPlacedControl::Return => {},
         }
     }
+    if edge_pads.len() != pads.len() {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
     Ok(GuestAddressedCfgPlan {
         code_blocks,
         control_edges,
+        edge_pads,
         relocated,
     })
 }

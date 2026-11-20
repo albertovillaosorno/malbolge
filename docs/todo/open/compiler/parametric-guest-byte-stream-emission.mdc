@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, the original seven-block checksum's eight proposed CFG
+  control arms now distinguish successor *targets* from actual predecessor
+  *entries*. Four source-bounded, nonoverlapping proposed phi landing pads
+  must be reserved before each corresponding edge can enter its shared
+  successor. The four-word backedge cannot bypass its two-phase transfers.
+  Independent missing/extra/forged/overlapping pad refusals pass with all 197
+  frontend-adapter tests; the five native C23 checksum controls still end in
+  explicit physical-linkage refusal without guest publication. No phi pad
+  contains Malbolge instructions or verified copy semantics; P2 remains open.
+
 - On 2026-11-19, the unchanged seven-block C23 EOF checksum now has a
   checked code-entry *proposal* handoff in addition to its addressed data
   obligations. Seven disjoint source-bounded intervals bind both arms of
