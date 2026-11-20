@@ -45,6 +45,11 @@ tests pass.
 
 This is a **physical linker obligation**, not a VM-executed normalization
 routine or proof that the proposed code cells contain Malbolge opcodes.
+The following address-binding guards additionally reject forged input
+SSA identities, widths, signedness, extra input operands, and output sites
+that read a different source SSA value or a multiword non-U8 value. A
+red-first test exercises both input kinds and the checksum-style final
+byte output. These are necessary code-linker invariants, not an executable.
 The two input conversions, unsigned arithmetic/XOR, conditional branches,
 parallel phi copies and live EOF backedge still lack a unified verified
 executable linker. No checksum guest artifact is emitted; P2 remains open.

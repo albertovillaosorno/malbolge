@@ -779,10 +779,18 @@ fn required_operation_effects(
         effects
             .push(GuestCodeOperationEffect::Input { destination, semantics });
     }
-    if matches!(instruction.instruction, Instruction::ByteOutput { .. }) {
+    if let Instruction::ByteOutput { value } = &instruction.instruction {
         let [source] = instruction.reads.as_slice() else {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         };
+        if source.value != value.value()
+            || source.type_kind != TernaryCfgScalarKind::U8
+            || source.words != 1
+            || instruction.write.is_some()
+            || !instruction.constant_cells.is_empty()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
         effects.push(GuestCodeOperationEffect::Output { source: *source });
     }
     if let Some(destination) = instruction.write {
@@ -1198,7 +1206,7 @@ mod tests {
     };
 
     #[test]
-    fn input_effects_refuse_forged_width_kind_and_result_identity() {
+    fn physical_io_effects_refuse_forged_width_kind_and_result_identity() {
         use super::super::ternary::TernaryCfgScalarKind;
         use super::super::typed::{
             Instruction, SourcePosition, SourceSpan, TypeId, ValueId,
@@ -1291,6 +1299,30 @@ mod tests {
         assert_eq!(required_operation_effects(&instruction), refusal);
         instruction.write = Some(byte);
         instruction.reads.push(byte);
+        assert_eq!(required_operation_effects(&instruction), refusal);
+
+        // This is the checksum's final effect: output must read the exact
+        // canonical U8 value, not a different SSA slot or truncated C32 word.
+        instruction.instruction =
+            Instruction::ByteOutput { value: ValueId::new(9) };
+        instruction.write = None;
+        assert_eq!(
+            required_operation_effects(&instruction),
+            Ok(vec![GuestCodeOperationEffect::Output { source: byte }])
+        );
+        instruction.reads = vec![GuestPlacedOperand { value: 10, ..byte }];
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.reads = vec![GuestPlacedOperand { words: 2, ..byte }];
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.reads = vec![GuestPlacedOperand {
+            type_kind: TernaryCfgScalarKind::I32,
+            ..byte
+        }];
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.reads = Vec::new();
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.reads.push(byte);
+        instruction.write = Some(byte);
         assert_eq!(required_operation_effects(&instruction), refusal);
     }
 
