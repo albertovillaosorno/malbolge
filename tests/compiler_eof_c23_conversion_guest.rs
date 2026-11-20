@@ -32,7 +32,8 @@ use std::iter::once;
 
 use malbolge::{
     ProfileMachine, ProfileRegisters, RunOutcome, Termination, TraceInput,
-    current_profile, historical_profile, profile_rotate,
+    current_profile, decode_profile_instruction, historical_profile,
+    profile_rotate,
 };
 
 const FIRST_ADDRESS: u32 = 283;
@@ -628,19 +629,23 @@ fn c23_short_output_pointer_shortcut_fails_loader_admission()
     source[87] = 94;
     assert_eq!(
         layout::admit_c23_probe_graphical_source(&source),
-        Err(layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
-            position: 87,
-            byte: 94,
-        }),
+        Err(
+            layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+                position: 87,
+                byte: 94,
+            }
+        ),
     );
     assert!(ProfileMachine::from_source(profile, &source, vec![]).is_err());
     source[87] = 0;
     assert_eq!(
         layout::admit_c23_probe_graphical_source(&source),
-        Err(layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
-            position: 87,
-            byte: 0,
-        }),
+        Err(
+            layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+                position: 87,
+                byte: 0,
+            }
+        ),
     );
     // The alternative three-jump route via M82=94 also fails source
     // admission; it cannot replace the existing four-jump path to M95.
@@ -652,10 +657,12 @@ fn c23_short_output_pointer_shortcut_fails_loader_admission()
     alternate[82] = 94;
     assert_eq!(
         layout::admit_c23_probe_graphical_source(&alternate),
-        Err(layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
-            position: 82,
-            byte: 94,
-        }),
+        Err(
+            layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+                position: 82,
+                byte: 94,
+            }
+        ),
     );
     assert!(ProfileMachine::from_source(profile, &alternate, vec![]).is_err());
     // These are exact source-admission obstructions, not assertions that
@@ -674,9 +681,11 @@ fn c23_probe_source_checker_rejects_incomplete_loader_recurrence()
         let incomplete = &source[..length];
         assert_eq!(
             layout::admit_c23_probe_graphical_source(incomplete),
-            Err(layout::C23OperandProbeSourceError::InsufficientSourceCells {
-                cells: length,
-            }),
+            Err(
+                layout::C23OperandProbeSourceError::InsufficientSourceCells {
+                    cells: length,
+                }
+            ),
         );
         assert!(matches!(
             ProfileMachine::from_source(current_profile(), incomplete, vec![]),
@@ -685,7 +694,10 @@ fn c23_probe_source_checker_rejects_incomplete_loader_recurrence()
             )),
         ));
     }
-    assert_eq!(layout::admit_c23_probe_graphical_source(&source[..2]), Ok(()));
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&source[..2]),
+        Ok(())
+    );
     let limit = current_profile().word_modulus();
     let too_long = vec![0_u8; usize::try_from(limit).unwrap() + 1];
     assert_eq!(
@@ -695,5 +707,122 @@ fn c23_probe_source_checker_rejects_incomplete_loader_recurrence()
             limit,
         }),
     );
+    Ok(())
+}
+
+// An earlier return from C74 appears to leave enough source positions for
+// p/p/< before C81 halts. Enumerate every loader-admissible source value at
+// M86 (the actual C74 jump operand). None puts D at M95 by C76. The
+// unchanged loader recurrence after source[90] makes it safe to share the
+// independently loaded image while patching these two virgin source cells.
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "finite eight-case graphical pointer relocation proof"
+)]
+fn every_graphical_c74_early_return_misses_first_c23_operand()
+-> Result<(), String> {
+    let profile = current_profile();
+    let base =
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &base, vec![])
+        .map_err(|error| error.to_string())?;
+    let mut baseline = ProfileMachine::from_state(
+        profile,
+        loaded.memory().to_vec(),
+        vec![0x5a, 0x12],
+        ProfileRegisters::default(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut baseline_trace = Vec::new();
+    _ = baseline
+        .run_traced(82, &mut |step| baseline_trace.push(*step))
+        .map_err(|error| error.to_string())?;
+    assert_eq!(baseline_trace.len(), 82);
+    let jump = (33..=126u8)
+        .find(|byte| {
+            decode_profile_instruction(u32::from(*byte), 74) == Some(b'j')
+        })
+        .ok_or("no graphical C74 jump")?;
+    assert_eq!(jump, 60);
+    assert_eq!(base.get(89..), Some(b"Iy".as_slice()));
+    let expected = [
+        (47, 95),
+        (48, 73),
+        (70, 43),
+        (76, 57),
+        (89, 121),
+        (106, 7_174_404),
+        (107, 121),
+        (125, 121),
+    ];
+    let mut cases = 0;
+    for byte in 33..=126u8 {
+        if !decode_profile_instruction(u32::from(byte), 86)
+            .is_some_and(|opcode| b"oijp*/<v".contains(&opcode))
+        {
+            continue;
+        }
+        let mut candidate = base.clone();
+        candidate[74] = jump;
+        candidate[86] = byte;
+        layout::admit_c23_probe_graphical_source(&candidate)
+            .map_err(|error| format!("{error:?}"))?;
+        let (expected_byte, expected_read) = expected
+            .get(cases)
+            .copied()
+            .ok_or("unexpected graphical M86 candidate")?;
+        assert_eq!(byte, expected_byte);
+        let mut memory = loaded.memory().to_vec();
+        // C74 and C86 have not been written or read by earlier operations.
+        // Source[89..91] stays fixed, so all expanded loader cells are exact.
+        memory[74] = u32::from(jump);
+        memory[86] = u32::from(byte);
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            memory,
+            vec![0x5a, 0x12],
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let result = vm
+            .run_traced(82, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(result, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 82,
+        });
+        assert_eq!(trace.len(), 82);
+        // Neither patched source word can disturb earlier executions:
+        // all nine physical rotations and both input events are identical.
+        assert_eq!(&trace[..74], &baseline_trace[..74]);
+        assert_eq!(trace[69].input, Some(TraceInput::Byte(0x12)));
+        assert_eq!(trace[74].decoded, Some(b'j'));
+        assert_eq!(trace[74].before.registers.data_pointer, 86);
+        assert_eq!(
+            trace[74].memory_reads.data.map(|read| read.value),
+            Some(u32::from(byte))
+        );
+        assert_eq!(trace[75].decoded, Some(b'j'));
+        assert_eq!(
+            trace[75].before.registers.data_pointer,
+            u32::from(byte) + 1
+        );
+        assert_eq!(
+            trace[75].memory_reads.data.map(|read| read.value),
+            Some(expected_read)
+        );
+        assert_eq!(trace[76].before.registers.data_pointer, expected_read + 1);
+        assert_ne!(trace[76].before.registers.data_pointer, 95);
+        assert_eq!(vm.output(), &[]);
+        cases += 1;
+    }
+    assert_eq!(cases, expected.len());
     Ok(())
 }

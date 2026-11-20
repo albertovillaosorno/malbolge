@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, an exhaustive eight-value M86 source-admission check
+  ruled out one proposed C74 `j` shortcut for the 91-cell `Iy` C23
+  converter. Eight actual 82-step N15 VM traces retain the same nine
+  rotations and signed reads but reach no M95 first-operand pointer by
+  C76; M86=47 lands at M96 via encrypted M48=95. An independent
+  low-trit arithmetic lemma also proves one constant `p` cannot echo
+  both raw signed input bytes 0 and 1, regardless of the data word.
+  These are bounded negative placement/operation results. There is no
+  C23 output instruction, linked mutable checksum, or five-vector guest
+  parity yet; P2 remains open.
+
 - On 2026-11-19, the 91-cell C23 converter's second attempted shorter
   output return (M82=94) also fails strict loader admission; the earlier
   M87=94 shortcut remains invalid. The public C23 source checker no

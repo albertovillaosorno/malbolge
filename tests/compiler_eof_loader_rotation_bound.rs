@@ -193,3 +193,39 @@ fn every_adjacent_graphical_loader_pair_needs_nine_first_rotations()
     assert_eq!([first, second], [7_138_732, 121]);
     Ok(())
 }
+
+// A one-p converter would save one code cell in the physical C23 guest, but
+// even an arbitrary 15-trit constant cannot make p echo input bytes 0 and 1.
+// Their only differing trit is the least significant one. For every possible
+// data trit, crazy(data, 1) - crazy(data, 0) is either -1 or 0, whereas byte
+// output identity requires +1 modulo 256. All higher output trits cancel.
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "independent base-three single-operation impossibility witness"
+)]
+fn no_single_constant_crazy_can_implement_c23_byte_identity() {
+    const TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
+    for low_trit in 0..3usize {
+        let [for_zero, for_one, _] = TABLE[low_trit];
+        assert!(for_one == for_zero || for_one + 1 == for_zero);
+        // The upper fourteen trits may contain any value. Their output is
+        // identical for input 0 and 1, so representative extremes also
+        // check the full-width scalar implementation of the digit lemma.
+        for upper in [0u32, 1, WORD_MODULUS / 3 - 1] {
+            let operand = upper * 3 + u32::try_from(low_trit).unwrap();
+            let zero = scalar_crazy(operand, 0) % 256;
+            let one = scalar_crazy(operand, 1) % 256;
+            assert_eq!(
+                (one + 256 - zero) % 256,
+                if for_zero == for_one {
+                    0
+                } else {
+                    255
+                }
+            );
+            assert_ne!(one, (zero + 1) % 256);
+        }
+    }
+}

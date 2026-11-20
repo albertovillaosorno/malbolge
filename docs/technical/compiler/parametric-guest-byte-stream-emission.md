@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Bounded C23 converter tail limits (2026-11-19)
+
+The nine-rotation `Iy` probe still performs both required live `p` writes
+but halts at C81 before output. An attempted earlier return through a new
+C74 `j` was checked over **all eight** graphical source values for its
+virgin M86 operand. A fixed `Iy` loader, strict source admission and eight
+82-step normative VM traces show that C74 reads M86 and C75 reads each
+resulting word, but no option restores D to M95 at C76 for the first `p`.
+The closest M86=47 follows encrypted M48=95 and lands on **M96**, one
+word too far. The original nine rotations and both input events remain
+identical across this bounded substitution. Other modified code/data
+paths and larger layouts are not excluded.
+
+A separate single-operation obstruction covers more than loader-derived
+constants. For any N15 data word W, `crazy(W, 1) - crazy(W, 0)` is either
+-1 or 0: only the low input trit changes, and the three possible data
+trits yield low output differences -1, -1 or 0. A lone `p` followed
+by `<` therefore cannot echo both bytes 0 and 1, whose outputs would
+need to differ by +1 modulo 256. This rules out dropping the second `p`
+from a raw signed-input-to-byte identity converter, not other multi-step
+synthesis or the original checksum program. P2 remains open.
+
 ### Strict C23 probe admission and a second failed output return (2026-11-19)
 
 The physically converted two-crazy C23 value still reaches M[96] at C80,
