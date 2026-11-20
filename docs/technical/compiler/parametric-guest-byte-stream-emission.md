@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Second input is echoed before physical EOF control (2026-11-20)
+
+A new 132-cell N15 guest variant reads the first signed word at C53 and
+emits its low byte at C54. Unlike the existing classifier, the second
+signed read occurs at C62, followed immediately by a real C63 `<` output.
+The unchanged first classifier `p` at C64 then consumes **that same second
+input word**, selecting the EOF arm or successful-byte arm. On the byte arm,
+C62 and C63 are revisited after XLAT2 has changed them from `/` and `<`
+to inert `l` and `Z`: no third input is consumed and no byte is repeated.
+The executable path still halts after 119/175 steps, respectively, with
+three guest output bytes: first low byte, second low byte, then the selected
+`0x1e`/`0x9a` marker.
+
+A 35-stream normative VM matrix covers empty input, NUL, high bytes, both
+second-input outcomes, and unread suffixes. Seven independent whole-path
+admissions derive data writes from the literal ternary truth table, match
+both complete ordered I/O traces and self-modified code revisits, and verify
+isolation of the proposed checksum frame. Three forged output/input/IO-event
+witnesses refuse acceptance. This is an actual two-word guest dataflow and
+branching primitive, **not** general source-C translation: a true N15 EOF
+word echoes low byte 106 rather than the C23 unsigned conversion 255.
+Full-width mutable state, C arithmetic, phi copies, dynamic EOF loop and
+the original seven-block checksum remain physically unlinked. P2 remains open.
+
 ### Published two-read guest parity matrix (2026-11-20)
 
 The exact two-read C23 EOF source, already published through the real compiler,

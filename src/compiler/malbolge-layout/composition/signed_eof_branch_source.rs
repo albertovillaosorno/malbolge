@@ -242,6 +242,30 @@ pub fn build_second_input_eof_classified_first_echo_source(
     Ok(source)
 }
 
+/// Echo both signed input words while branching on the second word's EOF.
+///
+/// C62 now reads the second word one instruction earlier than the original
+/// classifier, and C63 emits it before C64 consumes the same accumulator.
+/// The byte arm revisits both code cells only after XLAT2 encrypts them into
+/// inactive instructions, so no accidental third read or duplicate output
+/// is permitted. EOF echoes the N15 sentinel low byte 106, not C23's 255.
+/// This is physical guest dataflow plus control, not source-C compilation,
+/// mutable C storage, or a repeatable EOF loop.
+///
+/// # Errors
+///
+/// Refuses noncanonical profiles or an impossible graphical source byte.
+/// Both branch paths require independent normative VM validation.
+pub fn build_second_input_eof_classified_two_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source =
+        build_second_input_eof_classified_first_echo_source(profile)?;
+    put(&mut source, 62, profile.input_instruction())?;
+    put(&mut source, 63, profile.output_instruction())?;
+    Ok(source)
+}
+
 /// Preserve a first-input-dependent word across a second signed EOF branch.
 ///
 /// The first C53 `/` is echoed at C54, then C62 executes a genuine `p`

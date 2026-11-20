@@ -3795,3 +3795,296 @@ fn third_byte_echo_shortcut_cannot_publish_a_complete_eof_branch()
     assert_eq!(eof.input_consumed(), 1);
     Ok(())
 }
+
+// The second signed word must survive to an actual guest output before the
+// same accumulator selects EOF/byte control; its encrypted code revisit must
+// never read or emit it again. Native C23 can express this as an explicit
+// EOF-to-106 conversion, not as an implicit unsigned conversion of -1.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded real VM binary/EOF conditional two-input dataflow proof"
+)]
+fn second_signed_input_is_echoed_before_it_selects_real_eof_control()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_classified_two_echo_source(profile)
+            .map_err(|error| format!("two-echo physical source: {error:?}"))?;
+    let original =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .map_err(|error| format!("original physical source: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(
+        source
+            .iter()
+            .zip(&original)
+            .enumerate()
+            .filter(|(_, (left, right))| left != right)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>(),
+        [62, 63],
+    );
+    for (position, original_opcode, revisit_opcode) in
+        [(62usize, b'/', b'l'), (63, b'<', b'Z')]
+    {
+        let byte = source[position];
+        assert_eq!(
+            decode_profile_instruction(u32::from(byte), position as u32),
+            Some(original_opcode),
+        );
+        assert_eq!(
+            malbolge::encrypt_profile_cell(u32::from(byte)).and_then(
+                |encrypted| decode_profile_instruction(
+                    encrypted,
+                    position as u32
+                )
+            ),
+            Some(revisit_opcode),
+        );
+    }
+    assert_eq!(
+        layout::build_second_input_eof_classified_two_echo_source(
+            malbolge::historical_profile(),
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let binary_cases: [u8; 16] = [
+        0, 1, 2, 3, 7, 15, 31, 63, 64, 127, 128, 129, 192, 223, 254, 255,
+    ];
+    let mut cases = vec![vec![], vec![0], vec![255]];
+    for second in binary_cases {
+        let first = second ^ 0xa5;
+        cases.push(vec![first, second]);
+        cases.push(vec![first, second, second ^ 0x5a]);
+    }
+    for input in cases {
+        let eof = input.len() < 2;
+        let first_word = input.first().copied().unwrap_or(106);
+        let second_word = input.get(1).copied().unwrap_or(106);
+        let steps = if eof {
+            119
+        } else {
+            175
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(steps, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            },
+            "input={input:?}",
+        );
+        assert_eq!(
+            vm.output(),
+            &[
+                first_word,
+                second_word,
+                if eof {
+                    30
+                } else {
+                    154
+                }
+            ],
+            "input={input:?}",
+        );
+        assert_eq!(vm.input_consumed(), input.len().min(2));
+        assert_eq!(trace[53].output, None);
+        assert_eq!(trace[54].output, Some(first_word));
+        assert_eq!(
+            trace[62].input,
+            Some(
+                input
+                    .get(1)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte,)
+            ),
+        );
+        assert_eq!(trace[63].output, Some(second_word));
+        let input_effects = trace.iter().filter(|step| step.input.is_some()).count();
+        assert_eq!(input_effects, 2);
+        assert_eq!(
+            trace.iter().filter(|step| step.output.is_some()).count(),
+            3,
+        );
+        if !eof {
+            // The byte branch revisits these exact cells after encryption.
+            // Neither may repeat its original input/output side effect.
+            let second_visits = trace
+                .iter()
+                .filter(|step| {
+                    matches!(step.before.registers.code_pointer, 62 | 63)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(second_visits.len(), 4);
+            assert!(second_visits[2].input.is_none());
+            assert!(second_visits[3].output.is_none());
+        }
+    }
+    Ok(())
+}
+
+// Independently derive the complete two-echo branch's path, input words,
+// output bytes, and nonlinear stores from the preexisting scalar trit oracle.
+// This is separate from the normative VM and from the candidate builder.
+struct OwnedSecondInputTwoEchoPath {
+    base: OwnedSecondInputClassifiedFirstEchoPath,
+    io_events: [layout::BoundedRevisitIoEvent; 5],
+    output: [u8; 3],
+}
+
+impl OwnedSecondInputTwoEchoPath {
+    fn new(input: Vec<u8>) -> Self {
+        let base = OwnedSecondInputClassifiedFirstEchoPath::new(input);
+        let second_word = base.input.get(1).copied().unwrap_or(106);
+        let io_events = [
+            base.io_events[0],
+            base.io_events[1],
+            layout::BoundedRevisitIoEvent {
+                step: 62,
+                effect: layout::BoundedRevisitIoEffect::Input(
+                    base.input_events[1],
+                ),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 63,
+                effect: layout::BoundedRevisitIoEffect::Output(second_word),
+            },
+            base.io_events[3],
+        ];
+        Self {
+            output: [base.output[0], second_word, base.output[1]],
+            base,
+            io_events,
+        }
+    }
+
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.base.input,
+            code_positions: &self.base.base.path,
+            output: &self.output,
+            input_consumed: self.base.input.len().min(2),
+            input_events: &self.base.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.base.base.writes,
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent complete two-echo physical admission and negatives"
+)]
+fn second_signed_echo_branch_has_independent_guest_path_proofs()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_classified_two_echo_source(profile)
+            .map_err(|error| format!("two-echo source: {error:?}"))?;
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![128, 128],
+        vec![3, 4, 5],
+    ]
+    .into_iter()
+    .map(OwnedSecondInputTwoEchoPath::new)
+    .collect::<Vec<_>>();
+    let expectations = cases
+        .iter()
+        .map(OwnedSecondInputTwoEchoPath::expectation)
+        .collect::<Vec<_>>();
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile,
+        &source,
+        identity,
+        &expectations,
+    )
+    .map_err(|error| format!("two-echo guest admission: {error:?}"))?;
+    for (actual, case) in admitted.iter().zip(&cases) {
+        assert_eq!(actual.output(), case.output);
+        assert_eq!(actual.input_events(), case.base.input_events);
+        assert_eq!(actual.io_events(), case.io_events);
+        assert_eq!(actual.code_positions(), case.base.base.path);
+        assert_eq!(actual.data_writes(), case.base.base.writes);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                actual,
+                &case.base.base.instruction_writes,
+            ),
+            Ok(()),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(actual, &[
+                layout::BoundedGuestDataRegion {
+                    start: CHECKSUM_FRAME_START,
+                    end_exclusive: CHECKSUM_FRAME_END,
+                },
+            ]),
+            Ok(()),
+        );
+    }
+    let witness = expectations.get(3).ok_or("missing byte arm")?;
+    let output_forgery = [0, 255, 155];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                output: &output_forgery,
+                ..*witness
+            },
+        ),
+        Err(layout::BoundedRevisitError::OutputMismatch),
+    );
+    let mut io_forgery = cases[3].io_events;
+    io_forgery[3].step = 64;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                io_events: &io_forgery,
+                ..*witness
+            },
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch),
+    );
+    let input_forgery = [TraceInput::Byte(0), TraceInput::EndOfInput];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                input_events: &input_forgery,
+                ..*witness
+            },
+        ),
+        Err(layout::BoundedRevisitError::InputEventsMismatch),
+    );
+    Ok(())
+}

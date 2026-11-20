@@ -12,6 +12,25 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Echo both input words before the second EOF branch
+
+`build_second_input_eof_classified_two_echo_source` keeps the 132-cell
+physical classifier, but moves its second real `/` to C62 and places a
+real `<` at C63. The second accumulator is emitted and then passed
+unchanged into the classifier's C64 `p`, so the second byte (or EOF) still
+selects the original two branches. The successful-byte arm revisits C62
+and C63 only after they encrypt to inert `l` and `Z`: no third read or
+second echo occurs. Both paths halt at 119/175 steps and output the
+first and second input low bytes followed by the `0x1e`/`0x9a` marker.
+
+The 35-stream normative VM matrix covers both EOF boundaries, NUL, high
+bytes and unread suffixes. Seven independent complete-path admissions
+check trit-derived writes, I/O order, code revisits and frame isolation;
+three forged effect witnesses refuse. The guest's raw EOF low byte is
+106, not the signed C23 `EOF` converted to unsigned char (255). This is
+physical input dataflow and control, **not** source-C lowering, full-width
+mutable state or the original EOF checksum's dynamic arithmetic and loop.
+
 ### Second-input EOF conditionally permits a third guest read
 
 `build_second_input_guarded_third_read_source` composes C53/C63 `/` with

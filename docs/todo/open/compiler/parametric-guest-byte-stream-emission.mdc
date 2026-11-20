@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the 132-cell physical N15 classifier now executes
+  both signed guest inputs and echoes **both** low bytes before the second
+  read's EOF/byte branch. C62 `/` and C63 `<` encrypt to inert `l`/`Z`
+  before the successful branch revisits them. Thirty-five complete binary,
+  EOF and unread-suffix VM traces halt after 119/175 steps; seven independent
+  trit-derived whole-path admissions verify data writes, ordered I/O,
+  encrypted revisits and checksum-frame isolation. Three forged output or
+  input-event traces refuse. Raw EOF echoes 106, not C23's converted 255;
+  C32 mutable storage, arithmetic, phi copies, backedge and the original
+  checksum are unlinked. P2 remains open.
+
 - On 2026-11-20, the already-published fixed two-read C23 EOF branch
   passed a deterministic 46-input seeded matrix with an independent oracle.
   Pinned Clang C23 -O0/-O2 with UBSan matched all 46 binary, EOF and unread
