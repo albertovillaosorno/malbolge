@@ -23,14 +23,13 @@
 // - Summary:
 //   - Connects real loader words to input-dependent physical crazy writes.
 
-//! Physical loader/operand precursor, **not** signed C23 I/O conversion.
+//! Physical guest loader, byte-I/O and arithmetic experiments, **not** C23
+//! source-language compilation or signed byte normalization.
 //!
-//! The `Iy` graphical tail makes loader words M[283]=7,174,404 and
-//! M[284]=121. The first word needs nine **actual** rotations before this
-//! pair can convert C23 signed getchar to a byte; this source does not
-//! perform those rotations. It runs one real input and two genuine `p`
-//! writes and emits their deliberately nonconforming low byte. The source
-//! must not be published as a lowered C program.
+//! The `Iy` graphical seed supplies operands for nine genuine rotations
+//! and real input-dependent crazy operations. Source/data intersections
+//! still prevent correct C23 conversion from reaching a guest output.
+//! Partial probes are never published as lowered C programs.
 
 use malbolge::{
     ProfileDescriptor, current_profile, decode_profile_instruction,
@@ -409,6 +408,42 @@ pub fn build_c23_nine_rotated_indirect_halt_probe_source(
     *source.get_mut(82).ok_or(
         C23OperandProbeSourceError::InvalidPosition { position: 82 },
     )? = 80;
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
+/// Execute an input-dependent guest crazy write *after* the C81 bypass.
+///
+/// The source preserves all nine rotations and both signed guest input
+/// attempts. C79 indirectly enters C83, encrypting the skipped M82 from
+/// 80 to 66. C84 follows that encrypted word to D=67; C85 applies `p`
+/// to the earlier encrypted M67=85, and C86 emits the result's low byte.
+/// C87 is source-fixed to `p` by the earlier M87=69 pointer read, so its
+/// separate write occurs *after* output. C88 then halts in 86 VM steps.
+///
+/// This demonstrates a real live-input arithmetic/output continuation
+/// across an indirect code transfer. The operands are **85 and 123**,
+/// not the C23 signed converter's 7,138,732 and 121, and the EOF byte
+/// is not C23 `0xff`. It is not source-C compilation or a checksum.
+///
+/// # Errors
+///
+/// Rejects unsupported profiles or absent graphical source opcodes. The
+/// normative VM must still verify the real output and write sequence.
+pub fn build_c23_nine_rotated_indirect_crazy_output_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source =
+        build_c23_nine_rotated_indirect_halt_probe_source(profile)?;
+    for (position, opcode) in [
+        (84, b'j'),
+        (85, b'p'),
+        (86, profile.output_instruction()),
+        (88, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    // M87 must remain 69: C75 reads it to reach the subsequent C79 `i`.
     admit_c23_probe_graphical_source(&source)?;
     Ok(source)
 }

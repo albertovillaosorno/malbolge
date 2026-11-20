@@ -1154,8 +1154,7 @@ fn fixed_c23_prefix_has_no_one_jump_shorter_graphical_output_return()
     reason = "normative input and indirect-code-pointer traces"
 )]
 fn physical_indirect_jump_bypasses_the_source_locked_halt()
--> Result<(), String>
-{
+-> Result<(), String> {
     let profile = current_profile();
     let source =
         layout::build_c23_nine_rotated_indirect_halt_probe_source(profile)
@@ -1295,4 +1294,183 @@ fn c23_indirect_one_jump_reset_cannot_use_a_graphical_target_cell() {
             }
         ),
     );
+}
+
+// The bypassed C81 pointer/halt cannot itself emit output, but the reached
+// C84..C88 path can perform a real input-dependent crazy, output and halt.
+// This is *not* the C23 conversion: the actual operands are 85 and 123.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-locked VM traces establish every guest effect"
+)]
+fn indirect_crazy_output_preserves_live_input_and_self_modification()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_c23_nine_rotated_indirect_crazy_output_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let halted =
+        layout::build_c23_nine_rotated_indirect_halt_probe_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    assert_eq!(source.get(81), Some(&94));
+    assert_eq!(source.get(82), Some(&80));
+    assert_eq!(source.get(83), Some(&79));
+    assert_eq!(source.get(87), Some(&69));
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    assert_eq!(
+        layout::build_c23_nine_rotated_indirect_crazy_output_source(
+            historical_profile(),
+        ),
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile),
+    );
+    for position in 0..source.len() {
+        if ![84, 85, 86, 88].contains(&position) {
+            assert_eq!(source[position], halted[position], "C={position}");
+        }
+    }
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(95), Ok(INITIAL_FIRST));
+    assert_eq!(loaded.memory_word(96), Ok(INITIAL_SECOND));
+    let inputs = [
+        vec![],
+        vec![0x5a],
+        vec![0x5a, 0x00],
+        vec![0x5a, 0x01],
+        vec![0x5a, 0x7f],
+        vec![0x5a, 0x80],
+        vec![0x5a, 0xff],
+        vec![0x5a, 0x81, 0x00, 0xff],
+    ];
+    for input in inputs {
+        let first = input.first().copied();
+        let second = input.get(1).copied();
+        let raw = second.map_or_else(|| profile.eof_word(), u32::from);
+        let expected_first = scalar_crazy(85, raw);
+        let expected_second = scalar_crazy(123, expected_first);
+        let expected_byte = u8::try_from(expected_first % 256)
+            .map_err(|error| error.to_string())?;
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(86, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 86,
+            }
+        );
+        assert_eq!(trace.len(), 86);
+        assert_eq!(vm.output(), &[expected_byte]);
+        assert_eq!(vm.memory_word(82), Ok(66));
+        assert_eq!(vm.memory_word(67), Ok(expected_first));
+        assert_eq!(vm.memory_word(69), Ok(expected_second));
+        assert_eq!(vm.memory_word(95), Ok(7_138_732));
+        assert_eq!(vm.memory_word(96), Ok(INITIAL_SECOND));
+        for (position, value) in [(37usize, first), (69, second)] {
+            assert_eq!(
+                trace[position].input,
+                Some(value.map_or(TraceInput::EndOfInput, TraceInput::Byte)),
+            );
+        }
+        assert_eq!(trace[79].decoded, Some(b'i'));
+        assert_eq!(trace[79].before.registers.data_pointer, 80);
+        assert_eq!(
+            trace[79].memory_reads.data.map(|read| read.value),
+            Some(82),
+        );
+        assert_eq!(trace[79].after.registers.code_pointer, 83);
+        assert_eq!(trace[80].before.registers.code_pointer, 83);
+        assert_eq!(trace[80].decoded, Some(b'o'));
+        assert_eq!(trace[81].before.registers.code_pointer, 84);
+        assert_eq!(trace[81].decoded, Some(b'j'));
+        assert_eq!(
+            trace[81].memory_reads.data.map(|read| read.value),
+            Some(66),
+        );
+        for (index, code, address, before, after) in [
+            (82usize, 85u32, 67u32, 85u32, expected_first),
+            (84, 87, 69, 123, expected_second),
+        ] {
+            let step = &trace[index];
+            assert_eq!(step.before.registers.code_pointer, code);
+            assert_eq!(step.decoded, Some(b'p'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(before),
+            );
+            assert_eq!(step.after.registers.accumulator, after);
+        }
+        assert_eq!(trace[83].before.registers.code_pointer, 86);
+        assert_eq!(trace[83].decoded, Some(profile.output_instruction()));
+        assert_eq!(trace[83].output, Some(expected_byte));
+        assert_eq!(trace[85].before.registers.code_pointer, 88);
+        assert_eq!(trace[85].decoded, Some(b'v'));
+        assert_eq!(
+            vm.input_consumed(),
+            usize::from(first.is_some()) + usize::from(second.is_some()),
+        );
+    }
+    Ok(())
+}
+
+// The two-jump C84/C85 return suggested by the indirect bypass must
+// start at encrypted M82, then read M[encrypted M82 + 1]. None of the
+// eight graphical C82 cells can land on D95 before C86. This does not
+// constrain changes to the earlier prefix or code/data relocation.
+#[test]
+fn fixed_indirect_c23_tail_has_no_two_jump_converter_return()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_c23_nine_rotated_indirect_halt_probe_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, &source, vec![0x5a, 0x81])
+            .map_err(|error| error.to_string())?;
+    assert_eq!(
+        vm.run(79).map_err(|error| error.to_string())?,
+        RunOutcome::BudgetExhausted { steps: 79 },
+    );
+    assert_eq!(vm.registers().code_pointer, 79);
+    assert_eq!(vm.registers().data_pointer, 80);
+    assert_eq!(vm.memory_word(95), Ok(7_138_732));
+    assert_eq!(vm.memory_word(96), Ok(121));
+    let mut candidates = Vec::new();
+    for word in 33..=126u32 {
+        if !decode_profile_instruction(word, 82)
+            .is_some_and(|opcode| b"oijp*/<v".contains(&opcode))
+        {
+            continue;
+        }
+        let encrypted = encrypt_profile_cell(word)
+            .ok_or("accepted graphical cell cannot encrypt")?;
+        let second_address = encrypted + 1;
+        let second_word = vm
+            .memory_word(second_address)
+            .map_err(|error| error.to_string())?;
+        candidates.push((word, second_address, second_word));
+        assert_ne!(second_word, 94, "no two-jump return to M95");
+    }
+    assert_eq!(candidates, [
+        (35, 94, 7_174_489),
+        (51, 42, 115),
+        (52, 73, 100),
+        (74, 71, 43),
+        (80, 67, 85),
+        (93, 99, 7_174_368),
+        (110, 127, 7_174_404),
+        (111, 121, 7_174_404),
+    ],);
+    Ok(())
 }

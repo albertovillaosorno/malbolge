@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Indirect live-byte arithmetic reaches real output (2026-11-20)
+
+A 91-cell, source-admitted `Iy` guest now retains nine real M95 rotations
+and two signed input attempts, then crosses the fixed C81 halt with C79
+`i`. C84 reads the *encrypted* M82=66 to reset D=67. C85 executes a
+real input-dependent `p` against previously encrypted M67=85; C86 emits
+that calculated low byte. The source-required C87=69 executes a second
+`p` against M69=123 before C88 halts. Eight bounded, 86-step normative
+paths cover EOF, NUL, 0x01, 0x7f, 0x80, 0xff, and an unread suffix.
+An independent fifteen-trit truth-table oracle checks both crazy results,
+all output bytes, read ordering, pointer state and final memory.
+
+The output is *not* the signed C23 byte: its first crazy operand is 85,
+not 7,138,732, and the second crazy occurs **after** the output. Earlier
+C23 source-code and memory operands remain intact but are not consumed in
+this branch. A genuine input-dependent guest arithmetic/output continuation
+is now verified; the original seven-block mutable EOF checksum still
+refuses linkage and has no guest parity evidence.
+
+The adjacent short-route search also excludes a fixed two-jump C84/C85
+return to M95. For all eight loader-admitted C82 bytes, the C79 indirect
+jump encrypts M82 and C84 follows it to one of eight candidate words;
+none contains the 94 needed to reset D to M95 in the next jump. This
+excludes only the frozen prefix and indirect branch, not reordered guest
+arithmetic, relocated source constants or longer dynamic control.
+
+
 ### C23 indirect tail cannot reset D with one graphical jump (2026-11-20)
 
 The reached C79 `i` bypasses C81 but encrypts M82 before executing C83,

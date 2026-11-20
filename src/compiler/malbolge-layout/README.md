@@ -178,6 +178,22 @@ admitted seed leaves M[96]=72, while C23 needs the **different** pair
 this is a composition primitive, not a working signed C23 converter, loop,
 or the source-locked mutable checksum. P2 remains open.
 
+### Live indirect guest arithmetic/output continuation
+
+The exact `Iy` source with nine reached rotations now performs a real
+input-dependent `p` and output *after* C79 indirectly jumps across the
+source-locked C81 halt. C84 follows encrypted M82=66 to M67, C85
+executes `p` on M67=85, C86 emits the calculated byte, and the
+source-fixed C87 executes another `p` on M69=123 before C88 halts.
+Eight 86-step normative VM cases, including two EOF lengths and an
+unread suffix, agree with an independent fifteen-trit oracle.
+
+This is not signed C23 byte conversion: it consumes neither the prepared
+M95/M96 converter pair nor a source-C checksum. The fixed indirect
+C84/C85 two-jump attempt also fails for all eight graphical source
+values at C82, because none returns D to M95. Source relocation and
+real converter output remain the immediate P2 blocker.
+
 ### Two physical `p` writes from C23 converter loader words
 
 `build_c23_operand_probe_source` constructs a 279-cell graphical N15
