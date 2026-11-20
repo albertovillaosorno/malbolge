@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Raw input checkpoint before correct C23 conversion (2026-11-19)
+
+The original 91-cell `Iy` loader now has a separate, source-valid physical
+candidate that changes **only C74** from `o` to `<`. Nine genuine rotations
+prepare M95=7,138,732 and the second `/` at C69 loads a signed guest input.
+The new C74 `<` emits that input's *raw N15 low byte*, preserving A and D;
+the following C79/C80 `p` writes still consume the exact prepared M95/M96
+operands and leave the mathematically correct C23 conversion in memory.
+
+A new **259-path normative VM witness** covers second-input bytes 0..255,
+second EOF, initial EOF, and an unread suffix, all with an independent
+fifteen-trit conversion oracle, exact read/output/write ordering and a
+82-step halt. It also proves the new source differs from the original
+converter by only one byte and refuses historical profiles. This is a
+concrete live-I/O-to-conversion boundary: output does not clobber later
+input-dependent physical arithmetic. It is **not** a C23 `putchar` result:
+EOF's raw N15 byte is not C23's converted `0xff`, and the correct converted
+accumulator is not emitted because C81 remains a required `v`/pointer
+constant. C37 still consumes an earlier input attempt; no source-C branch,
+checksum loop, checksum guest or parity claim follows. P2 remains open.
+
 ### Relocated guest reset with an output checkpoint (2026-11-19)
 
 A different, source-admitted 91-cell N15 loader tail yields M96=66. The

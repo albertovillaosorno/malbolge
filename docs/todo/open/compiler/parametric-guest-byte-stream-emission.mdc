@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a source-valid 91-cell `Iy` candidate adds a real
+  **raw signed-input checkpoint at C74** between a second `/` at C69 and
+  the correct two-step C23 crazy conversion at C79/C80. Exactly one source
+  byte changes, leaving the nine loader rotations and pointer resets intact.
+  An independent fifteen-trit oracle and 259 normative 82-step VM paths
+  verify all 256 successful second-input bytes, EOF, first-read EOF, an unread
+  suffix, exact output-before-write order and final converted memory words.
+  The guest outputs the raw input, **not** the converted C23 byte; C81 still
+  halts before the converted value can be emitted. C37 still consumes an
+  earlier read. The original five-case mutable EOF checksum remains
+  explicitly unlinked, so P2 acceptance and guest parity remain open.
+
 - On 2026-11-19, a second 91-cell N15 loader reset chain now routes
   physical D through M96=66, M67=67 and M68=94, freeing executable C62.
   A real guest performs three `/` reads and three successive M95 `p`

@@ -337,3 +337,34 @@ pub fn build_c23_nine_rotated_signed_conversion_without_output_source(
     admit_c23_probe_graphical_source(&source)?;
     Ok(source)
 }
+
+/// Preserve a live signed input across a physical output and C23 conversion.
+///
+/// The second actual guest `/` at C69 reads a signed byte or target EOF.
+/// C74 emits its *raw* low byte before C79/C80 perform the two correct
+/// C23 `p` conversions against M95/M96. This output does not represent the
+/// converted result: at EOF it is the N15 sentinel's low byte, not 0xff.
+/// C81 still halts without emitting the final converted accumulator, and the
+/// earlier C37 `/` still consumes an input attempt. No C source is compiled.
+///
+/// This candidate tests whether guest I/O can checkpoint an accumulator
+/// without clobbering the subsequent source-authentic conversion path.
+/// The exact code/data trace still requires independent normative admission.
+///
+/// # Errors
+///
+/// Refuses other profiles, missing source encodings and invalid graphical
+/// source. It never publishes a source-C artifact.
+pub fn build_c23_nine_rotated_input_checkpoint_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source =
+        build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )?;
+    // Original C74 is a no-op whose data pointer is M86; changing it to
+    // output leaves A and D intact for C75..C80's exact pointer chain.
+    set(&mut source, 74, profile.output_instruction())?;
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}

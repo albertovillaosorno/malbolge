@@ -611,6 +611,124 @@ fn nine_real_rotations_convert_second_signed_input_without_output()
     Ok(())
 }
 
+// A real output of the *raw* second input at C74 must preserve A and D.
+// The converted result is still held in guest memory, not emitted as C23
+// putchar output. This checks the exact order for all 257 signed outcomes.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "all signed raw output checkpoints precede two physical p writes"
+)]
+fn live_signed_input_checkpoint_precedes_unmodified_conversion()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_c23_nine_rotated_input_checkpoint_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let plain =
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    assert_eq!(
+        layout::build_c23_nine_rotated_input_checkpoint_source(
+            historical_profile(),
+        ),
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile),
+    );
+    for position in 0..source.len() {
+        if position != 74 {
+            assert_eq!(source[position], plain[position], "C={position}");
+        }
+    }
+    assert_eq!(
+        decode_profile_instruction(u32::from(source[74]), 74),
+        Some(profile.output_instruction()),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    let mut cases = 0usize;
+    for input in once(Vec::new())
+        .chain(once(vec![0x5a]))
+        .chain((u8::MIN..=u8::MAX).map(|byte| vec![0x5a, byte]))
+        .chain(once(vec![0x5a, 0x81, 0x00, 0xff]))
+    {
+        let first = input.first().copied();
+        let second = input.get(1).copied();
+        let raw = second.map_or_else(|| profile.eof_word(), u32::from);
+        let after_first = scalar_crazy(7_138_732, raw);
+        let converted = scalar_crazy(INITIAL_SECOND, after_first);
+        let raw_byte =
+            u8::try_from(raw % 256).map_err(|error| error.to_string())?;
+        assert_eq!(converted % 256, u32::from(second.unwrap_or(255)));
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(82, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 82,
+            }
+        );
+        let first_read = trace.get(37).ok_or("missing mandatory first read")?;
+        let live_read = trace.get(69).ok_or("missing second read")?;
+        assert_eq!(
+            first_read.input,
+            Some(first.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+        );
+        assert_eq!(
+            live_read.input,
+            Some(second.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+        );
+        assert_eq!(live_read.after.registers.accumulator, raw);
+        let checkpoint = trace.get(74).ok_or("missing raw checkpoint")?;
+        assert_eq!(checkpoint.decoded, Some(profile.output_instruction()));
+        assert_eq!(checkpoint.before.registers.data_pointer, 86);
+        assert_eq!(checkpoint.before.registers.accumulator, raw);
+        assert_eq!(checkpoint.after.registers.accumulator, raw);
+        assert_eq!(checkpoint.output, Some(raw_byte));
+        assert!(trace[..74].iter().all(|step| step.output.is_none()));
+        assert!(trace[75..].iter().all(|step| step.output.is_none()));
+        assert_eq!(vm.output(), &[raw_byte]);
+        for (position, address, before, after) in [
+            (79usize, 95u32, 7_138_732u32, after_first),
+            (80, 96, INITIAL_SECOND, converted),
+        ] {
+            let write =
+                trace.get(position).ok_or("missing guest conversion")?;
+            assert_eq!(write.decoded, Some(b'p'));
+            assert_eq!(write.before.registers.data_pointer, address);
+            assert_eq!(
+                write.memory_reads.data.map(|read| read.value),
+                Some(before)
+            );
+            assert_eq!(write.after.registers.accumulator, after);
+            assert_eq!(vm.memory_word(address), Ok(after));
+        }
+        assert_eq!(trace.get(81).and_then(|step| step.decoded), Some(b'v'));
+        assert_eq!(
+            vm.input_consumed(),
+            usize::from(first.is_some()) + usize::from(second.is_some()),
+        );
+        cases = cases.saturating_add(1);
+    }
+    assert_eq!(cases, 259);
+    Ok(())
+}
+
 // The tempting direct 87 -> 95 pointer shortcut is not a source-valid
 // Malbolge instruction. Reject it during generation, not after publication.
 #[test]
