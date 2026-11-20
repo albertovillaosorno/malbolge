@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Fixed C23 tail has no one-jump-shorter output return (2026-11-19)
+
+The exact 91-cell `Iy` signed converter now has a bounded graph-search
+regression anchored to the normative VM's first 74 real instructions.
+The trace confirms M95=7,138,732, M96=121, the next D=86, and a prior
+read of source M81=94 (which later decodes as the C81 halt). The search
+independently admits every graphical source byte at the still-virgin
+C82..C88 cells, including consistent repeated references. It also models
+source-encoded control instructions at C74..C80.
+
+The original four-jump C75..C78 route remains reachable as a positive
+control. **Neither** a three-jump C75..C77 return **nor** an early C74
+plus C75..C77 four-jump return reaches M95 in time for C78/C79 `p` and
+C80 `<`. Changing C81 itself would invalidate an already consumed
+pointer operand. This is a finite *fixed-prefix, fixed-loader* negative
+result, not an impossibility theorem for a relocated source, different
+reset graph or longer guest program. The converted accumulator still
+cannot reach C23 `putchar`; the unchanged seven-block checksum remains
+unlinked and its original five guest acceptance traces remain missing.
+
 ### Raw input checkpoint before correct C23 conversion (2026-11-19)
 
 The original 91-cell `Iy` loader now has a separate, source-valid physical

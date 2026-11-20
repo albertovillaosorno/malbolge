@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a bounded physical graph check of the existing nine-
+  rotation C23 prefix confirms M95/M96 and D at the 74-step normative VM
+  checkpoint, including the earlier read of M81=94. All graphical C82..C88
+  alternatives are allowed, with consistency on repeated data reads and
+  fixed source-authentic C74..C80 opcode placement. The four-jump existing
+  return is reachable, but neither its three-jump shortening nor an early
+  C74 four-jump route places D at M95 before C78. Thus C80 cannot simply
+  output the correct C23 result while C81 remains a halt. This bounded
+  negative finding requires a new code/data layout, not another raw echo.
+  The source-C EOF checksum still has no guest artifact or parity.
+
 - On 2026-11-19, a source-valid 91-cell `Iy` candidate adds a real
   **raw signed-input checkpoint at C74** between a second `/` at C69 and
   the correct two-step C23 crazy conversion at C79/C80. Exactly one source

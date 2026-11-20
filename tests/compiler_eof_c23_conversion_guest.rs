@@ -944,3 +944,162 @@ fn every_graphical_c74_early_return_misses_first_c23_operand()
     assert_eq!(cases, expected.len());
     Ok(())
 }
+
+// The signed C23 conversion already reaches M95/M96 at C79/C80, but
+// source-required M81=94 halts at C81. This finite search asks whether
+// changing only *virgin* late data cells can move the pair one instruction
+// earlier, leaving C80 available for output. It is a local obstruction,
+// not a proof against a different loader or earlier control layout.
+fn local_c23_return_paths(
+    memory: &[u32],
+    pointer: u32,
+    jumps: u8,
+    authored_code: &[(usize, u32)],
+    assignments: &mut Vec<(usize, u32)>,
+) -> usize {
+    if jumps == 0 {
+        return usize::from(pointer == 95);
+    }
+    let Ok(address) = usize::try_from(pointer) else {
+        return 0;
+    };
+    let Some(&loaded) = memory.get(address) else {
+        return 0;
+    };
+    let candidates: Vec<u32> = if (82..=88).contains(&address) {
+        (33..=126u32)
+            .filter(|&word| {
+                decode_profile_instruction(word, pointer)
+                    .is_some_and(|op| b"oijp*/<v".contains(&op))
+            })
+            .collect()
+    } else {
+        vec![
+            authored_code
+                .iter()
+                .find(|(position, _)| *position == address)
+                .map_or(loaded, |(_, word)| *word),
+        ]
+    };
+    let mut paths = 0usize;
+    for word in candidates {
+        if assignments.iter().any(|&(position, previous)| {
+            position == address && previous != word
+        }) {
+            continue;
+        }
+        assignments.push((address, word));
+        if let Some(next) = word.checked_add(1) {
+            paths = paths.saturating_add(local_c23_return_paths(
+                memory,
+                next,
+                jumps - 1,
+                authored_code,
+                assignments,
+            ));
+        }
+        _ = assignments.pop();
+    }
+    paths
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "source-locked finite pointer reachability and real VM prefix"
+)]
+fn fixed_c23_prefix_has_no_one_jump_shorter_graphical_output_return()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, &source, vec![0x5a, 0x81])
+            .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(74, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?,
+        RunOutcome::BudgetExhausted { steps: 74 },
+    );
+    assert_eq!(trace.len(), 74);
+    assert_eq!(trace[73].after.registers.data_pointer, 86);
+    assert_eq!(vm.memory_word(95), Ok(7_138_732));
+    assert_eq!(vm.memory_word(96), Ok(121));
+    assert!(trace.iter().any(|step| {
+        step.memory_reads
+            .data
+            .is_some_and(|read| read.address == 81 && read.value == 94)
+    }));
+    // Every potentially rewritten source byte is virgin at this checkpoint.
+    for position in (74..=80u32).chain(82..=88) {
+        assert!(
+            trace.iter().all(|step| {
+                step.before.registers.code_pointer != position
+                    && step
+                        .memory_reads
+                        .data
+                        .is_none_or(|read| read.address != position)
+                    && step
+                        .memory_delta
+                        .data
+                        .is_none_or(|write| write.address != position)
+            }),
+            "early use of C{position} forbids a late-only edit"
+        );
+    }
+    let code_word = |position: usize, opcode: u8| -> Result<u32, String> {
+        (33..=126u32)
+            .find(|&word| {
+                decode_profile_instruction(
+                    word,
+                    u32::try_from(position).unwrap_or(u32::MAX),
+                ) == Some(opcode)
+            })
+            .ok_or_else(|| {
+                format!("no source glyph for {opcode} at C{position}")
+            })
+    };
+    let mut original = Vec::new();
+    for position in 75..=78 {
+        original.push((position, code_word(position, b'j')?));
+    }
+    for position in 79..=80 {
+        original.push((position, code_word(position, b'p')?));
+    }
+    // The existing four-jump route is reachable, so the search is not vacuous.
+    assert!(
+        local_c23_return_paths(vm.memory(), 87, 4, &original, &mut Vec::new())
+            > 0
+    );
+
+    let mut shortened = Vec::new();
+    for position in 75..=77 {
+        shortened.push((position, code_word(position, b'j')?));
+    }
+    shortened.push((78, code_word(78, b'p')?));
+    shortened.push((79, code_word(79, b'p')?));
+    shortened.push((80, code_word(80, profile.output_instruction())?));
+    // C75..C77 cannot reset D to M95 in three jumps, even if every
+    // loader-admissible byte at C82..C88 is independently selectable.
+    let three_jump_paths =
+        local_c23_return_paths(vm.memory(), 87, 3, &shortened, &mut Vec::new());
+    assert_eq!(three_jump_paths, 0);
+    // Turning C74 into a fourth jump cannot reach M95 at C78 either.
+    shortened.push((74, code_word(74, b'j')?));
+    let early_four_jump_paths =
+        local_c23_return_paths(vm.memory(), 86, 4, &shortened, &mut Vec::new());
+    assert_eq!(early_four_jump_paths, 0);
+    // C81 cannot be turned into output within this prefix: its raw 94
+    // was already read as a mandatory pointer operand before C74.
+    assert_eq!(source.get(81), Some(&94));
+    assert_ne!(
+        decode_profile_instruction(94, 81),
+        Some(profile.output_instruction()),
+    );
+    Ok(())
+}
