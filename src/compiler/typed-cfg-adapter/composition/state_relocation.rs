@@ -772,11 +772,25 @@ fn proposed_code_edge(
         }
         index.used_pads.push(placement);
     }
-    // Bind each write to its own proposed code address, preserving the
-    // complete snapshot-before-commit order. Unused pad cells are merely
-    // reserved slack: they are not proven safe no-ops or target opcodes.
+    // Right-align the ordered copy suffix immediately before the reserved
+    // successor transfer. Earlier pad cells are only unverified setup space,
+    // not proved instructions or safe no-ops; no gaps may interrupt the
+    // snapshot-before-commit sequence or delay its final jump.
     let (snapshot_sites, commit_sites) = if let Some(placement) = pad {
-        let mut next_address = placement.start;
+        let copy_count = edge
+            .snapshots
+            .len()
+            .checked_add(edge.commits.len())
+            .and_then(|count| u32::try_from(count).ok())
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let pad_exit = placement
+            .end_exclusive
+            .checked_sub(1)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let mut next_address = pad_exit
+            .checked_sub(copy_count)
+            .filter(|start| *start >= placement.start)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         let mut assign_site = |copy: &GuestPlacedCellCopy| {
             let code_address = next_address;
             next_address = next_address
@@ -797,7 +811,7 @@ fn proposed_code_edge(
             .iter()
             .map(&mut assign_site)
             .collect::<Result<Vec<_>, _>>()?;
-        if next_address >= placement.end_exclusive {
+        if next_address != pad_exit {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
         (snapshots, commits)

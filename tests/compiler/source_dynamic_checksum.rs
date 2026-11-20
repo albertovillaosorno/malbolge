@@ -1509,9 +1509,10 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
             *commits,
         );
         if let Some(pad) = pad {
-            let expected = (pad.start
-                ..pad.start
-                    + u32::try_from(snapshots.len() + commits.len()).unwrap())
+            let expected = (pad.end_exclusive
+                - 1
+                - u32::try_from(snapshots.len() + commits.len()).unwrap()
+                ..pad.end_exclusive - 1)
                 .collect::<Vec<_>>();
             let actual = snapshot_sites
                 .iter()
@@ -1522,17 +1523,39 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
                 actual, expected,
                 "phi sites on {predecessor}->{successor}"
             );
-            assert!(
-                actual
-                    .last()
-                    .is_none_or(|cell| *cell < pad.end_exclusive - 1),
-                "the pad exit cannot alias a phi write",
+            assert_eq!(
+                actual.last().and_then(|cell| cell.checked_add(1)),
+                *pad_exit_address,
+                "the final phi commit precedes the successor transfer",
             );
         } else {
             assert!(snapshot_sites.is_empty());
             assert!(commit_sites.is_empty());
         }
     }
+    // The original four source-locked phi edges have distinct contiguous
+    // copy suffixes, with no speculative filler between their final commit
+    // and the required successor transfer at the pad end.
+    let mut bound_copy_suffixes = addressed
+        .control_edges
+        .iter()
+        .filter_map(|edge| {
+            Some((
+                edge.predecessor,
+                edge.successor,
+                edge.snapshot_sites.first()?.code_address,
+                edge.commit_sites.first()?.code_address,
+                edge.pad_exit_address?,
+            ))
+        })
+        .collect::<Vec<_>>();
+    bound_copy_suffixes.sort_unstable();
+    assert_eq!(bound_copy_suffixes, [
+        (0, 1, 271, 275, 279),
+        (3, 5, 299, 301, 303),
+        (4, 5, 323, 325, 327),
+        (5, 1, 367, 371, 375),
+    ]);
     let backedge = addressed.control_edges.last().expect("canonical backedge");
     assert_eq!((backedge.predecessor, backedge.successor), (5, 1));
     assert_eq!(backedge.snapshots.len(), 4);
