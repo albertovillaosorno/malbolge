@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Pre-input guest preseed improves retained signed state (2026-11-20)
+
+A source-valid 132-cell N15 variant performs a new real C14 `p` while
+D=132 and A=0, before reading the first signed guest input at C53.
+This writes `crazy(7,174,350, 0) = 7,174,462` into loader-derived M132;
+the existing C62 `p` then folds the **live** first input into that
+preseeded word before C63 reads and classifies the second signed input.
+The original loader tail `-}` and control skeleton remain unchanged.
+
+An independently transcribed 15-trit truth table enumerates all 256
+input bytes and true EOF: the earlier M132 fold distinguished 36 byte
+classes plus EOF (37 total), whereas preseeded M132 distinguishes 171
+byte classes plus EOF (172 total). The byte fold remains **lossy**,
+so this does not represent a C32 local or implement the checksum.
+The bounded 10-stream normative VM witness checks exact writes at C14
+and C62, input events at C53/C63, output events at C54 and the selected
+C57/C128 marker, a single encrypted C62 revisit on successful second
+bytes, unread suffixes, and the exact 119/175-step halts. A NUL first
+byte writes the same word at C62 and therefore produces no memory delta;
+the trace independently checks the reached `p` opcode and resulting A.
+No arbitrary guest control, arithmetic, phi copying, or repeatable EOF
+loop is linked. P2 remains open.
+
 ### Source-C guarded third signed input after second EOF check (2026-11-20)
 
 A complete C23 `emit` function now reads `first` and `second` as signed

@@ -289,6 +289,31 @@ pub fn build_second_input_branch_with_first_eof_fold_source(
     Ok(source)
 }
 
+/// Preseed the first signed-input fold using a real guest write at C14.
+///
+/// On the initial traversal, C14 has D=132 and A=0. Its `p` writes
+/// `crazy(M132, 0)` into the existing loader-derived data word before C53
+/// reads the first signed input. C62 then performs a *second* real `p`
+/// using that live input as A; C63 independently reads the second input,
+/// whose EOF/byte branch and outputs remain unchanged. The preseed raises
+/// distinct signed first-input classes from 37 to 172, but is still lossy
+/// (171 classes for 256 bytes). It cannot implement a C32 scalar local.
+///
+/// # Errors
+///
+/// Rejects unsupported profiles or missing graphical instruction encodings.
+/// Every physical state and I/O path requires separate normative VM proof.
+pub fn build_second_input_branch_with_preseeded_first_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source =
+        build_second_input_branch_with_first_eof_fold_source(profile)?;
+    // The first write changes M132 without altering the loader recurrence
+    // or the C8/C17..C52 pointer chain. C62 later folds the live input.
+    put(&mut source, 14, b'p')?;
+    Ok(source)
+}
+
 /// Build two real, distinct signed-input echoes in one physical guest path.
 ///
 /// The source's C=53 classifier still performs input-dependent arithmetic,

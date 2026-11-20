@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a real N15 C14 `p` preseeds M132 before the first
+  signed guest read, and C62 `p` subsequently folds live first-input
+  state before C63 reads and branches on the second input. Ten complete
+  119/175-step VM paths confirm two physical input/output events, both
+  EOF arms, encrypted revisit, memory writes and unchanged loader tail.
+  An independent 257-word trit oracle counts 171 byte classes plus a
+  disjoint EOF class, versus 36 plus EOF previously. The fold is still
+  lossy, not C32 storage; original seven-block checksum guest parity and
+  dynamic CFG linking remain absent. P2 open.
+
 - On 2026-11-20, an exact 12-by-94 graphical encoding audit of
   C102..C113 found only C108 source `C` as a first-pass instruction
   encrypting into `<` on revisit. It executes `v` first, and a real
