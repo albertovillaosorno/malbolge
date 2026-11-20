@@ -28,6 +28,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Phi-copy pads reserve their final transfer (2026-11-20)
+
+The original source-authenticated seven-block C23 checksum still has four
+unselected phi edges. Each physical landing pad must reserve one code cell
+for each distinct snapshot/commit write **and one additional transfer** to
+its canonical successor. Eight copy writes cannot both fit into eight
+physical instruction cells and then execute the required jump. A red-first
+original-source regression now refuses eight-cell pads on both the initial
+phi edge and the loop backedge, while admitting nine-cell reservations.
+
+This is a necessary code-space check only: it does not prove the jump,
+execute the copies, implement dynamic C23 arithmetic or build the guest
+checksum. All proposed code and data addresses remain unlinked. The five
+native C23 input controls still pass and source compilation refuses target
+publication as before.
+
 ### EOF-classified two-input guest output (2026-11-20)
 
 A new source-built 132-cell N15 guest composes two actual signed `/`

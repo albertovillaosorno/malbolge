@@ -315,7 +315,7 @@ pub struct GuestAddressedCfgPlan {
     pub code_blocks: Vec<GuestCodeBlockPlacement>,
     /// Each source branch arm or jump gets an unselected entry and copies.
     pub control_edges: Vec<GuestCodeControlEdge>,
-    /// Required phi pads, in canonical edge order, disjoint from all blocks.
+    /// Phi pads, each reserving its exit jump, disjoint from all blocks.
     pub edge_pads: Vec<GuestCodeEdgePadPlacement>,
     /// Entry address for each canonical source function, never first by guess.
     pub function_entries: Vec<GuestCodeFunctionEntry>,
@@ -700,18 +700,20 @@ fn proposed_code_edge(
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
     if let Some(placement) = pad {
-        // Every snapshot and commit writes a distinct physical guest cell.
-        // Even an ideal one-instruction copy cannot fit more writes than
-        // the pad reserves; actual code/mutation proof remains downstream.
-        let required_writes = edge
+        // The pad reserves a separate physical operation for each memory
+        // copy and one final code-pointer transfer to the successor.
+        // A p/* write only advances C; it cannot also perform an i jump.
+        // This is a necessary reservation, not an opcode or mutation proof.
+        let required_cells = edge
             .snapshots
             .len()
             .checked_add(edge.commits.len())
+            .and_then(|writes| writes.checked_add(1))
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         let reserved_cells =
             usize::try_from(placement.end_exclusive - placement.start)
                 .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
-        if reserved_cells < required_writes {
+        if reserved_cells < required_cells {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
         index.used_pads.push(placement);

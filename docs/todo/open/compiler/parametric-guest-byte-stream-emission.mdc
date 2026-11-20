@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the source-authenticated checksum's four phi landing
+  pads now reserve not just separate snapshot and commit operations but
+  the required final control transfer to their successor. Red-first
+  tests reject eight cells for eight phi writes on both the entry and
+  loop backedge, and admit the necessary nine-cell reservation. This
+  strengthens physical prelink refusal; no actual phi copies, control
+  jump, C23 checksum code or normative guest parity is claimed. The full
+  source remains unlinked and publishes no guest artifact.
+
 - On 2026-11-20, the 132-cell source-built signed EOF guest now executes
   two real input and output operations within the **same** first-byte-
   dependent control path. Seven independently derived complete instruction,
