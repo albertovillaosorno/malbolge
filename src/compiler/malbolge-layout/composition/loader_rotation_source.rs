@@ -496,6 +496,110 @@ pub fn build_cross_fold_followed_by_third_input_source(
     Ok(source)
 }
 
+/// Retain a lossless third signed guest input and fold all three words.
+///
+/// After C43/M95 and C53/M97 save independently encoded signed inputs,
+/// C57/M95 physically folds the first two values. A `j` at C58 follows
+/// untouched M96=72 to D73; C59 reads the third input into A. Source C74
+/// is changed to 101 (`v`, never reached as code), so C60 `j` restores D
+/// from M74=101 to M102, and C61 `o` advances to M103. Source C62=94 is
+/// a mandatory reached `p`, and M103's unmodified loader seed 7,174,453
+/// stores all 256 third-byte values plus true EOF injectively.
+///
+/// C63..C66 restore D through M104=72, M73=61, **encrypted** M62=57 and
+/// **encrypted** M58=79, landing at D80. C67 `o` reaches virgin M81=94
+/// (`v` at source C81, never reached as code); C68 `j` returns to M95.
+/// C69 `p` computes `crazy(crazy(first, second), third)` using full encoded
+/// guest words, C70 outputs the low byte, and C71 halts after 72 steps.
+/// M97 and M103 preserve the independent second and third encodings.
+///
+/// This proves real ternary cross-word arithmetic and three 257-class
+/// storage operands, not signed C23 arithmetic, source-locked variable
+/// copies, a dynamic EOF branch or the mutable C checksum loop.
+/// Every claimed effect requires independent normative VM admission.
+///
+/// # Errors
+///
+/// Refuses incompatible profiles, wrong loader geometry or unavailable
+/// graphical opcodes.
+pub fn build_three_input_cross_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_two_retained_inputs_cross_fold_source(profile)?;
+    // Both data pointers are code cells below 91 but are never executed.
+    // Their bytes must still decode as legal source instructions.
+    source[74] = 101;
+    source[81] = 94;
+    for (position, opcode) in [
+        (58, b'j'),
+        (59, profile.input_instruction()),
+        (60, b'j'),
+        (61, b'o'),
+        // C62=94 is itself the physical `p` and cannot be re-encoded.
+        (63, b'j'),
+        (64, b'j'),
+        (65, b'j'),
+        (66, b'j'),
+        (67, b'o'),
+        (68, b'j'),
+        (69, b'p'),
+        (70, profile.output_instruction()),
+        (71, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    if decode_profile_instruction(u32::from(source[62]), 62) != Some(b'p')
+        || decode_profile_instruction(u32::from(source[74]), 74) != Some(b'v')
+        || decode_profile_instruction(u32::from(source[81]), 81) != Some(b'v')
+        || unwritten_loader_word(&source, 103, profile) != Ok(7_174_453)
+        || unwritten_loader_word(&source, 104, profile) != Ok(72)
+    {
+        return Err(RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b"IH",
+        });
+    }
+    Ok(source)
+}
+
+/// Recover a third signed input *exactly* after a physical guest store.
+///
+/// The three-input layout's C59 `/` and C62/M103 `p` retain the full
+/// third word using the all-ones-trit seed 7,174,453. On each trit,
+/// `crazy(1, x)` maps 0 to 1, 1 to 0 and 2 to 2: it is an involution.
+/// Five inert instructions C63..C67 move D from M104 to virgin M109,
+/// which has the **same** all-ones seed. C68 `p` therefore reverses the
+/// earlier encoding and writes the *original* full guest input word at
+/// M109. C69 outputs its low byte, and C70 halts after 71 steps.
+/// Earlier C43/C53 saves and C57 cross-word arithmetic are retained.
+///
+/// The raw N15 EOF word is preserved distinctly, but it is not yet a
+/// C23 `int` conversion, an EOF-sensitive branch or a general source-C
+/// helper. This fixed physical path requires independent VM verification.
+///
+/// # Errors
+///
+/// Refuses incompatible profiles, broken loader geometry or unavailable
+/// graphical opcodes.
+pub fn build_three_input_signed_roundtrip_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_three_input_cross_fold_source(profile)?;
+    if unwritten_loader_word(&source, 109, profile) != Ok(7_174_453) {
+        return Err(RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b"IH",
+        });
+    }
+    for position in 63..=67usize {
+        set(&mut source, position, b'o')?;
+    }
+    for (position, opcode) in
+        [(68, b'p'), (69, profile.output_instruction()), (70, b'v')]
+    {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Emit two guest-visible prefixes of a mutable two-input N15 fold.
 ///
 /// Both input attempts execute real `/` instructions. Each `p` reads and

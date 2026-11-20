@@ -75,6 +75,33 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the lossless third-input M103 state also has a
+  distinct 91-cell physical N15 **raw-word recovery** continuation:
+  C59 reads, C62 folds against the 15-trit all-ones seed at M103,
+  and C68 folds that encoding again against virgin M109's identical
+  all-ones seed. The second `crazy` is an involution and writes the
+  precise original third input word, including true raw EOF; C69
+  emits its low byte and C70 halts in 71 VM steps. An independent
+  257-value byte-plus-EOF trit truth table and ten complete normative
+  VM streams check input ordering, all five reached `p` writes,
+  preserved earlier state, exact M109 word and output. This is not
+  C23 signed normalization, dynamic EOF control or a compiled C
+  checksum; P2 remains open.
+
+- On 2026-11-20, a 91-cell N15 layout physically reads three
+  independent signed inputs at C39/C47/C59 and stores three 257-class
+  byte-plus-EOF words in M95/M97/M103. C57 first folds saved inputs
+  one and two, and C69 finally `crazy`-folds that result with the
+  losslessly encoded third word after a self-encryption-correct jump
+  chain. Ten complete 72-step normative VM executions check all five
+  physical crazy writes, seven jumps, three reads, three final state
+  cells, output, EOF and unread suffix against an independent trit
+  oracle. A separate 256-byte-plus-EOF truth table confirms the third
+  M103 store is injective, unlike the older 36-class M96 fold. This
+  does not decode C23 signed input, implement add/XOR, compile source
+  arithmetic, or execute an EOF loop; the whole P2 checksum still
+  refuses publication.
+
 - On 2026-11-20, a 91-cell physical N15 continuation executes a
   third independent signed read at C61 after saving the first two
   inputs at M95/M97 and cross-folding their live words at C57/M95.

@@ -105,6 +105,8 @@ pub use loader_rotation_source::{
     build_seeded_three_input_checkpoint_fold_source,
     build_seeded_two_input_prefix_fold_source,
     build_seeded_two_input_state_update_source,
+    build_three_input_cross_fold_source,
+    build_three_input_signed_roundtrip_source,
     build_two_retained_inputs_cross_fold_source,
     build_two_retained_signed_inputs_source,
 };

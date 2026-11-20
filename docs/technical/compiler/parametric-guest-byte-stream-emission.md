@@ -28,6 +28,63 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exact third signed-word recovery after guest storage (2026-11-20)
+
+The exact same 91-cell three-input N15 source admits a second physical
+continuation with an **invertible** stored signed word, including raw
+EOF. M103 and the untouched loader M109 both begin as 7,174,453, the
+15-trit all-ones word. For each trit, Malbolge's `crazy(1, x)` exchanges
+0 and 1 and fixes 2; applying it twice recovers the original trit.
+The source's C59 third `/` and C62/M103 `p` first save an injected
+encoding. Five reached inert instructions advance D to virgin M109,
+where C68 `p` folds the saved encoding with the all-ones seed and
+physically writes the **exact original N15 guest input word**. C69
+outputs its low byte and C70 halts after 71 steps. The earlier two
+signed saves at M95/M97 and first-two-word C57 `crazy` fold remain
+unmodified. The roundtrip continuation is separate from the 72-step
+three-way fold, not a claim that both outputs are emitted together.
+
+An independent 257-value trit truth table proves exact inversion for
+all 256 possible input bytes and true raw N15 EOF. Ten complete
+normative VM paths compare the recovered M109 word, distinct M103
+encoding, first-two input state, five reached physical `p` writes,
+three read events, emitted low byte, consumed input and 71-step halt.
+This is a real lossless guest decoder for the profile's raw input
+word, **not** C23 `int` normalization, an EOF branch, source-bound
+assignment, a dynamic checksum loop or checksum guest-output parity.
+P2 remains open.
+
+### Lossless third signed input and true three-word crazy fold (2026-11-20)
+
+A stronger 91-cell N15 continuation now saves three independently read
+signed inputs before a **real third-input-dependent cross-word fold**.
+After C43/M95 and C53/M97 preserve the first two 257-class encodings,
+C57/M95 folds those two full words. C58 resets D to M73, C59 performs
+an independent third `/`, and C60 follows a new virgin C74=101 pointer.
+C61 advances to M103, where source-mandated C62=94 executes `p`
+against the untouched 7,174,453 loader seed. An independent ternary
+truth table proves this third M103 encoding distinguishes **all 256
+bytes plus true EOF**; notably 1 and 2 no longer alias.
+
+The final arithmetic linkage must follow *post-encryption* control.
+After C62 encrypts its own 94 source constant to 57, C63..C66 jump
+through M104=72, M73=61, encrypted M62=57 and encrypted M58=79,
+landing at D80. C67 advances to virgin M81=94 and C68 `j` restores
+D95. The reached C69 `p` then calculates the full-width
+`crazy(crazy(saved_first, saved_second), saved_third)` in M95;
+M97 and M103 still retain the independent second/third encoded words.
+C70 outputs its low byte, and C71 halts.
+
+Ten fixed complete normative VM streams (including empty, truncated,
+NUL, high bytes, multiple third bytes and an unread suffix) agree with
+an independently implemented 15-trit `crazy` oracle. Every case checks
+three physical read sites, all five physical `p` writes, seven jump
+sites, the two deliberate `o` increments, untouched pointer constants,
+retained data words, single output and **exact 72-step halt**. This is
+real guest ternary arithmetic across three signed input encodings,
+**not** C23 unsigned add/XOR, decoded C locals, conditional EOF, a
+source-bound compiler path or the original checksum. P2 remains open.
+
 ### Third signed input after a real cross-word fold (2026-11-20)
 
 A 91-cell N15 candidate extends the verified independent dual-storage
