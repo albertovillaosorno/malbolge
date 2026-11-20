@@ -58,7 +58,7 @@ const fn rotated(word: u32) -> u32 {
 fn crazy(mut data: u32, mut accumulator: u32) -> u32 {
     let mut result = 0;
     let mut place = 1;
-    for _ in 0..15 {
+    for _ in 0usize..15 {
         let trit = match (data % 3, accumulator % 3) {
             (0 | 1, 0) | (2, 2) => 1,
             (1, 2) | (2, 0 | 1) => 2,
@@ -72,6 +72,10 @@ fn crazy(mut data: u32, mut accumulator: u32) -> u32 {
     result
 }
 
+#[expect(
+    clippy::excessive_nesting,
+    reason = "fixed three-position by eighteen-byte test input generation"
+)]
 fn cases(events: u8) -> Vec<Vec<u8>> {
     let mut streams =
         vec![vec![], vec![0x42], vec![0, 255], vec![0, 255, 128], vec![
@@ -81,7 +85,9 @@ fn cases(events: u8) -> Vec<Vec<u8>> {
         for position in 0..3 {
             for byte in BOUNDARIES {
                 let mut input = vec![0x42, 0x81, 0xc3];
-                input[position] = byte;
+                if let Some(slot) = input.get_mut(position) {
+                    *slot = byte;
+                }
                 streams.push(input);
             }
         }
@@ -125,6 +131,7 @@ fn bounded_guest_fold_refuses_unproved_count_profile_and_seed() {
 #[test]
 #[expect(
     clippy::cognitive_complexity,
+    clippy::excessive_nesting,
     clippy::too_many_lines,
     clippy::panic_in_result_fn,
     clippy::integer_division_remainder_used,
@@ -165,11 +172,12 @@ fn real_guest_folds_one_to_three_separate_inputs_into_one_memory_word()
                 assert_eq!(trace.len(), steps);
                 let mut state = starting_word;
                 for position in [3usize, 7, 11, 15, 19, 23, 27, 31, 35] {
-                    let step = &trace[position];
+                    let step =
+                        trace.get(position).ok_or("missing guest rotation")?;
                     assert_eq!(step.decoded, Some(b'*'));
                     assert_eq!(step.before.registers.data_pointer, TARGET);
                     assert_eq!(
-                        step.memory_reads.data.map(|r| r.value),
+                        step.memory_reads.data.map(|cell| cell.value),
                         Some(state)
                     );
                     state = rotated(state);
@@ -185,7 +193,8 @@ fn real_guest_folds_one_to_three_separate_inputs_into_one_memory_word()
                         .get(event)
                         .copied()
                         .map_or(TraceInput::EndOfInput, TraceInput::Byte);
-                    let read = &trace[input_at];
+                    let read =
+                        trace.get(input_at).ok_or("missing guest input")?;
                     assert_eq!(read.decoded, Some(profile.input_instruction()));
                     assert_eq!(read.before.registers.data_pointer, TARGET);
                     assert_eq!(read.input, Some(expected_input));
@@ -193,23 +202,26 @@ fn real_guest_folds_one_to_three_separate_inputs_into_one_memory_word()
                     for (offset, address, word) in
                         [(0usize, 96u32, 72u32), (1, 73, 61), (2, 62, 94)]
                     {
-                        let reset = &trace[reset_at + offset];
+                        let reset = trace
+                            .get(reset_at + offset)
+                            .ok_or("missing reset")?;
                         assert_eq!(reset.decoded, Some(b'j'));
                         assert_eq!(
                             reset.before.registers.data_pointer,
                             address
                         );
                         assert_eq!(
-                            reset.memory_reads.data.map(|r| r.value),
+                            reset.memory_reads.data.map(|cell| cell.value),
                             Some(word)
                         );
                     }
-                    let update = &trace[input_at + 4];
+                    let update =
+                        trace.get(input_at + 4).ok_or("missing guest write")?;
                     let next = crazy(state, input_word);
                     assert_eq!(update.decoded, Some(b'p'));
                     assert_eq!(update.before.registers.data_pointer, TARGET);
                     assert_eq!(
-                        update.memory_reads.data.map(|r| r.value),
+                        update.memory_reads.data.map(|cell| cell.value),
                         Some(state)
                     );
                     assert_eq!(update.after.registers.accumulator, next);
@@ -224,14 +236,16 @@ fn real_guest_folds_one_to_three_separate_inputs_into_one_memory_word()
                         for (offset, address, word) in
                             [(0usize, 96u32, 72u32), (1, 73, 61), (2, 62, 94)]
                         {
-                            let reset = &trace[input_at + 5 + offset];
+                            let reset = trace
+                                .get(input_at + 5 + offset)
+                                .ok_or("missing next reset")?;
                             assert_eq!(reset.decoded, Some(b'j'));
                             assert_eq!(
                                 reset.before.registers.data_pointer,
                                 address
                             );
                             assert_eq!(
-                                reset.memory_reads.data.map(|r| r.value),
+                                reset.memory_reads.data.map(|cell| cell.value),
                                 Some(word)
                             );
                         }
@@ -240,7 +254,10 @@ fn real_guest_folds_one_to_three_separate_inputs_into_one_memory_word()
                 let output_at = 44 + (usize::from(events) - 1) * 8;
                 let byte = u8::try_from(state % 256)
                     .map_err(|error| error.to_string())?;
-                assert_eq!(trace[output_at].output, Some(byte));
+                assert_eq!(
+                    trace.get(output_at).and_then(|step| step.output),
+                    Some(byte)
+                );
                 assert_eq!(vm.output(), &[byte]);
                 assert_eq!(vm.memory_word(TARGET), Ok(state));
                 assert_eq!(
@@ -257,6 +274,10 @@ fn real_guest_folds_one_to_three_separate_inputs_into_one_memory_word()
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded full VM parity assertions return a diagnostic on mismatch"
+)]
 fn third_input_really_affects_guest_state_not_only_the_output_position()
 -> Result<(), String> {
     let profile = current_profile();
@@ -276,7 +297,7 @@ fn third_input_really_affects_guest_state_not_only_the_output_position()
         )
         .map_err(|error| error.to_string())?;
         assert_eq!(
-            vm.run(62).map_err(|e| e.to_string())?,
+            vm.run(62).map_err(|error| error.to_string())?,
             RunOutcome::Terminated {
                 reason: Termination::HaltInstruction,
                 steps: 62
@@ -284,7 +305,7 @@ fn third_input_really_affects_guest_state_not_only_the_output_position()
         );
         _ = outputs.insert(vm.output().to_vec());
         _ = data_words
-            .insert(vm.memory_word(TARGET).map_err(|e| e.to_string())?);
+            .insert(vm.memory_word(TARGET).map_err(|error| error.to_string())?);
     }
     assert!(outputs.len() > 1);
     assert!(data_words.len() > 1);
