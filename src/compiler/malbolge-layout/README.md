@@ -234,6 +234,28 @@ forward C=127 rotation writes M[156]; it **collides** with the previous
 C state for this exact source. It is two unconditional reads, not a guest
 EOF loop, a C23 signed conversion, or the original mutable C checksum.
 
+### Two guest input echoes with first-input EOF-dependent control
+
+`build_two_input_eof_classified_echo_source` composes two genuine `/` reads
+at C53 and C99 with `<` outputs at C54 and C100 inside the existing
+132-cell signed-EOF discriminator. This is one physical guest with both
+byte dataflow and input-dependent control: its final marker is 0x9a when
+the **first** input was a byte, and 0x1e when the first attempt saw EOF.
+An initial EOF path consumes no input bytes, emits `[0x6a, 0x6a, 0x1e]`
+and halts after 119 VM steps; a first-byte path reads up to two bytes,
+echoes their N15 input words, emits 0x9a and halts after 175 steps. The
+third supplied byte remains unread. The N15 EOF low byte 0x6a is not a
+C23 cast of `-1` to `unsigned char`.
+
+Seven independently authored binary/EOF path expectations verify actual
+code positions, both `/` and `<` events, complete data/instruction writes
+and physical C-state reservation isolation. A separate 256-case normative
+VM run varies both input bytes, with an unread third-byte suffix, and
+checks exact outputs, input consumption and halt. Incorrect emitted bytes,
+forged signed input provenance and shifted event positions fail admission.
+This is not the source-C checksum: no typed operation, phi write, dynamic
+backedge, mutable local or C23 EOF normalization is physically linked.
+
 ### Guest-controlled second read after a successful signed input
 
 The exact 132-cell signed EOF classifier has an additional source

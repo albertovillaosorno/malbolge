@@ -2796,3 +2796,243 @@ fn two_echo_guest_preserves_all_256_byte_classes() -> Result<(), String> {
     }
     Ok(())
 }
+
+// Two physically executed reads and echoes precede a first-input-dependent
+// EOF/byte marker. The independent oracle knows the source-control arm from
+// the first byte only, never from a host reconstruction of the guest trace.
+struct OwnedTwoInputClassifiedEchoPath {
+    base: OwnedBranchPath,
+    input_events: [TraceInput; 2],
+    io_events: [layout::BoundedRevisitIoEvent; 5],
+    output: [u8; 3],
+}
+
+impl OwnedTwoInputClassifiedEchoPath {
+    fn new(input: Vec<u8>) -> Self {
+        let base = OwnedBranchPath::new(input);
+        let eof_low = u8::try_from(current_profile().eof_word() & 255)
+            .expect("masked N15 EOF word must be a byte");
+        let first = base.input.first().copied().unwrap_or(eof_low);
+        let second = base.input.get(1).copied().unwrap_or(eof_low);
+        let input_events = [
+            base.input
+                .first()
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+            base.input
+                .get(1)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+        ];
+        let marker = base.output[0];
+        let io_events = [
+            layout::BoundedRevisitIoEvent {
+                step: 53,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[0]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 54,
+                effect: layout::BoundedRevisitIoEffect::Output(first),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 99,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[1]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 100,
+                effect: layout::BoundedRevisitIoEffect::Output(second),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: if base.input.is_empty() {
+                    117
+                } else {
+                    127
+                },
+                effect: layout::BoundedRevisitIoEffect::Output(marker),
+            },
+        ];
+        Self {
+            base,
+            input_events,
+            io_events,
+            output: [first, second, marker],
+        }
+    }
+
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.base.input,
+            code_positions: &self.base.path,
+            output: &self.output,
+            input_consumed: self.base.input.len().min(2),
+            input_events: &self.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.base.writes,
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "independent source/profile-bound byte/EOF path admission"
+)]
+fn two_input_eof_classified_echo_admits_both_guest_control_arms()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_two_input_eof_classified_echo_source(profile)
+        .map_err(|error| format!("classified source: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(
+        layout::build_two_input_eof_classified_echo_source(
+            malbolge::historical_profile(),
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![128, 128],
+        vec![3, 4, 5],
+    ]
+    .into_iter()
+    .map(OwnedTwoInputClassifiedEchoPath::new)
+    .collect::<Vec<_>>();
+    let expected = cases
+        .iter()
+        .map(OwnedTwoInputClassifiedEchoPath::expectation)
+        .collect::<Vec<_>>();
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let accepted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("complete two-read path: {error:?}"))?;
+    assert_eq!(accepted.len(), cases.len());
+    for (actual, case) in accepted.iter().zip(&cases) {
+        assert_eq!(actual.output(), case.output);
+        assert_eq!(actual.input_events(), case.input_events);
+        assert_eq!(actual.io_events(), case.io_events);
+        assert_eq!(actual.code_positions(), case.base.path);
+        assert_eq!(actual.data_writes(), case.base.writes);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                actual,
+                &case.base.instruction_writes,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(actual, &[
+                layout::BoundedGuestDataRegion {
+                    start: CHECKSUM_FRAME_START,
+                    end_exclusive: CHECKSUM_FRAME_END,
+                },
+            ]),
+            Ok(())
+        );
+    }
+    let first = expected.get(3).ok_or("no binary-input oracle")?;
+    let forged_output = [0u8, 254, 154];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                output: &forged_output,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::OutputMismatch)
+    );
+    let forged_inputs = [TraceInput::Byte(0), TraceInput::EndOfInput];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                input_events: &forged_inputs,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::InputEventsMismatch)
+    );
+    let mut forged_io = cases.get(3).ok_or("no case")?.io_events;
+    forged_io[2].step = 98;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                io_events: &forged_io,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch)
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded all-byte guest execution and independent IO oracle"
+)]
+fn two_input_eof_classified_echo_preserves_every_first_byte()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_two_input_eof_classified_echo_source(profile)
+        .map_err(|error| format!("classified source: {error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for first in u8::MIN..=u8::MAX {
+        let second = first ^ 0xa5;
+        let input = vec![first, second, 17];
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(175, &mut |event| trace.push(*event))
+                .map_err(|error| format!("first={first}: {error}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 175,
+            },
+        );
+        assert_eq!(vm.output(), &[first, second, 154]);
+        assert_eq!(vm.input_consumed(), 2);
+        assert_eq!(
+            trace
+                .iter()
+                .filter_map(|step| step.input)
+                .collect::<Vec<_>>(),
+            [TraceInput::Byte(first), TraceInput::Byte(second)],
+        );
+        assert_eq!(
+            trace
+                .iter()
+                .filter_map(|step| step.output)
+                .collect::<Vec<_>>(),
+            [first, second, 154],
+        );
+        assert_eq!(trace[54].output, Some(first));
+        assert_eq!(trace[99].input, Some(TraceInput::Byte(second)));
+        assert_eq!(trace[100].output, Some(second));
+    }
+    Ok(())
+}

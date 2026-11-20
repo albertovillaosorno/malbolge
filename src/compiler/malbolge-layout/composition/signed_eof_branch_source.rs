@@ -189,6 +189,36 @@ pub fn build_guarded_signed_eof_echo_and_second_read_source(
     Ok(source)
 }
 
+/// Emit two signed input words, then a guest-selected first-input EOF marker.
+///
+/// C53/C99 perform two separate real `/` instructions. C54/C100 emit their
+/// input accumulators before the classifier's remaining control executes.
+/// The first input still selects the encrypted success-arm C57 output (0x9a)
+/// or the EOF-arm C128 output (0x1e). Both arms terminate: 175 steps for a
+/// first byte and 119 for first EOF. Missing inputs echo the N15 EOF low
+/// byte (0x6a), **not** the C23 unsigned-char conversion of EOF.
+///
+/// This is physical two-read byte dataflow plus dynamic control, not a
+/// source-C lowering, mutable local, or repeatable EOF loop. The normative
+/// VM and independent bounded path oracles must still admit every case.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles or unavailable graphical source positions.
+pub fn build_two_input_eof_classified_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source = build_signed_eof_branch_source(profile)?;
+    for (position, opcode) in [
+        (54, profile.output_instruction()),
+        (99, profile.input_instruction()),
+        (100, profile.output_instruction()),
+    ] {
+        put(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Build two real, distinct signed-input echoes in one physical guest path.
 ///
 /// The source's C=53 classifier still performs input-dependent arithmetic,

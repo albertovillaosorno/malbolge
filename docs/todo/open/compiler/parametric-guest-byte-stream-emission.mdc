@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the 132-cell source-built signed EOF guest now executes
+  two real input and output operations within the **same** first-byte-
+  dependent control path. Seven independently derived complete instruction,
+  data-write and I/O proofs cover initial EOF, truncated second input and
+  binary suffixes; 256 more normative paths vary both bytes and prove the
+  exact three output words, 119/175-step halts and unread third byte.
+  Forged bytes, input events and I/O order refuse. EOF still echoes the
+  N15 sentinel (0x6a), not the C23 unsigned EOF cast; no source-C
+  checksum arithmetic, phi copies, runtime backedge or guest compilation
+  is claimed. The original seven-block checksum still fails closed.
+
 - On 2026-11-20, the source-locked checksum's proposed phi landing pads
   now reject any interval shorter than the number of separate guest-word
   snapshots and commits. Red-first regressions exposed acceptance of a

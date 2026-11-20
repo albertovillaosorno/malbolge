@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### EOF-classified two-input guest output (2026-11-20)
+
+A new source-built 132-cell N15 guest composes two actual signed `/`
+inputs (C53/C99), two accumulator-dependent `<` echoes (C54/C100), and
+the pre-existing first-input EOF/byte branch into a *single executable
+path*. The normative VM halts after 119 steps for initial EOF, emitting
+`6a 6a 1e`; a successful first input takes 175 steps and emits the
+first two input words' low bytes followed by `9a`. A missing second byte
+emits the N15 EOF low byte `6a`; this is not C23 EOF normalization.
+
+Seven independently constructed whole-path/physical-write oracles and 256
+additional all-first-byte normative VM executions establish real input
+consumption, three ordered writes, both branch arms and halt. Forged event
+provenance or outputs refuse bounded path admission. This integrates two
+guest outputs with genuinely dynamic control, but does **not** implement
+the source-locked checksum's arithmetic, phi transfers, C23 EOF mapping
+or repeatable loop; the complete C source still refuses guest publication.
+
 ### Source-locked phi pad capacity refuses impossible writes (2026-11-20)
 
 The original seven-block C23 checksum's four proposed predecessor-specific
