@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Second-input-dependent EOF branch after the first echo (2026-11-20)
+
+A new 132-cell graphical N15 candidate moves the existing four-`p` EOF
+classifier's input from its first real `/` to a *second* `/` at C63. C53
+consumes an earlier signed word and C54 emits its raw low byte. C63 then
+replaces A before the C64 classifier: an absent second input takes the EOF
+arm **even after a successful first byte**. A successful second read takes
+the other arm, which revisits C63 only after self-encryption has changed
+`/` into inert `x`, so it cannot accidentally consume a third byte. Both
+arms halt after 119/175 guest steps, respectively.
+
+Seven independently constructed whole-path nonlinear admissions verify
+physical input and output events, source-locked code paths, trit-derived
+guest writes and frame isolation. Forged output, input event and I/O
+position are refused. Thirty-two further normative VM paths cross sixteen
+binary boundaries on the second read, with first-byte variation, truncated
+EOF and unread third-byte suffixes. The physical output is the first raw
+input word followed by class marker `0x1e` on second EOF or `0x9a` on a
+second byte. Initial EOF echoes the N15 low byte `0x6a`, not C23's cast
+of signed `EOF`; neither branch implements C23 signed normalization. The
+original seven-block checksum still cannot link arithmetic, phi copies
+or its repeatable EOF loop, and no whole-source guest artifact exists.
+
 ### Source-block operations reserve physical cells before control (2026-11-20)
 
 The seven-block original C23 checksum's addressed CFG now rejects a proposed

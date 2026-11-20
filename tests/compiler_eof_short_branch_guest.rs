@@ -1808,9 +1808,8 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
     use layout::typed_cfg_adapter::state_relocation::GuestPlacedOperand;
     let placed_scalar_is_reserved = |scalar: GuestPlacedOperand| {
         scalar.words > 0
-            && (0..scalar.words).all(|index| {
-                scalar.cell_address(index).is_some_and(in_state)
-            })
+            && (0..scalar.words)
+                .all(|index| scalar.cell_address(index).is_some_and(in_state))
     };
     let mut instruction_count = 0usize;
     for block in &candidate.relocated().operation_blocks {
@@ -3033,6 +3032,362 @@ fn two_input_eof_classified_echo_preserves_every_first_byte()
         assert_eq!(trace[54].output, Some(first));
         assert_eq!(trace[99].input, Some(TraceInput::Byte(second)));
         assert_eq!(trace[100].output, Some(second));
+    }
+    Ok(())
+}
+
+// The real C63 input (not the earlier C53 input) selects the guest arm.
+// This oracle derives all physical data writes from the independent trit
+// truth table and all code addresses from the frozen branch geometry.
+struct OwnedSecondInputClassifiedFirstEchoPath {
+    input: Vec<u8>,
+    base: OwnedBranchPath,
+    input_events: [TraceInput; 2],
+    io_events: [layout::BoundedRevisitIoEvent; 4],
+    output: [u8; 2],
+}
+
+impl OwnedSecondInputClassifiedFirstEchoPath {
+    fn new(input: Vec<u8>) -> Self {
+        let base = OwnedBranchPath::new(input.get(1..).unwrap_or(&[]).to_vec());
+        let eof_low = u8::try_from(current_profile().eof_word() & 255)
+            .expect("masked N15 EOF is one byte");
+        let first = input.first().copied().unwrap_or(eof_low);
+        let marker = base.output[0];
+        let input_events = [
+            input
+                .first()
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+            input
+                .get(1)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+        ];
+        let io_events = [
+            layout::BoundedRevisitIoEvent {
+                step: 53,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[0]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 54,
+                effect: layout::BoundedRevisitIoEffect::Output(first),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 63,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[1]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: if input.len() < 2 {
+                    117
+                } else {
+                    127
+                },
+                effect: layout::BoundedRevisitIoEffect::Output(marker),
+            },
+        ];
+        Self {
+            input,
+            base,
+            input_events,
+            io_events,
+            output: [first, marker],
+        }
+    }
+
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.input,
+            code_positions: &self.base.path,
+            output: &self.output,
+            input_consumed: self.input.len().min(2),
+            input_events: &self.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.base.writes,
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "independent full-path guest source admission and forgery refusal"
+)]
+fn second_input_eof_branch_has_independent_full_path_proofs()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .map_err(|error| format!("second classifier: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(
+        layout::build_second_input_eof_classified_first_echo_source(
+            malbolge::historical_profile()
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
+    // Equal first-byte cases deliberately take OPPOSITE paths when only the
+    // second word changes between a genuine EOF and successful read.
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![128, 128],
+        vec![3, 4, 5],
+    ]
+    .into_iter()
+    .map(OwnedSecondInputClassifiedFirstEchoPath::new)
+    .collect::<Vec<_>>();
+    let expected = cases
+        .iter()
+        .map(OwnedSecondInputClassifiedFirstEchoPath::expectation)
+        .collect::<Vec<_>>();
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let accepted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("second guest control: {error:?}"))?;
+    assert_eq!(accepted.len(), cases.len());
+    for (actual, case) in accepted.iter().zip(&cases) {
+        assert_eq!(actual.output(), case.output);
+        assert_eq!(actual.input_events(), case.input_events);
+        assert_eq!(actual.io_events(), case.io_events);
+        assert_eq!(actual.code_positions(), case.base.path);
+        assert_eq!(actual.data_writes(), case.base.writes);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                actual,
+                &case.base.instruction_writes,
+            ),
+            Ok(()),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(actual, &[
+                layout::BoundedGuestDataRegion {
+                    start: CHECKSUM_FRAME_START,
+                    end_exclusive: CHECKSUM_FRAME_END,
+                },
+            ]),
+            Ok(()),
+        );
+    }
+    let first = expected.get(3).ok_or("no successful second input")?;
+    let forged_marker = [0u8, 30];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                output: &forged_marker,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::OutputMismatch),
+    );
+    let forged_reads = [TraceInput::Byte(0), TraceInput::EndOfInput];
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                input_events: &forged_reads,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::InputEventsMismatch),
+    );
+    let mut forged_io = cases.get(3).ok_or("no successful case")?.io_events;
+    forged_io[2].step = 99;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                io_events: &forged_io,
+                ..*first
+            }
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch),
+    );
+    Ok(())
+}
+
+#[test]
+fn second_input_controls_actual_eof_branch_after_first_echo()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .map_err(|error| format!("second classifier: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![3, 4, 5],
+    ] {
+        let second_eof = input.len() < 2;
+        let first = input.first().copied().unwrap_or(106);
+        let marker = if second_eof {
+            30
+        } else {
+            154
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let steps = if second_eof {
+            119
+        } else {
+            175
+        };
+        assert_eq!(
+            vm.run_traced(steps, &mut |event| trace.push(*event))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            },
+            "input={input:?}",
+        );
+        assert_eq!(vm.output(), &[first, marker], "input={input:?}");
+        assert_eq!(vm.input_consumed(), input.len().min(2));
+        assert_eq!(
+            trace[53].input,
+            Some(
+                input
+                    .first()
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            )
+        );
+        assert_eq!(trace[54].output, Some(first));
+        assert_eq!(
+            trace[63].input,
+            Some(
+                input
+                    .get(1)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            )
+        );
+        assert_eq!(
+            trace.iter().filter_map(|event| event.input).count(),
+            2,
+            "input={input:?}",
+        );
+        if !second_eof {
+            let revisit = &trace[133];
+            assert_eq!(revisit.before.registers.code_pointer, 63);
+            assert_eq!(revisit.decoded, Some(b'x'));
+            assert_eq!(revisit.input, None);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent deterministic second-byte and truncated-EOF paths"
+)]
+fn second_input_classifier_handles_binary_boundaries_and_unread_suffix()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .map_err(|error| format!("second classifier: {error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let samples: [u8; 16] = [
+        0, 1, 2, 3, 7, 15, 31, 63, 64, 127, 128, 129, 192, 223, 254, 255,
+    ];
+    for second in samples {
+        let first = second ^ 0xa5;
+        for input in [vec![first], vec![first, second, 0x7c]] {
+            let second_eof = input.len() == 1;
+            let steps = if second_eof {
+                119
+            } else {
+                175
+            };
+            let marker = if second_eof {
+                30
+            } else {
+                154
+            };
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                loaded.memory().to_vec(),
+                input.clone(),
+                ProfileRegisters::default(),
+            )
+            .map_err(|error| error.to_string())?;
+            let mut trace = Vec::new();
+            assert_eq!(
+                vm.run_traced(steps, &mut |event| trace.push(*event))
+                    .map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps,
+                },
+                "input={input:?}",
+            );
+            assert_eq!(vm.output(), &[first, marker], "input={input:?}");
+            assert_eq!(vm.input_consumed(), input.len().min(2));
+            assert_eq!(
+                trace
+                    .iter()
+                    .filter_map(|event| event.input)
+                    .collect::<Vec<_>>(),
+                if second_eof {
+                    vec![TraceInput::Byte(first), TraceInput::EndOfInput]
+                } else {
+                    vec![TraceInput::Byte(first), TraceInput::Byte(second)]
+                },
+            );
+            assert_eq!(trace[54].output, Some(first));
+            assert_eq!(
+                trace[63].input,
+                Some(if second_eof {
+                    TraceInput::EndOfInput
+                } else {
+                    TraceInput::Byte(second)
+                })
+            );
+            assert_eq!(
+                trace[if second_eof {
+                    117
+                } else {
+                    127
+                }]
+                .output,
+                Some(marker),
+            );
+            if !second_eof {
+                assert_eq!(trace[133].decoded, Some(b'x'));
+                assert_eq!(trace[133].input, None);
+            }
+        }
     }
     Ok(())
 }

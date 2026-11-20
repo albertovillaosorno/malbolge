@@ -12,6 +12,26 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Second signed input selects a physical EOF/byte branch
+
+`build_second_input_eof_classified_first_echo_source` derives a graphical
+132-cell N15 guest source from the existing one-byte signed classifier.
+The first `/` at C53 reads a real byte or EOF and C54 echoes the accumulator.
+A second physical `/` at C63 **replaces** the accumulator before the first
+classifier `p` at C64, so it is the second input, not the first, that
+selects the C45 byte arm or C126 EOF arm. In the byte arm C63 is revisited
+after code encryption, decoding as inert `x` rather than a third `/`.
+
+Seven independent complete nonlinear path admissions check exact read and
+output order, 119/175-step control paths, source-derived memory writes and
+instruction writes, and unchanged isolation of checksum-frame cells. Forged
+output, second-input event, and read position all refuse. Another 32
+normative VM paths vary boundary first/second bytes, true second-read EOF
+and unread third-byte suffixes. EOF emits fixed marker `0x1e`; successful
+second input emits `0x9a`, after the first raw N15 echo. This is a bounded
+physical second-input decision, **not** signed C23 `EOF`, a compiled C
+local, reusable conditional lowering, an unbounded loop, or a checksum.
+
 ### C23 probe admission and shortened output routes
 
 `admit_c23_probe_graphical_source` now refuses fewer than two source

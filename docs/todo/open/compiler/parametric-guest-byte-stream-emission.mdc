@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, an actual 132-cell N15 guest now reads/echoes its
+  first signed word, then takes a **second-input-dependent** EOF/byte
+  branch. C63 `/` precedes the original C64 crazy classifier; its byte
+  arm revisits C63 encrypted as inert `x`, not an unintended third read.
+  Seven source-locked independent full-path admissions prove exact 119/175
+  steps, ordered physical I/O, trit-derived memory writes and unchanged
+  checksum-frame isolation, with forged output, input and read location
+  rejected. Thirty-two additional bounded guest VM paths vary binary
+  second inputs, truncated EOF and an unread suffix. Fixed markers remain
+  `0x1e`/`0x9a`, not C23 EOF semantics; source-C arithmetic, phi copies,
+  backedge control and five-case mutable checksum guest parity stay open.
+
 - On 2026-11-20, the original source-authenticated checksum's proposed
   block-to-control intervals now reserve at least one physical code cell
   per typed operation and a separate cell for every mandatory literal word

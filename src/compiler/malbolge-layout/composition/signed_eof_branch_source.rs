@@ -219,6 +219,29 @@ pub fn build_two_input_eof_classified_echo_source(
     Ok(source)
 }
 
+/// Echo the first guest input, then branch on the *second* signed read.
+///
+/// C53 and C63 each execute a distinct real `/`, and C54 outputs the first
+/// input before the second read. The classifier's first crazy write at C64
+/// consumes the second accumulator, so a truncated second read takes the EOF
+/// arm even when the first byte was successful. On the byte arm the C63 `/`
+/// is revisited *after encryption* as an inactive opcode, not a third read.
+/// The two marker arms remain the original bounded 132-cell guest layout.
+/// This is not a general C23 EOF translation, repeatable loop or checksum.
+///
+/// # Errors
+///
+/// Refuses other target profiles or missing graphical encodings. A full
+/// physical guest trace must independently validate each branch and I/O.
+pub fn build_second_input_eof_classified_first_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source = build_signed_eof_branch_source(profile)?;
+    put(&mut source, 54, profile.output_instruction())?;
+    put(&mut source, 63, profile.input_instruction())?;
+    Ok(source)
+}
+
 /// Build two real, distinct signed-input echoes in one physical guest path.
 ///
 /// The source's C=53 classifier still performs input-dependent arithmetic,
