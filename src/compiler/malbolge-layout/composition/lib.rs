@@ -104,6 +104,7 @@ pub use loader_rotation_source::{
     build_seeded_three_input_checkpoint_fold_source,
     build_seeded_two_input_prefix_fold_source,
     build_seeded_two_input_state_update_source,
+    build_two_retained_inputs_cross_fold_source,
     build_two_retained_signed_inputs_source,
 };
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};

@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Cross-word guest arithmetic after two retained inputs (2026-11-20)
+
+The earlier 91-cell dual-storage geometry now performs a real binary
+Malbolge `p` operation on both independently read and saved values.
+After C43 stores the first signed input at M95 and C53 stores the
+second at M97, three physical jumps at C54..C56 follow loader words
+M98=72, M73=61 and M62=94 to return to M95. C57 computes
+`crazy(saved_first, saved_second)` in guest memory; C58 emits the
+result's low byte and C59 halts at 60 normative VM steps. M97 retains
+the separately encoded second input. The first saved value is an
+actual memory operand, not a host-provided argument or output lookup.
+
+An independent 15-trit truth table proves the two pre-fold storage
+seeds separately represent all 256 byte classes plus EOF without
+aliases. A predeclared 29-stream normative guest witness includes
+empty input, one-sided EOF, NUL, high bytes, sign boundaries, and an
+unread suffix. Every trace checks C39/C47 reads, three `p` operations,
+pointer restoration, exact memory words, output and termination. The
+test observes reached `p` instructions even when a fold leaves memory
+unchanged. The initial exhaustive 515-stream VM attempt exceeded
+its 100-second subprocess budget and is not claimed as a pass.
+
+This demonstrates guest **cross-word** arithmetic that depends on two
+previously saved signed inputs. It does not decode C23 integers, supply
+C add/XOR, source-variable SSA, a runtime EOF branch, or the checksum
+backedge. The original full mutable source still refuses publication.
+
 ### Two independently lossless signed input words (2026-11-20)
 
 A second 91-cell physical layout uses the graphical `IH` loader tail to

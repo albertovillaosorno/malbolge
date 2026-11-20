@@ -416,6 +416,45 @@ pub fn build_two_retained_signed_inputs_source(
     Ok(source)
 }
 
+/// Apply a genuine two-operand guest crazy operation after two signed reads.
+///
+/// The fixed IH loader seeds two disjoint 257-class storage words. C43
+/// saves the first input at M95, C53 saves the second at M97, and A retains
+/// the second encoding. The loader then gives M98=72, M73=61 and M62=94:
+/// three real jumps at C54..C56 reset D from M98 to M95.
+/// C57 overwrites M95 with `crazy(saved_first, saved_second)`, while M97
+/// remains unchanged. C58 outputs this joint result's low byte, and C59
+/// halts. The source has neither host-computed output nor a replayed input.
+///
+/// This is binary Malbolge arithmetic on two stored input-dependent
+/// words, not C23 addition/XOR, signed decoding, a C variable or an EOF loop.
+/// The bounded source must be admitted by normative guest trace verification.
+///
+/// # Errors
+///
+/// Refuses historical profiles or a broken loader/encoding geometry.
+pub fn build_two_retained_inputs_cross_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_two_retained_signed_inputs_source(profile)?;
+    if unwritten_loader_word(&source, 98, profile) != Ok(72) {
+        return Err(RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b"IH",
+        });
+    }
+    for (position, opcode) in [
+        (54, b'j'),
+        (55, b'j'),
+        (56, b'j'),
+        (57, b'p'),
+        (58, profile.output_instruction()),
+        (59, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Emit two guest-visible prefixes of a mutable two-input N15 fold.
 ///
 /// Both input attempts execute real `/` instructions. Each `p` reads and
