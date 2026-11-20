@@ -314,6 +314,30 @@ pub fn build_second_input_branch_with_preseeded_first_fold_source(
     Ok(source)
 }
 
+/// Save one live signed input through two consecutive real guest writes.
+///
+/// C14 preseeds M132, C61 writes `crazy(M131, first)` into M131 and C62
+/// folds that first result into M132. C63 then reads the second signed
+/// word for the unchanged guest EOF/byte branch. The two cells are real,
+/// separately addressed guest effects, but the first fold is lossy, and
+/// the second cannot restore information already discarded by C61.
+/// This does not implement C32 storage or a source checksum.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles or missing graphical code encodings.
+/// Independent VM admission of every relevant path remains required.
+pub fn build_second_input_branch_with_dual_first_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source =
+        build_second_input_branch_with_preseeded_first_fold_source(profile)?;
+    // D=131 with the original first signed word still in A. Its encrypted
+    // revisit is inert, so the success arm cannot repeat the state write.
+    put(&mut source, 61, b'p')?;
+    Ok(source)
+}
+
 /// Build two real, distinct signed-input echoes in one physical guest path.
 ///
 /// The source's C=53 classifier still performs input-dependent arithmetic,

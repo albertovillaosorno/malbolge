@@ -265,3 +265,165 @@ fn real_guest_preseed_and_input_fold_survive_both_eof_arms() {
         ]);
     }
 }
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::too_many_lines,
+    reason = "independent two-cell VM state and bounded control witnesses"
+)]
+fn consecutive_physical_first_word_stores_keep_eof_control() {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_branch_with_dual_first_fold_source(profile)
+            .expect("two-cell guest fold source");
+    let preseed =
+        layout::build_second_input_branch_with_preseeded_first_fold_source(
+            profile,
+        )
+        .expect("one-cell preseed source");
+    assert_eq!(source.len(), 132);
+    assert_eq!(source.get(61), Some(&95));
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(
+        source
+            .iter()
+            .zip(&preseed)
+            .enumerate()
+            .filter(|(_, (a, b))| a != b)
+            .map(|(position, _)| position)
+            .collect::<Vec<_>>(),
+        [61],
+    );
+    assert_eq!(
+        layout::build_second_input_branch_with_dual_first_fold_source(
+            historical_profile()
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
+    // The second cell depends on the already-folded first; it does not
+    // magically restore distinctions the first 15-trit crazy lost.
+    let first_classes = (u8::MIN..=u8::MAX)
+        .map(|byte| independent_crazy(125, u32::from(byte)))
+        .collect::<BTreeSet<_>>();
+    assert!(first_classes.len() < 256);
+    let input_zero = independent_crazy(125, 0);
+    assert_eq!(input_zero, independent_crazy(125, 1));
+    let initial = ProfileMachine::from_source(profile, &source, Vec::new())
+        .expect("loader admits both guest-state cells");
+    assert_eq!(initial.memory()[131], 125);
+    assert_eq!(initial.memory()[132], ORIGINAL_SEED);
+    let seeded = independent_crazy(ORIGINAL_SEED, 0);
+    for input in [
+        &[][..],
+        &[0][..],
+        &[1, 4][..],
+        &[2, 255, 99][..],
+        &[31, 31, 8][..],
+        &[255, 0, 7][..],
+    ] {
+        let first = input
+            .first()
+            .copied()
+            .map_or_else(|| profile.eof_word(), u32::from);
+        let first_fold = independent_crazy(125, first);
+        let second_fold = independent_crazy(seeded, first_fold);
+        let eof_second = input.len() < 2;
+        let steps = if eof_second {
+            119
+        } else {
+            MAX_STEPS
+        };
+        let output = [
+            input.first().copied().unwrap_or(106),
+            if eof_second {
+                30
+            } else {
+                154
+            },
+        ];
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            initial.memory().to_vec(),
+            input.to_vec(),
+            ProfileRegisters::default(),
+        )
+        .expect("isolated state");
+        let mut reads = Vec::new();
+        let mut outputs = Vec::new();
+        let mut state_ops = Vec::new();
+        let result = vm.run_traced(steps, &mut |step| {
+            if let Some(value) = step.input {
+                reads.push((step.before.registers.code_pointer, value));
+            }
+            if let Some(value) = step.output {
+                outputs.push((step.before.registers.code_pointer, value));
+            }
+            if [14, 61, 62].contains(&step.before.registers.code_pointer) {
+                state_ops.push((
+                    step.before.registers.code_pointer,
+                    step.decoded,
+                    step.before.registers.data_pointer,
+                    step.after.registers.accumulator,
+                ));
+            }
+        });
+        assert_eq!(
+            result,
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            }),
+            "input={input:?}",
+        );
+        assert_eq!(vm.output(), output);
+        assert_eq!(vm.input_consumed(), input.len().min(2));
+        assert_eq!([vm.memory()[131], vm.memory()[132]], [
+            first_fold,
+            second_fold
+        ]);
+        assert_eq!(reads, [
+            (
+                53,
+                input
+                    .first()
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            ),
+            (
+                63,
+                input
+                    .get(1)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            ),
+        ]);
+        assert_eq!(outputs, [
+            (54, output[0]),
+            (
+                if eof_second {
+                    128
+                } else {
+                    57
+                },
+                output[1]
+            )
+        ]);
+        let expected_first_ops = [
+            (14, Some(b'p'), 132, seeded),
+            (61, Some(b'p'), 131, first_fold),
+            (62, Some(b'p'), 132, second_fold),
+        ];
+        assert_eq!(state_ops.get(..3), Some(expected_first_ops.as_slice()));
+        if eof_second {
+            assert_eq!(state_ops.len(), 3);
+        } else {
+            // Both writes are encrypted to inert opcodes on the byte arm.
+            assert_eq!(state_ops.len(), 5);
+            assert_eq!(state_ops[3].0, 61);
+            assert_eq!(state_ops[3].1, Some(b'A'));
+            assert_eq!(state_ops[4].0, 62);
+            assert_eq!(state_ops[4].1, Some(b't'));
+        }
+    }
+}

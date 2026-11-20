@@ -75,6 +75,11 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- A follow-up N15 C61 `p` writes a second physical cell, M131, from the
+  same live signed input before C62 updates M132; six real EOF/byte VM
+  paths retain exact halts and I/O. Its `crazy(125, input)` aliases bytes
+  0 and 1, so dual-cell folding is not a lossless C23 local. P2 open.
+
 - On 2026-11-20, a real N15 C14 `p` preseeds M132 before the first
   signed guest read, and C62 `p` subsequently folds live first-input
   state before C63 reads and branches on the second input. Ten complete

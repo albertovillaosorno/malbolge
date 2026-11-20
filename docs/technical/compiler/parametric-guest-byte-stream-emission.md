@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two physical guest state writes before signed EOF control (2026-11-20)
+
+A follow-up physical variant changes only C61 from inert to `p` in the
+preseeded N15 guest. Before C63's real second signed input, C61 now
+folds the first live input into M131, then C62 folds the resulting guest
+accumulator into the independently preseeded M132. The two data writes
+use distinct physical guest cells; both happen before the second input
+overwrites A. On byte-arm revisits C61 is encrypted to inert `A`, while
+C62 is inert `t`. Six real N15 streams preserve both exact EOF branches,
+119/175-step halts, read sites C53/C63 and output sites C54/C57/C128.
+
+This is **not** lossless guest byte storage: for example, first bytes 0
+and 1 alias in C61's `crazy(125, input)`, so the later M132 fold cannot
+recover their difference. The original mutable C32 checksum needs a
+lossless state update, dynamic arithmetic, phi copies and backedge
+linkage before it can produce any guest artifact. P2 remains open.
+
 ### Pre-input guest preseed improves retained signed state (2026-11-20)
 
 A source-valid 132-cell N15 variant performs a new real C14 `p` while
