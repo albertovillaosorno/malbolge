@@ -2263,3 +2263,115 @@ fn narrow_phi_rejects_invalid_constant_width_and_storage_overlap() {
         92,
     );
 }
+
+#[test]
+fn source_checksum_code_sites_bind_real_arithmetic_operands() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeComputation, GuestCodeProposals,
+        bind_source_locked_cfg_code_targets,
+    };
+    use super::typed_cfg_adapter::typed::Instruction as PlacedInstruction;
+
+    let wire = source_locked_checksum_wire().expect("original C23 source");
+    let blocks = checksum_proposed_code_blocks();
+    let pads = checksum_proposed_phi_edge_pads();
+    let plan = bind_source_locked_cfg_code_targets(
+        &wire,
+        2048,
+        4096,
+        GuestCodeProposals {
+            code_blocks: &blocks,
+            edge_pads: &pads,
+        },
+    )
+    .expect("source-authenticated operation and code placements");
+    let mut arithmetic = 0usize;
+    let mut comparisons = 0usize;
+    let mut conversions = 0usize;
+    for block in &plan.relocated.operation_blocks {
+        for (ordinal, original) in block.instructions.iter().enumerate() {
+            let site = plan
+                .operation_sites
+                .iter()
+                .find(|site| {
+                    (site.function, site.block, site.ordinal)
+                        == (
+                            block.function,
+                            block.block,
+                            u32::try_from(ordinal).unwrap(),
+                        )
+                })
+                .expect("source operation has code site");
+            match (&original.instruction, site.computation) {
+                (
+                    PlacedInstruction::Binary {
+                        left, operation, right, ..
+                    },
+                    Some(GuestCodeComputation::Binary {
+                        operation: bound_operation,
+                        left: bound_left,
+                        right: bound_right,
+                        result,
+                    }),
+                ) => {
+                    assert_eq!(*operation, bound_operation);
+                    assert_eq!(original.reads, vec![bound_left, bound_right]);
+                    assert_eq!(original.write, Some(result));
+                    assert_eq!(
+                        (left.value(), right.value()),
+                        (bound_left.value, bound_right.value)
+                    );
+                    arithmetic += 1;
+                },
+                (
+                    PlacedInstruction::Compare {
+                        left, operation, right, ..
+                    },
+                    Some(GuestCodeComputation::Compare {
+                        operation: bound_operation,
+                        left: bound_left,
+                        right: bound_right,
+                        result,
+                    }),
+                ) => {
+                    assert_eq!(*operation, bound_operation);
+                    assert_eq!(original.reads, vec![bound_left, bound_right]);
+                    assert_eq!(original.write, Some(result));
+                    assert_eq!(
+                        (left.value(), right.value()),
+                        (bound_left.value, bound_right.value)
+                    );
+                    assert_eq!(result.words, 1);
+                    comparisons += 1;
+                },
+                (
+                    PlacedInstruction::Cast { operation, value, .. },
+                    Some(GuestCodeComputation::Cast {
+                        operation: bound_operation,
+                        source,
+                        result,
+                    }),
+                ) => {
+                    assert_eq!(*operation, bound_operation);
+                    assert_eq!(original.reads, vec![source]);
+                    assert_eq!(original.write, Some(result));
+                    assert_eq!(value.value(), source.value);
+                    conversions += 1;
+                },
+                (
+                    PlacedInstruction::Binary { .. }
+                    | PlacedInstruction::Compare { .. }
+                    | PlacedInstruction::Cast { .. },
+                    _,
+                ) => {
+                    panic!("guest computation lost source operands");
+                },
+                (_, None) => {},
+                (_, Some(_)) => panic!("unrelated operation has computation"),
+            }
+        }
+    }
+    assert_eq!(arithmetic, 5, "xor/add/and all require guest computation");
+    assert_eq!(comparisons, 2, "both C23 guards require guest comparison");
+    assert!(conversions > 0, "source casts cannot be pre-evaluated");
+}

@@ -58,11 +58,16 @@ scalar width and current-profile address range. Only source integer
 constants may supply literal writes: a forged same-address literal for
 an unsigned XOR, comparison or narrowing cast cannot stand in for guest
 arithmetic. Red-first adversarial tests cover these three operation kinds,
-including reordered reads and truncated U32 operands. These are necessary
-code-linker invariants, not an executable. The two input conversions,
-unsigned arithmetic/XOR, conditional branches, parallel phi copies and
-live EOF backedge still lack a unified verified executable linker. No
-checksum guest artifact is emitted; P2 remains open.
+including reordered reads and truncated U32 operands. The addressed
+code-site handoff now also retains explicit **unexecuted** typed binary,
+comparison and cast operations with original operation kind and ordered,
+full-width source/result cells. The original seven-block checksum binds all
+five bitwise/arithmetic, both Boolean comparison and its integer-conversion
+obligations; no host arithmetic has selected a guest value or branch. These
+are necessary code-linker invariants, not an executable. The two input
+conversions, unsigned arithmetic/XOR, conditional branches, parallel phi
+copies and live EOF backedge still lack a unified verified executable
+linker. No checksum guest artifact is emitted; P2 remains open.
 
 ### First signed C23 read cannot be erased by one opcode (2026-11-20)
 

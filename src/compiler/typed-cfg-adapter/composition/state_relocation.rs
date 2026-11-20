@@ -42,7 +42,9 @@ use super::state_storage::{
     GuestStorageValue, encode_i32_cells, placed_cell, validate_frame_placement,
 };
 use super::ternary::TernaryCfgScalarKind;
-use super::typed::{Instruction, SourceSpan, Terminator};
+use super::typed::{
+    BinaryOp, CastOp, CompareOp, Instruction, SourceSpan, Terminator,
+};
 use super::{TypedCfgAdapterError, prepare_canonical_dynamic_cfg};
 
 /// One exact literal word requiring physical guest materialization.
@@ -301,6 +303,46 @@ pub struct GuestCodeControlEdge {
     pub target_address: u32,
 }
 
+/// A nonconstant typed computation that still requires real guest execution.
+///
+/// These are exact source operations and placed words, not computed results
+/// or accepted Malbolge opcodes. In particular, signedness, overflow and
+/// truncation must be realized in the eventual guest instruction sequence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GuestCodeComputation {
+    /// Two source operands of the same scalar kind, one result.
+    Binary {
+        /// Exact typed source operation, including arithmetic/bitwise kind.
+        operation: BinaryOp,
+        /// Original ordered left operand.
+        left: GuestPlacedOperand,
+        /// Original ordered right operand.
+        right: GuestPlacedOperand,
+        /// Full-width SSA result requiring target writes.
+        result: GuestPlacedOperand,
+    },
+    /// One typed integer conversion (including truncation/extension).
+    Cast {
+        /// Exact typed source conversion operation.
+        operation: CastOp,
+        /// Full-width cast destination.
+        result: GuestPlacedOperand,
+        /// Original source value, not a host-evaluated constant.
+        source: GuestPlacedOperand,
+    },
+    /// Typed equality/order semantics with a one-word Boolean result.
+    Compare {
+        /// Exact signed or unsigned comparison kind.
+        operation: CompareOp,
+        /// Original ordered left operand.
+        left: GuestPlacedOperand,
+        /// Original ordered right operand.
+        right: GuestPlacedOperand,
+        /// One-word Boolean SSA destination.
+        result: GuestPlacedOperand,
+    },
+}
+
 /// One source-ordered typed operation's minimum physical code reservation.
 ///
 /// These cells are only a lower-bound placement. They contain no verified
@@ -310,6 +352,8 @@ pub struct GuestCodeControlEdge {
 pub struct GuestCodeOperationSite {
     /// Canonical typed block identity.
     pub block: u32,
+    /// Exact arithmetic/compare/cast obligation, absent for I/O or literals.
+    pub computation: Option<GuestCodeComputation>,
     /// First reserved code cell (inclusive).
     pub start: u32,
     /// First code cell following this operation's minimum reservation.
@@ -945,6 +989,47 @@ fn required_operation_effects(
     Ok(effects)
 }
 
+// Called only after source-locked operand validation. The computation is
+// descriptive: it cannot be executed or pre-evaluated in this compiler stage.
+fn bound_computation(
+    instruction: &GuestPlacedInstruction,
+) -> Option<GuestCodeComputation> {
+    match (
+        &instruction.instruction,
+        instruction.reads.as_slice(),
+        instruction.write,
+    ) {
+        (
+            Instruction::Binary { operation, .. },
+            [left, right],
+            Some(result),
+        ) => Some(GuestCodeComputation::Binary {
+            operation: *operation,
+            left: *left,
+            right: *right,
+            result,
+        }),
+        (
+            Instruction::Compare { operation, .. },
+            [left, right],
+            Some(result),
+        ) => Some(GuestCodeComputation::Compare {
+            operation: *operation,
+            left: *left,
+            right: *right,
+            result,
+        }),
+        (Instruction::Cast { operation, .. }, [source], Some(result)) => {
+            Some(GuestCodeComputation::Cast {
+                operation: *operation,
+                result,
+                source: *source,
+            })
+        },
+        _ => None,
+    }
+}
+
 fn bind_operation_sites(
     block: &GuestPlacedBlock,
     placement: GuestCodeBlockPlacement,
@@ -984,6 +1069,7 @@ fn bind_operation_sites(
         }
         sites.push(GuestCodeOperationSite {
             block: block.block,
+            computation: bound_computation(instruction),
             end_exclusive,
             function: block.function,
             ordinal,
