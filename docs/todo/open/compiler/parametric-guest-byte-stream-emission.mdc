@@ -73,6 +73,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, the unchanged complete C23 EOF checksum still
+  refuses publication at physical target linkage, after all five native
+  `-O0`/`-O2` binary-input controls pass. The CLI now derives its rejection
+  from the authenticated prelink: seven blocks, 19 ordered operations,
+  four CFG phi edges, six parallel phi moves and 43 reserved N15 state
+  words. The new regression checks the exact counts and lack of any guest
+  file. Symbolic state allocation was already implemented; physical
+  operations, phi **writes**, branch/backedge control and EOF termination
+  remain missing. This is clearer failure localization, not guest parity.
+
 - On 2026-11-19, an exhaustive eight-value M86 source-admission check
   ruled out one proposed C74 `j` shortcut for the 91-cell `Iy` C23
   converter. Eight actual 82-step N15 VM traces retain the same nine

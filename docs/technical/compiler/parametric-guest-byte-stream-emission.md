@@ -28,6 +28,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked dynamic checksum now reports precise prelink obligations
+
+The unchanged C23 mutable EOF checksum passes canonical typed IR, the complete
+symbolic seven-block CFG, 19 ordered runtime operations, four predecessor-
+sensitive phi edges with six parallel assignments, and 43 frame-relative
+15-trit guest words. The `c2malbolge_json` boundary now derives these counts
+from the actual authenticated prelink instead of reporting phi **storage** as
+unsupported, even though the symbolic frame allocation already exists.
+
+The same five native C23 `-O0`/`-O2` vectors still reach an explicit target
+refusal before the layout backend: physical operation encodings, parallel phi
+**writes**, dynamic branches, and an EOF backedge remain unlinked. The
+regression requires both the exact prelink accounting and the absence of any
+published guest artifact. This is a diagnostic correction and usable linker
+handoff, not a C compiler execution milestone or P2 acceptance.
+
 ### Bounded C23 converter tail limits (2026-11-19)
 
 The nine-rotation `Iy` probe still performs both required live `p` writes

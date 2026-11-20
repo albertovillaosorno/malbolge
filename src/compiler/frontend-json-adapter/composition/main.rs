@@ -43,7 +43,7 @@ use std::process::{Command, ExitCode, Stdio};
 use malbolge as _;
 use malbolge_c_frontend_json_adapter::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
-    first_unlowered_c_node, typed_cfg_adapter::prepare_canonical_dynamic_cfg,
+    first_unlowered_c_node, typed_cfg_adapter as prelink,
 };
 use serde as _;
 use serde_json as _;
@@ -176,15 +176,42 @@ fn execute() -> Result<(), String> {
             // The validated source-derived typed wire is the only authority
             // for this symbolic CFG; neither stdin nor SSA phi edges may be
             // supplied by the host. No target image may be published here.
-            let _unlinked = prepare_canonical_dynamic_cfg(&typed)
+            let unlinked = prelink::prepare_canonical_dynamic_cfg(&typed)
                 .map_err(|error| {
                     format!("symbolic ternary CFG rejected: {error:?}")
                 })?;
-            return Err(String::from(concat!(
-                "target lowering rejected: dynamic EOF checksum CFG is ",
-                "unlinked; guest control, phi storage and arithmetic ",
-                "unsupported",
-            )));
+            let blocks = unlinked.operation_blocks.len();
+            let operations: usize = unlinked
+                .operation_blocks
+                .iter()
+                .map(|block| block.instructions.len())
+                .sum();
+            let phi_edges = unlinked.phi_edges.len();
+            let phi_moves: usize = unlinked
+                .phi_edges
+                .iter()
+                .map(|edge| edge.simultaneous.len())
+                .sum();
+            let frame_words: u32 = unlinked
+                .state_frames
+                .iter()
+                .map(|frame| frame.total_words)
+                .sum();
+            return Err(format!(
+                concat!(
+                    "target lowering rejected: dynamic EOF checksum CFG is ",
+                    "unlinked; source-backed prelink has {blocks} blocks, ",
+                    "{operations} operations, {phi_edges} phi edges, ",
+                    "{phi_moves} phi moves, and {frame_words} reserved ",
+                    "guest words; missing physical guest operations, ",
+                    "parallel phi writes, branching and EOF loop",
+                ),
+                blocks = blocks,
+                operations = operations,
+                phi_edges = phi_edges,
+                phi_moves = phi_moves,
+                frame_words = frame_words,
+            ));
         },
         FrontendGuestMode::LatestRead => "--latest-byte-trace",
         FrontendGuestMode::EmptyVoid => "--empty-void",

@@ -114,6 +114,11 @@ class MutableEofChecksumTests(unittest.TestCase):
             )
             self.assertNotEqual(admitted.returncode, 0)
             self.assertIn(b"dynamic EOF checksum CFG is unlinked", admitted.stderr)
+            self.assertIn(
+                b"source-backed prelink has 7 blocks, 19 operations, "
+                b"4 phi edges, 6 phi moves, and 43 reserved guest words",
+                admitted.stderr,
+            )
             self.assertFalse(output.exists())
 
     def test_complete_compiler_and_guest_or_explicit_refusal(self) -> None:
@@ -193,11 +198,13 @@ class MutableEofChecksumTests(unittest.TestCase):
                     (
                         b"target lowering rejected: dynamic EOF checksum CFG "
                         b"is "
-                        b"unlinked; guest control, phi storage and arithmetic "
-                        b"unsupported"
+                        b"unlinked; source-backed prelink has 7 blocks, "
+                        b"19 operations, 4 phi edges, 6 phi moves, and "
+                        b"43 reserved guest words"
                     ),
                     compiled.stderr,
                 )
+                self.assertIn(b"missing physical guest operations", compiled.stderr)
                 self.assertFalse(
                     target.exists(), "unsupported compiler published a guest"
                 )
