@@ -3538,7 +3538,10 @@ fn verified_source(
 // C23 EOF (-1) selects decimal 106, exactly the N15 EOF word's low byte.
 // The *second* C comparison is a true guest-dependent two-arm branch. Only
 // this closed and independently re-derived SSA graph may link to that source.
-#[expect(clippy::too_many_lines, reason = "closed signed-C23 branch identity checker")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "closed signed-C23 branch identity checker"
+)]
 fn verified_two_read_eof_branch(
     canonical: &[u8],
     profile: &'static malbolge::ProfileDescriptor,
@@ -3549,20 +3552,35 @@ fn verified_two_read_eof_branch(
     };
     const SHA: [u8; 32] = [
         22, 58, 150, 193, 114, 78, 8, 72, 160, 165, 107, 201, 214, 182, 155, 4,
-        164, 90, 171, 194, 157, 229, 142, 131, 100, 35, 37, 198, 255, 164, 24, 195,
+        164, 90, 171, 194, 157, 229, 142, 131, 100, 35, 37, 198, 255, 164, 24,
+        195,
     ];
-    let module = canonical_module(canonical)
-        .map_err(|error| format!("two-read EOF typed wire rejected: {error:?}"))?;
+    const GUARDED_SHA: [u8; 32] = [
+        101, 201, 63, 86, 123, 52, 96, 223, 170, 37, 136, 161, 164, 53, 83, 18,
+        171, 252, 70, 159, 165, 25, 177, 211, 188, 105, 115, 25, 162, 110, 205,
+        20,
+    ];
+    let module = canonical_module(canonical).map_err(|error| {
+        format!("two-read EOF typed wire rejected: {error:?}")
+    })?;
+    let guarded = module.source_sha256() == &GUARDED_SHA;
     if module.abi_id() != "malbolge-c32-v1"
         || module.target_profile() != profile.id()
-        || module.source_sha256() != &SHA
+        || (module.source_sha256() != &SHA && !guarded)
         || !module.globals().is_empty()
         || module.functions().len() != 1
         || module.types().len() != 4
-        || module.types().iter().map(|entry| (entry.id(), entry.definition()))
+        || module
+            .types()
+            .iter()
+            .map(|entry| (entry.id(), entry.definition()))
             .ne([
                 (TypeId::new(0), &TypeDef::I32),
-                (TypeId::new(1), &TypeDef::Function { parameters: Vec::new(), result: None, variadic: false }),
+                (TypeId::new(1), &TypeDef::Function {
+                    parameters: Vec::new(),
+                    result: None,
+                    variadic: false,
+                }),
                 (TypeId::new(2), &TypeDef::Bool),
                 (TypeId::new(3), &TypeDef::U8),
             ])
@@ -3570,66 +3588,94 @@ fn verified_two_read_eof_branch(
         return Err(String::from("two-read EOF typed envelope disagrees"));
     }
     let function = &module.functions()[0];
-    if function.name() != "emit" || !function.parameters().is_empty()
-        || function.entry() != BlockId::new(0) || function.blocks().len() != 6
+    if function.name() != "emit"
+        || !function.parameters().is_empty()
+        || function.entry() != BlockId::new(0)
+        || function.blocks().len() != 6
     {
         return Err(String::from("two-read EOF function disagrees"));
     }
     let id = ValueId::new;
     let ty = TypeId::new;
     let blocks = function.blocks();
-    let instructions = [
+    let mut instructions = [
         vec![
-            Instruction::Getchar { result: id(0), type_id: ty(0) },
+            Instruction::Getchar {
+                result: id(0),
+                type_id: ty(0),
+            },
             Instruction::ConstantInteger {
-                result: id(1), type_id: ty(0),
+                result: id(1),
+                type_id: ty(0),
                 constant: IntegerConstant::new(32, vec![255; 4]),
             },
             Instruction::Compare {
-                left: id(0), right: id(1), operation: CompareOp::Equal,
-                result: id(2), type_id: ty(2),
+                left: id(0),
+                right: id(1),
+                operation: CompareOp::Equal,
+                result: id(2),
+                type_id: ty(2),
             },
         ],
         vec![Instruction::ConstantInteger {
-            result: id(3), type_id: ty(3),
+            result: id(3),
+            type_id: ty(3),
             constant: IntegerConstant::new(8, vec![106]),
         }],
         vec![Instruction::Cast {
-            operation: CastOp::Truncate, result: id(4),
-            type_id: ty(3), value: id(0),
+            operation: CastOp::Truncate,
+            result: id(4),
+            type_id: ty(3),
+            value: id(0),
         }],
         vec![
             Instruction::ByteOutput { value: id(5) },
-            Instruction::Getchar { result: id(6), type_id: ty(0) },
+            Instruction::Getchar {
+                result: id(6),
+                type_id: ty(0),
+            },
             Instruction::Compare {
-                left: id(6), right: id(1), operation: CompareOp::Equal,
-                result: id(7), type_id: ty(2),
+                left: id(6),
+                right: id(1),
+                operation: CompareOp::Equal,
+                result: id(7),
+                type_id: ty(2),
             },
         ],
         vec![
             Instruction::ConstantInteger {
-                result: id(8), type_id: ty(3),
+                result: id(8),
+                type_id: ty(3),
                 constant: IntegerConstant::new(8, vec![30]),
             },
             Instruction::ByteOutput { value: id(8) },
         ],
         vec![
             Instruction::ConstantInteger {
-                result: id(9), type_id: ty(3),
+                result: id(9),
+                type_id: ty(3),
                 constant: IntegerConstant::new(8, vec![154]),
             },
             Instruction::ByteOutput { value: id(9) },
         ],
     ];
+    if guarded {
+        instructions[5].push(Instruction::Getchar {
+            result: id(10),
+            type_id: ty(0),
+        });
+    }
     let controls = [
         Terminator::Branch {
-            condition: id(2), true_target: BlockId::new(1),
+            condition: id(2),
+            true_target: BlockId::new(1),
             false_target: BlockId::new(2),
         },
         Terminator::Jump { target: BlockId::new(3) },
         Terminator::Jump { target: BlockId::new(3) },
         Terminator::Branch {
-            condition: id(7), true_target: BlockId::new(4),
+            condition: id(7),
+            true_target: BlockId::new(4),
             false_target: BlockId::new(5),
         },
         Terminator::Return { value: None },
@@ -3638,25 +3684,38 @@ fn verified_two_read_eof_branch(
     if blocks.iter().enumerate().any(|(index, block)| {
         block.id() != BlockId::new(u32::try_from(index).unwrap_or(u32::MAX))
             || block.terminator() != &controls[index]
-            || !block.instructions().iter().map(|located| located.instruction())
+            || !block
+                .instructions()
+                .iter()
+                .map(|located| located.instruction())
                 .eq(instructions[index].iter())
             || (index != 3 && !block.phis().is_empty())
     }) {
-        return Err(String::from("two-read EOF instruction and control trace disagrees"));
+        return Err(String::from(
+            "two-read EOF instruction and control trace disagrees",
+        ));
     }
     let [phi] = blocks[3].phis() else {
         return Err(String::from("two-read EOF first-result phi disagrees"));
     };
-    if phi.result() != id(5) || phi.type_id() != ty(3)
-        || phi.incoming() != [
-            PhiIncoming::new(BlockId::new(1), id(3)),
-            PhiIncoming::new(BlockId::new(2), id(4)),
-        ]
+    if phi.result() != id(5)
+        || phi.type_id() != ty(3)
+        || phi.incoming()
+            != [
+                PhiIncoming::new(BlockId::new(1), id(3)),
+                PhiIncoming::new(BlockId::new(2), id(4)),
+            ]
     {
         return Err(String::from("two-read EOF phi inputs disagree"));
     }
-    let source = crate::layout::build_second_input_eof_classified_first_echo_source(profile)
-        .map_err(|error| format!("two-read EOF physical layout: {error:?}"))?;
+    let source = if guarded {
+        crate::layout::build_second_input_guarded_third_read_source(profile)
+    } else {
+        crate::layout::build_second_input_eof_classified_first_echo_source(
+            profile,
+        )
+    }
+    .map_err(|error| format!("two-read EOF physical layout: {error:?}"))?;
     let artifact = VerifiedSource {
         effect_witness: Some(SourceEffectWitness::TwoReadEofBranch),
         source,
@@ -3671,45 +3730,125 @@ fn verify_two_read_eof_branch(
     artifact: &VerifiedSource,
 ) -> Result<(), String> {
     use malbolge::{ProfileRegisters, TraceInput};
-    if artifact.steps != 119 || artifact.source.len() != 132
+    if artifact.steps != 119
+        || artifact.source.len() != 132
         || artifact.source.get(130..) != Some(b"-}".as_slice())
     {
-        return Err(String::from("two-read EOF branch physical geometry disagrees"));
+        return Err(String::from(
+            "two-read EOF branch physical geometry disagrees",
+        ));
     }
-    let loaded = ProfileMachine::from_source(profile, &artifact.source, Vec::new())
-        .map_err(|error| format!("two-read EOF guest load: {error:?}"))?;
+    let guarded_source =
+        crate::layout::build_second_input_guarded_third_read_source(profile)
+            .map_err(|error| format!("guarded third-read source: {error:?}"))?;
+    let base_source =
+        crate::layout::build_second_input_eof_classified_first_echo_source(
+            profile,
+        )
+        .map_err(|error| format!("two-read source: {error:?}"))?;
+    let guarded = artifact.source == guarded_source;
+    if !guarded && artifact.source != base_source {
+        return Err(String::from(
+            "two-read EOF source is not a verified guest construction",
+        ));
+    }
+    let loaded =
+        ProfileMachine::from_source(profile, &artifact.source, Vec::new())
+            .map_err(|error| format!("two-read EOF guest load: {error:?}"))?;
     let mut inputs = vec![
-        vec![], vec![0], vec![255], vec![0, 0], vec![255, 255],
-        vec![5, 128, 119], vec![128, 0, 254],
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 0],
+        vec![255, 255],
+        vec![5, 128, 119],
+        vec![128, 0, 254],
+        vec![3, 31, 255, 4],
+        vec![3, 255, 0],
+        vec![3, 1],
     ];
-    inputs.extend([1, 127, 254, 255].into_iter().map(|second| vec![second ^ 0xa5, second, 0x7c]));
+    inputs.extend(
+        [1, 127, 254, 255]
+            .into_iter()
+            .map(|second| vec![second ^ 0xa5, second, 0x7c]),
+    );
     for input in inputs {
         let eof_second = input.len() < 2;
-        let steps = if eof_second { 119 } else { 175 };
+        let steps = if eof_second {
+            119
+        } else {
+            175
+        };
         let first_value = input.first().copied().unwrap_or(106);
-        let marker = if eof_second { 30 } else { 154 };
+        let marker = if eof_second {
+            30
+        } else {
+            154
+        };
         let mut vm = ProfileMachine::from_state(
-            profile, loaded.memory().to_vec(), input.clone(), ProfileRegisters::default(),
-        ).map_err(|error| format!("two-read EOF guest copy: {error:?}"))?;
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("two-read EOF guest copy: {error:?}"))?;
         let mut reads = Vec::new();
         let mut writes = Vec::new();
-        let outcome = vm.run_traced(steps, &mut |step| {
-            if let Some(value) = step.input {
-                reads.push((step.before.registers.code_pointer, value));
-            }
-            if let Some(value) = step.output {
-                writes.push((step.before.registers.code_pointer, value));
-            }
-        }).map_err(|error| format!("two-read EOF guest execution: {error:?}"))?;
-        let first = input.first().copied().map_or(TraceInput::EndOfInput, TraceInput::Byte);
-        let second = input.get(1).copied().map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let outcome = vm
+            .run_traced(steps, &mut |step| {
+                if let Some(value) = step.input {
+                    reads.push((step.before.registers.code_pointer, value));
+                }
+                if let Some(value) = step.output {
+                    writes.push((step.before.registers.code_pointer, value));
+                }
+            })
+            .map_err(|error| {
+                format!("two-read EOF guest execution: {error:?}")
+            })?;
+        let first = input
+            .first()
+            .copied()
+            .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let second = input
+            .get(1)
+            .copied()
+            .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let mut expected_reads = vec![(53, first), (63, second)];
+        if guarded && !eof_second {
+            expected_reads.push((
+                101,
+                input
+                    .get(2)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+            ));
+        }
+        let expected_consumed = input.len().min(if guarded && !eof_second {
+            3
+        } else {
+            2
+        });
         if !matches!(outcome, RunOutcome::Terminated { steps: actual, .. } if actual == steps)
-            || vm.input_consumed() != input.len().min(2)
+            || vm.input_consumed() != expected_consumed
             || vm.output() != [first_value, marker]
-            || reads != [(53, first), (63, second)]
-            || writes != [(54, first_value), (if eof_second { 128 } else { 57 }, marker)]
+            || reads != expected_reads
+            || writes
+                != [
+                    (54, first_value),
+                    (
+                        if eof_second {
+                            128
+                        } else {
+                            57
+                        },
+                        marker,
+                    ),
+                ]
         {
-            return Err(format!("two-read EOF guest path mismatch for {input:?}"));
+            return Err(format!(
+                "two-read EOF guest path mismatch for {input:?}"
+            ));
         }
     }
     Ok(())
@@ -3723,9 +3862,13 @@ fn verified_signed_second_echo(
     canonical: &[u8],
     profile: &'static malbolge::ProfileDescriptor,
 ) -> Result<VerifiedSource, String> {
-    use crate::typed_adapter::typed::{CastOp, Instruction, Terminator, TypeDef, TypeId, ValueId, canonical_module};
-    let module = canonical_module(canonical)
-        .map_err(|error| format!("signed second echo typed wire rejected: {error:?}"))?;
+    use crate::typed_adapter::typed::{
+        CastOp, Instruction, Terminator, TypeDef, TypeId, ValueId,
+        canonical_module,
+    };
+    let module = canonical_module(canonical).map_err(|error| {
+        format!("signed second echo typed wire rejected: {error:?}")
+    })?;
     if module.abi_id() != "malbolge-c32-v1"
         || module.target_profile() != profile.id()
         || module.functions().len() != 1
@@ -3736,7 +3879,9 @@ fn verified_signed_second_echo(
         || module.types()[2].id() != TypeId::new(2)
         || *module.types()[2].definition() != TypeDef::U8
     {
-        return Err(String::from("signed second echo typed envelope disagrees"));
+        return Err(String::from(
+            "signed second echo typed envelope disagrees",
+        ));
     }
     let function = &module.functions()[0];
     if function.name() != "emit" || !function.parameters().is_empty()

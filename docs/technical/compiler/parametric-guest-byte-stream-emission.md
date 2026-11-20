@@ -28,6 +28,35 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-C guarded third signed input after second EOF check (2026-11-20)
+
+A complete C23 `emit` function now reads `first` and `second` as signed
+`getchar` results, outputs the first low byte (106 for EOF), and uses a
+real guest second-input EOF branch to output 30 or 154. Only the byte arm
+executes a third discarded `getchar()`. The strict normalized Clang 22.1.8
+adapter authenticates the exact source SHA
+`65c93f567b3460dfaa2588a1a4355312abfc469fa519b1d3bc697319a26ecd14`,
+45 source-derived AST nodes and the extra typed input operation on the
+successful branch. The layout backend independently rederives the typed
+CFG and selects the existing 132-cell physical C101 encrypted `p`-then-`/`
+third-read builder, never a host-selected input or output.
+
+The public compile command emits a 2,103-byte `malbolge-2026` capsule,
+SHA-256 `86b3703b6d0a7fd36bad42e4a76fb587a9f7fcbe866cf3fdf920d11e58e36c57`.
+Nine pinned binary streams, including empty/one-byte EOF, NUL, second
+bytes 31 and 255, high bytes, third EOF and an unread fourth byte, agree
+with native Clang C23 `-O0` and `-O2` with UBSan and with the normative
+Malbolge VM. Both arms halt after 119/175 guest steps, respectively.
+Backend admission also validates actual input events at C53/C63 and,
+only for non-EOF second inputs, C101; forged Clang input metadata and
+changed C source refuse artifact publication. The focused Python
+publication tests pass (two cases, nine independent guest vectors).
+
+This is a new **source-backed conditional guest input effect**. The third
+input is intentionally discarded; it is not echoed, used in C arithmetic,
+or C32 state. The original seven-block mutable EOF checksum still has
+no executable operation/phi/backedge linker. P2 remains open.
+
 ### Failed three-cell EOF/third-output repair (2026-11-20)
 
 A physical branch variant changes C62 into first-pass `j` / second-pass

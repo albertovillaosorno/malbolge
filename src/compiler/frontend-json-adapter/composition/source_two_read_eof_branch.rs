@@ -41,6 +41,22 @@ use super::{
 
 const SOURCE_SHA256: &str =
     "163a96c1724e0848a0a56bc9d6b69b04a45aabc29de58e83642325c6ffa418c3";
+const GUARDED_SOURCE_SHA256: &str =
+    "65c93f567b3460dfaa2588a1a4355312abfc469fa519b1d3bc697319a26ecd14";
+const GUARDED_FUNCTION_SOURCE: &str = concat!(
+    "void emit(void) {\n",
+    "    int first = getchar();\n",
+    "    putchar(first == EOF ? 106 : first);\n",
+    "    int second = getchar();\n",
+    "    if (second == EOF) {\n",
+    "        putchar(30);\n",
+    "    } else {\n",
+    "        putchar(154);\n",
+    "        getchar();\n",
+    "    }\n",
+    "}",
+);
+
 const FUNCTION_SOURCE: &str = concat!(
     "void emit(void) {\n",
     "    int first = getchar();\n",
@@ -372,6 +388,43 @@ const SHAPES: &[Shape] = &[
     (39, "integer-literal", "i32", "", "", "154", "154", 189, 192), // 42
 ];
 
+// Extra pinned Clang nodes from the successful second-read arm only.
+const GUARDED_EXTRA_SHAPES: &[Shape] = &[
+    (
+        38,
+        "call-expression",
+        "i32",
+        "",
+        "external:getchar",
+        "",
+        "",
+        203,
+        212,
+    ),
+    (
+        43,
+        "cast-expression",
+        "ptr(fn()->i32)",
+        "function-to-pointer",
+        "",
+        "",
+        "",
+        203,
+        210,
+    ),
+    (
+        44,
+        "declaration-reference-expression",
+        "fn()->i32",
+        "",
+        "external:getchar",
+        "",
+        "",
+        203,
+        210,
+    ),
+];
+
 fn position(source: &[u8], offset: u32) -> Option<(u32, u32)> {
     let prefix = source.get(..usize::try_from(offset).ok()?)?;
     let line =
@@ -394,6 +447,12 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
     let Some(function) = input.nodes.first() else {
         return false;
     };
+    let guarded = input.source.sha256 == GUARDED_SOURCE_SHA256;
+    let expected_source = if guarded {
+        GUARDED_FUNCTION_SOURCE
+    } else {
+        FUNCTION_SOURCE
+    };
     if input.schema_version != 1
         || input.identity != "malbolge-c-frontend-v1"
         || input.profile.abi_id != "malbolge-c32-v1"
@@ -401,19 +460,26 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
         || input.clang.version != "22.1.8"
         || input.clang.target != "wasm32-unknown-unknown"
         || input.clang.language != "c23"
-        || input.source.sha256 != SOURCE_SHA256
-        || input.nodes.len() != SHAPES.len()
+        || (!guarded && input.source.sha256 != SOURCE_SHA256)
+        || input.nodes.len()
+            != SHAPES.len() + usize::from(guarded) * GUARDED_EXTRA_SHAPES.len()
         || source.get(
             usize::try_from(function.span.begin.byte).unwrap_or(usize::MAX)
                 ..usize::try_from(function.span.end.byte).unwrap_or(usize::MAX),
-        ) != Some(FUNCTION_SOURCE.as_bytes())
+        ) != Some(expected_source.as_bytes())
     {
         return false;
     }
     input
         .nodes
         .iter()
-        .zip(SHAPES)
+        .zip(SHAPES.iter().chain(GUARDED_EXTRA_SHAPES.iter().take(
+            if guarded {
+                GUARDED_EXTRA_SHAPES.len()
+            } else {
+                0
+            },
+        )))
         .enumerate()
         .all(|(index, (node, shape))| {
             let &(
@@ -427,6 +493,26 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
                 start,
                 end,
             ) = shape;
+            // Only the two containing blocks grow when the guarded
+            // call is appended after the original success marker.
+            let end = if guarded {
+                match index {
+                    0 | 1 => 221,
+                    25 | 37 => 219,
+                    _ => end,
+                }
+            } else {
+                end
+            };
+            let reference = if guarded {
+                match reference {
+                    "first@862" => "first@836",
+                    "second@930" => "second@904",
+                    _ => reference,
+                }
+            } else {
+                reference
+            };
             let Some(begin) = function.span.begin.byte.checked_add(start)
             else {
                 return false;
@@ -541,6 +627,7 @@ pub(super) fn canonical_two_read_eof_branch(
         return Err(FrontendJsonError::Unsupported);
     }
     let n = &input.nodes;
+    let guarded = input.source.sha256 == GUARDED_SOURCE_SHA256;
     let frontend = FrontendArtifact::new_void(
         FrontendArtifactSpec {
             abi_id: input.profile.abi_id.clone(),
@@ -713,17 +800,32 @@ pub(super) fn canonical_two_read_eof_branch(
         code_block(
             5,
             &n[37],
-            vec![
-                located(
-                    Instruction::ConstantInteger {
-                        constant: IntegerConstant::new(8, vec![154]),
-                        result: value(9),
-                        type_id: byte_type,
-                    },
-                    &n[41],
-                ),
-                located(Instruction::ByteOutput { value: value(9) }, &n[38]),
-            ],
+            {
+                let mut instructions = vec![
+                    located(
+                        Instruction::ConstantInteger {
+                            constant: IntegerConstant::new(8, vec![154]),
+                            result: value(9),
+                            type_id: byte_type,
+                        },
+                        &n[41],
+                    ),
+                    located(
+                        Instruction::ByteOutput { value: value(9) },
+                        &n[38],
+                    ),
+                ];
+                if guarded {
+                    instructions.push(located(
+                        Instruction::Getchar {
+                            result: value(10),
+                            type_id: i32_type,
+                        },
+                        &n[42],
+                    ));
+                }
+                instructions
+            },
             vec![],
             Terminator::Return { value: None },
             &n[37],

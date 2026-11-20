@@ -19,6 +19,7 @@ scope:
   - "tests/test_getchar_eof_publication.py"
   - "tests/test_signed_getchar_local_publication.py"
   - "tests/test_unused_getchar_local_guest.py"
+  - "tests/test_guarded_third_read_publication.py"
   - "tests/compiler/"
 validation:
   - "jig check --root ."
@@ -26,6 +27,7 @@ validation:
   - "python3.14 -B -m unittest tests.test_unsigned_live_input_guest_parity -v"
   - "python3.14 -B -m unittest tests.test_signed_getchar_local_publication -v"
   - "python3.14 -B -m unittest tests.test_unused_getchar_local_guest -v"
+  - "python3.14 -B -m unittest tests.test_guarded_third_read_publication -v"
 ---
 
 # Generalize guest byte-stream emission instead of emit-N fixtures
@@ -72,6 +74,17 @@ evidence describe the old priority scheme, not the current phase.
   positive instruction/elapsed-time ceiling.
 
 ## Evidence
+
+- On 2026-11-20, the strict source-C23 two-read EOF compiler path now
+  authenticates a full program with a **third discarded `getchar()` only
+  inside the second-byte success branch**. The real 2,103-byte Malbolge
+  capsule executes its conditional third input at C101; it halts at
+  119/175 steps for second EOF/byte. Nine binary EOF/NUL/31/255/trailing
+  streams agree with independent Clang C23 -O0/-O2 UBSan and the normative
+  VM. The backend validates signed input sites, consumed byte counts and
+  the source-locked typed CFG; forged third-call metadata and changed C
+  fail without publication. The third value is not emitted or stored,
+  and the original stateful checksum remains physically unlinked. P2 open.
 
 - On 2026-11-20, a negative third-byte-echo relocation repaired the
   earlier C62 `j`/`/` plus C66 `j`/`<` candidate with a first-pass C93 `j`.
