@@ -94,6 +94,7 @@ pub use guest_state_placement::{
 pub use loader_rotation_source::{
     RepeatedLoaderRotationError, build_c23_seed_nine_rotated_operand_source,
     build_c23_seed_rotated_input_echo_source,
+    build_cross_fold_followed_by_third_input_source,
     build_repeated_loader_rotation_source,
     build_seeded_delayed_first_output_source,
     build_seeded_guest_input_state_fold_source,

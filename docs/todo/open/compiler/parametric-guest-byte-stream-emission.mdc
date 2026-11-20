@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a 91-cell physical N15 continuation executes a
+  third independent signed read at C61 after saving the first two
+  inputs at M95/M97 and cross-folding their live words at C57/M95.
+  Three real jumps restore D; loader-mandated C62 executes `p` and
+  writes the third input's separate `crazy(72, third)` into M96.
+  Eight complete 65-step normative VM paths verify ordered reads,
+  four state writes, both retained first-two words, encoded third
+  output, EOF and unread suffix. Third inputs 1 and 2 collide, so
+  the M96 fold is not lossless C23 state; no loop, mutable source-C
+  arithmetic or checksum guest parity is claimed. P2 stays open.
+
 - On 2026-11-20, a bounded 104-candidate source-valid one-cell
   enumeration after the four-patch C101 guarded-third-read tail found
   no correct third-byte echo. Every candidate runs the normative N15

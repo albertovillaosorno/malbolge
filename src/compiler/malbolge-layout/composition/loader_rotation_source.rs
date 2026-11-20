@@ -455,6 +455,47 @@ pub fn build_two_retained_inputs_cross_fold_source(
     Ok(source)
 }
 
+/// Continue a real two-word fold with a third independent signed read.
+///
+/// The first two reads execute their saved-word `p` operations at M95 and
+/// M97, followed by a genuine binary `p` at C57/M95. The original source
+/// cells C58..C60 are replaced with three real jumps, following M96=72,
+/// M73=61 and M62=94 back to M95. C61 then reads a third signed word.
+/// The immutable loader constant source[62]=94 conveniently decodes as a
+/// real `p` at C62, writing `crazy(72, third)` to M96. C63 emits that
+/// third encoded state and C64 halts. The joint first-two result at M95
+/// and the second saved value at M97 survive independently of this write.
+///
+/// This is not a three-way checksum: the new third fold is disjoint from
+/// the first-two result, and M96 does not losslessly encode the third
+/// signed C23 value. Actual effects require independent normative VM proof.
+///
+/// # Errors
+///
+/// Rejects unsupported profiles, invalid seeds or unavailable source
+/// opcodes. A caller must admit the complete guest path separately.
+pub fn build_cross_fold_followed_by_third_input_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_two_retained_inputs_cross_fold_source(profile)?;
+    if decode_profile_instruction(u32::from(source[62]), 62) != Some(b'p') {
+        return Err(RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b"IH",
+        });
+    }
+    for (position, opcode) in [
+        (58, b'j'),
+        (59, b'j'),
+        (60, b'j'),
+        (61, profile.input_instruction()),
+        (63, profile.output_instruction()),
+        (64, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Emit two guest-visible prefixes of a mutable two-input N15 fold.
 ///
 /// Both input attempts execute real `/` instructions. Each `p` reads and

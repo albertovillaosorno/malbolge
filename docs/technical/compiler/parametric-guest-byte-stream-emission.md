@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Third signed input after a real cross-word fold (2026-11-20)
+
+A 91-cell N15 candidate extends the verified independent dual-storage
+layout. C39 and C47 read signed guest values, C43/M95 and C53/M97 retain
+them with lossless byte-plus-EOF encoding, and C57/M95 physically computes
+`crazy(first_saved, second_saved)`. Three loader-derived jumps at
+C58..C60 restore D from M96=72 through M73=61 and M62=94 to M95.
+C61 then reads a **third independent signed input**; the unchanged
+source byte 94 at C62 decodes as `p`, writes `crazy(72, third)` to M96,
+and C63 emits the resulting encoded low byte before C64 halts.
+
+Eight finite normative VM paths check true EOF, NUL, high bytes, trailing
+unread input, exact read sites, all four physical `p` writes, preserved
+first-two cross-fold state M95 and untouched saved second word M97, single
+output and 65-step halt. The independently computed 15-trit truth table
+exposes an explicit collision: third inputs 1 and 2 alias in M96. This
+is three genuine guest reads and a later distinct state update, **not**
+full-width third-byte storage, C23 arithmetic, conditional input control,
+phi copies or the original checksum EOF loop. P2 remains open.
+
 ### Fixed guarded-third-output continuation: one-cell bound (2026-11-20)
 
 The source-valid 132-cell second-EOF branch already executes a conditional
