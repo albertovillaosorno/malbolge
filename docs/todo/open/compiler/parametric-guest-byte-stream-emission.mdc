@@ -75,6 +75,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the pinned source-C second-echo EOF program acquired a
+  separately authenticated Clang 22.1.8 AST, exact typed control, and
+  actual physical second signed input at C62 with output at C63 before
+  its C64 EOF decision. Nine streams match independent C23 oracles and
+  native `-O0`/`-O2` UBSan with real 119/175-step N15 guest halts;
+  source/AST forgery tests refuse. This source-backed second-byte effect
+  is not C32 mutable arithmetic, phi copies or a repeatable checksum
+  loop; the original P2 compound guest-output contract remains open.
+
 - On 2026-11-20, the unchanged mutable EOF checksum still passes its
   three native/explicit-refusal tests, with no executable guest artifact.
   An independent 15-trit finite search of all 243 `o`/`p`/`*` C9..C13

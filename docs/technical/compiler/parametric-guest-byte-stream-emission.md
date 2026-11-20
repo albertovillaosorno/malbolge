@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-backed second signed byte echo before its EOF arm (2026-11-20)
+
+A complete SHA-locked C23 `emit` function now calls `getchar()` twice,
+emits the first result with explicit EOF-to-106 conversion, and emits
+the second low byte or 106 at EOF **before** its second-input EOF/byte
+marker (30 or 154). The pinned Clang 22.1.8 normalized AST and exact
+source SHA `38b68cab604142ec1f08ec9972b2a585b42f02f671840044f982f079cf10d738`
+are authenticated to the typed six-block source CFG. The layout backend
+independently checks the typed operations and emits the actual 132-cell
+second-EOF classifier with C62 signed input, C63 output, and the physical
+C64 control fold. It does not synthesize or choose the second byte on
+its host side.
+
+Two public publication tests pass. Nine pinned binary/EOF streams agree
+with independently computed C23 output, native Clang `-O0` and `-O2` with
+UBSan, and the normative guest process. Exact EOF and byte arms halt at
+119 and 175 guest steps, respectively; additional forged Clang/source
+controls refuse publication. This is source-backed runtime second-word
+output and physical EOF branching, not dynamic C32 mutable storage,
+checksum arithmetic, phi copying or a repeatable EOF loop. P2 remains open.
+
 ### Lossless first-input seed conflicts with the frozen jump chain (2026-11-20)
 
 The complete mutable EOF checksum was retried with its five independent

@@ -47,33 +47,34 @@ use malbolge::{
 
 use crate::bridge::ternary::{TernaryOperation, canonical_ternary_program};
 use crate::bridge::{
-    encode_discarded_getchar, encode_discarded_input_literal, encode_distinct_literal_eight,
-    encode_distinct_literal_eighteen, encode_distinct_literal_eleven,
-    encode_distinct_literal_fifteen, encode_distinct_literal_forty,
-    encode_distinct_literal_forty_eight, encode_distinct_literal_forty_five,
-    encode_distinct_literal_forty_four, encode_distinct_literal_forty_one,
-    encode_distinct_literal_forty_seven, encode_distinct_literal_forty_six,
-    encode_distinct_literal_forty_three, encode_distinct_literal_forty_two,
-    encode_distinct_literal_fourteen, encode_distinct_literal_nine,
-    encode_distinct_literal_nineteen, encode_distinct_literal_pair,
-    encode_distinct_literal_quad, encode_distinct_literal_quint,
-    encode_distinct_literal_seven, encode_distinct_literal_seventeen,
-    encode_distinct_literal_six, encode_distinct_literal_sixteen,
-    encode_distinct_literal_ten, encode_distinct_literal_thirteen,
-    encode_distinct_literal_thirty, encode_distinct_literal_thirty_eight,
-    encode_distinct_literal_thirty_five, encode_distinct_literal_thirty_four,
-    encode_distinct_literal_thirty_nine, encode_distinct_literal_thirty_one,
-    encode_distinct_literal_thirty_seven, encode_distinct_literal_thirty_six,
-    encode_distinct_literal_thirty_three, encode_distinct_literal_thirty_two,
-    encode_distinct_literal_triple, encode_distinct_literal_twelve,
-    encode_distinct_literal_twenty, encode_distinct_literal_twenty_eight,
-    encode_distinct_literal_twenty_five, encode_distinct_literal_twenty_four,
-    encode_distinct_literal_twenty_nine, encode_distinct_literal_twenty_one,
-    encode_distinct_literal_twenty_seven, encode_distinct_literal_twenty_six,
-    encode_distinct_literal_twenty_three, encode_distinct_literal_twenty_two,
-    encode_empty_void_function, encode_initial_zero_outputs,
-    encode_latest_byte_identity_trace, encode_rotated_byte_literal,
-    encode_successful_byte_echo, encode_successful_latest_byte_trace,
+    encode_discarded_getchar, encode_discarded_input_literal,
+    encode_distinct_literal_eight, encode_distinct_literal_eighteen,
+    encode_distinct_literal_eleven, encode_distinct_literal_fifteen,
+    encode_distinct_literal_forty, encode_distinct_literal_forty_eight,
+    encode_distinct_literal_forty_five, encode_distinct_literal_forty_four,
+    encode_distinct_literal_forty_one, encode_distinct_literal_forty_seven,
+    encode_distinct_literal_forty_six, encode_distinct_literal_forty_three,
+    encode_distinct_literal_forty_two, encode_distinct_literal_fourteen,
+    encode_distinct_literal_nine, encode_distinct_literal_nineteen,
+    encode_distinct_literal_pair, encode_distinct_literal_quad,
+    encode_distinct_literal_quint, encode_distinct_literal_seven,
+    encode_distinct_literal_seventeen, encode_distinct_literal_six,
+    encode_distinct_literal_sixteen, encode_distinct_literal_ten,
+    encode_distinct_literal_thirteen, encode_distinct_literal_thirty,
+    encode_distinct_literal_thirty_eight, encode_distinct_literal_thirty_five,
+    encode_distinct_literal_thirty_four, encode_distinct_literal_thirty_nine,
+    encode_distinct_literal_thirty_one, encode_distinct_literal_thirty_seven,
+    encode_distinct_literal_thirty_six, encode_distinct_literal_thirty_three,
+    encode_distinct_literal_thirty_two, encode_distinct_literal_triple,
+    encode_distinct_literal_twelve, encode_distinct_literal_twenty,
+    encode_distinct_literal_twenty_eight, encode_distinct_literal_twenty_five,
+    encode_distinct_literal_twenty_four, encode_distinct_literal_twenty_nine,
+    encode_distinct_literal_twenty_one, encode_distinct_literal_twenty_seven,
+    encode_distinct_literal_twenty_six, encode_distinct_literal_twenty_three,
+    encode_distinct_literal_twenty_two, encode_empty_void_function,
+    encode_initial_zero_outputs, encode_latest_byte_identity_trace,
+    encode_rotated_byte_literal, encode_successful_byte_echo,
+    encode_successful_latest_byte_trace,
     encode_zero_prefixed_latest_byte_trace, encode_zero_then_literal,
 };
 use crate::layout::{
@@ -1467,10 +1468,14 @@ fn verified_ternary_bytes(
     })?;
     let layout = match mode {
         ByteTraceMode::TwoReadEofBranch => {
-            return Err(String::from("two-read EOF branch requires canonical typed IR"));
+            return Err(String::from(
+                "two-read EOF branch requires canonical typed IR",
+            ));
         },
         ByteTraceMode::SignedSecondEcho => {
-            return Err(String::from("signed second echo requires canonical typed IR"));
+            return Err(String::from(
+                "signed second echo requires canonical typed IR",
+            ));
         },
         ByteTraceMode::AdjacentEcho => {
             encode_successful_byte_echo(&program, profile)
@@ -3162,7 +3167,10 @@ fn verified_typed_bytes(
             compile_canonical_typed_discarded_getchar(typed_bytes, profile)
         },
         ByteTraceMode::DiscardedInputLiteral => {
-            compile_canonical_typed_discarded_input_literal(typed_bytes, profile)
+            compile_canonical_typed_discarded_input_literal(
+                typed_bytes,
+                profile,
+            )
         },
         ByteTraceMode::EmptyVoid => {
             compile_canonical_typed_empty_void(typed_bytes, profile)
@@ -3560,13 +3568,19 @@ fn verified_two_read_eof_branch(
         171, 252, 70, 159, 165, 25, 177, 211, 188, 105, 115, 25, 162, 110, 205,
         20,
     ];
+    const ECHO_SHA: [u8; 32] = [
+        56, 182, 140, 171, 96, 65, 66, 236, 31, 8, 236, 153, 114, 178, 165,
+        133, 180, 47, 2, 246, 113, 132, 0, 68, 249, 130, 240, 121, 207, 16,
+        215, 56,
+    ];
     let module = canonical_module(canonical).map_err(|error| {
         format!("two-read EOF typed wire rejected: {error:?}")
     })?;
     let guarded = module.source_sha256() == &GUARDED_SHA;
+    let echoed = module.source_sha256() == &ECHO_SHA;
     if module.abi_id() != "malbolge-c32-v1"
         || module.target_profile() != profile.id()
-        || (module.source_sha256() != &SHA && !guarded)
+        || (module.source_sha256() != &SHA && !guarded && !echoed)
         || !module.globals().is_empty()
         || module.functions().len() != 1
         || module.types().len() != 4
@@ -3659,6 +3673,24 @@ fn verified_two_read_eof_branch(
             Instruction::ByteOutput { value: id(9) },
         ],
     ];
+    if echoed {
+        // The C branch arms agree on the second input's low byte (106 at
+        // EOF) before their different final markers. The physical guest
+        // emits that byte at C63 *before* selecting its exact EOF arm.
+        instructions[4].insert(0, Instruction::ByteOutput { value: id(10) });
+        instructions[4].insert(0, Instruction::ConstantInteger {
+            result: id(10),
+            type_id: ty(3),
+            constant: IntegerConstant::new(8, vec![106]),
+        });
+        instructions[5].insert(0, Instruction::ByteOutput { value: id(11) });
+        instructions[5].insert(0, Instruction::Cast {
+            operation: CastOp::Truncate,
+            result: id(11),
+            type_id: ty(3),
+            value: id(6),
+        });
+    }
     if guarded {
         instructions[5].push(Instruction::Getchar {
             result: id(10),
@@ -3708,7 +3740,11 @@ fn verified_two_read_eof_branch(
     {
         return Err(String::from("two-read EOF phi inputs disagree"));
     }
-    let source = if guarded {
+    let source = if echoed {
+        crate::layout::build_second_input_eof_classified_two_echo_source(
+            profile,
+        )
+    } else if guarded {
         crate::layout::build_second_input_guarded_third_read_source(profile)
     } else {
         crate::layout::build_second_input_eof_classified_first_echo_source(
@@ -3746,8 +3782,14 @@ fn verify_two_read_eof_branch(
             profile,
         )
         .map_err(|error| format!("two-read source: {error:?}"))?;
+    let echoed_source =
+        crate::layout::build_second_input_eof_classified_two_echo_source(
+            profile,
+        )
+        .map_err(|error| format!("second echo source: {error:?}"))?;
     let guarded = artifact.source == guarded_source;
-    if !guarded && artifact.source != base_source {
+    let echoed = artifact.source == echoed_source;
+    if !guarded && !echoed && artifact.source != base_source {
         return Err(String::from(
             "two-read EOF source is not a verified guest construction",
         ));
@@ -3780,6 +3822,7 @@ fn verify_two_read_eof_branch(
             175
         };
         let first_value = input.first().copied().unwrap_or(106);
+        let second_value = input.get(1).copied().unwrap_or(106);
         let marker = if eof_second {
             30
         } else {
@@ -3814,7 +3857,17 @@ fn verify_two_read_eof_branch(
             .get(1)
             .copied()
             .map_or(TraceInput::EndOfInput, TraceInput::Byte);
-        let mut expected_reads = vec![(53, first), (63, second)];
+        let mut expected_reads = vec![
+            (53, first),
+            (
+                if echoed {
+                    62
+                } else {
+                    63
+                },
+                second,
+            ),
+        ];
         if guarded && !eof_second {
             expected_reads.push((
                 101,
@@ -3829,22 +3882,26 @@ fn verify_two_read_eof_branch(
         } else {
             2
         });
+        let mut expected_writes = vec![(54, first_value)];
+        let mut expected_output = vec![first_value];
+        if echoed {
+            expected_writes.push((63, second_value));
+            expected_output.push(second_value);
+        }
+        expected_writes.push((
+            if eof_second {
+                128
+            } else {
+                57
+            },
+            marker,
+        ));
+        expected_output.push(marker);
         if !matches!(outcome, RunOutcome::Terminated { steps: actual, .. } if actual == steps)
             || vm.input_consumed() != expected_consumed
-            || vm.output() != [first_value, marker]
+            || vm.output() != expected_output
             || reads != expected_reads
-            || writes
-                != [
-                    (54, first_value),
-                    (
-                        if eof_second {
-                            128
-                        } else {
-                            57
-                        },
-                        marker,
-                    ),
-                ]
+            || writes != expected_writes
         {
             return Err(format!(
                 "two-read EOF guest path mismatch for {input:?}"
@@ -3884,14 +3941,17 @@ fn verified_signed_second_echo(
         ));
     }
     let function = &module.functions()[0];
-    if function.name() != "emit" || !function.parameters().is_empty()
+    if function.name() != "emit"
+        || !function.parameters().is_empty()
         || function.blocks().len() != 1
     {
         return Err(String::from("signed second echo function disagrees"));
     }
     let block = &function.blocks()[0];
     let [first, second, cast, write] = block.instructions() else {
-        return Err(String::from("signed second echo requires four guest effects"));
+        return Err(String::from(
+            "signed second echo requires four guest effects",
+        ));
     };
     if !block.phis().is_empty()
         || !matches!(block.terminator(), Terminator::Return { value: None })
@@ -3908,8 +3968,11 @@ fn verified_signed_second_echo(
     {
         return Err(String::from("signed second echo SSA/control disagrees"));
     }
-    let source = crate::layout::build_c23_nine_rotated_signed_output_source(profile)
-        .map_err(|error| format!("signed second echo physical layout: {error:?}"))?;
+    let source =
+        crate::layout::build_c23_nine_rotated_signed_output_source(profile)
+            .map_err(|error| {
+                format!("signed second echo physical layout: {error:?}")
+            })?;
     let artifact = VerifiedSource {
         effect_witness: Some(SourceEffectWitness::SignedSecondEcho),
         source,
@@ -3924,41 +3987,68 @@ fn verify_signed_second_echo(
     artifact: &VerifiedSource,
 ) -> Result<(), String> {
     use malbolge::{ProfileRegisters, TraceInput};
-    if artifact.steps != 81 || artifact.source.len() != 91
+    if artifact.steps != 81
+        || artifact.source.len() != 91
         || artifact.source.get(89..91) != Some(b"Iy".as_slice())
     {
-        return Err(String::from("signed second echo physical geometry disagrees"));
+        return Err(String::from(
+            "signed second echo physical geometry disagrees",
+        ));
     }
     let matrix = [
-        Vec::new(), vec![0], vec![255], vec![0, 0],
-        vec![255, 255], vec![0, 128, 42], vec![128, 0, 254],
+        Vec::new(),
+        vec![0],
+        vec![255],
+        vec![0, 0],
+        vec![255, 255],
+        vec![0, 128, 42],
+        vec![128, 0, 254],
     ];
-    let loaded = ProfileMachine::from_source(profile, &artifact.source, Vec::new())
-        .map_err(|error| format!("signed second echo VM load: {error:?}"))?;
+    let loaded =
+        ProfileMachine::from_source(profile, &artifact.source, Vec::new())
+            .map_err(|error| {
+                format!("signed second echo VM load: {error:?}")
+            })?;
     for input in matrix {
         let mut vm = ProfileMachine::from_state(
-            profile, loaded.memory().to_vec(), input.clone(), ProfileRegisters::default(),
-        ).map_err(|error| format!("signed second echo VM copy: {error:?}"))?;
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("signed second echo VM copy: {error:?}"))?;
         let mut reads = Vec::new();
         let mut writes = Vec::new();
-        let outcome = vm.run_traced(artifact.steps, &mut |step| {
-            if let Some(value) = step.input {
-                reads.push((step.before.registers.code_pointer, value));
-            }
-            if let Some(value) = step.output {
-                writes.push((step.before.registers.code_pointer, value));
-            }
-        }).map_err(|error| format!("signed second echo VM execution: {error:?}"))?;
+        let outcome = vm
+            .run_traced(artifact.steps, &mut |step| {
+                if let Some(value) = step.input {
+                    reads.push((step.before.registers.code_pointer, value));
+                }
+                if let Some(value) = step.output {
+                    writes.push((step.before.registers.code_pointer, value));
+                }
+            })
+            .map_err(|error| {
+                format!("signed second echo VM execution: {error:?}")
+            })?;
         let expected_second = input.get(1).copied().unwrap_or(255);
-        let first = input.first().copied().map_or(TraceInput::EndOfInput, TraceInput::Byte);
-        let second = input.get(1).copied().map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let first = input
+            .first()
+            .copied()
+            .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let second = input
+            .get(1)
+            .copied()
+            .map_or(TraceInput::EndOfInput, TraceInput::Byte);
         if !matches!(outcome, RunOutcome::Terminated { steps: 81, .. })
             || vm.input_consumed() != input.len().min(2)
             || vm.output() != [expected_second]
             || reads != [(37, first), (66, second)]
             || writes != [(79, expected_second)]
         {
-            return Err(String::from("signed second echo guest EOF or input trace disagrees"));
+            return Err(String::from(
+                "signed second echo guest EOF or input trace disagrees",
+            ));
         }
     }
     Ok(())

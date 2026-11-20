@@ -43,6 +43,22 @@ const SOURCE_SHA256: &str =
     "163a96c1724e0848a0a56bc9d6b69b04a45aabc29de58e83642325c6ffa418c3";
 const GUARDED_SOURCE_SHA256: &str =
     "65c93f567b3460dfaa2588a1a4355312abfc469fa519b1d3bc697319a26ecd14";
+const ECHO_SOURCE_SHA256: &str =
+    "38b68cab604142ec1f08ec9972b2a585b42f02f671840044f982f079cf10d738";
+const ECHO_FUNCTION_SOURCE: &str = concat!(
+    "void emit(void) {\n",
+    "    int first = getchar();\n",
+    "    putchar(first == EOF ? 106 : first);\n",
+    "    int second = getchar();\n",
+    "    if (second == EOF) {\n",
+    "        putchar(106);\n",
+    "        putchar(30);\n",
+    "    } else {\n",
+    "        putchar(second);\n",
+    "        putchar(154);\n",
+    "    }\n",
+    "}",
+);
 const GUARDED_FUNCTION_SOURCE: &str = concat!(
     "void emit(void) {\n",
     "    int first = getchar();\n",
@@ -425,6 +441,175 @@ const GUARDED_EXTRA_SHAPES: &[Shape] = &[
     ),
 ];
 
+// An independently pinned Clang AST for a second signed input echo before
+// selecting its actual EOF/byte output arm. Exact node geometry and ancestry
+// are checked along with source SHA; this is not a generic C AST grammar.
+// The first 32 pinned Clang nodes share the prior source's exact statement
+// structure, aside from enclosing span ends and declaration-origin IDs.
+// Keeping this prefix shared makes changes to the branch-effect subtree explicit.
+const ECHO_SHARED_PREFIX_NODES: usize = 32;
+const ECHO_SUFFIX_SHAPES: &[Shape] = &[
+    (26, "compound-statement", "", "", "", "", "", 137, 187), // 33
+    (
+        33,
+        "call-expression",
+        "i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        147,
+        159,
+    ), // 34
+    (
+        34,
+        "cast-expression",
+        "ptr(fn(i32)->i32)",
+        "function-to-pointer",
+        "",
+        "",
+        "",
+        147,
+        154,
+    ), // 35
+    (
+        35,
+        "declaration-reference-expression",
+        "fn(i32)->i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        147,
+        154,
+    ), // 36
+    (34, "integer-literal", "i32", "", "", "106", "106", 155, 158), // 37
+    (
+        33,
+        "call-expression",
+        "i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        169,
+        180,
+    ), // 38
+    (
+        38,
+        "cast-expression",
+        "ptr(fn(i32)->i32)",
+        "function-to-pointer",
+        "",
+        "",
+        "",
+        169,
+        176,
+    ), // 39
+    (
+        39,
+        "declaration-reference-expression",
+        "fn(i32)->i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        169,
+        176,
+    ), // 40
+    (38, "integer-literal", "i32", "", "", "30", "30", 177, 179), // 41
+    (26, "compound-statement", "", "", "", "", "", 193, 247), // 42
+    (
+        42,
+        "call-expression",
+        "i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        203,
+        218,
+    ), // 43
+    (
+        43,
+        "cast-expression",
+        "ptr(fn(i32)->i32)",
+        "function-to-pointer",
+        "",
+        "",
+        "",
+        203,
+        210,
+    ), // 44
+    (
+        44,
+        "declaration-reference-expression",
+        "fn(i32)->i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        203,
+        210,
+    ), // 45
+    (
+        43,
+        "cast-expression",
+        "i32",
+        "lvalue-to-rvalue",
+        "",
+        "",
+        "",
+        211,
+        217,
+    ), // 46
+    (
+        46,
+        "declaration-reference-expression",
+        "i32",
+        "",
+        "second@972",
+        "",
+        "",
+        211,
+        217,
+    ), // 47
+    (
+        42,
+        "call-expression",
+        "i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        228,
+        240,
+    ), // 48
+    (
+        48,
+        "cast-expression",
+        "ptr(fn(i32)->i32)",
+        "function-to-pointer",
+        "",
+        "",
+        "",
+        228,
+        235,
+    ), // 49
+    (
+        49,
+        "declaration-reference-expression",
+        "fn(i32)->i32",
+        "",
+        "external:putchar",
+        "",
+        "",
+        228,
+        235,
+    ), // 50
+    (48, "integer-literal", "i32", "", "", "154", "154", 236, 239), // 51
+];
+
 fn position(source: &[u8], offset: u32) -> Option<(u32, u32)> {
     let prefix = source.get(..usize::try_from(offset).ok()?)?;
     let line =
@@ -448,11 +633,17 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
         return false;
     };
     let guarded = input.source.sha256 == GUARDED_SOURCE_SHA256;
-    let expected_source = if guarded {
+    let echo = input.source.sha256 == ECHO_SOURCE_SHA256;
+    let expected_source = if echo {
+        ECHO_FUNCTION_SOURCE
+    } else if guarded {
         GUARDED_FUNCTION_SOURCE
     } else {
         FUNCTION_SOURCE
     };
+    let echo_suffix_count = if echo { ECHO_SUFFIX_SHAPES.len() } else { 0 };
+    let guarded_count = if guarded { GUARDED_EXTRA_SHAPES.len() } else { 0 };
+    let shared_count = if echo { ECHO_SHARED_PREFIX_NODES } else { SHAPES.len() };
     if input.schema_version != 1
         || input.identity != "malbolge-c-frontend-v1"
         || input.profile.abi_id != "malbolge-c32-v1"
@@ -460,9 +651,8 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
         || input.clang.version != "22.1.8"
         || input.clang.target != "wasm32-unknown-unknown"
         || input.clang.language != "c23"
-        || (!guarded && input.source.sha256 != SOURCE_SHA256)
-        || input.nodes.len()
-            != SHAPES.len() + usize::from(guarded) * GUARDED_EXTRA_SHAPES.len()
+        || (!guarded && !echo && input.source.sha256 != SOURCE_SHA256)
+        || input.nodes.len() != shared_count + echo_suffix_count + guarded_count
         || source.get(
             usize::try_from(function.span.begin.byte).unwrap_or(usize::MAX)
                 ..usize::try_from(function.span.end.byte).unwrap_or(usize::MAX),
@@ -473,13 +663,11 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
     input
         .nodes
         .iter()
-        .zip(SHAPES.iter().chain(GUARDED_EXTRA_SHAPES.iter().take(
-            if guarded {
-                GUARDED_EXTRA_SHAPES.len()
-            } else {
-                0
-            },
-        )))
+        .zip(
+            SHAPES.iter().take(shared_count)
+                .chain(ECHO_SUFFIX_SHAPES.iter().take(echo_suffix_count))
+                .chain(GUARDED_EXTRA_SHAPES.iter().take(guarded_count))
+        )
         .enumerate()
         .all(|(index, (node, shape))| {
             let &(
@@ -501,6 +689,12 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
                     25 | 37 => 219,
                     _ => end,
                 }
+            } else if echo {
+                match index {
+                    0 | 1 => 249,
+                    25 => 247,
+                    _ => end,
+                }
             } else {
                 end
             };
@@ -508,6 +702,12 @@ fn source_matches(input: &Artifact, source: &[u8]) -> bool {
                 match reference {
                     "first@862" => "first@836",
                     "second@930" => "second@904",
+                    _ => reference,
+                }
+            } else if echo {
+                match reference {
+                    "first@862" => "first@904",
+                    "second@930" => "second@972",
                     _ => reference,
                 }
             } else {
@@ -628,6 +828,7 @@ pub(super) fn canonical_two_read_eof_branch(
     }
     let n = &input.nodes;
     let guarded = input.source.sha256 == GUARDED_SOURCE_SHA256;
+    let echo = input.source.sha256 == ECHO_SOURCE_SHA256;
     let frontend = FrontendArtifact::new_void(
         FrontendArtifactSpec {
             abi_id: input.profile.abi_id.clone(),
@@ -782,39 +983,94 @@ pub(super) fn canonical_two_read_eof_branch(
         code_block(
             4,
             &n[32],
-            vec![
-                located(
+            {
+                let mut instructions = Vec::new();
+                if echo {
+                    instructions.push(located(
+                        Instruction::ConstantInteger {
+                            constant: IntegerConstant::new(8, vec![106]),
+                            result: value(10),
+                            type_id: byte_type,
+                        },
+                        &n[36],
+                    ));
+                    instructions.push(located(
+                        Instruction::ByteOutput { value: value(10) },
+                        &n[33],
+                    ));
+                }
+                instructions.push(located(
                     Instruction::ConstantInteger {
                         constant: IntegerConstant::new(8, vec![30]),
                         result: value(8),
                         type_id: byte_type,
                     },
-                    &n[36],
-                ),
-                located(Instruction::ByteOutput { value: value(8) }, &n[33]),
-            ],
+                    &n[if echo {
+                        40
+                    } else {
+                        36
+                    }],
+                ));
+                instructions.push(located(
+                    Instruction::ByteOutput { value: value(8) },
+                    &n[if echo {
+                        37
+                    } else {
+                        33
+                    }],
+                ));
+                instructions
+            },
             vec![],
             Terminator::Return { value: None },
             &n[32],
         ),
         code_block(
             5,
-            &n[37],
+            &n[if echo {
+                41
+            } else {
+                37
+            }],
             {
-                let mut instructions = vec![
+                let mut instructions = Vec::new();
+                if echo {
+                    instructions.push(located(
+                        Instruction::Cast {
+                            operation: CastOp::Truncate,
+                            result: value(11),
+                            type_id: byte_type,
+                            value: value(6),
+                        },
+                        &n[45],
+                    ));
+                    instructions.push(located(
+                        Instruction::ByteOutput { value: value(11) },
+                        &n[42],
+                    ));
+                }
+                instructions.extend([
                     located(
                         Instruction::ConstantInteger {
                             constant: IntegerConstant::new(8, vec![154]),
                             result: value(9),
                             type_id: byte_type,
                         },
-                        &n[41],
+                        &n[if echo {
+                            50
+                        } else {
+                            41
+                        }],
                     ),
                     located(
                         Instruction::ByteOutput { value: value(9) },
-                        &n[38],
+                        &n[if echo {
+                            47
+                        } else {
+                            38
+                        }],
                     ),
-                ];
+                ]);
                 if guarded {
                     instructions.push(located(
                         Instruction::Getchar {
@@ -828,7 +1084,11 @@ pub(super) fn canonical_two_read_eof_branch(
             },
             vec![],
             Terminator::Return { value: None },
-            &n[37],
+            &n[if echo {
+                41
+            } else {
+                37
+            }],
         ),
     ];
     let function = Function::new(FunctionSpec {
