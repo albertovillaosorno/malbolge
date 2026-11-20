@@ -320,6 +320,46 @@ pub struct GuestCodeOperationSite {
     pub ordinal: u32,
 }
 
+/// A required physical effect of one typed operation, not an opcode.
+///
+/// Actual address-sensitive code may need more instructions for pointer
+/// setup, signed EOF conversion, arithmetic or self-modification. An effect
+/// site must never be treated as proof that an opcode performs its effect.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GuestCodeOperationEffect {
+    /// A real guest input instruction, distinct from destination writes.
+    Input,
+    /// One output of the addressed byte operand.
+    Output {
+        /// Source SSA byte cell for the required output effect.
+        source: GuestPlacedOperand,
+    },
+    /// One addressed guest data word that must be written.
+    Store {
+        /// Exact destination cell of the write.
+        destination: u32,
+        /// Exact literal word for constants, or runtime-computed otherwise.
+        literal: Option<u32>,
+    },
+    /// One otherwise effect-free computation's minimum instruction cell.
+    Compute,
+}
+
+/// An exact source operation's typed effect bound to reserved code space.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeOperationEffectSite {
+    /// Canonical block identity.
+    pub block: u32,
+    /// First proposed code cell for this one required effect.
+    pub code_address: u32,
+    /// The semantic obligation at this site, not a proven instruction.
+    pub effect: GuestCodeOperationEffect,
+    /// Canonical source function identity.
+    pub function: u32,
+    /// Instruction ordinal within its source block.
+    pub ordinal: u32,
+}
+
 /// A source-authenticated function's proposed physical code entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GuestCodeFunctionEntry {
@@ -358,6 +398,8 @@ pub struct GuestAddressedCfgPlan {
     pub edge_pads: Vec<GuestCodeEdgePadPlacement>,
     /// Entry address for each canonical source function, never first by guess.
     pub function_entries: Vec<GuestCodeFunctionEntry>,
+    /// Addressed input, output and per-word store obligations, not opcodes.
+    pub operation_effect_sites: Vec<GuestCodeOperationEffectSite>,
     /// Source-ordered minimum physical instruction reservations, not opcodes.
     pub operation_sites: Vec<GuestCodeOperationSite>,
     /// Every return's separate physical control site and optional scalar.
@@ -672,30 +714,113 @@ fn minimum_operation_cells(
     )
 }
 
+fn required_operation_effects(
+    instruction: &GuestPlacedInstruction,
+) -> Result<Vec<GuestCodeOperationEffect>, GuestCodePlacementError> {
+    let mut effects = Vec::new();
+    if matches!(
+        instruction.instruction,
+        Instruction::Getchar { .. } | Instruction::ByteInput { .. }
+    ) {
+        effects.push(GuestCodeOperationEffect::Input);
+    }
+    if matches!(instruction.instruction, Instruction::ByteOutput { .. }) {
+        let [source] = instruction.reads.as_slice() else {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        };
+        effects.push(GuestCodeOperationEffect::Output { source: *source });
+    }
+    if let Some(destination) = instruction.write {
+        let literal_by_address = instruction
+            .constant_cells
+            .iter()
+            .map(|cell| (cell.address, cell.word))
+            .collect::<BTreeMap<_, _>>();
+        if literal_by_address.len() != instruction.constant_cells.len() {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        for offset in 0..destination.words {
+            let address = destination
+                .cell_address(offset)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            effects.push(GuestCodeOperationEffect::Store {
+                destination: address,
+                literal: literal_by_address.get(&address).copied(),
+            });
+        }
+        if !literal_by_address.is_empty()
+            && (literal_by_address.len()
+                != usize::try_from(destination.words).map_err(|_| {
+                    GuestCodePlacementError::InvalidCodePlacement
+                })?
+                || (0..destination.words).any(|offset| {
+                    destination.cell_address(offset).is_none_or(|cell| {
+                        !literal_by_address.contains_key(&cell)
+                    })
+                }))
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    } else if !instruction.constant_cells.is_empty() {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    if effects.is_empty() {
+        effects.push(GuestCodeOperationEffect::Compute);
+    }
+    if u32::try_from(effects.len()).ok() != minimum_operation_cells(instruction)
+    {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    Ok(effects)
+}
+
 fn bind_operation_sites(
     block: &GuestPlacedBlock,
     placement: GuestCodeBlockPlacement,
-) -> Result<Vec<GuestCodeOperationSite>, GuestCodePlacementError> {
+) -> Result<
+    (
+        Vec<GuestCodeOperationSite>,
+        Vec<GuestCodeOperationEffectSite>,
+    ),
+    GuestCodePlacementError,
+> {
     let mut next_address = placement.start;
     let mut sites = Vec::with_capacity(block.instructions.len());
+    let mut effect_sites = Vec::new();
     for (index, instruction) in block.instructions.iter().enumerate() {
-        let length = minimum_operation_cells(instruction)
-            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let effects = required_operation_effects(instruction)?;
+        let length = u32::try_from(effects.len())
+            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
         let end_exclusive = next_address
             .checked_add(length)
             .filter(|end| *end <= placement.control_start)
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let ordinal = u32::try_from(index)
+            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+        for (effect_index, effect) in effects.into_iter().enumerate() {
+            let code_address = next_address
+                .checked_add(u32::try_from(effect_index).map_err(|_| {
+                    GuestCodePlacementError::InvalidCodePlacement
+                })?)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            effect_sites.push(GuestCodeOperationEffectSite {
+                block: block.block,
+                code_address,
+                effect,
+                function: block.function,
+                ordinal,
+            });
+        }
         sites.push(GuestCodeOperationSite {
             block: block.block,
             end_exclusive,
             function: block.function,
-            ordinal: u32::try_from(index)
-                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?,
+            ordinal,
             start: next_address,
         });
         next_address = end_exclusive;
     }
-    Ok(sites)
+    Ok((sites, effect_sites))
 }
 
 fn validate_code_proposals(
@@ -943,6 +1068,7 @@ pub fn bind_source_locked_cfg_code_targets(
     let mut control_edges = Vec::new();
     let mut edge_pads = Vec::with_capacity(proposed_pads.len());
     let mut operation_sites = Vec::new();
+    let mut operation_effect_sites = Vec::new();
     let mut return_sites = Vec::new();
     for block in &relocated.operation_blocks {
         let placement = starts
@@ -950,7 +1076,9 @@ pub fn bind_source_locked_cfg_code_targets(
             .copied()
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         code_blocks.push(placement);
-        operation_sites.extend(bind_operation_sites(block, placement)?);
+        let (sites, effects) = bind_operation_sites(block, placement)?;
+        operation_sites.extend(sites);
+        operation_effect_sites.extend(effects);
         let mut bind = |kind, edge: &GuestPlacedControlEdge| {
             let mut index = CodeEdgeIndex {
                 pads: &pads,
@@ -994,6 +1122,7 @@ pub fn bind_source_locked_cfg_code_targets(
         control_edges,
         edge_pads,
         function_entries,
+        operation_effect_sites,
         operation_sites,
         return_sites,
         relocated,

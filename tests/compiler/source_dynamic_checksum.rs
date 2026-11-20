@@ -1393,6 +1393,97 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
         all_operation_sites += sites.len();
     }
     assert_eq!(all_operation_sites, 19);
+    // Every minimum reservation must bind its independent physical effects,
+    // including the real input opcode before both signed C32 stores.
+    use super::typed_cfg_adapter::state_relocation::GuestCodeOperationEffect;
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
+    let mut stores = 0usize;
+    let mut literal_stores = 0usize;
+    let mut compute_sites = 0usize;
+    for site in &addressed.operation_sites {
+        let original = &addressed.relocated.operation_blocks
+            [usize::try_from(site.block).unwrap()]
+        .instructions[usize::try_from(site.ordinal).unwrap()];
+        let effects = addressed
+            .operation_effect_sites
+            .iter()
+            .filter(|effect| {
+                (effect.function, effect.block, effect.ordinal)
+                    == (site.function, site.block, site.ordinal)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(effects.len(), (site.end_exclusive - site.start) as usize);
+        for (index, effect) in effects.iter().enumerate() {
+            assert_eq!(effect.code_address, site.start + index as u32);
+            match effect.effect {
+                GuestCodeOperationEffect::Input => {
+                    assert!(matches!(
+                        original.instruction,
+                        PlacedInstruction::Getchar { .. }
+                    ));
+                    assert_eq!(index, 0, "the signed read precedes all stores");
+                    assert_eq!(
+                        effects.len(),
+                        3,
+                        "one input and two C32 writes"
+                    );
+                    inputs.push((
+                        effect.block,
+                        effect.ordinal,
+                        effect.code_address,
+                    ));
+                },
+                GuestCodeOperationEffect::Output { source } => {
+                    assert!(matches!(
+                        original.instruction,
+                        PlacedInstruction::ByteOutput { .. }
+                    ));
+                    assert_eq!(original.reads.as_slice(), &[source]);
+                    outputs.push((effect.block, source.address));
+                },
+                GuestCodeOperationEffect::Store { destination, literal } => {
+                    let slot = original
+                        .write
+                        .expect("store must have SSA destination");
+                    assert!(
+                        (slot.address..slot.address + slot.words)
+                            .contains(&destination)
+                    );
+                    assert_eq!(
+                        literal,
+                        original
+                            .constant_cells
+                            .iter()
+                            .find(|word| word.address == destination)
+                            .map(|word| word.word)
+                    );
+                    literal_stores += usize::from(literal.is_some());
+                    stores += 1;
+                },
+                GuestCodeOperationEffect::Compute => {
+                    assert!(original.write.is_none());
+                    assert!(!matches!(
+                        original.instruction,
+                        PlacedInstruction::ByteOutput { .. }
+                    ));
+                    compute_sites += 1;
+                },
+            }
+        }
+    }
+    assert_eq!(inputs.len(), 2, "both signed getchar effects are distinct");
+    assert_ne!(inputs[0].2, inputs[1].2);
+    assert_eq!(outputs.len(), 1, "one guest byte output is retained");
+    assert!(stores > 2, "full-width scalar results have separate stores");
+    assert!(
+        literal_stores > 0,
+        "literal words remain source-authenticated"
+    );
+    assert_eq!(
+        addressed.operation_effect_sites.len(),
+        inputs.len() + outputs.len() + stores + compute_sites
+    );
     assert_eq!(addressed.edge_pads, pads);
     assert_eq!(addressed.relocated.operation_blocks.len(), 7);
     assert_eq!(addressed.control_edges.len(), 8);

@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the original seven-block source-locked checksum now binds
+  separate minimum physical effect addresses for each typed instruction:
+  signed input before its two C32 stores, all per-word scalar stores, exact
+  literal target values and the byte output's source cell. A red-first
+  original-source test checks all sites even with reversed proposals. These
+  are *only* code-space obligations, not reached Malbolge opcodes. A separate
+  C37 first-read removal experiment broke the mandatory nine-rotation
+  pointer chain and was not adopted. Whole-source C23 arithmetic, phi
+  writes, dynamic EOF backedge and five-case guest parity remain absent;
+  no target checksum artifact is published. P2 remains open.
+
 - On 2026-11-20, the original source-locked seven-block checksum now binds
   source-ordered minimum code sites for all 19 typed instructions, including
   separate signed input and full-width destination-write obligations.

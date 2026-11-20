@@ -28,6 +28,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Addressed typed operation effects retain physical obligations (2026-11-20)
+
+The unchanged seven-block C23 checksum now has a proposed source-address
+**effect** for each minimal code reservation, not only a block/operation
+interval. The original 19 typed instructions keep their canonical function,
+block and ordinal identities. Each signed `getchar` binds a distinct input
+site **before** two ordered, full-width frame-word store sites. Every typed
+result reserves an individually addressed destination-word store; constants
+also retain their exact target literal word. The sole byte output binds the
+source scalar cell whose runtime value must be emitted. Effect-free work
+retains an explicit minimal compute site. All sites remain source-ordered,
+nonoverlapping and outside the final block-control reservation, even when
+caller-supplied block and phi-pad proposals are reversed.
+
+A red-first regression first failed because none of these code effect sites
+existed; the source-authenticated test now checks the ordered cells, typed
+source operands, two independent input effects, the byte-output source and
+all destination/literal addresses. The separate physical first-read
+suppression probe also failed: changing C37 from `/` into an inert source
+byte breaks the loader-dependent pointer chain needed for nine correct
+C23 rotations. Neither experiment has produced executable C32 arithmetic,
+actual frame writes, encoded branch/phi copies, a repeatable EOF loop or a
+compiled checksum. Every effect address is an **unverified reservation**;
+P2 guest-output parity remains open.
+
 ### Addressed source operations acquire minimum code sites (2026-11-20)
 
 The unchanged seven-block source-authenticated C23 checksum now assigns
