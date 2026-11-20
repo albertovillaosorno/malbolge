@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, C62 `p` in the 132-cell physical second-input branch
+  retains a first-input-dependent M132 word before C63 overwrites A.
+  Eight complete VM paths bind the exact data write, independent signed
+  read/output order, first-EOF and second-EOF behavior, both 119/175-step
+  terminations and inert encrypted revisit. Three matched-output
+  negative controls reject a missing state write. An independent 257-input
+  oracle proves first EOF has a unique folded word but successful bytes
+  collapse to 36 classes, so this is **not** full-width C local storage.
+  No guest operation uses the saved word, and the original mutable checksum
+  still refuses dynamic CFG linkage. P2 remains open.
+
 - On 2026-11-20, a source-valid two-pass C62 `j`/`/` and
   C66 `j`/`<` relocation physically reads and echoes a third guest byte
   on the second-byte-success arm (four binary values; 170 guest steps).

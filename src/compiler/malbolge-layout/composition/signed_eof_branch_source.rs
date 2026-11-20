@@ -242,6 +242,29 @@ pub fn build_second_input_eof_classified_first_echo_source(
     Ok(source)
 }
 
+/// Preserve a first-input-dependent word across a second signed EOF branch.
+///
+/// The first C53 `/` is echoed at C54, then C62 executes a genuine `p`
+/// into loader-derived M132 before C63 overwrites A with the second `/`.
+/// Both second-word EOF/byte arms still execute their exact original path.
+/// The M132 fold is deliberately *lossy*: it distinguishes first EOF from
+/// every successful byte but cannot represent a C32 local integer. Callers
+/// must check both complete guest paths and the physical data write.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles and unavailable graphical opcodes.
+pub fn build_second_input_branch_with_first_eof_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source =
+        build_second_input_eof_classified_first_echo_source(profile)?;
+    // C62 has D=132 on first traversal; C63 immediately overwrites A.
+    // On the byte-arm revisit encrypted C62 is inert, so no second store.
+    put(&mut source, 62, b'p')?;
+    Ok(source)
+}
+
 /// Build two real, distinct signed-input echoes in one physical guest path.
 ///
 /// The source's C=53 classifier still performs input-dependent arithmetic,

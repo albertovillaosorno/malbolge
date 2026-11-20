@@ -109,6 +109,7 @@ pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,
     build_guarded_signed_eof_echo_and_second_read_source,
     build_guarded_signed_eof_second_read_source,
+    build_second_input_branch_with_first_eof_fold_source,
     build_second_input_eof_classified_first_echo_source,
     build_second_input_guarded_third_read_source,
     build_signed_eof_branch_source, build_two_input_eof_classified_echo_source,

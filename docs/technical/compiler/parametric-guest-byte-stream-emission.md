@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### First-word EOF discriminator survives a second read (2026-11-20)
+
+A new bounded 132-cell N15 source variant changes C62 from inert code to
+an actual `p` after the C53 signed read/C54 echo and before the second
+signed C63 read. The real guest writes M132 as
+`crazy(7,174,350, first_word)` while A still holds the first input, then
+C63 replaces A with its own input word. Both second-read EOF/byte arms still
+halt at 119/175 steps, with unchanged source-backed 2-byte stdout and only
+two signed input events; a successful-byte arm revisits encrypted C62 as
+inert `t` without repeating the data write. Eight complete normative VM
+paths check the data write, C62 revisit, input/output order and unread suffix.
+Three further negative controls show that removing C62's store can leave
+stdout and termination unchanged while the true saved memory word differs.
+An independent 15-trit truth table enumerates all 257 first-input outcomes:
+first EOF maps to 14,348,673, disjoint from the 36 byte-derived classes.
+But the fold is **not injective** (`1` and `2` collide), so it is only a
+saved EOF discriminator and emphatically **not** C32 scalar storage. No
+conditional *use* of the saved value, independent mutable C local, arithmetic,
+loop or original checksum source-to-guest parity is claimed. P2 remains open.
+
 ## Failed third-byte echo relocation (2026-11-20)
 
 A complete physical `second-input-EOF` branch was experimentally modified
