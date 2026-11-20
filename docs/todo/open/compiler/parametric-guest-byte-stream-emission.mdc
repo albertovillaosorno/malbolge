@@ -73,6 +73,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a new 91-cell N15 `Iy` guest executes nine actual M95
+  rotations, reads a second signed word at C66, restores D through eight
+  source- and loader-derived pointer hops, writes the correct C23
+  conversion at M95/M96 via C77/C78 `p`, and emits it at C79 before
+  halting at C80 (81 steps). All 259 independent real-VM/15-trit-oracle
+  cases pass, covering 256 bytes, first/second EOF and unread suffix;
+  each case checks ordered I/O, rotations, physical data reads and writes.
+  The first C37 signed read is still consumed and discarded, so this is
+  **not** source-C `getchar` or a compiled checksum. C32 arithmetic,
+  mutable state, phi copies, dynamic backedge and original five-input
+  C23 source-to-guest parity remain open; P2 is not complete.
+
 - On 2026-11-20, the physical second-input EOF branch now guards a
   **third** signed guest read at revisited C101. First-pass C101 `p`
   makes one independent fifteen-trit state write at M[7,174,353]; its

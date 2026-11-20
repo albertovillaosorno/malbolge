@@ -17,13 +17,13 @@
 //   - Outputs: actual VM p/p writes and independent 15-trit output oracles.
 //   - Side effects: isolated VM traces within 169 steps and bounded memory.
 // - Split-When:
-//   - The complete C23 converter admits nine actual preparatory rotations.
+//   - Source-C dynamic linking supersedes isolated physical byte conversion.
 // - Merge-When:
 //   - General physical operand synthesis proves signed byte I/O.
 // - Summary:
-//   - Loader-valid two-crazy guest precursor and real negative C23 evidence.
+//   - Loader-valid exact C23 signed-byte emission and physical path evidence.
 
-//! Physical p/p source placement, not executable C23 byte normalization.
+//! Physical signed-C23 conversion and output, not source-C compilation.
 
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
@@ -668,6 +668,171 @@ fn nine_real_rotations_convert_second_signed_input_without_output()
         cases = cases.saturating_add(1);
     }
     assert_eq!(cases, 259);
+    Ok(())
+}
+
+// Executable signed C23 output after all nine source-locked rotations.
+// Unlike the earlier non-output experiment, this physical path uses an
+// earlier second `/` at C66 to leave enough code for both `p` writes and
+// a genuine `<` at C79 before the source-required C81 halt. It still
+// discards a first read at C37 and does not compile the mutable checksum.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "257 independent C23 signed conversions and normative VM effects"
+)]
+fn nine_rotations_emit_every_signed_c23_byte_in_the_real_guest()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_c23_nine_rotated_signed_output_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let old =
+        layout::build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    assert_eq!(source.get(81), Some(&94));
+    assert_eq!(source.get(67), Some(&67));
+    assert_eq!(source.get(68), Some(&94));
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    assert_eq!(
+        layout::build_c23_nine_rotated_signed_output_source(
+            historical_profile(),
+        ),
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile),
+    );
+    let changed = [66, 69, 74, 75, 77, 78, 79, 80];
+    for position in 0..source.len() {
+        assert_eq!(
+            source[position] != old[position],
+            changed.contains(&position),
+            "unexpected source/loader modification at C{position}",
+        );
+    }
+    for (position, opcode) in [
+        (37usize, profile.input_instruction()),
+        (66, profile.input_instruction()),
+        (67, b'j'),
+        (68, b'o'),
+        (69, b'j'),
+        (74, b'j'),
+        (75, b'o'),
+        (76, b'j'),
+        (77, b'p'),
+        (78, b'p'),
+        (79, profile.output_instruction()),
+        (80, b'v'),
+    ] {
+        assert_eq!(
+            decode_profile_instruction(
+                u32::from(source[position]),
+                position as u32
+            ),
+            Some(opcode),
+            "unrecognized physical opcode at C{position}",
+        );
+    }
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(95), Ok(INITIAL_FIRST));
+    assert_eq!(loaded.memory_word(96), Ok(INITIAL_SECOND));
+    let mut count = 0usize;
+    for input in once(Vec::new())
+        .chain(once(vec![0x5a]))
+        .chain((u8::MIN..=u8::MAX).map(|byte| vec![0x5a, byte]))
+        .chain(once(vec![0x5a, 0x81, 0x00, 0xff]))
+    {
+        let first = input.first().copied();
+        let second = input.get(1).copied();
+        let signed = second.map_or_else(|| profile.eof_word(), u32::from);
+        let converted_first = scalar_crazy(7_138_732, signed);
+        let converted_second = scalar_crazy(INITIAL_SECOND, converted_first);
+        let expected = second.unwrap_or(0xff);
+        assert_eq!(converted_second % 256, u32::from(expected));
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(81, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 81,
+        });
+        assert_eq!(trace.len(), 81);
+        for position in [12usize, 18, 24, 30, 36, 44, 51, 58, 65] {
+            assert_eq!(trace[position].decoded, Some(b'*'));
+            assert_eq!(trace[position].before.registers.data_pointer, 95);
+        }
+        for (position, value) in [(37usize, first), (66, second)] {
+            assert_eq!(
+                trace[position].decoded,
+                Some(profile.input_instruction())
+            );
+            assert_eq!(
+                trace[position].input,
+                Some(value.map_or(TraceInput::EndOfInput, TraceInput::Byte)),
+            );
+        }
+        for (position, before_d, read, after_d) in [
+            (67usize, 97u32, INITIAL_FIRST, INITIAL_FIRST + 1),
+            (69, INITIAL_FIRST + 2, 157, 158),
+            (70, 158, 36, 37),
+            (71, 37, 66, 67),
+            (72, 67, 85, 86),
+            (73, 86, 76, 77),
+            (74, 77, 79, 80),
+            (76, 81, 94, 95),
+        ] {
+            let step = &trace[position];
+            assert_eq!(step.decoded, Some(b'j'));
+            assert_eq!(step.before.registers.data_pointer, before_d);
+            assert_eq!(
+                step.memory_reads.data.map(|word| word.value),
+                Some(read)
+            );
+            assert_eq!(step.after.registers.data_pointer, after_d);
+        }
+        assert_eq!(trace[75].decoded, Some(b'o'));
+        assert_eq!(trace[75].before.registers.data_pointer, 80);
+        for (position, address, original, converted) in [
+            (77usize, 95u32, 7_138_732u32, converted_first),
+            (78, 96, INITIAL_SECOND, converted_second),
+        ] {
+            let step = &trace[position];
+            assert_eq!(step.decoded, Some(b'p'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(original)
+            );
+            assert_eq!(step.after.registers.accumulator, converted);
+            assert_eq!(vm.memory_word(address), Ok(converted));
+        }
+        assert_eq!(trace[79].decoded, Some(profile.output_instruction()));
+        assert_eq!(trace[79].before.registers.accumulator, converted_second);
+        assert_eq!(trace[79].output, Some(expected));
+        assert!(trace[..79].iter().all(|step| step.output.is_none()));
+        assert_eq!(trace[80].decoded, Some(b'v'));
+        assert_eq!(trace[80].before.registers.code_pointer, 80);
+        assert_eq!(vm.output(), &[expected]);
+        assert_eq!(
+            vm.input_consumed(),
+            usize::from(first.is_some()) + usize::from(second.is_some()),
+        );
+        count += 1;
+    }
+    assert_eq!(count, 259);
     Ok(())
 }
 

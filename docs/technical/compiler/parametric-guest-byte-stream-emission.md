@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical C23 signed-byte conversion now emits output (2026-11-20)
+
+`build_c23_nine_rotated_signed_output_source` produces a 91-cell `Iy` N15
+program with nine actual M95 `*` rotations. The original C37 `/` still
+consumes a first input; moving the second read to C66 leaves space for
+C67/C69 and C70..C76 to repair D through encrypted and loader-expanded
+pointer values. C77 `p` reads prepared M95=7,138,732, C78 `p` reads M96=121,
+and C79 `<` emits the resulting byte before C80 `v` halts. The fixed
+source-required C81=94 no longer prevents the converted output.
+
+An independent 15-trit truth-table oracle and the normative profile VM agree
+for every one of 256 second-input bytes, EOF, initial EOF, and an unread
+suffix (259 complete 81-step traces). Every trace checks both signed input
+events, nine rotations, all late jump data reads, both `p` writes, output
+order, and termination. Target EOF correctly yields `0xff`, rather than the
+raw profile sentinel's low byte. This is **not** source-C `getchar`: the
+C37 input is discarded and only the second input is converted. The original
+seven-block mutable checksum still cannot lower its C32 arithmetic, phi
+copies, dynamic backedge or output to this physical source. No C artifact
+has been published and P2 remains open.
+
 ### Second-input-dependent *third* read after a physical branch (2026-11-20)
 
 The 132-cell N15 classifier now has an additional source-built variant

@@ -11,25 +11,24 @@
 // - Owns:
 //   - Loader-valid source placement for two actual signed-input crazy writes.
 // - Must-Not:
-//   - Present unrotated loader operands as C23 byte conversion or C codegen.
+//   - Call the two-read physical C23 byte converter source-C compilation.
 // - Allows:
 //   - Inputs: exact current 15-trit target profile.
-//   - Outputs: one physical /,p,p,<,v candidate with bounded addresses.
+//   - Outputs: source-valid physical signed-I/O and crazy-code probes.
 //   - Side effects: none; downstream normative execution proves the source.
 // - Split-When:
 //   - General guest operand synthesis replaces fixed graphical placement.
 // - Merge-When:
-//   - The real C23 converter realizes nine pre-input operand rotations.
+//   - Source-C dynamic CFG linking subsumes the bounded source probes.
 // - Summary:
 //   - Connects real loader words to input-dependent physical crazy writes.
 
-//! Physical guest loader, byte-I/O and arithmetic experiments, **not** C23
-//! source-language compilation or signed byte normalization.
+//! Physical guest loader, byte-I/O and arithmetic, **not** source-C lowering.
 //!
-//! The `Iy` graphical seed supplies operands for nine genuine rotations
-//! and real input-dependent crazy operations. Source/data intersections
-//! still prevent correct C23 conversion from reaching a guest output.
-//! Partial probes are never published as lowered C programs.
+//! The `Iy` seed supplies operands for nine genuine rotations and physical
+//! crazy operations. The shortened two-read route now emits a correct C23
+//! converted byte, including EOF, from the second input. The first input is
+//! still consumed and discarded. None of these probes is a compiled C program.
 
 use malbolge::{
     ProfileDescriptor, current_profile, decode_profile_instruction,
@@ -330,6 +329,49 @@ pub fn build_c23_nine_rotated_signed_conversion_without_output_source(
         (80, b'p'),
         // This unexecuted source/data cell supplies the C75 j operand.
         (87, b'p'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
+/// Execute and emit the **converted** C23 signed input byte in the guest.
+///
+/// Nine actual rotations of the Iy loader word finish at C65. C66 then
+/// executes the second real signed `/` (C37 still consumes the first).
+/// C67 follows M97=7,174,404 to D=7,174,405, and C69 follows the loader's
+/// six-period M[7,174,406]=157 to D=158. C70..C74 use previously written
+/// pointer words to reach D=80, C75 advances to D=81, and C76 follows the
+/// unchanged source-required M81=94 to M95. C77/C78 finally perform both
+/// correct C23 `p` operations against M95=7,138,732 and M96=121. C79 `<`
+/// emits the converted low byte (including signed EOF => 0xff) and C80
+/// halts. This avoids executing C81, whose fixed source byte is `v`.
+///
+/// This is a genuine guest-physical signed-byte conversion, not ordinary C
+/// `getchar`: the first independent read is still consumed at C37. There is
+/// no source C32 state, checksum branch, phi movement, or looping program.
+///
+/// # Errors
+///
+/// Refuses profiles other than current N15, or any missing graphical opcode.
+/// Independent normative VM execution must establish the path and output.
+pub fn build_c23_nine_rotated_signed_output_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source =
+        build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )?;
+    for (position, opcode) in [
+        (66, profile.input_instruction()),
+        (69, b'j'),
+        (74, b'j'),
+        (75, b'o'),
+        (77, b'p'),
+        (78, b'p'),
+        (79, profile.output_instruction()),
+        (80, b'v'),
     ] {
         set(&mut source, position, opcode)?;
     }

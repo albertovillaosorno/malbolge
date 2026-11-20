@@ -55,6 +55,24 @@ second input emits `0x9a`, after the first raw N15 echo. This is a bounded
 physical second-input decision, **not** signed C23 `EOF`, a compiled C
 local, reusable conditional lowering, an unbounded loop, or a checksum.
 
+### Executable signed-C23 byte conversion after nine rotations
+
+`build_c23_nine_rotated_signed_output_source` preserves the 91-cell `Iy`
+loader and all nine physical rotations of M95, then advances the *second*
+actual signed input to C66. C67/C69 jump via loader-expanded words before
+C70..C76 restore D to M95 without executing the source-required C81 halt.
+C77/C78 perform the two correct signed-C23 `p` writes, C79 `<` emits the
+converted low byte (including `0xff` for EOF) and C80 halts in 81 guest
+steps. The first input at C37 is consumed but discarded.
+
+The independent 15-trit oracle and actual profile VM agree on all 256 second
+bytes, second-read EOF, initial EOF and an unread suffix (259 complete
+traces). Every case verifies both read events, pointer reads, rotations,
+physical writes, output and exact halt. The older C69-read route *still*
+halts at C81 before output; this new C66-read route solves only that
+physical obstacle. It does **not** link C32 source arithmetic, phi transfers,
+conditional backedges or the original mutable C23 checksum.
+
 ### C23 probe admission and shortened output routes
 
 `admit_c23_probe_graphical_source` now refuses fewer than two source
@@ -63,9 +81,10 @@ per-position graphical decoding. This matches the normative loader's
 recurrence-base and size requirements for these whitespace-free probes;
 previously an empty source could pass this local check. Both M[87]=94
 and M[82]=94 proposed shortcuts to the final converter operand fail the
-real loader's position-specific opcode admission. The original nine-
-rotation converter still halts at C81 before output, and the mutable
-EOF checksum still cannot pass the physical CFG linker.
+real loader's position-specific opcode admission. The earlier C69-read
+nine-rotation converter halts at C81 before output; the newer C66-read
+route above emits the converted byte. The mutable EOF checksum still
+cannot pass the physical CFG linker.
 
 ### Repeated physical loader-word rotations (fixed pointer-reset geometry)
 
