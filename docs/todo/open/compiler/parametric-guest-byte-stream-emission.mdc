@@ -75,6 +75,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the original mutable EOF checksum still refuses a
+  guest artifact after typed-CFG admission; all five native/oracle inputs
+  remain protected. A bounded real-VM attempt to remove the physically
+  discarded first C37 `/` from the correct 91-cell two-read C23
+  converter exhaustively checked the other seven legal C37 opcodes
+  with live byte `0x02` and true EOF. None matches single-read
+  `putchar(getchar())`: the early source byte 80 is also a pointer
+  constant, and its encryption to 66 closes later resets. A focused
+  regression guards this **one-code-cell repair bound only**. Repaired
+  data/control routing, actual C32 arithmetic, phi writes and the
+  unbounded checksum EOF loop remain unimplemented. P2 remains open.
+
 - On 2026-11-20, the lossless third-input M103 state also has a
   distinct 91-cell physical N15 **raw-word recovery** continuation:
   C59 reads, C62 folds against the 15-trit all-ones seed at M103,

@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### First signed C23 read cannot be erased by one opcode (2026-11-20)
+
+The original seven-block mutable checksum was rerun unchanged through
+native C23 `-O0`/`-O2` and its source-authenticated compiler boundary.
+Five binary controls still refuse any guest artifact at physical
+operation, phi, branch and EOF-backedge linkage. Separately, the
+already-executed 91-cell `Iy` C23 signed converter was tested as a
+possible *single*-read `putchar(getchar())` building block.
+
+The existing converter uses a first `/` at C37 and converts the second
+`/` at C66 with two real `p` operations and a C79 byte output.
+Although the first value never appears in the output, C37's initial
+source byte 80 participates in early physical pointer routing, and its
+post-execution encryption to 66 is reused by later `j` resets. All
+**seven** alternative admitted graphical opcodes at the *same* C37
+cell (`o`, `i`, `j`, `p`, `*`, `<`, `v`) were exhaustively checked
+against the actual N15 VM on a successful input byte `0x02` and true
+EOF. The only three replacements that still reach the C66 read and
+C79 output (`o`, `j`, `p`) emit respectively 1, 0, 1 for input 2,
+and 89, 173, 89 for EOF, versus required C23 2 and 255. The
+remaining four do not complete the required guest input/output path.
+The unmodified two-read source still emits its correct second byte
+in 81 physical steps, and the new focused real-VM regression passes.
+
+This is a **one-cell replacement bound**, not proof that a
+single-read C23 converter is impossible. It identifies the first
+instruction/loader coupling a real general physical linker must
+relocate or replace. It adds no source-C acceptance mode, no checksum
+arithmetic, no parallel phi copy, and no dynamic EOF backedge. P2
+remains open and the original checksum publishes no guest artifact.
+
 ### Exact third signed-word recovery after guest storage (2026-11-20)
 
 The exact same 91-cell three-input N15 source admits a second physical

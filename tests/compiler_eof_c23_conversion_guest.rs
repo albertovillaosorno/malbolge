@@ -1639,3 +1639,91 @@ fn fixed_indirect_c23_tail_has_no_two_jump_converter_return()
     ],);
     Ok(())
 }
+
+// The complete C23 converter consumes its first `/` at C37 before the
+// converted second read at C66. C37 is not an erasable discarded read:
+// its raw source byte is a loader/pointer word before execution, and
+// execution later encrypts that code word for repeated pointer restores.
+// Check *every* other one-cell legal opcode at C37 against the strict
+// single-getchar C23 effect. This bounds only one-cell C37 replacement,
+// not relocated code, a saved first input, or a general guest linker.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::excessive_nesting,
+    reason = "complete finite guest opcode search and native C23 parity controls"
+)]
+fn signed_c23_single_read_cannot_replace_only_the_first_input_opcode()
+-> Result<(), String> {
+    let profile = current_profile();
+    let original = layout::build_c23_nine_rotated_signed_output_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(original.len(), 91);
+    assert_eq!(original.get(37), Some(&80));
+    let mut baseline =
+        ProfileMachine::from_source(profile, &original, vec![0x7b, 2])
+            .map_err(|error| error.to_string())?;
+    assert_eq!(
+        baseline.run(90).map_err(|error| error.to_string())?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 81,
+        }
+    );
+    assert_eq!(baseline.input_consumed(), 2);
+    assert_eq!(baseline.output(), [2]);
+
+    let mut enumerated = 0usize;
+    for opcode in b"oijp*<v" {
+        let source_byte = (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), 37)
+                    == Some(*opcode)
+            })
+            .ok_or("missing graphical C37 opcode")?;
+        let mut candidate = original.clone();
+        *candidate.get_mut(37).ok_or("missing C37 source cell")? = source_byte;
+        assert_eq!(
+            layout::admit_c23_probe_graphical_source(&candidate),
+            Ok(())
+        );
+        assert_ne!(candidate.get(37), original.get(37));
+        let loaded =
+            ProfileMachine::from_source(profile, &candidate, Vec::new())
+                .map_err(|error| error.to_string())?;
+        for (input, expected) in [(vec![2], 2u8), (vec![], 255u8)] {
+            let mut machine = ProfileMachine::from_state(
+                profile,
+                loaded.memory().to_vec(),
+                input.clone(),
+                ProfileRegisters::default(),
+            )
+            .map_err(|error| error.to_string())?;
+            let mut reads = Vec::new();
+            let outcome = machine
+                .run_traced(90, &mut |step| {
+                    if step.input.is_some() {
+                        reads.push(step.before.registers.code_pointer);
+                    }
+                })
+                .map_err(|error| error.to_string())?;
+            assert!(!reads.contains(&37), "C37 must not read, opcode {opcode}");
+            let linked_single_read =
+                matches!(outcome, RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    ..
+                }) && reads.len() == 1
+                    && machine.input_consumed() == input.len()
+                    && machine.output() == [expected];
+            assert!(
+                !linked_single_read,
+                "C37 opcode {opcode} incorrectly passed C23 single-read parity"
+            );
+        }
+        enumerated += 1;
+    }
+    assert_eq!(enumerated, 7);
+    Ok(())
+}
