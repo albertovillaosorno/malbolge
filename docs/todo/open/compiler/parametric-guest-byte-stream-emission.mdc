@@ -83,8 +83,12 @@ evidence describe the old priority scheme, not the current phase.
   independent 15-trit oracle exhausts 257 classes for each seed;
   29 bounded real-VM streams verify reads, all reached writes,
   pointer restoration, output, preservation of M97 and unread suffix.
-  A 515-stream exploratory VM run exceeded its 100-second limit and
-  did not pass. This is Malbolge crazy arithmetic, not C23 signed
+  A separate six-stream independently specified compiler-path admission
+  checks all nine seed rotations, three guest arithmetic writes, two
+  inputs, output, profile and 60-step paths. It rejects forged arithmetic
+  and output witnesses. A 515-stream exploratory VM run exceeded its
+  100-second limit and did not pass. This is Malbolge crazy arithmetic,
+  not C23 signed
   conversion, add/XOR, source-variable lowering or a dynamic EOF
   checksum. The original seven-block source remains unlinked.
 

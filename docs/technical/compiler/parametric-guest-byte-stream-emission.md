@@ -47,8 +47,15 @@ empty input, one-sided EOF, NUL, high bytes, sign boundaries, and an
 unread suffix. Every trace checks C39/C47 reads, three `p` operations,
 pointer restoration, exact memory words, output and termination. The
 test observes reached `p` instructions even when a fold leaves memory
-unchanged. The initial exhaustive 515-stream VM attempt exceeded
-its 100-second subprocess budget and is not claimed as a pass.
+unchanged. The separate bounded compiler-path verifier now also accepts
+six independently constructed complete 60-step traces for this exact
+same physical source and profile, checking all nine seed rotations,
+all three physical crazy writes, two signed reads, output and memory
+mutations. Its explicit negative controls reject a forged final
+arithmetic-result word and a forged output byte. This establishes a
+source-identical reusable *physical-path witness*, not source-C linkage.
+The initial exhaustive 515-stream VM attempt exceeded its 100-second
+subprocess budget and is not claimed as a pass.
 
 This demonstrates guest **cross-word** arithmetic that depends on two
 previously saved signed inputs. It does not decode C23 integers, supply

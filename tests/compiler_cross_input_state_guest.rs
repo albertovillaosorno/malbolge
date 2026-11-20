@@ -41,6 +41,132 @@ use malbolge::{
 const FIRST_SEED: u32 = 7_200_697;
 const SECOND_SEED: u32 = 7_174_453;
 
+// Feed the physical cross-word computation into the existing independent
+// compiler-path gate. No expectations below are read back from the VM.
+struct CrossInputOracle {
+    code_positions: Vec<u32>,
+    data_writes: Vec<layout::BoundedRevisitDataWrite>,
+    input: Vec<u8>,
+    input_events: [TraceInput; 2],
+    instruction_writes: Vec<layout::BoundedRevisitInstructionWrite>,
+    io_events: [layout::BoundedRevisitIoEvent; 3],
+    output: [u8; 1],
+}
+
+impl CrossInputOracle {
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.input,
+            code_positions: &self.code_positions,
+            output: &self.output,
+            input_consumed: self.input.len().min(2),
+            input_events: &self.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.data_writes,
+        }
+    }
+
+    #[expect(
+        clippy::arithmetic_side_effects,
+        clippy::integer_division_remainder_used,
+        clippy::integer_division,
+        clippy::too_many_lines,
+        reason = "15-trit independent rotation and exact physical step indices"
+    )]
+    fn new(input: Vec<u8>) -> Result<Self, String> {
+        const MODULUS: u32 = 14_348_907;
+        let profile = current_profile();
+        let first = input
+            .first()
+            .copied()
+            .map_or_else(|| profile.eof_word(), u32::from);
+        let second = input
+            .get(1)
+            .copied()
+            .map_or_else(|| profile.eof_word(), u32::from);
+        let mut writes = Vec::new();
+        let mut seed = 7_174_489u32;
+        for round in 0u32..9 {
+            let after = seed / 3 + seed % 3 * (MODULUS / 3);
+            writes.push(layout::BoundedRevisitInstructionWrite {
+                address: 95,
+                after,
+                before: seed,
+                opcode: b'*',
+                step: 3 + 4 * round,
+            });
+            seed = after;
+        }
+        if seed != FIRST_SEED {
+            return Err(
+                "unexpected independently rotated first seed".to_owned()
+            );
+        }
+        let first_saved = independent_crazy(seed, first);
+        let second_saved = independent_crazy(SECOND_SEED, second);
+        let combined = independent_crazy(first_saved, second_saved);
+        for (step, address, before, after) in [
+            (43u32, 95u32, seed, first_saved),
+            (53, 97, SECOND_SEED, second_saved),
+            (57, 95, first_saved, combined),
+        ] {
+            writes.push(layout::BoundedRevisitInstructionWrite {
+                address,
+                after,
+                before,
+                opcode: b'p',
+                step,
+            });
+        }
+        let data_writes = writes
+            .iter()
+            .filter(|write| write.before != write.after)
+            .map(|write| layout::BoundedRevisitDataWrite {
+                step: write.step,
+                address: write.address,
+                before: write.before,
+                after: write.after,
+            })
+            .collect();
+        let input_events = [
+            input
+                .first()
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+            input
+                .get(1)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+        ];
+        let output =
+            [u8::try_from(combined % 256)
+                .map_err(|error| error.to_string())?];
+        let io_events = [
+            layout::BoundedRevisitIoEvent {
+                step: 39,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[0]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 47,
+                effect: layout::BoundedRevisitIoEffect::Input(input_events[1]),
+            },
+            layout::BoundedRevisitIoEvent {
+                step: 58,
+                effect: layout::BoundedRevisitIoEffect::Output(output[0]),
+            },
+        ];
+        Ok(Self {
+            code_positions: (0u32..60).collect(),
+            data_writes,
+            input,
+            input_events,
+            instruction_writes: writes,
+            io_events,
+            output,
+        })
+    }
+}
+
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::integer_division_remainder_used,
@@ -228,5 +354,89 @@ fn two_stored_signed_words_reach_a_later_real_crazy_operation()
         count += 1usize;
     }
     assert_eq!(count, 29usize);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "complete bounded path verification and forged oracle controls"
+)]
+fn bounded_compiler_verifier_accepts_real_cross_input_arithmetic()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_two_retained_inputs_cross_fold_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let cases = [
+        vec![],
+        vec![0],
+        vec![0, 0],
+        vec![255, 128],
+        vec![1, 254],
+        vec![42, 99, 17],
+    ]
+    .into_iter()
+    .map(CrossInputOracle::new)
+    .collect::<Result<Vec<_>, _>>()?;
+    let expectations = cases
+        .iter()
+        .map(CrossInputOracle::expectation)
+        .collect::<Vec<_>>();
+    let verified = layout::admit_bounded_guest_path_batch(
+        profile,
+        &source,
+        identity,
+        &expectations,
+    )
+    .map_err(|error| format!("cross fold verifier: {error:?}"))?;
+    assert_eq!(verified.len(), cases.len());
+    for (path, oracle) in verified.iter().zip(cases.iter()) {
+        assert_eq!(path.source(), source);
+        assert_eq!(path.input_events(), oracle.input_events);
+        assert_eq!(path.io_events(), oracle.io_events);
+        assert_eq!(path.data_writes(), oracle.data_writes);
+        assert_eq!(path.output(), oracle.output);
+        assert_eq!(path.code_positions(), oracle.code_positions);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                path,
+                &oracle.instruction_writes,
+            ),
+            Ok(())
+        );
+        assert_eq!(path.mutation_targets().len(), 12);
+    }
+    let original = cases.first().ok_or("no first oracle")?;
+    let first_path = verified.first().ok_or("no admitted first path")?;
+    let mut forged = original.instruction_writes.clone();
+    let last = forged.last_mut().ok_or("no final physical write")?;
+    last.after ^= 1;
+    assert_eq!(
+        layout::verify_bounded_guest_instruction_writes(first_path, &forged),
+        Err(layout::BoundedRevisitError::InstructionWritesMismatch),
+    );
+    let second_case = cases.get(1).ok_or("no second oracle")?;
+    let mut forged_output = second_case.output;
+    for byte in &mut forged_output {
+        *byte ^= 1;
+    }
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                output: &forged_output,
+                ..second_case.expectation()
+            },
+        ),
+        Err(layout::BoundedRevisitError::OutputMismatch),
+    );
     Ok(())
 }
