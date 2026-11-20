@@ -41,7 +41,8 @@ use super::state_storage::{
     GuestCellCopy, GuestFramePlacement, GuestStateFrame, GuestStorageValue,
     placed_cell, validate_frame_placement,
 };
-use super::typed::Terminator;
+use super::ternary::TernaryCfgScalarKind;
+use super::typed::{Instruction, SourceSpan, Terminator};
 use super::{TypedCfgAdapterError, prepare_canonical_dynamic_cfg};
 
 /// One exact literal word requiring physical guest materialization.
@@ -53,15 +54,48 @@ pub struct GuestPlacedLiteralCell {
     pub word: u32,
 }
 
-/// One instruction's absolute operand addresses (no instruction encoding).
+/// One exact source SSA scalar with a checked contiguous N15 word interval.
+///
+/// This preserves 32-bit signed/unsigned values across *two* guest words;
+/// an instruction encoder must not silently truncate these to one word.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestPlacedOperand {
+    /// First absolute N15 word address of this canonical typed SSA value.
+    pub address: u32,
+    /// Original scalar type, including signedness and Boolean distinction.
+    pub type_kind: TernaryCfgScalarKind,
+    /// Canonical source-function SSA value identity.
+    pub value: u32,
+    /// Exact number of N15 words required by this value.
+    pub words: u32,
+}
+
+impl GuestPlacedOperand {
+    /// Returns an exact word address or refuses an out-of-range index.
+    #[must_use]
+    pub fn cell_address(self, index: u32) -> Option<u32> {
+        (index < self.words)
+            .then(|| self.address.checked_add(index))
+            .flatten()
+    }
+}
+
+/// One instruction's typed runtime work and physically located operands.
+///
+/// These are not target instructions; the physical linker must implement
+/// the preserved operation, including its full-width reads and writes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GuestPlacedInstruction {
     /// Exact literal write obligations, in canonical instruction order.
     pub constant_cells: Vec<GuestPlacedLiteralCell>,
-    /// Absolute first addresses of typed input slots, in operand order.
-    pub reads: Vec<u32>,
-    /// Absolute first address of the result slot, when applicable.
-    pub write: Option<u32>,
+    /// Authenticated typed instruction, not a host-computed result.
+    pub instruction: Instruction,
+    /// Exact source-ordered, width-preserving input operands.
+    pub reads: Vec<GuestPlacedOperand>,
+    /// Original source coordinates for diagnostics and translation evidence.
+    pub span: SourceSpan,
+    /// Full-width destination SSA scalar, absent for output effects.
+    pub write: Option<GuestPlacedOperand>,
 }
 
 /// One source CFG edge with addressed, two-phase phi-write obligations.
@@ -106,7 +140,7 @@ pub struct GuestPlacedBlock {
     /// Canonical source block identity.
     pub block: u32,
     /// Absolute address containing the branch Boolean, if any.
-    pub condition: Option<u32>,
+    pub condition: Option<GuestPlacedOperand>,
     /// Symbolic control with source-authenticated, edge-local phi obligations.
     pub control: GuestPlacedControl,
     /// Canonical source function identity.
@@ -114,7 +148,7 @@ pub struct GuestPlacedBlock {
     /// Relocated operations in exact source-authenticated order.
     pub instructions: Vec<GuestPlacedInstruction>,
     /// Absolute address of the return value, if any.
-    pub return_value: Option<u32>,
+    pub return_value: Option<GuestPlacedOperand>,
 }
 
 /// One precise guest memory copy to be implemented by future instructions.
@@ -165,7 +199,7 @@ fn locate_slot(
     frame: &GuestStateFrame,
     placement: GuestFramePlacement,
     slot: GuestStorageValue,
-) -> Result<u32, TypedCfgAdapterError> {
+) -> Result<GuestPlacedOperand, TypedCfgAdapterError> {
     // A width-carrying operand must be identical to its canonical SSA slot.
     if !frame.values.contains(&slot) || slot.words == 0 {
         return Err(TypedCfgAdapterError::GuestStateAllocation);
@@ -179,7 +213,12 @@ fn locate_slot(
         .checked_add(last_offset)
         .ok_or(TypedCfgAdapterError::GuestStateAllocation)?;
     let _end = placed_cell(placement, frame, last)?;
-    placed_cell(placement, frame, slot.offset)
+    Ok(GuestPlacedOperand {
+        address: placed_cell(placement, frame, slot.offset)?,
+        type_kind: slot.type_kind,
+        value: slot.value,
+        words: slot.words,
+    })
 }
 
 fn locate_copy(
@@ -264,6 +303,8 @@ fn place_operations(
             .iter()
             .map(|binding| {
                 Ok(GuestPlacedInstruction {
+                    instruction: binding.instruction.clone(),
+                    span: binding.span,
                     constant_cells: binding
                         .constant_cells
                         .iter()

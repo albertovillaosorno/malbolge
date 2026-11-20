@@ -1019,26 +1019,47 @@ fn relocated_checksum_address(offset: u32) -> u32 {
     address.unwrap_or_default()
 }
 
+fn assert_placed_checksum_operand(
+    placed: &super::typed_cfg_adapter::state_relocation::GuestPlacedOperand,
+    original: &super::typed_cfg_adapter::state_storage::GuestStorageValue,
+) {
+    assert_eq!(placed.address, relocated_checksum_address(original.offset));
+    assert_eq!(placed.value, original.value);
+    assert_eq!(placed.words, original.words);
+    assert_eq!(placed.type_kind, original.type_kind);
+    let cells = (0..original.words)
+        .map(|word| placed.cell_address(word))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cells,
+        (0..original.words)
+            .map(|word| Some(relocated_checksum_address(
+                original.offset + word
+            )))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(placed.cell_address(original.words), None);
+    assert!(placed.address >= 4096);
+    assert!(placed.address + placed.words <= 4139);
+}
+
 fn assert_placed_checksum_instruction(
     placed: &GuestPlacedInstruction,
     original: &GuestOperationBinding,
 ) {
+    assert_eq!(placed.instruction, original.instruction);
+    assert_eq!(placed.span, original.span);
     assert_eq!(placed.reads.len(), original.reads.len());
-    for (address, slot) in placed.reads.iter().zip(&original.reads) {
-        assert_eq!(*address, relocated_checksum_address(slot.offset));
-        assert!(
-            *address >= 4096
-                && address
-                    .checked_add(slot.words)
-                    .is_some_and(|end| end <= 4139)
-        );
+    for (linked, slot) in placed.reads.iter().zip(&original.reads) {
+        assert_placed_checksum_operand(linked, slot);
     }
-    assert_eq!(
-        placed.write,
-        original
-            .write
-            .map(|slot| relocated_checksum_address(slot.offset))
-    );
+    match (&placed.write, &original.write) {
+        (Some(linked), Some(slot)) => {
+            assert_placed_checksum_operand(linked, slot)
+        },
+        (None, None) => {},
+        _ => panic!("placed write lost exact source SSA slot"),
+    }
     assert_eq!(placed.constant_cells.len(), original.constant_cells.len());
     for (word, cell) in
         placed.constant_cells.iter().zip(&original.constant_cells)
@@ -1064,20 +1085,20 @@ fn assert_placed_checksum_block(
     {
         assert_placed_checksum_instruction(linked, bound);
     }
-    assert_eq!(
-        placed.condition,
-        original
-            .control
-            .condition
-            .map(|slot| relocated_checksum_address(slot.offset))
-    );
-    assert_eq!(
-        placed.return_value,
-        original
-            .control
-            .return_value
-            .map(|slot| relocated_checksum_address(slot.offset))
-    );
+    match (&placed.condition, &original.control.condition) {
+        (Some(linked), Some(slot)) => {
+            assert_placed_checksum_operand(linked, slot)
+        },
+        (None, None) => {},
+        _ => panic!("placed branch lost its exact Boolean scalar"),
+    }
+    match (&placed.return_value, &original.control.return_value) {
+        (Some(linked), Some(slot)) => {
+            assert_placed_checksum_operand(linked, slot)
+        },
+        (None, None) => {},
+        _ => panic!("placed return lost its exact scalar"),
+    }
 }
 
 fn assert_placed_checksum_edge(
@@ -1510,6 +1531,34 @@ fn narrow_signed_and_unsigned_phi_joins_preserve_guest_storage_widths() {
             (129, u32::from(alternatives[0])),
             (130, u32::from(alternatives[1])),
         ]);
+        // Signed and unsigned narrow values are one *typed* guest word,
+        // while the Boolean condition stays separate from the phi result.
+        let [entry, first, second, joined] =
+            relocated.operation_blocks.as_slice()
+        else {
+            panic!("narrow diamond has four placed blocks");
+        };
+        let boolean = entry.condition.expect("actual Boolean branch");
+        assert_eq!(
+            (boolean.address, boolean.words, boolean.value),
+            (128, 1, 0)
+        );
+        assert_eq!(boolean.type_kind, TernaryCfgScalarKind::Bool);
+        assert_eq!(boolean.cell_address(1), None);
+        for (block, address, value) in [(first, 129, 1), (second, 130, 2)] {
+            let literal = &block.instructions[0];
+            let slot = literal.write.expect("one narrow literal");
+            assert_eq!(
+                (slot.address, slot.words, slot.value),
+                (address, 1, value)
+            );
+            assert_eq!(slot.type_kind, target);
+            assert_eq!(slot.cell_address(0), Some(address));
+            assert_eq!(slot.cell_address(1), None);
+        }
+        let result = joined.return_value.expect("narrow phi return");
+        assert_eq!((result.address, result.words, result.value), (131, 1, 3));
+        assert_eq!(result.type_kind, target);
         assert_eq!(relocate_source_locked_cfg(&wire, 91, 128), Ok(relocated));
     }
 }

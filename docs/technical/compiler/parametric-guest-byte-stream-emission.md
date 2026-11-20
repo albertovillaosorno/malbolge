@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Typed relocation retains complete scalar operands (2026-11-19)
+
+The source-locked checksum's located instruction handoff now carries the
+original typed operation and source span with **full-width**, typed, SSA-
+identified operands. Every read, result, branch condition and return use
+retains its checked contiguous N15 address range; a 32-bit scalar cannot
+silently collapse to its low 15-trit cell at the physical linker boundary.
+The exact literal-write obligations and addressed phi-edge transfer order
+are unchanged. A red-first compiler regression caught the previous loss of
+operand width, typed operation and source provenance; it now checks all 19
+checksum instructions and their exact source-relative addresses.
+
+This gives future physical operation encoding the identity and number of
+words that it must really read and write. It does **not** create any guest
+instructions, normalize target EOF, execute the checksum or turn the
+source-locked 43-word reservation into initialized guest memory. All five
+original native C23 input witnesses still require real VM parity, and P2
+remains open.
+
 ### Edge-specific addressed control handoff (2026-11-19)
 
 The complete source-locked seven-block checksum CFG now binds each placed

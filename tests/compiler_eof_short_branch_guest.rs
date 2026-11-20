@@ -1805,12 +1805,25 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
     let state = candidate.state_region();
     let in_state =
         |address| state.start <= address && address < state.end_exclusive;
+    use layout::typed_cfg_adapter::state_relocation::GuestPlacedOperand;
+    let placed_scalar_is_reserved = |scalar: GuestPlacedOperand| {
+        scalar.words > 0
+            && (0..scalar.words).all(|index| {
+                scalar.cell_address(index).is_some_and(in_state)
+            })
+    };
     let mut instruction_count = 0usize;
     for block in &candidate.relocated().operation_blocks {
         for instruction in &block.instructions {
             instruction_count += 1;
-            assert!(instruction.reads.iter().copied().all(in_state));
-            assert!(instruction.write.is_none_or(in_state));
+            assert!(
+                instruction
+                    .reads
+                    .iter()
+                    .copied()
+                    .all(placed_scalar_is_reserved)
+            );
+            assert!(instruction.write.is_none_or(placed_scalar_is_reserved));
             assert!(
                 instruction
                     .constant_cells
@@ -1818,8 +1831,8 @@ fn original_checksum_state_placement_uses_real_guest_source_and_paths()
                     .all(|cell| in_state(cell.address))
             );
         }
-        assert!(block.condition.is_none_or(in_state));
-        assert!(block.return_value.is_none_or(in_state));
+        assert!(block.condition.is_none_or(placed_scalar_is_reserved));
+        assert!(block.return_value.is_none_or(placed_scalar_is_reserved));
     }
     assert_eq!(instruction_count, 19);
     for edge in &candidate.relocated().phi_edges {

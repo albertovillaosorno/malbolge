@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, addressed CFG operations now preserve every original
+  typed instruction, source span and the full address, width, signedness
+  and SSA identity of each read, result and Boolean control operand. The
+  red-first source checksum check previously could not read this information
+  from the placed handoff; it now checks all 19 operations in the 43-word
+  N15 reservation and the exact predecessor-sensitive phi edges. No guest
+  opcode, literal store, arithmetic, loop or EOF output was linked. The
+  original five native checksum controls remain guest-refused; P2 stays open.
+
 - On 2026-11-19, the source-locked placed checksum CFG now attaches
   each of its two conditional arms, four jumps and one return to the
   exact addressed phi snapshots and commits of its own predecessor edge.
