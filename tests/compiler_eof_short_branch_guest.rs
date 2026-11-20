@@ -3713,3 +3713,85 @@ fn second_eof_controls_third_read_across_binary_guest_streams()
     }
     Ok(())
 }
+// The first source-valid attempt at moving the *third* signed input into
+// the already revisited byte arm can execute both / and <, but it breaks the
+// second-EOF arm. Keep this minimal counterexample until a general physical
+// source linker can restore the original branch and halt transitions.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "finite source-negative VM witness"
+)]
+fn third_byte_echo_shortcut_cannot_publish_a_complete_eof_branch()
+-> Result<(), String> {
+    use malbolge::encrypt_profile_cell;
+
+    let profile = current_profile();
+    let mut source =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .map_err(|error| format!("original physical branch: {error:?}"))?;
+    // The only available source-valid C62 j -> / and C66 j -> < pairs.
+    // Both first-pass j operations disturb the physical data pointer;
+    // simply changing these two cells is NOT a valid EOF branch linker.
+    for (address, graphical, first, second) in
+        [(62usize, 72u8, b'j', b'/'), (66usize, 68u8, b'j', b'<')]
+    {
+        let code_pointer =
+            u32::try_from(address).map_err(|error| error.to_string())?;
+        assert_eq!(
+            decode_profile_instruction(u32::from(graphical), code_pointer),
+            Some(first),
+        );
+        assert_eq!(
+            encrypt_profile_cell(u32::from(graphical)).and_then(|encrypted| {
+                decode_profile_instruction(encrypted, code_pointer)
+            }),
+            Some(second),
+        );
+        source[address] = graphical;
+    }
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+
+    // The successful arm truly reads and outputs a third guest word, so
+    // the rejected shortcut is more than a host-side byte replay.
+    for third in [0, 5, 128, 255] {
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            vec![3, 4, third],
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(200, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::NonGraphicalCell,
+                steps: 170,
+            },
+        );
+        assert_eq!(vm.output(), &[3, 157, third]);
+        assert_eq!(vm.input_consumed(), 3);
+        assert_eq!(trace[131].input, Some(TraceInput::Byte(third)));
+        assert_eq!(trace[135].output, Some(third));
+        assert_eq!(trace[131].before.registers.code_pointer, 62);
+        assert_eq!(trace[135].before.registers.code_pointer, 66);
+    }
+    // Second EOF must not enter the byte arm. This mutation does, and its
+    // indirect branch attempts to encrypt an invalid high-memory target.
+    let mut eof = ProfileMachine::from_state(
+        profile,
+        loaded.memory().to_vec(),
+        vec![3],
+        ProfileRegisters::default(),
+    )
+    .map_err(|error| error.to_string())?;
+    assert!(eof.run(200).is_err());
+    assert_eq!(eof.output(), &[3]);
+    assert_eq!(eof.input_consumed(), 1);
+    Ok(())
+}

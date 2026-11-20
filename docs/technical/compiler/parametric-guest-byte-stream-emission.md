@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+## Failed third-byte echo relocation (2026-11-20)
+
+A complete physical `second-input-EOF` branch was experimentally modified
+at C62/C66: two graphical cells first execute `j`/`j`, then encrypt into
+`/`/`<` when the byte arm revisits them. With successful second input, the
+normative N15 guest actually reads a third byte at C62 and emits it at C66.
+A bounded four-byte-class regression pins input `03 04 XX`, output
+`03 9d XX`, all three real reads, and an explicit non-graphical termination
+at 170 steps (not a source-level halt).
+
+The same two-cell change **is not safe** on second EOF. C62's initial jump
+changes the physical D chain feeding the C64..C67 classifier: the EOF case
+instead follows the byte arm and C114 indirect transfer refuses an invalid
+high-memory encryption target. The added test preserves this failed complete
+input/EOF program rather than publishing a success-only artifact. These two
+revisited cells are a negative physical-linkage experiment, **not** a
+compiler operation or P2 checksum progress. A candidate must restore EOF
+control and an admissible halt before it can be composed into source-C I/O.
+
+
 ### Addressed typed operation effects retain physical obligations (2026-11-20)
 
 The unchanged seven-block C23 checksum now has a proposed source-address
