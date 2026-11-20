@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Failed three-cell EOF/third-output repair (2026-11-20)
+
+A physical branch variant changes C62 into first-pass `j` / second-pass
+`/`, C66 into `j` / `<`, and adds a first-pass `j` at C93. For input
+`03 04 05`, the normative N15 VM executes three signed reads, emits
+`03 04 05` and halts after 172 steps. Second EOF instead halts after
+119 steps with output `03 1e`. This looks like a complete third-byte
+conditional echo, but is **not** valid C23 input control: successful
+second inputs `0x1f` and `0xff` also take the 119-step arm and never read
+the third byte. Eight bounded VM traces in
+`tests/compiler_guarded_third_output_guest.rs` pin input code pointers,
+output bytes, consumed input and halts, while an independent C23 control
+oracle requires the third read for those non-EOF bytes. A separate finite
+204-candidate one-cell relocation search found no repair for selected
+0/31/255/EOF classes; this does not rule out a different layout or a
+multi-cell construction. The candidate is rejected, not integrated as a
+source-C compiler mode. The original mutable checksum remains unlinked.
+
 ### Two echoed words followed by conditional third guest read (2026-11-20)
 
 A follow-up 132-cell source composes the verified C62 `/` and C63 `<`

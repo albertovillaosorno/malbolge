@@ -73,6 +73,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a negative third-byte-echo relocation repaired the
+  earlier C62 `j`/`/` plus C66 `j`/`<` candidate with a first-pass C93 `j`.
+  The real N15 VM now halts after 172 steps for `03 04 05`, genuinely reads
+  and emits byte three at revisited C62/C66, and halts after 119 steps on
+  second EOF. But second bytes `1f` and `ff` are **not EOF** and wrongly
+  take the 119-step EOF arm, leaving the third input unread. An eight-case
+  bounded guest trace regression pins successful and failing paths and
+  distinguishes the result from the independent C23 control oracle.
+  A separate 204-candidate one-cell follow-up search found no repair for
+  pinned 0/31/255/EOF classes; this is not an impossibility proof. The
+  candidate is rejected, no C23 third-read guest is published, and the
+  original mutable checksum still refuses physical CFG linkage. P2 open.
+
 - On 2026-11-20, the two-echo physical EOF classifier also composes
   C101's encrypted `p`-then-`/` into a third signed guest read only on the
   successful-second-byte arm. Seven complete VM paths and seven independent
