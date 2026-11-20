@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the original source-locked seven-block checksum now binds
+  source-ordered minimum code sites for all 19 typed instructions, including
+  separate signed input and full-width destination-write obligations.
+  All sites are inside their source blocks and before control, independent
+  of caller proposal ordering. A red-first test exposed the missing binding,
+  then passed. These are code reservations, not executed Malbolge instructions;
+  C32 arithmetic, phi copies, EOF backedge, and the five complete C23
+  source-to-guest parity cases remain unimplemented. P2 stays open.
+
 - On 2026-11-20, a new 91-cell N15 `Iy` guest executes nine actual M95
   rotations, reads a second signed word at C66, restores D through eight
   source- and loader-derived pointer hops, writes the correct C23

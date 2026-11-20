@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Addressed source operations acquire minimum code sites (2026-11-20)
+
+The unchanged seven-block source-authenticated C23 checksum now assigns
+physical *minimum reservation sites* to all 19 ordered typed operations.
+Each site is tied to its canonical function, block and instruction ordinal.
+The shared admission bound reserves a separate actual input instruction
+before both N15 words of a signed getchar, charges every destination word
+and constant-materialization write, and reserves at least one cell for each
+other typed instruction. Across the seven original blocks the necessary
+precontrol totals remain 15/1/3/4/4/7/2. The proposed operation intervals
+are disjoint, ordered and strictly before their block's control site.
+Reordering caller-supplied blocks does not change the authenticated binding.
+
+A red-first original-source test failed because no operation code sites
+existed; the same source-bound check now passes. These are lower-bound
+address obligations only. The cells contain no actual Malbolge opcodes or
+execution proof, and the unused code space may be necessary for C32
+arithmetic, pointer motion and address-sensitive encryption. The original
+checksum still refuses target publication; guest parity remains open.
+
 ### Physical C23 signed-byte conversion now emits output (2026-11-20)
 
 `build_c23_nine_rotated_signed_output_source` produces a 91-cell `Iy` N15

@@ -301,6 +301,25 @@ pub struct GuestCodeControlEdge {
     pub target_address: u32,
 }
 
+/// One source-ordered typed operation's minimum physical code reservation.
+///
+/// These cells are only a lower-bound placement. They contain no verified
+/// opcode, so arithmetic, operand loading, pointer motion and encryption may
+/// require additional code that is not represented by this reservation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeOperationSite {
+    /// Canonical typed block identity.
+    pub block: u32,
+    /// First reserved code cell (inclusive).
+    pub start: u32,
+    /// First code cell following this operation's minimum reservation.
+    pub end_exclusive: u32,
+    /// Canonical source function identity.
+    pub function: u32,
+    /// Source-order index into the relocated block's instructions.
+    pub ordinal: u32,
+}
+
 /// A source-authenticated function's proposed physical code entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GuestCodeFunctionEntry {
@@ -339,6 +358,8 @@ pub struct GuestAddressedCfgPlan {
     pub edge_pads: Vec<GuestCodeEdgePadPlacement>,
     /// Entry address for each canonical source function, never first by guess.
     pub function_entries: Vec<GuestCodeFunctionEntry>,
+    /// Source-ordered minimum physical instruction reservations, not opcodes.
+    pub operation_sites: Vec<GuestCodeOperationSite>,
     /// Every return's separate physical control site and optional scalar.
     pub return_sites: Vec<GuestCodeReturnSite>,
     /// The unchanged authenticated operation and data relocation obligations.
@@ -632,6 +653,51 @@ pub fn relocate_source_locked_cfg(
     })
 }
 
+fn minimum_operation_cells(
+    instruction: &GuestPlacedInstruction,
+) -> Option<u32> {
+    let literal_writes =
+        u32::try_from(instruction.constant_cells.len()).ok()?;
+    let destination_writes =
+        instruction.write.map_or(0, |destination| destination.words);
+    let input_steps = u32::from(matches!(
+        instruction.instruction,
+        Instruction::Getchar { .. } | Instruction::ByteInput { .. }
+    ));
+    Some(
+        destination_writes
+            .checked_add(input_steps)?
+            .max(literal_writes)
+            .max(1),
+    )
+}
+
+fn bind_operation_sites(
+    block: &GuestPlacedBlock,
+    placement: GuestCodeBlockPlacement,
+) -> Result<Vec<GuestCodeOperationSite>, GuestCodePlacementError> {
+    let mut next_address = placement.start;
+    let mut sites = Vec::with_capacity(block.instructions.len());
+    for (index, instruction) in block.instructions.iter().enumerate() {
+        let length = minimum_operation_cells(instruction)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let end_exclusive = next_address
+            .checked_add(length)
+            .filter(|end| *end <= placement.control_start)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        sites.push(GuestCodeOperationSite {
+            block: block.block,
+            end_exclusive,
+            function: block.function,
+            ordinal: u32::try_from(index)
+                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?,
+            start: next_address,
+        });
+        next_address = end_exclusive;
+    }
+    Ok(sites)
+}
+
 fn validate_code_proposals(
     proposals: GuestCodeProposals<'_>,
     source_cells: u32,
@@ -675,20 +741,7 @@ fn validate_code_proposals(
             .instructions
             .iter()
             .try_fold(0u32, |count, instruction| {
-                let literal_writes =
-                    u32::try_from(instruction.constant_cells.len()).ok()?;
-                let destination_writes = instruction
-                    .write
-                    .map_or(0, |destination| destination.words);
-                let input_steps = u32::from(matches!(
-                    instruction.instruction,
-                    Instruction::Getchar { .. } | Instruction::ByteInput { .. }
-                ));
-                let cells = destination_writes
-                    .checked_add(input_steps)?
-                    .max(literal_writes)
-                    .max(1);
-                count.checked_add(cells)
+                count.checked_add(minimum_operation_cells(instruction)?)
             })
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         if placement.control_start - placement.start < required {
@@ -889,6 +942,7 @@ pub fn bind_source_locked_cfg_code_targets(
     let mut code_blocks = Vec::with_capacity(proposed.len());
     let mut control_edges = Vec::new();
     let mut edge_pads = Vec::with_capacity(proposed_pads.len());
+    let mut operation_sites = Vec::new();
     let mut return_sites = Vec::new();
     for block in &relocated.operation_blocks {
         let placement = starts
@@ -896,6 +950,7 @@ pub fn bind_source_locked_cfg_code_targets(
             .copied()
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         code_blocks.push(placement);
+        operation_sites.extend(bind_operation_sites(block, placement)?);
         let mut bind = |kind, edge: &GuestPlacedControlEdge| {
             let mut index = CodeEdgeIndex {
                 pads: &pads,
@@ -939,6 +994,7 @@ pub fn bind_source_locked_cfg_code_targets(
         control_edges,
         edge_pads,
         function_entries,
+        operation_sites,
         return_sites,
         relocated,
     })

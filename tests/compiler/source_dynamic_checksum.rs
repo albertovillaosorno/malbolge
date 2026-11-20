@@ -1335,6 +1335,7 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
         GuestCodeControlEdge, GuestCodeEdgeKind, GuestCodeProposals,
         bind_source_locked_cfg_code_targets,
     };
+    use super::typed_cfg_adapter::typed::Instruction as PlacedInstruction;
 
     let wire =
         source_locked_checksum_wire().expect("original C23 typed source");
@@ -1355,6 +1356,43 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     )
     .expect("distinct source-contained blocks and phi landing pads");
     assert_eq!(addressed.code_blocks, proposed);
+    // Every authenticated typed operation must acquire a distinct minimum
+    // code reservation before its block's unverified control sequence.
+    // This is an address obligation, not a claim about encoded opcodes.
+    let mut all_operation_sites = 0usize;
+    for (block, proposed_block) in
+        addressed.relocated.operation_blocks.iter().zip(&proposed)
+    {
+        let sites = addressed
+            .operation_sites
+            .iter()
+            .filter(|site| {
+                (site.function, site.block) == (block.function, block.block)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sites.len(), block.instructions.len());
+        let mut next = proposed_block.start;
+        for (ordinal, (site, operation)) in
+            sites.iter().zip(&block.instructions).enumerate()
+        {
+            assert_eq!(site.ordinal, u32::try_from(ordinal).unwrap());
+            assert_eq!(site.start, next);
+            let writes = operation.write.map_or(0, |slot| slot.words);
+            let input = u32::from(matches!(
+                operation.instruction,
+                PlacedInstruction::Getchar { .. }
+                    | PlacedInstruction::ByteInput { .. }
+            ));
+            let required = (writes + input)
+                .max(u32::try_from(operation.constant_cells.len()).unwrap())
+                .max(1);
+            assert_eq!(site.end_exclusive - site.start, required);
+            assert!(site.end_exclusive <= proposed_block.control_start);
+            next = site.end_exclusive;
+        }
+        all_operation_sites += sites.len();
+    }
+    assert_eq!(all_operation_sites, 19);
     assert_eq!(addressed.edge_pads, pads);
     assert_eq!(addressed.relocated.operation_blocks.len(), 7);
     assert_eq!(addressed.control_edges.len(), 8);
