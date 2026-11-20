@@ -75,6 +75,13 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, an exact 12-by-94 graphical encoding audit of
+  C102..C113 found only C108 source `C` as a first-pass instruction
+  encrypting into `<` on revisit. It executes `v` first, and a real
+  15-trit VM run halts at C108 after two input attempts, before the
+  third read. This excludes a single-cell direct output in the current
+  traversed interval, not a relocated or multi-cell third echo. P2 open.
+
 - On 2026-11-20, a four-cell continuation of the valid guarded
   third-input guest passed true second-EOF termination but failed on the
   successful byte arm. C104 `o` and C112 `p` let the path run beyond

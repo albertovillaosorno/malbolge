@@ -57,6 +57,19 @@ input is intentionally discarded; it is not echoed, used in C arithmetic,
 or C32 state. The original seven-block mutable EOF checksum still has
 no executable operation/phi/backedge linker. P2 remains open.
 
+### No safe single-cell output on the guarded revisit (2026-11-20)
+
+The original guarded third-read guest executes C102..C113 once before
+and once after the C101 conditional read. Exhaustive enumeration of all
+94 graphical bytes at each of those twelve positions found exactly one
+valid first-pass opcode that encrypts into output `<`: source byte `C`
+at C108 first executes halt `v`. A real guest run replacing that one
+cell halts at C108 with only C53/C63 reads, before the third read or
+success-arm output. Therefore, simply changing one twice-visited
+cell to emit the third accumulator cannot preserve this particular
+132-cell layout. A relocated path, different prefix or multi-cell
+construction remains untested by this exhaustive local bound.
+
 ### Rejected late third-output tail after guarded read (2026-11-20)
 
 The source-valid 132-cell guarded third-read guest can revisit C101 and

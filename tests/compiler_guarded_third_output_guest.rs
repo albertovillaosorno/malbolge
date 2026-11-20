@@ -191,8 +191,9 @@ fn third_read_continuation_cannot_reuse_unrelocated_indirect_jump()
     for (position, opcode) in
         [(104, b'o'), (112, b'p'), (115, b'<'), (116, b'v')]
     {
-        let encoded = graphical_opcode(position, opcode)
-            .ok_or_else(|| format!("missing graphical opcode {opcode} at {position}"))?;
+        let encoded = graphical_opcode(position, opcode).ok_or_else(|| {
+            format!("missing graphical opcode {opcode} at {position}")
+        })?;
         let cell = source
             .get_mut(position)
             .ok_or_else(|| format!("missing physical cell {position}"))?;
@@ -283,5 +284,72 @@ fn third_read_continuation_cannot_reuse_unrelocated_indirect_jump()
         assert_eq!(vm.output(), [3, 154]);
         assert_ne!(vm.output(), expected_c23_control(&input));
     }
+    Ok(())
+}
+
+#[test]
+fn third_read_revisit_has_no_first_pass_safe_output_cell()
+-> Result<(), String> {
+    // Every C102..C113 source cell is executed before the C114 branch
+    // and revisited after the guarded C101 third input. Search every
+    // graphical encoding, not only a proposed convenient opcode pair.
+    let profile = current_profile();
+    let mut candidates = Vec::new();
+    for position in 102..=113u32 {
+        for source_byte in 33..=126u8 {
+            let Some(first) =
+                decode_profile_instruction(u32::from(source_byte), position)
+            else {
+                continue;
+            };
+            if !b"oijp*/<v".contains(&first) {
+                continue;
+            }
+            let Some(second) = encrypt_profile_cell(u32::from(source_byte))
+                .and_then(|encrypted| {
+                    decode_profile_instruction(encrypted, position)
+                })
+            else {
+                continue;
+            };
+            if second == b'<' {
+                candidates.push((position, source_byte, first));
+            }
+        }
+    }
+    // C108's `v` encrypts to `<`, but first-pass `v` must halt before
+    // the byte/EOF branch revisits this cell. Thus no one-cell output
+    // patch in this traversed interval can preserve both arms.
+    assert_eq!(candidates, [(108, b'C', b'v')]);
+    let mut source =
+        layout::build_second_input_guarded_third_read_source(profile)
+            .map_err(|error| format!("guarded source: {error:?}"))?;
+    let cell = source.get_mut(108).ok_or("missing C108 code cell")?;
+    *cell = b'C';
+    let mut vm = ProfileMachine::from_source(profile, &source, vec![3, 4, 5])
+        .map_err(|error| error.to_string())?;
+    let mut reads = Vec::new();
+    let mut halt_site = None;
+    let outcome = vm
+        .run_traced(200, &mut |step| {
+            if step.input.is_some() {
+                reads.push(step.before.registers.code_pointer);
+            }
+            if step.decoded == Some(b'v') {
+                halt_site = Some(step.before.registers.code_pointer);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(matches!(
+        outcome,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }
+    ));
+    assert_eq!(halt_site, Some(108));
+    assert_eq!(reads, [53, 63]);
+    assert_eq!(vm.input_consumed(), 2);
+    assert_eq!(vm.output(), [3]);
     Ok(())
 }
