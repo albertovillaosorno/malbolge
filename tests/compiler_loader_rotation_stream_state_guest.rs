@@ -454,3 +454,73 @@ fn two_guest_inputs_emit_mutable_state_prefixes() -> Result<(), String> {
     assert_eq!(paths, 78);
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "cross-seed guest trace parity with the independent trit oracle"
+)]
+fn all_loader_compatible_prefix_fold_seeds_reach_both_outputs()
+-> Result<(), String> {
+    let profile = current_profile();
+    // Each graphical tail yields M96=72. The first two are fully traced by
+    // the 78-path test; these six independently probe the remaining seeds.
+    let seeds = [
+        (*b"-H", 7_174_462u32),
+        (*b"IH", 7_174_489),
+        (*b"VH", 7_174_418),
+        (*b"gH", 7_174_435),
+        (*b"hH", 7_174_436),
+        (*b"zH", 7_174_454),
+    ];
+    let mut paths = 0usize;
+    for (tail, starting_word) in seeds {
+        let source =
+            layout::build_seeded_two_input_prefix_fold_source(profile, tail)
+                .map_err(|error| format!("{error:?}"))?;
+        let loaded = ProfileMachine::from_source(profile, &source, vec![])
+            .map_err(|error| error.to_string())?;
+        assert_eq!(loaded.memory_word(TARGET), Ok(starting_word));
+        let prepared =
+            (0..9usize).fold(starting_word, |state, _| rotated(state));
+        for input in [vec![], vec![0], vec![0xff, 1], vec![0x81], vec![
+            0x42, 0x80, 0x17,
+        ]] {
+            let first_input = input
+                .first()
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+            let second_input = input
+                .get(1)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+            let first_state = crazy(prepared, first_input);
+            let last_state = crazy(first_state, second_input);
+            let expected = [
+                u8::try_from(first_state % 256)
+                    .map_err(|error| error.to_string())?,
+                u8::try_from(last_state % 256)
+                    .map_err(|error| error.to_string())?,
+            ];
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                loaded.memory().to_vec(),
+                input.clone(),
+                ProfileRegisters::default(),
+            )
+            .map_err(|error| error.to_string())?;
+            assert_eq!(
+                vm.run(58).map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 58,
+                }
+            );
+            assert_eq!(vm.output(), &expected);
+            assert_eq!(vm.memory_word(TARGET), Ok(last_state));
+            assert_eq!(vm.input_consumed(), input.len().min(2));
+            paths += 1;
+        }
+    }
+    assert_eq!(paths, 30);
+    Ok(())
+}

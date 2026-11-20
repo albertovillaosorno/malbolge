@@ -40,8 +40,11 @@ C57 halts after exactly **58 normative VM steps**.
 
 Two graphical loader seeds and **78 bounded VM input paths** include empty,
 truncated, NUL, high-byte, both input-position sweeps and unread suffixes.
-An independent fifteen-trit truth-table oracle checks both output bytes, raw
-EOF, state-write provenance, exact pointer resets and final M95 contents.
+Another **30 real VM paths** check the six other graphical tails with the
+required M96=72 pointer-reset seed, yielding all eight admissible tails and
+108 paths total. An independent fifteen-trit truth-table oracle checks both
+output bytes, raw EOF, state-write provenance, exact pointer resets on the
+first two seeds and final M95 contents on all eight.
 Unlike an output-after-final-state-only probe, this exposes a stored prefix
 *before* the next independent guest read. It does not implement source-C
 arithmetic, C23 EOF conversion, runtime branching, or the full checksum; P2

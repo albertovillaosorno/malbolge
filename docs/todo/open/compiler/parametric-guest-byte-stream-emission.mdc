@@ -79,7 +79,10 @@ evidence describe the old priority scheme, not the current phase.
   program per loader seed executes C39/C51 `/`, C43/C55 `p` and C47/C56
   `<`, halting in 58 real VM steps. Seventy-eight binary, EOF, truncated and
   suffix input traces match independent fifteen-trit oracles for both bytes,
-  all four pointer resets, exact consumed input and both data writes.
+  all four pointer resets, exact consumed input and both data writes. Another
+  30 normative paths across the six remaining graphical M96=72 loader tails
+  independently confirm both bytes and the final physical state, covering
+  all eight compatible seeds (108 paths total).
   Source-C arithmetic/branching, C23 signed conversion and the original
   seven-block checksum remain unlinked; this is guest prefix streaming,
   not P2 acceptance.
