@@ -75,6 +75,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, an additional `IH` loader-tail physical N15 layout
+  prepares two distinct byte-plus-EOF-injective seeds, 7,200,697 at M95
+  after nine real `*` rotations and 7,174,453 at M97. The guest executes
+  independent signed reads at C39/C47, saves each value with real `p`
+  operations at C43/M95 and C53/M97, emits the second *encoded* low byte,
+  and halts in exactly 56 steps. An independent 15-trit oracle verifies
+  256 distinct byte classes plus EOF for each seed. All 268 finite real
+  VM paths prove both stored words, exact I/O, no cross-clobbering and
+  expected termination. This is physical dual-input state, not C23
+  source-local assignments, arithmetic, branch or EOF backedge; the
+  original mutable checksum remains unlinked.
+
 - On 2026-11-20, a separate 91-cell N15 loader path physically saves
   the first signed input losslessly in M95 before a second independent
   `getchar`-equivalent guest `/`. Nine real rotations prepare seed

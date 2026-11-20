@@ -378,6 +378,44 @@ pub fn build_seeded_delayed_first_output_source(
     Ok(source)
 }
 
+/// Retain both physical signed input words in disjoint N15 memory cells.
+///
+/// The fixed `IH` loader tail provides M95=7,174,489, whose nine rotations
+/// yield 7,200,697, and virgin M97=7,174,453. Both seeds have six low
+/// trits equal to one. C39 `/` and C43 `p` save the entire first input at
+/// M95. C47 `/` reads the second input, C48..C50 reset D to M95, and two
+/// inert instructions advance to M97 for C53 `p`. C54 emits the second
+/// saved *encoding* and C55 halts. The first word is never overwritten.
+/// Each encoded cell distinguishes all 256 bytes and signed EOF, but the
+/// output is not a decoded C23 byte. No dynamic source control or C32 state
+/// operation is implied by the two physical stores.
+///
+/// # Errors
+///
+/// Refuses incompatible profile or unavailable position-sensitive opcodes.
+/// The exact initial M97 seed must be preserved by the loader, and all
+/// physical paths require independent VM proof.
+pub fn build_two_retained_signed_inputs_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    const TAIL: [u8; 2] = *b"IH";
+    let mut source = build_seeded_preserved_first_input_source(profile, TAIL)?;
+    if unwritten_loader_word(&source, 97, profile) != Ok(7_174_453) {
+        return Err(RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: TAIL,
+        });
+    }
+    for (position, opcode) in [
+        (52, b'o'),
+        (53, b'p'),
+        (54, profile.output_instruction()),
+        (55, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Emit two guest-visible prefixes of a mutable two-input N15 fold.
 ///
 /// Both input attempts execute real `/` instructions. Each `p` reads and

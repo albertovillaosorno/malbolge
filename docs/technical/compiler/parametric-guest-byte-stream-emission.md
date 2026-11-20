@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two independently lossless signed input words (2026-11-20)
+
+A second 91-cell physical layout uses the graphical `IH` loader tail to
+prepare **two separate guest storage cells**. M95 starts at 7,174,489;
+its nine genuine N15 rotations yield seed 7,200,697. Independent loader
+M97 starts at 7,174,453. Both seeds have their lowest six trits equal
+to one. The independent ternary oracle proves each seed maps every one
+of 256 bytes injectively, with a separately encoded signed EOF word.
+
+C39 reads and C43 physically folds the first signed value into M95.
+C47 reads the second signed value, C48..C50 reset D, and C51/C52 advance
+to the untouched M97, which C53 physically folds with that second value.
+C54 emits the *encoded* second low byte and C55 halts in 56 steps.
+The first cell survives unchanged, so two independent byte-or-EOF inputs
+occupy two distinct readable guest words, rather than one lossy fold.
+
+The 268 bounded real-VM traces cover all 256 second input bytes with first
+byte 42, true EOF, ten truncated-first-value cases, and an unread suffix.
+Each compares both memory words to the independent trit oracle, verifies
+two actual `/` sites, distinct `p` stores, single encoded output, and
+exact halt. This proves lossless *encoding of each signed input*, not
+C23 signed decoding, source-local storage, checksum add/xor, phi copies,
+EOF branch, or dynamic loop. The original P2 checksum remains unlinked.
+
 ### Lossless first signed word across a second guest input (2026-11-20)
 
 An independent positive N15 physical layout avoids the frozen 132-cell EOF
