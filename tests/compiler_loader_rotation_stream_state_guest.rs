@@ -14,7 +14,7 @@
 //   - Claim C23 EOF normalization, C integer arithmetic or a dynamic C loop.
 // - Allows:
 //   - Inputs: 1..3 signed read events and exact graphical loader seeds.
-//   - Outputs: traced writes to one M95 cell and independent trit oracles.
+//   - Outputs: one M95 fold and optional real guest prefix-stream bytes.
 //   - Side effects: isolated normative N15 VM traces under 62 steps.
 // - Split-When:
 //   - The general code/data linker can realize arbitrary fold iterations.
@@ -23,7 +23,7 @@
 // - Summary:
 //   - A parametric physical stream accumulator, not another output fixture.
 
-//! Sequential input events really update and reread one guest data cell.
+//! Real guest input folds, stored state and prefix-stream output.
 
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
@@ -125,6 +125,19 @@ fn bounded_guest_fold_refuses_unproved_count_profile_and_seed() {
     assert_eq!(
         layout::build_seeded_guest_input_state_fold_source(profile, *b",H", 2,),
         layout::build_seeded_two_input_state_update_source(profile, *b",H"),
+    );
+    assert_eq!(
+        layout::build_seeded_two_input_prefix_fold_source(
+            historical_profile(),
+            *b",H",
+        ),
+        Err(layout::RepeatedLoaderRotationError::UnsupportedProfile),
+    );
+    assert_eq!(
+        layout::build_seeded_two_input_prefix_fold_source(profile, *b"Iy"),
+        Err(layout::RepeatedLoaderRotationError::InvalidResetSeed {
+            tail: *b"Iy",
+        }),
     );
 }
 
@@ -309,5 +322,135 @@ fn third_input_really_affects_guest_state_not_only_the_output_position()
     }
     assert!(outputs.len() > 1);
     assert!(data_words.len() > 1);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    clippy::integer_division_remainder_used,
+    reason = "independent oracle checks both reached guest output events"
+)]
+fn two_guest_inputs_emit_mutable_state_prefixes() -> Result<(), String> {
+    let profile = current_profile();
+    let mut paths = 0usize;
+    for (tail, initial) in [(*b",H", 7_174_457u32), (*b"CH", 7_174_480)] {
+        let source =
+            layout::build_seeded_two_input_prefix_fold_source(profile, tail)
+                .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(source.len(), 91);
+        assert_eq!(source.get(89..), Some(tail.as_slice()));
+        let loaded = ProfileMachine::from_source(profile, &source, vec![])
+            .map_err(|error| error.to_string())?;
+        let prepared = (0..9usize).fold(initial, |state, _| rotated(state));
+        let streams = [vec![], vec![0x81], vec![0x81, 0xc3, 0x17]]
+            .into_iter()
+            .chain(BOUNDARIES.map(|first| vec![first, 0x81]))
+            .chain(BOUNDARIES.map(|second| vec![0x42, second]));
+        for input in streams {
+            let first = crazy(
+                prepared,
+                input.first().map_or_else(
+                    || profile.eof_word(),
+                    |byte| u32::from(*byte),
+                ),
+            );
+            let second = crazy(
+                first,
+                input.get(1).map_or_else(
+                    || profile.eof_word(),
+                    |byte| u32::from(*byte),
+                ),
+            );
+            let expected = [
+                u8::try_from(first % 256).map_err(|error| error.to_string())?,
+                u8::try_from(second % 256)
+                    .map_err(|error| error.to_string())?,
+            ];
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                loaded.memory().to_vec(),
+                input.clone(),
+                ProfileRegisters::default(),
+            )
+            .map_err(|error| error.to_string())?;
+            let mut trace = Vec::new();
+            assert_eq!(
+                vm.run_traced(58, &mut |step| trace.push(*step))
+                    .map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 58,
+                }
+            );
+            for (at, expected_input) in
+                [(39usize, input.first()), (51, input.get(1))]
+            {
+                let event = trace.get(at).ok_or("missing read")?;
+                assert_eq!(event.decoded, Some(profile.input_instruction()));
+                assert_eq!(event.before.registers.data_pointer, TARGET);
+                assert_eq!(
+                    event.input,
+                    Some(
+                        expected_input
+                            .copied()
+                            .map_or(TraceInput::EndOfInput, TraceInput::Byte,)
+                    )
+                );
+            }
+            for (at, old, new) in
+                [(43usize, prepared, first), (55, first, second)]
+            {
+                let event = trace.get(at).ok_or("missing state update")?;
+                assert_eq!(event.decoded, Some(b'p'));
+                assert_eq!(event.before.registers.data_pointer, TARGET);
+                assert_eq!(
+                    event.memory_reads.data.map(|cell| cell.value),
+                    Some(old)
+                );
+                assert_eq!(event.after.registers.accumulator, new);
+                assert_eq!(
+                    event.memory_delta.data.map(|delta| {
+                        (delta.address, delta.before, delta.after)
+                    }),
+                    (old != new).then_some((TARGET, old, new)),
+                );
+            }
+            for (at, address, word) in [
+                (40usize, 96u32, 72u32),
+                (41, 73, 61),
+                (42, 62, 94),
+                (44, 96, 72),
+                (45, 73, 61),
+                (46, 62, 94),
+                (48, 96, 72),
+                (49, 73, 61),
+                (50, 62, 94),
+                (52, 96, 72),
+                (53, 73, 61),
+                (54, 62, 94),
+            ] {
+                let reset = trace.get(at).ok_or("missing reset")?;
+                assert_eq!(reset.decoded, Some(b'j'));
+                assert_eq!(reset.before.registers.data_pointer, address);
+                assert_eq!(
+                    reset.memory_reads.data.map(|cell| cell.value),
+                    Some(word)
+                );
+            }
+            for (at, byte) in [(47usize, expected[0]), (56, expected[1])] {
+                let output = trace.get(at).ok_or("missing prefix output")?;
+                assert_eq!(output.decoded, Some(profile.output_instruction()));
+                assert_eq!(output.output, Some(byte));
+            }
+            assert_eq!(vm.output(), &expected);
+            assert_eq!(vm.memory_word(TARGET), Ok(second));
+            assert_eq!(vm.input_consumed(), input.len().min(2));
+            paths += 1;
+        }
+    }
+    assert_eq!(paths, 78);
     Ok(())
 }

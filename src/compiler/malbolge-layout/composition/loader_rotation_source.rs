@@ -318,6 +318,48 @@ pub fn build_seeded_two_input_state_update_source(
     build_seeded_guest_input_state_fold_source(profile, tail, 2)
 }
 
+/// Emit two guest-visible prefixes of a mutable two-input N15 fold.
+///
+/// Both input attempts execute real `/` instructions. Each `p` reads and
+/// overwrites M95, and each following `<` emits that freshly stored state.
+/// The first output requires an additional three-`j` reset to M95 before
+/// the second input can be read: after a `p`, D is M96, but `<` also advances
+/// D. The sequence has physical events at C39/43/47 and C51/55/56 and
+/// halts at C57 (58 normative steps). M62 and M73 remain source constants,
+/// never reached as code. This is a fixed-length guest prefix operation,
+/// not a dynamic C loop, signed C23 conversion or C arithmetic.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles, invalid loader seeds and any missing
+/// position-sensitive opcode encoding. Independent VM paths must still
+/// establish the read/write/output semantics.
+pub fn build_seeded_two_input_prefix_fold_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_seeded_two_input_state_update_source(profile, tail)?;
+    for (position, opcode) in [
+        (44, b'j'),
+        (45, b'j'),
+        (46, b'j'),
+        (47, profile.output_instruction()),
+        (48, b'j'),
+        (49, b'j'),
+        (50, b'j'),
+        (51, profile.input_instruction()),
+        (52, b'j'),
+        (53, b'j'),
+        (54, b'j'),
+        (55, b'p'),
+        (56, profile.output_instruction()),
+        (57, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Repair the C23 seed's loader pointer trap and perform physical rotations.
 ///
 /// The `Iy` tail initializes M[95]=7,174,404 and M[96]=121. A reached

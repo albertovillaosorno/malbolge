@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Guest-visible state-prefix streaming (2026-11-19)
+
+The bounded 91-cell N15 prefix-fold helper now performs two genuine guest
+`/` attempts, writes the same M95 cell twice with `p`, and emits **both**
+updated states with separate reached `<` instructions. After the first write,
+a three-`j` reset places D at M95 before output; the output then advances D
+to M96, allowing another verified reset and input. The reached events are
+C39 read, C43 update, C47 output, C51 read, C55 update and C56 output;
+C57 halts after exactly **58 normative VM steps**.
+
+Two graphical loader seeds and **78 bounded VM input paths** include empty,
+truncated, NUL, high-byte, both input-position sweeps and unread suffixes.
+An independent fifteen-trit truth-table oracle checks both output bytes, raw
+EOF, state-write provenance, exact pointer resets and final M95 contents.
+Unlike an output-after-final-state-only probe, this exposes a stored prefix
+*before* the next independent guest read. It does not implement source-C
+arithmetic, C23 EOF conversion, runtime branching, or the full checksum; P2
+remains open. The three-input final-output helper remains byte-identical.
+
 ### Sequential physical guest input folds (2026-11-19)
 
 The source-generated, 91-cell N15 `,H`/`CH` loader now supports one, two,

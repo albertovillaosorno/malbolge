@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a new physical two-read N15 prefix fold emits the
+  **first mutable M95 state** before attempting the second real input, then
+  emits the independently updated second state. One source-valid 91-cell
+  program per loader seed executes C39/C51 `/`, C43/C55 `p` and C47/C56
+  `<`, halting in 58 real VM steps. Seventy-eight binary, EOF, truncated and
+  suffix input traces match independent fifteen-trit oracles for both bytes,
+  all four pointer resets, exact consumed input and both data writes.
+  Source-C arithmetic/branching, C23 signed conversion and the original
+  seven-block checksum remain unlinked; this is guest prefix streaming,
+  not P2 acceptance.
+
 - On 2026-11-19, one exact 91-cell N15 physical source template now folds
   one, two or three distinct real guest `/` reads through repeated same-cell
   M95 `p` writes after nine actual loader rotations. Two valid loader tails
