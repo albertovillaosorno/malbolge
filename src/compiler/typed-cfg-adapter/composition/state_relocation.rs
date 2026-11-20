@@ -700,6 +700,20 @@ fn proposed_code_edge(
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
     if let Some(placement) = pad {
+        // Every snapshot and commit writes a distinct physical guest cell.
+        // Even an ideal one-instruction copy cannot fit more writes than
+        // the pad reserves; actual code/mutation proof remains downstream.
+        let required_writes = edge
+            .snapshots
+            .len()
+            .checked_add(edge.commits.len())
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let reserved_cells =
+            usize::try_from(placement.end_exclusive - placement.start)
+                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+        if reserved_cells < required_writes {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
         index.used_pads.push(placement);
     }
     Ok(GuestCodeControlEdge {

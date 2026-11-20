@@ -1622,6 +1622,17 @@ fn source_checksum_phi_edge_pads_reject_missing_forged_or_aliasing_entries() {
     spurious.end_exclusive = 416;
     extra_pad.push(spurious);
     assert_eq!(check(&extra_pad), refusal);
+    // Every phi snapshot and commit must reserve a distinct destination
+    // instruction slot, even before target code has been synthesized.
+    let mut too_short_for_phi = pads.clone();
+    too_short_for_phi[0].end_exclusive = too_short_for_phi[0].start + 7;
+    assert_eq!(check(&too_short_for_phi), refusal);
+    let mut exact_phi_capacity = pads.clone();
+    exact_phi_capacity[0].end_exclusive = exact_phi_capacity[0].start + 8;
+    assert!(check(&exact_phi_capacity).is_ok());
+    let mut short_backedge = pads.clone();
+    short_backedge[3].end_exclusive = short_backedge[3].start + 7;
+    assert_eq!(check(&short_backedge), refusal);
     // Touching code and pad intervals do not overlap.
     let mut touching = pads.clone();
     touching[0].start = 240;

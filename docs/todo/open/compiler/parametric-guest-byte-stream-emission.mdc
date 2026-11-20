@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the source-locked checksum's proposed phi landing pads
+  now reject any interval shorter than the number of separate guest-word
+  snapshots and commits. Red-first regressions exposed acceptance of a
+  seven-cell pad for eight required writes on the initial phi edge and
+  backedge; both now refuse, while the exact eight-cell bound and all
+  197 frontend-adapter tests pass. This is a necessary reservation proof,
+  not executable phi copies, guest branching or full C23 checksum parity.
+  The original source still fails closed at dynamic physical linkage.
+
 - On 2026-11-20, the source-locked nine-rotation C23 `Iy` guest now
   executes one input-dependent crazy write and physically emits its result
   **after** a real C79 indirect bypass of C81. Eight independent binary/EOF

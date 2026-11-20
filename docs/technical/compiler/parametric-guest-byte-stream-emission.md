@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked phi pad capacity refuses impossible writes (2026-11-20)
+
+The original seven-block C23 checksum's four proposed predecessor-specific
+phi pads now have a **necessary physical capacity bound**. Each snapshot
+and commit is a distinct guest-memory write, so the admitted pad width
+must be at least their combined word count. Previously the addressed CFG
+accepted a seven-cell pad carrying four snapshots and four commits, even
+though eight separate target writes were owed. A red-first original-source
+regression now refuses seven cells on both the entry phi edge and backedge;
+an exactly eight-cell reservation remains admitted. The original wider pads
+and all 197 frontend-adapter library tests pass.
+
+The bound proves only that the interval is not *too short*. It does not
+synthesize any physical copy, Malbolge opcode, branch or executable checksum.
+The unchanged full C23 source still refuses physical target linkage and
+publishes no guest artifact. P2 remains open.
+
 ### Indirect live-byte arithmetic reaches real output (2026-11-20)
 
 A 91-cell, source-admitted `Iy` guest now retains nine real M95 rotations
