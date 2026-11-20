@@ -388,3 +388,23 @@ pub fn build_second_input_guarded_third_read_source(
     put_revisited(&mut source, 101, b'p', profile.input_instruction())?;
     Ok(source)
 }
+
+/// Compose both real signed input echoes with a third input guarded by EOF.
+///
+/// C62 and C63 emit the second input before the C64 classifier consumes it.
+/// Only the successful-second-input path revisits C101, where the encrypted
+/// first-pass `p` becomes `/`. Neither the second EOF path nor the first two
+/// encrypted I/O cells can consume a third byte on its behalf. No C32
+/// storage or source-C compiler linkage is implied.
+///
+/// # Errors
+///
+/// Refuses unsupported profile or unavailable graphical two-pass opcode.
+pub fn build_two_echo_guarded_third_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source =
+        build_second_input_eof_classified_two_echo_source(profile)?;
+    put_revisited(&mut source, 101, b'p', profile.input_instruction())?;
+    Ok(source)
+}

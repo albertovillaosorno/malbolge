@@ -3913,7 +3913,8 @@ fn second_signed_input_is_echoed_before_it_selects_real_eof_control()
             ),
         );
         assert_eq!(trace[63].output, Some(second_word));
-        let input_effects = trace.iter().filter(|step| step.input.is_some()).count();
+        let input_effects =
+            trace.iter().filter(|step| step.input.is_some()).count();
         assert_eq!(input_effects, 2);
         assert_eq!(
             trace.iter().filter(|step| step.output.is_some()).count(),
@@ -4085,6 +4086,287 @@ fn second_signed_echo_branch_has_independent_guest_path_proofs()
             },
         ),
         Err(layout::BoundedRevisitError::InputEventsMismatch),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "small physical composition experiment with real guest input"
+)]
+fn two_echo_second_eof_branch_also_guards_third_guest_read()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_two_echo_guarded_third_read_source(profile)
+        .map_err(|error| format!("two echo third input: {error:?}"))?;
+    let original =
+        layout::build_second_input_eof_classified_two_echo_source(profile)
+            .map_err(|error| format!("two echo source: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(
+        source
+            .iter()
+            .zip(&original)
+            .enumerate()
+            .filter(|(_, (left, right))| left != right)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>(),
+        [101],
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![128, 128, 7],
+        vec![3, 4, 5, 6],
+    ] {
+        let eof = input.len() < 2;
+        let first = input.first().copied().unwrap_or(106);
+        let second = input.get(1).copied().unwrap_or(106);
+        let steps = if eof {
+            119
+        } else {
+            175
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(steps, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            },
+            "input={input:?}",
+        );
+        assert_eq!(vm.output(), &[
+            first,
+            second,
+            if eof {
+                30
+            } else {
+                154
+            }
+        ]);
+        assert_eq!(vm.input_consumed(), input.len().min(3));
+        let observed = trace
+            .iter()
+            .filter_map(|step| step.input)
+            .collect::<Vec<_>>();
+        let mut expected = vec![
+            input
+                .first()
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+            input
+                .get(1)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+        ];
+        if !eof {
+            expected.push(
+                input
+                    .get(2)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+            );
+            assert_eq!(trace[171].before.registers.code_pointer, 101);
+        }
+        assert_eq!(observed, expected);
+    }
+    Ok(())
+}
+
+struct OwnedTwoEchoThirdReadPath {
+    base: OwnedSecondInputTwoEchoPath,
+    input_events: Vec<TraceInput>,
+    io_events: Vec<layout::BoundedRevisitIoEvent>,
+    writes: Vec<layout::BoundedRevisitDataWrite>,
+    instruction_writes: Vec<layout::BoundedRevisitInstructionWrite>,
+}
+
+impl OwnedTwoEchoThirdReadPath {
+    fn new(input: Vec<u8>) -> Self {
+        let base = OwnedSecondInputTwoEchoPath::new(input);
+        let mut input_events = base.base.input_events.to_vec();
+        let mut io_events = base.io_events.to_vec();
+        if base.base.input.len() >= 2 {
+            let third = base
+                .base
+                .input
+                .get(2)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+            input_events.push(third);
+            io_events.push(layout::BoundedRevisitIoEvent {
+                step: 171,
+                effect: layout::BoundedRevisitIoEffect::Input(third),
+            });
+        }
+        let accumulator = base
+            .base
+            .base
+            .instruction_writes
+            .iter()
+            .find(|write| write.step == 82)
+            .expect("independent C82 nonlinear word")
+            .after;
+        let mut instruction_writes = base.base.base.instruction_writes.clone();
+        let at = instruction_writes.partition_point(|write| write.step < 101);
+        instruction_writes.insert(at, layout::BoundedRevisitInstructionWrite {
+            step: 101,
+            opcode: b'p',
+            address: 7_174_353,
+            before: 134,
+            after: scalar_crazy(134, accumulator),
+        });
+        let writes = instruction_writes
+            .iter()
+            .filter(|write| write.before != write.after)
+            .map(|write| layout::BoundedRevisitDataWrite {
+                step: write.step,
+                address: write.address,
+                before: write.before,
+                after: write.after,
+            })
+            .collect();
+        Self {
+            base,
+            input_events,
+            io_events,
+            writes,
+            instruction_writes,
+        }
+    }
+
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.base.base.input,
+            code_positions: &self.base.base.base.path,
+            output: &self.base.output,
+            input_consumed: self.base.base.input.len().min(3),
+            input_events: &self.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.writes,
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent guarded input, nonlinear writes, and forgery"
+)]
+fn two_echo_guarded_third_read_has_independent_full_path_proofs()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_two_echo_guarded_third_read_source(profile)
+        .map_err(|error| format!("guarded two-echo source: {error:?}"))?;
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![128, 128, 7],
+        vec![3, 4, 5, 6],
+    ]
+    .into_iter()
+    .map(OwnedTwoEchoThirdReadPath::new)
+    .collect::<Vec<_>>();
+    let expected = cases
+        .iter()
+        .map(OwnedTwoEchoThirdReadPath::expectation)
+        .collect::<Vec<_>>();
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("guarded two-echo proof: {error:?}"))?;
+    for (actual, case) in admitted.iter().zip(&cases) {
+        assert_eq!(actual.input_events(), case.input_events);
+        assert_eq!(actual.io_events(), case.io_events);
+        assert_eq!(actual.output(), case.base.output);
+        assert_eq!(actual.code_positions(), case.base.base.base.path);
+        assert_eq!(actual.data_writes(), case.writes);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                actual,
+                &case.instruction_writes,
+            ),
+            Ok(()),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(actual, &[
+                layout::BoundedGuestDataRegion {
+                    start: CHECKSUM_FRAME_START,
+                    end_exclusive: CHECKSUM_FRAME_END,
+                },
+            ]),
+            Ok(()),
+        );
+    }
+    let witness = expected.get(3).ok_or("missing success arm")?;
+    let mut forged_reads = cases[3].input_events.clone();
+    forged_reads[2] = TraceInput::Byte(7);
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                input_events: &forged_reads,
+                ..*witness
+            },
+        ),
+        Err(layout::BoundedRevisitError::InputEventsMismatch),
+    );
+    let mut forged_io = cases[3].io_events.clone();
+    forged_io.last_mut().ok_or("no third read")?.step = 170;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                io_events: &forged_io,
+                ..*witness
+            },
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch),
+    );
+    let mut forged_writes = cases[3].writes.clone();
+    forged_writes
+        .iter_mut()
+        .find(|write| write.step == 101)
+        .ok_or("no C101 write")?
+        .after ^= 1;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                data_writes: &forged_writes,
+                ..*witness
+            },
+        ),
+        Err(layout::BoundedRevisitError::DataWritesMismatch),
     );
     Ok(())
 }

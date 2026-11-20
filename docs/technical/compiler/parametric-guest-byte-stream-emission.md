@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two echoed words followed by conditional third guest read (2026-11-20)
+
+A follow-up 132-cell source composes the verified C62 `/` and C63 `<`
+second-word echo with C101's first-pass `p`, encrypted to `/` for the
+success-arm revisit. The real guest echoes first and second low bytes,
+then selects EOF/byte using that same second accumulator. The EOF arm
+halts in 119 steps with only two signed input attempts; the byte arm
+attempts a third input at code pointer 101, then halts at 175 steps.
+Neither branch emits the third word, and both emit exactly three output
+bytes including their fixed class marker. No host-supplied I/O is used.
+
+Seven complete real VM streams check empty, high-byte, successful and
+truncated EOF behavior. Seven separately derived nonlinear whole-path
+proofs check ordered effects, source-dependent `p` writes, encrypted
+revisits and isolation of the proposed checksum frame. Forged third
+input, read position and C101 data are refused. This is not yet a C23
+source program or a repeatable loop: full-width mutable storage,
+signed EOF conversion, phi copies and C32 arithmetic remain unlinked.
+P2 remains open.
+
 ### Second input is echoed before physical EOF control (2026-11-20)
 
 A new 132-cell N15 guest variant reads the first signed word at C53 and

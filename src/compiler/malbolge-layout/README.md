@@ -12,6 +12,24 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Conditional third read after two signed echoes
+
+`build_two_echo_guarded_third_read_source` combines the two independent
+C53/C62 signed guest reads and C54/C63 echoes with the already proven
+C101 two-pass `p`-then-`/` instruction. On true second EOF the guest emits
+both raw low bytes and the EOF marker, then halts after 119 steps without
+attempting a third read. When the second word is a byte, the successful
+arm revisits encrypted C101 and attempts a third real read before the
+175-step halt. The output still contains exactly three bytes (two input
+echoes and one class marker); the third input is not stored or emitted.
+
+Seven original, EOF and binary real-VM paths are supported by seven
+independent full-path admissions, including all trit-derived writes at
+C101, source-specific code revisits and checksum-frame isolation.
+Three forged third-read, event-location and C101-store witnesses refuse.
+This closed composition does not emit C23 signed normalization, mutate
+source-C state or link the original repeatable checksum loop.
+
 ### Echo both input words before the second EOF branch
 
 `build_second_input_eof_classified_two_echo_source` keeps the 132-cell

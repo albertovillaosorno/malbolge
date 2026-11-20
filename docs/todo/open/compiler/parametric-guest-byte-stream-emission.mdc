@@ -73,6 +73,14 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the two-echo physical EOF classifier also composes
+  C101's encrypted `p`-then-`/` into a third signed guest read only on the
+  successful-second-byte arm. Seven complete VM paths and seven independent
+  nonlinear path admissions verify two echoed bytes plus one EOF/byte
+  marker, 119/175-step halts, C101 writes, revisits, and state isolation.
+  Three forged third-input, IO-location and C101-store witnesses reject.
+  No C23 EOF normalization, repeatable loop or original checksum is linked.
+
 - On 2026-11-20, the 132-cell physical N15 classifier now executes
   both signed guest inputs and echoes **both** low bytes before the second
   read's EOF/byte branch. C62 `/` and C63 `<` encrypt to inert `l`/`Z`
