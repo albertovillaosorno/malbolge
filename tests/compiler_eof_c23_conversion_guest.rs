@@ -32,8 +32,8 @@ use std::iter::once;
 
 use malbolge::{
     ProfileMachine, ProfileRegisters, RunOutcome, Termination, TraceInput,
-    current_profile, decode_profile_instruction, historical_profile,
-    profile_rotate,
+    current_profile, decode_profile_instruction, encrypt_profile_cell,
+    historical_profile, profile_rotate,
 };
 
 const FIRST_ADDRESS: u32 = 283;
@@ -1153,7 +1153,8 @@ fn fixed_c23_prefix_has_no_one_jump_shorter_graphical_output_return()
     clippy::panic_in_result_fn,
     reason = "normative input and indirect-code-pointer traces"
 )]
-fn physical_indirect_jump_bypasses_the_source_locked_halt() -> Result<(), String>
+fn physical_indirect_jump_bypasses_the_source_locked_halt()
+-> Result<(), String>
 {
     let profile = current_profile();
     let source =
@@ -1248,4 +1249,50 @@ fn physical_indirect_jump_bypasses_the_source_locked_halt() -> Result<(), String
     }
     assert_eq!(cases, 259);
     Ok(())
+}
+
+// The C79 indirect bypass executes C83=o and advances D to M82. A single
+// C84 j would need the *encrypted* M82 to equal 94, returning D to M95.
+// The sole predecessor encrypting to 94 is 83, which the source loader
+// rejects at C82. This does not exclude longer or relocated pointer routes.
+#[test]
+fn c23_indirect_one_jump_reset_cannot_use_a_graphical_target_cell() {
+    let profile = current_profile();
+    let mut source =
+        layout::build_c23_nine_rotated_indirect_halt_probe_source(profile)
+            .expect("validated physical indirect prefix");
+    assert_eq!(source.get(82), Some(&80));
+    assert_eq!(encrypt_profile_cell(80), Some(66));
+    assert_eq!(source.get(83), Some(&79));
+    assert_eq!(decode_profile_instruction(79, 83), Some(b'o'));
+
+    let loader_valid = (33..=126u32)
+        .filter(|&byte| {
+            decode_profile_instruction(byte, 82)
+                .is_some_and(|opcode| b"oijp*/<v".contains(&opcode))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(loader_valid.len(), 8);
+    assert!(
+        loader_valid
+            .iter()
+            .all(|&byte| encrypt_profile_cell(byte) != Some(94))
+    );
+    assert_eq!(
+        (33..=126u32)
+            .filter(|&byte| encrypt_profile_cell(byte) == Some(94))
+            .collect::<Vec<_>>(),
+        vec![83],
+    );
+    assert_eq!(decode_profile_instruction(83, 82), Some(b'7'));
+    source[82] = 83;
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&source),
+        Err(
+            layout::C23OperandProbeSourceError::InvalidGraphicalSourceCell {
+                position: 82,
+                byte: 83,
+            }
+        ),
+    );
 }

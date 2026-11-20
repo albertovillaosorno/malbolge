@@ -73,6 +73,13 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the source-locked C79 indirect bypass gains an exact
+  encryption/loader proof: the sole M82 predecessor of the needed 94 is
+  byte 83, which decodes to invalid opcode `7` at C82. All eight valid
+  C82 source bytes fail the single C84 jump reset to M95. This bounds one
+  tempting shortcut; longer relocations and real converted output remain
+  unimplemented, and the complete C23 checksum still refuses publication.
+
 - On 2026-11-19, a source-valid `Iy` late path executes a real C79
   indirect `i` to C83 across the immovable C81 source pointer/halt word.
   All 259 bounded 82-step normative VM traces confirm two signed inputs,

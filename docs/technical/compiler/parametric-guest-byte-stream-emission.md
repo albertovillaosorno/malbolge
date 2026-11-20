@@ -28,6 +28,19 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### C23 indirect tail cannot reset D with one graphical jump (2026-11-20)
+
+The reached C79 `i` bypasses C81 but encrypts M82 before executing C83,
+which is source-fixed to `o` by the earlier M83=79 pointer read. Its next
+C84 `j` would need encrypted M82=94 to reset D directly to M95. The only
+source byte with encryption image 94 is 83; at C82 that byte decodes to
+unrecognized opcode `7` and cannot pass the strict source loader. All eight
+loader-admitted graphical C82 opcodes are excluded by an exact table proof.
+A bounded regression also checks that substituting 83 is refused before
+publication. This rules out only the **one-jump C84** return in the fixed
+91-cell `Iy` indirect layout, not longer routes or a relocated converter.
+The full source-C checksum still refuses physical guest linking.
+
 ### Indirect C23 code-pointer bypass is physically executable (2026-11-19)
 
 A new 91-cell `Iy` guest source runs the same nine operand rotations and
