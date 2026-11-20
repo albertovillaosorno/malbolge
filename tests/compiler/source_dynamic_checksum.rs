@@ -1417,6 +1417,7 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     ]);
     let original_edges = &addressed.relocated.phi_edges;
     for GuestCodeControlEdge {
+        commit_sites,
         commits,
         condition,
         control_address,
@@ -1425,6 +1426,7 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
         kind,
         pad_exit_address,
         predecessor,
+        snapshot_sites,
         snapshots,
         successor,
         target_address,
@@ -1490,6 +1492,46 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
             commits.as_slice(),
             phi.map_or(&[][..], |edge| &edge.commits)
         );
+        // The same source-owned edge binds ordered write-obligation cells,
+        // rather than only reserving an anonymous phi-pad interval.
+        assert_eq!(
+            snapshot_sites
+                .iter()
+                .map(|site| site.copy)
+                .collect::<Vec<_>>(),
+            *snapshots,
+        );
+        assert_eq!(
+            commit_sites
+                .iter()
+                .map(|site| site.copy)
+                .collect::<Vec<_>>(),
+            *commits,
+        );
+        if let Some(pad) = pad {
+            let expected = (pad.start
+                ..pad.start
+                    + u32::try_from(snapshots.len() + commits.len()).unwrap())
+                .collect::<Vec<_>>();
+            let actual = snapshot_sites
+                .iter()
+                .chain(commit_sites)
+                .map(|site| site.code_address)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                actual, expected,
+                "phi sites on {predecessor}->{successor}"
+            );
+            assert!(
+                actual
+                    .last()
+                    .is_none_or(|cell| *cell < pad.end_exclusive - 1),
+                "the pad exit cannot alias a phi write",
+            );
+        } else {
+            assert!(snapshot_sites.is_empty());
+            assert!(commit_sites.is_empty());
+        }
     }
     let backedge = addressed.control_edges.last().expect("canonical backedge");
     assert_eq!((backedge.predecessor, backedge.successor), (5, 1));

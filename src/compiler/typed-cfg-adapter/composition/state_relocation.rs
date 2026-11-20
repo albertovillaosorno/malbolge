@@ -253,11 +253,25 @@ pub struct GuestCodeProposals<'source> {
     pub edge_pads: &'source [GuestCodeEdgePadPlacement],
 }
 
+/// A specific code cell obligated to perform one source-locked phi copy.
+///
+/// This is not an encoded Malbolge instruction: actual byte mutation and
+/// read/write semantics must still be proved by the physical linker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeCellCopySite {
+    /// One distinct proposed code cell inside the owning edge pad.
+    pub code_address: u32,
+    /// Original relocated source and destination cells for this write.
+    pub copy: GuestPlacedCellCopy,
+}
+
 /// One proposed physical target with its *edge-local* parallel copies.
 ///
 /// Neither the target address nor the copies are guest instructions yet.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GuestCodeControlEdge {
+    /// Code-cell obligations for commits, strictly after all snapshots.
+    pub commit_sites: Vec<GuestCodeCellCopySite>,
     /// Physical scratch-to-phi assignments, after all snapshots.
     pub commits: Vec<GuestPlacedCellCopy>,
     /// Original typed branch Boolean, absent on unconditional jumps.
@@ -277,6 +291,8 @@ pub struct GuestCodeControlEdge {
     pub pad_exit_address: Option<u32>,
     /// Canonical predecessor block identity.
     pub predecessor: u32,
+    /// Ordered code-cell obligations for snapshots before any commits.
+    pub snapshot_sites: Vec<GuestCodeCellCopySite>,
     /// Copies of all original phi sources into scratch first.
     pub snapshots: Vec<GuestPlacedCellCopy>,
     /// Canonical successor block identity.
@@ -756,7 +772,40 @@ fn proposed_code_edge(
         }
         index.used_pads.push(placement);
     }
+    // Bind each write to its own proposed code address, preserving the
+    // complete snapshot-before-commit order. Unused pad cells are merely
+    // reserved slack: they are not proven safe no-ops or target opcodes.
+    let (snapshot_sites, commit_sites) = if let Some(placement) = pad {
+        let mut next_address = placement.start;
+        let mut assign_site = |copy: &GuestPlacedCellCopy| {
+            let code_address = next_address;
+            next_address = next_address
+                .checked_add(1)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            Ok(GuestCodeCellCopySite {
+                code_address,
+                copy: *copy,
+            })
+        };
+        let snapshots = edge
+            .snapshots
+            .iter()
+            .map(&mut assign_site)
+            .collect::<Result<Vec<_>, _>>()?;
+        let commits = edge
+            .commits
+            .iter()
+            .map(&mut assign_site)
+            .collect::<Result<Vec<_>, _>>()?;
+        if next_address >= placement.end_exclusive {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        (snapshots, commits)
+    } else {
+        (Vec::new(), Vec::new())
+    };
     Ok(GuestCodeControlEdge {
+        commit_sites,
         commits: edge.commits.clone(),
         condition,
         control_address,
@@ -765,6 +814,7 @@ fn proposed_code_edge(
         kind,
         pad_exit_address: pad.map(|placement| placement.end_exclusive - 1),
         predecessor,
+        snapshot_sites,
         snapshots: edge.snapshots.clone(),
         successor: edge.successor,
         target_address,
