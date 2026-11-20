@@ -786,6 +786,7 @@ fn required_operation_effects(
         if source.value != value.value()
             || source.type_kind != TernaryCfgScalarKind::U8
             || source.words != 1
+            || source.address >= CURRENT_WORD_COUNT
             || instruction.write.is_some()
             || !instruction.constant_cells.is_empty()
         {
@@ -794,6 +795,18 @@ fn required_operation_effects(
         effects.push(GuestCodeOperationEffect::Output { source: *source });
     }
     if let Some(destination) = instruction.write {
+        if destination.words == 0
+            || destination
+                .address
+                .checked_add(destination.words)
+                .is_none_or(|end| end > CURRENT_WORD_COUNT)
+            || instruction
+                .constant_cells
+                .iter()
+                .any(|cell| cell.word >= CURRENT_WORD_COUNT)
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
         let literal_by_address = instruction
             .constant_cells
             .iter()
@@ -1319,10 +1332,81 @@ mod tests {
             ..byte
         }];
         assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.reads = vec![GuestPlacedOperand {
+            address: super::CURRENT_WORD_COUNT,
+            ..byte
+        }];
+        assert_eq!(required_operation_effects(&instruction), refusal);
         instruction.reads = Vec::new();
         assert_eq!(required_operation_effects(&instruction), refusal);
         instruction.reads.push(byte);
         instruction.write = Some(byte);
+        assert_eq!(required_operation_effects(&instruction), refusal);
+    }
+
+    #[test]
+    fn literal_effects_refuse_non_guest_words_and_invalid_write_width() {
+        use super::super::ternary::TernaryCfgScalarKind;
+        use super::super::typed::{
+            Instruction, IntegerConstant, SourcePosition, SourceSpan, TypeId,
+            ValueId,
+        };
+        use super::{
+            CURRENT_WORD_COUNT, GuestCodeOperationEffect,
+            GuestCodePlacementError, GuestPlacedInstruction,
+            GuestPlacedLiteralCell, GuestPlacedOperand,
+            required_operation_effects,
+        };
+
+        let first = CURRENT_WORD_COUNT.saturating_sub(2);
+        let operand = GuestPlacedOperand {
+            address: first,
+            type_kind: TernaryCfgScalarKind::U32,
+            value: 31,
+            words: 2,
+        };
+        let source = SourcePosition::new(0, 1, 1);
+        let mut instruction = GuestPlacedInstruction {
+            constant_cells: vec![
+                GuestPlacedLiteralCell { address: first, word: 0 },
+                GuestPlacedLiteralCell {
+                    address: first + 1,
+                    word: 299,
+                },
+            ],
+            instruction: Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![0, 0, 0, 0]),
+                result: ValueId::new(31),
+                type_id: TypeId::new(1),
+            },
+            reads: Vec::new(),
+            span: SourceSpan::new(source, source),
+            write: Some(operand),
+        };
+        assert_eq!(
+            required_operation_effects(&instruction),
+            Ok(vec![
+                GuestCodeOperationEffect::Store {
+                    destination: first,
+                    literal: Some(0),
+                },
+                GuestCodeOperationEffect::Store {
+                    destination: first + 1,
+                    literal: Some(299),
+                },
+            ])
+        );
+        let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+        instruction.constant_cells[1].word = CURRENT_WORD_COUNT;
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.constant_cells[1].word = 299;
+        instruction.write = Some(GuestPlacedOperand {
+            address: CURRENT_WORD_COUNT - 1,
+            ..operand
+        });
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.constant_cells.clear();
+        instruction.write = Some(GuestPlacedOperand { words: 0, ..operand });
         assert_eq!(required_operation_effects(&instruction), refusal);
     }
 
