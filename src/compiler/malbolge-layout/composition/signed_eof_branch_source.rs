@@ -319,3 +319,25 @@ pub fn build_signed_eof_branch_source(
     // C=126 starts the EOF arm, which skips the earlier success output.
     Ok(source)
 }
+
+/// Read a third signed word only when the second word was not EOF.
+///
+/// The C63 read controls the physical byte/EOF jump. Only its successful-byte
+/// arm revisits C101, where the first-pass `p` has encrypted into `/`. Thus
+/// the third read cannot happen on the second-EOF arm, and the first read is
+/// still echoed before either later read. The byte arm continues to a fixed
+/// marker and halt: this bounded witness does not implement a general loop,
+/// preserve the third input as a C local, or compile the checksum.
+///
+/// # Errors
+///
+/// Rejects profile and graphical source encodings outside the pinned layout;
+/// actual bounded guest traces must be admitted independently.
+pub fn build_second_input_guarded_third_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source =
+        build_second_input_eof_classified_first_echo_source(profile)?;
+    put_revisited(&mut source, 101, b'p', profile.input_instruction())?;
+    Ok(source)
+}

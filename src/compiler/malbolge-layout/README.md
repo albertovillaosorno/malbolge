@@ -12,6 +12,29 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Second-input EOF conditionally permits a third guest read
+
+`build_second_input_guarded_third_read_source` composes C53/C63 `/` with
+C101's *revisited* physical `/`. C101 must first run as `p` against the
+loader-expanded M[7,174,353]=134, and XLAT2 changes that reached source
+byte to `/`. The first pass therefore performs genuine C82-dependent
+crazy arithmetic at M[7,174,353] before control branches at C114. The
+successful second-byte arm then revisits C101 and consumes a third guest
+input (or attempts genuine EOF); the second-EOF arm halts without the
+third read. The first byte echoes at C54, and the existing fixed success
+or EOF marker remains the only subsequent output.
+
+Seven source-bound independent whole-path admissions verify ordered reads,
+output, code revisits, all trit-derived data and instruction writes, and
+isolation of the proposed checksum state frame. Forged third input,
+read location or new C101 write is rejected. Another 48 bounded normative
+VM runs vary NUL/high/binary second and third bytes, truncated input and
+unread suffixes with the same 119/175-step complete halts. The 132-cell
+source differs from the previous second-input classifier only at C101.
+This demonstrates conditional guest input effects, **not** a C local,
+C23 EOF conversion, an unbounded loop, or source-C compilation. The
+original mutable C23 checksum still refuses physical target publication.
+
 ### Second signed input selects a physical EOF/byte branch
 
 `build_second_input_eof_classified_first_echo_source` derives a graphical

@@ -3391,3 +3391,325 @@ fn second_input_classifier_handles_binary_boundaries_and_unread_suffix()
     }
     Ok(())
 }
+
+// Physical signed second-byte classification is source-independent from the
+// third input payload. The first-pass C101 data store occurs on BOTH arms;
+// only the successful second-input arm executes its encrypted `/` revisit.
+// Re-derive all arithmetic from the literal trit table, not from VM traces.
+struct OwnedGuardedThirdReadPath {
+    base: OwnedSecondInputClassifiedFirstEchoPath,
+    input_events: Vec<TraceInput>,
+    io_events: Vec<layout::BoundedRevisitIoEvent>,
+    writes: Vec<layout::BoundedRevisitDataWrite>,
+    instruction_writes: Vec<layout::BoundedRevisitInstructionWrite>,
+}
+
+impl OwnedGuardedThirdReadPath {
+    fn new(input: Vec<u8>) -> Self {
+        let base = OwnedSecondInputClassifiedFirstEchoPath::new(input);
+        let mut input_events = base.input_events.to_vec();
+        let mut io_events = base.io_events.to_vec();
+        if base.input.len() >= 2 {
+            let third = base
+                .input
+                .get(2)
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+            input_events.push(third);
+            io_events.push(layout::BoundedRevisitIoEvent {
+                step: 171,
+                effect: layout::BoundedRevisitIoEffect::Input(third),
+            });
+        }
+        // C82 is the final classifier arithmetic before the newly added
+        // C101 `p`. The existing independently computed C82 result is the
+        // exact accumulator entering C101, on BOTH branch outcomes.
+        let accumulator = base
+            .base
+            .instruction_writes
+            .iter()
+            .find(|write| write.step == 82)
+            .expect("independent C82 classifier arithmetic")
+            .after;
+        let new_write = layout::BoundedRevisitInstructionWrite {
+            step: 101,
+            opcode: b'p',
+            address: 7_174_353,
+            before: 134,
+            after: scalar_crazy(134, accumulator),
+        };
+        let mut instruction_writes = base.base.instruction_writes.clone();
+        let at = instruction_writes.partition_point(|write| write.step < 101);
+        instruction_writes.insert(at, new_write);
+        let writes = instruction_writes
+            .iter()
+            .filter(|write| write.before != write.after)
+            .map(|write| layout::BoundedRevisitDataWrite {
+                step: write.step,
+                address: write.address,
+                before: write.before,
+                after: write.after,
+            })
+            .collect();
+        Self {
+            base,
+            input_events,
+            io_events,
+            writes,
+            instruction_writes,
+        }
+    }
+
+    fn expectation(&self) -> layout::BoundedRevisitExpectation<'_> {
+        layout::BoundedRevisitExpectation {
+            input: &self.base.input,
+            code_positions: &self.base.base.path,
+            output: &self.base.output,
+            input_consumed: self.base.input.len().min(
+                if self.base.input.len() < 2 {
+                    2
+                } else {
+                    3
+                },
+            ),
+            input_events: &self.input_events,
+            io_events: &self.io_events,
+            data_writes: &self.writes,
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "finite independent control, IO and arithmetic path admission"
+)]
+fn conditional_third_read_has_independent_guest_path_and_forgery_proofs()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_second_input_guarded_third_read_source(profile)
+        .map_err(|error| format!("guarded third: {error:?}"))?;
+    let original =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .map_err(|error| format!("second branch: {error:?}"))?;
+    assert_eq!(source.len(), LENGTH);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    assert_eq!(
+        source
+            .iter()
+            .zip(&original)
+            .enumerate()
+            .filter(|(_, (left, right))| left != right)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>(),
+        [101],
+    );
+    assert_eq!(
+        layout::build_second_input_guarded_third_read_source(
+            malbolge::historical_profile(),
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(7_174_353), Ok(134));
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![128, 128, 7],
+        vec![3, 4, 5, 6],
+    ]
+    .into_iter()
+    .map(OwnedGuardedThirdReadPath::new)
+    .collect::<Vec<_>>();
+    let expected = cases
+        .iter()
+        .map(OwnedGuardedThirdReadPath::expectation)
+        .collect::<Vec<_>>();
+    let identity = layout::LinearProfileIdentity {
+        fingerprint: profile.fingerprint(),
+        id: profile.id(),
+    };
+    let admitted = layout::admit_bounded_guest_path_batch(
+        profile, &source, identity, &expected,
+    )
+    .map_err(|error| format!("independent third-read proof: {error:?}"))?;
+    assert_eq!(admitted.len(), cases.len());
+    for (actual, case) in admitted.iter().zip(&cases) {
+        assert_eq!(actual.input_events(), case.input_events);
+        assert_eq!(actual.io_events(), case.io_events);
+        assert_eq!(actual.data_writes(), case.writes);
+        assert_eq!(actual.code_positions(), case.base.base.path);
+        assert_eq!(actual.output(), case.base.output);
+        assert_eq!(
+            layout::verify_bounded_guest_instruction_writes(
+                actual,
+                &case.instruction_writes,
+            ),
+            Ok(()),
+        );
+        assert_eq!(
+            layout::verify_bounded_guest_state_isolation(actual, &[
+                layout::BoundedGuestDataRegion {
+                    start: CHECKSUM_FRAME_START,
+                    end_exclusive: CHECKSUM_FRAME_END,
+                },
+            ]),
+            Ok(()),
+        );
+        assert!(
+            case.instruction_writes
+                .iter()
+                .any(|write| write.step == 101 && write.address == 7_174_353)
+        );
+    }
+    let success = expected.get(3).ok_or("missing third-read success case")?;
+    let mut forged_io = cases
+        .get(3)
+        .ok_or("missing success input")?
+        .io_events
+        .clone();
+    let last = forged_io.last_mut().ok_or("missing third input event")?;
+    last.step = 170;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                io_events: &forged_io,
+                ..*success
+            },
+        ),
+        Err(layout::BoundedRevisitError::IoEventsMismatch),
+    );
+    let mut forged_reads =
+        cases.get(3).ok_or("missing success")?.input_events.clone();
+    forged_reads[2] = TraceInput::Byte(7);
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                input_events: &forged_reads,
+                ..*success
+            },
+        ),
+        Err(layout::BoundedRevisitError::InputEventsMismatch),
+    );
+    let mut forged_writes =
+        cases.get(3).ok_or("missing success")?.writes.clone();
+    let new_write = forged_writes
+        .iter_mut()
+        .find(|write| write.step == 101)
+        .ok_or("missing physical classifier write")?;
+    new_write.after ^= 1;
+    assert_eq!(
+        layout::admit_bounded_guest_path(
+            profile,
+            &source,
+            identity,
+            layout::BoundedRevisitExpectation {
+                data_writes: &forged_writes,
+                ..*success
+            },
+        ),
+        Err(layout::BoundedRevisitError::DataWritesMismatch),
+    );
+    Ok(())
+}
+
+// A fixed bounded input matrix checks the new conditional input effect
+// independently of the exact seven witnesses used for nonlinear admission.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "finite binary, EOF and unread-suffix VM path matrix"
+)]
+fn second_eof_controls_third_read_across_binary_guest_streams()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_second_input_guarded_third_read_source(profile)
+        .map_err(|error| format!("guarded source: {error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let samples: [u8; 16] = [
+        0, 1, 2, 3, 7, 15, 31, 63, 64, 127, 128, 129, 192, 223, 254, 255,
+    ];
+    for second in samples {
+        let first = second ^ 0xa5;
+        let third = second ^ 0x5a;
+        for input in [vec![first], vec![first, second], vec![
+            first, second, third, 0x7c,
+        ]] {
+            let second_eof = input.len() < 2;
+            let steps = if second_eof {
+                119
+            } else {
+                175
+            };
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                loaded.memory().to_vec(),
+                input.clone(),
+                ProfileRegisters::default(),
+            )
+            .map_err(|error| error.to_string())?;
+            let mut trace = Vec::new();
+            assert_eq!(
+                vm.run_traced(steps, &mut |step| trace.push(*step))
+                    .map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps,
+                },
+                "input={input:?}",
+            );
+            assert_eq!(vm.output(), &[
+                first,
+                if second_eof {
+                    30
+                } else {
+                    154
+                }
+            ]);
+            assert_eq!(vm.input_consumed(), input.len().min(3));
+            assert_eq!(trace[53].input, Some(TraceInput::Byte(first)));
+            assert_eq!(
+                trace[63].input,
+                Some(if second_eof {
+                    TraceInput::EndOfInput
+                } else {
+                    TraceInput::Byte(second)
+                }),
+            );
+            let reads = trace
+                .iter()
+                .filter_map(|step| step.input)
+                .collect::<Vec<_>>();
+            if second_eof {
+                assert_eq!(reads.len(), 2);
+                assert_eq!(trace.len(), 119);
+            } else {
+                assert_eq!(reads.len(), 3);
+                assert_eq!(
+                    trace[171].input,
+                    Some(
+                        input
+                            .get(2)
+                            .copied()
+                            .map_or(TraceInput::EndOfInput, TraceInput::Byte,)
+                    ),
+                );
+                assert_eq!(trace[171].before.registers.code_pointer, 101);
+                assert_eq!(trace.len(), 175);
+            }
+        }
+    }
+    Ok(())
+}

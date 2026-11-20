@@ -73,6 +73,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the physical second-input EOF branch now guards a
+  **third** signed guest read at revisited C101. First-pass C101 `p`
+  makes one independent fifteen-trit state write at M[7,174,353]; its
+  encryption becomes `/` only on the second-byte success arm. EOF as
+  the second word skips this third read, whereas third-read EOF remains
+  an explicit guest input attempt without byte consumption. Seven
+  complete source-bound, independent arithmetic/path/I/O admissions and
+  48 further binary/truncation VM paths pass. Altered third-read event,
+  I/O step or C101 data write refuses. Both arms halt in 119/175
+  steps. The original full C23 source was rerun: native -O0/-O2 controls
+  pass, but guest publication still refuses its unlinked seven-block
+  CFG. Guest C32 state, phi copies, EOF backedge and checksum parity
+  remain open; this is a bounded physical input-control primitive only.
+
 - On 2026-11-20, an actual 132-cell N15 guest now reads/echoes its
   first signed word, then takes a **second-input-dependent** EOF/byte
   branch. C63 `/` precedes the original C64 crazy classifier; its byte

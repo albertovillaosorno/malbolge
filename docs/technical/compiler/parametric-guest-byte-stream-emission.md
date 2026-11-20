@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Second-input-dependent *third* read after a physical branch (2026-11-20)
+
+The 132-cell N15 classifier now has an additional source-built variant
+that **executes a third physical `/` only when its second input is a
+successful byte**. The first C53 `/` is echoed at C54, the second C63
+`/` selects the original branch through C64..C114, and the successful
+arm revisits C101. At first execution C101 is a real `p`, writing
+M[7,174,353] from the loader's 134 using the C82 accumulator; XLAT2
+then turns this same code cell into `/` for the successful-arm revisit.
+On second-input EOF, that revisit never occurs. A successful second
+input followed by truncated third input still attempts the final `/`
+and reports true guest EOF without consuming a byte. The original fixed
+branch markers are unchanged. Both complete arms still halt in
+119/175 instructions; no host callback supplies guest I/O.
+
+Seven separately constructed exact-path witnesses independently derive
+all physical writes from the fifteen-trit truth table and bind full
+input/output event order, encryption phase, frame isolation, and source
+identity. Forged C101 data, third-read event, and I/O position refuse.
+A separate 48-case NUL/high/binary/truncated/unread-suffix matrix runs
+the actual profile VM and checks the conditional input effect.
+The original C23 mutable checksum was reattempted after this addition:
+native -O0/-O2 outputs agree with the five independent controls, while
+target lowering still explicitly rejects its unlinked seven-block CFG.
+This physical primitive does not carry the third word into source-C
+storage, normalize signed C23 EOF, or implement the checksum's runtime
+arithmetic, phi movement, or repeatable EOF loop. P2 remains incomplete.
+
 ### Second-input-dependent EOF branch after the first echo (2026-11-20)
 
 A new 132-cell graphical N15 candidate moves the existing four-`p` EOF
