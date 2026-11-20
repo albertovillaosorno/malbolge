@@ -738,9 +738,74 @@ fn minimum_operation_cells(
     )
 }
 
+// Proposed instruction effects must preserve the original SSA read order and
+// result, even for computed values whose word writes are not yet executable.
+// Constants are the only operations allowed to supply literal word effects.
+fn validate_code_operation_operands(
+    instruction: &GuestPlacedInstruction,
+) -> Result<(), GuestCodePlacementError> {
+    let refusal = GuestCodePlacementError::InvalidCodePlacement;
+    let (read_values, write_value) =
+        super::state_operations::operand_values(&instruction.instruction)
+            .map_err(|_| refusal)?;
+    if read_values.len() != instruction.reads.len()
+        || read_values
+            .iter()
+            .zip(&instruction.reads)
+            .any(|(expected, actual)| expected.value() != actual.value)
+        || write_value.map(super::typed::ValueId::value)
+            != instruction.write.map(|slot| slot.value)
+        || (!matches!(
+            instruction.instruction,
+            Instruction::ConstantInteger { .. }
+        ) && !instruction.constant_cells.is_empty())
+    {
+        return Err(refusal);
+    }
+    let valid = |slot: &GuestPlacedOperand| {
+        let expected_words = match slot.type_kind {
+            TernaryCfgScalarKind::I32 | TernaryCfgScalarKind::U32 => 2,
+            TernaryCfgScalarKind::Bool
+            | TernaryCfgScalarKind::I8
+            | TernaryCfgScalarKind::I16
+            | TernaryCfgScalarKind::U8
+            | TernaryCfgScalarKind::U16 => 1,
+        };
+        slot.words == expected_words
+            && slot
+                .address
+                .checked_add(expected_words)
+                .is_some_and(|end| end <= CURRENT_WORD_COUNT)
+    };
+    if instruction.reads.iter().any(|slot| !valid(slot))
+        || instruction.write.is_some_and(|slot| !valid(&slot))
+    {
+        return Err(refusal);
+    }
+    let translated = |slot: GuestPlacedOperand| GuestStorageValue {
+        offset: slot.address,
+        type_kind: slot.type_kind,
+        value: slot.value,
+        words: slot.words,
+    };
+    let reads = instruction
+        .reads
+        .iter()
+        .copied()
+        .map(translated)
+        .collect::<Vec<_>>();
+    super::state_operations::validate_operation_operands(
+        &instruction.instruction,
+        &reads,
+        instruction.write.map(translated),
+    )
+    .map_err(|_| refusal)
+}
+
 fn required_operation_effects(
     instruction: &GuestPlacedInstruction,
 ) -> Result<Vec<GuestCodeOperationEffect>, GuestCodePlacementError> {
+    validate_code_operation_operands(instruction)?;
     let mut effects = Vec::new();
     let input_semantics = match &instruction.instruction {
         Instruction::Getchar { result, .. } => Some((
@@ -1442,6 +1507,100 @@ mod tests {
         instruction.constant_cells.clear();
         instruction.write = Some(GuestPlacedOperand { words: 0, ..operand });
         assert_eq!(required_operation_effects(&instruction), refusal);
+    }
+
+    #[test]
+    fn computed_operation_effects_refuse_forged_literals_and_operand_bindings()
+    {
+        use super::super::ternary::TernaryCfgScalarKind;
+        use super::super::typed::{
+            BinaryOp, CastOp, CompareOp, Instruction, SourcePosition,
+            SourceSpan, TypeId, ValueId,
+        };
+        use super::{
+            GuestCodePlacementError, GuestPlacedInstruction,
+            GuestPlacedLiteralCell, GuestPlacedOperand,
+            required_operation_effects,
+        };
+
+        let at = |address, value, type_kind, words| GuestPlacedOperand {
+            address,
+            type_kind,
+            value,
+            words,
+        };
+        let left = at(4100, 1, TernaryCfgScalarKind::U32, 2);
+        let right = at(4102, 2, TernaryCfgScalarKind::U32, 2);
+        let result = at(4104, 3, TernaryCfgScalarKind::U32, 2);
+        let source = SourcePosition::new(0, 1, 1);
+        let mut placed = GuestPlacedInstruction {
+            constant_cells: Vec::new(),
+            instruction: Instruction::Binary {
+                left: ValueId::new(1),
+                operation: BinaryOp::Xor,
+                result: ValueId::new(3),
+                right: ValueId::new(2),
+                type_id: TypeId::new(1),
+            },
+            reads: vec![left, right],
+            span: SourceSpan::new(source, source),
+            write: Some(result),
+        };
+        assert!(required_operation_effects(&placed).is_ok());
+        let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+        placed.constant_cells = vec![
+            GuestPlacedLiteralCell { address: 4104, word: 0 },
+            GuestPlacedLiteralCell { address: 4105, word: 0 },
+        ];
+        assert_eq!(required_operation_effects(&placed), refusal);
+        placed.constant_cells.clear();
+        placed.reads.swap(0, 1);
+        assert_eq!(required_operation_effects(&placed), refusal);
+        placed.reads = vec![left, at(4102, 9, TernaryCfgScalarKind::U32, 2)];
+        assert_eq!(required_operation_effects(&placed), refusal);
+        placed.reads = vec![left, right];
+        placed.write = Some(at(4104, 9, TernaryCfgScalarKind::U32, 2));
+        assert_eq!(required_operation_effects(&placed), refusal);
+        placed.write = Some(result);
+        placed.reads[0].words = 1;
+        assert_eq!(required_operation_effects(&placed), refusal);
+
+        let comparison = at(4106, 4, TernaryCfgScalarKind::Bool, 1);
+        placed.reads = vec![left, right];
+        placed.write = Some(comparison);
+        placed.instruction = Instruction::Compare {
+            left: ValueId::new(1),
+            operation: CompareOp::Equal,
+            result: ValueId::new(4),
+            right: ValueId::new(2),
+            type_id: TypeId::new(2),
+        };
+        assert!(required_operation_effects(&placed).is_ok());
+        placed
+            .constant_cells
+            .push(GuestPlacedLiteralCell { address: 4106, word: 1 });
+        assert_eq!(required_operation_effects(&placed), refusal);
+        placed.constant_cells.clear();
+        placed.reads[0].words = 1;
+        assert_eq!(required_operation_effects(&placed), refusal);
+
+        let converted = at(4107, 5, TernaryCfgScalarKind::U8, 1);
+        placed.instruction = Instruction::Cast {
+            operation: CastOp::Truncate,
+            result: ValueId::new(5),
+            type_id: TypeId::new(3),
+            value: ValueId::new(1),
+        };
+        placed.reads = vec![left];
+        placed.write = Some(converted);
+        assert!(required_operation_effects(&placed).is_ok());
+        placed.reads.clear();
+        assert_eq!(required_operation_effects(&placed), refusal);
+        placed.reads.push(left);
+        placed
+            .constant_cells
+            .push(GuestPlacedLiteralCell { address: 4107, word: 0 });
+        assert_eq!(required_operation_effects(&placed), refusal);
     }
 
     #[test]

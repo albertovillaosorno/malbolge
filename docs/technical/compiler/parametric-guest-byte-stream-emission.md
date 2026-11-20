@@ -52,10 +52,17 @@ red-first test exercises both input kinds and the checksum-style final
 byte output. Code-site literal stores additionally recheck the original
 source integer bits using the same canonical N15 word encoder as typed
 placement; forged literal values, result identities, out-of-memory words,
-and zero-width targets all fail closed. These are necessary code-linker
-invariants, not an executable. The two input conversions, unsigned arithmetic/XOR, conditional branches,
-parallel phi copies and live EOF backedge still lack a unified verified
-executable linker. No checksum guest artifact is emitted; P2 remains open.
+and zero-width targets all fail closed. Computed operation sites also
+recheck each source SSA operand in original order, result identity, full
+scalar width and current-profile address range. Only source integer
+constants may supply literal writes: a forged same-address literal for
+an unsigned XOR, comparison or narrowing cast cannot stand in for guest
+arithmetic. Red-first adversarial tests cover these three operation kinds,
+including reordered reads and truncated U32 operands. These are necessary
+code-linker invariants, not an executable. The two input conversions,
+unsigned arithmetic/XOR, conditional branches, parallel phi copies and
+live EOF backedge still lack a unified verified executable linker. No
+checksum guest artifact is emitted; P2 remains open.
 
 ### First signed C23 read cannot be erased by one opcode (2026-11-20)
 

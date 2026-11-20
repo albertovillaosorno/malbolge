@@ -161,7 +161,7 @@ pub(super) fn literal_cells(
         .collect()
 }
 
-fn operand_values(
+pub(super) fn operand_values(
     instruction: &Instruction,
 ) -> Result<OperandValues, TypedCfgAdapterError> {
     match instruction {
@@ -189,7 +189,7 @@ fn operand_values(
     }
 }
 
-fn validate_operation_operands(
+pub(super) fn validate_operation_operands(
     instruction: &Instruction,
     reads: &[GuestStorageValue],
     write: Option<GuestStorageValue>,
