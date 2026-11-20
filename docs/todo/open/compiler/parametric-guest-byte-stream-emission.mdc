@@ -73,6 +73,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, one exact 91-cell N15 physical source template now folds
+  one, two or three distinct real guest `/` reads through repeated same-cell
+  M95 `p` writes after nine actual loader rotations. Two valid loader tails
+  and 138 independent 46/54/62-step normative VM paths cover true EOF,
+  truncated and binary inputs, final state and read/modify/write provenance;
+  18 additional third-byte cases confirm it changes physical output and
+  storage. The previous 39-case two-input regression remains green. Fourth
+  input, signed C23 conversion, C32 arithmetic, dynamic control/phi writes
+  and the original mutable source-C checksum still refuse physical linkage;
+  no checksum guest artifact or P2 parity is claimed.
+
 - On 2026-11-19, the unchanged source-locked seven-block checksum now
   carries its **canonical function entry**, one separate **return site**, a
   source-bounded proposed terminator entry per block and the original typed

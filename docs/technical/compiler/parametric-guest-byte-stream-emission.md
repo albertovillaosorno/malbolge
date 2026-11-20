@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Sequential physical guest input folds (2026-11-19)
+
+The source-generated, 91-cell N15 `,H`/`CH` loader now supports one, two,
+or three **real signed input attempts** followed by repeated guest `p` writes
+to the same M95 state cell. Nine reached `*` rotations prepare the loader
+word; each following input crosses the actual three-`j` pointer-reset
+chain, reads another stdin word, then updates M95 from its previous value.
+The source emits the final state's low byte and halts in exactly 46, 54,
+or 62 normative VM steps for one, two, or three inputs respectively.
+
+The parameterized constructor preserves the preexisting two-input byte-exact
+layout and refuses input counts outside 1..3, historical profiles and
+loader tails without the required M96 reset seed. A new independent
+fifteen-trit oracle checks all nine rotations, every read/reset/write,
+actual input consumption, the emitted byte and the final state for **138**
+bounded VM paths over two source seeds and binary, EOF, truncated and unread
+suffix streams. A separate 18-case guest regression confirms that changing
+the third input changes the resulting stored state and output. The earlier
+39-path two-input regression still passes unchanged.
+
+This is a reusable **physical Malbolge state-fold primitive**, not C23
+integer addition, signed EOF-to-`0xff` conversion, a dynamic byte stream
+loop, or source-locked CFG execution. A fourth event would traverse source
+cell 62, which the current pointer reset also needs as unencrypted data;
+that unsupported continuation correctly refuses. The original seven-block
+mutable EOF checksum still cannot publish guest code, and P2 stays open.
+
 ### Source-locked function and terminating-control entry proposals
 
 The unchanged seven-block C23 EOF checksum now exposes one proposed **function

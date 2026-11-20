@@ -50,6 +50,11 @@ pub enum RepeatedLoaderRotationError {
         /// Requested number of data writes.
         rotations: u8,
     },
+    /// The fixed reset chain admits one through three sequential input folds.
+    InvalidInputCount {
+        /// Requested number of actual guest input attempts.
+        inputs: u8,
+    },
     /// A source position cannot encode the requested opcode.
     MissingGraphicalEncoding {
         /// Source position.
@@ -247,6 +252,49 @@ pub fn build_seeded_repeated_state_write_source(
     Ok(source)
 }
 
+/// Build a bounded guest stream fold over one mutable N15 memory cell.
+///
+/// Each input attempt is an actual `/`, and each subsequent `p` consumes
+/// the previous guest write at M95 before updating that same cell. This is
+/// *not* C arithmetic: the fold uses Malbolge `crazy` and raw N15 EOF.
+///
+/// The 91-cell source supports one, two or three input events. Every event
+/// after the first requires a three-`j` pointer reset, one read, another
+/// three-`j` reset and one `p` write. A fourth event would execute source
+/// cell 62, encrypting its mandatory `94` pointer constant before the next
+/// reset; extending this geometry without a new physical proof is forbidden.
+/// The caller must independently admit the guest path in the normative VM.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles, unknown loader tails, a count outside the
+/// exact physical geometry or an unavailable graphical instruction byte.
+pub fn build_seeded_guest_input_state_fold_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+    inputs: u8,
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    if !(1..=3).contains(&inputs) {
+        return Err(RepeatedLoaderRotationError::InvalidInputCount { inputs });
+    }
+    let mut source = build_seeded_repeated_state_write_source(profile, tail)?;
+    for event in 1..usize::from(inputs) {
+        let start = 44 + (event - 1) * 8;
+        for position in start..=start + 2 {
+            set(&mut source, position, b'j')?;
+        }
+        set(&mut source, start + 3, profile.input_instruction())?;
+        for position in start + 4..=start + 6 {
+            set(&mut source, position, b'j')?;
+        }
+        set(&mut source, start + 7, b'p')?;
+    }
+    let output = 44 + (usize::from(inputs) - 1) * 8;
+    set(&mut source, output, profile.output_instruction())?;
+    set(&mut source, output + 1, b'v')?;
+    Ok(source)
+}
+
 /// Update one physical guest data word using two distinct input events.
 ///
 /// Nine reached `*` instructions prepare M95. The first `/` at C39 and
@@ -267,19 +315,7 @@ pub fn build_seeded_two_input_state_update_source(
     profile: &ProfileDescriptor,
     tail: [u8; 2],
 ) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
-    let mut source = build_seeded_repeated_state_write_source(profile, tail)?;
-    for (position, opcode) in [
-        (47, profile.input_instruction()),
-        (48, b'j'),
-        (49, b'j'),
-        (50, b'j'),
-        (51, b'p'),
-        (52, profile.output_instruction()),
-        (53, b'v'),
-    ] {
-        set(&mut source, position, opcode)?;
-    }
-    Ok(source)
+    build_seeded_guest_input_state_fold_source(profile, tail, 2)
 }
 
 /// Repair the C23 seed's loader pointer trap and perform physical rotations.

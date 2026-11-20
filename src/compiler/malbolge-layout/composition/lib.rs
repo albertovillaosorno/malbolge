@@ -91,6 +91,7 @@ pub use loader_rotation_source::{
     RepeatedLoaderRotationError, build_c23_seed_nine_rotated_operand_source,
     build_c23_seed_rotated_input_echo_source,
     build_repeated_loader_rotation_source,
+    build_seeded_guest_input_state_fold_source,
     build_seeded_repeated_loader_rotation_source,
     build_seeded_repeated_state_write_source,
     build_seeded_rotated_input_crazy_source,
