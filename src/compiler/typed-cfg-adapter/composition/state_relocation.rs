@@ -742,17 +742,20 @@ fn required_operation_effects(
     instruction: &GuestPlacedInstruction,
 ) -> Result<Vec<GuestCodeOperationEffect>, GuestCodePlacementError> {
     let mut effects = Vec::new();
-    let input_semantics = match instruction.instruction {
-        Instruction::Getchar { .. } => {
-            Some(GuestCodeInputSemantics::SignedC23 {
+    let input_semantics = match &instruction.instruction {
+        Instruction::Getchar { result, .. } => Some((
+            GuestCodeInputSemantics::SignedC23 {
                 raw_eof_word: CURRENT_WORD_COUNT.saturating_sub(1),
                 c23_eof_cells: encode_i32_cells(u32::MAX),
-            })
+            },
+            result.value(),
+        )),
+        Instruction::ByteInput { result, .. } => {
+            Some((GuestCodeInputSemantics::ByteU8, result.value()))
         },
-        Instruction::ByteInput { .. } => Some(GuestCodeInputSemantics::ByteU8),
         _ => None,
     };
-    if let Some(semantics) = input_semantics {
+    if let Some((semantics, result)) = input_semantics {
         let destination = instruction
             .write
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
@@ -766,7 +769,11 @@ fn required_operation_effects(
                     && destination.words == 1
             },
         };
-        if !correctly_typed {
+        if !correctly_typed
+            || destination.value != result
+            || !instruction.reads.is_empty()
+            || !instruction.constant_cells.is_empty()
+        {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
         effects
@@ -1189,6 +1196,103 @@ mod tests {
         FramePlacements, GuestFramePlacement, GuestPlacedPhiEdge,
         GuestStateFrame, TypedCfgAdapterError, place_operations,
     };
+
+    #[test]
+    fn input_effects_refuse_forged_width_kind_and_result_identity() {
+        use super::super::ternary::TernaryCfgScalarKind;
+        use super::super::typed::{
+            Instruction, SourcePosition, SourceSpan, TypeId, ValueId,
+        };
+        use super::{
+            GuestCodeInputSemantics, GuestCodeOperationEffect,
+            GuestCodePlacementError, GuestPlacedInstruction,
+            GuestPlacedOperand, required_operation_effects,
+        };
+
+        let destination = GuestPlacedOperand {
+            address: 4096,
+            type_kind: TernaryCfgScalarKind::I32,
+            value: 7,
+            words: 2,
+        };
+        let source = SourcePosition::new(0, 1, 1);
+        let mut instruction = GuestPlacedInstruction {
+            constant_cells: Vec::new(),
+            instruction: Instruction::Getchar {
+                result: ValueId::new(7),
+                type_id: TypeId::new(0),
+            },
+            reads: Vec::new(),
+            span: SourceSpan::new(source, source),
+            write: Some(destination),
+        };
+        assert_eq!(
+            required_operation_effects(&instruction),
+            Ok(vec![
+                GuestCodeOperationEffect::Input {
+                    destination,
+                    semantics: GuestCodeInputSemantics::SignedC23 {
+                        raw_eof_word: 14_348_906,
+                        c23_eof_cells: [4_644_102, 299],
+                    },
+                },
+                GuestCodeOperationEffect::Store {
+                    destination: 4096,
+                    literal: None,
+                },
+                GuestCodeOperationEffect::Store {
+                    destination: 4097,
+                    literal: None,
+                },
+            ])
+        );
+        let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+        instruction.write =
+            Some(GuestPlacedOperand { value: 8, ..destination });
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.write =
+            Some(GuestPlacedOperand { words: 1, ..destination });
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.write = Some(GuestPlacedOperand {
+            type_kind: TernaryCfgScalarKind::U8,
+            ..destination
+        });
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.write = None;
+        assert_eq!(required_operation_effects(&instruction), refusal);
+
+        let byte = GuestPlacedOperand {
+            address: 4100,
+            type_kind: TernaryCfgScalarKind::U8,
+            value: 9,
+            words: 1,
+        };
+        instruction.instruction = Instruction::ByteInput {
+            result: ValueId::new(9),
+            type_id: TypeId::new(1),
+        };
+        instruction.write = Some(byte);
+        assert_eq!(
+            required_operation_effects(&instruction),
+            Ok(vec![
+                GuestCodeOperationEffect::Input {
+                    destination: byte,
+                    semantics: GuestCodeInputSemantics::ByteU8,
+                },
+                GuestCodeOperationEffect::Store {
+                    destination: 4100,
+                    literal: None,
+                },
+            ])
+        );
+        instruction.write = Some(GuestPlacedOperand { value: 10, ..byte });
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.write = Some(destination);
+        assert_eq!(required_operation_effects(&instruction), refusal);
+        instruction.write = Some(byte);
+        instruction.reads.push(byte);
+        assert_eq!(required_operation_effects(&instruction), refusal);
+    }
 
     #[test]
     fn rejects_orphan_duplicate_and_missing_control_phi_bindings() {
