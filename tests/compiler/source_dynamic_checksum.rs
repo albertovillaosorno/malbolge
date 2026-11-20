@@ -1395,7 +1395,9 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     assert_eq!(all_operation_sites, 19);
     // Every minimum reservation must bind its independent physical effects,
     // including the real input opcode before both signed C32 stores.
-    use super::typed_cfg_adapter::state_relocation::GuestCodeOperationEffect;
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeInputSemantics, GuestCodeOperationEffect,
+    };
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
     let mut stores = 0usize;
@@ -1417,11 +1419,21 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
         for (index, effect) in effects.iter().enumerate() {
             assert_eq!(effect.code_address, site.start + index as u32);
             match effect.effect {
-                GuestCodeOperationEffect::Input => {
+                GuestCodeOperationEffect::Input { destination, semantics } => {
                     assert!(matches!(
                         original.instruction,
                         PlacedInstruction::Getchar { .. }
                     ));
+                    assert_eq!(original.write, Some(destination));
+                    assert_eq!(destination.words, 2, "C23 int is full-width");
+                    assert_eq!(
+                        semantics,
+                        GuestCodeInputSemantics::SignedC23 {
+                            raw_eof_word: 14_348_906,
+                            c23_eof_cells: [4_644_102, 299],
+                        },
+                        "raw N15 EOF is not the C23 minus-one value"
+                    );
                     assert_eq!(index, 0, "the signed read precedes all stores");
                     assert_eq!(
                         effects.len(),

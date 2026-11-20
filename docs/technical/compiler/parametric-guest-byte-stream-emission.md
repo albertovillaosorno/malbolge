@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-bound C23 signed input code-site obligation (2026-11-20)
+
+The unchanged complete seven-block mutable C23 checksum still passes all
+five native `-O0`/`-O2` binary controls and fails closed before physical
+publication. Its **addressed code-placement stage** now distinguishes an
+unsigned byte read from a signed C23 `getchar`. Each of the two canonical
+`getchar` operations binds its exact two-word I32 destination and the
+required N15 raw-EOF-to-C23 normalization contract: raw N15 EOF is
+14,348,906, whereas C23 `-1` must occupy guest cells `[4,644,102, 299]`.
+The destination write sites stay distinct from the raw `/` instruction,
+and the full-width result cannot be silently treated as a U8 read. A
+red-first source-locked regression verifies both effects in the original
+checksum's proposed seven-block layout; all 197 frontend-adapter library
+tests pass.
+
+This is a **physical linker obligation**, not a VM-executed normalization
+routine or proof that the proposed code cells contain Malbolge opcodes.
+The two input conversions, unsigned arithmetic/XOR, conditional branches,
+parallel phi copies and live EOF backedge still lack a unified verified
+executable linker. No checksum guest artifact is emitted; P2 remains open.
+
 ### First signed C23 read cannot be erased by one opcode (2026-11-20)
 
 The original seven-block mutable checksum was rerun unchanged through

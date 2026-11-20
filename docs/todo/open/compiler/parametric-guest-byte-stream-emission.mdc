@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the original seven-block mutable checksum still passes
+  its five independent native binary controls but publishes no guest.
+  The source-authenticated physical code-site plan now binds both real
+  signed `getchar` effects to exact two-cell C32 result addresses and an
+  explicit N15 EOF=14,348,906 to C23 `-1`=`[4,644,102, 299]`
+  normalization obligation. A red-first regression verifies both distinct
+  read sites, the full-width destination and unchanged store/control
+  obligations. All 197 frontend-adapter library tests pass. This is
+  **not** an executed conversion, arithmetic linker or EOF loop; P2 stays
+  open until complete source-to-guest parity is proved.
+
 - On 2026-11-20, the original mutable EOF checksum still refuses a
   guest artifact after typed-CFG admission; all five native/oracle inputs
   remain protected. A bounded real-VM attempt to remove the physically

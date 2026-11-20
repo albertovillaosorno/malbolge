@@ -38,8 +38,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::phi_edge_transfers::PrelinkCfgPlan;
 use super::state_storage::{
-    GuestCellCopy, GuestFramePlacement, GuestStateFrame, GuestStorageValue,
-    placed_cell, validate_frame_placement,
+    CURRENT_WORD_COUNT, GuestCellCopy, GuestFramePlacement, GuestStateFrame,
+    GuestStorageValue, encode_i32_cells, placed_cell, validate_frame_placement,
 };
 use super::ternary::TernaryCfgScalarKind;
 use super::typed::{Instruction, SourceSpan, Terminator};
@@ -320,6 +320,25 @@ pub struct GuestCodeOperationSite {
     pub ordinal: u32,
 }
 
+/// Exact interpretation owed by one physically executed guest input.
+///
+/// A signed C23 `getchar` has two *different* EOF representations: the raw
+/// current-profile VM sentinel and the source C `int` value (-1). The target
+/// linker must realize that conversion in guest instructions before both
+/// destination cells are written. No host-side input substitution is allowed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GuestCodeInputSemantics {
+    /// One unsigned byte input; no C23 signed EOF conversion is implied.
+    ByteU8,
+    /// Convert all 256 successful bytes and raw VM EOF to C23 `int` words.
+    SignedC23 {
+        /// The target-profile's physical input accumulator on true EOF.
+        raw_eof_word: u32,
+        /// Canonical full-width two-word representation of C23 EOF (-1).
+        c23_eof_cells: [u32; 2],
+    },
+}
+
 /// A required physical effect of one typed operation, not an opcode.
 ///
 /// Actual address-sensitive code may need more instructions for pointer
@@ -327,8 +346,13 @@ pub struct GuestCodeOperationSite {
 /// site must never be treated as proof that an opcode performs its effect.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GuestCodeOperationEffect {
-    /// A real guest input instruction, distinct from destination writes.
-    Input,
+    /// Real input, with its source-bound destination and conversion contract.
+    Input {
+        /// Full-width typed result; physical input alone does not write it.
+        destination: GuestPlacedOperand,
+        /// Required raw byte or signed C23 interpretation after the read.
+        semantics: GuestCodeInputSemantics,
+    },
     /// One output of the addressed byte operand.
     Output {
         /// Source SSA byte cell for the required output effect.
@@ -718,11 +742,35 @@ fn required_operation_effects(
     instruction: &GuestPlacedInstruction,
 ) -> Result<Vec<GuestCodeOperationEffect>, GuestCodePlacementError> {
     let mut effects = Vec::new();
-    if matches!(
-        instruction.instruction,
-        Instruction::Getchar { .. } | Instruction::ByteInput { .. }
-    ) {
-        effects.push(GuestCodeOperationEffect::Input);
+    let input_semantics = match instruction.instruction {
+        Instruction::Getchar { .. } => {
+            Some(GuestCodeInputSemantics::SignedC23 {
+                raw_eof_word: CURRENT_WORD_COUNT.saturating_sub(1),
+                c23_eof_cells: encode_i32_cells(u32::MAX),
+            })
+        },
+        Instruction::ByteInput { .. } => Some(GuestCodeInputSemantics::ByteU8),
+        _ => None,
+    };
+    if let Some(semantics) = input_semantics {
+        let destination = instruction
+            .write
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let correctly_typed = match semantics {
+            GuestCodeInputSemantics::SignedC23 { .. } => {
+                destination.type_kind == TernaryCfgScalarKind::I32
+                    && destination.words == 2
+            },
+            GuestCodeInputSemantics::ByteU8 => {
+                destination.type_kind == TernaryCfgScalarKind::U8
+                    && destination.words == 1
+            },
+        };
+        if !correctly_typed {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        effects
+            .push(GuestCodeOperationEffect::Input { destination, semantics });
     }
     if matches!(instruction.instruction, Instruction::ByteOutput { .. }) {
         let [source] = instruction.reads.as_slice() else {
