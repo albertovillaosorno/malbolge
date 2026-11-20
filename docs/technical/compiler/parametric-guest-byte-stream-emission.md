@@ -119,8 +119,13 @@ seed, data reads, exact `p` deltas and independent ternary result. No
 later computation can reconstruct which of these bytes was read from
 that one saved word. This rules out **only this single-p save using
 M97's existing seed**, not a relocated lossless store, a modified seed,
-a different data address or a general single-read C23 converter. The
-P2 checksum remains unlinked and produces no guest artifact.
+a different data address or a general single-read C23 converter. For
+comparison, the same exact `Iy` loader initializes M102=121, and
+`crazy(121, raw)` is **injective across all 257 input classes**. A
+future verified pointer relocation would have to reach that distinct
+cell without losing the original accumulator or corrupting subsequent
+control. No C38-to-M102 guest path has been executed or admitted.
+The P2 checksum remains unlinked and produces no guest artifact.
 
 ### Exact third signed-word recovery after guest storage (2026-11-20)
 

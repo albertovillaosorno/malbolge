@@ -1763,6 +1763,17 @@ fn first_signed_read_cannot_be_saved_losslessly_by_one_c38_p()
         .map(|raw| scalar_crazy(original_word, raw))
         .collect::<BTreeSet<_>>();
     assert_eq!(distinct_images.len(), 37, "257 inputs lose identity");
+    // A different loader-derived word is injective on the same 257 classes.
+    // This is a candidate for future pointer relocation, NOT an executed
+    // C38 save or proof that the converter can reach M102.
+    let alternate_word =
+        loaded.memory_word(102).map_err(|error| error.to_string())?;
+    assert_eq!(alternate_word, 121);
+    let distinct_alternate = (0..=255u32)
+        .chain(once(profile.eof_word()))
+        .map(|raw| scalar_crazy(alternate_word, raw))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(distinct_alternate.len(), 257);
 
     let mut stored = Vec::new();
     for byte in [1u8, 2] {
