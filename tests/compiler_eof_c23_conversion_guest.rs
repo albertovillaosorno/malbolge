@@ -1141,3 +1141,111 @@ fn fixed_c23_prefix_has_no_one_jump_shorter_graphical_output_return()
     );
     Ok(())
 }
+
+// The source-authentic Iy pointer word M81=94 must halt when reached as
+// code. A reached i at C79 can skip it, but self-encryption belongs to the
+// indirect *target* C82 rather than the i instruction's original C79.
+// This positive terminated path is a control primitive, not C23 output.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "normative input and indirect-code-pointer traces"
+)]
+fn physical_indirect_jump_bypasses_the_source_locked_halt() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source =
+        layout::build_c23_nine_rotated_indirect_halt_probe_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    assert_eq!(source.get(81), Some(&94));
+    assert_eq!(source.get(80), Some(&82));
+    assert_eq!(source.get(82), Some(&80));
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    assert_eq!(
+        layout::build_c23_nine_rotated_indirect_halt_probe_source(
+            historical_profile(),
+        ),
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(loaded.memory_word(95), Ok(INITIAL_FIRST));
+    assert_eq!(loaded.memory_word(96), Ok(INITIAL_SECOND));
+    let mut cases = 0usize;
+    for input in once(Vec::new())
+        .chain(once(vec![0x5a]))
+        .chain((u8::MIN..=u8::MAX).map(|byte| vec![0x5a, byte]))
+        .chain(once(vec![0x5a, 0x81, 0x00, 0xff]))
+    {
+        let first = input.first().copied();
+        let second = input.get(1).copied();
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(82, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 82,
+            },
+        );
+        assert_eq!(trace.len(), 82);
+        for (position, byte) in [(37usize, first), (69, second)] {
+            assert_eq!(
+                trace[position].input,
+                Some(byte.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+            );
+        }
+        for (position, data, value) in
+            [(75usize, 87u32, 69u32), (76, 70, 81), (78, 83, 79)]
+        {
+            let step = &trace[position];
+            assert_eq!(step.decoded, Some(b'j'));
+            assert_eq!(step.before.registers.data_pointer, data);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(value)
+            );
+        }
+        let indirect = &trace[79];
+        assert_eq!(indirect.before.registers.code_pointer, 79);
+        assert_eq!(indirect.before.registers.data_pointer, 80);
+        assert_eq!(indirect.decoded, Some(b'i'));
+        assert_eq!(
+            indirect
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((80, 82)),
+        );
+        assert_eq!(indirect.after.registers.code_pointer, 83);
+        assert_eq!(indirect.after.registers.data_pointer, 81);
+        assert_eq!(trace[80].before.registers.code_pointer, 83);
+        assert_eq!(trace[80].decoded, Some(b'o'));
+        assert_eq!(trace[81].before.registers.code_pointer, 84);
+        assert_eq!(trace[81].decoded, Some(b'v'));
+        assert_eq!(vm.memory_word(82), Ok(66));
+        assert_eq!(vm.memory_word(80), Ok(82));
+        assert_eq!(vm.memory_word(81), Ok(94));
+        assert_eq!(vm.memory_word(95), Ok(7_138_732));
+        assert_eq!(vm.memory_word(96), Ok(INITIAL_SECOND));
+        assert_eq!(vm.output(), &[]);
+        assert_eq!(
+            vm.input_consumed(),
+            usize::from(first.is_some()) + usize::from(second.is_some())
+        );
+        cases = cases.saturating_add(1);
+    }
+    assert_eq!(cases, 259);
+    Ok(())
+}

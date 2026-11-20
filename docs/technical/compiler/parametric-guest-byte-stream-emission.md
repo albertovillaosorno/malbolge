@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Indirect C23 code-pointer bypass is physically executable (2026-11-19)
+
+A new 91-cell `Iy` guest source runs the same nine operand rotations and
+both C37/C69 signed input attempts, then replaces the unreachable direct
+C81 output path with a genuine C79 `i` code-pointer jump. C78 reads source
+M83=79, C79 reads M80=82 and transfers execution to C83 while encrypting
+M82 from 80 to 66. C83 executes `o` and C84 cleanly halts. The independent
+normative VM executes 259 complete 82-step paths over every successful
+second input, first/second EOF and an unread suffix, checking the exact
+input count, indirect pointer, target self-encryption, halt and retained
+M95=7,138,732/M96=121 operands. The historical profile is rejected.
+
+This is a physical **indirect control-transfer** primitive, not C23 byte
+conversion or source-C control flow. A tempting path that instead reads
+M82=80 after the `i` is invalid: `i` has already encrypted it to 66,
+redirecting the subsequent data-pointer jump into an executable code cell.
+No guest converted output, EOF loop, checksum artifact or native parity is
+claimed. The P2 end-to-end witness remains open.
+
 ### Fixed C23 tail has no one-jump-shorter output return (2026-11-19)
 
 The exact 91-cell `Iy` signed converter now has a bounded graph-search

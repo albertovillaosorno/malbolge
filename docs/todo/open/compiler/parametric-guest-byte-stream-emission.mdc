@@ -73,6 +73,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-19, a source-valid `Iy` late path executes a real C79
+  indirect `i` to C83 across the immovable C81 source pointer/halt word.
+  All 259 bounded 82-step normative VM traces confirm two signed inputs,
+  target-cell M82 self-encryption from 80 to 66, preserved rotated M95/M96,
+  no unexpected input/output and clean C84 halt. This closes a narrow
+  physical code-pointer relocation gap but performs no C23 conversion or
+  checksum loop. A candidate that treated M82 as unencrypted failed VM
+  validation, and no converted guest byte is emitted. P2 remains open.
+
 - On 2026-11-19, a bounded physical graph check of the existing nine-
   rotation C23 prefix confirms M95/M96 and D at the 74-step normative VM
   checkpoint, including the earlier read of M81=94. All graphical C82..C88

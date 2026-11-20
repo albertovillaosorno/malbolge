@@ -368,3 +368,47 @@ pub fn build_c23_nine_rotated_input_checkpoint_source(
     admit_c23_probe_graphical_source(&source)?;
     Ok(source)
 }
+
+/// Bypass the frozen C81 pointer/halt cell using a real indirect guest jump.
+///
+/// The nine Iy rotations and C37/C69 signed input attempts remain unchanged.
+/// After C78 resets D to M80, the C79 `i` reads M80=82 and enters C83,
+/// encrypting *M82* rather than C79 before the following `o` executes.
+/// C84 then halts cleanly without reading again, output or C23 conversion.
+/// This is a physical code-pointer relocation probe, not a C translator.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles and loader-invalid source cells. VM replay
+/// is still required to establish the indirect self-encryption transition.
+pub fn build_c23_nine_rotated_indirect_halt_probe_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source =
+        build_c23_nine_rotated_signed_conversion_without_output_source(
+            profile,
+        )?;
+    for (position, opcode) in [
+        (74, b'o'),
+        (75, b'j'),
+        (76, b'j'),
+        (77, b'o'),
+        (78, b'j'),
+        (79, b'i'),
+        (83, b'o'),
+        (84, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    // C78 j reads M83=79, and C79 i reads M80=82. The latter
+    // intentionally encrypts M82=80 to 66, a state change any later
+    // data-pointer routing must account for.
+    *source.get_mut(80).ok_or(
+        C23OperandProbeSourceError::InvalidPosition { position: 80 },
+    )? = 82;
+    *source.get_mut(82).ok_or(
+        C23OperandProbeSourceError::InvalidPosition { position: 82 },
+    )? = 80;
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
