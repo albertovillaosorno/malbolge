@@ -266,12 +266,12 @@ pub struct GuestCodeControlEdge {
     pub kind: GuestCodeEdgeKind,
     /// Canonical predecessor block identity.
     pub predecessor: u32,
-    /// Physical source-cell entry of the successor block.
-    pub target_address: u32,
     /// Copies of all original phi sources into scratch first.
     pub snapshots: Vec<GuestPlacedCellCopy>,
     /// Canonical successor block identity.
     pub successor: u32,
+    /// Physical source-cell entry of the successor block.
+    pub target_address: u32,
 }
 
 /// Addressed code-edge obligations attached to an authenticated data plan.
@@ -305,6 +305,13 @@ type PlacedFrames<'frame> = (Vec<GuestFramePlacement>, FramePlacements<'frame>);
 type BlockPlacements = BTreeMap<(u32, u32), GuestCodeBlockPlacement>;
 type EdgeKey = (u32, u32, GuestCodeEdgeKind, u32);
 type EdgePadPlacements = BTreeMap<EdgeKey, GuestCodeEdgePadPlacement>;
+type ValidatedCodeProposals = (BlockPlacements, EdgePadPlacements);
+
+struct CodeEdgeIndex<'index> {
+    pads: &'index EdgePadPlacements,
+    starts: &'index BlockPlacements,
+    used_pads: &'index mut Vec<GuestCodeEdgePadPlacement>,
+}
 
 fn locate_slot(
     frame: &GuestStateFrame,
@@ -574,7 +581,7 @@ fn validate_code_proposals(
     proposals: GuestCodeProposals<'_>,
     source_cells: u32,
     blocks: &[GuestPlacedBlock],
-) -> Result<(BlockPlacements, EdgePadPlacements), GuestCodePlacementError> {
+) -> Result<ValidatedCodeProposals, GuestCodePlacementError> {
     let GuestCodeProposals {
         code_blocks: proposed,
         edge_pads: proposed_pads,
@@ -632,12 +639,6 @@ fn validate_code_proposals(
     Ok((starts, pads))
 }
 
-struct CodeEdgeIndex<'index> {
-    pads: &'index EdgePadPlacements,
-    starts: &'index BlockPlacements,
-    used_pads: &'index mut Vec<GuestCodeEdgePadPlacement>,
-}
-
 fn proposed_code_edge(
     key: (u32, u32, GuestCodeEdgeKind),
     edge: &GuestPlacedControlEdge,
@@ -668,9 +669,9 @@ fn proposed_code_edge(
         function,
         kind,
         predecessor,
-        target_address,
         snapshots: edge.snapshots.clone(),
         successor: edge.successor,
+        target_address,
     })
 }
 
