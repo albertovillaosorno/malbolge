@@ -28,6 +28,19 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Phi-copy pads bind successor jump sites (2026-11-20)
+
+The addressed source-locked CFG now carries `pad_exit_address` for every
+edge with phi snapshots/commits. The address is the last reserved code
+cell in that predecessor-specific pad. The canonical checksum's four
+unselected edges bind exit sites C279, C303, C327 and C375, respectively;
+its four phi-free branch arms carry no pad exit. A source-backed,
+reordered-input regression validates each exit against its original edge
+identity, rather than selecting a runtime branch on the host.
+
+This is only an address obligation: no target `i` instruction, physical
+copy, conditional control or checksum is synthesized or verified.
+
 ### Phi-copy pads reserve their final transfer (2026-11-20)
 
 The original source-authenticated seven-block C23 checksum still has four

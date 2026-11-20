@@ -271,6 +271,10 @@ pub struct GuestCodeControlEdge {
     pub function: u32,
     /// Exact source control arm, not host-selected.
     pub kind: GuestCodeEdgeKind,
+    /// Last cell of this edge's phi pad, reserved for the successor jump.
+    /// None for phi-free edges that enter their successor directly.
+    /// This is a proposed location, not an executed or encoded jump.
+    pub pad_exit_address: Option<u32>,
     /// Canonical predecessor block identity.
     pub predecessor: u32,
     /// Copies of all original phi sources into scratch first.
@@ -725,6 +729,7 @@ fn proposed_code_edge(
         entry_address: pad.map_or(target_address, |placement| placement.start),
         function,
         kind,
+        pad_exit_address: pad.map(|placement| placement.end_exclusive - 1),
         predecessor,
         snapshots: edge.snapshots.clone(),
         successor: edge.successor,

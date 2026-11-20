@@ -1358,6 +1358,32 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
     assert_eq!(addressed.edge_pads, pads);
     assert_eq!(addressed.relocated.operation_blocks.len(), 7);
     assert_eq!(addressed.control_edges.len(), 8);
+    // Four distinct predecessor-owned phi pads must leave through their
+    // individually reserved final code cells; no branch arm inherits a
+    // synthetic pad exit when it has no phi transfers.
+    let mut pad_exit_sites = addressed
+        .control_edges
+        .iter()
+        .filter_map(|edge| {
+            edge.pad_exit_address
+                .map(|exit| (edge.predecessor, edge.successor, exit))
+        })
+        .collect::<Vec<_>>();
+    pad_exit_sites.sort_unstable();
+    assert_eq!(pad_exit_sites, [
+        (0, 1, 279),
+        (3, 5, 303),
+        (4, 5, 327),
+        (5, 1, 375),
+    ]);
+    assert_eq!(
+        addressed
+            .control_edges
+            .iter()
+            .filter(|edge| edge.pad_exit_address.is_none())
+            .count(),
+        4,
+    );
     assert_eq!(addressed.function_entries, vec![
         super::typed_cfg_adapter::state_relocation::GuestCodeFunctionEntry {
             function: 0,
@@ -1397,6 +1423,7 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
         entry_address,
         function,
         kind,
+        pad_exit_address,
         predecessor,
         snapshots,
         successor,
@@ -1443,6 +1470,17 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
                         && pad.kind == *kind
                 })
                 .map_or(*target_address, |pad| pad.start),
+        );
+        let pad = pads.iter().find(|pad| {
+            pad.function == *function
+                && pad.predecessor == *predecessor
+                && pad.successor == *successor
+                && pad.kind == *kind
+        });
+        assert_eq!(
+            *pad_exit_address,
+            pad.map(|pad| pad.end_exclusive - 1),
+            "only phi-bearing edges reserve post-copy jump cells"
         );
         assert_eq!(
             snapshots.as_slice(),

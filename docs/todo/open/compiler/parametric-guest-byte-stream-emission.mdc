@@ -73,6 +73,13 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, source-authenticated proposed phi pads explicitly bind
+  their final successor-transfer code address. The four actual checksum
+  entry/join/backedge pads yield C279, C303, C327 and C375, whereas all
+  four phi-free branch arms have no such exit. Original-source tests bind
+  these identities despite reversed proposal ordering. Addresses are not
+  guest opcodes, so C23 control remains unlinked.
+
 - On 2026-11-20, the source-authenticated checksum's four phi landing
   pads now reserve not just separate snapshot and commit operations but
   the required final control transfer to their successor. Red-first
