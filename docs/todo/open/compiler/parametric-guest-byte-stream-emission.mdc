@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the 132-cell guest's physically pinned loader
+  rejects a tempting all-six-one-trit M131 preseed. Altered graphical tail
+  `a}` plus C10/C12/C13 `p` creates a 256-byte-plus-EOF-injective
+  *mathematical* first fold, but changes M132 and real EOF-arm code;
+  the normative VM misses the original empty-stream 119-step halt.
+  A separate exact 18-candidate search retaining the original loader
+  pointer seed and C127..C129 code finds no injective C61 fold using only
+  C12/C13 `o`, `p`, `*`. This is a finite rejected physical layout,
+  not an impossibility proof or a linked C32 local. Original seven-block
+  checksum, arithmetic, phi and EOF backedge remain open; P2 stays open.
+
 - A follow-up N15 C61 `p` writes a second physical cell, M131, from the
   same live signed input before C62 updates M132; six real EOF/byte VM
   paths retain exact halts and I/O. Its `crazy(125, input)` aliases bytes

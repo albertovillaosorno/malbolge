@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Rejected byte-injective seed with broken physical EOF control (2026-11-20)
+
+An independent 15-trit oracle finds a mathematically injective first-input
+encoding: changing the 132-cell source tail from `-}` to `a}` and executing
+`p` at C10, C12 and C13 prepares M131=7,174,453 before C53's signed read.
+The low six trits are all ones, so C61 `crazy(M131, input)` distinguishes
+all 256 successful bytes and the distinct true EOF word. This is not yet an
+executable guest local. The changed tail shifts loader-derived M132 from
+7,174,350 to 7,174,337, and C10 also mutates code cell M128. The normative
+N15 guest on empty input does **not** reach the original 119-step EOF halt;
+at that bound it is still executing at C69. The candidate is rejected.
+
+A separate finite source-preservation bound keeps C9..C11 inert to protect
+reached EOF-arm code C127..C129, and requires the original M132 word for
+its existing pointer-chain proof. Among all graphical C130/C131 pairs, only
+`-}` and `~}` preserve that word. All 18 combinations of C12/C13 from
+`o`, `p` and `*` then fail to produce an injective first-input fold.
+This excludes only the stated fixed-source repair grammar, not a relocated
+layout, a redesigned pointer chain, or general C23 byte storage. No C32
+checksum opcode or source-to-guest artifact is admitted; P2 remains open.
+
 ### Two physical guest state writes before signed EOF control (2026-11-20)
 
 A follow-up physical variant changes only C61 from inert to `p` in the
