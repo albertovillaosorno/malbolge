@@ -52,6 +52,9 @@ mod source_mutable_input_literal;
 
 #[path = "source_dynamic_eof_checksum.rs"]
 mod source_dynamic_eof_checksum;
+
+#[path = "source_two_read_eof_branch.rs"]
+mod source_two_read_eof_branch;
 #[path = "source_signed_guarded_output.rs"]
 mod source_signed_guarded_output;
 
@@ -181,6 +184,10 @@ pub enum FrontendGuestMode {
     DiscardedGetchar,
     /// One real signed getchar, then a source-checked independent byte output.
     DiscardedInputLiteral,
+    /// Signed second read is output with C23 EOF-to-byte conversion.
+    SignedSecondEcho,
+    /// Real second signed input selects EOF or byte output after first echo.
+    TwoReadEofBranch,
     /// Source-authenticated dynamic EOF checksum typed CFG; target lowering unsupported.
     DynamicEofChecksum,
     /// Exactly three independently VM-witnessed different bytes.
@@ -3025,8 +3032,16 @@ pub fn canonical_guest_typed_ir_with_source(
         {
             return Ok((wire, FrontendGuestMode::DynamicEofChecksum));
         }
+        if let Ok(projection) = source_two_read_eof_branch::canonical_two_read_eof_branch(bytes, witness) {
+            return Ok(projection);
+        }
         if !source_scalar_tokens_match(bytes, witness) {
             return Err(FrontendJsonError::Unsupported);
+        }
+    }
+    if let Some(witness) = source {
+        if let Ok(projection) = signed_input_literal::canonical_signed_second_echo(bytes, witness) {
+            return Ok(projection);
         }
     }
     if source_byte_echo::is_unchecked_direct_eof_echo(bytes) {

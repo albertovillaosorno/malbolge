@@ -172,6 +172,8 @@ fn execute() -> Result<(), String> {
         FrontendGuestMode::AdjacentEcho => "",
         FrontendGuestMode::DiscardedGetchar => "--discarded-getchar",
         FrontendGuestMode::DiscardedInputLiteral => "--discarded-input-literal",
+        FrontendGuestMode::SignedSecondEcho => "--signed-second-echo",
+        FrontendGuestMode::TwoReadEofBranch => "--two-read-eof-branch",
         FrontendGuestMode::DynamicEofChecksum => {
             // The validated source-derived typed wire is the only authority
             // for this symbolic CFG; neither stdin nor SSA phi edges may be

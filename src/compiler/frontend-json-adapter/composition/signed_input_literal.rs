@@ -26,7 +26,7 @@
 //! Closed mixed-effect C source proof; no host input or output interpretation.
 
 use super::typed::{
-    BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
+    BasicBlock, BasicBlockSpec, CastOp, FrontendArtifact, FrontendArtifactSpec,
     FrontendFallthroughVoidFunctionSpec, FrontendReturnVoidFunction, Function,
     FunctionSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
     ModuleSpec, TypeDef, TypeEntry, TypeId, ValueId,
@@ -398,4 +398,157 @@ pub(super) fn canonical_signed_input_literal(
         write,
         byte,
     )
+}
+
+
+/// Authenticate a discarded signed read followed by one signed read fed to
+/// putchar. EOF must be converted from signed C -1 to byte 255 in the guest.
+/// No host-provided input, source output bytes or general C echo is inferred.
+///
+/// # Errors
+/// Rejects all but the closed two-call source/Clang C23 effect grammar.
+#[expect(clippy::too_many_lines, reason = "source AST, typed SSA and guest EOF conversion gate")]
+pub(super) fn canonical_signed_second_echo(
+    bytes: &[u8],
+    source: &[u8],
+) -> Result<CanonicalGuestProjection, FrontendJsonError> {
+    if bytes.len() > super::MAX_FRONTEND_JSON_BYTES {
+        return Err(FrontendJsonError::Malformed);
+    }
+    let input: Artifact = serde_json::from_slice(bytes)
+        .map_err(|_error| FrontendJsonError::Malformed)?;
+    let [function, body, first, first_decay, first_callee,
+        write, write_decay, write_callee, second, second_decay,
+        second_callee] = input.nodes.as_slice() else {
+        return Err(FrontendJsonError::Unsupported);
+    };
+    if input.schema_version != 1
+        || input.identity != super::EXPECTED_ARTIFACT
+        || input.profile.abi_id != super::EXPECTED_ABI
+        || input.profile.target_profile != super::EXPECTED_PROFILE
+        || input.clang.version != "22.1.8"
+        || input.clang.target != "wasm32-unknown-unknown"
+        || input.clang.language != "c23"
+        || input.source.id.is_empty()
+        || function.name.as_deref() != Some("emit")
+        || function.type_name.as_deref() != Some("fn()->void")
+        || function.definition.as_deref() != Some("definition")
+        || function.inline_specified != Some(false)
+        || function.linkage.as_deref() != Some("external")
+        || function.storage_class.as_deref() != Some("none")
+        || function.storage_duration.is_some()
+        || function.reference.is_some()
+        || function.operation.is_some()
+        || function.literal.is_some()
+        || function.constant_integer.is_some()
+        || function.id != 1 || function.parent != 0
+        || function.kind != "function-declaration"
+        || !node_is(body, 2, 1, "compound-statement", None, None, None)
+        || !node_is(first, 3, 2, "call-expression", Some("i32"), Some("external:getchar"), None)
+        || !node_is(first_decay, 4, 3, "cast-expression", Some("ptr(fn()->i32)"), None, Some("function-to-pointer"))
+        || !node_is(first_callee, 5, 4, "declaration-reference-expression", Some("fn()->i32"), Some("external:getchar"), None)
+        || !node_is(write, 6, 2, "call-expression", Some("i32"), Some("external:putchar"), None)
+        || !node_is(write_decay, 7, 6, "cast-expression", Some("ptr(fn(i32)->i32)"), None, Some("function-to-pointer"))
+        || !node_is(write_callee, 8, 7, "declaration-reference-expression", Some("fn(i32)->i32"), Some("external:putchar"), None)
+        || !node_is(second, 9, 6, "call-expression", Some("i32"), Some("external:getchar"), None)
+        || !node_is(second_decay, 10, 9, "cast-expression", Some("ptr(fn()->i32)"), None, Some("function-to-pointer"))
+        || !node_is(second_callee, 11, 10, "declaration-reference-expression", Some("fn()->i32"), Some("external:getchar"), None)
+        || body.span.end != function.span.end
+        || function.span.begin.byte >= body.span.begin.byte
+        || !(body.span.begin.byte < first.span.begin.byte
+             && first.span.end.byte < write.span.begin.byte
+             && write.span.end.byte < body.span.end.byte)
+        || first.span.begin != first_decay.span.begin
+        || first_decay.span != first_callee.span
+        || write.span.begin != write_decay.span.begin
+        || write_decay.span != write_callee.span
+        || second.span.begin != second_decay.span.begin
+        || second_decay.span != second_callee.span
+        || source_slice(source, body) != Some(b"{ getchar(); putchar(getchar()); }")
+        || source_slice(source, first) != Some(b"getchar()")
+        || source_slice(source, first_decay) != Some(b"getchar")
+        || source_slice(source, write) != Some(b"putchar(getchar())")
+        || source_slice(source, write_decay) != Some(b"putchar")
+        || source_slice(source, second) != Some(b"getchar()")
+        || source_slice(source, second_decay) != Some(b"getchar")
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    // Source SHA is independently rechecked in the caller, before admission.
+    let frontend = FrontendArtifact::new_void(
+        FrontendArtifactSpec {
+            abi_id: input.profile.abi_id.clone(),
+            artifact_id: input.identity.clone(),
+            clang_target: input.clang.target.clone(),
+            clang_version: input.clang.version.clone(),
+            functions: Vec::new(),
+            language: input.clang.language.clone(),
+            schema_version: input.schema_version,
+            source_id: input.source.id.clone(),
+            source_sha256: source_digest(&input.source.sha256)?,
+            target_profile: input.profile.target_profile.clone(),
+        },
+        FrontendReturnVoidFunction::new_fallthrough(
+            FrontendFallthroughVoidFunctionSpec {
+                body_span: super::span(&body.span),
+                definition: String::from("definition"),
+                function_span: super::span(&function.span),
+                inline_specified: false,
+                linkage: String::from("external"),
+                name: String::from("emit"),
+                signature: String::from("fn()->void"),
+                storage_class: String::from("none"),
+            },
+        ),
+    );
+    let base = lower_frontend_artifact(&frontend)
+        .map_err(|_| FrontendJsonError::InvalidTypedIr)?;
+    let original = base.functions().first().ok_or(FrontendJsonError::InvalidTypedIr)?;
+    let block = original.blocks().first().ok_or(FrontendJsonError::InvalidTypedIr)?;
+    let mut types = base.types().to_vec();
+    if types.len() != 2 || types[0].id() != TypeId::new(0) {
+        return Err(FrontendJsonError::InvalidTypedIr);
+    }
+    types[0] = TypeEntry::new(TypeId::new(0), TypeDef::I32);
+    types.push(TypeEntry::new(TypeId::new(2), TypeDef::U8));
+    let instructions = vec![
+        LocatedInstruction::new(Instruction::Getchar {
+            result: ValueId::new(0), type_id: TypeId::new(0),
+        }, typed_span(&first.span)),
+        LocatedInstruction::new(Instruction::Getchar {
+            result: ValueId::new(1), type_id: TypeId::new(0),
+        }, typed_span(&second.span)),
+        LocatedInstruction::new(Instruction::Cast {
+            operation: CastOp::Truncate, result: ValueId::new(2),
+            type_id: TypeId::new(2), value: ValueId::new(1),
+        }, typed_span(&second.span)),
+        LocatedInstruction::new(Instruction::ByteOutput {
+            value: ValueId::new(2),
+        }, typed_span(&write.span)),
+    ];
+    let function = Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: block.id(), instructions, phis: block.phis().to_vec(),
+            span: block.span(), terminator: block.terminator().clone(),
+            terminator_span: block.terminator_span(),
+        })],
+        entry: original.entry(), id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(), span: original.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()), format_version: base.format_version(),
+        functions: vec![function], globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()), types,
+    });
+    let wire = canonical_bytes(&module)
+        .map_err(|_| FrontendJsonError::InvalidTypedIr)?;
+    if canonical_module(&wire).map_err(|_| FrontendJsonError::InvalidTypedIr)? != module {
+        return Err(FrontendJsonError::InvalidTypedIr);
+    }
+    Ok((wire, FrontendGuestMode::SignedSecondEcho))
 }
