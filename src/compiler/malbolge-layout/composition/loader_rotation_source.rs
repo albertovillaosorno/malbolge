@@ -318,6 +318,66 @@ pub fn build_seeded_two_input_state_update_source(
     build_seeded_guest_input_state_fold_source(profile, tail, 2)
 }
 
+/// Preserve a lossless encoded first signed input across a second guest read.
+///
+/// Nine physical rotations of loader M95 give 7,177,369, whose lowest six
+/// trits are all 1. The first real `/` at C39 and `p` at C43 therefore save
+/// **every** byte and the distinct signed EOF word injectively in M95.
+/// The C44..C46 reset and C47 second `/` remain real guest operations.
+/// A three-jump reset at C48..C50 leaves D at M95, but C51 deliberately
+/// executes an inert operation instead of overwriting the saved word.
+/// C52 outputs the second input's low byte and C53 halts. The first word is
+/// recoverable from guest memory, not yet decoded to C23 `int` or linked to
+/// source-variable assignments, arithmetic, EOF control, or a guest loop.
+///
+/// # Errors
+///
+/// Rejects unsupported profile, an invalid reset tail, or an unavailable
+/// graphical encoding. Actual 257-class storage and second-read paths
+/// require independent normative VM verification.
+pub fn build_seeded_preserved_first_input_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_seeded_two_input_state_update_source(profile, tail)?;
+    set(&mut source, 51, b'o')?;
+    Ok(source)
+}
+
+/// Emit a saved first signed word *after* a real second-input output.
+///
+/// The C39/C43 input and lossless `p` fold save the first word in M95.
+/// C47 reads the second input, and C51 outputs its actual low byte after
+/// resetting D to M95. A second three-`j` reset at C52..C54 returns to
+/// that same saved M95, where C55 `*` reloads it into A by a bijective
+/// rotation and C56 `<` emits the derived first-word low byte.
+/// Both EOF reads remain real N15 signed reads. A rotated encoding remains
+/// lossless in the guest cell; its output byte alone is not a C23 `int`.
+/// The source has no C23 arithmetic, conditional or dynamic loop linker.
+///
+/// # Errors
+///
+/// Rejects invalid profile, loader seed or unavailable graphical opcodes.
+/// Independent VM verification must establish the state and I/O ordering.
+pub fn build_seeded_delayed_first_output_source(
+    profile: &ProfileDescriptor,
+    tail: [u8; 2],
+) -> Result<Vec<u8>, RepeatedLoaderRotationError> {
+    let mut source = build_seeded_preserved_first_input_source(profile, tail)?;
+    for (position, opcode) in [
+        (51, profile.output_instruction()),
+        (52, b'j'),
+        (53, b'j'),
+        (54, b'j'),
+        (55, b'*'),
+        (56, profile.output_instruction()),
+        (57, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    Ok(source)
+}
+
 /// Emit two guest-visible prefixes of a mutable two-input N15 fold.
 ///
 /// Both input attempts execute real `/` instructions. Each `p` reads and

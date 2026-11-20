@@ -28,6 +28,39 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Lossless first signed word across a second guest input (2026-11-20)
+
+An independent positive N15 physical layout avoids the frozen 132-cell EOF
+skeleton entirely. The existing 91-cell loader with tail `,H` writes nine
+real `*` rotations to M95 before C39 reads a signed first word. Its seed
+`7,177,369` has six low trits equal to one, so the C43 `p` operation
+`crazy(7,177,369, input)` distinguishes **all 256 byte inputs plus the
+distinct EOF word**. An independent 15-trit oracle proves the 257 classes;
+this is encoded lossless guest storage, not a native C23 `int` value.
+
+The new `build_seeded_preserved_first_input_source` keeps the physical
+C44..C46 reset and C47 second `/`, then replaces the C51 state-overwriting
+`p` with inert `o`. C52 emits the *second* input's actual low byte, C53
+halts, and first-input M95 remains intact. All 274 bounded real-VM streams
+(257 first-byte/EOF classes with truncated second read, sixteen input pairs,
+and one unread-suffix case) check saved M95 against the independent oracle,
+physical read positions, output, no later M95 writes, and exact 54-step halt.
+
+A separate `build_seeded_delayed_first_output_source` composes a second
+three-`j` reset after outputting the second word at C51. Its C55 `*` reloads
+the encoded first value from M95, and C56 emits the rotated encoding's low
+byte. Fifteen additional real-VM streams cover both EOF attempts, NUL, high
+bytes, value 242, successful second reads and an unread suffix; they check
+two actual read sites, both output sites, the saved word before reload, the
+bijectively rotated word afterward, and exact 58-step halt. A changed first
+input thus affects an output *after* the second read without host I/O.
+
+This is a reusable physical input-state capability, **not** completion of
+the seven-block mutable-C checksum. It still lacks a C23 signed `int`
+decoder, source-bound mutable variables, checksum add/xor, conditional
+branching, phi moves, and a dynamic EOF backedge. The checksum remains
+an explicit no-artifact compiler refusal and P2 remains open.
+
 ### Source-backed second signed byte echo before its EOF arm (2026-11-20)
 
 A complete SHA-locked C23 `emit` function now calls `getchar()` twice,

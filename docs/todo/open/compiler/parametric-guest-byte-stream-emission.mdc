@@ -75,6 +75,21 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a separate 91-cell N15 loader path physically saves
+  the first signed input losslessly in M95 before a second independent
+  `getchar`-equivalent guest `/`. Nine real rotations prepare seed
+  7,177,369; an independent trit oracle proves 256 distinct byte classes
+  plus disjoint EOF. All 274 bounded normative VM paths preserve the
+  signed first word across the second read and emit its second low byte
+  in 54 steps. A separate 58-step layout actually reloads the saved
+  first word after emitting the second and emits a rotated derivative;
+  fifteen VM streams match the independently calculated data and I/O.
+  The new target's 54 Rust checks, all-target Cargo check and original
+  checksum's three native/refusal controls pass. These are positive
+  physical storage/reload effects, not C23 `int` decoding, mutable
+  checksum arithmetic, phi copies, source-C dynamic branch or EOF loop.
+  The original P2 guest checksum remains unlinked.
+
 - On 2026-11-20, the pinned source-C second-echo EOF program acquired a
   separately authenticated Clang 22.1.8 AST, exact typed control, and
   actual physical second signed input at C62 with output at C63 before
