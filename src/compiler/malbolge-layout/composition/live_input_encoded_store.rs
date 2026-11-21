@@ -32,6 +32,8 @@
 //! higher trits and stays distinct because every crazy seed distinguishes
 //! right-operand trits zero and two. This is an *encoded* state, not C32.
 
+use std::iter::repeat_n;
+
 use malbolge::{ProfileDescriptor, current_profile};
 
 use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
@@ -44,26 +46,26 @@ const SIXTH_TRIT_RADIX: u32 = 3;
 /// Strictly physical N15 input-state search failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LiveInputEncodedStoreError {
-    /// The caller supplied a noncanonical profile.
-    UnsupportedProfile,
     /// No bounded graphical tail yields an injective first data write.
     NoLoadableSeed,
+    /// The caller supplied a noncanonical profile.
+    UnsupportedProfile,
 }
 
 /// Full guest source and actual initial data operand for one encoded input.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LiveInputEncodedStoreSource {
+    /// `p` writes its result here, after a real `j`.
+    pub data_address: u32,
+    /// Loader-initialized `p` operand, not a host-seeded VM word.
+    pub initial_data_word: u32,
+    /// Zero-based actual `/` code cell.
+    pub input_code_address: u32,
     /// Loader-admitted graphical program, including two unreachable tail
     /// cells.
     pub source: Vec<u8>,
-    /// Zero-based actual `/` code cell.
-    pub input_code_address: u32,
     /// Zero-based actual `p` code cell.
     pub store_code_address: u32,
-    /// `p` writes its result to this exact word, after a real `j`.
-    pub data_address: u32,
-    /// Loader-initialized `p` left operand, not a host-seeded VM word.
-    pub initial_data_word: u32,
 }
 
 /// Build a bounded N15 source retaining all 257 raw `getchar` classes.
@@ -80,8 +82,10 @@ pub struct LiveInputEncodedStoreSource {
 ///
 /// Rejects noncanonical profiles or a missing source-loadable seed.
 #[expect(
-    clippy::arithmetic_side_effects,
+    clippy::excessive_nesting,
+    clippy::integer_division,
     clippy::integer_division_remainder_used,
+    clippy::too_many_lines,
     reason = "exact bounded ternary seed and graphical position search"
 )]
 pub fn build_live_input_injective_store_source(
@@ -93,14 +97,12 @@ pub fn build_live_input_injective_store_source(
     }
     for prefix in 0..PHASE_BOUND {
         let mut source = Vec::with_capacity(prefix.saturating_add(6));
-        for operation in std::iter::repeat_n(LinearOpcode::NoOperation, prefix)
-            .chain([
-                LinearOpcode::InputWord,
-                LinearOpcode::RelocateDataPointer,
-                LinearOpcode::CrazyData,
-                LinearOpcode::Halt,
-            ])
-        {
+        for operation in repeat_n(LinearOpcode::NoOperation, prefix).chain([
+            LinearOpcode::InputWord,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::Halt,
+        ]) {
             let cell = unique_graphical_cell(profile, operation, source.len())
                 .map_err(|_error| NoLoadableSeed)?;
             source.push(cell);
@@ -142,16 +144,16 @@ pub fn build_live_input_injective_store_source(
                     && (seed / FIVE_TRIT_MODULUS) % SIXTH_TRIT_RADIX != 2
                 {
                     return Ok(LiveInputEncodedStoreSource {
-                        source,
+                        data_address: u32::try_from(data_address)
+                            .map_err(|_error| NoLoadableSeed)?,
+                        initial_data_word: seed,
                         input_code_address: u32::try_from(prefix)
                             .map_err(|_error| NoLoadableSeed)?,
+                        source,
                         store_code_address: u32::try_from(
                             prefix.saturating_add(2),
                         )
                         .map_err(|_error| NoLoadableSeed)?,
-                        data_address: u32::try_from(data_address)
-                            .map_err(|_error| NoLoadableSeed)?,
-                        initial_data_word: seed,
                     });
                 }
                 _ = source.pop();

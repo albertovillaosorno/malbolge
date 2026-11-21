@@ -36,7 +36,7 @@ use malbolge::{
     decode_profile_instruction, historical_profile,
 };
 
-const INPUT_CLASSES: u32 = 257;
+const INPUT_CLASSES: usize = 257;
 const MAX_PREFIX: usize = 94;
 const THREE_POW_FIVE: u32 = 243;
 const SOURCE: &[u8] = b"DCBA@?>=<;:98765eu,>=<";
@@ -51,9 +51,10 @@ fn independent_crazy(mut data: u32, mut accumulator: u32) -> u32 {
     let table = [[1u32, 0, 0], [1, 0, 2], [2, 2, 1]];
     let mut result = 0;
     let mut place = 1;
-    for _ in 0..15 {
-        result +=
-            table[(data % 3) as usize][(accumulator % 3) as usize] * place;
+    for _ in 0usize..15 {
+        result += table[usize::try_from(data % 3).unwrap_or(3)]
+            [usize::try_from(accumulator % 3).unwrap_or(3)]
+            * place;
         data /= 3;
         accumulator /= 3;
         place *= 3;
@@ -75,6 +76,7 @@ fn encode(opcode: u8, position: usize) -> Result<u8, String> {
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
     reason = "independent six-phase scalar loader recurrence"
 )]
 fn loader_word(source: &[u8], address: usize) -> u32 {
@@ -97,21 +99,23 @@ fn strict_tail(byte: u8, position: usize) -> bool {
 }
 
 fn all_raw_input_words_are_distinct(seed: u32) -> bool {
-    let mut seen = BTreeSet::new();
+    let mut results = BTreeSet::new();
     for input in 0..=255u32 {
-        if !seen.insert(independent_crazy(seed, input)) {
+        if !results.insert(independent_crazy(seed, input)) {
             return false;
         }
     }
-    seen.insert(independent_crazy(seed, current_profile().eof_word()))
-        && seen.len() == INPUT_CLASSES as usize
+    results.insert(independent_crazy(seed, current_profile().eof_word()))
+        && results.len() == INPUT_CLASSES
 }
 
 #[test]
 #[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
     clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
     clippy::panic_in_result_fn,
-    clippy::arithmetic_side_effects,
     reason = "independent full graphical search and 257-class oracle"
 )]
 fn source_search_matches_independent_loader_and_257_input_census()
@@ -142,7 +146,12 @@ fn source_search_matches_independent_loader_and_257_input_census()
                 searched += 1;
                 let seed = loader_word(&source, data_address);
                 if all_raw_input_words_are_distinct(seed) {
-                    matching.push((source.clone(), data_address as u32, seed));
+                    matching.push((
+                        source.clone(),
+                        u32::try_from(data_address)
+                            .map_err(|error| error.to_string())?,
+                        seed,
+                    ));
                 }
                 _ = source.pop();
             }
@@ -170,6 +179,8 @@ fn source_search_matches_independent_loader_and_257_input_census()
 #[expect(
     clippy::indexing_slicing,
     clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
     reason = "actual N15 instruction, data and encryption trace assertions"
 )]
 fn real_guest_writes_injective_input_state() -> Result<(), String> {
@@ -220,7 +231,7 @@ fn real_guest_writes_injective_input_state() -> Result<(), String> {
         }
         let raw = input
             .first()
-            .map_or(profile.eof_word(), |byte| u32::from(*byte));
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
         let expected = independent_crazy(plan.initial_data_word, raw);
         assert_eq!(trace[16].decoded, Some(b"/"[0]));
         assert_eq!(
