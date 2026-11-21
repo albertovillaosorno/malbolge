@@ -20,6 +20,39 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Post-flag code transfer and source-extension hazard (2026-11-21)
+
+A bounded independent attempt retained the exact 33-cell physical flag
+source through C26, replacing C27/C28 with a real `j; i` and C29 with
+`v`. The true-EOF path writes full-width flag 15 at C26, then C27
+reads M3=103 and C28 reads M104=36. Its actual `i` transfer encrypts
+C36, then attempts C37, which is non-graphical and terminates after 30
+steps. On successful input `00`, the flag is zero, C27 reads the
+loader word 36 and C28 attempts to encrypt M7,174,417=7,174,417;
+the normative VM rejects `InvalidEncryptionTarget` before committing a
+valid next instruction. Input `ff` takes another actual data route and
+reaches non-graphical C7,174,369 in 30 steps. Neither successful-byte
+path executes a valid source-C branch. These are physical branch
+failures, not an acceptable two-arm C23 EOF conditional.
+
+A separate 63-cell source candidate moved the original loader-tail
+bytes to the final two positions, preserving the post-source six-cycle
+phase and untouched loader word M126. It also placed graphical C37
+`v`, C45 `<` and C46 `v` as hypothetical branch targets. Real N15
+replay on empty, `00` and `ff` proves the *earlier C26 register state*
+already differs from the unchanged 33-cell program: positions 33-62
+changed from loader expansion to authored source, and live guest data
+paths read them. A six-cycle phase match is therefore not a state
+contract. The two red-first regressions in
+`tests/compiler_eof_flag_code_branch.rs` preserve the exact bounded
+refusals and the prefix-divergence counterexample.
+
+This rules out the tested direct continuation and naive source extension,
+not arbitrary correct `i` routing, full signed-C23 EOF conversion or a
+source-linked checksum. The required next construction must preserve the
+entire read/write/mutation state of both arms while providing valid
+post-`i` encryption targets and executable destinations.
+
 ### Source-loaded full-width byte/EOF flag (2026-11-21)
 
 `build_guest_byte_c32_pair_eof_flag_source` reuses the actual graphical
