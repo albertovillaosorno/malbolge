@@ -408,3 +408,57 @@ fn physical_code_site_journals_match_every_source_byte_and_final_word()
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    reason = "finite two-profile 94-phase full-width data-write admission"
+)]
+fn prefetch_full_width_data_writes_admit_all_decoder_phases()
+-> Result<(), String> {
+    use layout::{
+        CodeCellEvent, CodeCellScheduleError, CodeVisitRequirement,
+        admit_code_cell_schedule, encode_code_cell_schedule,
+    };
+    for profile in [current_profile(), malbolge::historical_profile()] {
+        for site in 0..94u32 {
+            let initial = encoded(
+                usize::try_from(site).map_err(|error| error.to_string())?,
+                b'o',
+            )?;
+            for after in [0, 32, 127, profile.memory_words() - 1] {
+                let event = CodeCellEvent::DataWrite {
+                    before: u32::from(initial),
+                    after,
+                };
+                let schedule =
+                    admit_code_cell_schedule(profile, site, initial, &[event])
+                        .map_err(|error| format!("C{site}: {error:?}"))?;
+                assert_eq!(schedule.initial, initial);
+                assert_eq!(schedule.final_cell, after);
+                assert_eq!(schedule.data_writes, 1);
+                assert_eq!(schedule.fetches, 0);
+                assert_eq!(
+                    encode_code_cell_schedule(profile, site, &[event]),
+                    Ok(schedule),
+                );
+                if !(33..=126).contains(&after) {
+                    let refuse =
+                        admit_code_cell_schedule(profile, site, initial, &[
+                            event,
+                            CodeCellEvent::Fetch(
+                                CodeVisitRequirement::Decoded(b'o'),
+                            ),
+                        ]);
+                    assert_eq!(
+                        refuse,
+                        Err(CodeCellScheduleError::DecodeMismatch { event: 1 }),
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}

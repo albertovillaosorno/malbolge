@@ -54,6 +54,13 @@ after=38), C79's fetched word and input event, C79 self-encryption, and
 C80 halt. EOF does not consume a byte, the other streams consume exactly
 one, and an extra second byte remains unread.
 
+A separate finite checker covers **all 94 address decoder phases** in both
+the current-N15 and historical profiles. For each phase, four pre-fetch
+full-width write results (`0`, `32`, `127` and the maximum memory word) must
+be accepted when their original graphical `o` source word matches. A later
+non-graphical fetch must be refused. This is 752 bounded phase/word
+combinations, not 752 guest-executed programs.
+
 The short separate 43-cell witness executes C0 `j`, C1 `*` or `p`, and C2
 `v`. Both reached data operations modify initially graphical M41 before
 it can be fetched, leaving a non-graphical value. This covers the separate
