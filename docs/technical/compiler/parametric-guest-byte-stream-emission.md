@@ -28,6 +28,40 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Frozen C23 loader-tail and bootstrap obstruction (2026-11-20)
+
+The original seven-block C23 mutable EOF checksum was retried through its
+native `-O0`/`-O2` controls and source-locked compiler entry. It still
+refuses target publication at the unresolved physical CFG stage, without
+creating a guest artifact. The separately executable 91-cell two-input
+C23 converter was used to test a potential first-read storage repair.
+
+An independent 15-trit finite oracle enumerates all **8,836** ASCII
+source-tail pairs at C89/C90, expanding the loader through M122. Exactly
+four tails preserve M96=121, M98=M122=157, the nine M95 rotations, and
+full signed-C23 output parity for all 256 second-input bytes and EOF:
+`Hy`, `Iy`, `Ky`, and `Ly`. All four yield the same initial M97 word
+7,174,404 and only **37 distinct first-input encodings** across those
+257 classes. The same four tails initialize M102=121, which is
+injective across 257 classes. The enumeration is a necessary **fixed
+pointer/operand grammar** check, not a claim that all four candidates
+pass the graphical source loader or that no other linker geometry works.
+
+The tempting relocation of the first input `p` from C38/M97 toward
+M102 via C38..C42 no-ops fails in the *real* normative guest. C41's
+original graphical byte 93 is also data read by the initial C1 `j`:
+C1 must advance from M41 to M94. Replacing C41 by graphical `o`
+changes M41 to 121, so C1 jumps to M122 instead. A 2-byte VM run of
+the modified source still executes both real `/` instructions, but
+its C43 `p` reaches M7,174,412 rather than M102 and emits `0x49`
+instead of the original correct converted `0x02`. Both source traces
+and independent oracle are pinned in a bounded two-test regression.
+
+These results reject only a direct fixed-layout seed swap and this
+specific naive relocation. They do not implement C32 locals, signed EOF
+normalization for the source checksum, arithmetic/XOR, phi transfer,
+branch/backedge linkage, or a guest-executed whole C program. P2 stays open.
+
 ### Source-bound C23 signed input code-site obligation (2026-11-20)
 
 The unchanged complete seven-block mutable C23 checksum still passes all
