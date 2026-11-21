@@ -89,6 +89,19 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
 
 ## Evidence
 
+- On 2026-11-20, a separate exact two-`*` C32 literal-write plan
+  eliminates the prior six-`p` recipe's nonadjacent result addresses: two
+  consecutive pre-seeded data words rotate into consecutive low/high C32
+  result cells, independently of incoming A. An independent all-trit
+  permutation and 259-value C32 matrix plus 35 actual N15 VM executions
+  (five target bit patterns times seven entry states) prove read/write and
+  self-encryption behavior; zero-to-zero operations correctly have no
+  *changed-cell* delta. The EOF seed pair `[13932306, 897]` materializes
+  `[4644102, 299]`, distinct from successful `0xff`. Source-valid
+  loading of these seeds, EOF-dependent selection, source/phi linkage and
+  the whole mutable C23 checksum remain unfinished. The original checksum
+  source and C23 -O0/-O2 controls continue to pass the three-test gate;
+  the compiler still refuses an unlinked executable.
 - On 2026-11-20, the layout composition gained a deterministic current-N15
   C32 constant-write plan. Six consecutive `p` data operands force exact
   low/high 15-trit C32 words from any incoming accumulator, with an independent

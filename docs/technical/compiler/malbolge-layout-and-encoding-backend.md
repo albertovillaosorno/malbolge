@@ -42,6 +42,33 @@ SSA cells. Neither conditional input dispatch, phi transfers, repeated loop
 control, arithmetic, nor the complete seven-block mutable C23 EOF checksum
 is published. Historical/forged target profiles refuse the plan.
 
+### Adjacent two-rotate C32 literal write plan (2026-11-20)
+
+A second current-N15 prelink plan uses two physical `*` operations rather
+than six `p` operations. Each `*` rotates and overwrites its own D cell,
+independently of incoming A. The inverse one-trit rotation gives the exact
+two required initial operands at consecutive data addresses. The canonical
+signed C23 EOF `0xffffffff` uses the seed pair `[13932306, 897]` and
+physically produces adjacent cells `[4644102, 299]`; successful `0xff`
+instead uses `[765, 0]` and produces `[255, 0]`.
+
+Independent ternary permutation checks cover 259 selected C32 patterns.
+The normative N15 VM confirms both reached `*` instructions, their own
+data reads, destination cells, accumulator updates, and code encryption,
+for five target bit patterns and seven initial accumulator states. If a
+rotation leaves a cell unchanged (for example `0 -> 0`), its executed
+instruction still counts as a physical store but a *change-only* VM delta
+is correctly absent; the source input-state verifier already distinguishes
+these cases by observing the reached data operation itself.
+
+This closes the **adjacency gap for a pre-seeded literal**, not the larger
+guest linker. Both full-width operands were supplied manually in an
+isolated `from_state` VM; no executable graphical source or prior guest
+operations have yet established them. A real source-C input-result store
+still requires actual input-dependent data, source-selected EOF/byte
+control, disjoint source frame layout, and full SSA/loop verification.
+The complete original C23 checksum remains unlinked and unpublished.
+
 ### Bounded physical 282-phase copies and data reset (2026-11-20)
 
 `tests/compiler_282_phase_blocks.rs` now verifies a restricted two-block

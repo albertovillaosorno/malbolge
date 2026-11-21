@@ -30,6 +30,8 @@
 //! word regardless of the incoming accumulator. The third data cell becomes
 //! that target word *by guest execution*, even if the first two cells change.
 //! Two groups force the canonical low/high words of a C32 bit pattern.
+//! A separate two-rotate recipe can write the same C32 words *adjacently*,
+//! provided the target-specific inverse-rotated data seeds already exist.
 //!
 //! The linker must still create/verify all six operand cells, arrange the
 //! six `p` instructions and their data-pointer entry, and connect branches
@@ -43,6 +45,7 @@ use super::typed_cfg_adapter::state_storage::encode_i32_cells;
 
 const TRITS_PER_WORD: u8 = 15;
 const TRIT_RADIX: u32 = 3;
+const HIGH_TRIT_WEIGHT: u32 = 4_782_969;
 
 /// An unfulfilled profile precondition for the current N15 C32 encoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -63,6 +66,28 @@ pub struct C32LiteralCrazyPlan {
     /// Zero-based executed `p` step indices producing low/high C32 results.
     pub result_steps: [usize; 2],
     /// Canonical low/high C32 guest words after those steps.
+    pub target_cells: [u32; 2],
+}
+
+/// Unsupported precondition for literal adjacent rotate materialization.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum C32LiteralRotateError {
+    /// The requested descriptor is not canonical current N15.
+    UnsupportedProfile,
+}
+
+/// The current-profile, seed-dependent adjacent C32 rotate recipe.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct C32LiteralRotatePlan {
+    /// Original C32 bits, including the signed EOF bit pattern.
+    pub bits: u32,
+    /// Required two consecutive preinitialized data words.
+    pub initial_data_words: [u32; 2],
+    /// Offsets from the incoming D: the two **adjacent** source-frame cells.
+    pub result_data_offsets: [u32; 2],
+    /// Zero-based positions of the two `*` instructions producing the words.
+    pub result_steps: [usize; 2],
+    /// Exact low/high N15 words of the canonical C32 representation.
     pub target_cells: [u32; 2],
 }
 
@@ -121,6 +146,52 @@ pub fn plan_c32_literal_crazy_writes(
         operands: [low[0], low[1], low[2], high[0], high[1], high[2]],
         result_data_offsets: [2, 5],
         result_steps: [2, 5],
+        target_cells,
+    })
+}
+
+/// Plan two adjacent guest `*` writes of a literal C32 value.
+///
+/// Each `*` rotates its own data cell right by one trit, stores that rotated
+/// word back to the *same* data cell, and updates A. Because it does not read
+/// incoming A, two consecutive operations recover the two target words in
+/// adjacent cells regardless of the initial register state. The required
+/// initial seeds are the inverse one-trit rotations, not target words.
+///
+/// The plan **does not allocate or initialize** those full-width guest seeds,
+/// encode instructions, select a runtime branch, or link source-C storage.
+/// A loader or verified guest precursor must first construct both seeds at
+/// precisely the two data addresses where the rotations will execute.
+///
+/// # Errors
+///
+/// Noncanonical current N15 profiles are unsupported.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "fixed-width one-trit inverse rotation over canonical N15"
+)]
+pub fn plan_c32_literal_rotate_writes(
+    profile: &ProfileDescriptor,
+    bits: u32,
+) -> Result<C32LiteralRotatePlan, C32LiteralRotateError> {
+    if profile != current_profile() {
+        return Err(C32LiteralRotateError::UnsupportedProfile);
+    }
+    let target_cells = encode_i32_cells(bits);
+    let undo_rotate = |target: u32| {
+        // Output = seed/3 + (seed%3)*3^14; inverse is exact on all 15 trits.
+        (target % HIGH_TRIT_WEIGHT) * TRIT_RADIX
+            + target.div_euclid(HIGH_TRIT_WEIGHT)
+    };
+    Ok(C32LiteralRotatePlan {
+        bits,
+        initial_data_words: [
+            undo_rotate(target_cells[0]),
+            undo_rotate(target_cells[1]),
+        ],
+        result_data_offsets: [0, 1],
+        result_steps: [0, 1],
         target_cells,
     })
 }

@@ -619,3 +619,203 @@ fn six_real_guest_p_steps_write_exact_two_cell_c32_eof_constant()
     }
     Ok(())
 }
+
+// A rotate is a bijection on all N15 words. Unlike three-p constant folding,
+// two seeded '*' operations write the two C32 target words *adjacently*.
+// This is not evidence that a graphical source can initialize their seeds.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "independent N15 trit-permutation oracle"
+)]
+const fn independent_n15_rotate(mut seed: u32) -> u32 {
+    let low = seed % 3;
+    seed /= 3;
+    seed + low * 4_782_969
+}
+
+fn seeded_adjacent_rotate_source() -> Result<Vec<u8>, String> {
+    b"**v"
+        .iter()
+        .enumerate()
+        .map(|(position, opcode)| {
+            let address =
+                u32::try_from(position).map_err(|error| error.to_string())?;
+            (33..=126u8)
+                .find(|byte| {
+                    decode_profile_instruction(u32::from(*byte), address)
+                        == Some(*opcode)
+                })
+                .ok_or_else(|| format!("no graphical {opcode} at C{address}"))
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "all C32 bit classes and their independent adjacent rotate seeds"
+)]
+fn c32_literal_rotate_plan_is_exact_and_adjacent() -> Result<(), String> {
+    let profile = current_profile();
+    assert_eq!(
+        layout::plan_c32_literal_rotate_writes(historical_profile(), u32::MAX),
+        Err(layout::C32LiteralRotateError::UnsupportedProfile)
+    );
+    for bits in (0..=255u32).chain([256, 0x8000_0000, u32::MAX]) {
+        let plan = layout::plan_c32_literal_rotate_writes(profile, bits)
+            .map_err(|error| format!("{error:?}"))?;
+        let targets =
+            layout::typed_cfg_adapter::state_storage::encode_i32_cells(bits);
+        assert_eq!(plan.bits, bits);
+        assert_eq!(plan.target_cells, targets);
+        assert_eq!(plan.result_steps, [0, 1]);
+        assert_eq!(plan.result_data_offsets, [0, 1]);
+        for (seed, target) in plan.initial_data_words.into_iter().zip(targets) {
+            assert!(seed < profile.word_modulus());
+            assert_eq!(independent_n15_rotate(seed), target);
+            // A data read is the only operand of '*'; A is irrelevant.
+            for incoming in [0, 255, 62_207, profile.eof_word()] {
+                assert_eq!(independent_n15_rotate(seed), target);
+                assert!(incoming < profile.word_modulus());
+            }
+        }
+        assert_eq!(
+            layout::typed_cfg_adapter::state_storage::decode_i32_cells(
+                plan.target_cells
+            ),
+            Some(bits)
+        );
+    }
+    assert_eq!(
+        layout::plan_c32_literal_rotate_writes(profile, u32::MAX)
+            .map_err(|error| format!("{error:?}"))?
+            .initial_data_words,
+        [13_932_306, 897]
+    );
+    assert_eq!(
+        layout::plan_c32_literal_rotate_writes(profile, 255)
+            .map_err(|error| format!("{error:?}"))?
+            .initial_data_words,
+        [765, 0]
+    );
+    Ok(())
+}
+
+// The actual data-store effects are proven through both the decoded
+// instruction and its data read; a changed-cell delta alone is insufficient
+// for a value-preserving rotation such as zero-to-zero.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "the caller checks the VM trace has exactly three entries"
+)]
+fn assert_two_adjacent_c32_rotate_steps(
+    trace: &[malbolge::ProfileStepTrace],
+    plan: &layout::C32LiteralRotatePlan,
+    vm: &ProfileMachine,
+) -> Result<(), String> {
+    for (index, target) in plan.target_cells.iter().enumerate() {
+        let step = &trace[index];
+        let data_address = CONSTANT_WRITER_DATA_BASE
+            .checked_add(
+                u32::try_from(index).map_err(|error| error.to_string())?,
+            )
+            .ok_or("guest data-address overflow")?;
+        assert_eq!(step.decoded, Some(b'*'), "rotate step {index} opcode");
+        assert_eq!(
+            step.before.registers.data_pointer, data_address,
+            "rotate step {index} data pointer"
+        );
+        assert_eq!(
+            step.after.registers.accumulator, *target,
+            "rotate step {index} accumulator"
+        );
+        assert_eq!(
+            step.memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((data_address, plan.initial_data_words[index])),
+            "rotate step {index} source seed"
+        );
+        // A physical '*' still stores a word if the rotation is
+        // unchanged. The VM delta records *changes*, not writes.
+        let changed = plan.initial_data_words[index] != *target;
+        assert_eq!(
+            step.memory_delta
+                .data
+                .map(|write| { (write.address, write.before, write.after) }),
+            changed.then_some((
+                data_address,
+                plan.initial_data_words[index],
+                *target,
+            )),
+            "rotate step {index} changed-cell delta"
+        );
+        assert_eq!(
+            vm.memory_word(data_address),
+            Ok(*target),
+            "rotate step {index} committed word"
+        );
+        assert!(
+            step.memory_delta.encryption.is_some(),
+            "rotate step {index} code encryption"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "three real normative guest steps and two adjacent physical writes"
+)]
+fn two_real_guest_rotates_materialize_adjacent_c32_cells() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = seeded_adjacent_rotate_source()?;
+    assert_eq!(source.len(), 3);
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    for bits in [0, 255, 256, 0x8000_0000, u32::MAX] {
+        let plan = layout::plan_c32_literal_rotate_writes(profile, bits)
+            .map_err(|error| format!("{error:?}"))?;
+        for converted in [0, 1, 2, 127, 128, 255, 62_207] {
+            let mut memory = loaded.memory().to_vec();
+            for (index, seed) in plan.initial_data_words.iter().enumerate() {
+                memory[usize::try_from(CONSTANT_WRITER_DATA_BASE)
+                    .map_err(|error| error.to_string())?
+                    + index] = *seed;
+            }
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                memory,
+                vec![],
+                ProfileRegisters {
+                    accumulator: converted,
+                    code_pointer: 0,
+                    data_pointer: CONSTANT_WRITER_DATA_BASE,
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            let mut trace = Vec::new();
+            let outcome = vm
+                .run_traced(3, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 3,
+            });
+            assert_eq!(trace.len(), 3);
+            assert_two_adjacent_c32_rotate_steps(&trace, &plan, &vm)?;
+            assert_eq!(trace[2].decoded, Some(b'v'));
+            assert_eq!(vm.output(), &[]);
+            assert_eq!(vm.input_consumed(), 0);
+        }
+    }
+    Ok(())
+}
