@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, two distinct physical reentry intervals were measured
+  from the three-return 564-cell N15 guest at C120 (steps 120, 302, 478)
+  and C281 (steps 281, 463, 639). Across five existing binary/EOF inputs,
+  C120's live code changes under XLAT2, while repeated C281 jump code
+  remains unchanged: `i` encrypts the reached *destination*, not C281.
+  Both sites retain non-restored live data-pointer dependencies. This
+  bounded two-window witness rules out these particular reusable-state
+  contracts, not alternative guest control layouts or the source C23
+  checksum target. See `tests/compiler_141_half_phase_returns.rs`.
+
 - On 2026-11-21, the source-loaded C71 physical return now carries
   register and memory live-ins derived by the portable v6 effect-IR
   projection, plus its already journaled complete write effects.

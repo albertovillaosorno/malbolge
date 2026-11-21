@@ -132,6 +132,43 @@ code-version normalization and input effects, nor prove that no other
 source can form a reusable cycle. It closes only the repeated-state claim
 for this 564-source-cell fixture and these finite guest boundaries.
 
+## Repeated C120 Live-Dependency Witness (2026-11-21)
+
+The original three-return 564-cell source now passes an additional
+source-loaded `ProfileMachine` experiment using the bounded physical-reentry
+analyzer from the compiler layout. Each of the **same five frozen input
+streams** observes C120 on actual guest steps 120, 302, and 478, producing
+exactly two physical windows: steps [120,302) and [302,478).
+No guest state is overwritten to force a return. The analyzer derives sorted
+entry-memory live-ins and register dependency masks by projecting all reached
+VM steps through the portable v6 region-effect IR checker.
+
+C120's physical *code fetch* is an entry-memory live-in in each window.
+It is the initial graphical source word in the first interval, then its
+canonical XLAT2 successor in the second. Both intervals also contain real
+net changes at C120, agree at their shared boundary, and fail the
+`live_entry_restored` and fixed-input replay preconditions. The live
+data pointer differs at both ends. This extends the prior first-return
+register/code comparison to full **two-window physical dependency
+accounting**, without claiming a third identical state or an arbitrary
+byte-stream cycle.
+
+An independent **jump-site** check observes C281 at steps 281, 463 and 639
+on those same five streams. Both windows require live data-pointer state:
+D advances 281 to 463 to 639, and real data reads include each incoming
+jump operand location. Crucially, C281 itself is *not* changed between
+visits. The `i` instruction updates C before post-instruction XLAT2, so
+the reached encryption writes instead to the jump destinations C99 and
+C105. Both target cells have actual net changes. This is an executable
+counterexample to treating a matching code word at the repeated jump site
+as sufficient loop state; the IR-derived register dependencies reject it.
+
+Reproduce both checks with:
+
+```sh
+cargo test --test compiler_141_half_phase_returns --quiet
+```
+
 ## What the Result Does Not Establish
 
 No unbounded loop was synthesized. The three returns lead to **different**

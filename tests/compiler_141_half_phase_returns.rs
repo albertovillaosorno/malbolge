@@ -52,6 +52,12 @@ use malbolge::{
     decode_profile_instruction, encrypt_profile_cell,
 };
 
+// Exercise the checked reentry observer against the real three-return fixture.
+#[path = "../src/compiler/malbolge-layout/composition/physical_reentry.rs"]
+pub mod physical_reentry;
+
+use physical_reentry::observe_physical_reentries;
+
 const HALF: usize = 141;
 const ACTIVE: usize = HALF * 2;
 const SOURCE: usize = ACTIVE * 2;
@@ -690,6 +696,130 @@ fn three_return_entry_states(
         }
     }
     Ok(boundaries)
+}
+
+#[test]
+fn third_traversal_has_two_distinct_physical_live_entry_windows()
+-> Result<(), String> {
+    // This is a fixed 564-cell source, not a generated or hosted C program.
+    let (source, _, _) = three_return_source()?;
+    const ENTRY: u32 = 120;
+    const BUDGET: usize = 640;
+    for input in [vec![], vec![0], vec![0x80], vec![0xff], vec![1, 2]] {
+        let windows = observe_physical_reentries(
+            current_profile(),
+            &source,
+            &input,
+            ENTRY,
+            3,
+            BUDGET,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let [first, second] = windows.as_slice() else {
+            return Err("expected exactly two physical reentry windows".into());
+        };
+        assert_eq!((first.from.step, first.to.step), (120, 302));
+        assert_eq!((second.from.step, second.to.step), (302, 478));
+        assert_eq!(first.to, second.from);
+        assert!(!first.core_state_restored());
+        assert!(!first.exact_closed_cycle());
+        assert!(!second.core_state_restored());
+        assert!(!second.exact_closed_cycle());
+        assert!(!first.live_entry_restored());
+        assert!(!second.live_entry_restored());
+        for (index, window) in windows.iter().enumerate() {
+            assert!(!window.fixed_input_replay_preconditions());
+            assert!(
+                window
+                    .memory_live_ins
+                    .windows(2)
+                    .all(|pair| pair[0].address < pair[1].address)
+            );
+            let first_code_word = window
+                .memory_live_ins
+                .iter()
+                .find(|read| read.address == ENTRY)
+                .ok_or("the entry code fetch must be an actual live-in")?;
+            let mut expected = u32::from(source[ENTRY as usize]);
+            for _ in 0..index {
+                expected = encrypt_profile_cell(expected)
+                    .ok_or("source entry code failed to encrypt")?;
+            }
+            assert_eq!(first_code_word.value, expected);
+            assert!(window.net_changed_words.iter().any(|change| {
+                change.address == ENTRY && change.before == expected
+            }));
+        }
+        assert_ne!(
+            first.from.registers.data_pointer,
+            first.to.registers.data_pointer
+        );
+        assert_ne!(
+            second.from.registers.data_pointer,
+            second.to.registers.data_pointer
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn repeated_jump_site_retains_real_live_code_and_operand_dependencies()
+-> Result<(), String> {
+    // All three C281 fetches and jump operands are executed by the guest.
+    let (source, _, _) = three_return_source()?;
+    const JUMP: u32 = 281;
+    for input in [vec![], vec![0], vec![0x80], vec![0xff], vec![1, 2]] {
+        let windows = observe_physical_reentries(
+            current_profile(),
+            &source,
+            &input,
+            JUMP,
+            3,
+            640,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let [first, second] = windows.as_slice() else {
+            return Err("expected two real jump-site windows".into());
+        };
+        assert_eq!((first.from.step, first.to.step), (281, 463));
+        assert_eq!((second.from.step, second.to.step), (463, 639));
+        assert_eq!(first.to, second.from);
+        assert_eq!(first.from.registers.data_pointer, 281);
+        assert_eq!(first.to.registers.data_pointer, 463);
+        assert_eq!(second.to.registers.data_pointer, 639);
+        // Malbolge i sets C before XLAT2: the target cell is encrypted,
+        // not the jump code at C281. The actual D and operand location
+        // must therefore be retained even when C281's code word matches.
+        for (window, target) in [(first, 99), (second, 105)] {
+            assert!(!window.live_entry_restored());
+            assert!(!window.fixed_input_replay_preconditions());
+            assert!(window.register_live_ins.data_pointer);
+            let code = window
+                .memory_live_ins
+                .iter()
+                .find(|read| read.address == JUMP)
+                .ok_or("jump-site code fetch was not retained as a live-in")?;
+            assert_eq!(code.value, u32::from(source[JUMP as usize]));
+            assert!(
+                !window
+                    .net_changed_words
+                    .iter()
+                    .any(|change| change.address == JUMP)
+            );
+            assert!(
+                window
+                    .data_read_addresses
+                    .contains(&window.from.registers.data_pointer)
+            );
+            assert!(
+                window
+                    .net_changed_words
+                    .iter()
+                    .any(|change| change.address == target)
+            );
+        }
+    }
+    Ok(())
 }
 
 #[test]
