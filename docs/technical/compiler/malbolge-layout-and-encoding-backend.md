@@ -20,6 +20,32 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Source-loaded full-width byte/EOF flag (2026-11-21)
+
+`build_guest_byte_c32_pair_eof_flag_source` reuses the actual graphical
+33-cell N15 classifier and its source-loader data writes, then executes
+one additional `p` at C26. The preceding C25 `p` has produced exactly
+7,174,453 for all 256 successful byte values or 7,174,462 for true EOF.
+The data pointer has already incremented before C26, so its second
+real `p` reads the next selected word and writes the **entire** 15-trit
+result: zero on every successful byte, and 15 on true EOF. C27 outputs
+that flag byte and C28 halts after 29 normative transitions.
+
+The independent test encodes the additional operations without using
+the builder, checks source identity and actual data reads/memory writes,
+then replays 257/257 input classes through `ProfileMachine`. It verifies
+full-width A/memory values, output, input consumption, halt and high-zero
+retention, including unchanged physical writes correctly omitted from
+trace deltas. Mutating C26 `p` to a no-op emits 53/62 instead of 0/15
+and fails the independent output check.
+
+This is a **real guest data-path EOF flag**, not a C23 `_Bool`, signed
+`getchar()` result, guest `i` code-pointer branch, mutable source-local
+frame, or completed checksum. An exploratory `oojjojoi` continuation
+requires relocating the two graphical loader-tail seeds by six cells;
+the relocated seeds decode to disallowed source instructions and are
+therefore *not* a valid guest. No dynamic source-C branch is claimed.
+
 ### Two-class physical EOF output via data rather than code (2026-11-21)
 
 A new source-loaded 33-cell N15 continuation extends the prior

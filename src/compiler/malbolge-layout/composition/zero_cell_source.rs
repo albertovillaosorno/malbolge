@@ -261,6 +261,25 @@ pub struct GuestByteC32PairEofClassifySource {
     pub pair: GuestByteC32PairSource,
 }
 
+/// A genuine guest full-word EOF flag after source-loaded input writes.
+///
+/// This continues the physically stored two-class C25 result with one more
+/// reached `p`: successful input produces the exact 15-trit zero and true
+/// N15 EOF produces the exact 15-trit word 15. An output and halt follow.
+/// The flag is not a C23 Boolean, canonical signed EOF, or code-pointer
+/// branch, and the original source-C checksum remains unlinked.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestByteC32PairEofFlagSource {
+    /// Reached data instruction producing the full-width 0/15 flag.
+    pub flag_store_code_address: u32,
+    /// Reached instruction emitting that flag as one byte.
+    pub output_code_address: u32,
+    /// Reached final halt instruction.
+    pub halt_code_address: u32,
+    /// Real source-loaded raw input pair and its code/data state.
+    pub pair: GuestByteC32PairSource,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum AdjacentPhysicalMode {
     RawBytePair,
@@ -826,6 +845,49 @@ pub fn build_guest_byte_c32_pair_eof_classify_source(
         classified_store_code_address: 25,
         output_code_address: 26,
         halt_code_address: 27,
+        pair,
+    })
+}
+
+/// Compute a small full-width EOF flag in the real N15 guest data path.
+///
+/// The existing C25 `p` gives a uniform full word 7,174,453 for all bytes
+/// and a distinct 7,174,462 for EOF, following true physical input and
+/// state writes. At C26 the data pointer has already advanced: a second
+/// reached `p` reads the selected next word and stores exactly zero for
+/// all successful input bytes or exactly 15 for EOF. C27 outputs the flag
+/// and C28 halts in 29 normative steps.
+///
+/// This does not implement source-C `getchar` normalization, branch with
+/// guest `i`, or complete checksum control flow.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles and changed source-loader geometry.
+pub fn build_guest_byte_c32_pair_eof_flag_source(
+    profile: &ProfileDescriptor,
+) -> Result<GuestByteC32PairEofFlagSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut pair = build_guest_byte_c32_pair_eof_classify_source(profile)?.pair;
+    if pair.source.len() != 33
+        || pair.pair_high_address != pair.pair_low_address.saturating_add(1)
+        || pair.relocated_initial_words != [36, 7_174_417, 36, 7_174_417]
+    {
+        return Err(NoLoadableZero);
+    }
+    for (site, operation) in [
+        (26usize, LinearOpcode::CrazyData),
+        (27, LinearOpcode::OutputByte),
+        (28, LinearOpcode::Halt),
+    ] {
+        *pair.source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(GuestByteC32PairEofFlagSource {
+        flag_store_code_address: 26,
+        output_code_address: 27,
+        halt_code_address: 28,
         pair,
     })
 }

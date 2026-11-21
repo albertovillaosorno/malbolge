@@ -1648,3 +1648,135 @@ fn eof_data_classification_refuses_a_missing_selected_crazy_write()
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "independent full-word physical EOF flag experiment"
+)]
+fn red_first_eof_data_path_produces_small_full_word_flag() -> Result<(), String>
+{
+    let profile = current_profile();
+    let classifier =
+        layout::build_guest_byte_c32_pair_eof_classify_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let mut source = classifier.pair.source.clone();
+    // C25 p returns the same full word for every successful byte, but a
+    // distinct one for EOF. The next genuine p uses the already-incremented
+    // D, not the just-written cell. On bytes its loader operand is 36 or
+    // 7,174,417; on EOF it reads the encrypted C2 word 51.
+    for (site, operation) in [(26usize, b'p'), (27, b'<'), (28, b'v')] {
+        source[site] = encode(operation, site)?;
+    }
+    let built = layout::build_guest_byte_c32_pair_eof_flag_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(built.pair.source, source);
+    assert_eq!(built.flag_store_code_address, 26);
+    assert_eq!(built.output_code_address, 27);
+    assert_eq!(built.halt_code_address, 28);
+    assert_eq!(
+        layout::build_guest_byte_c32_pair_eof_flag_source(historical_profile()),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    let mut observed = BTreeSet::new();
+    for input_word in 0u32..=256 {
+        let input = if input_word == 256 {
+            vec![]
+        } else {
+            vec![u8::try_from(input_word).map_err(|error| error.to_string())?]
+        };
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(29, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 29,
+            },
+        );
+        assert_eq!(trace[25].decoded, Some(b'p'));
+        let classified = if input.is_empty() {
+            7_174_462
+        } else {
+            7_174_453
+        };
+        assert_eq!(trace[25].after.registers.accumulator, classified);
+        assert_eq!(trace[26].decoded, Some(b'p'));
+        assert_eq!(trace[27].decoded, Some(b'<'));
+        assert_eq!(trace[28].decoded, Some(b'v'));
+        let expected = if input.is_empty() {
+            15
+        } else {
+            0
+        };
+        assert_eq!(trace[26].after.registers.accumulator, expected);
+        let flag_address = trace[26].before.registers.data_pointer;
+        assert_eq!(
+            trace[26].memory_reads.data.map(|read| read.address),
+            Some(flag_address),
+        );
+        assert_eq!(guest.memory_word(flag_address), Ok(expected));
+        // An unchanged p write is correctly absent from the VM delta.
+        if let Some(write) = trace[26].memory_delta.data {
+            assert_eq!((write.address, write.after), (flag_address, expected));
+        }
+        assert_eq!(guest.output(), [u8::try_from(expected).unwrap_or(255)]);
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        assert_eq!(guest.memory_word(classifier.pair.pair_high_address), Ok(0));
+        _ = observed.insert((input.is_empty(), expected));
+    }
+    assert_eq!(observed, BTreeSet::from([(false, 0), (true, 15)]));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "negative physical EOF flag mutation on actual N15 VM"
+)]
+fn eof_full_word_flag_refuses_a_missing_second_crazy_write()
+-> Result<(), String> {
+    let profile = current_profile();
+    let original = layout::build_guest_byte_c32_pair_eof_flag_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let mut tampered = original.pair.source.clone();
+    tampered[26] = encode(b'o', 26)?;
+    for (input, expected, incorrect) in
+        [(vec![], 15u8, 62u8), (vec![0], 0, 53), (vec![0xff], 0, 53)]
+    {
+        let mut valid = ProfileMachine::from_source(
+            profile,
+            &original.pair.source,
+            input.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut invalid =
+            ProfileMachine::from_source(profile, &tampered, input)
+                .map_err(|error| error.to_string())?;
+        for guest in [&mut valid, &mut invalid] {
+            assert_eq!(
+                guest.run(29).map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 29,
+                }
+            );
+        }
+        assert_eq!(valid.output(), [expected]);
+        assert_eq!(invalid.output(), [incorrect]);
+        assert_ne!(valid.output(), invalid.output());
+    }
+    Ok(())
+}
