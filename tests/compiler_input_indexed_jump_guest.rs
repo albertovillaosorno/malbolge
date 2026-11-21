@@ -285,3 +285,162 @@ fn eof_and_unsupported_bytes_do_not_form_a_total_dynamic_branch()
     assert_eq!(jump_machine.memory_word(73), Ok(119));
     Ok(())
 }
+
+// Independent 15-trit crazy table. No VM loader or compiler helper is invoked
+// in the census below; the real VM separately witnesses representative paths.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "15 fixed trits and independently enumerated crazy truth table"
+)]
+fn scalar_crazy(mut data: u32, mut accumulator: u32) -> u32 {
+    let mut value = 0u32;
+    let mut place = 1u32;
+    for _ in 0usize..15usize {
+        let digit = match (data % 3, accumulator % 3) {
+            (0 | 1, 0) | (2, 2) => 1,
+            (1, 2) | (2, 0 | 1) => 2,
+            _ => 0,
+        };
+        value += digit * place;
+        data /= 3;
+        accumulator /= 3;
+        place *= 3;
+    }
+    value
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "finite static closure of the input-driven jump address grammar"
+)]
+fn all_high_byte_destinations_are_bounded_and_none_can_output()
+-> Result<(), String> {
+    let mut loader = SOURCE
+        .iter()
+        .map(|byte| u32::from(*byte))
+        .collect::<Vec<_>>();
+    while loader.len() <= 256 {
+        let previous = loader
+            .get(loader.len().saturating_sub(2))
+            .copied()
+            .ok_or("no previous loader word")?;
+        let latest = loader.last().copied().ok_or("no last loader word")?;
+        loader.push(scalar_crazy(previous, latest));
+    }
+    for (address, expected) in [
+        (37, RAW_ONE_TRITS),
+        (62, 72),
+        (73, RAW_ONE_TRITS),
+        (78, 72),
+        (84, 72),
+        (121, RAW_ONE_TRITS),
+    ] {
+        assert_eq!(loader.get(address), Some(&expected), "loader M{address}");
+    }
+
+    let mut refused_jump = 0u32;
+    let mut non_graphical_fetch = 0u32;
+    let mut code_at_73 = 0u32;
+    let mut inert_at_73 = 0u32;
+    let mut jump_at_73 = 0u32;
+    let mut crazy_at_73 = 0u32;
+    let mut jump_code_at_73 = 0u32;
+    let mut code_at_37 = 0u32;
+    for byte in 26u8..=255u8 {
+        let raw = u32::from(byte);
+        let pointer = usize::from(byte) + 1;
+        // C17 p overwrites C73 with exact raw input. C15 p overwrites M121
+        // with one crazy transform. All other 27..=256 words are virgin.
+        let operand = match pointer {
+            73 => raw,
+            121 => scalar_crazy(RAW_ONE_TRITS, raw),
+            _ => loader.get(pointer).copied().ok_or("missing operand")?,
+        };
+        if !(33..=126).contains(&operand) {
+            refused_jump += 1;
+            continue;
+        }
+        let next_code = operand + 1;
+        assert!(matches!(next_code, 37 | 73));
+        if next_code == 37 {
+            code_at_37 += 1;
+            // Loader M37 is non-graphical, so the next fetch terminates.
+            assert_eq!(loader.get(37), Some(&RAW_ONE_TRITS));
+            non_graphical_fetch += 1;
+            continue;
+        }
+        let fetched = raw;
+        if !(33..=126).contains(&fetched) {
+            non_graphical_fetch += 1;
+            continue;
+        }
+        code_at_73 += 1;
+        let opcode = decode_profile_instruction(fetched, 73)
+            .ok_or("graphical C73 failed to decode")?;
+        match opcode {
+            b'j' => jump_at_73 += 1,
+            b'p' => crazy_at_73 += 1,
+            b'i' => jump_code_at_73 += 1,
+            _ => {
+                assert!(!matches!(opcode, b'/' | b'<' | b'v' | b'*'));
+                inert_at_73 += 1;
+            },
+        }
+    }
+    assert_eq!(
+        (
+            refused_jump,
+            code_at_37,
+            code_at_73,
+            non_graphical_fetch,
+            inert_at_73,
+            jump_at_73,
+            crazy_at_73,
+            jump_code_at_73,
+        ),
+        (114, 39, 32, 84, 29, 1, 1, 1)
+    );
+    // No byte >= 26 can reach an output or input opcode in one dispatch.
+    // The lower 26 bytes and EOF need separate instruction-version tracing.
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "representative real guest terminations anchor static census"
+)]
+fn both_non_graphical_dispatch_destination_classes_terminate()
+-> Result<(), String> {
+    // Byte 27 selects virgin M37. Byte 29 jumps into overwritten M73,
+    // whose actual raw value 29 cannot be decoded as an instruction.
+    for (byte, next_code, fetched) in
+        [(27u8, 37u32, RAW_ONE_TRITS), (29u8, 73u32, 29u32)]
+    {
+        let (guest, traces, outcome) =
+            physical_guest(vec![byte, 255], DISPATCH_STEPS)?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::NonGraphicalCell,
+            steps: DISPATCH_STEPS,
+        });
+        let jump = traces.get(24).ok_or("missing physical i")?;
+        assert_eq!(jump.decoded, Some(b'i'));
+        assert_eq!(jump.after.registers.code_pointer, next_code);
+        let refused = traces.get(25).ok_or("missing reached bad fetch")?;
+        assert_eq!(refused.before.registers.code_pointer, next_code);
+        assert_eq!(refused.fetched_cell, Some(fetched));
+        assert_eq!(refused.decoded, None);
+        assert_eq!(
+            refused.result,
+            Ok(StepOutcome::Terminated(Termination::NonGraphicalCell))
+        );
+        assert_eq!(guest.input_consumed(), 1);
+        assert!(guest.output().is_empty());
+    }
+    Ok(())
+}

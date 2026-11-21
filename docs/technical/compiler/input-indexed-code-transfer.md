@@ -64,6 +64,31 @@ paths. Two witnessed code options and a branch on raw byte identities do
 complete mutable-C control flow. No artifact for the source C checksum was
 published.
 
+An independent 15-trit scalar loader recurrence, including the two reached
+`p` data writes, also closes the **230 high-byte cases `26..=255`** without
+running a host implementation of the source C program. It proves that the
+C24 jump can only reach C37 or C73 if it is graphically encryptable:
+
+| High-byte classification | Number of values |
+| --- | ---: |
+| C24 target is non-graphical, so the jump refuses | 114 |
+| C24 selects C37; virgin M37 is non-graphical | 39 |
+| C24 selects C73, but raw input is non-graphical code | 45 |
+| C73 executes an inert instruction | 29 |
+| C73 executes actual `j`, `p`, or `i` | 1 each (3 total) |
+
+Thus **no high-byte case** in this fixed source reaches a guest `/`, `<`,
+`v` or `*` at that first dispatched step. This is a finite proof about the
+fixed 27-cell grammar only, not a VM-executed 230-stream test or a general
+impossibility of conditional input output. Bytes below 26 and true EOF
+have separate source-code encryption histories and are not included in
+that scalar closure. Real VM controls cover representative positive and
+negative paths instead of treating the recurrence as guest execution.
+Specifically, byte 27 makes the normative VM fetch non-graphical M37,
+whereas byte 29 fetches the non-graphical value written to M73. Each
+real guest run terminates on its 26th requested step after one byte read;
+subsequent input remains unread. Neither is a source-C guard.
+
 ## Reproduction and next real compiler gate
 
 ```sh
