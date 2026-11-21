@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, an independent scalar units-trit proof and four physical
+  N15 VM runs show that source-loaded `/; j; (p|*); p; v` cannot make its
+  **first adjacent C32 low-word write** represent both raw byte `0x02` and
+  true EOF: their raw units trits agree, yet the required `[2, 0]` and
+  `[4,644,102, 299]` C32 result lows disagree at that trit. Real sources
+  read the actual loader words and execute both data writes and encryption.
+  The counterexample excludes only the fixed direct-adjacency grammar;
+  nonlocal rotation, control and later overwrite remain viable directions.
+
+
 - On 2026-11-20, exact 82-step Iy converter VM runs prove C78 writes
   M96=`2` for second byte `0x02`, versus M96=`62,207` for true EOF. Both
   outputs share units trit `2` even though each canonical signed C32

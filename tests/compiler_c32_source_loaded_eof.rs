@@ -642,3 +642,129 @@ fn source_loaded_c32_writes_after_real_input_match_bounded_oracle()
     }
     Ok(())
 }
+
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "independent scalar result and every reached N15 guest effect"
+)]
+fn verify_raw_first_write(
+    source: &[u8],
+    loaded: &ProfileMachine,
+    first: u8,
+    input: &[u8],
+) -> Result<u32, String> {
+    let profile = current_profile();
+    let data_base = u32::from(source[1]) + 1;
+    let seeds = original_seed_pair(
+        source,
+        usize::try_from(data_base).map_err(|error| error.to_string())?,
+    );
+    let raw = input
+        .first()
+        .map_or_else(|| profile.eof_word(), |&byte| u32::from(byte));
+    let expected_low = if first == b'p' {
+        scalar_crazy(seeds[0], raw)
+    } else {
+        scalar_rotate(seeds[0])
+    };
+    let expected_high = scalar_crazy(seeds[1], expected_low);
+    let mut vm = ProfileMachine::from_state(
+        profile,
+        loaded.memory().to_vec(),
+        input.to_vec(),
+        malbolge::ProfileRegisters::default(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    let outcome = vm
+        .run_traced(5, &mut |step| trace.push(*step))
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 5,
+    });
+    assert_eq!(trace[0].decoded, Some(b'/'));
+    assert_eq!(trace[0].after.registers.accumulator, raw);
+    assert_eq!(trace[1].decoded, Some(b'j'));
+    assert_eq!(trace[1].after.registers.data_pointer, data_base);
+    for (index, (&opcode, &word)) in [first, b'p']
+        .iter()
+        .zip([expected_low, expected_high].iter())
+        .enumerate()
+    {
+        let step = &trace[2 + index];
+        let address = data_base
+            + u32::try_from(index).map_err(|error| error.to_string())?;
+        assert_eq!(step.decoded, Some(opcode));
+        assert_eq!(step.before.registers.data_pointer, address);
+        assert_eq!(
+            step.memory_reads.data.map(|read| read.value),
+            Some(seeds[index])
+        );
+        assert_eq!(step.after.registers.accumulator, word);
+        assert_eq!(vm.memory_word(address), Ok(word));
+        assert!(step.memory_delta.encryption.is_some());
+    }
+    assert_eq!(trace[4].decoded, Some(b'v'));
+    assert_eq!(vm.output(), &[]);
+    Ok(expected_low)
+}
+
+// This is an obstruction to a *specific* physical layout, not to C23 input
+// conversion generally: a first adjacent low-word write from raw guest `/`
+// cannot distinguish byte 2 from EOF at the units trit using fixed `p` or `*`.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "two physical input cases and independent one-trit obstruction"
+)]
+fn raw_input_first_c32_word_needs_nonlocal_trit_routing() -> Result<(), String>
+{
+    let profile = current_profile();
+    let c32_byte =
+        layout::typed_cfg_adapter::state_storage::encode_i32_cells(2);
+    let c32_eof =
+        layout::typed_cfg_adapter::state_storage::encode_i32_cells(u32::MAX);
+    assert_eq!(c32_byte, [2, 0]);
+    assert_eq!(c32_eof, [4_644_102, 299]);
+    assert_eq!(2 % 3, profile.eof_word() % 3);
+    assert_ne!(c32_byte[0] % 3, c32_eof[0] % 3);
+
+    // Both zero-prefix sources physically reach `/; j; first; p; v`.
+    // The fixed source tail supplies both data cells and is never executed.
+    for first in *b"p*" {
+        let mut source = Vec::new();
+        for opcode in [b'/', b'j', first, b'p', b'v'] {
+            source.push(encoded(source.len(), opcode)?);
+        }
+        let tail = (33..=126u8)
+            .find(|&byte| graphical_tail(byte, source.len()))
+            .ok_or("missing graphical loader tail")?;
+        source.push(tail);
+        let data_base = u32::from(source[1]) + 1;
+        assert!(
+            usize::try_from(data_base).map_err(|error| error.to_string())?
+                > source.len()
+        );
+        let loaded = ProfileMachine::from_source(profile, &source, vec![])
+            .map_err(|error| error.to_string())?;
+        let first_words = [
+            verify_raw_first_write(&source, &loaded, first, &[2])?,
+            verify_raw_first_write(&source, &loaded, first, &[])?,
+        ];
+        // With fixed operand trits, the first `p` preserves equality of
+        // the two raw input units trits; `*` cannot depend on input at all.
+        // Neither first adjacent store can encode both distinct C32 lows.
+        assert_eq!(first_words[0] % 3, first_words[1] % 3);
+        assert!(
+            first_words[0] != c32_byte[0] || first_words[1] != c32_eof[0],
+            "fixed loader source cannot normalize byte 2 and signed EOF"
+        );
+    }
+    Ok(())
+}

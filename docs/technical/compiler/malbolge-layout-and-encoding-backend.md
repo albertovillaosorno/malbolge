@@ -51,6 +51,18 @@ byte `ff` and signed EOF remain outside this grammar and fail closed.
 The unchanged five-input source checksum still refuses guest publication
 at the missing physical operation/control linker.
 
+### Raw-input adjacent C32 store locality counterexample (2026-11-21)
+
+An additional independent N15 test executes the first two physical data
+writes after raw `/; j` using either `p; p` or `*; p`, on byte `02` and
+EOF separately. All four traces verify actual input, fetched code, exact
+loader-derived operands, adjacent writes, and self-encryption. The first
+written low word has the same units trit for both raw input cases, while
+canonical C32 signed `getchar` requires different units trits. Thus the
+restricted direct two-word layout cannot store both canonical values.
+This does not rule out source-controlled branches, trit-moving operations
+before the store, or revisits; it narrows the next physical linker search.
+
 ### Profile-bound C32 constant-write operand plan (2026-11-20)
 
 The current N15 target now exposes `plan_c32_literal_crazy_writes` from the

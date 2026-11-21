@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Why raw input cannot directly form the first C32 low word (2026-11-21)
+
+`tests/compiler_c32_source_loaded_eof.rs` now exercises two real source-
+loaded, five-step N15 guests with reached `/; j; (p|*); p; v`. Each
+variant executes on byte `0x02` and on true EOF, reading exactly the two
+loader-derived adjacent data words, writing both, and encrypting its reached
+instructions. An independent scalar ternary oracle checks the exact guest
+arithmetic, not just final values. The source is graphical and independently
+loader-initialized; these are not host-supplied data words.
+
+The raw signed input accumulators `2` and `14,348,906` both have units trit
+`2`. The first `p` therefore produces the same units trit with any fixed
+data-operand units trit; the first `*` is wholly input-independent. But the
+required source-C32 low words are respectively `2` (units trit `2`) and
+`4,644,102` (units trit `0`). Hence **neither fixed first write can be the
+complete low-word store for both input cases**. A second adjacent `p`
+cannot repair the already-stored low cell. This is a necessary-condition
+counterexample for this exact direct adjacency grammar. Guest-dependent
+routing, earlier rotations, different data flow, or revisiting the low cell
+remain open; neither a full C23 lowering failure nor an impossibility for
+arbitrary Malbolge code is claimed. The whole checksum remains unpublished.
+
 ### Why the Iy converter cannot directly store signed EOF with more p
 
 A second source-locked test exercises the **real 91-cell Iy converter** on
