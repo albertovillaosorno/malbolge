@@ -110,11 +110,18 @@ in 465 normative VM steps. A loader-valid mutation M463=106 instead leads
 C281 -> C107 and fails the original return contract.
 
 **Accepted finding:** two authentic, self-modifying physical returns were
-backward-constructed. **Still open:** a verified third traversal, a
-repeatable entry-state relation, source-linked mutable C23 arithmetic,
-phi/branch linkage and an executable EOF checksum. Preserve the existing
-P2 acceptance. Scope the next hypothesis to one finite inverse-operand/
-forward-VM state-contract search; no speculative infinite-cycle claim.
+backward-constructed. A separate source-backed follow-up repairs six reached
+third-visit opcode hazards, retains 133 half-phase-equivalent source pairs,
+and uses the authentic M562/M563 loader tail to derive M639=119. Five bounded
+640-step real N15 runs traverse C106..C281 a third time, with all reached
+code fetches, encryption, inputs, outputs and pointer states checked. The
+third `i` lands at C120; a changed-tail negative case lands at C100.
+
+**Still open:** any *repeated live-in/live-out state relation*, source-linked
+mutable C23 arithmetic, phi/branch linkage and an executable EOF checksum.
+The third real return is not a loop or a compiler milestone. Preserve the
+existing P2 acceptance. Scope further research to a finite forward/backward
+**state-contract** search, not an unbounded return-count ladder.
 See `tests/compiler_141_half_phase_returns.rs` and
 `docs/technical/compiler/141-half-phase-return-evidence.md`.
 

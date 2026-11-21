@@ -37,15 +37,16 @@ correctness, or source/guest verification.
 opcode bytes can be re-encoded for a +141 address shift by rotating their
 94-character byte index by 47, and the second re-encoding restores it.
 A **real N15 guest** executed two 141-cell physical envelopes, returned
-C281 -> C100, then returned C281 -> C106 on the next pass, using a
-loader-valid source operand precomputed at M463. Five input streams and a
-negative altered-return control pass in
+C281 -> C100, then C281 -> C106. A separate source-backed third-traversal
+candidate repaired six self-encryption hazards and used loader-generated
+M639=119 for a third return C281 -> C120. Five binary/EOF streams and
+changed-operand negative controls pass in
 `tests/compiler_141_half_phase_returns.rs`, with analysis in
-`docs/technical/compiler/141-half-phase-return-evidence.md`. This proves
-**two bounded backedges**, not an unbounded/reusable loop or C23 checksum.
-The next experiment must seek a repeated *state contract*, not merely a
-matching phase or address, with finite backward operand synthesis and
-independent VM replay. It is an optional parallel P2 layout approach,
+`docs/technical/compiler/141-half-phase-return-evidence.md`. These prove
+**three bounded backedges**, not an unbounded/reusable loop or C23 checksum.
+The next experiment must seek a repeated *state contract*, not more returns
+or matching phases, with finite backward operand synthesis and independent
+VM replay. It is an optional parallel P2 layout approach,
 never a substitute for or prerequisite to full mutable-C/EOF acceptance.
 
 **Owner-directed 282-position cycle-block experiment (2026-11-20):** In

@@ -20,6 +20,22 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Three bounded physical 141-position guest backedges (2026-11-21)
+
+The initial complementary 141-cell source experiment established two actual
+C281 code-pointer returns, not a phase-independent state cycle. A separate
+third-traversal candidate now changes six initially safe but third-visit-
+unsafe graphical opcodes, retains 133 of the 140 matched half-turn pairs,
+and derives a third real jump target from the source loader: M562=41,
+M563=118, and the subsequent recurrence produces M639=119. A 640-step
+normative N15 execution confirms C281 -> C100, C281 -> C106 and C281 ->
+C120, the exact code and data pointers, executed/encrypted code and input/
+output for five bounded streams. A changed graphical tail reaches C100
+instead on the third jump. This does **not** prove a repeated state
+contract, a usable C arithmetic block or a source-linked EOF loop. See
+`docs/technical/compiler/141-half-phase-return-evidence.md` and
+`tests/compiler_141_half_phase_returns.rs`.
+
 ### Real guest input before source-loaded C32 constant writes (2026-11-21)
 
 `build_c32_literal_after_input_source` emits a current-N15 graphical guest

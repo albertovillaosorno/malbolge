@@ -157,6 +157,54 @@ fn candidate_source() -> Result<(Vec<u8>, Vec<u8>), String> {
     Ok((source, operations))
 }
 
+// A third traversal fetches C106..C280 after *two* prior encryptions.
+// Keep both earlier traversals valid while selecting safe third-visit code.
+fn safe_on_third_visit(operation: u8, position: usize) -> Result<bool, String> {
+    let raw = encode(operation, position)?;
+    let first = encrypt_profile_cell(u32::from(raw))
+        .ok_or_else(|| format!("no first encryption at {position}"))?;
+    let second = encrypt_profile_cell(first)
+        .ok_or_else(|| format!("no second encryption at {position}"))?;
+    Ok(!matches!(
+        decode_profile_instruction(second, position as u32),
+        Some(b'i' | b'j' | b'v' | b'p' | b'*') | None
+    ))
+}
+
+fn three_return_source() -> Result<(Vec<u8>, Vec<u8>, usize), String> {
+    let (mut source, mut operations) = candidate_source()?;
+    let mut repairs = 0;
+    for position in 106..281 {
+        if safe_on_third_visit(operations[position], position)? {
+            continue;
+        }
+        let replacement = [b'o', b'<', b'/']
+            .into_iter()
+            .find(|operation| {
+                safe_on_second_visit(*operation, position).unwrap_or(false)
+                    && safe_on_third_visit(*operation, position)
+                        .unwrap_or(false)
+            })
+            .ok_or_else(|| {
+                format!("no third-visit-safe source at {position}")
+            })?;
+        source[position] = encode(replacement, position)?;
+        operations[position] = replacement;
+        repairs += 1;
+    }
+    // The final two source characters are not executed. They seed the
+    // 6-period loader recurrence: M639=119, so third `i` at C281 lands C120.
+    source[562] = 41;
+    source[563] = 118;
+    for (position, &operation) in
+        operations.iter().enumerate().take(281).skip(106)
+    {
+        assert!(safe_on_second_visit(operation, position)?);
+        assert!(safe_on_third_visit(operation, position)?);
+    }
+    Ok((source, operations, repairs))
+}
+
 #[test]
 fn all_opcode_half_turn_phases_are_exact_but_not_identical_source_bytes()
 -> Result<(), String> {
@@ -321,6 +369,177 @@ fn real_n15_guest_executes_two_source_driven_backward_returns()
     for input in [vec![], vec![0], vec![0x80], vec![0xff], vec![1, 2]] {
         assert_one_input(&source, &operations, &input)?;
     }
+    Ok(())
+}
+
+fn revisited_code_word(
+    source: &[u8],
+    position: usize,
+    visits: usize,
+) -> Result<u32, String> {
+    let mut word = u32::from(source[position]);
+    let encryptions = if position == 281 {
+        0
+    } else {
+        visits
+    };
+    for _ in 0..encryptions {
+        word = encrypt_profile_cell(word)
+            .ok_or("missing independently expected encryption")?;
+    }
+    Ok(word)
+}
+
+fn expected_next_input(
+    input: &[u8],
+    consumed: &mut usize,
+) -> (u32, TraceInput) {
+    if let Some(&byte) = input.get(*consumed) {
+        *consumed += 1;
+        (u32::from(byte), TraceInput::Byte(byte))
+    } else {
+        (current_profile().eof_word(), TraceInput::EndOfInput)
+    }
+}
+
+// Two earlier guest backedges are not evidence of a third. This checks
+// the complete source-driven third traversal including code mutation,
+// loader-seeded D639 and actual input/EOF effects on five finite streams.
+#[test]
+fn real_n15_guest_executes_third_return_after_safe_revisits()
+-> Result<(), String> {
+    const THREE_RETURNS: usize = 640;
+    let (source, operations, repairs) = three_return_source()?;
+    assert_eq!(source.len(), SOURCE);
+    assert_eq!(repairs, 6, "six third-visit code hazards need repair");
+    assert_eq!(
+        (0..140)
+            .filter(|&offset| {
+                source[offset + HALF] == half_turn(source[offset])
+            })
+            .count(),
+        133,
+    );
+    for input in [vec![], vec![0], vec![0x80], vec![0xff], vec![1, 2]] {
+        let mut machine = ProfileMachine::from_source(
+            current_profile(),
+            &source,
+            input.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(machine.memory_word(639), Ok(119));
+        assert_eq!(machine.memory_word(463), Ok(105));
+        let mut traces = Vec::new();
+        let outcome = machine
+            .run_traced(THREE_RETURNS, &mut |trace| traces.push(*trace))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::BudgetExhausted {
+            steps: THREE_RETURNS,
+        });
+        assert_eq!(traces.len(), THREE_RETURNS);
+        let mut consumed = 0;
+        let mut accumulator = 0;
+        let mut expected_output = Vec::new();
+        let mut returns = Vec::new();
+        for (step, trace) in traces.iter().enumerate() {
+            let (position, visits) = if step < 282 {
+                (step, 0)
+            } else if step < 464 {
+                (step - 282 + 100, 1)
+            } else {
+                (step - 464 + 106, 2)
+            };
+            assert_eq!(trace.before.registers.code_pointer, position as u32);
+            assert_eq!(trace.before.registers.data_pointer, step as u32);
+            let encoded = revisited_code_word(&source, position, visits)?;
+            let opcode = decode_profile_instruction(encoded, position as u32)
+                .ok_or("invalid independently expected opcode")?;
+            assert_eq!(trace.decoded, Some(opcode));
+            assert_eq!(
+                trace
+                    .memory_reads
+                    .fetch
+                    .map(|read| (read.address, read.value)),
+                Some((position as u32, encoded)),
+            );
+            let encryption = trace
+                .memory_delta
+                .encryption
+                .ok_or("missing physical source-code encryption")?;
+            assert_eq!(
+                encryption.after,
+                encrypt_profile_cell(encryption.before)
+                    .ok_or("unexpected non-graphical encryption source")?,
+            );
+            if position != 281 {
+                assert_eq!(encryption.address, position as u32);
+                assert_eq!(encryption.before, encoded);
+            }
+            if visits == 0 {
+                assert_eq!(opcode, operations[position]);
+            }
+            match opcode {
+                b'/' => {
+                    let expected_input;
+                    (accumulator, expected_input) =
+                        expected_next_input(&input, &mut consumed);
+                    assert_eq!(trace.input, Some(expected_input));
+                    assert_eq!(trace.after.registers.accumulator, accumulator);
+                },
+                b'<' => {
+                    let byte = (accumulator & 255) as u8;
+                    expected_output.push(byte);
+                    assert_eq!(trace.output, Some(byte));
+                },
+                b'i' => {
+                    assert_eq!(position, 281);
+                    let (data_word, landing) = match visits {
+                        0 => (99, 100),
+                        1 => (105, 106),
+                        2 => (119, 120),
+                        _ => return Err("unexpected fourth return".to_owned()),
+                    };
+                    assert_eq!(
+                        trace.memory_reads.data.map(|read| read.value),
+                        Some(data_word)
+                    );
+                    assert_eq!(trace.after.registers.code_pointer, landing);
+                    assert_eq!(
+                        trace.memory_reads.encryption.map(|read| read.address),
+                        Some(data_word)
+                    );
+                    returns
+                        .push((trace.before.registers.data_pointer, landing));
+                },
+                _ => assert!(!matches!(opcode, b'j' | b'v' | b'p' | b'*')),
+            }
+        }
+        assert_eq!(returns, [(281, 100), (463, 106), (639, 120)]);
+        assert_eq!(machine.input_consumed(), consumed);
+        assert_eq!(machine.output(), expected_output);
+    }
+    Ok(())
+}
+
+#[test]
+fn changed_loader_tail_changes_third_return_without_changing_first_two()
+-> Result<(), String> {
+    let (mut source, _, _) = three_return_source()?;
+    source[563] = 99; // M639=99, so the third return would land C100.
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), &source, vec![1, 2])
+            .map_err(|error| error.to_string())?;
+    assert_eq!(machine.memory_word(639), Ok(99));
+    let mut backedges = Vec::new();
+    let result = machine
+        .run_traced(640, &mut |trace| {
+            if trace.before.registers.code_pointer == 281 {
+                backedges.push(trace.after.registers.code_pointer);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert_eq!(result, RunOutcome::BudgetExhausted { steps: 640 });
+    assert_eq!(backedges, [100, 106, 100]);
     Ok(())
 }
 
