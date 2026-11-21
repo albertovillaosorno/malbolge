@@ -20,6 +20,29 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Third-read direct-store and return limit (2026-11-21)
+
+The real EOF-guarded success arm first revisits C101 as `/`, then
+traverses C102..C104 before its existing halt. For every loader-valid
+first-pass graphical instruction at each C102..C112 position, an
+independent 94-byte positional/XLAT2 census finds **no** second-pass
+`p`. The only second-pass `<` in that window is C108, whose initial
+source byte necessarily decodes as `v` and halts the first traversal.
+This rules out one direct source-loaded `p` write of the fresh third
+input, or a directly echoed byte in that *fixed local window*, without
+an intervening code write or different control path. It does not rule
+out nonlocal state transfer, a rewritten code cell, or a future loop.
+
+A concrete real guest mutation changes C102 from initial `o` to `p`;
+after XLAT2 it becomes a second-pass `i`, physically reached after
+the third `/`. On successful second bytes (including NUL and `ff`
+as third input), the normative N15 VM instead rejects encryption
+of non-graphical M7,174,350=7,174,350. Truncated second input still
+reaches its original 119-step EOF halt; all five replays preserve the
+expected input-read sites. This is a **negative** bounded return
+candidate, not evidence that arbitrary guest cycles are impossible.
+See `tests/compiler_guarded_third_read_locality.rs`.
+
 ### Two input-dependent guest state writes with EOF guard (2026-11-21)
 
 `build_two_input_class_state_with_guarded_third_read_source` adds two

@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, a complete positional/XLAT2 census of the
+  second-pass C102..C112 return window in the guarded third-read N15
+  source finds no first-valid graphical byte that encrypts into `p`.
+  The only second-pass output `<` there would need C108 to start as
+  `v`, halting the first traversal. A real C102 `p`-then-`i` attempted
+  return preserves the third `/` but rejects an invalid graphical
+  target M7,174,350 across three binary/EOF success-arm streams;
+  two truncated-EOF paths retain normal termination. This narrows the
+  immediate third-input state/linker search, not arbitrary nonlocal
+  guest control. The mutable C23 checksum stays unlinked.
+
 - On 2026-11-21, one graphical 132-cell N15 guest now executes two
   physically distinct input-derived `p` writes before and after its second
   signed read, **while preserving** the real second-EOF `i` branch,
