@@ -439,3 +439,74 @@ fn explicit_boundary_data_restart_changes_the_second_block_state()
     }
     Ok(())
 }
+
+// Freeze one third physical grammar: change only C281 to `i` instead of
+// `o`/`j`. Unlike a data-pointer reset, this is an attempted code return.
+// It must be rejected as a two-block composition when its exact target is
+// neither the first block entry C0 nor the second copy entry C282.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "bounded wrong-target VM trace assertions"
+)]
+fn first_block_code_return_misses_both_phase_aligned_entries()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = physical_source(b'i')?;
+    let original_203 = byte_at(&source, 203)?;
+    let encrypted_203 = encrypt_profile_cell(original_203)
+        .ok_or("C203 code cell is not graphical")?;
+    let wrong_target = encrypted_203.saturating_add(1);
+    assert_eq!(encrypted_203, 45);
+    assert_eq!(wrong_target, 46);
+    assert_ne!(wrong_target, 0);
+    assert_ne!(
+        wrong_target,
+        u32::try_from(BLOCK).map_err(|error| error.to_string())?
+    );
+    // A code jump encrypts its *target* rather than C281. M45 already
+    // underwent XLAT2 on the initial pass, so it is encrypted a second
+    // time from its evolved value, not the physical C281 source byte.
+    let original_target = byte_at(&source, 45)?;
+    let old_target_cell = encrypt_profile_cell(original_target)
+        .ok_or("old C45 encryption source missing")?;
+    let new_target_cell = encrypt_profile_cell(old_target_cell)
+        .ok_or("second C45 encryption unavailable")?;
+    assert_ne!(old_target_cell, new_target_cell);
+    for input in [vec![], vec![0], vec![0x80], vec![0xff], vec![1, 2]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, &source, input.clone())
+                .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(BLOCK, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::BudgetExhausted { steps: BLOCK });
+        let jump = at(&trace, BLOCK - 1)?;
+        assert_eq!(jump.before.registers.code_pointer, 281);
+        assert_eq!(jump.decoded, Some(b'i'));
+        assert_eq!(
+            jump.memory_reads.data.map(|item| item.value),
+            Some(encrypted_203)
+        );
+        assert_eq!(jump.after.registers.code_pointer, wrong_target);
+        assert_eq!(
+            jump.memory_reads
+                .encryption
+                .map(|item| (item.address, item.value)),
+            Some((45, old_target_cell)),
+        );
+        assert_eq!(
+            jump.memory_delta
+                .encryption
+                .map(|item| { (item.address, item.before, item.after) }),
+            Some((45, old_target_cell, new_target_cell)),
+        );
+        assert_eq!(vm.memory_word(45), Ok(new_target_cell));
+        assert_eq!(jump.after.registers.data_pointer, 204);
+        assert_eq!(vm.input_consumed(), input.len().min(1));
+        assert_eq!(vm.output().len(), 1);
+    }
+    Ok(())
+}

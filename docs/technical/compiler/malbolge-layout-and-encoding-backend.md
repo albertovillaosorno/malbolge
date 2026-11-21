@@ -41,10 +41,13 @@ encrypted code byte (M404=121) rather than the C200 raw byte (122). Changing
 instead reads M246=89 and the second fold writes M95. On `01 02`, the first
 case emits hex `36 34` and the data-reset case emits `36 36`. These are two
 specific positive *execution* paths and one meaningful distinct-state
-counterexample; they neither prove an executable code-pointer return nor
-establish a repeatable 282-step semantic cycle. C always proceeds through
-distinct physical code addresses. Neither is source-C checksum codegen; the
-seven-block EOF checksum still refuses publication.
+counterexample, not a repeatable 282-step semantic cycle. Both continue
+through distinct physical code addresses. A third one-cell C281=`i` return
+candidate is rejected by actual VM trace: it reads encrypted M203=45 and
+jumps to C46 rather than C0 or C282, while re-encrypting previously executed
+M45 from 111 to 120. All five 282-step prefixes agree on the wrong target.
+Only this frozen return grammar is disproven; other return mechanisms are
+still open, and the seven-block C23 EOF checksum remains unpublished.
 
 ### Repeated live writes to one mutable guest cell (2026-11-19)
 

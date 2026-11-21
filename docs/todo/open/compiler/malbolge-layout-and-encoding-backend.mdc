@@ -109,11 +109,17 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
   self-encryption checks. The 564-byte graphical source digests (SHA-256)
   are `21a24631eb862db045001944ac10578a59571924aabc9d6c3b338eefe4a663c8`
   and `8190fe600433f86a7001e8b662a4a10e79687254cb7f29523514aabf83f15de6`.
-  These are only **two fixed, bounded layouts**, not a search of all returns
-  or a 282-step cycle: C advances through different physical code cells;
-  the explicit `j` is a *data*-pointer restart, not a C return. The
-  original mutable-C EOF checksum remains unlinked and its 3 native/refusal
-  controls continue to pass. See `tests/compiler_282_phase_blocks.rs`.
+  A third frozen physical grammar changes only C281 to `i`. On all five
+  inputs, the actual C281 code jump reads encrypted M203=45 and targets
+  C46 after the automatic increment: neither C0 nor the next block C282.
+  It re-encrypts previously executed M45 (111 -> 120), not the C281
+  source byte. The 282-step bounded prefix therefore explicitly **rejects**
+  this wrong-return target; its graphical-source SHA-256 digest is
+  `f29779661979708afc1b95c47a7cc5c848577f4daf6955b657ef3b92f824bdb2`.
+  The experiment tests only **three fixed physical grammars**, not a search
+  of all return layouts or a repeatable 282-step semantic cycle. The `j`
+  is a *data*-pointer restart, not a C return. Original mutable-C EOF
+  checksum publication remains refused. See `tests/compiler_282_phase_blocks.rs`.
 
 - On 2026-11-17, a source-loaded 29-cell N15 guest executes nine real
   rotations and pointer resets, then `/; p; p; <` with two distinct real
