@@ -45,6 +45,14 @@ The fourth input is consumed later, at step 80. All six streams
 produce the same expected code path, with exact I/O event sites,
 source-bound operand values and memory effects.
 
+A separate source-backed VM trace identifies five C44 entry states at
+steps 44, 59, 65, 71 and 77, with data pointers 44, 114, 120,
+126 and 132. The genuine C49 `i` operand reads at steps 58,
+64, 70 and 76 use M113, M119, M125 and M131 respectively. This
+advancing live pointer rules out complete machine-state restoration
+at these physical returns. A stronger parametric live-state contract
+still needs its own linker and independent proof.
+
 The 83-step result is **budget exhaustion**, not termination. The
 machine is *not* required to halt on EOF, maintain canonical C32
 locals, execute C23 arithmetic or phi transfers, nor stop at the

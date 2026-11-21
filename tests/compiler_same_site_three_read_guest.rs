@@ -229,3 +229,31 @@ fn source_loaded_exit_pointer_mutation_removes_the_third_read()
     assert_eq!(machine.output(), []);
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact source-backed entry and data-read assertions"
+)]
+fn repeated_c44_entries_do_not_restore_live_pointer() -> Result<(), String> {
+    let (_machine, traces, outcome) = capture(SOURCE, vec![1, 2, 3, 4, 5], 78)?;
+    assert_eq!(outcome, RunOutcome::BudgetExhausted { steps: 78 });
+    for (step, data_pointer) in
+        [(44, 44), (59, 114), (65, 120), (71, 126), (77, 132)]
+    {
+        let entry = traces.get(step).ok_or("missing C44 entry")?;
+        assert_eq!(entry.before.registers.code_pointer, 44);
+        assert_eq!(entry.before.registers.data_pointer, data_pointer);
+    }
+    // Each later C49 'i' actually reads through the advanced data pointer.
+    // A code-site recurrence is not restored mutable machine state.
+    for (step, address) in [(58, 113), (64, 119), (70, 125), (76, 131)] {
+        let jump = traces.get(step).ok_or("missing C49 operand read")?;
+        assert_eq!(jump.decoded, Some(b'i'));
+        assert_eq!(
+            jump.memory_reads.data.map(|read| read.address),
+            Some(address),
+        );
+    }
+    Ok(())
+}
