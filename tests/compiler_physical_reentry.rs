@@ -20,10 +20,10 @@ pub mod layout;
 
 use layout::{
     PhysicalCodeMutation, PhysicalDataOperation, PhysicalEntryState,
-    PhysicalReentryError, PhysicalReentryWindow, PhysicalReplayBlocker,
-    PhysicalWordChange,
+    PhysicalIoEffect, PhysicalReentryChainError, PhysicalReentryError,
+    PhysicalReentryWindow, PhysicalReplayBlocker, PhysicalWordChange,
     build_two_input_class_state_with_guarded_third_read_source,
-    observe_physical_reentries,
+    observe_physical_reentries, verify_physical_reentry_chain,
 };
 use malbolge::{
     MemoryLiveIn, ProfileMachine, ProfileMemoryRead, ProfileRegisterSet,
@@ -486,6 +486,72 @@ fn chronological_memory_journal_agrees_with_full_vm_memory_images()
     assert_eq!(window.to.input_consumed, boundaries[1].2);
     assert_eq!(window.from.output_len, boundaries[0].3);
     assert_eq!(window.to.output_len, boundaries[1].3);
+    Ok(())
+}
+
+#[test]
+fn forged_physical_effect_journals_fail_without_a_second_window()
+-> Result<(), String> {
+    let windows = observe_physical_reentries(
+        current_profile(),
+        &source()?,
+        &[3, 4, 5],
+        ENTRY,
+        2,
+        STEPS,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(windows.len(), 1);
+    assert_eq!(verify_physical_reentry_chain(&windows), Ok(()));
+    let invalid =
+        Err(PhysicalReentryChainError::InvalidWindow { window_index: 0 });
+
+    // Boundary-only checking misses invented p/* results, even when no
+    // following window exists to expose the false intermediate version.
+    let mut false_data = windows.clone();
+    let data = false_data[0]
+        .data_operations
+        .iter_mut()
+        .find(|operation| operation.written_value.is_some())
+        .ok_or("missing real guest data write")?;
+    data.written_value = data.written_value.map(|value| value ^ 1);
+    assert_eq!(verify_physical_reentry_chain(&false_data), invalid);
+
+    let mut false_code = windows.clone();
+    let code = false_code[0]
+        .code_mutations
+        .first_mut()
+        .ok_or("missing real guest encryption")?;
+    code.write.after ^= 1;
+    assert_eq!(verify_physical_reentry_chain(&false_code), invalid);
+
+    let mut false_read = windows.clone();
+    let read = false_read[0]
+        .data_operations
+        .iter_mut()
+        .find(|operation| operation.written_value.is_some())
+        .ok_or("missing real guest operand")?;
+    read.read.value ^= 1;
+    assert_eq!(verify_physical_reentry_chain(&false_read), invalid);
+
+    let mut phantom_net = windows.clone();
+    let unused = current_profile().memory_words() - 1;
+    assert!(
+        phantom_net[0]
+            .net_changed_words
+            .iter()
+            .all(|w| w.address != unused)
+    );
+    phantom_net[0].net_changed_words.push(PhysicalWordChange {
+        address: unused,
+        before: 134,
+        after: 135,
+    });
+    assert_eq!(verify_physical_reentry_chain(&phantom_net), invalid);
+
+    let mut false_output = windows.clone();
+    false_output[0].io_operations[0].effect = PhysicalIoEffect::Output(0);
+    assert_eq!(verify_physical_reentry_chain(&false_output), invalid);
     Ok(())
 }
 

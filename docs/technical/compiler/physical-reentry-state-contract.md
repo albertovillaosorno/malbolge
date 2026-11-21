@@ -76,12 +76,26 @@ but cannot treat an obligation list as a synthesized or verified repair.
 on exact entry/exit registers and I/O counts, have sorted dependency and net
 change journals, and preserve all known physical memory versions across
 entries. Known versions come from actual entry live-ins and net effects;
-unobserved words cannot be inferred. The source-loaded 564-cell half-phase
-guest checks two genuine consecutive windows at C120 and C281 on the same
-five pinned byte/EOF inputs. Tampered C120 code-fetch or XLAT2 journal
-versions, disconnected boundaries, invalid output counts or empty chains
-are refused. This tests finite
-journal composition, not the existence of a reusable state contract.
+unobserved words cannot be inferred. It also reconstructs each window's
+first and final physical word versions from its chronologically ordered real
+`p`/`*` result writes and changed XLAT2 writes, handling aliases in the
+correct instruction-before-encryption order. Each observed operand value must
+agree with the latest known version. The derived net journal must match the
+claimed sorted net changes exactly, including cancellations. Input/output
+site chronology, data read/write address projections and write counts must
+agree with the recorded operations. These local checks reject fabricated
+effects **even with only one observed window**; they do not independently
+establish that arbitrary supplied effect journals came from a real VM.
+
+The source-loaded 564-cell half-phase guest checks two genuine consecutive
+windows at C120 and C281 on the same five pinned byte/EOF inputs. Tampered
+C120 code-fetch, XLAT2 journal versions, disconnected boundaries, invalid
+output counts or empty chains are refused. A separate real 132-cell C71
+reentry supplies eight guest data writes and 70 changed encryptions; five
+negative controls independently alter one write result, one encryption,
+one operand value, one phantom net word and one output event. All are refused
+by the single-window consistency check. This proves bounded journal
+composition and fail-closed contradictions, not a reusable state contract.
 
 Since source, profile and complete input are fixed, and the observed
 interval has no termination, the stricter `exact_closed_cycle` equality

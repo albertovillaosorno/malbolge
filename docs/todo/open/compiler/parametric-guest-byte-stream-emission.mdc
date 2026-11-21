@@ -75,6 +75,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, the physical reentry chain checker gained per-window
+  chronological instruction-effect consistency. A source-backed N15 C71
+  interval containing eight data writes and 70 changed XLAT2 writes now
+  rejects five independently forged value, encryption, operand, net-memory
+  and output journals even without a subsequent entry. The existing
+  two-window C120/C281 physical return checks remain bounded. This closes
+  an internal verifier blind spot, not the source-C checksum's missing
+  signed state/loop/phi/arithmetic linkage.
+
 - On 2026-11-21, two distinct physical reentry intervals were measured
   from the three-return 564-cell N15 guest at C120 (steps 120, 302, 478)
   and C281 (steps 281, 463, 639). Across five existing binary/EOF inputs,

@@ -827,15 +827,11 @@ fn cross_window_versions_reject_fabricated_reentry_state() -> Result<(), String>
         .find(|change| change.address == ENTRY)
         .ok_or("missing first C120 XLAT2 effect")?;
     code_change.after ^= 1;
-    let forged_after = code_change.after;
+    // Internal instruction effects already contradict this forged net word;
+    // reject it at the first window rather than propagating a false version.
     assert_eq!(
         verify_physical_reentry_chain(&false_encryption),
-        Err(PhysicalReentryChainError::MemoryVersion {
-            window_index: 1,
-            address: ENTRY,
-            expected: forged_after,
-            observed: expected_value,
-        }),
+        Err(PhysicalReentryChainError::InvalidWindow { window_index: 0 }),
     );
     Ok(())
 }

@@ -345,6 +345,184 @@ pub enum PhysicalReentryChainError {
     },
 }
 
+// Track the first observed physical version and the latest replayed version.
+// An unknown word becomes known at its first read or write-before witness.
+fn check_read(
+    versions: &mut BTreeMap<u32, (u32, u32)>,
+    address: u32,
+    value: u32,
+) -> bool {
+    let version = versions.entry(address).or_insert((value, value));
+    version.1 == value
+}
+
+fn check_write(
+    versions: &mut BTreeMap<u32, (u32, u32)>,
+    write: ProfileMemoryWrite,
+) -> bool {
+    let version = versions
+        .entry(write.address)
+        .or_insert((write.before, write.before));
+    if version.1 != write.before {
+        return false;
+    }
+    version.1 = write.after;
+    true
+}
+
+fn valid_effect_step(
+    previous: &mut Option<usize>,
+    step: usize,
+    window: &PhysicalReentryWindow,
+) -> bool {
+    if step < window.from.step
+        || step >= window.to.step
+        || previous.is_some_and(|last| step <= last)
+    {
+        return false;
+    }
+    *previous = Some(step);
+    true
+}
+
+/// Reject invented instruction effects even when only one interval is known.
+///
+/// This is a journal-consistency check, not a reimplementation of guest
+/// arithmetic or proof that supplied effects originated in a real VM run.
+/// Source-loaded normative replay is still required for authenticity.
+fn physical_window_effects_consistent(window: &PhysicalReentryWindow) -> bool {
+    if window.data_instruction_writes
+        != window
+            .data_operations
+            .iter()
+            .filter(|op| op.written_value.is_some())
+            .count()
+        || window.code_encryption_changes != window.code_mutations.len()
+        || !window
+            .data_read_addresses
+            .iter()
+            .copied()
+            .eq(window.data_operations.iter().map(|op| op.read.address))
+        || !window.data_write_addresses.iter().copied().eq(window
+            .data_operations
+            .iter()
+            .filter(|op| op.written_value.is_some())
+            .map(|op| op.read.address))
+    {
+        return false;
+    }
+
+    let mut previous = None;
+    for operation in &window.data_operations {
+        if !valid_effect_step(&mut previous, operation.step, window)
+            || !matches!(operation.opcode, b'i' | b'j' | b'p' | b'*')
+            || operation.written_value.is_some()
+                != matches!(operation.opcode, b'p' | b'*')
+        {
+            return false;
+        }
+    }
+    previous = None;
+    for mutation in &window.code_mutations {
+        if !valid_effect_step(&mut previous, mutation.step, window)
+            || mutation.write.before == mutation.write.after
+            || window
+                .data_operations
+                .binary_search_by_key(&mutation.step, |op| op.step)
+                .ok()
+                .is_some_and(|index| {
+                    window.data_operations[index].code_pointer
+                        != mutation.execution_site
+                })
+        {
+            return false;
+        }
+    }
+    previous = None;
+    let mut inputs = window.input_events.iter();
+    let mut outputs = window.output_bytes.iter();
+    for operation in &window.io_operations {
+        if !valid_effect_step(&mut previous, operation.step, window)
+            || window
+                .code_mutations
+                .binary_search_by_key(&operation.step, |op| op.step)
+                .ok()
+                .is_some_and(|index| {
+                    window.code_mutations[index].execution_site
+                        != operation.code_pointer
+                })
+        {
+            return false;
+        }
+        let matches_event = match &operation.effect {
+            PhysicalIoEffect::Input(event) => inputs.next() == Some(event),
+            PhysicalIoEffect::Output(byte) => outputs.next() == Some(byte),
+        };
+        if !matches_event {
+            return false;
+        }
+    }
+    if inputs.next().is_some() || outputs.next().is_some() {
+        return false;
+    }
+
+    let mut versions: BTreeMap<u32, (u32, u32)> = window
+        .memory_live_ins
+        .iter()
+        .map(|read| (read.address, (read.value, read.value)))
+        .collect();
+    let mut data = window.data_operations.iter().peekable();
+    let mut code = window.code_mutations.iter().peekable();
+    while data.peek().is_some() || code.peek().is_some() {
+        let take_data = match (data.peek(), code.peek()) {
+            (Some(operation), Some(mutation)) => {
+                operation.step <= mutation.step
+            },
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if take_data {
+            let Some(operation) = data.next() else {
+                return false;
+            };
+            if !check_read(
+                &mut versions,
+                operation.read.address,
+                operation.read.value,
+            ) {
+                return false;
+            }
+            if let Some(value) = operation.written_value
+                && !check_write(&mut versions, ProfileMemoryWrite {
+                    address: operation.read.address,
+                    before: operation.read.value,
+                    after: value,
+                })
+            {
+                return false;
+            }
+        } else {
+            let Some(mutation) = code.next() else {
+                return false;
+            };
+            if !check_write(&mut versions, mutation.write) {
+                return false;
+            }
+        }
+    }
+    let derived_changes: Vec<_> = versions
+        .into_iter()
+        .filter_map(|(address, (before, after))| {
+            (before != after).then_some(PhysicalWordChange {
+                address,
+                before,
+                after,
+            })
+        })
+        .collect();
+    derived_changes == window.net_changed_words
+}
+
 /// Verify exact continuity of bounded physical windows without cloning N15.
 ///
 /// The verifier propagates only known memory versions: words read at an
@@ -422,6 +600,11 @@ pub fn verify_physical_reentry_chain(
                     observed: change.before,
                 });
             }
+        }
+        if !physical_window_effects_consistent(window) {
+            return Err(PhysicalReentryChainError::InvalidWindow {
+                window_index,
+            });
         }
         previous_exit = Some(window.to);
     }
