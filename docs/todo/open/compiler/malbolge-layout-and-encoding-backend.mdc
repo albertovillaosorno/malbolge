@@ -89,6 +89,16 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
 
 ## Evidence
 
+- On 2026-11-21, the graphical C32 literal writer additionally admits
+  two adjacent `p`/`*` arithmetic instructions in four exact templates.
+  An independent 94-prefix/94-tail full-input oracle enumerates 164,
+  156, 298 and 222 distinct literals per template, for **750 distinct
+  values overall**; every emitted source matches its original candidate.
+  Real N15 VM traces also execute the new `p*`, `*p` and `pp` paths with
+  full loader-derived inputs, adjacent writes and self-encryption. This
+  does **not** convert signed input or lower the checksum; zero, byte
+  `ff` and true C23 EOF still refuse physical literal generation.
+
 - On 2026-11-21, a bounded 94-phase graphical no-op-prefix and
   94-tail literal emitter now constructs real source-loaded `j;*;*;v`
   C32 adjacent writes. A separate 15-trit oracle enumerates 66 viable

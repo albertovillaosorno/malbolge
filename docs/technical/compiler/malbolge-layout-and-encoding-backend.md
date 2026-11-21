@@ -76,6 +76,33 @@ not perform `getchar`, select a data-dependent branch, update source SSA
 state, copy phi edges, or loop. The original seven-block mutable C23 EOF
 checksum remains unlinked; the source-input state verifier is unchanged.
 
+### Mixed two-instruction source-loaded C32 constants (2026-11-21)
+
+`build_c32_literal_loader_arithmetic_source` extends the bounded literal
+emitter to four real data-operation templates: `**`, `p*`, `*p` and `pp`.
+A source-loaded `p` folds the actual accumulator with the untouched
+loader word at its own data address; `*` rotates its own word. Both
+operations therefore still write the canonical C32 low and high cells
+**adjacently**, without host-seeded data or source-C runtime input.
+
+An independent 15-trit oracle checks all 94 graphical no-op phases and
+94 possible tail bytes separately for each template. The template-specific
+unique C32 literal counts are 164 (`**`), 156 (`p*`), 298 (`*p`) and
+222 (`pp`), with **750 distinct values in their union**. Source emission
+chooses the first exact template, prefix and source suffix in that order,
+then reproduces all 750 independently enumerated candidate sources.
+Three new representative literals (`351548260`, `911155607`, `509386234`)
+execute actual N15 guest `p*`, `*p` and `pp` paths; traces verify both
+source-expanded data reads, adjacent writes, data-pointer relocation,
+post-operation code encryption and output-free halt. The earlier `**`
+source family and original checksum refusal remain intact.
+
+**This remains a fixed literal writer**, not runtime C32 computation:
+zero, successful signed byte `0xff`, and C23 signed EOF `0xffffffff`
+are all outside the admitted source/loader grammar. The missing signed
+input conversion, C32 runtime branching, mutable arithmetic, phi copies
+and checksum backedge still prevent complete P2 compiler publication.
+
 ### Printable loader-tail rotation exhaustion for C32 EOF (2026-11-21)
 
 An independent bounded ternary-oracle regression enumerates all

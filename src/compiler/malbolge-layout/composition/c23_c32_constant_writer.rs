@@ -102,6 +102,37 @@ pub struct C32LiteralRotatePlan {
     pub target_cells: [u32; 2],
 }
 
+#[derive(Clone, Copy)]
+enum LiteralDataOp {
+    Crazy,
+    Rotate,
+}
+
+impl LiteralDataOp {
+    const fn opcode(self) -> super::LinearOpcode {
+        match self {
+            Self::Crazy => super::LinearOpcode::CrazyData,
+            Self::Rotate => super::LinearOpcode::RotateData,
+        }
+    }
+
+    fn result(
+        self,
+        data: u32,
+        accumulator: u32,
+        profile: &ProfileDescriptor,
+    ) -> u32 {
+        match self {
+            Self::Crazy => {
+                malbolge::profile_crazy(data, accumulator, profile.word_trits())
+            },
+            Self::Rotate => {
+                malbolge::profile_rotate(data, profile.word_modulus())
+            },
+        }
+    }
+}
+
 /// Materialize a constant target after three `p` instructions with a
 /// **preinitialized** consecutive data-word region. This operation is
 /// independent of the previous full 15-trit accumulator, by construction.
@@ -207,38 +238,32 @@ pub fn plan_c32_literal_rotate_writes(
     })
 }
 
-/// Construct a bounded source-loaded `o*; j; *; *; v` C32 literal write.
-///
-/// Searches at most one full 94-position decoder phase of reached graphical
-/// no-ops before a `j; *; *; v` sequence and one unreachable graphical tail
-/// cell. The code-pointer phase selects the physical `j` source word and
-/// therefore its data-pointer relocation. Both adjacent data words must lie
-/// beyond the source and be loaded from its true six-phase recurrence.
-/// The result depends on *no* incoming accumulator and contains no input,
-/// branch, phi copy or checksum loop. Unsupported literals refuse outright.
-///
-/// The returned source is a candidate; independent normative VM execution
-/// must still verify its writes, self-encryption, and termination.
-///
-/// # Errors
-///
-/// Refuses other profiles or any literal not source-loadable under the
-/// finite 94-prefix by 94-tail search and strict nonoverlapping geometry.
-pub fn build_c32_literal_loader_rotate_source(
+/// Return an exact source-loaded adjacent-C32 constant write for a fixed
+/// pair of executable data operations. All output values are calculated
+/// from the known loader and the initial zero accumulator, never from C
+/// input or a seeded VM memory snapshot.
+#[expect(
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
+    reason = "bounded graphical decoder and loader precondition search"
+)]
+fn build_loader_ops(
     profile: &ProfileDescriptor,
     bits: u32,
+    operations: [LiteralDataOp; 2],
 ) -> Result<Vec<u8>, C32LiteralLoadedSourceError> {
     use super::LinearOpcode as Opcode;
-    let plan = plan_c32_literal_rotate_writes(profile, bits)
-        .map_err(|_error| C32LiteralLoadedSourceError::UnsupportedProfile)?;
-
+    if profile != current_profile() {
+        return Err(C32LiteralLoadedSourceError::UnsupportedProfile);
+    }
+    let targets = encode_i32_cells(bits);
     for noops in 0..94usize {
         let mut source = Vec::with_capacity(noops.saturating_add(5));
         let mut admissible = true;
         for operation in repeat_n(Opcode::NoOperation, noops).chain([
             Opcode::RelocateDataPointer,
-            Opcode::RotateData,
-            Opcode::RotateData,
+            operations[0].opcode(),
+            operations[1].opcode(),
             Opcode::Halt,
         ]) {
             match super::unique_graphical_cell(profile, operation, source.len())
@@ -253,8 +278,6 @@ pub fn build_c32_literal_loader_rotate_source(
         if !admissible {
             continue;
         }
-        // Before the j, D equals its own source position after no-ops.
-        // Its data operand is the literal graphical j cell at that address.
         let Some(&jump_byte) = source.get(noops) else {
             continue;
         };
@@ -275,19 +298,74 @@ pub fn build_c32_literal_loader_rotate_source(
                 continue;
             }
             source.push(last);
-            let first =
+            let first_seed =
                 super::unwritten_loader_word(&source, data_base, profile);
-            let second = super::unwritten_loader_word(
+            let second_seed = super::unwritten_loader_word(
                 &source,
                 data_base.saturating_add(1),
                 profile,
             );
-            if first == Ok(plan.initial_data_words[0])
-                && second == Ok(plan.initial_data_words[1])
-            {
-                return Ok(source);
+            if let (Ok(first), Ok(second)) = (first_seed, second_seed) {
+                let first_result = operations[0].result(first, 0, profile);
+                let second_result =
+                    operations[1].result(second, first_result, profile);
+                if [first_result, second_result] == targets {
+                    return Ok(source);
+                }
             }
             _ = source.pop();
+        }
+    }
+    Err(C32LiteralLoadedSourceError::NoLoadableSeed)
+}
+
+/// Construct a bounded source-loaded `o*; j; *; *; v` C32 literal write.
+///
+/// Tries 0..93 reached no-op positions and one graphical data suffix.
+/// Both adjacent seeds must arise from the actual six-phase loader.
+/// The source is only a candidate; normative VM acceptance remains mandatory.
+///
+/// # Errors
+///
+/// Refuses other profiles or any literal unrepresentable by the fixed
+/// source-loaded two-rotate grammar.
+pub fn build_c32_literal_loader_rotate_source(
+    profile: &ProfileDescriptor,
+    bits: u32,
+) -> Result<Vec<u8>, C32LiteralLoadedSourceError> {
+    build_loader_ops(profile, bits, [
+        LiteralDataOp::Rotate,
+        LiteralDataOp::Rotate,
+    ])
+}
+
+/// Construct a bounded adjacent C32 literal from two real `p`/`*` writes.
+///
+/// Tries exact `**`, `p*`, `*p`, then `pp` instruction templates, each under
+/// the same 94-prefix and 94-tail bound as the pure rotate emitter. Every
+/// physical data operand is derived solely from the graphical source loader;
+/// `p` uses the actual evolving accumulator, initially zero. The candidate
+/// does not read input, select C branches, write C SSA state, or perform a
+/// checksum. Independent guest-VM verification is required before any
+/// compiled-program linker may accept it.
+///
+/// # Errors
+///
+/// Refuses other profiles and any target not constructible in the closed
+/// four-template grammar. In particular signed EOF is not synthesized here.
+pub fn build_c32_literal_loader_arithmetic_source(
+    profile: &ProfileDescriptor,
+    bits: u32,
+) -> Result<Vec<u8>, C32LiteralLoadedSourceError> {
+    use LiteralDataOp::{Crazy, Rotate};
+    if profile != current_profile() {
+        return Err(C32LiteralLoadedSourceError::UnsupportedProfile);
+    }
+    for operations in [[Rotate, Rotate], [Crazy, Rotate], [Rotate, Crazy], [
+        Crazy, Crazy,
+    ]] {
+        if let Ok(source) = build_loader_ops(profile, bits, operations) {
+            return Ok(source);
         }
     }
     Err(C32LiteralLoadedSourceError::NoLoadableSeed)
