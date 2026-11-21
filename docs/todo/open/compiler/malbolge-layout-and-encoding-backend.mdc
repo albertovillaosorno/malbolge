@@ -51,6 +51,24 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Actual Guest EOF-Zero Word and Data-Pointer Selection (2026-11-21)
+
+A 28-step source-loaded N15 guest continues the real raw-byte
+pair and nonlocal mixed word through two reentrant data-pointer
+chains. An actual C20 `p` with equal input-derived operands
+writes zero iff true EOF (the mixed word has all 15 trits 1),
+versus 39 distinct nonzero words for all 256 successful bytes.
+A later C24 `j` physically reads the updated word and selects
+D1 for EOF, versus D>=2,391,401 for bytes. Reached C25 `*`
+reads the selected memory cell; C26 `<` emits `154` on EOF
+and `12`/`41` on successful bytes before the C27 halt.
+Independent full 257-case scalar/loader checks, eight complete
+normative VM traces and a changed-C20 negative guest replay
+support this *data-pointer classifier*.
+It is not a guest `i` conditional branch, signed-C23 result,
+source-C EOF control flow, or the full mutable checksum. P2
+remains open with the original checksum still refusing publication.
+
 ## Nonlocal Byte/EOF Guest State After Two Real Stores (2026-11-21)
 
 A reached `*;j;p` suffix uses both actual input-derived words from

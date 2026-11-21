@@ -164,12 +164,13 @@ pub use source_input_trace::{
 pub use zero_cell_source::{
     AccumulatorIndependentZeroCellSource, AdjacentC32ZeroSource,
     GuestByteC32PairEchoSource, GuestByteC32PairEofDistinguishSource,
-    GuestByteC32PairReloadSource,
-    GuestByteC32PairSource, ZeroCellSource,
-    ZeroCellSourceError, build_accumulator_independent_zero_cell_source,
+    GuestByteC32PairEofZeroPointerSource, GuestByteC32PairReloadSource,
+    GuestByteC32PairSource, ZeroCellSource, ZeroCellSourceError,
+    build_accumulator_independent_zero_cell_source,
     build_adjacent_c32_zero_source, build_adjacent_c32_zero_then_input_source,
     build_guest_byte_c32_pair_echo_source,
     build_guest_byte_c32_pair_eof_distinguish_source,
+    build_guest_byte_c32_pair_eof_zero_pointer_source,
     build_guest_byte_c32_pair_reload_source, build_guest_byte_c32_pair_source,
     build_input_then_zero_cell_source, build_zero_cell_source,
 };

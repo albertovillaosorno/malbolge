@@ -20,6 +20,40 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### EOF-zero guest data predicate and indirect loader read (2026-11-21)
+
+A source-loaded N15 guest now executes 28 steps from the same
+33-byte byte-pair layout. After the existing encoded/raw `p`
+mixture at C16, C17-C19 physically follow M7,174,419=0,
+the post-encrypted C1=100 and virgin M101=7,174,417 to return
+D to M7,174,418. C20 `p` writes `crazy(mixed, mixed)` with
+**equal real data and accumulator operands**. The 15-trit crazy
+diagonal maps 0 and 2 to 1, but 1 to 0. The independently
+established raw EOF mixture is all ternary ones (7,174,453),
+so C20 writes zero for EOF. Across every successful input byte,
+there are 39 nonzero predicate values, minimum 2,391,400.
+
+C21-C23 repeat the actual pointer return. C24 `j` reads the
+physically written predicate and selects D1 for EOF, or an
+address at least 2,391,401 for any successful byte. C25 `*`
+reads the **selected** data word; C26 `<` writes a real byte
+and C27 `v` halts. An independent 257-case ternary/loader
+census yields EOF classifier output `154` and byte outputs
+`12` or `41`. Eight normative N15 VM traces verify C20's
+actual data write, both return chains, C24's selected D, C25's
+physical data read, C26 output and 28-step halt, including
+unread-suffix behavior. A changed-C20 `p`-to-`o` source
+reverses selected data addresses and changes outputs on EOF and
+byte zero, proving the second reached store is causally necessary.
+The source remains fully graphical,
+uses its original two loader seeds, and has no host output shim.
+
+This is an **EOF-selective guest data/address effect**, not a
+guest code-pointer `i` branch, source-C control-flow lowering,
+canonical signed C32 `getchar` normalization, or preserved raw
+byte value. The original seven-block EOF checksum still fails
+closed at physical linking; P2 acceptance is not met.
+
 ### Source-loaded nonlocal EOF-distinguishing word (2026-11-21)
 
 `build_guest_byte_c32_pair_eof_distinguish_source` continues the

@@ -12,6 +12,32 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Physical EOF-only zero result and selected data read (2026-11-21)
+
+`build_guest_byte_c32_pair_eof_zero_pointer_source` extends the
+real 33-byte adjacent raw-input source through C27. Its 28-step
+N15 execution first writes the nonlocal EOF-distinguishing word
+at M7,174,418. Three actual `j` reads return D there; C20 `p`
+reads the same word already in A, so the ternary diagonal maps
+trits 0/2 to 1 and trit 1 to 0. **Only true EOF** produces an
+all-zero second write; 256 successful bytes produce 39 nonzero
+15-trit words (minimum 2,391,400). The adjacent high word stays
+zero. Another three-jump return and reached C24 `j` read that
+physical predicate, selecting D1 for EOF and a far data address
+for every successful byte.
+
+The reached C25 `*` reads and rotates the selected memory cell,
+C26 `<` emits its low byte, and C27 `v` halts. Eight traced guest
+inputs cover EOF, NUL, high bytes and unread suffix; independent
+257-class scalar and loader-projection checks establish EOF output
+`154` versus successful-byte outputs `12` or `41`. A source-level
+C20 `p`-to-`o` mutation is also replayed in the
+normative VM: empty input and byte zero reverse the selected D
+addresses and produce different outputs. These are
+**classifier probe bytes**, not C23 `putchar` behavior. The code
+pointer never branches on the predicate, and there is still no
+signed C23 local, C `if`/EOF loop, or linked mutable checksum.
+
 ### Source-loaded nonlocal EOF-distinguishing word (2026-11-21)
 
 `build_guest_byte_c32_pair_eof_distinguish_source` continues the

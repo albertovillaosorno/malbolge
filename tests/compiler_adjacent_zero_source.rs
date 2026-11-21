@@ -1294,3 +1294,214 @@ fn real_guest_nonlocal_crazy_separates_raw_eof_without_c23_conversion()
     );
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "257-case EOF oracle and actual N15 pointer selection"
+)]
+fn real_guest_eof_zero_word_selects_data_pointer() -> Result<(), String> {
+    let profile = current_profile();
+    let plan =
+        layout::build_guest_byte_c32_pair_eof_zero_pointer_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.zero_store_code_address, 20);
+    assert_eq!(plan.selected_pointer_code_address, 24);
+    assert_eq!(plan.data_rotation_code_address, 25);
+    assert_eq!(plan.output_code_address, 26);
+    assert_eq!(plan.halt_code_address, 27);
+    let eof = profile.eof_word();
+    let ones = 7_174_453;
+    let rotated = |word: u32| word / 3 + (word % 3) * 4_782_969;
+    let classify = |raw: u32| {
+        let encoded = crazy(ones, raw);
+        let mixed = crazy(raw, rotated(encoded));
+        crazy(mixed, mixed)
+    };
+    assert_eq!(classify(eof), 0);
+    let virgin =
+        ProfileMachine::from_source(profile, &plan.pair.source, vec![])
+            .map_err(|error| error.to_string())?;
+    let mut word_values = HashSet::new();
+    let mut expected_bytes = BTreeSet::new();
+    for raw in 0u32..=255 {
+        let word = classify(raw);
+        assert_ne!(word, 0, "byte {raw} matched raw EOF");
+        assert!(word >= 2_391_400 && word < profile.memory_words());
+        _ = word_values.insert(word);
+        let destination = word + 1;
+        let value = if destination == plan.pair.pair_low_address {
+            word
+        } else {
+            virgin
+                .memory_word(destination)
+                .map_err(|error| error.to_string())?
+        };
+        let emitted = u8::try_from(rotated(value) % 256)
+            .map_err(|error| error.to_string())?;
+        _ = expected_bytes.insert(emitted);
+        assert!([12, 41].contains(&emitted), "byte {raw}: {emitted}");
+    }
+    assert_eq!(word_values.len(), 39);
+    assert_eq!(expected_bytes, BTreeSet::from([12, 41]));
+    for input in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![0x7f],
+        vec![0x80],
+        vec![0xff],
+        vec![0x5a, 0x9a],
+    ] {
+        let raw = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let word = classify(raw);
+        let selected_address = word + 1;
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            virgin.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(28, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 28,
+            }
+        );
+        assert_eq!(trace.len(), 28);
+        assert_eq!(trace[20].decoded, Some(b'p'));
+        assert_eq!(trace[20].after.registers.accumulator, word);
+        assert_eq!(
+            trace[20]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((
+                plan.pair.pair_low_address,
+                trace[16].after.registers.accumulator
+            ))
+        );
+        assert_eq!(
+            trace[20]
+                .memory_delta
+                .data
+                .map(|write| (write.address, write.after)),
+            Some((plan.pair.pair_low_address, word))
+        );
+        for (site, target) in [
+            (17usize, 1u32),
+            (18, 101),
+            (19, plan.pair.pair_low_address),
+            (21, 1),
+            (22, 101),
+            (23, plan.pair.pair_low_address),
+        ] {
+            assert_eq!(trace[site].decoded, Some(b'j'));
+            assert_eq!(trace[site].after.registers.data_pointer, target);
+        }
+        assert_eq!(trace[24].decoded, Some(b'j'));
+        assert_eq!(trace[24].after.registers.data_pointer, selected_address);
+        assert_eq!(trace[25].decoded, Some(b'*'));
+        assert_eq!(
+            trace[25].memory_reads.data.map(|read| read.address),
+            Some(selected_address)
+        );
+        assert_eq!(trace[26].decoded, Some(b'<'));
+        assert_eq!(trace[27].decoded, Some(b'v'));
+        assert_eq!(guest.memory_word(plan.pair.pair_high_address), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        let byte = u8::try_from(trace[25].after.registers.accumulator % 256)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(guest.output(), [byte]);
+        if input.is_empty() {
+            assert_eq!(selected_address, 1);
+            assert_eq!(byte, 154);
+        } else {
+            assert!(selected_address > 2_391_400);
+            assert!([12, 41].contains(&byte));
+        }
+    }
+    assert_eq!(
+        layout::build_guest_byte_c32_pair_eof_zero_pointer_source(
+            historical_profile()
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile)
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "negative guest EOF-zero store mutation"
+)]
+fn missing_eof_zero_store_changes_guest_data_selection() -> Result<(), String> {
+    let profile = current_profile();
+    let original =
+        layout::build_guest_byte_c32_pair_eof_zero_pointer_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let mut tampered = original.pair.source.clone();
+    tampered[20] = encode(b'o', 20)?;
+    for (input, expected_selected, changed_selected) in
+        [(vec![], 1u32, 7_174_454u32), (vec![0], 7_174_454, 1)]
+    {
+        let mut correct = ProfileMachine::from_source(
+            profile,
+            &original.pair.source,
+            input.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut changed =
+            ProfileMachine::from_source(profile, &tampered, input)
+                .map_err(|error| error.to_string())?;
+        let mut correct_steps = Vec::new();
+        let mut changed_steps = Vec::new();
+        assert_eq!(
+            correct
+                .run_traced(28, &mut |step| correct_steps.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 28,
+            }
+        );
+        assert_eq!(
+            changed
+                .run_traced(28, &mut |step| changed_steps.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 28,
+            }
+        );
+        assert_eq!(correct_steps[20].decoded, Some(b'p'));
+        assert_eq!(changed_steps[20].decoded, Some(b'o'));
+        assert!(correct_steps[20].memory_delta.data.is_some());
+        assert!(changed_steps[20].memory_delta.data.is_none());
+        assert_eq!(
+            correct_steps[24].after.registers.data_pointer,
+            expected_selected
+        );
+        assert_eq!(
+            changed_steps[24].after.registers.data_pointer,
+            changed_selected
+        );
+        assert_ne!(correct.output(), changed.output());
+    }
+    Ok(())
+}

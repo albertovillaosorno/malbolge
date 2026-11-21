@@ -211,6 +211,31 @@ pub struct GuestByteC32PairEofDistinguishSource {
     pub pair: GuestByteC32PairSource,
 }
 
+/// Real guest EOF-zero predicate and pointer-selected source data lookup.
+///
+/// Two three-jump returns reuse the written low word. A `p` with both
+/// operands equal to the prior nonlocal mixture produces zero **only** for
+/// raw N15 EOF among the 257 possible `/` results. A final `j` reads that
+/// written predicate and selects D1 for EOF or a high data address for bytes.
+/// The selected `*` then makes the output depend on the pointed-to memory.
+/// This is an EOF-specific data effect, not a source-C conditional branch,
+/// signed C23 local, or a published checksum.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestByteC32PairEofZeroPointerSource {
+    /// Reached second physical `p` producing zero only on raw EOF.
+    pub zero_store_code_address: u32,
+    /// Reached `j` reading the input-dependent predicate from memory.
+    pub selected_pointer_code_address: u32,
+    /// Reached `*` reading the physically selected data word.
+    pub data_rotation_code_address: u32,
+    /// Reached real output from the selected data word.
+    pub output_code_address: u32,
+    /// Reached source halt after the selected data read and output.
+    pub halt_code_address: u32,
+    /// Original source-loaded byte-pair layout with the new continuation.
+    pub pair: GuestByteC32PairSource,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum AdjacentPhysicalMode {
     RawBytePair,
@@ -664,6 +689,74 @@ pub fn build_guest_byte_c32_pair_eof_distinguish_source(
         mixed_store_code_address: 16,
         output_code_address: 17,
         halt_code_address: 18,
+        pair,
+    })
+}
+
+/// Convert the nonlocal byte/EOF word into a physical EOF-zero predicate.
+///
+/// The first three `j` instructions reenter the existing mixed low word:
+/// high zero -> encrypted source C1 -> untouched loader M101 -> low.
+/// A real `p` now has equal data and accumulator operands. The exact
+/// ternary diagonal maps 0/2 to 1 and 1 to 0, so its result is zero only
+/// if the mixed word was the all-ones EOF state. A second return reaches
+/// that physically updated low word; a fourth `j` moves D to predicate+1.
+/// The subsequent `*` reads **that** selected memory location and `<`
+/// emits its rotated low byte. No guest `i` branch or C23 normalization is
+/// inferred from the physical data-pointer selection.
+///
+/// # Errors
+///
+/// Refuses unsupported or changed source-loader/pointer properties.
+pub fn build_guest_byte_c32_pair_eof_zero_pointer_source(
+    profile: &ProfileDescriptor,
+) -> Result<GuestByteC32PairEofZeroPointerSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut pair =
+        build_guest_byte_c32_pair_eof_distinguish_source(profile)?.pair;
+    if pair.source.len() != 33
+        || pair.pair_high_address != pair.pair_low_address.saturating_add(1)
+        || pair.relocated_initial_words != [36, 7_174_417, 36, 7_174_417]
+    {
+        return Err(NoLoadableZero);
+    }
+    let encrypted_c1 = encrypt_profile_cell(u32::from(
+        *pair.source.get(1).ok_or(NoLoadableZero)?,
+    ))
+    .ok_or(NoLoadableZero)?;
+    let indirect_address = usize::try_from(encrypted_c1.saturating_add(1))
+        .map_err(|_error| NoLoadableZero)?;
+    if indirect_address < pair.source.len()
+        || unwritten_loader_word(&pair.source, indirect_address, profile)
+            .map_err(|_error| NoLoadableZero)?
+            .saturating_add(1)
+            != pair.pair_low_address
+    {
+        return Err(NoLoadableZero);
+    }
+    for (site, operation) in [
+        (17usize, LinearOpcode::RelocateDataPointer),
+        (18, LinearOpcode::RelocateDataPointer),
+        (19, LinearOpcode::RelocateDataPointer),
+        (20, LinearOpcode::CrazyData),
+        (21, LinearOpcode::RelocateDataPointer),
+        (22, LinearOpcode::RelocateDataPointer),
+        (23, LinearOpcode::RelocateDataPointer),
+        (24, LinearOpcode::RelocateDataPointer),
+        (25, LinearOpcode::RotateData),
+        (26, LinearOpcode::OutputByte),
+        (27, LinearOpcode::Halt),
+    ] {
+        *pair.source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(GuestByteC32PairEofZeroPointerSource {
+        zero_store_code_address: 20,
+        selected_pointer_code_address: 24,
+        data_rotation_code_address: 25,
+        output_code_address: 26,
+        halt_code_address: 27,
         pair,
     })
 }
