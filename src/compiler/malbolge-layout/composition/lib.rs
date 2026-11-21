@@ -138,8 +138,9 @@ pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 pub use physical_reentry::{
     MAX_PHYSICAL_REENTRY_SOURCE, MAX_PHYSICAL_REENTRY_STEPS,
-    MAX_PHYSICAL_REENTRY_VISITS, PhysicalEntryState, PhysicalReentryError,
-    PhysicalReentryWindow, PhysicalWordChange, observe_physical_reentries,
+    MAX_PHYSICAL_REENTRY_VISITS, PhysicalDataOperation, PhysicalEntryState,
+    PhysicalReentryError, PhysicalReentryWindow, PhysicalWordChange,
+    observe_physical_reentries,
 };
 pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,

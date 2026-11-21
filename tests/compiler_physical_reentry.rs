@@ -19,15 +19,16 @@
 pub mod layout;
 
 use layout::{
-    PhysicalEntryState, PhysicalReentryError, PhysicalReentryWindow,
-    PhysicalWordChange,
+    PhysicalDataOperation, PhysicalEntryState, PhysicalReentryError,
+    PhysicalReentryWindow, PhysicalWordChange,
     build_two_input_class_state_with_guarded_third_read_source,
     observe_physical_reentries,
 };
 use malbolge::{
-    MemoryLiveIn, ProfileMachine, ProfileRegisterSet, ProfileRegisters,
-    ProfileStepTrace, RegisterMaskedRegionEffectProgram, RunOutcome,
-    StepOutcome, current_profile, decode_profile_instruction,
+    MemoryLiveIn, ProfileMachine, ProfileMemoryRead, ProfileRegisterSet,
+    ProfileRegisters, ProfileStepTrace, RegisterMaskedRegionEffectProgram,
+    RunOutcome, StepOutcome, current_profile, decode_profile_instruction,
+    profile_crazy, profile_rotate,
 };
 
 const ENTRY: u32 = 71;
@@ -69,6 +70,7 @@ fn exact_cycle_predicate_requires_no_io_progress_even_if_core_matches() {
     let mut window = PhysicalReentryWindow {
         code_encryption_changes: 0,
         data_instruction_writes: 0,
+        data_operations: Vec::new(),
         data_read_addresses: Vec::new(),
         data_write_addresses: Vec::new(),
         from,
@@ -111,6 +113,7 @@ fn dead_memory_changes_do_not_invalidate_observed_replay_preconditions() {
     let mut window = PhysicalReentryWindow {
         code_encryption_changes: 1,
         data_instruction_writes: 1,
+        data_operations: Vec::new(),
         data_read_addresses: vec![100],
         data_write_addresses: vec![200],
         from,
@@ -229,7 +232,8 @@ fn real_guest_data_footprints_match_an_independent_traced_replay()
     let mut visiting = false;
     let mut actual_reads = Vec::new();
     let mut actual_writes = Vec::new();
-    for _step in 0..STEPS {
+    let mut actual_operations = Vec::new();
+    for step in 0..STEPS {
         if vm.registers().code_pointer == ENTRY {
             if visiting {
                 break;
@@ -243,16 +247,46 @@ fn real_guest_data_footprints_match_an_independent_traced_replay()
         if visiting {
             let observed = trace.ok_or("missing trace event")?;
             if let Some(read) = observed.memory_reads.data {
+                let opcode = observed.decoded.ok_or("read without opcode")?;
                 actual_reads.push(read.address);
-                if matches!(observed.decoded, Some(b'p' | b'*')) {
+                let written_value = match opcode {
+                    b'p' => Some(profile_crazy(
+                        read.value,
+                        observed.before.registers.accumulator,
+                        current_profile().word_trits(),
+                    )),
+                    b'*' => Some(profile_rotate(
+                        read.value,
+                        current_profile().word_modulus(),
+                    )),
+                    b'i' | b'j' => None,
+                    _ => return Err("unexpected data opcode".into()),
+                };
+                if let Some(value) = written_value {
                     actual_writes.push(read.address);
+                    assert_eq!(observed.after.registers.accumulator, value);
                 }
+                actual_operations.push(PhysicalDataOperation {
+                    code_pointer: observed.before.registers.code_pointer,
+                    opcode,
+                    read: ProfileMemoryRead {
+                        address: observed.before.registers.data_pointer,
+                        value: read.value,
+                    },
+                    step,
+                    written_value,
+                });
             }
         }
         assert_eq!(outcome, StepOutcome::Continued);
     }
     assert_eq!(window.data_read_addresses, actual_reads);
     assert_eq!(window.data_write_addresses, actual_writes);
+    assert_eq!(window.data_operations, actual_operations);
+    assert!(window.data_operations.iter().any(|op| op.opcode == b'j'));
+    assert!(window.data_operations.iter().any(|op| op.opcode == b'i'));
+    assert!(window.data_operations.iter().any(|op| op.opcode == b'p'));
+    assert!(window.data_operations.iter().any(|op| op.opcode == b'*'));
     assert_eq!(
         window.data_instruction_writes,
         window.data_write_addresses.len()

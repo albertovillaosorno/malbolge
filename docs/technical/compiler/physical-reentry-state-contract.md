@@ -23,14 +23,24 @@ all reached reads (including EOF), emitted bytes, reached `p`/`*` writes,
 changed XLAT2 writes and a sorted net memory-difference journal. The
 chronological data-read and `p`/`*` write-address lists preserve the actual
 helper footprint, including idempotent stores and `i`/`j` reads.
+A typed `PhysicalDataOperation` additionally retains each reached operation's
+global step, code address, decoded data opcode, exact read address and
+**word value**, and the `p`/`*` computed word **before** post-step XLAT2.
+For data/encryption aliasing that word may differ from the final cell.
+The collector checks ordinary data deltas against actual operand values
+and computed results. A second normative VM trace independently recomputes
+`p` and `*` results and checks their code sites, steps, and operand words.
+An idempotent data write is still recorded even though the changed-cell
+journal excludes it. These values support future operand-version proofs
+before physically reusing any block.
 Each observed interval also projects its reached VM traces through the
 existing portable v6 effect-IR checker. Its sorted `memory_live_ins` and
 `register_live_ins` identify values actually read before a first committed
 write. This includes code fetch, data and XLAT2 operand reads. A separate
 source-loaded VM replay checks that the effect-IR dependencies match its
 trace projection; full source-memory snapshots verify their entry values.
-The journal tracks the first before-value and last after-value even when a data or
-encryption instruction writes the same address multiple times. It need not
+The journal tracks the first before-value and last after-value even
+when data or encryption writes the same address multiple times. It need not
 copy the entire N15 image at every reentry.
 
 `core_state_restored` requires identical registers and no net changes
@@ -75,7 +85,9 @@ the journal against the full before/after difference, word by word. A separate
 trace replay checks the ordered data-read and data-write address lists and
 the count of all eight reached `p`/`*` operations. The portable v6
 register-masked effect projector agrees with the source-loaded physical
-window's memory live-ins on two independent binary streams. Its observed
+window's memory live-ins on two independent binary streams. The
+instruction-value replay verifies each reached data operand and write,
+not merely its address. Its observed
 entry dependencies are not restored at C71, so the fixed-input replay
 preconditions reject this candidate.
 

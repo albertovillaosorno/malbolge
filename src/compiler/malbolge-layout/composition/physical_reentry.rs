@@ -26,8 +26,8 @@ use std::collections::BTreeMap;
 use std::mem::take;
 
 use malbolge::{
-    MemoryLiveIn, ProfileDescriptor, ProfileMachine, ProfileMemoryWrite,
-    ProfileRegisterSet, ProfileRegisters, ProfileStepTrace,
+    MemoryLiveIn, ProfileDescriptor, ProfileMachine, ProfileMemoryRead,
+    ProfileMemoryWrite, ProfileRegisterSet, ProfileRegisters, ProfileStepTrace,
     RegisterMaskedRegionEffectProgram, RunOutcome, StepOutcome, TraceInput,
 };
 
@@ -62,6 +62,25 @@ pub struct PhysicalWordChange {
     pub before: u32,
 }
 
+/// One actual data-operand instruction inside a physical return interval.
+///
+/// The written word records the *instruction* result for `p` or `*`, even
+/// when the write is idempotent or its address aliases the encryption target.
+/// This is not necessarily the final word at that address after XLAT2.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PhysicalDataOperation {
+    /// Physical code site that executed the decoded instruction.
+    pub code_pointer: u32,
+    /// The actual decoded data-using opcode (`i`, `j`, `p` or `*`).
+    pub opcode: u8,
+    /// Exact semantic data-pointer read, including its observed value.
+    pub read: ProfileMemoryRead,
+    /// Global zero-based step index before the operation committed.
+    pub step: usize,
+    /// `p`/`*` result, including an idempotent write; `None` for `i`/`j`.
+    pub written_value: Option<u32>,
+}
+
 /// One real interval between two entries to an identical code address.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PhysicalReentryWindow {
@@ -69,7 +88,9 @@ pub struct PhysicalReentryWindow {
     pub code_encryption_changes: usize,
     /// Count of reached p/* instruction writes, including idempotent writes.
     pub data_instruction_writes: usize,
-    /// Every real guest data read, in chronological order.
+    /// Exact chronological data-operand operations and their values.
+    pub data_operations: Vec<PhysicalDataOperation>,
+    /// Every real guest data read address, in chronological order.
     pub data_read_addresses: Vec<u32>,
     /// Every p/* instruction's data target, including idempotent writes.
     pub data_write_addresses: Vec<u32>,
@@ -233,6 +254,7 @@ pub fn observe_physical_reentries(
     let mut input_events = Vec::new();
     let mut output_bytes = Vec::new();
     let mut data_instruction_writes = 0usize;
+    let mut data_operations = Vec::new();
     let mut data_read_addresses = Vec::new();
     let mut data_write_addresses = Vec::new();
     let mut code_encryption_changes = 0usize;
@@ -267,6 +289,7 @@ pub fn observe_physical_reentries(
                         .filter(|word| word.before != word.after)
                         .collect(),
                     data_instruction_writes,
+                    data_operations: take(&mut data_operations),
                     data_read_addresses: take(&mut data_read_addresses),
                     data_write_addresses: take(&mut data_write_addresses),
                     code_encryption_changes,
@@ -292,16 +315,37 @@ pub fn observe_physical_reentries(
         if previous.is_some() {
             region_traces.push(trace);
             if let Some(read) = trace.memory_reads.data {
+                let opcode =
+                    trace.decoded.ok_or(PhysicalReentryError::GuestStep)?;
+                if !matches!(opcode, b'i' | b'j' | b'p' | b'*')
+                    || read.address != trace.before.registers.data_pointer
+                {
+                    return Err(PhysicalReentryError::GuestStep);
+                }
+                let written_value = matches!(opcode, b'p' | b'*')
+                    .then_some(trace.after.registers.accumulator);
+                if let Some(value) = written_value {
+                    data_write_addresses.push(read.address);
+                    data_instruction_writes =
+                        data_instruction_writes.saturating_add(1);
+                    if let Some(write) = trace.memory_delta.data
+                        && (write.address != read.address
+                            || write.before != read.value
+                            || write.after != value)
+                    {
+                        return Err(PhysicalReentryError::GuestStep);
+                    }
+                }
                 data_read_addresses.push(read.address);
-            }
-            if matches!(trace.decoded, Some(b'p' | b'*')) {
-                let data = trace
-                    .memory_reads
-                    .data
-                    .ok_or(PhysicalReentryError::GuestStep)?;
-                data_write_addresses.push(data.address);
-                data_instruction_writes =
-                    data_instruction_writes.saturating_add(1);
+                data_operations.push(PhysicalDataOperation {
+                    code_pointer: trace.before.registers.code_pointer,
+                    opcode,
+                    read,
+                    step,
+                    written_value,
+                });
+            } else if matches!(trace.decoded, Some(b'i' | b'j' | b'p' | b'*')) {
+                return Err(PhysicalReentryError::GuestStep);
             }
             if let Some(write) = trace.memory_delta.data {
                 append_write(&mut journal, write)?;
