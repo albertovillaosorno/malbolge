@@ -115,6 +115,27 @@ normalizer, full-width C32 value write, source-C arithmetic, mutable
 checksum loop, or published source-C artifact. Its lossy M98 state must
 not be substituted for the injective M96 conversion value.
 
+`admit_c23_iy_converted_eof_control_word_plan` provides a separate,
+**data-only** EOF discriminator specifically for the real converter's M96
+representation. The exact pair `[14,348,097, 80]` maps each of the 256
+converted bytes to 80 and encoded EOF=62,207 to 809 after two *proposed*
+`p` operations, giving hypothetical `i` landings at C81 and C810.
+Independent 257-class trit arithmetic verifies the plan. Its seventh
+trit maps converted EOF to 809 but **raw EOF to 80**, so reusing this
+control pair without the physical input converter fails closed. The
+first operand has an unavailable loader trit-five=2 and needs a real guest
+write; C810 is outside the original 91-cell source. No `p` for these
+operands, executable jump, C23 two-word `-1` store, or EOF backedge has
+been realized. This is a necessary future linker obligation, not a guest
+conditional or a new source-C acceptance mode.
+
+The naive single-cell alternative, making the original converter C80 an
+`i`, still emits the correct byte at C79 but tries to encrypt the
+loader-expanded jump-target M157=7,174,404 and is rejected by the
+normative VM with `InvalidEncryptionTarget`. That failure is a bound on
+this fixed source geometry, not proof that a relocated branch is
+impossible.
+
 ### Executable signed-C23 byte conversion after nine rotations
 
 `build_c23_nine_rotated_signed_output_source` preserves the 91-cell `Iy`

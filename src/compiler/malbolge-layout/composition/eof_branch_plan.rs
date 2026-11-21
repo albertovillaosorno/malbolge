@@ -44,6 +44,17 @@ pub const CURRENT_C23_EOF_CONTROL_WORDS: [u32; 2] = [14_348_906, 486];
 /// These select hypothetical code positions 244 and 487, not existing guest
 /// code. Any actual jump must separately prove both destinations are valid.
 pub const CURRENT_C23_EOF_TARGET_WORDS: [u32; 2] = [243, 486];
+/// Two-crazy candidate after the **physical Iy C23 converter** has already
+/// stored the exact successful byte or encoded EOF=62,207 at M96.
+///
+/// Its first data operand has trit five=2, so an actual N15 linker must
+/// synthesize that word before execution. Its trit six=1 distinguishes
+/// raw N15 EOF from the converted C23 word; the two representations must
+/// not be substituted. Both values are data-only.
+pub const CURRENT_IY_CONVERTED_EOF_CONTROL_WORDS: [u32; 2] = [14_348_097, 80];
+/// Hypothetical `i` operands for Iy-converted byte and EOF respectively.
+/// They imply code positions 81 and 810; neither landing pad is generated.
+pub const CURRENT_IY_CONVERTED_EOF_TARGET_WORDS: [u32; 2] = [80, 809];
 
 /// Why a proposed mathematical EOF control-word plan was rejected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,10 +147,11 @@ impl C23EofControlWordPlan {
 ///
 /// Refuses the wrong profile, out-of-range words, indistinguishable targets,
 /// or the first wrong byte/EOF transition.
-pub fn admit_c23_eof_control_word_plan(
+fn admit_eof_word_plan(
     profile: &ProfileDescriptor,
     operands: [u32; 2],
     targets: [u32; 2],
+    input_word: impl Fn(u32) -> u32,
 ) -> Result<C23EofControlWordPlan, C23EofControlWordError> {
     if profile != current_profile() {
         return Err(C23EofControlWordError::UnsupportedProfile);
@@ -161,7 +173,7 @@ pub fn admit_c23_eof_control_word_plan(
     }
     let mapped = |word| {
         let intermediate =
-            profile_crazy(operands[0], word, profile.word_trits());
+            profile_crazy(operands[0], input_word(word), profile.word_trits());
         profile_crazy(operands[1], intermediate, profile.word_trits())
     };
     for byte in u8::MIN..=u8::MAX {
@@ -175,4 +187,44 @@ pub fn admit_c23_eof_control_word_plan(
         return Err(C23EofControlWordError::EofMismatch { actual });
     }
     Ok(C23EofControlWordPlan { operands, targets })
+}
+
+/// Admit a raw-N15-input two-crazy EOF discriminator, without guest code.
+///
+/// # Errors
+///
+/// Rejects wrong profiles, invalid operand/target words, or any mismatched
+/// byte/EOF scalar transition.
+pub fn admit_c23_eof_control_word_plan(
+    profile: &ProfileDescriptor,
+    operands: [u32; 2],
+    targets: [u32; 2],
+) -> Result<C23EofControlWordPlan, C23EofControlWordError> {
+    admit_eof_word_plan(profile, operands, targets, |raw| raw)
+}
+
+/// Admit two mathematical EOF-control `p` operands **after** Iy conversion.
+///
+/// The 91-cell Iy guest converter physically executes `p` at C77/C78,
+/// leaving successful bytes as exact words 0..255 and true EOF as M96=62,207.
+/// The input mapping here independently recomputes that known conversion;
+/// no `p`, pointer motion, branch, landing pad or source-C result is linked.
+/// This is a different operation from using raw N15 EOF=14,348,906.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles, impossible operands or target addresses,
+/// and any byte/EOF mapping that fails the 257-case exact scalar oracle.
+pub fn admit_c23_iy_converted_eof_control_word_plan(
+    profile: &ProfileDescriptor,
+    operands: [u32; 2],
+    targets: [u32; 2],
+) -> Result<C23EofControlWordPlan, C23EofControlWordError> {
+    admit_eof_word_plan(profile, operands, targets, |raw| {
+        profile_crazy(
+            121,
+            profile_crazy(7_138_732, raw, profile.word_trits()),
+            profile.word_trits(),
+        )
+    })
 }

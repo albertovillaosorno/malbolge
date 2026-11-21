@@ -70,7 +70,9 @@ pub use bounded_revisit::{
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,
     CURRENT_C23_EOF_CONTROL_WORDS, CURRENT_C23_EOF_TARGET_WORDS,
-    admit_c23_eof_control_word_plan,
+    CURRENT_IY_CONVERTED_EOF_CONTROL_WORDS,
+    CURRENT_IY_CONVERTED_EOF_TARGET_WORDS, admit_c23_eof_control_word_plan,
+    admit_c23_iy_converted_eof_control_word_plan,
 };
 pub use eof_c23_conversion_source::{
     C23OperandProbeSourceError, admit_c23_probe_graphical_source,

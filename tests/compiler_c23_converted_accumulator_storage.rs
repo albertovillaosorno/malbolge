@@ -228,3 +228,99 @@ fn signed_c23_conversion_preserves_state_through_post_output_guest_fold()
     assert_eq!(all_folded.len(), 118);
     Ok(())
 }
+
+// Data-only control placement must not be mistaken for an actual dynamic C23
+// EOF branch. The preceding VM test authenticates the input word at M96;
+// this test proves a later two-p selector over that exact value space.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact independent finite expected bytes and EOF scalar result"
+)]
+fn iy_converted_guest_word_has_source_specific_eof_selector()
+-> Result<(), String> {
+    use layout::{
+        C23EofControlWordError, CURRENT_IY_CONVERTED_EOF_CONTROL_WORDS,
+        CURRENT_IY_CONVERTED_EOF_TARGET_WORDS,
+        admit_c23_iy_converted_eof_control_word_plan,
+    };
+
+    let profile = current_profile();
+    let control = CURRENT_IY_CONVERTED_EOF_CONTROL_WORDS;
+    let targets = CURRENT_IY_CONVERTED_EOF_TARGET_WORDS;
+    let plan =
+        admit_c23_iy_converted_eof_control_word_plan(profile, control, targets)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.operands(), [14_348_097, 80]);
+    assert_eq!(plan.targets(), [80, 809]);
+    assert_eq!(plan.next_code_addresses(), [81, 810]);
+    assert_eq!(plan.mandatory_runtime_operand_writes(), [true, false]);
+    // The same targets are NOT a valid selector on raw guest input.
+    // Skipping the real converter must never be silently authorized.
+    assert!(
+        layout::admit_c23_eof_control_word_plan(profile, control, targets)
+            .is_err()
+    );
+    assert!(
+        admit_c23_iy_converted_eof_control_word_plan(
+            profile,
+            layout::CURRENT_C23_EOF_CONTROL_WORDS,
+            layout::CURRENT_C23_EOF_TARGET_WORDS,
+        )
+        .is_err()
+    );
+    for raw in (0..=255).chain(std::iter::once(profile.eof_word())) {
+        let converted = scalar_crazy(NEXT_SEED, scalar_crazy(ROTATED, raw));
+        let actual =
+            scalar_crazy(control[1], scalar_crazy(control[0], converted));
+        assert_eq!(
+            actual,
+            if raw == profile.eof_word() {
+                809
+            } else {
+                80
+            },
+            "raw N15 input class {raw}"
+        );
+    }
+    assert_eq!(
+        admit_c23_iy_converted_eof_control_word_plan(
+            historical_profile(),
+            control,
+            targets,
+        ),
+        Err(C23EofControlWordError::UnsupportedProfile)
+    );
+    assert_eq!(
+        admit_c23_iy_converted_eof_control_word_plan(
+            profile,
+            [profile.word_modulus(), control[1]],
+            targets,
+        ),
+        Err(C23EofControlWordError::InvalidOperand)
+    );
+    assert_eq!(
+        admit_c23_iy_converted_eof_control_word_plan(profile, control, [
+            80, 80
+        ],),
+        Err(C23EofControlWordError::IndistinguishableTargets)
+    );
+    assert_eq!(
+        admit_c23_iy_converted_eof_control_word_plan(profile, control, [
+            80, 810
+        ],),
+        Err(C23EofControlWordError::EofMismatch { actual: 809 })
+    );
+    assert!(
+        admit_c23_iy_converted_eof_control_word_plan(
+            profile,
+            [control[0] - 1, control[1]],
+            targets,
+        )
+        .is_err()
+    );
+    // Hypothetical landing pad C810 lies beyond the physical 91-cell Iy
+    // source. A future target linker must actually synthesize the huge
+    // first operand, place both p sites, skip C81 and prove the i branch.
+    Ok(())
+}
