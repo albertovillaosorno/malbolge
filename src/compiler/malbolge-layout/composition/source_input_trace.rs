@@ -78,6 +78,8 @@ pub enum SourceInputTraceError {
     MissingInputResultStore,
     /// Guest data writes did not reproduce the full C23 or byte input value.
     InputResultMismatch,
+    /// Matching stores have no guest data or control dependence on the input.
+    InputResultUnrelatedToInput,
     /// Physical execution did not terminate within the declared ceiling.
     StepBudgetExhausted,
     /// An executed input instruction had no authenticated source input site.

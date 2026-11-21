@@ -50,6 +50,35 @@ routing, earlier rotations, different data flow, or revisiting the low cell
 remain open; neither a full C23 lowering failure nor an impossibility for
 arbitrary Malbolge code is claimed. The whole checksum remains unpublished.
 
+### Physical input-store causal precondition (2026-11-21)
+
+`verify_source_input_site_stored_results` now also tracks a bounded,
+conservative data/control influence shadow along the **real** N15 VM trace.
+Each `/` introduces an independently identified input event. Reached `p`
+propagates input influence from the accumulator and actual data word; `*`
+replaces the accumulator from the data word without inheriting unrelated
+previous accumulator influence. Actual `j`/`i`, data-pointer locations,
+mutable code fetches and encrypted code may propagate possible influence.
+The checker refuses a complete, numerically correct source SSA store when
+**none** of its physical writes can depend on its **own** observed input.
+This has its own `InputResultUnrelatedToInput` diagnostic, distinct from
+missing and incorrect C32 words.
+
+The low C32 word may be input-dependent while the high word is a legitimate
+fixed constant, so only one source-frame cell needs influence; every word
+still requires an actual exact physical data instruction and correct value.
+A synthetic matching constant pair is now rejected. Three graphical
+`/; j; (p|*); (p|*); v` guests were independently executed on byte `02`,
+`ff` and true EOF: direct `p` retains input influence, a fresh `*`
+forgets it. An existing 91-cell guest also proves physical writes at
+C43 depend on read C39 and at C51 on **both** reads C39/C47. The shadow
+only establishes a **necessary possible-dependence condition**: it can
+conservatively retain influence across feasible but unproven target
+branches, cannot certify algebraic sensitivity of an individual trit,
+and does not prove source operation mapping, branch correctness, SSA use,
+phi arithmetic or an executable checksum. The complete C23 source still
+refuses publication at the physical linker.
+
 ### Why the Iy converter cannot directly store signed EOF with more p
 
 A second source-locked test exercises the **real 91-cell Iy converter** on
@@ -93,8 +122,8 @@ does not write either canonical C32 input result to its allocated frame.
 Independent state-accounting tests reject loader-only equality, partial
 low-word writes, wrong EOF high words and premature acceptance. A store
 snapshot is only a necessary condition: future code may overwrite it,
-and this gate does not verify dependency, all intermediate C operations,
-phi transfer, guest branch edges or source-output correctness. No C
+and this gate does not prove source-level dataflow, all intermediate C
+operations, phi transfer, guest branch edges or output correctness. No C
 artifact has been published and P2 remains open. See
 `tests/compiler/source_input_store.rs` and
 `tests/compiler_source_input_site_guest.rs`.

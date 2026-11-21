@@ -146,6 +146,7 @@ fn synthetic_tracker(
         .collect::<Result<_, _>>()?;
     Ok(StoreTracker {
         error: None,
+        influence: GuestInfluence::default(),
         next_input: 1,
         pending: vec![pending],
         trace_index: 54,
@@ -163,7 +164,7 @@ fn physical_store_accounting_refuses_loader_values_and_partial_c32_writes()
     let input = input_observation(TraceInput::Byte(0), signed_c23(), 2);
     let mut partial = synthetic_tracker(input)?;
     // Even if the loader state happened to be zero, no write occurred there.
-    partial.observe_data_write(256, 54);
+    partial.observe_data_write(256, 54, &BTreeSet::from([0]));
     assert_eq!(
         partial
             .pending
@@ -177,8 +178,8 @@ fn physical_store_accounting_refuses_loader_values_and_partial_c32_writes()
     );
 
     let mut complete = synthetic_tracker(input)?;
-    complete.observe_data_write(257, 54);
-    complete.observe_data_write(256, 55);
+    complete.observe_data_write(257, 54, &BTreeSet::from([0]));
+    complete.observe_data_write(256, 55, &BTreeSet::from([0]));
     let stores = complete.complete()?;
     assert_eq!(stores.len(), 1);
     assert_eq!(
@@ -207,9 +208,9 @@ fn physical_store_accounting_rejects_wrong_eof_high_word_until_corrected()
     let input = input_observation(TraceInput::EndOfInput, signed_c23(), 2);
     let mut corrected = synthetic_tracker(input)?;
     let _previous_low = corrected.words.insert(256, 4_644_102);
-    corrected.observe_data_write(256, 54);
+    corrected.observe_data_write(256, 54, &BTreeSet::from([0]));
     let _previous_high = corrected.words.insert(257, 298);
-    corrected.observe_data_write(257, 55);
+    corrected.observe_data_write(257, 55, &BTreeSet::from([0]));
     assert_eq!(
         corrected
             .pending
@@ -225,7 +226,7 @@ fn physical_store_accounting_rejects_wrong_eof_high_word_until_corrected()
         Some([Some(54), Some(55)].as_slice()),
     );
     let _previous_corrected_high = corrected.words.insert(257, 299);
-    corrected.observe_data_write(257, 56);
+    corrected.observe_data_write(257, 56, &BTreeSet::from([0]));
     let stores = corrected.complete()?;
     let result = stores.first();
     assert_eq!(result.map(|store| store.cells.len()), Some(2));
@@ -248,12 +249,177 @@ fn physical_store_accounting_rejects_wrong_eof_high_word_until_corrected()
 
     let mut wrong = synthetic_tracker(input)?;
     let _wrong_low = wrong.words.insert(256, 4_644_102);
-    wrong.observe_data_write(256, 54);
+    wrong.observe_data_write(256, 54, &BTreeSet::from([0]));
     let _wrong_high = wrong.words.insert(257, 298);
-    wrong.observe_data_write(257, 55);
+    wrong.observe_data_write(257, 55, &BTreeSet::from([0]));
     assert_eq!(
         wrong.complete().err(),
         Some(SourceInputTraceError::InputResultMismatch),
     );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source input dependency must be demonstrated independently"
+)]
+fn matching_constant_writes_are_not_input_stores()
+-> Result<(), SourceInputTraceError> {
+    let input = input_observation(TraceInput::Byte(0), signed_c23(), 2);
+    let mut unrelated = synthetic_tracker(input)?;
+    unrelated.observe_data_write(256, 54, &BTreeSet::new());
+    unrelated.observe_data_write(257, 55, &BTreeSet::new());
+    assert_eq!(
+        unrelated.complete().err(),
+        Some(SourceInputTraceError::InputResultUnrelatedToInput)
+    );
+
+    // C23's successful-byte high word may correctly be fixed zero. At
+    // least one constituent write must nevertheless depend on *this* read.
+    let mut mixed = synthetic_tracker(input)?;
+    mixed.observe_data_write(256, 54, &BTreeSet::from([0]));
+    mixed.observe_data_write(257, 55, &BTreeSet::new());
+    assert_eq!(mixed.complete()?.len(), 1);
+
+    let mut wrong_read = synthetic_tracker(input)?;
+    wrong_read.observe_data_write(256, 54, &BTreeSet::from([1]));
+    wrong_read.observe_data_write(257, 55, &BTreeSet::from([1]));
+    assert_eq!(
+        wrong_read.complete().err(),
+        Some(SourceInputTraceError::InputResultUnrelatedToInput),
+        "a different physical getchar cannot authenticate this SSA store"
+    );
+    Ok(())
+}
+
+fn source_cell(position: usize, opcode: u8) -> Result<u8, String> {
+    (33..=126u8)
+        .find(|byte| {
+            malbolge::decode_profile_instruction(
+                u32::from(*byte),
+                u32::try_from(position).unwrap_or(u32::MAX),
+            ) == Some(opcode)
+        })
+        .ok_or_else(|| format!("missing graphical {opcode} at {position}"))
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    reason = "bounded original N15 guest instructions and dependency effects"
+)]
+fn real_guest_input_dependence_survives_crazy_but_not_fresh_rotate()
+-> Result<(), String> {
+    let profile = current_profile();
+    for (first, second, dependent) in [
+        (b'p', b'p', [true, true]),
+        (b'p', b'*', [true, false]),
+        (b'*', b'p', [false, false]),
+    ] {
+        let mut source = Vec::new();
+        for opcode in [b'/', b'j', first, second, b'v'] {
+            source.push(source_cell(source.len(), opcode)?);
+        }
+        let tail = (33..=126u8)
+            .find(|byte| {
+                malbolge::decode_profile_instruction(u32::from(*byte), 5)
+                    .is_some_and(|op| b"ji*pv/o<".contains(&op))
+            })
+            .ok_or("missing valid graphical loader tail")?;
+        source.push(tail);
+        let data_base = u32::from(source[1]) + 1;
+        assert!(
+            data_base
+                >= u32::try_from(source.len())
+                    .map_err(|error| error.to_string())?
+        );
+        let loaded = ProfileMachine::from_source(profile, &source, vec![])
+            .map_err(|error| error.to_string())?;
+        for input in [vec![], vec![2], vec![255]] {
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                loaded.memory().to_vec(),
+                input.clone(),
+                malbolge::ProfileRegisters::default(),
+            )
+            .map_err(|error| error.to_string())?;
+            let mut trace = Vec::new();
+            let outcome = vm
+                .run_traced(5, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(outcome, malbolge::RunOutcome::Terminated {
+                reason: malbolge::Termination::HaltInstruction,
+                steps: 5,
+            });
+            let mut influence = GuestInfluence::default();
+            let mut data_influences = Vec::new();
+            for step in &trace {
+                let effect = influence.step(step, step.input.map(|_v| 0));
+                if matches!(step.decoded, Some(b'p' | b'*')) {
+                    data_influences.push(effect.contains(&0));
+                    assert!(step.memory_reads.data.is_some());
+                }
+            }
+            assert_eq!(data_influences, dependent);
+            assert_eq!(trace[0].decoded, Some(b'/'));
+            assert_eq!(trace[1].decoded, Some(b'j'));
+            assert_eq!(trace[4].decoded, Some(b'v'));
+            assert_eq!(vm.input_consumed(), usize::from(!input.is_empty()));
+            assert_eq!(vm.output(), &[]);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "physical two-input state chain from the canonical guest loader"
+)]
+fn real_guest_second_input_depends_on_both_reads() -> Result<(), String> {
+    let profile = current_profile();
+    let source = super::super::build_seeded_two_input_state_update_source(
+        profile, *b",H",
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, &source, vec![0x02, 0xff])
+            .map_err(|error| error.to_string())?;
+    let mut influence = GuestInfluence::default();
+    let mut read_count = 0usize;
+    let mut data_events = Vec::new();
+    let mut actual_reads = Vec::new();
+    let outcome = vm
+        .run_traced(54, &mut |step| {
+            let id = step.input.map(|read| {
+                actual_reads.push(read);
+                let index = read_count;
+                read_count = read_count.saturating_add(1);
+                index
+            });
+            let dependencies = influence.step(step, id);
+            if step.decoded == Some(b'p') {
+                data_events.push((
+                    step.before.registers.code_pointer,
+                    step.before.registers.data_pointer,
+                    dependencies,
+                ));
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, malbolge::RunOutcome::Terminated {
+        reason: malbolge::Termination::HaltInstruction,
+        steps: 54,
+    });
+    assert_eq!(actual_reads, [TraceInput::Byte(2), TraceInput::Byte(255)]);
+    assert_eq!(data_events, [
+        (43, 95, BTreeSet::from([0])),
+        (51, 95, BTreeSet::from([0, 1])),
+    ]);
+    assert_eq!(vm.input_consumed(), 2);
     Ok(())
 }

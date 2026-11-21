@@ -31,7 +31,7 @@
 //! Matching the result once is necessary, not sufficient: later guest code
 //! can clobber the cells, and unrelated C operations remain unchecked.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{ProfileMachine, ProfileStepTrace, TraceInput, current_profile};
 
@@ -46,7 +46,105 @@ struct PendingInputStore {
     completed: Option<SourceInputStoreObservation>,
     expected: Vec<u32>,
     input: SourceInputSiteObservation,
+    saw_matching_unrelated: bool,
+    write_dependent: Vec<bool>,
     writes: Vec<Option<usize>>,
+}
+
+// A conservative dynamic dependency shadow for an authentic profile trace.
+// It deliberately overapproximates influence (including input-driven data
+// addresses and code fetches) but never treats time after `/` as dependence.
+#[derive(Default)]
+struct GuestInfluence {
+    accumulator: BTreeSet<usize>,
+    code_pointer: BTreeSet<usize>,
+    control: BTreeSet<usize>,
+    data_pointer: BTreeSet<usize>,
+    memory: BTreeMap<u32, BTreeSet<usize>>,
+}
+
+impl GuestInfluence {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "bounded VM data/control dependency propagation"
+    )]
+    fn step(
+        &mut self,
+        step: &ProfileStepTrace,
+        input_index: Option<usize>,
+    ) -> BTreeSet<usize> {
+        if step.result.is_err() {
+            return BTreeSet::new();
+        }
+        let code_address = step.before.registers.code_pointer;
+        let data_address = step.before.registers.data_pointer;
+        let mut reached = self.control.clone();
+        reached.extend(self.code_pointer.iter().copied());
+        reached.extend(
+            self.memory
+                .get(&code_address)
+                .into_iter()
+                .flatten()
+                .copied(),
+        );
+        // A data-written opcode can select subsequent execution semantics.
+        self.control.extend(reached.iter().copied());
+        let mut data_result = BTreeSet::new();
+        match step.decoded {
+            Some(b'/') => {
+                self.accumulator = reached.clone();
+                self.accumulator.extend(input_index);
+            },
+            Some(b'j' | b'i') => {
+                let mut destination = reached.clone();
+                destination.extend(self.data_pointer.iter().copied());
+                destination.extend(
+                    self.memory
+                        .get(&data_address)
+                        .into_iter()
+                        .flatten()
+                        .copied(),
+                );
+                if step.decoded == Some(b'j') {
+                    self.data_pointer = destination;
+                } else {
+                    self.code_pointer = destination.clone();
+                    self.control.extend(destination);
+                }
+            },
+            Some(b'p' | b'*') => {
+                data_result.clone_from(&reached);
+                data_result.extend(self.data_pointer.iter().copied());
+                data_result.extend(
+                    self.memory
+                        .get(&data_address)
+                        .into_iter()
+                        .flatten()
+                        .copied(),
+                );
+                if step.decoded == Some(b'p') {
+                    data_result.extend(self.accumulator.iter().copied());
+                }
+                self.accumulator = data_result.clone();
+                let _prior =
+                    self.memory.insert(data_address, data_result.clone());
+            },
+            _ => {},
+        }
+        // Post-instruction encryption may use the *new* C after an `i`.
+        // Preserve any preceding data write at the same address.
+        if let Some(encryption) = step.memory_delta.encryption {
+            let mut effect = self
+                .memory
+                .get(&encryption.address)
+                .cloned()
+                .unwrap_or_default();
+            effect.extend(reached);
+            effect.extend(self.code_pointer.iter().copied());
+            let _prior = self.memory.insert(encryption.address, effect);
+        }
+        data_result
+    }
 }
 
 /// One actual guest data write that completed a source input word.
@@ -80,6 +178,7 @@ pub struct SourceInputStoredProof {
 
 struct StoreTracker {
     error: Option<SourceInputTraceError>,
+    influence: GuestInfluence,
     next_input: usize,
     pending: Vec<PendingInputStore>,
     trace_index: usize,
@@ -102,6 +201,8 @@ impl StoreTracker {
                 stores.push(completed);
             } else if pending.writes.iter().any(Option::is_none) {
                 return Err(SourceInputTraceError::MissingInputResultStore);
+            } else if pending.saw_matching_unrelated {
+                return Err(SourceInputTraceError::InputResultUnrelatedToInput);
             } else {
                 return Err(SourceInputTraceError::InputResultMismatch);
             }
@@ -135,6 +236,7 @@ impl StoreTracker {
         }
         Ok(Self {
             error: None,
+            influence: GuestInfluence::default(),
             next_input: 0,
             pending,
             trace_index: 0,
@@ -144,8 +246,19 @@ impl StoreTracker {
 
     // Only actual guest data instructions can complete source-typed values.
     // The observed frame words are always read from normative VM deltas.
-    fn observe_data_write(&mut self, address: u32, step_index: usize) {
-        for store in self.pending.iter_mut().take(self.next_input) {
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "keep the final data-write and C32 cell obligations explicit"
+    )]
+    fn observe_data_write(
+        &mut self,
+        address: u32,
+        step_index: usize,
+        dependencies: &BTreeSet<usize>,
+    ) {
+        for (input_index, store) in
+            self.pending.iter_mut().take(self.next_input).enumerate()
+        {
             if store.completed.is_some()
                 || store.input.trace_index >= step_index
             {
@@ -162,6 +275,9 @@ impl StoreTracker {
                 continue;
             };
             *write_step = Some(step_index);
+            if let Some(dependent) = store.write_dependent.get_mut(cell_index) {
+                *dependent = dependencies.contains(&input_index);
+            }
             if store.writes.iter().any(Option::is_none) {
                 continue;
             }
@@ -186,10 +302,14 @@ impl StoreTracker {
                 })
                 .collect::<Option<Vec<_>>>();
             if let Some(cells) = completed_cells {
-                store.completed = Some(SourceInputStoreObservation {
-                    cells,
-                    input: store.input,
-                });
+                if store.write_dependent.iter().any(|dependent| *dependent) {
+                    store.completed = Some(SourceInputStoreObservation {
+                        cells,
+                        input: store.input,
+                    });
+                } else {
+                    store.saw_matching_unrelated = true;
+                }
             }
         }
     }
@@ -200,6 +320,7 @@ impl StoreTracker {
         if self.error.is_some() {
             return;
         }
+        let input_index = step.input.map(|_input| self.next_input);
         if let Some(input) = step.input {
             let Some(store) = self.pending.get(self.next_input) else {
                 self.error =
@@ -241,8 +362,13 @@ impl StoreTracker {
                 *word = write.after;
             }
         }
+        let dependencies = self.influence.step(step, input_index);
         if matches!(step.decoded, Some(b'p' | b'*')) && step.result.is_ok() {
-            self.observe_data_write(step.before.registers.data_pointer, index);
+            self.observe_data_write(
+                step.before.registers.data_pointer,
+                index,
+                &dependencies,
+            );
         }
     }
 }
@@ -272,6 +398,8 @@ fn pending_store(
         completed: None,
         expected,
         input,
+        saw_matching_unrelated: false,
+        write_dependent: vec![false; count],
         writes: vec![None; count],
     })
 }

@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, the opt-in source input-result verifier now requires
+  **possible causal influence** from each actual `/` to at least one
+  correctly stored word in its own C32/byte SSA destination. A conservative
+  traced A/D/C/data/code/control shadow refuses numerically matching but
+  unrelated `p`/`*` writes with a distinct diagnostic. Seven focused tests
+  include three real short graphical source layouts on byte `02`, `ff`
+  and EOF, plus one real two-input 54-step N15 state update proving both
+  read IDs reach C51. The check remains a necessary condition, not a
+  general source-C dataflow/control proof; both canonical C32 words must
+  still be physically written, and the source checksum remains unlinked.
+
 - On 2026-11-21, an independent scalar units-trit proof and four physical
   N15 VM runs show that source-loaded `/; j; (p|*); p; v` cannot make its
   **first adjacent C32 low-word write** represent both raw byte `0x02` and
@@ -103,8 +114,8 @@ evidence describe the old priority scheme, not the current phase.
   of the C53/C101 classifier correctly refuse `MissingInputResultStore`
   because the guest still never writes either source C32 result. Partial,
   wrong-high-word and delayed-correction cases have bounded unit evidence.
-  These are necessary state-write checks, not dependency or control
-  translation, a physical arithmetic/phi linker, output correctness or
+  These are necessary state-write checks, not full source dataflow or
+  control translation, a physical arithmetic/phi linker, output proof or
   a published mutable checksum. The original P2 target remains open.
 
 - On 2026-11-20, the source-aware output gate now also binds the
