@@ -203,7 +203,7 @@ const NO_OP_INSTRUCTION: u8 = b'o';
 pub enum CodeVisitRequirement {
     /// An exact decoded XLAT1 opcode at the code address.
     Decoded(u8),
-    /// Any symbol with no guest effect, excluding explicit `o`.
+    /// Any no-effect symbol, including the explicit `o` instruction.
     Inert,
 }
 
@@ -1777,6 +1777,10 @@ fn encode_auto_padded_forward_layout_impl(
 ///
 /// Rejects invalid addresses, lengths, initial opcodes, non-self-encrypting
 /// transitions, and unencodable multi-visit requests.
+#[expect(
+    clippy::excessive_nesting,
+    reason = "bounded XLAT2 candidate, visit, and failure guards"
+)]
 pub fn encode_code_visits(
     profile: &ProfileDescriptor,
     position: u32,
@@ -1821,7 +1825,9 @@ pub fn encode_code_visits(
             };
             let matches = match requirement {
                 CodeVisitRequirement::Decoded(opcode) => decoded == *opcode,
-                CodeVisitRequirement::Inert => !admitted(decoded),
+                CodeVisitRequirement::Inert => {
+                    decoded == b'o' || !admitted(decoded)
+                },
             };
             if !matches {
                 valid = false;

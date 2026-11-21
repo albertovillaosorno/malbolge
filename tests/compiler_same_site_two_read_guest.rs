@@ -317,3 +317,40 @@ fn checked_code_visit_encoder_rejects_invalid_sequences() {
         Err(CodeVisitEncodingError::NoSelfEncryption { visit: 0 })
     );
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent first and encrypted-second decode assertions"
+)]
+fn explicit_noop_is_a_valid_inert_revisit() -> Result<(), String> {
+    let profile = current_profile();
+    let position = 58;
+    let code = encode_code_visits(profile, position, &[
+        CodeVisitRequirement::Decoded(b'*'),
+        CodeVisitRequirement::Inert,
+    ])
+    .map_err(|error| format!("missing rotate/noop revisit: {error:?}"))?;
+    assert_eq!(
+        decode_profile_instruction(u32::from(code), position),
+        Some(b'*')
+    );
+    let encrypted = encrypt_profile_cell(u32::from(code))
+        .ok_or("expected graphical self-encryption")?;
+    assert_eq!(decode_profile_instruction(encrypted, position), Some(b'o'));
+    assert_eq!(
+        encode_code_visits(profile, position, &[
+            CodeVisitRequirement::Decoded(b'*'),
+            CodeVisitRequirement::Decoded(b'o'),
+        ]),
+        Ok(code)
+    );
+    assert_eq!(
+        encode_code_visits(profile, 41, &[
+            CodeVisitRequirement::Decoded(b'v'),
+            CodeVisitRequirement::Inert,
+        ]),
+        Err(CodeVisitEncodingError::NoSelfEncryption { visit: 0 })
+    );
+    Ok(())
+}
