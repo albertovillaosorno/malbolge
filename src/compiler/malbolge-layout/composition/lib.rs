@@ -165,8 +165,8 @@ pub use zero_cell_source::{
     AccumulatorIndependentZeroCellSource, AdjacentC32ZeroSource,
     ZeroCellSource, ZeroCellSourceError,
     build_accumulator_independent_zero_cell_source,
-    build_adjacent_c32_zero_source, build_input_then_zero_cell_source,
-    build_zero_cell_source,
+    build_adjacent_c32_zero_source, build_adjacent_c32_zero_then_input_source,
+    build_input_then_zero_cell_source, build_zero_cell_source,
 };
 
 const GRAPHICAL_START: u8 = 33;

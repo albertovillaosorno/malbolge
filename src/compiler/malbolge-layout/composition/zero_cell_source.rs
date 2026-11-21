@@ -37,8 +37,9 @@ use malbolge::{ProfileDescriptor, current_profile, profile_crazy};
 
 use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
 
-const C32_ZERO_SOURCE_CELLS: usize = 62;
-const C32_ZERO_CODE_CELLS: usize = C32_ZERO_SOURCE_CELLS - 2;
+const C32_ZERO_CODE_CELLS: usize = 60;
+const C32_ZERO_INPUT_CODE_CELLS: usize = 31;
+const LOADER_TAIL_CELLS: usize = 2;
 
 const PREFIX_BOUND: usize = 94;
 
@@ -101,6 +102,8 @@ pub struct AccumulatorIndependentZeroCellSource {
 /// The complete source is initially graphical, and all writes avoid code.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdjacentC32ZeroSource {
+    /// Optional input read strictly after both zero words have been written.
+    pub input_code_address: Option<u32>,
     /// Loader-provided operands for three following writes and return jump.
     pub relocated_initial_words: [u32; 4],
     /// Original source-code jump destination before the two scratch writes.
@@ -380,14 +383,36 @@ fn find_accumulator_independent_zero_source(
 /// # Errors
 ///
 /// Refuses noncurrent profiles or an unrepresentable bounded graphical plan.
+pub fn build_adjacent_c32_zero_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
+    find_adjacent_zero_source(profile, false)
+}
+
+/// Create the adjacent `[0, 0]` pair before observing a genuine guest input.
+///
+/// The reached `/` is after the final low-word zero write and cannot change
+/// either initialized cell. No guest input is used to compute the zero pair;
+/// the input result remains only in A and is not a source-C C32 local.
+///
+/// # Errors
+///
+/// Refuses noncurrent profiles or source/loader layouts outside the bound.
+pub fn build_adjacent_c32_zero_then_input_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
+    find_adjacent_zero_source(profile, true)
+}
+
 #[expect(
     clippy::cognitive_complexity,
     clippy::excessive_nesting,
     clippy::too_many_lines,
-    reason = "finite graphical search and exact data-reentry proof"
+    reason = "two physical write modes and exact loader search"
 )]
-pub fn build_adjacent_c32_zero_source(
+fn find_adjacent_zero_source(
     profile: &ProfileDescriptor,
+    read_input: bool,
 ) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
     use ZeroCellSourceError::{NoLoadableZero, UnsupportedProfile};
     if profile != current_profile() {
@@ -395,12 +420,23 @@ pub fn build_adjacent_c32_zero_source(
     }
     let memory_words = usize::try_from(profile.memory_words())
         .map_err(|_error| NoLoadableZero)?;
+    let code_cells = if read_input {
+        C32_ZERO_INPUT_CODE_CELLS
+    } else {
+        C32_ZERO_CODE_CELLS
+    };
+    let source_cells = code_cells.saturating_add(LOADER_TAIL_CELLS);
+    let body_cells = if read_input {
+        11
+    } else {
+        10
+    };
     for prefix in 0..PREFIX_BOUND {
-        if prefix.saturating_add(10) > C32_ZERO_CODE_CELLS {
+        if prefix.saturating_add(body_cells) > code_cells {
             break;
         }
-        let mut source = Vec::with_capacity(C32_ZERO_SOURCE_CELLS);
-        for opcode in repeat_n(LinearOpcode::NoOperation, prefix).chain([
+        let mut source = Vec::with_capacity(source_cells);
+        let physical_body = [
             LinearOpcode::RelocateDataPointer,
             LinearOpcode::CrazyData,
             LinearOpcode::CrazyData,
@@ -410,14 +446,18 @@ pub fn build_adjacent_c32_zero_source(
             LinearOpcode::CrazyData,
             LinearOpcode::RelocateDataPointer,
             LinearOpcode::CrazyData,
-            LinearOpcode::Halt,
-        ]) {
+        ];
+        for opcode in repeat_n(LinearOpcode::NoOperation, prefix)
+            .chain(physical_body)
+            .chain(read_input.then_some(LinearOpcode::InputWord))
+            .chain([LinearOpcode::Halt])
+        {
             source.push(
                 unique_graphical_cell(profile, opcode, source.len())
                     .map_err(|_error| NoLoadableZero)?,
             );
         }
-        while source.len() < C32_ZERO_CODE_CELLS {
+        while source.len() < code_cells {
             source.push(
                 unique_graphical_cell(
                     profile,
@@ -431,7 +471,7 @@ pub fn build_adjacent_c32_zero_source(
             return Err(NoLoadableZero);
         };
         let first_address = usize::from(first_jump_byte).saturating_add(1);
-        if first_address <= C32_ZERO_SOURCE_CELLS.saturating_add(2)
+        if first_address <= source_cells.saturating_add(2)
             || first_address.saturating_add(2) >= memory_words
         {
             continue;
@@ -480,7 +520,7 @@ pub fn build_adjacent_c32_zero_source(
                     usize::try_from(scratch[2].saturating_add(1))
                         .map_err(|_error| NoLoadableZero)?;
                 if scratch_zero == 0
-                    && relocated_address > C32_ZERO_SOURCE_CELLS
+                    && relocated_address > source_cells
                     && relocated_address.saturating_add(3) < memory_words
                     && !(first_address..=first_address.saturating_add(2))
                         .contains(&relocated_address)
@@ -520,6 +560,9 @@ pub fn build_adjacent_c32_zero_source(
                                 .map_err(|_error| NoLoadableZero)
                         };
                         return Ok(AdjacentC32ZeroSource {
+                            input_code_address: read_input
+                                .then(|| as_word(prefix.saturating_add(9)))
+                                .transpose()?,
                             relocated_initial_words: words,
                             scratch_data_address: as_word(first_address)?,
                             scratch_initial_words: scratch,

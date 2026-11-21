@@ -12,6 +12,26 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Two physical zero words retained through a real input (2026-11-21)
+
+`build_adjacent_c32_zero_then_input_source` reuses the bounded
+adjacent-zero loader and reentry solver, but emits a smaller 33-byte
+fully graphical N15 source. Its reached `j;p;p;j;p;p;p;j;p;/;v`
+body initializes both M7,174,418 and M7,174,419 to zero **before**
+C9 executes genuine `/` (C10 halts). Both cells were nonzero in the
+source loader and survive all successful-byte and true-EOF reads.
+
+An independent 31-code-cell/two-graphical-tail exhaustive census
+examines 1,216 eligible sources and accepts 16. The first canonical
+source has no no-op prefix and executes exactly 11 steps. Six complete
+normative VM traces verify every opcode, the two exact zero writes,
+encryption, raw byte/EOF accumulator and input consumption, including
+an unread input suffix. The pair is still fixed to a loader placement
+and needs initial A=0. Reading an input after initialization does **not**
+store signed C23 `getchar`, update a local or implement a loop. The
+original complete mutable EOF checksum remains correctly refused.
+See `tests/compiler_adjacent_zero_source.rs`.
+
 ### Adjacent physical C32 zero pair through real guest data reentry (2026-11-21)
 
 `build_adjacent_c32_zero_source` deterministically emits one 62-cell

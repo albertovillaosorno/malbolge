@@ -210,6 +210,7 @@ fn adjacent_zero_matches_independent_full_source_census() -> Result<(), String>
     assert_eq!(hex, SOURCE_HEX);
     assert_eq!(plan.scratch_initial_words, [7_174_416, 37, 7_174_416]);
     assert_eq!(plan.relocated_initial_words, [37, 7_174_416, 37, 7_174_416]);
+    assert_eq!(plan.input_code_address, None);
     assert_eq!(plan.zero_high_address, 7_174_418);
     assert_eq!(plan.zero_high_code_address, 14);
     assert_eq!(plan.zero_low_code_address, 17);
@@ -345,4 +346,171 @@ fn adjacent_zero_source_rejects_historical_profile() {
         layout::build_adjacent_c32_zero_source(historical_profile()),
         Err(layout::ZeroCellSourceError::UnsupportedProfile),
     );
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "guest zero pair survives input and EOF"
+)]
+fn real_guest_retains_adjacent_zero_pair_after_input() -> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_adjacent_c32_zero_then_input_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.source.len(), 33);
+    assert_eq!(plan.input_code_address, Some(9));
+    assert_eq!(plan.scratch_data_address, 41);
+    assert_eq!(plan.zero_low_address, 7_174_418);
+    assert_eq!(plan.zero_high_address, 7_174_419);
+    let prepared = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_ne!(prepared.memory_word(plan.zero_low_address), Ok(0));
+    assert_ne!(prepared.memory_word(plan.zero_high_address), Ok(0));
+    for input in [vec![], vec![0], vec![2], vec![0x80], vec![0xff], vec![1, 2]]
+    {
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(11, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 11,
+        });
+        assert_eq!(trace.len(), 11);
+        for (index, opcode) in b"jppjpppjp/v".iter().enumerate() {
+            assert_eq!(trace[index].decoded, Some(*opcode));
+            if index < 10 {
+                assert!(trace[index].memory_delta.encryption.is_some());
+            }
+        }
+        for (code, address) in
+            [(5usize, plan.zero_high_address), (8, plan.zero_low_address)]
+        {
+            let step = &trace[code];
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(step.after.registers.accumulator, 0);
+            assert_eq!(
+                step.memory_delta
+                    .data
+                    .map(|write| (write.address, write.after)),
+                Some((address, 0))
+            );
+        }
+        assert_eq!(trace[8].after.registers.accumulator, 0);
+        assert_eq!(
+            trace[9].input,
+            Some(
+                input
+                    .first()
+                    .map_or(malbolge::TraceInput::EndOfInput, |byte| {
+                        malbolge::TraceInput::Byte(*byte)
+                    },)
+            )
+        );
+        assert_eq!(
+            trace[9].after.registers.accumulator,
+            input
+                .first()
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        );
+        assert_eq!(guest.memory_word(plan.zero_low_address), Ok(0));
+        assert_eq!(guest.memory_word(plan.zero_high_address), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        assert!(guest.output().is_empty());
+    }
+    assert_eq!(
+        layout::build_adjacent_c32_zero_then_input_source(historical_profile()),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "independent full finite graphical search for post-zero input"
+)]
+fn input_after_zero_matches_independent_source_census() -> Result<(), String> {
+    const CODE: usize = 31;
+    let mut admissible = 0usize;
+    let mut matches = Vec::new();
+    for prefix in 0..=(CODE - 11) {
+        let mut source = (0..prefix)
+            .map(|position| encode(111, position))
+            .chain(
+                b"jppjpppjp/v"
+                    .iter()
+                    .enumerate()
+                    .map(|(index, opcode)| encode(*opcode, prefix + index)),
+            )
+            .chain(((prefix + 11)..CODE).map(|position| encode(111, position)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let scratch = usize::from(source[prefix]) + 1;
+        if scratch <= CODE + 4 {
+            continue;
+        }
+        for first in 33..=126u8 {
+            if !graphical_tail(first, CODE) {
+                continue;
+            }
+            source.push(first);
+            for second in 33..=126u8 {
+                if !graphical_tail(second, CODE + 1) {
+                    continue;
+                }
+                source.push(second);
+                admissible += 1;
+                let first_result = crazy(loader_word(&source, scratch), 0);
+                let scratch_zero =
+                    crazy(loader_word(&source, scratch + 1), first_result);
+                let base = usize::try_from(loader_word(&source, scratch + 2))
+                    .map_err(|error| error.to_string())?
+                    + 1;
+                if scratch_zero == 0
+                    && base > CODE + 2
+                    && base + 3 < 14_348_907
+                    && !(scratch..=scratch + 2).contains(&base)
+                    && !(base..=base + 3).contains(&scratch)
+                {
+                    let first_write =
+                        crazy(loader_word(&source, base), scratch_zero);
+                    let high =
+                        crazy(loader_word(&source, base + 1), first_write);
+                    let third = crazy(loader_word(&source, base + 2), high);
+                    let low = crazy(first_write, third);
+                    if high == 0
+                        && low == 0
+                        && loader_word(&source, base + 3) + 1
+                            == u32::try_from(base)
+                                .map_err(|error| error.to_string())?
+                    {
+                        matches.push(source.clone());
+                    }
+                }
+                _ = source.pop();
+            }
+            _ = source.pop();
+        }
+    }
+    assert_eq!(admissible, 1216);
+    assert_eq!(matches.len(), 16);
+    let plan =
+        layout::build_adjacent_c32_zero_then_input_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.source, matches[0]);
+    Ok(())
 }

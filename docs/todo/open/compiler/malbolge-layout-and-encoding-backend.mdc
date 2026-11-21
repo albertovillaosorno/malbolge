@@ -51,6 +51,17 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Guest Input After Two-Word Zero Initialization (2026-11-21)
+
+The same finite source-loaded two-word initializer now also emits a
+33-cell variant that performs real `/` at C9 **after** writing both
+adjacent zero words at M7,174,418 and M7,174,419; C10 halts.
+The independent 1,216-case census finds 16 graphical layouts, and
+six 11-step normative guest traces check binary bytes, EOF, all
+writes, encryption, and preserved two-word zero state. Initial A=0
+and fixed loader placement remain prerequisites. No guest checksum
+SSA binding, signed input storage or repeating EOF loop is linked.
+
 ## Adjacent Physical Zero Writes After Guest Reentry (2026-11-21)
 
 A bounded 62-cell N15 source executes real `j;ppjpppjp;v` after nine
