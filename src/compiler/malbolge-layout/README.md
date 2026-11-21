@@ -12,6 +12,22 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Entry-accumulator-independent physical zero word
+
+`build_accumulator_independent_zero_cell_source` emits the full graphical
+N15 source `DC&$:9K!6`. A real `j` selects M39, `*` replaces the
+incoming accumulator with rotated loader word 7,174,463, and the next
+physical `p` writes zero at M40. The final `p` writes the nonzero word
+7,174,483 at M41. Seven independent entry-accumulator VM runs replay
+the same authentic loader image; the zero is not a host-created seed.
+
+`build_input_then_zero_cell_source` emits `Dt&$:9K!6`, replacing one
+reached no-op with a real `/` before the rotation. Six normative byte/EOF
+runs prove the input event occurs, then the rotation discards its value
+and the same exact zero write follows. These are **single-word** physical
+precursors at fixed entry C/D, not an adjacent `[0, 0]` C32 initializer,
+not signed-input storage and not the complete mutable EOF checksum.
+
 ### Source-loaded C32 constants after a real input
 
 `build_c32_literal_after_input_source` admits a bounded current-profile

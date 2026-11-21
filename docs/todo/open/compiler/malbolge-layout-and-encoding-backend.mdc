@@ -63,6 +63,22 @@ This is one word **only**. Neither a second adjacent C32 zero word nor a
 source-C frame initializer with unknown live-in accumulator is supplied.
 See `tests/compiler_zero_cell_source.rs` and the layout contract.
 
+## Accumulator-Independent Physical Zero (2026-11-21)
+
+The new bounded graphical `j;*;p;p;v` source `DC&$:9K!6` writes
+M40=0 after a genuine loader-derived `*` has overwritten arbitrary
+incoming A. Its actual N15 loader operands at M39..M41 are
+`[7174483, 27, 7174483]`; the three physical data operations write
+`[7174463, 0, 7174483]`. An independent 94-prefix/two-tail census
+selects the same source, and seven normative VM entry-A cases verify
+all reads, writes, encryption and halt. The alternative source
+`Dt&$:9K!6` also performs one real `/` read before the rotation;
+six byte/EOF guest streams retain identical zero-store semantics.
+The input value is intentionally **discarded**, not stored as C32.
+Only M40 is zero; adjacent M41 is nonzero. Pointer reentry, a second
+C32 zero word, mutable locals and the full EOF checksum remain open.
+See `tests/compiler_zero_cell_source.rs` and the layout contract.
+
 ## Two Input-Dependent Guest Memory Stores (2026-11-21)
 
 A bounded, independent 94-prefix/graphical-tail search now yields seven

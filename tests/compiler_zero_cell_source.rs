@@ -31,7 +31,8 @@ pub mod layout;
 use std::collections::BTreeSet;
 
 use malbolge::{
-    ProfileMachine, ProfileRegisters, RunOutcome, Termination, current_profile,
+    ProfileMachine, ProfileRegisters, RunOutcome, Termination, TraceInput,
+    current_profile,
     decode_profile_instruction, historical_profile,
 };
 
@@ -293,5 +294,283 @@ fn unknown_entry_accumulator_cannot_use_the_initial_zero_contract()
     );
     assert_eq!(guest.memory_word(plan.zero_data_address), Ok(3));
     assert_ne!(guest.memory_word(plan.zero_data_address), Ok(0));
+    Ok(())
+}
+
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    clippy::integer_division,
+    reason = "independent exact 15-trit rotation oracle"
+)]
+fn independent_rotate(word: u32) -> u32 {
+    let modulus = 3u32.pow(15);
+    word / 3 + (word % 3) * (modulus / 3)
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::excessive_nesting,
+    clippy::too_many_lines,
+    reason = "independent complete 94-phase graphical two-tail zero census"
+)]
+fn unknown_accumulator_zero_matches_independent_source_census()
+-> Result<(), String> {
+    let mut matching = Vec::<(Vec<u8>, u32, [u32; 3], [u32; 3])>::new();
+    let mut checked = 0usize;
+    for prefix in 0..PREFIX_BOUND {
+        let mut source = (0..prefix)
+            .map(|position| encode(b'o', position))
+            .collect::<Result<Vec<_>, _>>()?;
+        for opcode in b"j*ppv" {
+            source.push(encode(*opcode, source.len())?);
+        }
+        let first_address = usize::from(source[prefix]) + 1;
+        if first_address <= source.len() + 2 {
+            continue;
+        }
+        for first in 33..=126u8 {
+            if !graphical_tail(first, source.len()) {
+                continue;
+            }
+            source.push(first);
+            for last in 33..=126u8 {
+                if !graphical_tail(last, source.len()) {
+                    continue;
+                }
+                source.push(last);
+                checked += 1;
+                let initial = [
+                    loader_word(&source, first_address),
+                    loader_word(&source, first_address + 1),
+                    loader_word(&source, first_address + 2),
+                ];
+                let first_result = independent_rotate(initial[0]);
+                let second_result = independent_crazy(initial[1], first_result);
+                let third_result = independent_crazy(initial[2], second_result);
+                if second_result == 0 {
+                    matching.push((
+                        source.clone(),
+                        u32::try_from(first_address)
+                            .map_err(|error| error.to_string())?,
+                        initial,
+                        [first_result, second_result, third_result],
+                    ));
+                }
+                _ = source.pop();
+            }
+            _ = source.pop();
+        }
+    }
+    assert!(checked > 1_000);
+    assert!(matching.len() >= 3);
+    assert_eq!(
+        matching[0],
+        (b"DC&$:9K!6".to_vec(), 39, [7_174_483, 27, 7_174_483], [
+            7_174_463, 0, 7_174_483
+        ],),
+    );
+    let plan = layout::build_accumulator_independent_zero_cell_source(
+        current_profile(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(
+        (
+            plan.source,
+            plan.first_data_address,
+            plan.initial_words,
+            plan.written_words,
+        ),
+        matching[0],
+    );
+    assert_eq!(plan.zero_store_code_address, 4);
+    assert_eq!(plan.input_code_address, None);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "real N15 self-encryption and three physical data writes"
+)]
+fn real_guest_zero_write_survives_unknown_incoming_accumulator()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_accumulator_independent_zero_cell_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let prepared = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    for offset in 0..3u32 {
+        assert_eq!(
+            prepared.memory_word(plan.first_data_address + offset),
+            Ok(plan.initial_words[usize::try_from(offset).map_err(|error| error.to_string())?]),
+        );
+    }
+    for entry in [0, 1, 2, 3, 255, profile.eof_word(), 14_348_906] {
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            vec![0xff, 0],
+            ProfileRegisters {
+                accumulator: entry,
+                ..ProfileRegisters::default()
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(7, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 7,
+        });
+        assert_eq!(trace.len(), 7);
+        assert_eq!(trace[0].decoded, Some(b'o'));
+        assert_eq!(trace[1].decoded, Some(b'o'));
+        assert_eq!(trace[2].decoded, Some(b'j'));
+        assert_eq!(
+            trace[2].after.registers.data_pointer,
+            plan.first_data_address,
+        );
+        for (index, opcode) in b"*pp".iter().enumerate() {
+            let step = &trace[index + 3];
+            let address = plan.first_data_address
+                + u32::try_from(index).map_err(|error| error.to_string())?;
+            assert_eq!(step.decoded, Some(*opcode));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((address, plan.initial_words[index])),
+            );
+            assert_eq!(
+                step.after.registers.accumulator,
+                plan.written_words[index],
+            );
+            // A real p write can leave its loader word numerically
+            // unchanged; the VM records deltas, not write attempts.
+            let expected_delta = (plan.initial_words[index]
+                != plan.written_words[index])
+                .then_some((address, plan.written_words[index]));
+            assert_eq!(
+                step.memory_delta
+                    .data
+                    .map(|write| (write.address, write.after)),
+                expected_delta,
+            );
+            assert!(step.memory_delta.encryption.is_some());
+            assert_eq!(
+                guest.memory_word(address),
+                Ok(plan.written_words[index])
+            );
+        }
+        assert_eq!(trace[6].decoded, Some(b'v'));
+        assert_eq!(trace[4].after.registers.accumulator, 0);
+        assert_eq!(guest.input_consumed(), 0);
+        assert_eq!(guest.output(), &[]);
+    }
+    Ok(())
+}
+
+#[test]
+fn unknown_accumulator_zero_emitter_refuses_historical_profile() {
+    assert_eq!(
+        layout::build_accumulator_independent_zero_cell_source(
+            historical_profile(),
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "real raw input effects followed by a loader-derived zero write"
+)]
+fn real_input_before_zero_preserves_physical_input_and_zero_effects()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_input_then_zero_cell_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.source, b"Dt&$:9K!6");
+    assert_eq!(plan.input_code_address, Some(1));
+    assert_eq!(plan.first_data_address, 39);
+    assert_eq!(plan.written_words, [7_174_463, 0, 7_174_483]);
+    let prepared = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    for (bytes, accumulator) in [
+        (vec![], 0),
+        (vec![0], 1),
+        (vec![2], 0),
+        (vec![0x80], 255),
+        (vec![0xff], profile.eof_word()),
+        (vec![1, 2], 2),
+    ] {
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            bytes.clone(),
+            ProfileRegisters {
+                accumulator,
+                ..ProfileRegisters::default()
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(7, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 7,
+        });
+        assert_eq!(trace.len(), 7);
+        assert_eq!(trace[1].decoded, Some(b'/'));
+        assert_eq!(
+            trace[1].input,
+            Some(bytes.first().map_or(TraceInput::EndOfInput, |byte| {
+                TraceInput::Byte(*byte)
+            })),
+        );
+        assert_eq!(
+            trace[1].after.registers.accumulator,
+            bytes.first().map_or_else(|| profile.eof_word(), |byte| u32::from(*byte)),
+        );
+        assert_eq!(trace[2].decoded, Some(b'j'));
+        assert_eq!(trace[2].after.registers.data_pointer, 39);
+        for (offset, opcode) in b"*pp".iter().enumerate() {
+            let step = &trace[offset + 3];
+            let address = plan.first_data_address
+                + u32::try_from(offset).map_err(|error| error.to_string())?;
+            assert_eq!(step.decoded, Some(*opcode));
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((address, plan.initial_words[offset])),
+            );
+            assert_eq!(step.after.registers.accumulator, plan.written_words[offset]);
+            assert_eq!(guest.memory_word(address), Ok(plan.written_words[offset]));
+            assert!(step.memory_delta.encryption.is_some());
+        }
+        assert_eq!(trace[6].decoded, Some(b'v'));
+        assert_eq!(guest.input_consumed(), usize::from(!bytes.is_empty()));
+        assert_eq!(guest.output(), &[]);
+    }
+    assert_eq!(
+        layout::build_input_then_zero_cell_source(historical_profile()),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
     Ok(())
 }

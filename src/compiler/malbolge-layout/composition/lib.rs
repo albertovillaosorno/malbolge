@@ -160,7 +160,9 @@ pub use source_input_trace::{
     verify_source_input_site_return_compatible,
 };
 pub use zero_cell_source::{
-    ZeroCellSource, ZeroCellSourceError, build_zero_cell_source,
+    AccumulatorIndependentZeroCellSource, ZeroCellSource, ZeroCellSourceError,
+    build_accumulator_independent_zero_cell_source,
+    build_input_then_zero_cell_source, build_zero_cell_source,
 };
 
 const GRAPHICAL_START: u8 = 33;

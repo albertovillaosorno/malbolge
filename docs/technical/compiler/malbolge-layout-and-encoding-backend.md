@@ -82,6 +82,28 @@ seven-block mutable EOF checksum still refuses compilation. The
 `build_zero_cell_source` helper therefore provides a physical precursor,
 not a source-C initialization stage.
 
+### Accumulator-independent physical zero after real guest input
+
+Two source-backed N15 zero constructors now search bounded graphical
+`o` prefixes and two legal loader-tail bytes before a fixed `j;*;p;p;v`
+body. The first canonical source `DC&$:9K!6` reaches a real M40=0
+`p` write after its first `*` has overwritten the unknown entry A.
+The second `Dt&$:9K!6` also executes `/` at C1 and observes a raw byte
+or true EOF before the same rotate and zero write. Both sources use
+untouched loader-derived M39..M41=`[7174483, 27, 7174483]` and produce
+`[7174463, 0, 7174483]` through actual data operations. The final
+`p` attempt at M41 leaves its loader word unchanged; the VM correctly
+reports no changed-cell delta there. Graphical source seeds, pointer
+relocation and all reached XLAT2 encryptions are checked in
+`tests/compiler_zero_cell_source.rs` against an independent 15-trit
+oracle and normative guest execution.
+
+The primitive is accumulator-independent at fixed entry C/D, not
+arbitrary code-position relocation or a source-linked initializer.
+The raw input is consumed then discarded. Its single M40 zero cannot
+initialize adjacent canonical C32 `[0, 0]`; guest mutable locals,
+branching, arithmetic and the complete C23 EOF checksum stay unlinked.
+
 ### Two retained raw input states across actual guest reads (2026-11-21)
 
 The physical input-store builder now has a separate two-read variant. It
