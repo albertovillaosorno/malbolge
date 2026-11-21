@@ -54,6 +54,7 @@ mod guest_state_placement;
 mod loader_rotation_source;
 mod loader_seed;
 mod signed_eof_branch_source;
+mod source_input_state_trace;
 mod source_input_trace;
 
 pub use bounded_revisit::{
@@ -129,6 +130,10 @@ pub use signed_eof_branch_source::{
     build_signed_eof_branch_source, build_two_echo_guarded_third_read_source,
     build_two_input_eof_classified_echo_source,
     build_two_signed_guest_echo_source,
+};
+pub use source_input_state_trace::{
+    SourceInputStoreCell, SourceInputStoreObservation, SourceInputStoredProof,
+    verify_source_input_site_stored_results,
 };
 pub use source_input_trace::{
     MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS,

@@ -74,6 +74,10 @@ pub enum SourceInputTraceError {
     SourceInputUnreachable,
     /// No fully source-known output path matches the real guest bytes.
     SourceOutputNotProven,
+    /// A reached input never received all real data writes for its source SSA.
+    MissingInputResultStore,
+    /// Guest data writes did not reproduce the full C23 or byte input value.
+    InputResultMismatch,
     /// Physical execution did not terminate within the declared ceiling.
     StepBudgetExhausted,
     /// An executed input instruction had no authenticated source input site.

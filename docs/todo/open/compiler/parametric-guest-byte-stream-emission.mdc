@@ -75,6 +75,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, an opt-in physical source-input state gate now
+  independently replays the exact normative N15 guest and requires actual
+  data instructions to materialize every canonical typed input destination
+  word. Signed C23 EOF needs two exact cells `[4,644,102, 299]`, while
+  successful `ff` needs `[255, 0]`; already-correct loader memory without
+  actual data writes is insufficient. Source-valid EOF input/return paths
+  of the C53/C101 classifier correctly refuse `MissingInputResultStore`
+  because the guest still never writes either source C32 result. Partial,
+  wrong-high-word and delayed-correction cases have bounded unit evidence.
+  These are necessary state-write checks, not dependency or control
+  translation, a physical arithmetic/phi linker, output correctness or
+  a published mutable checksum. The original P2 target remains open.
+
 - On 2026-11-20, the source-aware output gate now also binds the
   ordered physical VM input/output effects to source CFG operation order.
   The real C53/C101 classifier places its fixed marker *between* its

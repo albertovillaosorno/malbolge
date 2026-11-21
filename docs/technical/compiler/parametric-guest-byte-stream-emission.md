@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical C23 input-result word writes (2026-11-20)
+
+The opt-in `verify_source_input_site_stored_results` strengthens the
+actual-N15 source input/return check with a second, deterministic VM replay.
+It observes real `p` or `*` data-word write attempts at the exact
+source-allocated SSA destination, tracks actual profile-memory deltas and
+requires the complete C result to be present together after those writes.
+A correct loader-initialized word alone is not a write. Reaching the same
+source read again before the preceding value was ever materialized refuses.
+
+For signed C23 `getchar`, both 15-trit result cells must be written.
+A successful `0xff` is `[255, 0]`; true EOF is the distinct C32
+`-1` representation `[4,644,102, 299]`. An optional byte-only input
+requires one cell and rejects EOF. Accepted observations preserve exact
+guest trace steps and word addresses, not a host-synthesized C store.
+Missing data writes and incorrect stored values have distinct errors.
+
+The unchanged source checksum still passes its independent native C23
+checks and the existing C53/C101 conditional-input witness still reaches
+source-valid EOF return paths. It now **also refuses** the new physical
+frame-write gate on empty, NUL and `ff` input: the candidate reads but
+does not write either canonical C32 input result to its allocated frame.
+Independent state-accounting tests reject loader-only equality, partial
+low-word writes, wrong EOF high words and premature acceptance. A store
+snapshot is only a necessary condition: future code may overwrite it,
+and this gate does not verify dependency, all intermediate C operations,
+phi transfer, guest branch edges or source-output correctness. No C
+artifact has been published and P2 remains open. See
+`tests/compiler/source_input_store.rs` and
+`tests/compiler_source_input_site_guest.rs`.
+
 ### Source-known checksum output parity gate (2026-11-20)
 
 The opt-in `verify_source_input_site_output_compatible` first requires real

@@ -44,6 +44,7 @@ use layout::{
     verify_source_input_site_output_compatible,
     verify_source_input_site_prefix,
     verify_source_input_site_return_compatible,
+    verify_source_input_site_stored_results,
 };
 use malbolge::{
     ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
@@ -841,6 +842,71 @@ fn guarded_guest_refuses_checksum_output_parity() -> Result<(), String> {
     }
     assert_eq!(
         verify_source_input_site_output_compatible(SourceInputProbe {
+            anchors: &anchors,
+            canonical: &canonical,
+            frame_base: 256,
+            input: &[1, 2],
+            physical_source: &physical,
+            step_budget: 175,
+        }),
+        Err(SourceInputTraceError::UnreachedSourceInput),
+    );
+    Ok(())
+}
+
+// The full source C23 input result is two reserved frame words. Real guest
+// input opcodes update A but never populate that frame in this classifier;
+// input-order, return and even ordered I/O checks cannot substitute stores.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real N15 input transition, missing guest C32 writes"
+)]
+fn unwritten_c23_input_result_refused() -> Result<(), String> {
+    let physical =
+        build_guarded_signed_eof_second_read_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    let canonical = checksum_wire()?;
+    let anchors = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 53,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 101,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    for input in [&[][..], &[0][..], &[0xff][..]] {
+        let probe = SourceInputProbe {
+            anchors: &anchors,
+            canonical: &canonical,
+            frame_base: 256,
+            input,
+            physical_source: &physical,
+            step_budget: 175,
+        };
+        let returned = verify_source_input_site_return_compatible(probe)
+            .map_err(|error| format!("source return: {error:?}"))?;
+        assert_eq!(
+            returned.observations.len(),
+            if input.is_empty() {
+                1
+            } else {
+                2
+            }
+        );
+        assert_eq!(
+            verify_source_input_site_stored_results(probe),
+            Err(SourceInputTraceError::MissingInputResultStore),
+        );
+    }
+    assert_eq!(
+        verify_source_input_site_stored_results(SourceInputProbe {
             anchors: &anchors,
             canonical: &canonical,
             frame_base: 256,
