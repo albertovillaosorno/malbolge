@@ -32,18 +32,22 @@
 //! normalization and all following source operations. The candidate code is
 //! never published or considered to implement its source CFG.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
     current_profile,
 };
 
+use super::typed_cfg_adapter::lower_canonical_dynamic_cfg;
 use super::typed_cfg_adapter::state_relocation::{
     GuestCodeInputAnchor, GuestCodeInputSemantics, GuestCodeOperationEffect,
     GuestPlacedOperand, plan_source_locked_cfg_with_input_anchors,
 };
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
+use super::typed_cfg_adapter::ternary::{
+    TernaryCfgFunction, TernaryCfgTerminator, TernaryOperation,
+};
 
 /// Physical probe code is intentionally small and entirely graphical.
 pub const MAX_SOURCE_INPUT_TRACE_CELLS: usize = 4096;
@@ -67,6 +71,8 @@ pub enum SourceInputTraceError {
     RepeatedSourceInput,
     /// Physical input order contradicts source order within one basic block.
     SourceInputOutOfOrder,
+    /// No source CFG walk can produce the observed input-site prefix.
+    SourceInputUnreachable,
     /// Physical execution did not terminate within the declared ceiling.
     StepBudgetExhausted,
     /// An executed input instruction had no authenticated source input site.
@@ -273,6 +279,100 @@ fn verify_same_block_input_order(
     Ok(())
 }
 
+// This is a necessary, branch-insensitive source control-flow check. Unlike
+// source-order sorting, it refuses a physical input site reached before a
+// mandatory source read or after an impossible predecessor transition. It
+// neither proves which branch condition held nor that guest jumps match CFG.
+// A walk stops immediately after the last observed read, so this remains a
+// prefix check: following source effects and repeated loop reads are outside
+// the present physical verifier's claims.
+fn source_path_matches_input_prefix(
+    function: &TernaryCfgFunction,
+    observations: &[&SourceInputSiteObservation],
+) -> bool {
+    let mut pending = VecDeque::from([(function.entry, 0usize, 0usize)]);
+    let mut visited = BTreeSet::new();
+    while let Some((block_id, operation, consumed)) = pending.pop_front() {
+        if consumed == observations.len() {
+            return true;
+        }
+        if !visited.insert((block_id, operation, consumed)) {
+            continue;
+        }
+        let Some(block) = usize::try_from(block_id)
+            .ok()
+            .and_then(|index| function.blocks.get(index))
+            .filter(|block| block.id == block_id)
+        else {
+            return false;
+        };
+        if let Some(source_operation) = block.operations.get(operation) {
+            let is_input = matches!(
+                source_operation,
+                TernaryOperation::ByteInput { .. }
+                    | TernaryOperation::GetcharI32 { .. }
+            );
+            if !is_input
+                || observations.get(consumed).is_some_and(|observed| {
+                    observed.block == block_id
+                        && usize::try_from(observed.ordinal).ok()
+                            == Some(operation)
+                })
+            {
+                pending.push_back((
+                    block_id,
+                    operation.saturating_add(1),
+                    consumed.saturating_add(usize::from(is_input)),
+                ));
+            }
+            continue;
+        }
+        match block.terminator {
+            TernaryCfgTerminator::Branch {
+                false_target,
+                true_target,
+                ..
+            } => {
+                pending.push_back((false_target, 0, consumed));
+                pending.push_back((true_target, 0, consumed));
+            },
+            TernaryCfgTerminator::Jump { target, .. } => {
+                pending.push_back((target, 0, consumed));
+            },
+            TernaryCfgTerminator::Return(_) => {},
+        }
+    }
+    false
+}
+
+fn verify_source_cfg_input_order(
+    canonical: &[u8],
+    observations: &[SourceInputSiteObservation],
+) -> Result<(), SourceInputTraceError> {
+    let cfg = lower_canonical_dynamic_cfg(canonical)
+        .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
+    let mut found_functions = BTreeSet::new();
+    for function in &cfg.functions {
+        let observed = observations
+            .iter()
+            .filter(|observation| observation.function == function.id)
+            .collect::<Vec<_>>();
+        if !observed.is_empty() {
+            let _new = found_functions.insert(function.id);
+            if !source_path_matches_input_prefix(function, &observed) {
+                return Err(SourceInputTraceError::SourceInputUnreachable);
+            }
+        }
+    }
+    if observations
+        .iter()
+        .any(|observation| !found_functions.contains(&observation.function))
+    {
+        return Err(SourceInputTraceError::SourceInputUnreachable);
+    }
+    Ok(())
+}
+
 /// Execute a physical program and prove its source-typed input steps.
 ///
 /// Each source input site must be observed exactly once with no extra reads.
@@ -330,6 +430,7 @@ pub fn verify_source_input_site_prefix(
         return Err(SourceInputTraceError::UnreachedSourceInput);
     }
     verify_same_block_input_order(&observations)?;
+    verify_source_cfg_input_order(probe.canonical, &observations)?;
     Ok(SourceInputPrefixProof {
         bytes_consumed: machine.input_consumed(),
         guest_output: machine.output().to_vec(),
@@ -399,3 +500,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/source_input_cfg_order.rs"]
+mod source_input_cfg_order_tests;

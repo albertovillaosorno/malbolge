@@ -75,6 +75,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the original seven-block mutable EOF checksum still passes
+  its five independent native C23 controls and fails closed at guest physical
+  operation/control linkage. The source-authenticated physical input-prefix
+  verifier now checks **CFG-path reachability** in addition to within-block
+  instruction order: every observed read must be reachable from function entry
+  along canonical source control edges without skipping another input effect.
+  Two source-derived focused tests reject a block-5-only prefix, reversed
+  block-5/block-0 reads, a nonexistent read ordinal and malformed typed wire;
+  the original C37/C66 normative guest input-only paths still pass. Source
+  branch conditions remain unevaluated: even first-read EOF followed by the
+  loop read has a structurally possible path. This is not actual C23 EOF
+  control, guest scalar state/arithmetic, phi copies, dynamic loop linkage or
+  a published checksum artifact. P2 remains open.
+
 - On 2026-11-20, a real Clang-normalized two-`getchar()` C23 function
   places two signed input anchors in the same typed basic block. The
   source-locked planner now accepts consistent 3-cell-spaced read sites

@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-CFG prefix reachability for physical input sites (2026-11-20)
+
+The bounded source-input trace checker now checks more than each basic block's
+local ordinal order. It independently re-lowers the canonical typed wire to
+its authenticated symbolic CFG and searches for a path from function entry
+whose input operations form the exact observed physical read prefix. The path
+cannot skip another source input, enter a block before its mandatory prior
+read, or move between blocks without a source CFG edge. The unchanged checksum
+accepts the block-0 first read followed by block-5's loop read and rejects the
+reverse order or a block-5-only prefix. Both signed reads remain anchored to
+real N15 `/` transitions in the separate 91-cell converter. A malformed typed
+source or a nonexistent source input ordinal also refuses.
+
+This is strictly **branch-insensitive reachability**: even the source-invalid
+sequence of first-read EOF followed by the loop read may satisfy a possible
+CFG path, because no branch predicate or source arithmetic is evaluated. It
+checks neither actual guest branch/control links nor C23 EOF normalization,
+scalar stores, mutable checksum state, parallel phi writes or the repeatable
+backedge. The original complete checksum still refuses guest publication.
+
 ### Real C same-block signed input reservations (2026-11-20)
 
 The source-locked physical input-site planner now admits **distinct** input
