@@ -51,6 +51,18 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Two Input-Dependent Guest Memory Stores (2026-11-21)
+
+A bounded, independent 94-prefix/graphical-tail search now yields seven
+source-loadable layouts where two separate real `/` reads and `p` writes
+retain 257 distinct byte/EOF states **each** in different memory cells.
+The first canonical candidate executes in the N15 VM for eight finite
+binary/EOF cases, with exact loader, pointer and data-write traces. A
+257-squared independent scalar check proves 66,049 distinct word pairs.
+These are noncanonical *encoded* raw inputs, not signed C32 source values;
+the mutable C23 checksum, EOF branch, arithmetic and loop stay unlinked.
+See `tests/compiler_live_input_encoded_store.rs` and the layout contract.
+
 ## Optional 282-Position Single-Cycle Block Experiment (2026-11-20)
 
 Owner-authorized exploratory layout hypothesis, not a replacement for the

@@ -56,6 +56,37 @@ fails closed at physical linking. See
 `tests/compiler_live_input_encoded_store.rs` and the new
 `build_live_input_injective_store_source` helper.
 
+### Two retained raw input states across actual guest reads (2026-11-21)
+
+The physical input-store builder now has a separate two-read variant. It
+emits a real 36-cell N15 graphical source:
+`DCBA@?>=<;:9876543210/.-,+*Zj!Wg|0"y`. After 27 reached no-ops,
+C27/C30 read separate guest input events, C28/C31 execute actual `j`
+relocations, C29/C32 perform real `p` writes, and C33 halts. The first
+jump's original graphical word selects D107; the second jump reads the
+**untouched loader word M109=124** and selects D125. Both initial data
+words M107 and M125 are loader-produced `121`, with no host seed. The
+second guest input replaces the accumulator but leaves M107 unchanged.
+
+An independent finite oracle enumerates the exact 94 possible no-op
+prefixes and all legal graphical two-cell tails. Of 4,032 examined
+loader-admitted layouts, seven preserve both 257-class inputs in disjoint
+memory cells; the emitter reproducibly selects the first. Each `p` maps
+raw byte 0..255 and true EOF injectively under an independent ternary
+oracle. Across both cells, **all 66,049 ordered raw-input pairs** remain
+distinct. Eight actual normative-VM streams, including empty, single-byte
+EOF, NUL, high bytes, repeated bytes and unread suffixes, halt at 34 steps.
+Tests check input cursors, both jumps, operand words, data writes,
+post-instruction encryption and unchanged first storage across the second
+read. No host-calculated C output is substituted for guest execution.
+
+This demonstrates two *encoded* physical input states; it is not signed
+C23 `getchar`, a canonical C32 two-word SSA destination, an EOF-dependent
+branch, dynamic arithmetic, source-checked phi movement, or a repeating
+C loop. The original whole C23 checksum remains correctly unlinked. See
+`build_live_two_input_injective_store_source` and
+`tests/compiler_live_input_encoded_store.rs`.
+
 ### Three bounded physical 141-position guest backedges (2026-11-21)
 
 The initial complementary 141-cell source experiment established two actual

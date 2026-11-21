@@ -30,6 +30,7 @@
 pub mod layout;
 
 use std::collections::BTreeSet;
+use std::iter::once;
 
 use malbolge::{
     ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
@@ -40,6 +41,7 @@ const INPUT_CLASSES: usize = 257;
 const MAX_PREFIX: usize = 94;
 const THREE_POW_FIVE: u32 = 243;
 const SOURCE: &[u8] = b"DCBA@?>=<;:98765eu,>=<";
+const TWO_INPUT_SOURCE: &[u8] = b"DCBA@?>=<;:9876543210/.-,+*Zj!Wg|0\"y";
 
 #[expect(
     clippy::arithmetic_side_effects,
@@ -277,6 +279,287 @@ fn real_guest_writes_injective_input_state() -> Result<(), String> {
 fn historical_profile_cannot_emit_the_n15_input_store() {
     assert_eq!(
         layout::build_live_input_injective_store_source(historical_profile()),
+        Err(layout::LiveInputEncodedStoreError::UnsupportedProfile),
+    );
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "independent exhaustive loader and two-input seed oracle"
+)]
+fn two_input_search_matches_independent_94_phase_loader_census()
+-> Result<(), String> {
+    let mut matching = Vec::<(Vec<u8>, u32, u32, u32, u32)>::new();
+    let mut searched = 0usize;
+    for prefix in 0..MAX_PREFIX {
+        let mut source = (0..prefix)
+            .map(|position| encode(b'o', position))
+            .collect::<Result<Vec<_>, _>>()?;
+        for opcode in b"/jp/jpv" {
+            source.push(encode(*opcode, source.len())?);
+        }
+        let first_address = usize::from(source[prefix + 1]) + 1;
+        if first_address <= source.len() + 2 {
+            continue;
+        }
+        for first in 33..=126u8 {
+            if !strict_tail(first, source.len()) {
+                continue;
+            }
+            source.push(first);
+            for last in 33..=126u8 {
+                if !strict_tail(last, source.len()) {
+                    continue;
+                }
+                source.push(last);
+                searched += 1;
+                let first_seed = loader_word(&source, first_address);
+                if all_raw_input_words_are_distinct(first_seed) {
+                    let second_jump = loader_word(&source, first_address + 2);
+                    let second_address = usize::try_from(second_jump)
+                        .map_err(|error| error.to_string())?
+                        + 1;
+                    if second_address > source.len() + 2
+                        && second_address < 14_348_907
+                        && second_address != first_address
+                    {
+                        let second_seed = loader_word(&source, second_address);
+                        if all_raw_input_words_are_distinct(second_seed) {
+                            matching.push((
+                                source.clone(),
+                                u32::try_from(first_address)
+                                    .map_err(|error| error.to_string())?,
+                                first_seed,
+                                u32::try_from(second_address)
+                                    .map_err(|error| error.to_string())?,
+                                second_seed,
+                            ));
+                        }
+                    }
+                }
+                _ = source.pop();
+            }
+            _ = source.pop();
+        }
+    }
+    assert_eq!(searched, 4_032);
+    assert_eq!(matching.len(), 7);
+    assert_eq!(matching[0], (TWO_INPUT_SOURCE.to_vec(), 107, 121, 125, 121));
+    let plan =
+        layout::build_live_two_input_injective_store_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(
+        (
+            plan.source,
+            plan.first_data_address,
+            plan.first_initial_data_word,
+            plan.second_data_address,
+            plan.second_initial_data_word,
+        ),
+        matching[0],
+    );
+    assert_eq!(
+        (
+            plan.first_input_code_address,
+            plan.first_store_code_address,
+            plan.second_input_code_address,
+            plan.second_store_code_address,
+        ),
+        (27, 29, 30, 32),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent 257 squared injectivity of two disjoint input cells"
+)]
+fn two_retained_input_words_are_pairwise_distinct_for_all_byte_eof_pairs()
+-> Result<(), String> {
+    let plan =
+        layout::build_live_two_input_injective_store_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    assert_ne!(plan.first_data_address, plan.second_data_address);
+    let raw = (0..=255u32)
+        .chain(once(current_profile().eof_word()))
+        .collect::<Vec<_>>();
+    let first = raw
+        .iter()
+        .copied()
+        .map(|input| independent_crazy(plan.first_initial_data_word, input))
+        .collect::<BTreeSet<_>>();
+    let second = raw
+        .iter()
+        .copied()
+        .map(|input| independent_crazy(plan.second_initial_data_word, input))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(first.len(), INPUT_CLASSES);
+    assert_eq!(second.len(), INPUT_CLASSES);
+    let combined = first
+        .iter()
+        .flat_map(|first_word| {
+            second
+                .iter()
+                .map(move |second_word| (*first_word, *second_word))
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(combined.len(), INPUT_CLASSES * INPUT_CLASSES);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "full normative N15 double read and disjoint data-write trace"
+)]
+fn real_guest_preserves_first_encoded_input_across_second_read_and_store()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_live_two_input_injective_store_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let prepared = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    let second_jump_address = plan.first_data_address + 2;
+    let second_jump_word = prepared
+        .memory_word(second_jump_address)
+        .map_err(|error| error.to_string())?;
+    assert_eq!(second_jump_word + 1, plan.second_data_address);
+    assert_eq!(prepared.memory_word(plan.first_data_address), Ok(121));
+    assert_eq!(prepared.memory_word(plan.second_data_address), Ok(121));
+    for input in [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 0],
+        vec![2, 255],
+        vec![255, 2],
+        vec![128, 127],
+        vec![0, 255, 1],
+    ] {
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(34, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 34,
+        });
+        assert_eq!(trace.len(), 34);
+        for step in trace.iter().take(27) {
+            assert_eq!(step.decoded, Some(b'o'));
+            assert!(step.memory_delta.encryption.is_some());
+        }
+        let first_raw = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let second_raw = input
+            .get(1)
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let first_stored = independent_crazy(121, first_raw);
+        let second_stored = independent_crazy(121, second_raw);
+        assert_eq!(trace[27].decoded, Some(b'/'));
+        assert_eq!(
+            trace[27].input,
+            Some(input.first().map_or(TraceInput::EndOfInput, |byte| {
+                TraceInput::Byte(*byte)
+            },))
+        );
+        assert_eq!(trace[28].decoded, Some(b'j'));
+        assert_eq!(
+            trace[28].after.registers.data_pointer,
+            plan.first_data_address,
+        );
+        assert_eq!(trace[29].decoded, Some(b'p'));
+        assert_eq!(
+            trace[29]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.first_data_address, 121)),
+        );
+        assert_eq!(trace[29].after.registers.accumulator, first_stored);
+        assert_eq!(
+            trace[29]
+                .memory_delta
+                .data
+                .map(|delta| (delta.address, delta.after)),
+            Some((plan.first_data_address, first_stored)),
+        );
+        assert_eq!(trace[30].decoded, Some(b'/'));
+        assert_eq!(
+            trace[30].input,
+            Some(input.get(1).map_or(TraceInput::EndOfInput, |byte| {
+                TraceInput::Byte(*byte)
+            },))
+        );
+        assert_eq!(trace[31].decoded, Some(b'j'));
+        assert_eq!(
+            trace[31]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((second_jump_address, second_jump_word)),
+        );
+        assert_eq!(
+            trace[31].after.registers.data_pointer,
+            plan.second_data_address,
+        );
+        assert_eq!(trace[32].decoded, Some(b'p'));
+        assert_eq!(
+            trace[32]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.second_data_address, 121)),
+        );
+        assert_eq!(trace[32].after.registers.accumulator, second_stored);
+        assert_eq!(
+            trace[32]
+                .memory_delta
+                .data
+                .map(|delta| (delta.address, delta.after)),
+            Some((plan.second_data_address, second_stored)),
+        );
+        assert_eq!(trace[33].decoded, Some(b'v'));
+        assert_eq!(
+            guest.memory_word(plan.first_data_address),
+            Ok(first_stored)
+        );
+        assert_eq!(
+            guest.memory_word(plan.second_data_address),
+            Ok(second_stored)
+        );
+        assert_eq!(guest.input_consumed(), input.len().min(2));
+        assert_eq!(guest.output(), &[]);
+        for step in trace.iter().skip(27).take(6) {
+            assert!(step.memory_delta.encryption.is_some());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn historical_profile_cannot_emit_two_live_input_stores() {
+    assert_eq!(
+        layout::build_live_two_input_injective_store_source(
+            historical_profile()
+        ),
         Err(layout::LiveInputEncodedStoreError::UnsupportedProfile),
     );
 }
