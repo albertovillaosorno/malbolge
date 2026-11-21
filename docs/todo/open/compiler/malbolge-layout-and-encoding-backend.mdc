@@ -141,6 +141,17 @@ and uses the authentic M562/M563 loader tail to derive M639=119. Five bounded
 code fetches, encryption, inputs, outputs and pointer states checked. The
 third `i` lands at C120; a changed-tail negative case lands at C100.
 
+**Executed reentry-state rejection (2026-11-21):** the same five-stream
+564-cell source was rechecked at the exact three `i` return boundaries. Its
+live `(C,D)` states are `(100,282)`, `(106,464)` and `(120,640)`; physical
+C120 has undergone one, two and three separate guest self-encryptions.
+Even where empty input and byte `80` follow the same code pointers and
+have identical sampled code cells, actual input-consumption and output
+states differ. The bounded contract rejects an identity-state or code-path-
+only reuse key for this fixture. A future relocation linker must validate
+mapped code versions, full live state and I/O effects before block reuse;
+no generalized loop impossibility is claimed.
+
 **Still open:** any *repeated live-in/live-out state relation*, source-linked
 mutable C23 arithmetic, phi/branch linkage and an executable EOF checksum.
 The third real return is not a loop or a compiler milestone. Preserve the
