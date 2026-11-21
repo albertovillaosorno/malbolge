@@ -198,6 +198,38 @@ const MAX_LINEAR_CELLS: usize = 4096;
 const HALT_INSTRUCTION: u8 = b'v';
 const NO_OP_INSTRUCTION: u8 = b'o';
 
+/// Requested decoding of a graphical source cell at each physical visit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodeVisitRequirement {
+    /// An exact decoded XLAT1 opcode at the code address.
+    Decoded(u8),
+    /// Any symbol with no guest effect, excluding explicit `o`.
+    Inert,
+}
+
+/// Rejection of a bounded, position-sensitive code-revisit candidate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodeVisitEncodingError {
+    /// The code position exceeds the declared profile memory.
+    AddressOutOfBounds,
+    /// No visits were supplied.
+    Empty,
+    /// The loader rejects the first decoded source opcode.
+    InvalidInitialOpcode,
+    /// No graphical initial byte satisfies all XLAT2 phases.
+    NoEncoding {
+        /// Exact physical guest code address.
+        position: u32,
+    },
+    /// `i` or `v` cannot self-encrypt before a subsequent visit.
+    NoSelfEncryption {
+        /// Zero-based visit lacking the required self-encryption.
+        visit: usize,
+    },
+    /// The finite code-site encoder admits at most sixteen visits.
+    TooMany,
+}
+
 /// One supported decoded machine operation at an exact source code position.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LinearOpcode {
@@ -1730,4 +1762,83 @@ fn encode_auto_padded_forward_layout_impl(
         operations: builder.operations,
         source_cell_origins,
     })
+}
+
+/// Encode one graphical source byte for an exact sequence of XLAT2 revisits.
+///
+/// Each nonfinal execution must self-encrypt this cell exactly once, with
+/// no intervening data/code aliases or external code encryption. `i`
+/// encrypts the *jump target*, not its own cell; `v` terminates.
+/// The loader admits the first operation; later inert XLAT1 symbols may
+/// execute harmlessly. The emitted candidate still requires complete
+/// normative VM replay of physical code, data, and control effects.
+///
+/// # Errors
+///
+/// Rejects invalid addresses, lengths, initial opcodes, non-self-encrypting
+/// transitions, and unencodable multi-visit requests.
+pub fn encode_code_visits(
+    profile: &ProfileDescriptor,
+    position: u32,
+    visits: &[CodeVisitRequirement],
+) -> Result<u8, CodeVisitEncodingError> {
+    if visits.is_empty() {
+        return Err(CodeVisitEncodingError::Empty);
+    }
+    if visits.len() > 16 {
+        return Err(CodeVisitEncodingError::TooMany);
+    }
+    if position >= profile.memory_words() {
+        return Err(CodeVisitEncodingError::AddressOutOfBounds);
+    }
+    let Some(CodeVisitRequirement::Decoded(first)) = visits.first() else {
+        return Err(CodeVisitEncodingError::InvalidInitialOpcode);
+    };
+    let admitted = |opcode: u8| {
+        matches!(opcode, b'o' | b'i' | b'j' | b'p' | b'*' | b'v')
+            || opcode == profile.input_instruction()
+            || opcode == profile.output_instruction()
+    };
+    if !admitted(*first) {
+        return Err(CodeVisitEncodingError::InvalidInitialOpcode);
+    }
+    let nonfinal_visits = visits.len().saturating_sub(1);
+    for (index, visit) in visits.iter().enumerate().take(nonfinal_visits) {
+        if matches!(visit, CodeVisitRequirement::Decoded(b'i' | b'v')) {
+            return Err(CodeVisitEncodingError::NoSelfEncryption {
+                visit: index,
+            });
+        }
+    }
+    for candidate in GRAPHICAL_START..=GRAPHICAL_END {
+        let mut cell = u32::from(candidate);
+        let mut valid = true;
+        for (index, requirement) in visits.iter().enumerate() {
+            let Some(decoded) = decode_profile_instruction(cell, position)
+            else {
+                valid = false;
+                break;
+            };
+            let matches = match requirement {
+                CodeVisitRequirement::Decoded(opcode) => decoded == *opcode,
+                CodeVisitRequirement::Inert => !admitted(decoded),
+            };
+            if !matches {
+                valid = false;
+                break;
+            }
+            if index < nonfinal_visits {
+                let Some(encrypted) = malbolge::encrypt_profile_cell(cell)
+                else {
+                    valid = false;
+                    break;
+                };
+                cell = encrypted;
+            }
+        }
+        if valid {
+            return Ok(candidate);
+        }
+    }
+    Err(CodeVisitEncodingError::NoEncoding { position })
 }

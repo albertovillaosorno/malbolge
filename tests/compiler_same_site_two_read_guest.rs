@@ -33,6 +33,13 @@ use malbolge::{
     historical_profile,
 };
 
+#[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
+pub mod layout;
+
+use layout::{
+    CodeVisitEncodingError, CodeVisitRequirement, encode_code_visits,
+};
+
 const SOURCE_LENGTH: usize = 117;
 const MAX_STEPS: usize = 128;
 const INPUT_SITE: u32 = 47;
@@ -72,6 +79,19 @@ fn source() -> Result<Vec<u8>, String> {
             .ok_or_else(|| format!("missing C{position}"))?;
         *cell = encoded;
     }
+    // Derive the third-visit input phase from the same physical XLAT2 rule
+    // used by the bounded EOF source builder; this does not select a path.
+    let input_cell = source
+        .get_mut(
+            usize::try_from(INPUT_SITE).map_err(|error| error.to_string())?,
+        )
+        .ok_or("input code cell outside source")?;
+    *input_cell = encode_code_visits(current_profile(), INPUT_SITE, &[
+        CodeVisitRequirement::Decoded(b'/'),
+        CodeVisitRequirement::Inert,
+        CodeVisitRequirement::Decoded(b'/'),
+    ])
+    .map_err(|error| format!("input revisit encoding: {error:?}"))?;
     // All five cells are loader-valid *skipped* source bytes; the second
     // return target is reached through two genuine data pointer resets.
     for (position, value) in
@@ -155,7 +175,7 @@ fn two_real_reads_revisit_one_graphical_input_site_after_two_encryptions()
                 .collect::<Vec<_>>();
             assert_eq!(actual_inputs, expected_inputs);
             assert_eq!(vm.input_consumed(), bytes.len().min(2));
-            assert!(vm.output().is_empty());
+            assert_eq!(vm.output(), []);
             let first = traces.get(47).ok_or("no first physical input")?;
             let intermediate = traces.get(50).ok_or("no inert second visit")?;
             let last = traces.get(56).ok_or("no second physical input")?;
@@ -206,4 +226,94 @@ fn two_real_reads_revisit_one_graphical_input_site_after_two_encryptions()
         }
     }
     Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent XLAT2 phase assertions"
+)]
+fn checked_code_visit_encoder_covers_all_input_revisit_phases()
+-> Result<(), String> {
+    let profile = current_profile();
+    let triple = [
+        CodeVisitRequirement::Decoded(b'/'),
+        CodeVisitRequirement::Inert,
+        CodeVisitRequirement::Decoded(b'/'),
+    ];
+    let mut supported = Vec::new();
+    for position in 0..94u32 {
+        let encoded = encode_code_visits(profile, position, &triple);
+        // Independent reverse lookup of the initial code byte; do not
+        // trust the new encoder for the following two decoder observations.
+        let input_cell = (33u8..=126)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), position)
+                    == Some(b'/')
+            })
+            .ok_or_else(|| format!("missing input at phase {position}"))?;
+        let first = encrypt_profile_cell(u32::from(input_cell))
+            .ok_or("missing first self-encryption")?;
+        let second = encrypt_profile_cell(first)
+            .ok_or("missing second self-encryption")?;
+        let actual = (
+            decode_profile_instruction(first, position),
+            decode_profile_instruction(second, position),
+        );
+        if !matches!(
+            actual.0,
+            Some(b'o' | b'i' | b'j' | b'p' | b'*' | b'/' | b'<' | b'v')
+        ) && actual.1 == Some(b'/')
+        {
+            supported.push(position);
+            assert_eq!(encoded, Ok(input_cell));
+        } else {
+            assert_eq!(
+                encoded,
+                Err(CodeVisitEncodingError::NoEncoding { position })
+            );
+        }
+        assert_eq!(
+            encode_code_visits(profile, position, &[
+                CodeVisitRequirement::Decoded(b'/'),
+                CodeVisitRequirement::Decoded(b'/'),
+            ]),
+            Err(CodeVisitEncodingError::NoEncoding { position })
+        );
+    }
+    assert_eq!(supported, [43, 47]);
+    Ok(())
+}
+
+#[test]
+fn checked_code_visit_encoder_rejects_invalid_sequences() {
+    let profile = current_profile();
+    let triple = [
+        CodeVisitRequirement::Decoded(b'/'),
+        CodeVisitRequirement::Inert,
+        CodeVisitRequirement::Decoded(b'/'),
+    ];
+    assert_eq!(
+        encode_code_visits(profile, 47, &[]),
+        Err(CodeVisitEncodingError::Empty)
+    );
+    assert_eq!(
+        encode_code_visits(profile, 47, &triple.repeat(6)),
+        Err(CodeVisitEncodingError::TooMany)
+    );
+    assert_eq!(
+        encode_code_visits(profile, profile.memory_words(), &triple),
+        Err(CodeVisitEncodingError::AddressOutOfBounds)
+    );
+    assert_eq!(
+        encode_code_visits(profile, 47, &[CodeVisitRequirement::Inert]),
+        Err(CodeVisitEncodingError::InvalidInitialOpcode)
+    );
+    assert_eq!(
+        encode_code_visits(profile, 47, &[
+            CodeVisitRequirement::Decoded(b'i'),
+            CodeVisitRequirement::Inert,
+        ]),
+        Err(CodeVisitEncodingError::NoSelfEncryption { visit: 0 })
+    );
 }

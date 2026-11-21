@@ -12,6 +12,17 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Physical code-cell reuse contract (2026-11-21)
+
+`encode_code_visits` selects a graphical source byte for an exact bounded
+sequence of decoded or inert visits at one guest address. It models XLAT2
+after each nonfinal instruction, rejects `i`/`v` when a future visit
+requires self-encryption, and requires separate proof that no data or code
+write changes that cell between visits. The physical signed-EOF `p`-then-`/`
+and C47 `/`-inert-`/` same-site input guests now use this shared rule.
+Normative VM tests still establish actual code/data paths and I/O; the
+candidate encoder alone does not implement a repeatable C23 input loop.
+
 ### Composed second-input branch, store, and guarded read (2026-11-21)
 
 `build_second_input_eof_store_or_third_read_source` executes two

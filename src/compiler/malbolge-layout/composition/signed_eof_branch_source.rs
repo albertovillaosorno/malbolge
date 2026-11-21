@@ -32,8 +32,9 @@
 
 use malbolge::{
     ProfileDescriptor, current_profile, decode_profile_instruction,
-    encrypt_profile_cell,
 };
+
+use super::{CodeVisitRequirement, encode_code_visits};
 
 const SOURCE_LENGTH: usize = 132;
 
@@ -106,34 +107,21 @@ fn put_revisited(
     first: u8,
     second: u8,
 ) -> Result<(), SignedEofBranchSourceError> {
-    // A second-pass decode is worthless unless the first-pass source byte
-    // itself is a loader-valid target instruction. A graphical byte that
-    // first decodes to an unknown opcode is rejected during source loading,
-    // even when its encrypted successor decodes to the requested opcode.
-    if !b"oijp*/<v".contains(&first) {
-        return Err(SignedEofBranchSourceError::MissingRevisitedEncoding {
+    let byte = encode_code_visits(
+        current_profile(),
+        u32::try_from(position).unwrap_or(u32::MAX),
+        &[
+            CodeVisitRequirement::Decoded(first),
+            CodeVisitRequirement::Decoded(second),
+        ],
+    )
+    .map_err(|_error| {
+        SignedEofBranchSourceError::MissingRevisitedEncoding {
             position,
             first,
             second,
-        });
-    }
-    let code_pointer = u32::try_from(position).unwrap_or(u32::MAX);
-    let byte = (33..=126u8)
-        .find(|candidate| {
-            decode_profile_instruction(u32::from(*candidate), code_pointer)
-                == Some(first)
-                && encrypt_profile_cell(u32::from(*candidate)).is_some_and(
-                    |encrypted| {
-                        decode_profile_instruction(encrypted, code_pointer)
-                            == Some(second)
-                    },
-                )
-        })
-        .ok_or(SignedEofBranchSourceError::MissingRevisitedEncoding {
-            position,
-            first,
-            second,
-        })?;
+        }
+    })?;
     *source
         .get_mut(position)
         .ok_or(SignedEofBranchSourceError::InvalidPosition { position })? =
