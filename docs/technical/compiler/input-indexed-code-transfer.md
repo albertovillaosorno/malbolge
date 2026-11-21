@@ -89,6 +89,25 @@ whereas byte 29 fetches the non-graphical value written to M73. Each
 real guest run terminates on its 26th requested step after one byte read;
 subsequent input remains unread. Neither is a source-C guard.
 
+The remaining **26 low bytes and true EOF** have their complete prior
+code-encryption histories replayed in 27 separate, source-loaded normative
+VM executions. Of those, 13 bytes plus EOF fail the C24 jump encryption;
+the other 13 bytes successfully jump, then fetch non-graphical code.
+Together with the independent high-byte scalar closure above, this
+classifies the first dispatch for the **entire 257-class byte/EOF domain**:
+
+| First dispatch outcome | Total classes | Evidence |
+| --- | ---: | --- |
+| Invalid `i` encryption target | 128 | 114 scalar + 14 real VM |
+| Valid `i`, then non-graphical code | 97 | 84 scalar + 13 real VM |
+| Valid `i`, then inert decoded opcode | 29 | Scalar plus VM samples |
+| Valid `i`, then decoded `j`, `p` or `i` | 3 | Scalar plus VM `j`/`p` |
+
+This is a combined finite *first-dispatch* classification, **not** 257
+VM-verified complete stream executions. It proves the fixed code grammar
+cannot accept all inputs, normalize EOF or dispatch directly into guest
+I/O at that step. It cannot be promoted to general source-C control flow.
+
 ## Reproduction and next real compiler gate
 
 ```sh

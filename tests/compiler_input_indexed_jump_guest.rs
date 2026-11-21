@@ -29,9 +29,9 @@
 pub mod layout;
 
 use malbolge::{
-    ProfileMachine, ProfileMemoryRead, ProfileStepTrace, RunOutcome,
-    StepOutcome, Termination, current_profile, decode_profile_instruction,
-    encrypt_profile_cell,
+    ProfileMachine, ProfileMachineError, ProfileMemoryRead, ProfileStepTrace,
+    RunOutcome, StepOutcome, Termination, current_profile,
+    decode_profile_instruction, encrypt_profile_cell,
 };
 
 // This is the checked 27-cell exact-input store/reentry with only the reached
@@ -442,5 +442,102 @@ fn both_non_graphical_dispatch_destination_classes_terminate()
         assert_eq!(guest.input_consumed(), 1);
         assert!(guest.output().is_empty());
     }
+    Ok(())
+}
+
+// Complement the independent 230-high-byte scalar closure with all 26
+// low-byte source-code alias cases and genuine EOF in a normative guest.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "27 low-byte/EOF source-loaded VM executions seal the domain"
+)]
+fn all_low_bytes_and_eof_reject_or_fetch_non_graphical_code()
+-> Result<(), String> {
+    const BAD_JUMPS: [u8; 13] = [0, 2, 3, 4, 7, 9, 10, 12, 15, 16, 18, 19, 24];
+    const BAD_FETCHES: [u8; 13] =
+        [1, 5, 6, 8, 11, 13, 14, 17, 20, 21, 22, 23, 25];
+    let profile = current_profile();
+    let baseline = ProfileMachine::from_source(profile, SOURCE, vec![])
+        .map_err(|error| error.to_string())?;
+    let original = baseline.memory().to_vec();
+    let mut invalid_jumps = 0u32;
+    let mut non_graphical_fetches = 0u32;
+    for case in 0u8..=26u8 {
+        let eof = case == 26;
+        let input = if eof {
+            vec![]
+        } else {
+            vec![case, 255]
+        };
+        let raw = if eof {
+            RAW_EOF
+        } else {
+            u32::from(case)
+        };
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            original.clone(),
+            input,
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut traces = Vec::new();
+        let outcome = guest.run_traced(DISPATCH_STEPS, &mut |step| {
+            traces.push(*step);
+        });
+        let jump = traces.get(24).ok_or("missing physical i")?;
+        assert_eq!(jump.decoded, Some(b'i'));
+        assert_eq!(jump.before.registers.code_pointer, 24);
+        assert_eq!(
+            jump.before.registers.data_pointer,
+            (raw + 1).rem_euclid(profile.memory_words())
+        );
+        assert_eq!(guest.memory_word(73), Ok(raw));
+        assert!(guest.output().is_empty());
+        assert_eq!(guest.input_consumed(), usize::from(!eof));
+        if eof || BAD_JUMPS.contains(&case) {
+            invalid_jumps += 1;
+            assert!(matches!(
+                outcome,
+                Err(ProfileMachineError::InvalidEncryptionTarget { .. })
+            ));
+            assert_eq!(traces.len(), 25);
+            assert!(matches!(
+                jump.result,
+                Err(ProfileMachineError::InvalidEncryptionTarget { .. })
+            ));
+            assert_eq!(guest.registers().code_pointer, 24);
+            continue;
+        }
+        assert!(BAD_FETCHES.contains(&case), "unclassified low byte {case}");
+        non_graphical_fetches += 1;
+        assert_eq!(
+            outcome,
+            Ok(RunOutcome::Terminated {
+                reason: Termination::NonGraphicalCell,
+                steps: DISPATCH_STEPS,
+            })
+        );
+        let fetch = traces.get(25).ok_or("missing non-graphical fetch")?;
+        assert_eq!(traces.len(), DISPATCH_STEPS);
+        assert_eq!(
+            jump.after.registers.code_pointer,
+            fetch.before.registers.code_pointer
+        );
+        assert!(
+            fetch
+                .fetched_cell
+                .is_some_and(|word| !(33..=126).contains(&word))
+        );
+        assert_eq!(fetch.decoded, None);
+        assert_eq!(
+            fetch.result,
+            Ok(StepOutcome::Terminated(Termination::NonGraphicalCell))
+        );
+    }
+    assert_eq!((invalid_jumps, non_graphical_fetches), (14, 13));
     Ok(())
 }
