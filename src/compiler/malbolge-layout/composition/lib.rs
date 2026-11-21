@@ -82,6 +82,7 @@ pub use eof_c23_conversion_source::{
     build_c23_nine_rotated_signed_conversion_without_output_source,
     build_c23_nine_rotated_signed_output_source,
     build_c23_operand_probe_source,
+    build_c23_signed_output_with_post_conversion_fold_source,
 };
 pub use eof_output_plan::{
     C23SignedOutputWordPlan, C23SignedOutputWordPlanError,

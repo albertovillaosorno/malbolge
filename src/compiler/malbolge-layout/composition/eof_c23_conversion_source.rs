@@ -379,6 +379,30 @@ pub fn build_c23_nine_rotated_signed_output_source(
     Ok(source)
 }
 
+/// Convert and emit the second signed input, then fold it into guest state.
+///
+/// The genuine C66 input and C77/C78 crazy operations leave the fully
+/// converted word in M96. C79 emits its correct C23 low byte, while a new
+/// reached C80 `p` writes `crazy(M98, converted)` into M98 before the fixed
+/// C81 halt. C80's data pointer is M98, whose seed is the lossy 157
+/// loader word. M98 loses byte identity but still separates true EOF from
+/// every byte; only M96 retains all 257 input classes distinctly.
+/// This physical continuation does not realize source-C 32-bit arithmetic,
+/// signed EOF control, a mutable local, or the whole checksum.
+///
+/// # Errors
+///
+/// Rejects other profiles or a missing graphical encoding. The returned
+/// source must still pass the normative guest trace and byte+EOF controls.
+pub fn build_c23_signed_output_with_post_conversion_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source = build_c23_nine_rotated_signed_output_source(profile)?;
+    set(&mut source, 80, b'p')?;
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
 /// Preserve a live signed input across a physical output and C23 conversion.
 ///
 /// The second actual guest `/` at C69 reads a signed byte or target EOF.

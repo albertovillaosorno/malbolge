@@ -92,6 +92,25 @@ second input emits `0x9a`, after the first raw N15 echo. This is a bounded
 physical second-input decision, **not** signed C23 `EOF`, a compiled C
 local, reusable conditional lowering, an unbounded loop, or a checksum.
 
+### Signed C23 converter with a post-output state update
+
+`build_c23_signed_output_with_post_conversion_fold_source` preserves the
+91-cell `Iy` converter's C66 input, C77/C78 arithmetic and C79 output,
+then executes a new real C80 `p` on loader-expanded M98=157. C81 still
+halts. The reached M96 converted word is distinct for all 256 byte
+inputs **and** true EOF, despite byte 0xff and EOF both emitting 0xff.
+The post-output M98 word computes `crazy(157, converted)` and retains only
+118 distinct states across those 257 classes, with EOF still distinct
+from every successful byte. An independent 15-trit
+truth table checks all classes; eight complete 82-step normative VM runs
+check read provenance, all three physical `p` writes, C23 byte output,
+post-output accumulator dependence, exact halt and unread suffixes.
+
+This is a source-valid physical dataflow continuation, not a C23 `int`
+normalizer, full-width C32 value write, source-C arithmetic, mutable
+checksum loop, or published source-C artifact. Its lossy M98 state must
+not be substituted for the injective M96 conversion value.
+
 ### Executable signed-C23 byte conversion after nine rotations
 
 `build_c23_nine_rotated_signed_output_source` preserves the 91-cell `Iy`
