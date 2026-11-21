@@ -75,6 +75,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, a source-loaded 81-cell N15 guest physically rotates
+  the unfetched C79 output opcode into a genuine `/` via C56 `j` and C57
+  `*`. Four real byte/EOF streams attempt exactly one input (only byte
+  streams consume it) and halt after 81 guest steps; replacing C57 with
+  `o` restores the original
+  output behavior without consuming input. The code-site phase planner now
+  admits full-width, ordered code/data alias writes, and rejects forged live
+  versions, out-of-range values and non-graphical fetch/XLAT2. This fixes
+  a local necessary linker-phase capability only, **not** the original C23
+  checksum's signed C32 state, arithmetic, phi transfer, EOF loop or artifact.
+  See `tests/compiler_code_data_alias_guest.rs` and
+  `docs/technical/compiler/physical-code-data-aliasing.md`.
+
 - On 2026-11-21, a new checked physical code-cell phase scheduler
   distinguishes a fetched instruction's XLAT2 from a reached `i` jump's
   *target* XLAT2. The same 120-cell source-loaded four-read guest has seven

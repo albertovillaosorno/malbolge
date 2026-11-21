@@ -200,7 +200,7 @@ fn unchanged_i_site_and_aliased_jump_encryption_have_distinct_schedules()
                     .map_err(|error| format!("C{address}: {error:?}"))?;
             assert_eq!(encoded.fetches, 3);
             assert_eq!(encoded.target_encryptions, 0);
-            assert_eq!(encoded.initial, encoded.final_cell);
+            assert_eq!(u32::from(encoded.initial), encoded.final_cell);
             assert_eq!(
                 decode_profile_instruction(u32::from(encoded.initial), address),
                 Some(b'i')

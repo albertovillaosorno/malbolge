@@ -21,22 +21,28 @@ applies XLAT2 after every visit mis-models both cases.
 `encode_code_cell_schedule` in
 `src/compiler/malbolge-layout/composition/code_cell_schedule.rs` enumerates
 94 graphical candidate source bytes under an ordered, address-bound schedule
-of `Fetch(Decoded(opcode) | Inert)` and `JumpTargetEncryption` effects.
-`admit_code_cell_schedule` checks an already-proposed source byte instead.
-Both return the resulting physical cell word, fetch count and independently
-scheduled jump-target encryption count. The first event must fetch a
-loader-admitted source opcode; subsequent events must be in execution order.
-A reached `v` cannot precede another event. The finite budget is **64
-single-cell effects**, and an address outside the selected profile's memory
-is refused. No host state is installed into guest memory.
+of `Fetch(Decoded(opcode) | Inert)`, `JumpTargetEncryption`, and full-width
+`DataWrite { before, after }` events. `admit_code_cell_schedule` checks an
+already-proposed source byte instead. Both return the resulting full-width
+physical cell word, the initial graphical byte, and separate fetch, guest
+data-write and jump-target XLAT2 counts. The first event must either fetch a
+loader-admitted source opcode or be a data write against such a source byte;
+subsequent events must be in actual execution order. Data writers bind the
+exact before/after live memory versions (including non-graphical values).
+A later fetch must decode a graphical cell; off-site XLAT2 on a non-graphical
+cell is refused. A reached `v` cannot precede another event. The finite
+budget is **64 single-cell effects**, and invalid guest-width words or
+physical addresses are refused. No host state is installed into guest memory.
 
-These functions deliberately **do not** guess whether a jump can reach its
-claimed destination, whether a data writer aliases code, or whether the
-source compiler's control and arithmetic effects match. Those obligations
-remain with actual source-loader and normative VM tracing. Consequently a
-proposed phase schedule is a necessary condition, not a sufficient
-publication certificate. In particular a second `i` whose target is the
-same physical instruction cell needs an explicit target-encryption event.
+These functions deliberately **do not** guess whether a jump or data writer
+can reach its claimed target, whether the source compiler's arithmetic
+matches the supplied guest data write, or whether a proposed fetch occurs.
+Those obligations remain with source-loader and normative VM tracing.
+Consequently a proposed phase schedule is a necessary condition, not a
+sufficient publication certificate. In particular a second `i` whose target
+is the same physical instruction cell needs an explicit target-encryption
+event. A same-step code/data self-alias requires whole-path proof of the
+instruction's write-before-encryption order.
 
 ## Real VM Positive and Negative Witnesses
 
@@ -81,6 +87,26 @@ export TMPDIR="$PWD/.temp"
 .dependencies/python/3.14.7/bin/python3.14 -B -m unittest \
   tests.test_eof_checksum_pipeline -v
 ```
+
+## Executed Code/Data Alias and Dynamic Input
+
+The separate `tests/compiler_code_data_alias_guest.rs` uses a fixed **81-byte
+current-N15** executable graphical source. C56's `j` moves D to M79, C57's
+reached `*` changes M79 from 114 (`<` at C79) to 38 (`/` at C79), and
+C79 later executes a genuine input instruction before C80 halts. Four
+binary/EOF streams agree on actual trace writes, fetched code, input and
+termination; a one-cell mutation replacing C57 with `o` instead causes C79
+to execute its original `<`, emit a zero byte and leave stdin unread.
+
+The phase planner admits the original source byte and the ordered
+`DataWrite(114 -> 38); Fetch(/)` schedule. It refuses a forged before word,
+out-of-range guest data, a non-graphical fetched cell and illegal XLAT2 of
+such a cell. A separate three-step C0/C1/C2 guest leaves an unfetched
+future code cell non-graphical after a legitimate off-site `p` or `*`.
+This evidence covers a **real physical code/data alias** beyond XLAT2-only
+scheduling, but not physical source-C EOF branching, phi writes or a loop.
+See `docs/technical/compiler/physical-code-data-aliasing.md` for the full
+bounded witness and its exact limitations.
 
 ## Input-Site XLAT2 Orbit Census
 

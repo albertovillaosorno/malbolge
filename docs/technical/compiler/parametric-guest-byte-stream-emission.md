@@ -28,6 +28,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-modified future input opcode (2026-11-21)
+
+A physically executed 81-cell N15 guest now demonstrates an actual code/data
+alias: C56 `j` sends D to M79, C57 `*` rotates original M79=114 into 38,
+changing the not-yet-fetched C79 `<` to `/`. Four byte/EOF streams execute
+C79's **real input** and C80's halt; replacing only C57 with `o` instead
+executes the original `<`, outputs a zero byte, and consumes no input.
+The code-cell phase planner now admits ordered full-width guest data writes
+(including a pre-fetch write), checks their exact memory versions and
+rejects forged writes, invalid words and non-graphical fetch/XLAT2.
+Source-loaded execution proves the concrete 81-step case, not arbitrary
+input code synthesis. Full C23 checksum state, EOF branch and loop remain
+physically unlinked. See `tests/compiler_code_data_alias_guest.rs` and
+`docs/technical/compiler/physical-code-data-aliasing.md`.
+
 ### Source-bound code-cell mutation scheduling (2026-11-21)
 
 A bounded physical-linker prerequisite now checks ordered graphical
