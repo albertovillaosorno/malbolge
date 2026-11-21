@@ -1826,6 +1826,286 @@ fn original_checksum_has_source_locked_minimum_code_and_phi_pad_plan() {
     ));
 }
 
+// Two actual byte inputs in the same C basic block require distinct physical
+// source sites, but only one reservation for their shared instruction span.
+fn same_block_two_input_wire() -> Vec<u8> {
+    use super::typed::{
+        BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
+        FunctionSpec, LocatedInstruction, Module, ModuleSpec, SourcePosition,
+        SourceSpan, TypeDef, TypeEntry, TypeId, ValueId, canonical_bytes,
+        validate_module,
+    };
+
+    let span = |start: u32, end: u32| {
+        SourceSpan::new(
+            SourcePosition::new(start, 1, start + 1),
+            SourcePosition::new(end, 1, end + 1),
+        )
+    };
+    let byte_type = TypeId::new(0);
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: super::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions: vec![
+                    LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: ValueId::new(0),
+                            type_id: byte_type,
+                        },
+                        span(0, 1),
+                    ),
+                    LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: ValueId::new(1),
+                            type_id: byte_type,
+                        },
+                        span(1, 2),
+                    ),
+                    LocatedInstruction::new(
+                        Instruction::ByteOutput { value: ValueId::new(1) },
+                        span(2, 3),
+                    ),
+                ],
+                phis: Vec::new(),
+                span: span(0, 4),
+                terminator: Terminator::Return { value: None },
+                terminator_span: span(3, 4),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("two_source_inputs"),
+            parameters: Vec::new(),
+            signature: TypeId::new(1),
+            span: span(0, 4),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/two-source-inputs.c"),
+        source_sha256: [0x45; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(byte_type, TypeDef::U8),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    });
+    validate_module(&module).expect("valid source-typed two-input block");
+    canonical_bytes(&module).expect("canonical two-input block")
+}
+
+#[test]
+fn source_input_anchors_share_a_real_basic_block_without_aliasing() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeInputAnchor, GuestCodeOperationEffect,
+        GuestCodePlacementError, plan_source_locked_cfg_with_input_anchors,
+        source_locked_cfg_minimum_code_cells,
+    };
+
+    let wire = same_block_two_input_wire();
+    let first = GuestCodeInputAnchor {
+        block: 0,
+        code_address: 37,
+        function: 0,
+        ordinal: 0,
+    };
+    let second = GuestCodeInputAnchor {
+        block: 0,
+        code_address: 39,
+        function: 0,
+        ordinal: 1,
+    };
+    assert_eq!(source_locked_cfg_minimum_code_cells(&wire), Ok(6));
+    let expected =
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            first, second,
+        ])
+        .expect("same source block should have two different reads");
+    assert_eq!(expected.code_blocks.len(), 1);
+    assert_eq!(expected.code_blocks[0].start, 37);
+    assert_eq!(expected.code_blocks[0].end_exclusive, 43);
+    assert_eq!(
+        expected
+            .operation_effect_sites
+            .iter()
+            .filter_map(|site| {
+                matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+                    .then_some((site.ordinal, site.code_address))
+            })
+            .collect::<Vec<_>>(),
+        [(0, 37), (1, 39)]
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            second, first
+        ],),
+        Ok(expected.clone())
+    );
+
+    let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+    for anchors in [
+        vec![first, first],
+        vec![first, GuestCodeInputAnchor {
+            code_address: 40,
+            ..second
+        }],
+        vec![first, GuestCodeInputAnchor {
+            code_address: 37,
+            ..second
+        }],
+        vec![first, GuestCodeInputAnchor { ordinal: 2, ..second }],
+    ] {
+        let actual =
+            plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &anchors);
+        assert_eq!(actual, refusal);
+    }
+    assert!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 42, 128, &[
+            first, second
+        ],)
+        .is_err()
+    );
+}
+
+// This is actual source-backed Clang C, not a synthetic typed fixture. The
+// two discarded signed getchar calls share one C basic block. The real guest
+// performs both / instructions, but it does not implement the two required
+// C32 result writes, so this remains input-site *prefix* evidence only.
+#[test]
+fn original_same_block_c23_getchar_sites_match_two_real_guest_reads() {
+    use malbolge::{
+        ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
+        decode_profile_instruction,
+    };
+
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeInputAnchor, GuestCodeInputSemantics,
+        GuestCodeOperationEffect, plan_source_locked_cfg_with_input_anchors,
+    };
+
+    let original =
+        include_bytes!("c-frontend/accepted/discarded_getchar_two.c");
+    let normalized =
+        include_bytes!("c-frontend/golden/discarded_getchar_two.json");
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(normalized, Some(original))
+            .expect("original two-read C must reenter compiler");
+    assert_eq!(mode, FrontendGuestMode::DiscardedGetchar);
+    let anchors = [
+        GuestCodeInputAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 0,
+            code_address: 0,
+        },
+        GuestCodeInputAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            code_address: 3,
+        },
+    ];
+    let plan =
+        plan_source_locked_cfg_with_input_anchors(&wire, 7, 128, &anchors)
+            .expect("two signed source reads in the same block");
+    assert_eq!(plan.code_blocks.len(), 1);
+    assert_eq!(
+        (plan.code_blocks[0].start, plan.code_blocks[0].end_exclusive),
+        (0, 7)
+    );
+    let source_sites = plan
+        .operation_effect_sites
+        .iter()
+        .filter_map(|site| {
+            if let GuestCodeOperationEffect::Input { destination, semantics } =
+                site.effect
+            {
+                assert_eq!(destination.words, 2);
+                assert!(matches!(
+                    semantics,
+                    GuestCodeInputSemantics::SignedC23 { .. }
+                ));
+                Some((site.ordinal, site.code_address, destination.address))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(source_sites.len(), 2);
+    assert_eq!((source_sites[0].0, source_sites[0].1), (0, 0));
+    assert_eq!((source_sites[1].0, source_sites[1].1), (1, 3));
+    assert_ne!(source_sites[0].2, source_sites[1].2);
+
+    let physical = b"/oo/oov"
+        .iter()
+        .enumerate()
+        .map(|(address, opcode)| {
+            (33u8..=126)
+                .find(|byte| {
+                    decode_profile_instruction(u32::from(*byte), address as u32)
+                        == Some(*opcode)
+                })
+                .expect("every physical opcode must be graphical")
+        })
+        .collect::<Vec<_>>();
+    for input in [Vec::new(), vec![0], vec![0xff], vec![0x80, 1], vec![
+        0x01, 0x02, 0x03,
+    ]] {
+        let mut guest = ProfileMachine::from_source(
+            current_profile(),
+            &physical,
+            input.clone(),
+        )
+        .expect("printable, valid N15 source");
+        let mut reached = Vec::new();
+        let outcome = guest
+            .run_traced(7, &mut |step| {
+                if let Some(event) = step.input {
+                    reached.push((
+                        step.before.registers.code_pointer,
+                        event,
+                        step.after.registers.accumulator,
+                    ));
+                }
+            })
+            .expect("seven physically valid instructions");
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 7,
+        });
+        assert!(guest.output().is_empty());
+        assert_eq!(guest.input_consumed(), input.len().min(2));
+        assert_eq!(reached, [
+            (
+                0,
+                input
+                    .first()
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+                input
+                    .first()
+                    .copied()
+                    .map_or(current_profile().eof_word(), u32::from)
+            ),
+            (
+                3,
+                input
+                    .get(1)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte),
+                input
+                    .get(1)
+                    .copied()
+                    .map_or(current_profile().eof_word(), u32::from)
+            ),
+        ]);
+    }
+}
+
 #[test]
 fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
     use super::typed_cfg_adapter::state_relocation::{

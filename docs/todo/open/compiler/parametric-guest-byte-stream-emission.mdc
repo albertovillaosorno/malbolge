@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a real Clang-normalized two-`getchar()` C23 function
+  places two signed input anchors in the same typed basic block. The
+  source-locked planner now accepts consistent 3-cell-spaced read sites
+  and rejects duplicate/conflicting source ordinals. A separate seven-cell
+  current-profile guest reads at C0/C3 and halts at C6 with exact raw
+  byte/EOF and no-output parity for five finite inputs. This is an
+  input-only site witness: the two C32 destinations are not physically
+  written, no source CFG is linked, and the full mutable EOF checksum
+  still refuses publication. P2 remains open.
+
 - On 2026-11-20, source-authenticated physical input-site probing
   now cross-checks both checksum `getchar` code anchors (C37 and C66)
   against actual input transitions of the separate 91-cell `Iy` converter

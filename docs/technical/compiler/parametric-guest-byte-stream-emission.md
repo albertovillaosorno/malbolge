@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Real C same-block signed input reservations (2026-11-20)
+
+The source-locked physical input-site planner now admits **distinct** input
+operations within the **same** source basic block when their independent
+anchors imply exactly the same code interval. Previously its block map
+rejected the second anchor unconditionally. A typed U8 two-read block
+requires two physical input addresses separated by its first input/store
+minimum; duplicate ordinal, conflicting interval, non-input ordinal and
+short source proposals still reject. Reordered consistent anchors yield the
+same deterministic placement.
+
+A separate source-authenticated real C23 function, `void emit(void)` with
+two discarded `getchar()` calls in one basic block, now provides an N15
+physical input-only demonstration: the canonical typed instructions each
+require a two-word signed `int` destination, while seven graphical guest
+instructions execute `/` at C0 and C3 and halt at C6. Five finite real VM
+streams check raw byte/EOF values, exact two input events, consumed length
+and no output, including an unread third byte. The physical no-ops do
+**not** write the required C32 result cells, and there is no code-generation
+handoff or source-C artifact publication. This closes a concrete necessary
+same-block placement refusal, not source state storage or the P2 checksum.
+
 ### Source-typed input sites checked in the real guest (2026-11-20)
 
 The original seven-block mutable C23 checksum still has no executable

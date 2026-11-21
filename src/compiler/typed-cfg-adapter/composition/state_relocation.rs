@@ -1725,7 +1725,15 @@ pub fn plan_source_locked_cfg_with_input_anchors(
         relocate_source_locked_cfg(canonical, source_cells, frame_base)
             .map_err(GuestCodePlacementError::TypedCfg)?;
     let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
+    let mut seen_input_operations = BTreeSet::new();
     for anchor in anchors {
+        if !seen_input_operations.insert((
+            anchor.function,
+            anchor.block,
+            anchor.ordinal,
+        )) {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
         let block = relocated
             .operation_blocks
             .iter()
@@ -1769,16 +1777,17 @@ pub fn plan_source_locked_cfg_with_input_anchors(
             .checked_add(1)
             .filter(|end| *end <= source_cells)
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        if fixed
-            .insert((block.function, block.block), GuestCodeBlockPlacement {
-                block: block.block,
-                control_start,
-                end_exclusive,
-                function: block.function,
-                start,
-            })
-            .is_some()
-        {
+        let placement = GuestCodeBlockPlacement {
+            block: block.block,
+            control_start,
+            end_exclusive,
+            function: block.function,
+            start,
+        };
+        let existing = fixed
+            .entry((block.function, block.block))
+            .or_insert(placement);
+        if *existing != placement {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
     }
