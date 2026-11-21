@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-CFG-bound physical loop input revisits (2026-11-20)
+
+The original complete seven-block C23 mutable EOF checksum still passes its
+independent native `-O0`/`-O2` controls and refuses guest publication. A
+red-first source input-site regression caught the verifier rejecting repeated
+physical reads at the *same* code address before checking the authenticated
+source CFG. A 117-cell normative N15 guest now physically reads at C3, then
+reuses C47 twice after the intervening inert visit and two code encryptions.
+The 60-step trace binds C3 to the original source's first `getchar`, and both
+C47 inputs to its loop `getchar`. Four finite binary vectors check actual
+input effects, precise trace indices, byte consumption, true EOF and `0xff`.
+Two early-EOF paths refuse via source-known C23 control, and a 59-step guest
+budget refuses. The source-input verifier retains the one-anchor-per-typed-
+input contract and validates the *entire observed prefix* through the original
+CFG (including loop backedges), instead of enforcing a false global ordinal
+monotonicity or prohibiting repeated physical input cells. A separate
+same-block two-input loop witness proves `0,1,0,1` source ordering is legal
+but `0,0`, `1,0` and `0,1,1` are impossible without the relevant CFG edges.
+
+This remains a **finite unconditional guest** with three raw input events,
+no branch or output. The verified source-CFG prefix is only a necessary input
+path, not physical C23 EOF normalization, dynamic guest conditionals, C32
+stores, arithmetic, phi transfer, whole-program guest output or a repeatable
+EOF-controlled loop. The checksum remains unlinked and P2 open. See
+`tests/compiler_source_input_site_guest.rs` and
+`tests/compiler/source_input_cfg_order.rs`.
+
 ### Physical two-read same-site N15 guest (2026-11-20)
 
 A new 117-cell, loadable guest witness physically re-enters **the same C47

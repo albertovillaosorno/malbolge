@@ -75,6 +75,20 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the original C23 seven-block checksum remains
+  guest-unlinked after independent native controls. A red-first physical N15
+  input-site trace exposed unconditional refusal of *repeated* execution of
+  one authenticated source read. A 117-cell real guest now executes three
+  reads: C3 once and C47 twice after two XLAT2 visits, binding them to the
+  checksum's first and loop `getchar` sites. Four 60-step binary/EOF paths
+  match source read prefixes; early EOF and a 59-step ceiling refuse. The
+  input-site verifier now permits repeated physical addresses **only if**
+  the canonical source CFG admits the exact read sequence, including source
+  backedges and C23 EOF guards. Same-block ordinal ordering across loop
+  cycles is separately tested. This remains an unconditional finite guest;
+  source arithmetic, C32 state, physical branches, phi moves, EOF loop
+  termination and guest checksum parity remain unimplemented. P2 stays open.
+
 - On 2026-11-20, a **real same-physical-site repeated-input** guest
   now passes on both normative N15 VMs for empty, NUL, 128, 255 and three
   successful bytes. A 117-cell graphical source executes 60 steps and

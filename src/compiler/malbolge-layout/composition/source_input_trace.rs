@@ -68,10 +68,6 @@ pub enum SourceInputTraceError {
     InvalidSourcePlacement,
     /// A source input effect is not assigned exactly one distinct code site.
     MissingSourceAnchor,
-    /// The same source input site executed more than once in this prefix.
-    RepeatedSourceInput,
-    /// Physical input order contradicts source order within one basic block.
-    SourceInputOutOfOrder,
     /// Source-input path search exhausted its finite state budget.
     SourceInputSearchLimit,
     /// No source CFG walk can produce the observed input-site prefix.
@@ -231,12 +227,6 @@ fn observe_input_step(
     let Some(site) = sites.get(&address).copied() else {
         return Err(SourceInputTraceError::UnexpectedGuestInput);
     };
-    if observations
-        .iter()
-        .any(|entry| entry.code_address == address)
-    {
-        return Err(SourceInputTraceError::RepeatedSourceInput);
-    }
     let profile = current_profile();
     let raw_accumulator = match input {
         TraceInput::Byte(byte) => u32::from(byte),
@@ -273,27 +263,10 @@ fn observe_input_step(
     Ok(())
 }
 
-// The input-only witness may span several source blocks, whose control flow
-// has not yet been linked. Within *one* basic block, however, source input
-// effects have an unambiguous instruction order: a guest prefix that reads a
-// later source ordinal before an earlier one cannot implement that block.
-// Function identity is required because block IDs are function-local.
-fn verify_same_block_input_order(
-    observations: &[SourceInputSiteObservation],
-) -> Result<(), SourceInputTraceError> {
-    let mut last_by_block = BTreeMap::new();
-    for observation in observations {
-        let key = (observation.function, observation.block);
-        if last_by_block
-            .get(&key)
-            .is_some_and(|&previous| previous >= observation.ordinal)
-        {
-            return Err(SourceInputTraceError::SourceInputOutOfOrder);
-        }
-        let _previous = last_by_block.insert(key, observation.ordinal);
-    }
-    Ok(())
-}
+// Input order, including revisits to the same source block, is checked by
+// the authenticated source-CFG walk below. A block-local ordinal check cannot
+// distinguish a legal loop backedge from an impossible in-block reorder.
+// Actual reads are still associated with their unique physical code anchors.
 
 // Exact source scalar facts constrain only feasible input paths, never guest
 // arithmetic or emitted bytes. Unknown operations do not select a branch.
@@ -671,18 +644,19 @@ fn verify_source_cfg_input_order(
 
 /// Execute a physical program and prove its source-typed input steps.
 ///
-/// Each source input site must be observed exactly once with no extra reads.
-/// Input order must follow a source-CFG path; branches are constrained only
-/// where source constants and observed input make their conditions known.
-/// Guest branch targets and source arithmetic remain unverified.
-/// Loops and repeated input require a later full control-flow verifier.
+/// Every source input site must be observed at least once with no extra reads;
+/// the same code site may occur repeatedly if its physical instruction really
+/// decodes as input again and the authenticated source-CFG walk permits the
+/// entire observed sequence. Source-known guards constrain path feasibility.
+/// Guest branch targets and source arithmetic remain unverified: even when a
+/// loop input prefix matches, its guest control and mutable state do not.
 /// This result proves no C23 stores, normalization, branch or arithmetic and
 /// does not discharge any source-C output or artifact-publication obligation.
 ///
 /// # Errors
 ///
-/// Refuses malformed source, invalid anchors, missing/repeated/extra input,
-/// incorrect raw input state, VM failures and non-halt termination.
+/// Refuses malformed source, invalid anchors, missing/extra or source-invalid
+/// input, incorrect raw input state, VM failures and non-halt termination.
 pub fn verify_source_input_site_prefix(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
@@ -723,10 +697,13 @@ pub fn verify_source_input_site_prefix(
             return Err(SourceInputTraceError::UnexpectedGuestTermination);
         },
     }
-    if observations.len() != sites.len() {
+    if sites.keys().any(|address| {
+        !observations
+            .iter()
+            .any(|entry| entry.code_address == *address)
+    }) {
         return Err(SourceInputTraceError::UnreachedSourceInput);
     }
-    verify_same_block_input_order(&observations)?;
     verify_source_cfg_input_order(probe.canonical, &observations)?;
     Ok(SourceInputPrefixProof {
         bytes_consumed: machine.input_consumed(),
@@ -734,68 +711,6 @@ pub fn verify_source_input_site_prefix(
         observations,
         outcome,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use malbolge::TraceInput;
-
-    use super::super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
-    use super::{
-        GuestCodeInputSemantics, GuestPlacedOperand,
-        SourceInputSiteObservation, SourceInputTraceError,
-        verify_same_block_input_order,
-    };
-
-    // These are source-linked observation records, not a surrogate guest
-    // execution. Independent VM tests cover actual physical input effects.
-    fn observed(
-        function: u32,
-        block: u32,
-        ordinal: u32,
-    ) -> SourceInputSiteObservation {
-        SourceInputSiteObservation {
-            block,
-            code_address: ordinal.saturating_add(37),
-            destination: GuestPlacedOperand {
-                address: ordinal.saturating_add(128),
-                type_kind: TernaryCfgScalarKind::U8,
-                value: ordinal,
-                words: 1,
-            },
-            function,
-            input: TraceInput::Byte(3),
-            ordinal,
-            raw_accumulator: 3,
-            semantics: GuestCodeInputSemantics::ByteU8,
-            trace_index: usize::try_from(ordinal).unwrap_or_default(),
-        }
-    }
-
-    #[test]
-    fn input_order_requires_source_order_within_each_function_block() {
-        let first = observed(0, 0, 0);
-        let second = observed(0, 0, 1);
-        assert_eq!(verify_same_block_input_order(&[first, second]), Ok(()));
-        assert_eq!(
-            verify_same_block_input_order(&[second, first]),
-            Err(SourceInputTraceError::SourceInputOutOfOrder),
-        );
-        assert_eq!(
-            verify_same_block_input_order(&[first, first]),
-            Err(SourceInputTraceError::SourceInputOutOfOrder),
-        );
-        // Different control blocks and distinct functions have independent
-        // source-local ordinals. Their order needs a full CFG verifier.
-        assert_eq!(
-            verify_same_block_input_order(&[
-                second,
-                observed(0, 1, 0),
-                observed(1, 0, 0),
-            ]),
-            Ok(()),
-        );
-    }
 }
 
 #[cfg(test)]

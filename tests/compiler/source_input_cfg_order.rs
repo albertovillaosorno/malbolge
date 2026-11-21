@@ -239,6 +239,44 @@ fn guarded_inequality_fixture() -> TernaryCfgFunction {
     }
 }
 
+// Per-block ordinals reset at legitimate source CFG loop backedges. A
+// monotone-ordinal check over the whole trace would incorrectly reject them;
+// the authenticated CFG walk must also reject skipped earlier reads.
+#[test]
+fn source_loop_restarts_same_block_input_ordinals_without_reordering() {
+    let span = dummy_span();
+    let function = TernaryCfgFunction {
+        blocks: vec![TernaryCfgBlock {
+            id: 0,
+            operations: vec![
+                TernaryOperation::GetcharI32 { result: 0, span },
+                TernaryOperation::GetcharI32 { result: 1, span },
+            ],
+            phis: Vec::new(),
+            terminator: TernaryCfgTerminator::Jump { target: 0, span },
+        }],
+        entry: 0,
+        id: 0,
+        name: "emit".to_owned(),
+        span,
+    };
+    let first = observed(0, 0);
+    let second = observed(0, 1);
+    for (sequence, valid) in [
+        (vec![&first, &second, &first, &second], true),
+        (vec![&first, &second, &first], true),
+        (vec![&first, &first], false),
+        (vec![&second, &first], false),
+        (vec![&first, &second, &second], false),
+    ] {
+        assert_eq!(
+            source_path_matches_input_prefix(&function, &sequence, 128),
+            Ok(valid),
+            "unexpected same-block CFG read order {sequence:?}",
+        );
+    }
+}
+
 #[test]
 fn source_known_inequality_discriminates_high_byte_and_true_eof() {
     let function = guarded_inequality_fixture();

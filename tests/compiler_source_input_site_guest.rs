@@ -48,6 +48,9 @@ use malbolge::{
 const CHECKSUM_TYPED: &str =
     include_str!("compiler/typed-ir/golden/mutable-eof-checksum.hex");
 
+// Frozen guest read vector pairs for source prefix matching.
+type RevisitedInputVector = (&'static [u8], [TraceInput; 3]);
+
 fn checksum_wire() -> Result<Vec<u8>, String> {
     let digits = CHECKSUM_TYPED
         .trim_end()
@@ -283,7 +286,6 @@ fn physically_unreached_c23_input_site_is_rejected() -> Result<(), String> {
     Ok(())
 }
 
-
 // Input-only opcode parity must not certify an impossible source path: on
 // true first-read EOF the original C loop exits without a second getchar.
 #[test]
@@ -307,6 +309,164 @@ fn physical_first_eof_cannot_reach_checksum_loop_read() -> Result<(), String> {
             step_budget: 82,
         }),
         Err(SourceInputTraceError::SourceInputUnreachable)
+    );
+    Ok(())
+}
+
+// One fresh input at C3 followed by two input events at the *same* C47
+// instruction proves a source-loop read can revisit one physical guest cell.
+// The guest remains an unconditional finite three-read probe, not a compiled
+// C23 EOF branch, mutable checksum or source-verified output.
+fn physical_repeated_loop_input_source() -> Result<Vec<u8>, String> {
+    let mut source = (0..117u32)
+        .map(|position| {
+            (33u8..=126)
+                .find(|byte| {
+                    decode_profile_instruction(u32::from(*byte), position)
+                        == Some(b'o')
+                })
+                .ok_or_else(|| format!("missing no-op at C{position}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for (position, opcode) in [
+        (3usize, b'/'),
+        (47, b'/'),
+        (48, b'j'),
+        (49, b'i'),
+        (73, b'j'),
+        (74, b'j'),
+        (75, b'i'),
+        (116, b'v'),
+    ] {
+        let code_address =
+            u32::try_from(position).map_err(|error| error.to_string())?;
+        let encoded = (33u8..=126)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), code_address)
+                    == Some(opcode)
+            })
+            .ok_or_else(|| format!("no {opcode} encoding at C{position}"))?;
+        *source.get_mut(position).ok_or("short physical source")? = encoded;
+    }
+    for (position, value) in
+        [(66usize, 109u8), (87, 46), (91, 65), (110, 46), (113, 115)]
+    {
+        *source.get_mut(position).ok_or("short data source")? = value;
+    }
+    Ok(source)
+}
+
+fn repeated_input_vectors() -> [RevisitedInputVector; 4] {
+    [
+        (&[1, 2][..], [
+            TraceInput::Byte(1),
+            TraceInput::Byte(2),
+            TraceInput::EndOfInput,
+        ]),
+        (&[1, 2, 3, 4][..], [
+            TraceInput::Byte(1),
+            TraceInput::Byte(2),
+            TraceInput::Byte(3),
+        ]),
+        (&[0xff, 0x80][..], [
+            TraceInput::Byte(0xff),
+            TraceInput::Byte(0x80),
+            TraceInput::EndOfInput,
+        ]),
+        (&[1, 0xff, 0][..], [
+            TraceInput::Byte(1),
+            TraceInput::Byte(0xff),
+            TraceInput::Byte(0),
+        ]),
+    ]
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "finite physical guest read trace assertions"
+)]
+fn assert_revisited_input_path(
+    probe: SourceInputProbe<'_>,
+    input: &[u8],
+    expected: [TraceInput; 3],
+) -> Result<(), String> {
+    let result =
+        verify_source_input_site_prefix(SourceInputProbe { input, ..probe })
+            .map_err(|error| {
+                format!("repeated physical source input: {error:?}")
+            })?;
+    assert_eq!(result.outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 60,
+    });
+    assert_eq!(result.bytes_consumed, input.len().min(3));
+    assert_eq!(result.guest_output, []);
+    assert_eq!(
+        result
+            .observations
+            .iter()
+            .map(|item| (item.code_address, item.trace_index, item.input))
+            .collect::<Vec<_>>(),
+        vec![
+            (3, 3, expected[0]),
+            (47, 47, expected[1]),
+            (47, 56, expected[2]),
+        ],
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual three-event N15 input execution and source path assertions"
+)]
+fn physical_loop_read_site_can_repeat_after_source_cfg_backedge()
+-> Result<(), String> {
+    let physical = physical_repeated_loop_input_source()?;
+    let canonical = checksum_wire()?;
+    let anchors = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 3,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 47,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let probe = SourceInputProbe {
+        anchors: &anchors,
+        canonical: &canonical,
+        frame_base: 128,
+        input: &[1, 2],
+        physical_source: &physical,
+        step_budget: 60,
+    };
+    for (input, expected) in repeated_input_vectors() {
+        assert_revisited_input_path(probe, input, expected)?;
+    }
+    // The source must refuse a third read after either EOF guard. A raw
+    // N15 EOF is different from a successful source-C getchar byte 0xff.
+    for bytes in [&[][..], &[1][..]] {
+        assert_eq!(
+            verify_source_input_site_prefix(SourceInputProbe {
+                input: bytes,
+                ..probe
+            }),
+            Err(SourceInputTraceError::SourceInputUnreachable),
+        );
+    }
+    assert_eq!(
+        verify_source_input_site_prefix(SourceInputProbe {
+            step_budget: 59,
+            ..probe
+        }),
+        Err(SourceInputTraceError::StepBudgetExhausted),
     );
     Ok(())
 }
