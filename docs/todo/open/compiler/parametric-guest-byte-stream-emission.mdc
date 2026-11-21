@@ -75,6 +75,14 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, the source-loaded C71 physical return now carries
+  register and memory live-ins derived by the portable v6 effect-IR
+  projection, plus its already journaled complete write effects.
+  Independent VM replay confirms the source-memory entry values and
+  repeat projection for two binary streams. The live-dependency and
+  fixed-input replay preconditions reject the current return. This
+  verifies a narrower block-state diagnostic, not a C23 loop or P2 exit.
+
 - On 2026-11-21, exact normative physical reentry accounting for
   the source-loaded 132-cell signed third-read candidate finds that C71
   is visited at steps 71 and 141, but D changes 141 to 7,174,359, A changes

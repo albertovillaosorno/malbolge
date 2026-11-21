@@ -20,12 +20,14 @@ pub mod layout;
 
 use layout::{
     PhysicalEntryState, PhysicalReentryError, PhysicalReentryWindow,
+    PhysicalWordChange,
     build_two_input_class_state_with_guarded_third_read_source,
     observe_physical_reentries,
 };
 use malbolge::{
-    ProfileMachine, ProfileRegisters, StepOutcome, current_profile,
-    decode_profile_instruction,
+    MemoryLiveIn, ProfileMachine, ProfileRegisterSet, ProfileRegisters,
+    ProfileStepTrace, RegisterMaskedRegionEffectProgram, RunOutcome,
+    StepOutcome, current_profile, decode_profile_instruction,
 };
 
 const ENTRY: u32 = 71;
@@ -71,6 +73,12 @@ fn exact_cycle_predicate_requires_no_io_progress_even_if_core_matches() {
         data_write_addresses: Vec::new(),
         from,
         input_events: Vec::new(),
+        memory_live_ins: Vec::new(),
+        register_live_ins: ProfileRegisterSet {
+            accumulator: true,
+            code_pointer: true,
+            data_pointer: true,
+        },
         net_changed_words: Vec::new(),
         output_bytes: Vec::new(),
         to: PhysicalEntryState { step: 5, ..from },
@@ -88,6 +96,67 @@ fn exact_cycle_predicate_requires_no_io_progress_even_if_core_matches() {
     window.to.registers.data_pointer = 3;
     assert!(!window.core_state_restored());
     assert!(!window.exact_closed_cycle());
+}
+
+#[test]
+fn dead_memory_changes_do_not_invalidate_observed_replay_preconditions() {
+    // A logical window predicate only; the source-backed negative witness
+    // below independently checks real VM entries and live memory.
+    let from = PhysicalEntryState {
+        input_consumed: 2,
+        output_len: 1,
+        registers: ProfileRegisters::default(),
+        step: 10,
+    };
+    let mut window = PhysicalReentryWindow {
+        code_encryption_changes: 1,
+        data_instruction_writes: 1,
+        data_read_addresses: vec![100],
+        data_write_addresses: vec![200],
+        from,
+        input_events: Vec::new(),
+        memory_live_ins: vec![MemoryLiveIn { address: 100, value: 42 }],
+        register_live_ins: ProfileRegisterSet {
+            accumulator: false,
+            code_pointer: true,
+            data_pointer: false,
+        },
+        net_changed_words: vec![PhysicalWordChange {
+            address: 200,
+            before: 7,
+            after: 8,
+        }],
+        output_bytes: vec![9],
+        to: PhysicalEntryState {
+            step: 14,
+            output_len: 2,
+            ..from
+        },
+    };
+    assert!(!window.core_state_restored());
+    assert!(window.live_memory_restored());
+    assert!(window.live_registers_restored());
+    assert!(window.live_entry_restored());
+    assert!(window.fixed_input_replay_preconditions());
+    window.net_changed_words.push(PhysicalWordChange {
+        address: 100,
+        before: 42,
+        after: 43,
+    });
+    assert!(!window.live_memory_restored());
+    assert!(!window.live_entry_restored());
+    assert!(!window.fixed_input_replay_preconditions());
+    let _removed = window.net_changed_words.pop();
+    window.to.input_consumed = 3;
+    assert!(window.live_memory_restored());
+    assert!(!window.fixed_input_replay_preconditions());
+    window.to.input_consumed = 2;
+    window.to.registers.accumulator = 1;
+    // The observed region never reads A before overwriting it.
+    assert!(window.live_registers_restored());
+    window.register_live_ins.accumulator = true;
+    assert!(!window.live_registers_restored());
+    assert!(!window.live_entry_restored());
 }
 
 #[test]
@@ -123,6 +192,15 @@ fn genuine_third_input_path_reenters_but_does_not_restore_state()
         assert_eq!(window.input_events, []);
         assert_eq!(window.output_bytes, [134, 154]);
         assert!(!window.core_state_restored());
+        assert!(!window.live_entry_restored());
+        assert!(!window.fixed_input_replay_preconditions());
+        assert!(!window.memory_live_ins.is_empty());
+        assert!(
+            window
+                .memory_live_ins
+                .windows(2)
+                .all(|pair| pair[0].address < pair[1].address)
+        );
         assert!(!window.exact_closed_cycle());
     }
     Ok(())
@@ -181,6 +259,62 @@ fn real_guest_data_footprints_match_an_independent_traced_replay()
     );
     assert!(!window.data_read_addresses.is_empty());
     assert_eq!(window.data_write_addresses.len(), 8);
+    Ok(())
+}
+
+#[test]
+fn physical_live_ins_agree_with_separate_verified_region_projection()
+-> Result<(), String> {
+    let source = source()?;
+    for input in [vec![3, 4, 5], vec![0, 255, 128]] {
+        let windows = observe_physical_reentries(
+            current_profile(),
+            &source,
+            &input,
+            ENTRY,
+            2,
+            STEPS,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let window = windows.first().ok_or("no physical reentry")?;
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), &source, input)
+                .map_err(|error| error.to_string())?;
+        let mut started = false;
+        let mut traces: Vec<ProfileStepTrace> = Vec::new();
+        for _ in 0..STEPS {
+            if started && vm.registers().code_pointer == ENTRY {
+                break;
+            }
+            started |= vm.registers().code_pointer == ENTRY;
+            let mut trace = None;
+            let result = vm
+                .step_traced(&mut |event| trace = Some(*event))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(result, StepOutcome::Continued);
+            if started {
+                traces.push(trace.ok_or("missing traced instruction")?);
+            }
+        }
+        assert_eq!(traces.len(), window.to.step - window.from.step);
+        let projection =
+            RegisterMaskedRegionEffectProgram::from_profile_region_traces(
+                current_profile(),
+                &traces,
+                traces.len(),
+                RunOutcome::BudgetExhausted { steps: traces.len() },
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(
+            window.memory_live_ins, projection.program.memory_live_ins,
+            "physical collector and portable region proof disagree",
+        );
+        assert_eq!(window.register_live_ins, projection.register_live_ins);
+        assert!(
+            !projection.program.memory_live_ins.is_empty(),
+            "no code memory dependencies in a real guest loop is impossible",
+        );
+    }
     Ok(())
 }
 
@@ -247,6 +381,14 @@ fn chronological_memory_journal_agrees_with_full_vm_memory_images()
         .map(|change| (change.address, change.before, change.after))
         .collect();
     assert_eq!(journal_diff, full_diff);
+    for dependency in &window.memory_live_ins {
+        assert_eq!(
+            first
+                .get(usize::try_from(dependency.address).unwrap_or(usize::MAX)),
+            Some(&dependency.value),
+            "live-in value differs from the complete first-entry image",
+        );
+    }
     assert_eq!(boundaries.len(), 2);
     assert_eq!(window.from.step, boundaries[0].0);
     assert_eq!(window.to.step, boundaries[1].0);

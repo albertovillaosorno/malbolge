@@ -22,16 +22,29 @@ Each interval records exact `A/C/D` registers, stdin cursor, stdout length,
 all reached reads (including EOF), emitted bytes, reached `p`/`*` writes,
 changed XLAT2 writes and a sorted net memory-difference journal. The
 chronological data-read and `p`/`*` write-address lists preserve the actual
-helper footprint, including idempotent stores and `i`/`j` reads. The journal
-tracks the first before-value and last after-value even when a data or
+helper footprint, including idempotent stores and `i`/`j` reads.
+Each observed interval also projects its reached VM traces through the
+existing portable v6 effect-IR checker. Its sorted `memory_live_ins` and
+`register_live_ins` identify values actually read before a first committed
+write. This includes code fetch, data and XLAT2 operand reads. A separate
+source-loaded VM replay checks that the effect-IR dependencies match its
+trace projection; full source-memory snapshots verify their entry values.
+The journal tracks the first before-value and last after-value even when a data or
 encryption instruction writes the same address multiple times. It need not
 copy the entire N15 image at every reentry.
 
 `core_state_restored` requires identical registers and no net changes
 anywhere in memory. `exact_closed_cycle` additionally requires unchanged
-input consumption and output length. Since source, profile and complete
-input are fixed, and the observed interval has no termination, this
-stricter equality suffices for deterministic *fixed-input* repetition.
+input consumption and output length. The less restrictive
+`live_entry_restored` checks just the v6-proven register and memory
+live-ins; `fixed_input_replay_preconditions` also requires the same input
+cursor. Those predicates permit output growth or changes to dead cells, but
+only describe this *observed fixed-input region*. Neither is a source-C
+loop certificate, a translation proof or a promise about different inputs.
+
+Since source, profile and complete input are fixed, and the observed
+interval has no termination, the stricter `exact_closed_cycle` equality
+suffices for deterministic *fixed-input* repetition.
 It does not prove a useful dynamic byte-stream loop or C source translation.
 A stream-processing loop needs a separately proved parametric live-state
 relation allowing specified data, code and I/O changes.
@@ -60,7 +73,11 @@ the same measured boundary values. A separate normative execution clones
 the complete 14,348,907-word memory at the two actual entries and checks
 the journal against the full before/after difference, word by word. A separate
 trace replay checks the ordered data-read and data-write address lists and
-the count of all eight reached `p`/`*` operations.
+the count of all eight reached `p`/`*` operations. The portable v6
+register-masked effect projector agrees with the source-loaded physical
+window's memory live-ins on two independent binary streams. Its observed
+entry dependencies are not restored at C71, so the fixed-input replay
+preconditions reject this candidate.
 
 This is a physically verified return, but not an exact restored core
 state. Empty input and `03` alone do not return to C71; seeking a third

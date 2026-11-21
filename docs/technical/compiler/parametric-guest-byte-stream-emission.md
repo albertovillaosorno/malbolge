@@ -28,6 +28,19 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Live-dependency-bound physical reentry (2026-11-21)
+
+The 132-cell C71 return analyzer now projects each reached interval through
+the existing portable v6 effect-IR checker. Memory values read before the
+first write, and registers read before the first overwrite, are retained as
+explicit live-ins. This distinguishes a changed but dead guest cell from a
+changed code/data/register value that the next traversal needs. A separate
+source-loaded normative trace projection agrees on the live-in memory and
+register masks, and full memory snapshots check the entry values. The
+`live_entry_restored` and `fixed_input_replay_preconditions` predicates
+fail for the current signed-third-read return; no parametric C23 cycle or
+guest checksum has been linked.
+
 ### Exact physical reentry state contract (2026-11-21)
 
 A normative N15 trace-journal checker now compares **all changed guest

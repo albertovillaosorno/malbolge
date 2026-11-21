@@ -26,8 +26,9 @@ use std::collections::BTreeMap;
 use std::mem::take;
 
 use malbolge::{
-    ProfileDescriptor, ProfileMachine, ProfileMemoryWrite, ProfileRegisters,
-    StepOutcome, TraceInput,
+    MemoryLiveIn, ProfileDescriptor, ProfileMachine, ProfileMemoryWrite,
+    ProfileRegisterSet, ProfileRegisters, ProfileStepTrace,
+    RegisterMaskedRegionEffectProgram, RunOutcome, StepOutcome, TraceInput,
 };
 
 /// Maximum source cells admitted by this bounded physical-state experiment.
@@ -74,6 +75,11 @@ pub struct PhysicalReentryWindow {
     pub data_write_addresses: Vec<u32>,
     /// First reached entry state.
     pub from: PhysicalEntryState,
+    /// Entry words read before any reached write, including code fetch,
+    /// instruction data and XLAT2 operand reads.
+    pub memory_live_ins: Vec<MemoryLiveIn>,
+    /// Register values actually read before their first committed overwrite.
+    pub register_live_ins: ProfileRegisterSet,
     /// All real input attempts, including EOF without consumption.
     pub input_events: Vec<TraceInput>,
     /// Final-minus-initial changes in the *whole* profile memory image.
@@ -93,6 +99,50 @@ impl PhysicalReentryWindow {
     pub fn core_state_restored(&self) -> bool {
         self.from.registers == self.to.registers
             && self.net_changed_words.is_empty()
+    }
+
+    /// All memory words needed before the first reached write are restored.
+    ///
+    /// Dead-memory changes are permitted; a future candidate must still
+    /// independently replay the same bounded path on the normative VM.
+    #[must_use]
+    pub fn live_memory_restored(&self) -> bool {
+        self.memory_live_ins.iter().all(|read| {
+            self.net_changed_words
+                .iter()
+                .all(|change| change.address != read.address)
+        })
+    }
+
+    /// All actually required entry registers are restored.
+    ///
+    /// Dead registers may differ if the verified region effect projection
+    /// proves they are overwritten before any semantic use.
+    #[must_use]
+    pub fn live_registers_restored(&self) -> bool {
+        let required = self.register_live_ins;
+        let from = self.from.registers;
+        let to = self.to.registers;
+        (!required.accumulator || from.accumulator == to.accumulator)
+            && (!required.code_pointer || from.code_pointer == to.code_pointer)
+            && (!required.data_pointer || from.data_pointer == to.data_pointer)
+    }
+
+    /// The fixed-input window's observed live entry dependencies are restored.
+    #[must_use]
+    pub fn live_entry_restored(&self) -> bool {
+        self.live_memory_restored() && self.live_registers_restored()
+    }
+
+    /// State preconditions to replay this observed interval on fixed input.
+    ///
+    /// The input cursor must not advance. Output and dead-memory writes may
+    /// advance without changing the following interval's read dependencies.
+    /// Independently replay any candidate before accepting it for linking.
+    #[must_use]
+    pub fn fixed_input_replay_preconditions(&self) -> bool {
+        self.live_entry_restored()
+            && self.from.input_consumed == self.to.input_consumed
     }
 
     /// The complete deterministic VM state is restored for this fixed stdin.
@@ -176,6 +226,9 @@ pub fn observe_physical_reentries(
         .map_err(|_error| PhysicalReentryError::GuestLoad)?;
     let mut previous: Option<PhysicalEntryState> = None;
     let mut journal: BTreeMap<u32, PhysicalWordChange> = BTreeMap::new();
+    // Reuse the independently checked portable v6 dependency projection,
+    // rather than maintaining another interpreter for read/write dominance.
+    let mut region_traces: Vec<ProfileStepTrace> = Vec::new();
     let mut windows = Vec::with_capacity(required_visits.saturating_sub(1));
     let mut input_events = Vec::new();
     let mut output_bytes = Vec::new();
@@ -193,9 +246,21 @@ pub fn observe_physical_reentries(
                 output_len: vm.output().len(),
             };
             if let Some(from) = previous {
+                let region = RegisterMaskedRegionEffectProgram::
+                    from_profile_region_traces(
+                        profile,
+                        &region_traces,
+                        region_traces.len(),
+                        RunOutcome::BudgetExhausted {
+                            steps: region_traces.len(),
+                        },
+                    )
+                    .map_err(|_error| PhysicalReentryError::GuestStep)?;
                 windows.push(PhysicalReentryWindow {
                     from,
                     to: boundary,
+                    memory_live_ins: region.program.memory_live_ins,
+                    register_live_ins: region.register_live_ins,
                     net_changed_words: journal
                         .values()
                         .copied()
@@ -208,14 +273,15 @@ pub fn observe_physical_reentries(
                     input_events: take(&mut input_events),
                     output_bytes: take(&mut output_bytes),
                 });
-                if windows.len().saturating_add(1) == required_visits {
-                    return Ok(windows);
-                }
             }
             previous = Some(boundary);
             journal.clear();
+            region_traces.clear();
             data_instruction_writes = 0;
             code_encryption_changes = 0;
+        }
+        if windows.len().saturating_add(1) == required_visits {
+            return Ok(windows);
         }
 
         let mut observed = None;
@@ -224,6 +290,7 @@ pub fn observe_physical_reentries(
             .map_err(|_error| PhysicalReentryError::GuestStep)?;
         let trace = observed.ok_or(PhysicalReentryError::GuestStep)?;
         if previous.is_some() {
+            region_traces.push(trace);
             if let Some(read) = trace.memory_reads.data {
                 data_read_addresses.push(read.address);
             }
