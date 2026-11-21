@@ -75,6 +75,29 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a **real same-physical-site repeated-input** guest
+  now passes on both normative N15 VMs for empty, NUL, 128, 255 and three
+  successful bytes. A 117-cell graphical source executes 60 steps and
+  halts: C47 is actually reached as `/`, inert `P`, then `/` again, with
+  exactly two guest input events, correct EOF and unread-suffix behavior,
+  no output, and independently pinned code/data pointer trajectories.
+  Four guest `i` transfers and three real `j` data resets use source-loaded,
+  loader-admitted operand cells to revisit C47 after its two XLAT2 mutations.
+  This is a fixed **two-read finite guest**, not a dynamic `getchar()` loop,
+  C23 source checksum or source-linked compiler output; no admission gate is
+  relaxed. See `tests/compiler_same_site_two_read_guest.rs`.
+
+- On 2026-11-20, all 94 physical decoder phases were exhausted
+  under canonical XLAT2: no initial graphical `/` code cell can still decode
+  as `/` at its very next visit without an external data write. Exactly two
+  phases (43 and 47) would decode `/`, inert no-op, `/` on successive visits
+  after two encryptions; this is **not** a demonstrated guest loop. Normative
+  N15 current/historical VM runs independently confirm C47's first real read
+  and 70-to-74 self-encryption for empty, NUL and `ff` streams. Future P2
+  source-linked `getchar()` iteration must prove its dynamic return path and
+  code-memory lifecycle rather than equating a CFG backedge with a repeated
+  physical `/`. See `tests/compiler_input_revisit_phase.rs`.
+
 - On 2026-11-20, the unchanged seven-block mutable checksum again
   passed its five native C23 binary controls and correctly refused guest
   publication at the physical linker. Red-first source-CFG witnesses exposed

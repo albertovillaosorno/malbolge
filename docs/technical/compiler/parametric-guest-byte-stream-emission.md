@@ -28,6 +28,43 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical two-read same-site N15 guest (2026-11-20)
+
+A new 117-cell, loadable guest witness physically re-enters **the same C47
+input code address** three times. Its evolving XLAT2 values are 70 (`/`),
+74 (`P`, inert), and 70 (`/`) again; hence it performs **two separate real
+input reads from one source cell**. Four real `i` transfers (at C49 three
+times and C75 once) use evolving data words to reach C47, C73, C47 and C116.
+The intermediate C73/C74 `j` data resets address M91=65, M66=109 and
+M110=46; the earlier C48 reset reads M48=86 and the final C49 transfer
+reads M113=115. Source-loaded operands remain loader-valid graphical bytes,
+not invented memory contents. Current and historical normative N15 VMs both
+halt after exactly 60 steps on five streams: empty, NUL, `80`, `ff`, and
+`01 02 03`. They perform the expected two input events (including EOF
+attempts, preserving the third unread byte), exact C/D paths, code-cell
+self-encryption, and no output. This overcomes the naive one-visit input
+obstruction for a **fixed two-read finite guest**. It is still unconditional:
+there is no EOF-conditional exit, C23 signed-local storage, source-C link,
+third successful read or mutable checksum. See
+`tests/compiler_same_site_two_read_guest.rs`.
+
+### Physical same-site input revisit obstruction (2026-11-20)
+
+A separate all-94-phase XLAT1/XLAT2 enumeration now proves a narrow but
+important guest loop constraint: a graphical source cell initially decoding
+as `/` **cannot decode as `/` on the next execution of that same address**
+after its automatic encryption, assuming no intervening guest data write to
+that code cell. After a second encryption, only phases 43 and 47 would again
+decode as `/`, and both have a harmless intermediate no-op decode (`$` and
+`P`, respectively). The real current/historical profile VMs execute one
+physical `/` at C47 on empty, NUL and `ff` streams, prove its XLAT2 write
+(70 to 74), and halt after 49 steps. The two candidate three-visit patterns
+are **only opcode recurrences**, not executable backedges, input loops, C
+normalization or source-compiler linkage. A valid dynamic EOF checksum loop
+must place and verify its complete return path, all intervening instructions,
+and code/data pointer state, or choose a different physically justified
+implementation. See `tests/compiler_input_revisit_phase.rs`.
+
 ### Source-known cast and comparison branch feasibility (2026-11-20)
 
 The source-input prefix verifier now preserves exactly known C23 `getchar`
