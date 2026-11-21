@@ -68,6 +68,10 @@ pub struct PhysicalReentryWindow {
     pub code_encryption_changes: usize,
     /// Count of reached p/* instruction writes, including idempotent writes.
     pub data_instruction_writes: usize,
+    /// Every real guest data read, in chronological order.
+    pub data_read_addresses: Vec<u32>,
+    /// Every p/* instruction's data target, including idempotent writes.
+    pub data_write_addresses: Vec<u32>,
     /// First reached entry state.
     pub from: PhysicalEntryState,
     /// All real input attempts, including EOF without consumption.
@@ -176,6 +180,8 @@ pub fn observe_physical_reentries(
     let mut input_events = Vec::new();
     let mut output_bytes = Vec::new();
     let mut data_instruction_writes = 0usize;
+    let mut data_read_addresses = Vec::new();
+    let mut data_write_addresses = Vec::new();
     let mut code_encryption_changes = 0usize;
 
     for step in 0..step_budget {
@@ -196,6 +202,8 @@ pub fn observe_physical_reentries(
                         .filter(|word| word.before != word.after)
                         .collect(),
                     data_instruction_writes,
+                    data_read_addresses: take(&mut data_read_addresses),
+                    data_write_addresses: take(&mut data_write_addresses),
                     code_encryption_changes,
                     input_events: take(&mut input_events),
                     output_bytes: take(&mut output_bytes),
@@ -216,7 +224,15 @@ pub fn observe_physical_reentries(
             .map_err(|_error| PhysicalReentryError::GuestStep)?;
         let trace = observed.ok_or(PhysicalReentryError::GuestStep)?;
         if previous.is_some() {
+            if let Some(read) = trace.memory_reads.data {
+                data_read_addresses.push(read.address);
+            }
             if matches!(trace.decoded, Some(b'p' | b'*')) {
+                let data = trace
+                    .memory_reads
+                    .data
+                    .ok_or(PhysicalReentryError::GuestStep)?;
+                data_write_addresses.push(data.address);
                 data_instruction_writes =
                     data_instruction_writes.saturating_add(1);
             }

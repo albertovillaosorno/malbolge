@@ -20,7 +20,9 @@ overwrites the guest image or restores registers.
 
 Each interval records exact `A/C/D` registers, stdin cursor, stdout length,
 all reached reads (including EOF), emitted bytes, reached `p`/`*` writes,
-changed XLAT2 writes and a sorted net memory-difference journal. The journal
+changed XLAT2 writes and a sorted net memory-difference journal. The
+chronological data-read and `p`/`*` write-address lists preserve the actual
+helper footprint, including idempotent stores and `i`/`j` reads. The journal
 tracks the first before-value and last after-value even when a data or
 encryption instruction writes the same address multiple times. It need not
 copy the entire N15 image at every reentry.
@@ -56,7 +58,9 @@ The intervening interval changes **78 memory words** in net, with
 It emits `86 9a` without another input event. All three streams have
 the same measured boundary values. A separate normative execution clones
 the complete 14,348,907-word memory at the two actual entries and checks
-the journal against the full before/after difference, word by word.
+the journal against the full before/after difference, word by word. A separate
+trace replay checks the ordered data-read and data-write address lists and
+the count of all eight reached `p`/`*` operations.
 
 This is a physically verified return, but not an exact restored core
 state. Empty input and `03` alone do not return to C71; seeking a third

@@ -67,6 +67,8 @@ fn exact_cycle_predicate_requires_no_io_progress_even_if_core_matches() {
     let mut window = PhysicalReentryWindow {
         code_encryption_changes: 0,
         data_instruction_writes: 0,
+        data_read_addresses: Vec::new(),
+        data_write_addresses: Vec::new(),
         from,
         input_events: Vec::new(),
         net_changed_words: Vec::new(),
@@ -123,6 +125,62 @@ fn genuine_third_input_path_reenters_but_does_not_restore_state()
         assert!(!window.core_state_restored());
         assert!(!window.exact_closed_cycle());
     }
+    Ok(())
+}
+
+#[test]
+fn real_guest_data_footprints_match_an_independent_traced_replay()
+-> Result<(), String> {
+    let source = source()?;
+    let input = [3, 4, 5];
+    let windows = observe_physical_reentries(
+        current_profile(),
+        &source,
+        &input,
+        ENTRY,
+        2,
+        STEPS,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let window = windows
+        .first()
+        .ok_or_else(|| "no physical reentry".to_owned())?;
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), &source, input.to_vec())
+            .map_err(|error| error.to_string())?;
+    let mut visiting = false;
+    let mut actual_reads = Vec::new();
+    let mut actual_writes = Vec::new();
+    for _step in 0..STEPS {
+        if vm.registers().code_pointer == ENTRY {
+            if visiting {
+                break;
+            }
+            visiting = true;
+        }
+        let mut trace = None;
+        let outcome = vm
+            .step_traced(&mut |observed| trace = Some(*observed))
+            .map_err(|error| error.to_string())?;
+        if visiting {
+            let observed = trace.ok_or("missing trace event")?;
+            if let Some(read) = observed.memory_reads.data {
+                actual_reads.push(read.address);
+                if matches!(observed.decoded, Some(b'p' | b'*')) {
+                    actual_writes.push(read.address);
+                }
+            }
+        }
+        assert_eq!(outcome, StepOutcome::Continued);
+    }
+    assert_eq!(window.data_read_addresses, actual_reads);
+    assert_eq!(window.data_write_addresses, actual_writes);
+    assert_eq!(
+        window.data_instruction_writes,
+        window.data_write_addresses.len()
+    );
+    assert!(!window.data_read_addresses.is_empty());
+    assert_eq!(window.data_write_addresses.len(), 8);
     Ok(())
 }
 

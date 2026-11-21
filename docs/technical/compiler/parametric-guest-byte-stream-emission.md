@@ -37,7 +37,9 @@ third-read candidate visits C71 at steps 71 and 141, but its live D changes
 from 141 to 7,174,359, A changes from 134 to 4,783,015, and 78 memory
 words differ; 8 genuine data-write instructions and 70 XLAT2 changes are
 recorded. A second real VM replay compares the journal to two full
-14,348,907-word memory snapshots and finds exact agreement. Three binary
+14,348,907-word memory snapshots and finds exact agreement. Chronological
+guest data-read and `p`/`*` write-target footprints are now checked against
+another independent normative trace, including idempotent stores. Three binary
 streams pass; EOF early exits and a rejected third reentry fail closed.
 
 This exposes missing physical state restoration without pretending a

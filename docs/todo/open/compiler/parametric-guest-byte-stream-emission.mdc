@@ -80,8 +80,10 @@ evidence describe the old priority scheme, not the current phase.
   is visited at steps 71 and 141, but D changes 141 to 7,174,359, A changes
   134 to 4,783,015 and 78 actual memory words differ. The independent
   full-N15-memory replay matches the trace journal exactly; 8 physical
-  data writes and 70 changed XLAT2 writes occur between entries. Three
-  binary three-byte paths prove the bounded failure of an identical
+  data writes and 70 changed XLAT2 writes occur between entries. Ordered
+  data-read and all eight `p`/`*` target addresses match a separate
+  normative VM replay. Three binary three-byte paths prove the bounded
+  failure of an identical
   state contract, while EOF and later invalid-encryption paths refuse.
   `tests/compiler_physical_reentry.rs` and
   `docs/technical/compiler/physical-reentry-state-contract.md` record
