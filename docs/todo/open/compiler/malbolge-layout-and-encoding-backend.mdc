@@ -51,6 +51,16 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Direct Data-to-Code Jump Negative Witness (2026-11-21)
+
+A genuine N15 C25 `i` substitution after the accepted EOF-zero
+predicate fails closed on four actual input cases within 26+1
+steps. EOF reaches non-graphical C101, NUL non-graphical C37;
+`01` and `ff` refuse `InvalidEncryptionTarget` at C7,174,417.
+This bounded result excludes only the naive `*`-to-`i` suffix;
+source-backed code placement and valid encrypted branch targets
+remain required before C23 EOF control can be linked.
+
 ## Actual Guest EOF-Zero Word and Data-Pointer Selection (2026-11-21)
 
 A 28-step source-loaded N15 guest continues the real raw-byte

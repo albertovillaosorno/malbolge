@@ -20,6 +20,26 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Bounded direct EOF-data-to-code jump refusal (2026-11-21)
+
+A follow-up four-stream physical N15 experiment changes only the
+reached classifier instruction C25 from `*` to graphical `i`.
+This is an actual guest code-pointer transfer, not a symbolic
+instruction guess. With a 26-transition ceiling, true EOF
+selects D1 and reaches C101, whose loader word is non-graphical;
+byte `00` selects D7,174,454 and reaches C37, also non-graphical.
+Each next fetch terminates with `NonGraphicalCell`. Byte `01`
+and `ff` select D2,391,485 and D7,174,369, respectively, and
+the attempted `i` refuses with `InvalidEncryptionTarget` at
+C7,174,417 before a valid branch can commit. The temporary
+four-stream guest probe ran in a finite 26+1-step budget.
+
+This rejects **only the direct C25 `*`-to-`i` substitution** on
+this 33-cell physical source; no general impossibility for a
+relocated executable branch is implied. Real code-cell placement,
+post-jump encryption, conditional EOF control and the complete
+mutable checksum remain open.
+
 ### EOF-zero guest data predicate and indirect loader read (2026-11-21)
 
 A source-loaded N15 guest now executes 28 steps from the same
