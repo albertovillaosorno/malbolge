@@ -89,6 +89,32 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
 
 ## Evidence
 
+- On 2026-11-20, a bounded **physical 282-phase two-envelope** experiment
+  used two deterministic 564-cell, loader-valid N15 sources differing only
+  in the C281 exit opcode (`o` continuation versus `j` data reset). Each
+  envelope's first 281 graphical source bytes match its copy at +282,
+  including actual `j` at C200/C482, signed raw `/` at C205/C487, `p` at
+  C206/C488 and `<` at C207/C489. Every one of the 564 executed cells,
+  decoded opcode, source fetch, XLAT2 encryption read and changed code cell
+  is checked against the normative VM. The initial C200 reset reads 122,
+  but the second C482 reset reads the *encrypted* earlier M404=121, so even
+  the straight-line copy writes distinct M128 and M127. Replacing C281 `o`
+  with `j` reads the earlier encrypted M203=45, resets the data pointer and
+  makes C482 read M246=89 and write M95 instead. Both candidates halt in
+  exactly 564 steps on the **five frozen input streams** empty, `00`,
+  `80`, `ff`, `01 02`; independent 15-trit crazy oracles check both full
+  writes, actual bytes consumed (0/1/2) and both output bytes. On `01 02`,
+  the straight-line case emits `36 34`, while the C281 data-reset case
+  emits `36 36` (hex). Each has two real data writes and full code-cell
+  self-encryption checks. The 564-byte graphical source digests (SHA-256)
+  are `21a24631eb862db045001944ac10578a59571924aabc9d6c3b338eefe4a663c8`
+  and `8190fe600433f86a7001e8b662a4a10e79687254cb7f29523514aabf83f15de6`.
+  These are only **two fixed, bounded layouts**, not a search of all returns
+  or a 282-step cycle: C advances through different physical code cells;
+  the explicit `j` is a *data*-pointer restart, not a C return. The
+  original mutable-C EOF checksum remains unlinked and its 3 native/refusal
+  controls continue to pass. See `tests/compiler_282_phase_blocks.rs`.
+
 - On 2026-11-17, a source-loaded 29-cell N15 guest executes nine real
   rotations and pointer resets, then `/; p; p; <` with two distinct real
   loader operands. Both manual and automatically relocated layouts yield
