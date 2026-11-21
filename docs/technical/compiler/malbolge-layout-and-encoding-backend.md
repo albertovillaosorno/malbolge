@@ -20,6 +20,35 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Two input-dependent guest state writes with EOF guard (2026-11-21)
+
+`build_two_input_class_state_with_guarded_third_read_source` adds two
+real `p` instructions to the existing 132-cell N15 guarded-input guest.
+C53 reads the first signed word, and C62 combines that live word with
+loader-derived M132=7,174,350 before C63 performs the second `/`.
+C103 combines the *second* input's derived class accumulator with
+loader-derived M7,174,355=125. It writes M7,174,355=53 for each of
+256 successful second bytes, or 134 for second-input EOF. These
+addresses are distinct and their writes survive both existing control
+arms. The encrypted C103 revisit is inert and cannot double-write.
+
+The unchanged C114 physical `i` still sends second EOF to C126,
+where C127 `p` conditionally changes M145 from 134 to 4,783,019,
+while successful second bytes return to C45 and execute a third actual
+`/` at encrypted C101 without touching M145. The first input is
+still echoed at C54, followed by the fixed 171/154 class marker.
+
+A focused regression uses an independent 15-trit crazy oracle, eight
+mixed/EOF streams, and a 256-case diagonal input matrix covering all
+first and second byte values. It checks exact physical input sites,
+output, read consumption, 119/175-step halts, branch targets, each
+actual data write, class result, and inactive revisits. Three separate
+mutations remove one input-derived write while preserving the rest of
+the source; actual N15 guest replays detect the missing state. This is
+three independently reached conditional/data effects, but **not**
+a source-C C32 result, input-dependent checksum accumulator, true
+repeatable input loop, phi transfer or linked seven-block C23 checksum.
+
 ### Composed second-input EOF store or guarded third read (2026-11-21)
 
 `build_second_input_eof_store_or_third_read_source` composes three

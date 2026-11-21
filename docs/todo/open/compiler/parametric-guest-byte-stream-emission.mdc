@@ -75,6 +75,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, one graphical 132-cell N15 guest now executes two
+  physically distinct input-derived `p` writes before and after its second
+  signed read, **while preserving** the real second-EOF `i` branch,
+  EOF-only M145 scratch write and guarded third `/`. C62 folds first
+  input into M132; C103 writes the second word's full EOF class 134
+  versus byte class 53 into M7,174,355. A 256-case diagonal binary
+  matrix plus eight boundary streams verifies both data writes, actual
+  read sites, class branch, output, termination and unread suffix;
+  three negative source mutations isolate missing writes. The first
+  fold is lossy, so neither write satisfies canonical source-C C32
+  state or the original seven-block checksum. P2 remains open.
+
 - On 2026-11-21, the actual 132-cell signed N15 branch now composes
   **second-input EOF control, EOF-only scratch storage, and guarded
   third input** in a single graphical source. C53 echoes the first

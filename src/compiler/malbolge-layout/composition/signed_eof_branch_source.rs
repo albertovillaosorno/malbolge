@@ -462,6 +462,31 @@ pub fn build_second_input_eof_store_or_third_read_source(
     Ok(source)
 }
 
+/// Retain two distinct input-derived guest words across an EOF guard.
+///
+/// C62 folds the first signed read into M132 before the second C63 input.
+/// C103 then writes the second input's full-word EOF class into M7174355:
+/// 134 for true EOF or 53 for any successful byte. Its encrypted revisit is
+/// inert. C114 still branches on the second input: EOF reaches an additional
+/// C127 scratch write, while a successful byte reaches an encrypted C101
+/// third read and skips that EOF-only write. All effects use real Malbolge
+/// instructions; these are lossy scratch words, not source-C32 locals or
+/// a repeatable checksum loop.
+///
+/// # Errors
+///
+/// Refuses non-current profiles or missing graphical encodings. This exact
+/// physical layout requires independent bounded normative VM admission.
+pub fn build_two_input_class_state_with_guarded_third_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source =
+        build_second_input_eof_store_or_third_read_source(profile)?;
+    put(&mut source, 62, b'p')?;
+    put(&mut source, 103, b'p')?;
+    Ok(source)
+}
+
 /// Read a third signed word only when the second word was not EOF.
 ///
 /// The C63 read controls the physical byte/EOF jump. Only its successful-byte

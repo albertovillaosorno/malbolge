@@ -478,3 +478,301 @@ fn composing_guard_and_store_has_independent_negative_controls()
     }
     Ok(())
 }
+
+const FIRST_FOLD_ADDRESS: u32 = 132;
+const FIRST_FOLD_BEFORE: u32 = 7_174_350;
+const SECOND_CLASS_ADDRESS: u32 = 7_174_355;
+const SECOND_CLASS_BEFORE: u32 = 125;
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "source-independent two-input state, branch and guard VM admission"
+)]
+fn two_input_class_writes_survive_the_guarded_third_read() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source =
+        layout::build_two_input_class_state_with_guarded_third_read_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    let baseline =
+        layout::build_second_input_eof_store_or_third_read_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 132);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    let changed = source
+        .iter()
+        .zip(&baseline)
+        .enumerate()
+        .filter_map(|(position, (new, old))| (new != old).then_some(position))
+        .collect::<Vec<_>>();
+    assert_eq!(changed, [62, 103]);
+
+    // Decode each added physical instruction independently. The encrypted
+    // C103 revisit must not overwrite the newly stored second-input class.
+    for position in [62usize, 103] {
+        assert_eq!(
+            decode_profile_instruction(
+                u32::from(source[position]),
+                position as u32
+            ),
+            Some(b'p'),
+        );
+    }
+    let second_pass = malbolge::encrypt_profile_cell(u32::from(source[103]))
+        .and_then(|word| decode_profile_instruction(word, 103));
+    assert_eq!(second_pass, Some(b'#'));
+
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    for (address, original) in [
+        (FIRST_FOLD_ADDRESS, FIRST_FOLD_BEFORE),
+        (SECOND_CLASS_ADDRESS, SECOND_CLASS_BEFORE),
+        (EOF_SCRATCH_ADDRESS, EOF_SCRATCH_BEFORE),
+    ] {
+        assert_eq!(loaded.memory_word(address), Ok(original));
+    }
+
+    // Exercise all 256 byte values in both input positions in one diagonal
+    // matrix, plus distinct mixed and truncated streams at all EOF sites.
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0xa7],
+        vec![128, 127],
+        vec![0, 0, 255],
+        vec![255, 255, 0, 253],
+        vec![0xa7, 0, 255],
+    ];
+    for input in cases
+        .into_iter()
+        .chain((0..=255u8).map(|byte| vec![byte, byte, 255, 0]))
+    {
+        let second_eof = input.len() < 2;
+        let first_raw = input
+            .first()
+            .map_or(profile.eof_word(), |byte| u32::from(*byte));
+        let expected_first = input.first().copied().unwrap_or(106);
+        let class_accumulator = if second_eof {
+            7_174_354
+        } else {
+            7_174_435
+        };
+        let expected_class =
+            independent_crazy(SECOND_CLASS_BEFORE, class_accumulator);
+        assert_eq!(
+            expected_class,
+            if second_eof {
+                134
+            } else {
+                53
+            }
+        );
+        let expected_first_fold =
+            independent_crazy(FIRST_FOLD_BEFORE, first_raw);
+
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = vec![];
+        let outcome = vm
+            .run_traced(176, &mut |step| trace.push(*step))
+            .map_err(|error| format!("input {input:?}: {error}"))?;
+        assert_eq!(
+            outcome,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: if second_eof {
+                    119
+                } else {
+                    175
+                },
+            },
+            "input {input:?}",
+        );
+        assert_eq!(
+            vm.output(),
+            &[
+                expected_first,
+                if second_eof {
+                    171
+                } else {
+                    154
+                }
+            ],
+            "input {input:?}",
+        );
+        assert_eq!(
+            vm.input_consumed(),
+            input.len().min(if second_eof {
+                2
+            } else {
+                3
+            })
+        );
+        let read_sites = trace
+            .iter()
+            .filter(|step| step.decoded == Some(b'/'))
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            read_sites,
+            if second_eof {
+                vec![53, 63]
+            } else {
+                vec![53, 63, 101]
+            },
+            "input {input:?}",
+        );
+
+        for (address, previous, expected, code, accumulator) in [
+            (
+                FIRST_FOLD_ADDRESS,
+                FIRST_FOLD_BEFORE,
+                expected_first_fold,
+                62,
+                first_raw,
+            ),
+            (
+                SECOND_CLASS_ADDRESS,
+                SECOND_CLASS_BEFORE,
+                expected_class,
+                103,
+                class_accumulator,
+            ),
+        ] {
+            let reached = trace
+                .iter()
+                .filter(|step| step.before.registers.code_pointer == code)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                reached.len(),
+                if second_eof {
+                    1
+                } else {
+                    2
+                },
+                "input {input:?}"
+            );
+            let store = reached[0];
+            assert_eq!(store.decoded, Some(b'p'));
+            assert_eq!(store.before.registers.accumulator, accumulator);
+            assert_eq!(
+                store
+                    .memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((address, previous)),
+                "input {input:?}",
+            );
+            assert_eq!(
+                store.memory_delta.data.map(|write| (
+                    write.address,
+                    write.before,
+                    write.after
+                )),
+                (previous != expected).then_some((address, previous, expected)),
+                "input {input:?}",
+            );
+            assert_eq!(vm.memory_word(address), Ok(expected));
+            if !second_eof {
+                assert_ne!(reached[1].decoded, Some(b'p'));
+            }
+        }
+        let branch = trace
+            .iter()
+            .find(|step| step.before.registers.code_pointer == 114)
+            .ok_or("missing physical EOF branch")?;
+        assert_eq!(branch.decoded, Some(b'i'));
+        assert_eq!(
+            branch.after.registers.code_pointer,
+            if second_eof {
+                126
+            } else {
+                45
+            },
+        );
+        let eof_writes = trace
+            .iter()
+            .filter(|step| step.before.registers.code_pointer == 127)
+            .collect::<Vec<_>>();
+        assert_eq!(eof_writes.len(), usize::from(second_eof));
+        if second_eof {
+            let store = eof_writes[0];
+            assert_eq!(store.decoded, Some(b'p'));
+            assert_eq!(store.before.registers.accumulator, EOF_CLASS_WORD);
+            assert_eq!(
+                store.memory_delta.data.map(|write| (
+                    write.address,
+                    write.before,
+                    write.after
+                )),
+                Some((
+                    EOF_SCRATCH_ADDRESS,
+                    EOF_SCRATCH_BEFORE,
+                    EOF_SCRATCH_AFTER
+                )),
+            );
+        }
+        assert_eq!(
+            vm.memory_word(EOF_SCRATCH_ADDRESS),
+            Ok(if second_eof {
+                EOF_SCRATCH_AFTER
+            } else {
+                EOF_SCRATCH_BEFORE
+            }),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn independent_mutations_detect_each_new_guest_state_write()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_two_input_class_state_with_guarded_third_read_source(
+            profile,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    let baseline =
+        layout::build_second_input_eof_store_or_third_read_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    for (position, input, changed_address) in [
+        (62usize, vec![7, 8, 9], FIRST_FOLD_ADDRESS),
+        (103, vec![7, 8, 9], SECOND_CLASS_ADDRESS),
+        (103, vec![7], SECOND_CLASS_ADDRESS),
+    ] {
+        let mut altered = source.clone();
+        altered[position] = baseline[position];
+        let mut vm = ProfileMachine::from_source(profile, &altered, input)
+            .map_err(|error| error.to_string())?;
+        let result = vm.run(176).map_err(|error| error.to_string())?;
+        assert!(matches!(result, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }));
+        let expected = if changed_address == FIRST_FOLD_ADDRESS {
+            FIRST_FOLD_BEFORE
+        } else {
+            SECOND_CLASS_BEFORE
+        };
+        assert_eq!(vm.memory_word(changed_address), Ok(expected));
+    }
+    assert_eq!(
+        layout::build_two_input_class_state_with_guarded_third_read_source(
+            malbolge::historical_profile(),
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile),
+    );
+    Ok(())
+}
