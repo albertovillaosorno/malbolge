@@ -12,6 +12,35 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Source-loaded raw-byte adjacent C32 pair (2026-11-21)
+
+`build_guest_byte_c32_pair_source` executes a graphical 33-byte N15
+`j;p;p;j;p;p;p;j;*;/;p;j;p;v` body in 14 real steps. The first two
+`j;p;p` segments prepare a loader-derived zero and move D to the
+adjacent data region. The physical C5 `p` writes high M7,174,419=0,
+C8 `*` primes low M7,174,418=7,174,453 (15 ternary ones), C9 `/`
+reads a true byte or EOF, C10 `p` stores an injective encoding into
+M7,174,420, C11 `j` returns to the low word, and C12 `p` writes the
+**original raw byte** into M7,174,418. Both physical words were
+initially nonzero in the real source loader.
+
+Two actual `p` steps with the all-ones operand are an involution:
+for every ternary digit, `0 ↔ 1` and `2 → 2`. The independent
+31-code-cell/two-tail census admits 13 source layouts among 1,024
+eligible graphical sources. The canonical first has `scratch=41`,
+`low=7,174,418`; 257 scalar cases prove exact `[byte,0]` for all
+256 successful raw input bytes and distinguish true EOF. Seven actual
+normative VM traces verify the read, zero write, rotation, both
+input-dependent writes, second reentry, self-encryption and halt.
+
+**Important:** N15 EOF yields `[14,348,906, 0]`, **not** signed C23
+`getchar` EOF `[4,644,102, 299]`. The state occupies a fixed loader-
+selected address, not an SSA/frame location; no source-C checksum,
+control branch, EOF normalization or reusable input loop is linked.
+This is a genuine full-width successful-byte physical store, not
+publication of the original seven-block mutable checksum. See
+`tests/compiler_adjacent_zero_source.rs`.
+
 ### Two physical zero words retained through a real input (2026-11-21)
 
 `build_adjacent_c32_zero_then_input_source` reuses the bounded

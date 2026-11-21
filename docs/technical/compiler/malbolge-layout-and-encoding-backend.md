@@ -20,6 +20,28 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Raw input copied into an adjacent guest C32 byte pair (2026-11-21)
+
+A bounded 33-byte graphical N15 program now physically materializes
+`[byte, 0]` across two adjacent 15-trit words from a **real** guest
+`/` read. It executes `jppjpppj*/pjpv` in 14 steps: scratch-zero
+synthesis, high zero at M7,174,419, low-word rotation to ternary
+all-ones, actual input read C9, input-dependent encoded write at
+M7,174,420, loader-backed return `j` C11, and final `p` C12 to
+M7,174,418. Two all-ones `p` steps compose to the identity on
+all ternary digits. Its low word is exactly the successful byte,
+not a host-supplied fake value. Real VM traces cover 7 binary/EOF
+cases with code encryption and physical data writes; independent
+scalar checks cover all 257 raw byte/EOF classes.
+
+An exhaustive 31-code-cell, 2-graphical-tail, 18-prefix census
+inspects 1,024 source layouts and finds 13 exact plans. The guest
+requires canonical initial A/C/D zero and uses fixed loader placement.
+EOF remains **raw** `[14,348,906, 0]`, not the signed C23 `getchar`
+result `[4,644,102, 299]`. No source-SSA frame, EOF branch,
+checksum arithmetic, phi or actual source-C loop is linked. The
+original seven-block checksum correctly remains unpublished.
+
 ### Two physical zero words retained through a real input (2026-11-21)
 
 `build_adjacent_c32_zero_then_input_source` reuses the bounded

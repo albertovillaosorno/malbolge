@@ -28,6 +28,7 @@
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 
 use malbolge::{
@@ -37,6 +38,14 @@ use malbolge::{
 
 const CODE_CELLS: usize = 60;
 const SOURCE_CELLS: usize = 62;
+// This is a source-loaded physical raw-input pair, not signed C23 EOF storage.
+// It must represent each *successful* getchar byte as [byte, 0] without host
+// I/O substitution; EOF must remain distinguishable but is not normalized.
+const RAW_PAIR_HEX: &str = concat!(
+    "283d3c253a3938217d6c347b3244363534333231302f2e2d2c2b2a292827",
+    "262524",
+);
+
 const SOURCE_HEX: &str = concat!(
     "44434241403f3e3d3c7d34337a31302f762d3f31302f2e2d2c2b2a292827",
     "2625242322217e7d7c7b7a797877767574737271706f6e6d6c6b6a6968672725",
@@ -512,5 +521,303 @@ fn input_after_zero_matches_independent_source_census() -> Result<(), String> {
         layout::build_adjacent_c32_zero_then_input_source(current_profile())
             .map_err(|error| format!("{error:?}"))?;
     assert_eq!(plan.source, matches[0]);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    clippy::indexing_slicing,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "independent full graphical search and 257-class raw C32 witness"
+)]
+fn guest_byte_c32_pair_matches_independent_source_census() -> Result<(), String>
+{
+    const CODE: usize = 31;
+    const BODY: &[u8] = b"jppjpppj*/pjpv";
+    let mut eligible = 0usize;
+    let mut matches = Vec::new();
+    for prefix in 0..=(CODE - BODY.len()) {
+        let mut source = (0..prefix)
+            .map(|position| encode(111, position))
+            .chain(
+                BODY.iter()
+                    .enumerate()
+                    .map(|(index, opcode)| encode(*opcode, prefix + index)),
+            )
+            .chain(
+                ((prefix + BODY.len())..CODE)
+                    .map(|position| encode(111, position)),
+            )
+            .collect::<Result<Vec<_>, _>>()?;
+        let scratch = usize::from(source[prefix]) + 1;
+        if scratch <= CODE + 4 {
+            continue;
+        }
+        for head in 33..=126u8 {
+            if !graphical_tail(head, CODE) {
+                continue;
+            }
+            source.push(head);
+            for tail in 33..=126u8 {
+                if !graphical_tail(tail, CODE + 1) {
+                    continue;
+                }
+                source.push(tail);
+                eligible += 1;
+                let first = crazy(loader_word(&source, scratch), 0);
+                let scratch_zero =
+                    crazy(loader_word(&source, scratch + 1), first);
+                let base = usize::try_from(loader_word(&source, scratch + 2))
+                    .map_err(|error| error.to_string())?
+                    + 1;
+                if scratch_zero == 0
+                    && base > source.len()
+                    && base + 3 < 14_348_907
+                    && !(scratch..=scratch + 2).contains(&base)
+                    && !(base..=base + 3).contains(&scratch)
+                {
+                    let first_relocated = crazy(loader_word(&source, base), 0);
+                    let high =
+                        crazy(loader_word(&source, base + 1), first_relocated);
+                    let third = crazy(loader_word(&source, base + 2), high);
+                    let primed_low = (first_relocated / 3)
+                        + (first_relocated % 3) * 4_782_969;
+                    if high == 0
+                        && primed_low == 7_174_453
+                        && third == 7_174_453
+                        && loader_word(&source, base + 3) + 1
+                            == u32::try_from(base)
+                                .map_err(|error| error.to_string())?
+                    {
+                        matches.push(source.clone());
+                    }
+                }
+                _ = source.pop();
+            }
+            _ = source.pop();
+        }
+    }
+    assert_eq!(eligible, 1024);
+    assert_eq!(matches.len(), 13);
+    let plan = layout::build_guest_byte_c32_pair_source(current_profile())
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.source, matches[0]);
+    assert_eq!(plan.source.len(), 33);
+    let mut hex = String::new();
+    for byte in &plan.source {
+        write!(&mut hex, "{byte:02x}").map_err(|error| error.to_string())?;
+    }
+    assert_eq!(hex, RAW_PAIR_HEX);
+    assert_eq!(plan.scratch_data_address, 41);
+    assert_eq!(plan.scratch_initial_words, [7_174_417, 36, 7_174_417]);
+    assert_eq!(plan.relocated_initial_words, [36, 7_174_417, 36, 7_174_417]);
+    assert_eq!(plan.pair_low_address, 7_174_418);
+    assert_eq!(plan.pair_high_address, 7_174_419);
+    assert_eq!(plan.high_zero_code_address, 5);
+    assert_eq!(plan.low_prime_code_address, 8);
+    assert_eq!(plan.input_code_address, 9);
+    assert_eq!(plan.encoded_store_code_address, 10);
+    assert_eq!(plan.low_store_code_address, 12);
+    let all_input = (0u32..=255).chain([14_348_906]);
+    let mut observed = HashSet::new();
+    for input in all_input {
+        let encoded = crazy(7_174_453, input);
+        let decoded = crazy(7_174_453, encoded);
+        assert_eq!(decoded, input, "raw input {input}");
+        assert!(observed.insert(encoded), "input {input} must be distinct");
+    }
+    assert_eq!(observed.len(), 257);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "real input/EOF read, two source-loaded writes and exact C32 pair"
+)]
+fn real_guest_materializes_raw_byte_in_adjacent_c32_pair() -> Result<(), String>
+{
+    let profile = current_profile();
+    let plan = layout::build_guest_byte_c32_pair_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let initial = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![2],
+        vec![0x7f],
+        vec![0x80],
+        vec![0xff],
+        vec![0x01, 0x02],
+    ] {
+        let raw = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let encoded = crazy(7_174_453, raw);
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            initial.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(14, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 14,
+            }
+        );
+        assert_eq!(trace.len(), 14);
+        for (index, opcode) in b"jppjpppj*/pjpv".iter().enumerate() {
+            assert_eq!(trace[index].decoded, Some(*opcode));
+            if index != 13 {
+                assert!(trace[index].memory_delta.encryption.is_some());
+            }
+        }
+        assert_eq!(trace[5].after.registers.accumulator, 0);
+        assert_eq!(
+            trace[5]
+                .memory_delta
+                .data
+                .map(|write| (write.address, write.after)),
+            Some((plan.pair_high_address, 0)),
+        );
+        assert_eq!(
+            trace[8].before.registers.data_pointer,
+            plan.pair_low_address
+        );
+        assert_eq!(trace[8].after.registers.accumulator, 7_174_453);
+        assert_eq!(
+            trace[9].input,
+            Some(
+                input
+                    .first()
+                    .map_or(malbolge::TraceInput::EndOfInput, |byte| {
+                        malbolge::TraceInput::Byte(*byte)
+                    },)
+            )
+        );
+        assert_eq!(trace[9].after.registers.accumulator, raw);
+        assert_eq!(
+            trace[10].before.registers.data_pointer,
+            plan.pair_low_address + 2
+        );
+        assert_eq!(
+            trace[10]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.pair_low_address + 2, 7_174_453)),
+        );
+        assert_eq!(trace[10].after.registers.accumulator, encoded);
+        assert_eq!(guest.memory_word(plan.pair_low_address + 2), Ok(encoded));
+        assert_eq!(
+            trace[11]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.pair_low_address + 3, plan.pair_low_address - 1)),
+        );
+        assert_eq!(
+            trace[11].after.registers.data_pointer,
+            plan.pair_low_address
+        );
+        assert_eq!(
+            trace[12]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.pair_low_address, 7_174_453)),
+        );
+        assert_eq!(trace[12].after.registers.accumulator, raw);
+        assert_eq!(
+            trace[12]
+                .memory_delta
+                .data
+                .map(|write| (write.address, write.after)),
+            Some((plan.pair_low_address, raw)),
+        );
+        assert_eq!(guest.memory_word(plan.pair_low_address), Ok(raw));
+        assert_eq!(guest.memory_word(plan.pair_high_address), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        assert!(guest.output().is_empty());
+    }
+    assert_eq!(
+        layout::build_guest_byte_c32_pair_source(historical_profile()),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "mutated guest instructions must lose raw C32 parity"
+)]
+fn raw_c32_pair_refuses_missing_input_or_broken_dataflow() -> Result<(), String>
+{
+    let profile = current_profile();
+    let original = layout::build_guest_byte_c32_pair_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    for (position, opcode) in
+        [(9usize, b'o'), (10, b'*'), (11, b'o'), (12, b'*')]
+    {
+        let mut altered = original.source.clone();
+        altered[position] = encode(opcode, position)?;
+        let mut guest = ProfileMachine::from_source(profile, &altered, vec![2])
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            guest.run(14).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 14,
+            },
+            "mutation at C{position}",
+        );
+        assert_ne!(
+            guest.memory_word(original.pair_low_address),
+            Ok(2),
+            "mutated opcode C{position} must not pass raw-byte store parity",
+        );
+        if position == 9 {
+            assert_eq!(guest.input_consumed(), 0);
+        } else {
+            assert_eq!(guest.input_consumed(), 1);
+        }
+    }
+    let mut eof =
+        ProfileMachine::from_source(profile, &original.source, vec![])
+            .map_err(|error| error.to_string())?;
+    assert_eq!(
+        eof.run(14).map_err(|error| error.to_string())?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 14,
+        },
+    );
+    assert_eq!(
+        [
+            eof.memory_word(original.pair_low_address)
+                .map_err(|error| error.to_string())?,
+            eof.memory_word(original.pair_high_address)
+                .map_err(|error| error.to_string())?,
+        ],
+        [14_348_906, 0],
+    );
+    assert_ne!([14_348_906u32, 0u32], [4_644_102u32, 299u32]);
     Ok(())
 }

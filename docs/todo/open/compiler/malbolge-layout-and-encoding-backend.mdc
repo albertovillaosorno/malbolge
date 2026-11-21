@@ -51,6 +51,19 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Physical Raw-Byte Pair With True Guest Input (2026-11-21)
+
+A 33-byte source-loaded N15 guest physically stores `[raw, 0]` in
+two adjacent cells after genuine `/`: high zero before input, a
+ternary-ones low initializer, input-dependent encoded `p`, authentic
+loader return `j`, then an input-dependent low-word `p`. Two 15-trit
+all-ones crazy folds compose to exact identity for 256 successful
+bytes. Independent 257-class scalar parity and a bounded 1,024-case
+source census (13 valid layouts) accompany seven 14-step real guest
+traces, including EOF and unread suffix. **EOF remains raw**
+`[14,348,906, 0]` rather than signed C23 `-1` `[4,644,102, 299]`;
+full source checksum linking, EOF normalization and loop are open.
+
 ## Guest Input After Two-Word Zero Initialization (2026-11-21)
 
 The same finite source-loaded two-word initializer now also emits a

@@ -9,27 +9,28 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Genuine source-loaded N15 zero synthesis, including adjacent guest cells.
+//   - Genuine source-loaded N15 zero synthesis and adjacent raw-input writes.
 // - Must-Not:
-//   - Treat a physical zero pair as a source-linked C local or unknown-entry A.
+//   - Treat raw N15 EOF or physical pairs as signed C23 source locals.
 // - Allows:
-//   - Inputs: initial zero-accumulator N15 and a finite 94-phase source tail.
-//   - Outputs: graphical code, exact loader seeds and final zero data address.
+//   - Inputs: zero-entry N15, real guest input and finite graphical tails.
+//   - Outputs: graphical code, loader seeds and physical word addresses.
 //   - Side effects: none; normative VM validates source execution separately.
 // - Split-When:
 //   - General executable C32 zero initialization subsumes this first word.
 // - Merge-When:
 //   - The source-C literal linker owns placement and guest initialization.
 // - Summary:
-//   - Emits one and two-cell zero plans with actual source-loaded guest writes.
+//   - Emits zero initializers and byte-driven adjacent guest word writes.
 
-//! Source-loaded physical zero constructors for one or two guest words.
+//! Source-loaded zero constructors and physical raw-input word pairs.
 //!
 //! Every fully graphical N15 source begins with A=0. A single `p` cannot
 //! produce a zero trit from a zero accumulator, but a second `p` can. This
 //! first source proves one *written* 15-trit zero. A separate bounded
 //! source executes data-pointer reentry and writes both adjacent C32-zero
-//! cells, without proving a general source-C initializer or arbitrary A.
+//! cells. A separate input-backed pair writes `[byte, 0]` for 256 bytes,
+//! but not signed-C23 EOF, general source C state, or arbitrary entry A.
 
 use std::iter::repeat_n;
 
@@ -43,7 +44,7 @@ const LOADER_TAIL_CELLS: usize = 2;
 
 const PREFIX_BOUND: usize = 94;
 
-/// Failure to emit the bounded one-word N15 source-zero write.
+/// Failure to emit a bounded, loader-valid N15 physical word plan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ZeroCellSourceError {
     /// This fixed graphical grammar has no loader-admitted zero write.
@@ -121,6 +122,101 @@ pub struct AdjacentC32ZeroSource {
     pub zero_low_address: u32,
     /// Final low-word zero rewrite code position after physical reentry.
     pub zero_low_code_address: u32,
+}
+
+/// N15 byte/EOF input written into a real adjacent two-word physical region.
+///
+/// The low word holds the raw unsigned byte (or unnormalized profile EOF),
+/// and the physically initialized high word holds zero. This is **not** the
+/// C23 signed `getchar` result on EOF or a linked C source-local frame.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestByteC32PairSource {
+    /// Reached first `p` storing an injective encoding at low+2.
+    pub encoded_store_code_address: u32,
+    /// Reached physical `p` initializing the high word to zero.
+    pub high_zero_code_address: u32,
+    /// Reached genuine `/` consuming one byte or observing true EOF.
+    pub input_code_address: u32,
+    /// Reached physical `*` priming the low word with trit-wise ones.
+    pub low_prime_code_address: u32,
+    /// Reached final `p` writing the actual raw byte into the low word.
+    pub low_store_code_address: u32,
+    /// Adjacent high physical word, zeroed before the input operation.
+    pub pair_high_address: u32,
+    /// Lower physical word, storing each successful guest byte exactly.
+    pub pair_low_address: u32,
+    /// Four virgin loader words in the adjacent destination region.
+    pub relocated_initial_words: [u32; 4],
+    /// First loader-derived pointer relocation and scratch writes.
+    pub scratch_data_address: u32,
+    /// Virgin loader words at the three scratch operations.
+    pub scratch_initial_words: [u32; 3],
+    /// Source code and unreachable padding plus two graphical loader seeds.
+    pub source: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum AdjacentPhysicalMode {
+    RawBytePair,
+    ZeroPair,
+    ZeroThenInput,
+}
+
+struct PhysicalAdjacentSource {
+    encoded_store_code_address: Option<u32>,
+    high_address: u32,
+    high_code_address: u32,
+    input_code_address: Option<u32>,
+    low_address: u32,
+    low_final_code_address: u32,
+    low_first_code_address: u32,
+    relocated_initial_words: [u32; 4],
+    scratch_data_address: u32,
+    scratch_initial_words: [u32; 3],
+    source: Vec<u8>,
+}
+
+impl From<PhysicalAdjacentSource> for AdjacentC32ZeroSource {
+    fn from(found: PhysicalAdjacentSource) -> Self {
+        Self {
+            input_code_address: found.input_code_address,
+            relocated_initial_words: found.relocated_initial_words,
+            scratch_data_address: found.scratch_data_address,
+            scratch_initial_words: found.scratch_initial_words,
+            source: found.source,
+            zero_high_address: found.high_address,
+            zero_high_code_address: found.high_code_address,
+            zero_low_address: found.low_address,
+            zero_low_code_address: found.low_final_code_address,
+        }
+    }
+}
+
+impl TryFrom<PhysicalAdjacentSource> for GuestByteC32PairSource {
+    type Error = ZeroCellSourceError;
+
+    fn try_from(found: PhysicalAdjacentSource) -> Result<Self, Self::Error> {
+        use ZeroCellSourceError::NoLoadableZero;
+        // Only RawBytePair may enter this conversion; absent code sites
+        // refuse instead of being guessed or replaced by a sentinel.
+        Ok(Self {
+            encoded_store_code_address: found
+                .encoded_store_code_address
+                .ok_or(NoLoadableZero)?,
+            high_zero_code_address: found.high_code_address,
+            input_code_address: found
+                .input_code_address
+                .ok_or(NoLoadableZero)?,
+            low_prime_code_address: found.low_first_code_address,
+            low_store_code_address: found.low_final_code_address,
+            pair_high_address: found.high_address,
+            pair_low_address: found.low_address,
+            relocated_initial_words: found.relocated_initial_words,
+            scratch_data_address: found.scratch_data_address,
+            scratch_initial_words: found.scratch_initial_words,
+            source: found.source,
+        })
+    }
 }
 
 /// Emit a source whose second real `p` writes exactly zero from initial A=0.
@@ -386,7 +482,8 @@ fn find_accumulator_independent_zero_source(
 pub fn build_adjacent_c32_zero_source(
     profile: &ProfileDescriptor,
 ) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
-    find_adjacent_zero_source(profile, false)
+    find_physical_adjacent_source(profile, AdjacentPhysicalMode::ZeroPair)
+        .map(AdjacentC32ZeroSource::from)
 }
 
 /// Create the adjacent `[0, 0]` pair before observing a genuine guest input.
@@ -401,56 +498,93 @@ pub fn build_adjacent_c32_zero_source(
 pub fn build_adjacent_c32_zero_then_input_source(
     profile: &ProfileDescriptor,
 ) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
-    find_adjacent_zero_source(profile, true)
+    find_physical_adjacent_source(profile, AdjacentPhysicalMode::ZeroThenInput)
+        .map(AdjacentC32ZeroSource::from)
+}
+
+/// Build one real input-driven `[raw_input, 0]` adjacent data pair.
+///
+/// This graphical N15 source uses three loader-backed `j` reentries and
+/// physically writes both pair words. The high word becomes zero before `/`.
+/// A `*` primes the low word to the all-ones ternary operand, then `/;p;j;p`
+/// encodes and decodes each raw input through an invertible crazy pair.
+/// For all 256 successful bytes the pair is an exact C32 `[byte, 0]` value.
+/// **EOF is not signed C23 `-1`:** the raw N15 EOF word is kept in the low
+/// cell with zero high, so no source-C `getchar` local may yet be published.
+/// The contract requires A=C=D=0 at entry and the exact current profile.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles or an absent loader-valid graphical layout.
+pub fn build_guest_byte_c32_pair_source(
+    profile: &ProfileDescriptor,
+) -> Result<GuestByteC32PairSource, ZeroCellSourceError> {
+    find_physical_adjacent_source(profile, AdjacentPhysicalMode::RawBytePair)
+        .and_then(GuestByteC32PairSource::try_from)
 }
 
 #[expect(
     clippy::cognitive_complexity,
     clippy::excessive_nesting,
     clippy::too_many_lines,
-    reason = "two physical write modes and exact loader search"
+    reason = "three physical write modes and exact bounded loader search"
 )]
-fn find_adjacent_zero_source(
+fn find_physical_adjacent_source(
     profile: &ProfileDescriptor,
-    read_input: bool,
-) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
+    mode: AdjacentPhysicalMode,
+) -> Result<PhysicalAdjacentSource, ZeroCellSourceError> {
     use ZeroCellSourceError::{NoLoadableZero, UnsupportedProfile};
     if profile != current_profile() {
         return Err(UnsupportedProfile);
     }
     let memory_words = usize::try_from(profile.memory_words())
         .map_err(|_error| NoLoadableZero)?;
-    let code_cells = if read_input {
-        C32_ZERO_INPUT_CODE_CELLS
-    } else {
+    let code_cells = if mode == AdjacentPhysicalMode::ZeroPair {
         C32_ZERO_CODE_CELLS
+    } else {
+        C32_ZERO_INPUT_CODE_CELLS
     };
     let source_cells = code_cells.saturating_add(LOADER_TAIL_CELLS);
-    let body_cells = if read_input {
-        11
-    } else {
-        10
+    // These eight operations create a scratch zero, write a zero high cell,
+    // then return to the low word. The suffix selects an authentic physical
+    // low-word write, not a simulated C operation.
+    let common = [
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::CrazyData,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::CrazyData,
+        LinearOpcode::CrazyData,
+        LinearOpcode::RelocateDataPointer,
+    ];
+    let suffix: &[LinearOpcode] = match mode {
+        AdjacentPhysicalMode::ZeroPair => {
+            &[LinearOpcode::CrazyData, LinearOpcode::Halt]
+        },
+        AdjacentPhysicalMode::ZeroThenInput => &[
+            LinearOpcode::CrazyData,
+            LinearOpcode::InputWord,
+            LinearOpcode::Halt,
+        ],
+        AdjacentPhysicalMode::RawBytePair => &[
+            LinearOpcode::RotateData,
+            LinearOpcode::InputWord,
+            LinearOpcode::CrazyData,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::Halt,
+        ],
     };
+    let body_cells = common.len().saturating_add(suffix.len());
     for prefix in 0..PREFIX_BOUND {
         if prefix.saturating_add(body_cells) > code_cells {
             break;
         }
         let mut source = Vec::with_capacity(source_cells);
-        let physical_body = [
-            LinearOpcode::RelocateDataPointer,
-            LinearOpcode::CrazyData,
-            LinearOpcode::CrazyData,
-            LinearOpcode::RelocateDataPointer,
-            LinearOpcode::CrazyData,
-            LinearOpcode::CrazyData,
-            LinearOpcode::CrazyData,
-            LinearOpcode::RelocateDataPointer,
-            LinearOpcode::CrazyData,
-        ];
         for opcode in repeat_n(LinearOpcode::NoOperation, prefix)
-            .chain(physical_body)
-            .chain(read_input.then_some(LinearOpcode::InputWord))
-            .chain([LinearOpcode::Halt])
+            .chain(common)
+            .chain(suffix.iter().copied())
         {
             source.push(
                 unique_graphical_cell(profile, opcode, source.len())
@@ -546,9 +680,26 @@ fn find_adjacent_zero_source(
                         profile_crazy(words[1], first, profile.word_trits());
                     let third =
                         profile_crazy(words[2], high, profile.word_trits());
-                    let low = profile_crazy(first, third, profile.word_trits());
+                    let valid_low = match mode {
+                        AdjacentPhysicalMode::ZeroPair
+                        | AdjacentPhysicalMode::ZeroThenInput => {
+                            profile_crazy(first, third, profile.word_trits())
+                                == 0
+                        },
+                        AdjacentPhysicalMode::RawBytePair => {
+                            // p with an all-ones data operand swaps ternary
+                            // 0/1 and fixes 2; applying it twice is exactly
+                            // identity, even for the raw profile EOF word.
+                            let ones = 7_174_453;
+                            malbolge::profile_rotate(
+                                first,
+                                profile.word_modulus(),
+                            ) == ones
+                                && third == ones
+                        },
+                    };
                     if high == 0
-                        && low == 0
+                        && valid_low
                         && words[3].saturating_add(1)
                             == u32::try_from(relocated_address)
                                 .map_err(|_error| NoLoadableZero)?
@@ -559,24 +710,37 @@ fn find_adjacent_zero_source(
                             u32::try_from(value)
                                 .map_err(|_error| NoLoadableZero)
                         };
-                        return Ok(AdjacentC32ZeroSource {
-                            input_code_address: read_input
+                        let input = mode != AdjacentPhysicalMode::ZeroPair;
+                        let raw_byte =
+                            mode == AdjacentPhysicalMode::RawBytePair;
+                        return Ok(PhysicalAdjacentSource {
+                            encoded_store_code_address: raw_byte
+                                .then(|| as_word(prefix.saturating_add(10)))
+                                .transpose()?,
+                            high_address: as_word(
+                                relocated_address.saturating_add(1),
+                            )?,
+                            high_code_address: as_word(
+                                prefix.saturating_add(5),
+                            )?,
+                            input_code_address: input
                                 .then(|| as_word(prefix.saturating_add(9)))
                                 .transpose()?,
+                            low_address: as_word(relocated_address)?,
+                            low_final_code_address: as_word(
+                                prefix.saturating_add(if raw_byte {
+                                    12
+                                } else {
+                                    8
+                                }),
+                            )?,
+                            low_first_code_address: as_word(
+                                prefix.saturating_add(8),
+                            )?,
                             relocated_initial_words: words,
                             scratch_data_address: as_word(first_address)?,
                             scratch_initial_words: scratch,
                             source,
-                            zero_high_address: as_word(
-                                relocated_address.saturating_add(1),
-                            )?,
-                            zero_high_code_address: as_word(
-                                prefix.saturating_add(5),
-                            )?,
-                            zero_low_address: as_word(relocated_address)?,
-                            zero_low_code_address: as_word(
-                                prefix.saturating_add(8),
-                            )?,
                         });
                     }
                 }
