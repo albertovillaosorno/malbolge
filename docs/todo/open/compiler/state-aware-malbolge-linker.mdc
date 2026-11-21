@@ -71,6 +71,22 @@ semantics, safe relocation theorem, or cycle length for all guest state.
   VM-step ceilings. Reject unverified or impossible restarts without
   publishing an executable or expanding the declared P4 exit obligations.
 
+## Input to Future P4 Linking: Two Bounded 141-Phase Returns
+
+The P2 N15 evidence in `tests/compiler_141_half_phase_returns.rs` executes
+two genuine code backedges with a +141 position source-code re-encoding:
+C281 -> C100 and then C281 -> C106. It does **not** deliver an independently
+linkable macro, a stable alternating two-state loop, or P4 readiness.
+The actual second return uses an unexecuted, loader-valid M463 operand and
+changes its destination when that byte is changed.
+
+For eventual P4 acceptance, treat both A entries as different full-state
+contracts; a third entry would require its own source, evolved-memory,
+input-cursor, code encryption and register obligations. Backward-resolve
+return operands, then independently prove the joined target's *full* live-in
+state with the current VM. Use a finite positive and invalidated-operand
+counterexample, not a promise that every 141-phase pair links.
+
 ## Evidence
 
 - Expected durable artifact surface: `compiler/linker/`, `compiler/`,

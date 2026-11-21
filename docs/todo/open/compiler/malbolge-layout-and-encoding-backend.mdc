@@ -87,6 +87,37 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
   P4 linker and P6 reusable catalogue; do not promote a phase-only or
   input-specific witness to a generally reusable C operation.
 
+## Complementary 141-Position Half-Phases: Positive Finite Returns
+
+On 2026-11-21, a real N15 machine-execution experiment succeeded at a
+**bounded** version of the owner-proposed inverse/forward approach. The
+94-position decoder phase can be compensated across a +141 address shift by
+rotating a graphical source byte 47 places in its 94-character domain;
+applying this transformation twice is the identity. The dedicated test
+covers all 94 phases and eight loader-admitted opcodes. It is a decoding
+identity, not a complete-state or 141-step cycle theorem.
+
+The physical 564-cell source has two active 141-cell envelopes with 139
+half-turn-equivalent operation pairs among the first 140 relative positions.
+The final B cell C281 is the explicit code-return instruction; one conflicting
+relative position must use distinct operations to survive a later visit.
+The source tail, valid under normal loader checks and **never executed** in
+the bounded path, supplies the exact second-return operand M463=105.
+Five finite independent byte/EOF streams execute actual input/output
+and two backward `i` transfers: C281 -> C100 from M281=99, followed by
+C281 -> C106 from M463=105. All cases reach the next fetched code cell
+in 465 normative VM steps. A loader-valid mutation M463=106 instead leads
+C281 -> C107 and fails the original return contract.
+
+**Accepted finding:** two authentic, self-modifying physical returns were
+backward-constructed. **Still open:** a verified third traversal, a
+repeatable entry-state relation, source-linked mutable C23 arithmetic,
+phi/branch linkage and an executable EOF checksum. Preserve the existing
+P2 acceptance. Scope the next hypothesis to one finite inverse-operand/
+forward-VM state-contract search; no speculative infinite-cycle claim.
+See `tests/compiler_141_half_phase_returns.rs` and
+`docs/technical/compiler/141-half-phase-return-evidence.md`.
+
 ## Evidence
 
 - On 2026-11-21, a new source-loaded guest input-then-C32 constant primitive
@@ -98,7 +129,6 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
   I/O and code-encryption traces, plus negative unsupported-profile/EOF/zero
   cases. This does not write the input result into source C32 state, keep
   a local alive across reads, or compile the original checksum.
-
 
 - On 2026-11-21, the graphical C32 literal writer additionally admits
   two adjacent `p`/`*` arithmetic instructions in four exact templates.

@@ -75,6 +75,21 @@ call / I/O semantic role from the selected physical placement.
   code lengths if required for correctness. Neither exhaustive exploration
   of 14,348,907 addresses nor the unbounded cycle claim is required by P6.
 
+## P2 Half-Phase Research Is Not a Catalogue Entry
+
+The finite 141+141 N15 witness in
+`docs/technical/compiler/141-half-phase-return-evidence.md` proves a
+**phase-reencoding involution** and two real backward code jumps, not an
+arithmetic/branch/memory/call runtime block that can be reused under
+arbitrary state. No P6 category is marked delivered on that basis.
+
+Once P4 admits a state-complete block, index its source/loader identity,
+relative 141/282 phase, graphical reencoding, initial and evolved opcode
+states, live-in/out memory, return-operand table, I/O position and exact
+verification cost. A matching phase index alone must reject reuse. The
+search may retain both positive and failed bounded operands for pruning,
+but failed candidates are not published as reusable blocks.
+
 ## Evidence
 
 - Expected durable artifact surface: `accelerator/`, `algorithms/`,

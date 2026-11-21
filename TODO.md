@@ -32,6 +32,22 @@ binary stream edge cases, verify supported lowerability and advance the P5
 single-command acceptance. Never fake guest output or defer safety,
 correctness, or source/guest verification.
 
+**Validated 141-position half-phase research (2026-11-21):** The
+282-phase experiment has a follow-up source-level involution: graphical
+opcode bytes can be re-encoded for a +141 address shift by rotating their
+94-character byte index by 47, and the second re-encoding restores it.
+A **real N15 guest** executed two 141-cell physical envelopes, returned
+C281 -> C100, then returned C281 -> C106 on the next pass, using a
+loader-valid source operand precomputed at M463. Five input streams and a
+negative altered-return control pass in
+`tests/compiler_141_half_phase_returns.rs`, with analysis in
+`docs/technical/compiler/141-half-phase-return-evidence.md`. This proves
+**two bounded backedges**, not an unbounded/reusable loop or C23 checksum.
+The next experiment must seek a repeated *state contract*, not merely a
+matching phase or address, with finite backward operand synthesis and
+independent VM replay. It is an optional parallel P2 layout approach,
+never a substitute for or prerequisite to full mutable-C/EOF acceptance.
+
 **Owner-directed 282-position cycle-block experiment (2026-11-20):** In
 parallel with the unchanged P2 checksum target, test a **single structural
 phase cycle per proposed block**: 282 consecutive N15 memory positions, the
