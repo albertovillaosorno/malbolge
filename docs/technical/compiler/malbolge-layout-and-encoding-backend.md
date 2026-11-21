@@ -20,6 +20,23 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Fixed-crazy EOF limitation after a real raw-byte C32 store (2026-11-21)
+
+The new physical `[raw_input, 0]` store exposes a narrow, independent
+signed-EOF nonlocality boundary. Both byte `0x02` and raw N15 EOF
+`14,348,906` have units trit `2`, whereas canonical signed C23 low
+words `2` and `4,644,102` have different units trits `2` and `0`.
+For any sequence of further fixed-data-operand `p` operations on the
+low word, the final units trit depends **only** on that original
+units trit. Its inputs therefore cannot diverge on byte `0x02` vs
+true EOF. A finite full coordinate-function closure enumerates all
+15 reachable unary trit maps under fixed crazy folds; preserving
+all successful byte units requires identity, which leaves EOF at
+units trit `2`. This rules out **only this post-store fixed-crazy
+path**. It does not exclude source-controlled branching, rotations,
+register relocation, earlier alternative encodings or multiple
+physical stores. The original complete checksum remains blocked.
+
 ### Raw input copied into an adjacent guest C32 byte pair (2026-11-21)
 
 A bounded 33-byte graphical N15 program now physically materializes
@@ -30,7 +47,7 @@ all-ones, actual input read C9, input-dependent encoded write at
 M7,174,420, loader-backed return `j` C11, and final `p` C12 to
 M7,174,418. Two all-ones `p` steps compose to the identity on
 all ternary digits. Its low word is exactly the successful byte,
-not a host-supplied fake value. Real VM traces cover 7 binary/EOF
+not a host-supplied fake value. Real VM traces cover all 257 raw
 cases with code encryption and physical data writes; independent
 scalar checks cover all 257 raw byte/EOF classes.
 

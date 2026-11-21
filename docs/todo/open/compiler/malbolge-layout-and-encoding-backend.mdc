@@ -51,6 +51,17 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Signed EOF Cannot Be Repaired By Fixed Crazy Alone (2026-11-21)
+
+After the real guest writes physical `[raw, 0]`, raw byte `0x02`
+and raw EOF have the same units trit `2`; signed C23 expects
+low-unit trits `2` and `0`. Every fixed-data-operand crazy fold is
+trit-local. A full 15-map unary function closure verifies no chain
+can preserve every successful byte while fixing EOF. Other physical
+routes (rotation, branch, encoding before the write) remain open.
+This obstruction is restricted and must not be presented as a general
+C23 impossibility or a replacement for guest execution.
+
 ## Physical Raw-Byte Pair With True Guest Input (2026-11-21)
 
 A 33-byte source-loaded N15 guest physically stores `[raw, 0]` in

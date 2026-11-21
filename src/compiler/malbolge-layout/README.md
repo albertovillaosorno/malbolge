@@ -12,6 +12,20 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Raw EOF needs nonlocal conversion (2026-11-21)
+
+From the new source-loaded `[raw, 0]` pair, simply chaining any
+number of fixed-data-operand crazy `p` writes to the low word cannot
+both preserve successful input bytes and normalize signed C23 EOF.
+Byte `0x02` and N15 EOF `14,348,906` have the same units trit `2`,
+but the desired C23 low results have units trits `2` and `0`.
+Crazy is digit-local: equal input units trits remain equal under
+arbitrary fixed-operand crazy chains. An independent complete closure
+of the 3-value coordinate transforms contains 15 maps and exactly
+one preserves all byte units values; it still maps raw EOF's units
+trit to `2`, not `0`. Guest-controlled routing, rotations or a
+separate signed-conversion path remain viable and unimplemented.
+
 ### Source-loaded raw-byte adjacent C32 pair (2026-11-21)
 
 `build_guest_byte_c32_pair_source` executes a graphical 33-byte N15
@@ -29,7 +43,7 @@ for every ternary digit, `0 ↔ 1` and `2 → 2`. The independent
 31-code-cell/two-tail census admits 13 source layouts among 1,024
 eligible graphical sources. The canonical first has `scratch=41`,
 `low=7,174,418`; 257 scalar cases prove exact `[byte,0]` for all
-256 successful raw input bytes and distinguish true EOF. Seven actual
+256 successful raw input bytes and distinguish true EOF. All 257
 normative VM traces verify the read, zero write, rotation, both
 input-dependent writes, second reentry, self-encryption and halt.
 

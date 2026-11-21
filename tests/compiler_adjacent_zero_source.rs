@@ -28,7 +28,7 @@
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
 
 use malbolge::{
@@ -819,5 +819,118 @@ fn raw_c32_pair_refuses_missing_input_or_broken_dataflow() -> Result<(), String>
         [14_348_906, 0],
     );
     assert_ne!([14_348_906u32, 0u32], [4_644_102u32, 299u32]);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "full 257-case independent guest raw-input state census"
+)]
+fn all_successful_bytes_and_eof_have_physical_c32_pair_parity()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_guest_byte_c32_pair_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let loaded = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_ne!(loaded.memory_word(plan.pair_low_address), Ok(0));
+    assert_ne!(loaded.memory_word(plan.pair_high_address), Ok(0));
+    let mut covered = BTreeSet::new();
+    for expected in (0..=255u32).chain([profile.eof_word()]) {
+        let input = if expected == profile.eof_word() {
+            Vec::new()
+        } else {
+            vec![u8::try_from(expected).map_err(|error| error.to_string())?]
+        };
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(14, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 14,
+        });
+        assert_eq!(trace.len(), 14);
+        assert_eq!(trace[9].decoded, Some(b'/'));
+        assert_eq!(trace[9].after.registers.accumulator, expected);
+        assert_eq!(trace[10].decoded, Some(b'p'));
+        assert_eq!(trace[11].decoded, Some(b'j'));
+        assert_eq!(trace[12].decoded, Some(b'p'));
+        assert_eq!(trace[12].after.registers.accumulator, expected);
+        assert_eq!(
+            trace[12].before.registers.data_pointer,
+            plan.pair_low_address
+        );
+        assert_eq!(guest.memory_word(plan.pair_low_address), Ok(expected));
+        assert_eq!(guest.memory_word(plan.pair_high_address), Ok(0));
+        assert_eq!(guest.input_consumed(), input.len());
+        assert!(guest.output().is_empty());
+        assert!(covered.insert(expected));
+    }
+    assert_eq!(covered.len(), 257);
+    Ok(())
+}
+
+// Raw byte 0x02 and genuine EOF both enter the low physical word with units
+// trit 2; the signed C23 EOF low word instead requires units trit 0. Crazy
+// cannot move trits between positions, so constant-operand p chains cannot
+// preserve successful byte 0x02 and also repair EOF. Rotations, data-dependent
+// routing and earlier alternative encoding are deliberately out of scope.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    reason = "small exhaustive scalar ternary truth-table closure"
+)]
+fn fixed_crazy_postfold_cannot_convert_raw_eof_into_signed_c23()
+-> Result<(), String> {
+    let truth = [[1u8, 0, 0], [1, 0, 2], [2, 2, 1]];
+    let mut unary_maps = BTreeSet::from([[0u8, 1, 2]]);
+    loop {
+        let before = unary_maps.len();
+        // Every possible fixed data trit at this coordinate is included,
+        // even though only a subset is physically source-loader reachable.
+        for current in unary_maps.clone() {
+            for row in truth {
+                let folded = [
+                    row[usize::from(current[0])],
+                    row[usize::from(current[1])],
+                    row[usize::from(current[2])],
+                ];
+                _ = unary_maps.insert(folded);
+            }
+        }
+        if unary_maps.len() == before {
+            break;
+        }
+    }
+    // The finite closure includes every chain length, not just a test bound.
+    assert_eq!(unary_maps.len(), 15);
+    let byte_preserving = unary_maps
+        .into_iter()
+        .filter(|map| *map == [0, 1, 2])
+        .collect::<Vec<_>>();
+    assert_eq!(byte_preserving, vec![[0, 1, 2]]);
+    // Both byte 0x02 and raw N15 EOF have source units trit 2.
+    let raw_byte_two_units = 2u8;
+    let raw_eof_units = u8::try_from(current_profile().eof_word() % 3)
+        .map_err(|error| error.to_string())?;
+    let canonical_eof_units =
+        u8::try_from(4_644_102u32 % 3).map_err(|error| error.to_string())?;
+    assert_eq!(raw_byte_two_units, raw_eof_units);
+    assert_ne!(raw_eof_units, canonical_eof_units);
+    assert_eq!(byte_preserving[0][usize::from(raw_eof_units)], 2);
+    assert_eq!(canonical_eof_units, 0);
     Ok(())
 }
