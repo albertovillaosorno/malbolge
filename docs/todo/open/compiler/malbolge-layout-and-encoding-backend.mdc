@@ -51,6 +51,18 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Nonlocal Byte/EOF Guest State After Two Real Stores (2026-11-21)
+
+A reached `*;j;p` suffix uses both actual input-derived words from
+the adjacent raw-byte-pair source: rotate encoded M7,174,420;
+jump from untouched M7,174,421 to M7,174,418; mix the
+rotated encoding with raw low by a true `p` write. All 257
+independent scalar cases distinguish full-word EOF 7,174,453
+from every byte result; eight 19-step normative N15 traces verify
+input, both data operands, mutation, output and halt. Output
+remains a non-C23 byte projection; no EOF branch, normalized
+C32 frame or linked mutable checksum is claimed.
+
 ## Four Guest Memory Reloads After Input-Backed C32 Pair (2026-11-21)
 
 The source-loaded 33-byte N15 guest now executes four three-jump

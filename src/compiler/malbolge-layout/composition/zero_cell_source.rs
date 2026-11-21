@@ -191,6 +191,26 @@ pub struct GuestByteC32PairReloadSource {
     pub pair: GuestByteC32PairSource,
 }
 
+/// A physical byte/EOF-distinguishing nonlocal ternary state word.
+///
+/// This guest rotates the previously stored encoded input at low+2, then
+/// uses it as A in a genuine crazy write to the original raw low cell.
+/// True EOF has a distinct resulting 15-trit value from all 256 bytes,
+/// but this is not a signed C23 EOF guard or normalized C32 local.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestByteC32PairEofDistinguishSource {
+    /// Reached physical rotation of the original encoded word.
+    pub encoded_rotation_code_address: u32,
+    /// Reached data write combining the raw and rotated-encoded words.
+    pub mixed_store_code_address: u32,
+    /// Reached output after the mixed physical store.
+    pub output_code_address: u32,
+    /// Reached terminating instruction after the output.
+    pub halt_code_address: u32,
+    /// Authentic loader-backed raw-byte source and physical locations.
+    pub pair: GuestByteC32PairSource,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum AdjacentPhysicalMode {
     RawBytePair,
@@ -587,6 +607,63 @@ pub fn build_guest_byte_c32_pair_echo_source(
     Ok(GuestByteC32PairEchoSource {
         halt_code_address: 14,
         output_code_address: 13,
+        pair,
+    })
+}
+
+/// Mix physical raw and rotated-encoded input words, then output a byte.
+///
+/// After the original byte-pair store, one no-op moves D to the encoded
+/// word at low+2. A reached `*` rotates that word and loads the result
+/// into A. The untouched loader cell at low+3 then redirects D back to
+/// the raw low word. A reached `p` genuinely computes and stores
+/// `crazy(raw, rotate(crazy(ones, raw)))`, preserving the adjacent
+/// physical zero high word. All 257 input classes give an EOF-distinct
+/// 15-trit result, but successful bytes are not preserved and output
+/// is not a C23 EOF guard.
+///
+/// # Errors
+///
+/// Rejects noncurrent profile, unexpected physical layout or absent code.
+pub fn build_guest_byte_c32_pair_eof_distinguish_source(
+    profile: &ProfileDescriptor,
+) -> Result<GuestByteC32PairEofDistinguishSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut pair = build_guest_byte_c32_pair_source(profile)?;
+    if pair.source.len() != 33
+        || pair.pair_high_address != pair.pair_low_address.saturating_add(1)
+    {
+        return Err(NoLoadableZero);
+    }
+    // The original C11 already uses low+3 as a virgin source-loader
+    // operand to return D to low; C15 reuses this exact jump.
+    let return_word = unwritten_loader_word(
+        &pair.source,
+        usize::try_from(pair.pair_low_address.saturating_add(3))
+            .map_err(|_error| NoLoadableZero)?,
+        profile,
+    )
+    .map_err(|_error| NoLoadableZero)?;
+    if return_word.saturating_add(1) != pair.pair_low_address {
+        return Err(NoLoadableZero);
+    }
+    for (site, operation) in [
+        (13usize, LinearOpcode::NoOperation),
+        (14, LinearOpcode::RotateData),
+        (15, LinearOpcode::RelocateDataPointer),
+        (16, LinearOpcode::CrazyData),
+        (17, LinearOpcode::OutputByte),
+        (18, LinearOpcode::Halt),
+    ] {
+        *pair.source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(GuestByteC32PairEofDistinguishSource {
+        encoded_rotation_code_address: 14,
+        mixed_store_code_address: 16,
+        output_code_address: 17,
+        halt_code_address: 18,
         pair,
     })
 }

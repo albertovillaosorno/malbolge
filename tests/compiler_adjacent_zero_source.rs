@@ -1159,3 +1159,138 @@ fn guest_output_reloads_written_low_word_not_input_accumulator()
     );
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "257-case scalar EOF separation plus real guest nonlocal p"
+)]
+fn real_guest_nonlocal_crazy_separates_raw_eof_without_c23_conversion()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan =
+        layout::build_guest_byte_c32_pair_eof_distinguish_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let original = layout::build_guest_byte_c32_pair_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.pair.source.len(), 33);
+    assert_eq!(&plan.pair.source[..13], &original.source[..13]);
+    assert_eq!(&plan.pair.source[19..], &original.source[19..]);
+    assert_eq!(plan.encoded_rotation_code_address, 14);
+    assert_eq!(plan.mixed_store_code_address, 16);
+    assert_eq!(plan.output_code_address, 17);
+    assert_eq!(plan.halt_code_address, 18);
+    let ones = 7_174_453u32;
+    let transform = |raw: u32| {
+        let encoded = crazy(ones, raw);
+        let rotated = encoded / 3 + (encoded % 3) * 4_782_969;
+        (encoded, rotated, crazy(raw, rotated))
+    };
+    let eof_state = transform(profile.eof_word()).2;
+    assert_eq!(eof_state, ones);
+    let bytes = (0u32..=255).map(|raw| transform(raw).2).collect::<Vec<_>>();
+    assert_eq!(bytes.len(), 256);
+    assert!(!bytes.contains(&eof_state));
+    assert_ne!(transform(0).2, eof_state);
+    assert_ne!(transform(2).2, eof_state);
+    // This nonlocal store does not implement an identity byte-preserving
+    // source local, and its output is not C23 EOF-aware putchar.
+    assert_ne!(transform(1).2, 1);
+    let virgin =
+        ProfileMachine::from_source(profile, &plan.pair.source, vec![])
+            .map_err(|error| error.to_string())?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![0x7f],
+        vec![0x80],
+        vec![0xff],
+        vec![0x5a, 0x9a],
+    ] {
+        let raw = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let (encoded, rotated, mixed) = transform(raw);
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            virgin.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(19, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 19,
+            }
+        );
+        assert_eq!(trace.len(), 19);
+        assert_eq!(
+            &trace[..13].iter().map(|s| s.decoded).collect::<Vec<_>>(),
+            &b"jppjpppj*/pjp"
+                .iter()
+                .copied()
+                .map(Some)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(trace[13].decoded, Some(b'o'));
+        assert_eq!(trace[14].decoded, Some(b'*'));
+        assert_eq!(
+            trace[14]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.pair.pair_low_address + 2, encoded))
+        );
+        assert_eq!(trace[14].after.registers.accumulator, rotated);
+        assert_eq!(trace[15].decoded, Some(b'j'));
+        assert_eq!(
+            trace[15]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((
+                plan.pair.pair_low_address + 3,
+                plan.pair.pair_low_address - 1
+            ))
+        );
+        assert_eq!(
+            trace[15].after.registers.data_pointer,
+            plan.pair.pair_low_address
+        );
+        assert_eq!(trace[16].decoded, Some(b'p'));
+        assert_eq!(
+            trace[16]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.pair.pair_low_address, raw))
+        );
+        assert_eq!(trace[16].after.registers.accumulator, mixed);
+        assert_eq!(trace[17].decoded, Some(b'<'));
+        assert_eq!(trace[18].decoded, Some(b'v'));
+        assert_eq!(guest.memory_word(plan.pair.pair_low_address), Ok(mixed));
+        assert_eq!(guest.memory_word(plan.pair.pair_high_address), Ok(0));
+        let byte =
+            u8::try_from(mixed % 256).map_err(|error| error.to_string())?;
+        assert_eq!(guest.output(), [byte]);
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+    }
+    assert_eq!(
+        layout::build_guest_byte_c32_pair_eof_distinguish_source(
+            historical_profile()
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile)
+    );
+    Ok(())
+}

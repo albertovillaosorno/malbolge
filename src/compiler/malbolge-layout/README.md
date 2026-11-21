@@ -12,6 +12,30 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Source-loaded nonlocal EOF-distinguishing word (2026-11-21)
+
+`build_guest_byte_c32_pair_eof_distinguish_source` continues the
+authentic 33-byte raw byte-pair guest with six reached instructions:
+C13 `o`, C14 `*`, C15 `j`, C16 `p`, C17 `<`, C18 `v`.
+The initial C12 low-word store still contains the raw guest input.
+The real rotate reads and rewrites encoded M7,174,420, yielding
+`rotate(crazy(7,174,453, raw))` in A. The following jump reads
+virgin M7,174,421=7,174,417 to return D to the original low
+M7,174,418. The reached `p` then physically writes
+`crazy(raw, rotate(crazy(7,174,453, raw)))` into that low word.
+The adjacent M7,174,419 remains zero.
+
+An independent 257-input ternary calculation finds the true N15
+EOF result 7,174,453 is **absent from all 256 byte results**.
+Eight 19-step normative VM traces confirm the actual input,
+encoded rotate, pointer return, mixed write, output, encryption
+and halt, including EOF and an unread input suffix. The byte
+output is the mixed result modulo 256, **not** a signed C23
+`getchar`/`putchar` conversion. Byte state is not preserved
+(e.g. byte 1 becomes 4,782,969); the full 15-trit distinction
+does not yet create a reachable EOF branch or signed C32 frame.
+Original seven-block mutable EOF checksum remains unlinked.
+
 ### Genuine guest output reloaded from mutated data memory (2026-11-21)
 
 `build_guest_byte_c32_pair_reload_source` extends the source-loaded
