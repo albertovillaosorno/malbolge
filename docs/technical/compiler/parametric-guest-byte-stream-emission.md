@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exact physical reentry state contract (2026-11-21)
+
+A normative N15 trace-journal checker now compares **all changed guest
+memory**, A/C/D registers, byte consumption, output and XLAT2 effects across
+genuine repeated physical code entries. A source-loaded 132-cell signed
+third-read candidate visits C71 at steps 71 and 141, but its live D changes
+from 141 to 7,174,359, A changes from 134 to 4,783,015, and 78 memory
+words differ; 8 genuine data-write instructions and 70 XLAT2 changes are
+recorded. A second real VM replay compares the journal to two full
+14,348,907-word memory snapshots and finds exact agreement. Three binary
+streams pass; EOF early exits and a rejected third reentry fail closed.
+
+This exposes missing physical state restoration without pretending a
+code-pointer return is a reusable C loop. It is a finite, source-loaded
+necessary-condition check, not an arbitrary-input loop, linked C23 locals,
+or checksum publication. See
+`docs/technical/compiler/physical-reentry-state-contract.md` and
+`tests/compiler_physical_reentry.rs`.
+
 ### Post-flag graphical code-transfer bound (2026-11-21)
 
 The original seven-block mutable C23 EOF checksum was again run through the

@@ -1,0 +1,295 @@
+// Copyright:
+//   - Copyright © 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - Apache-2.0
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+//
+// Boundary-Contract:
+// - Owns: complete N15 memory-state comparison at physical reentry.
+// - Must-Not: equate two visits or finite EOF streams with an infinite loop.
+// - Allows: canonical 132-cell source, three signed reads and VM-only traces.
+// - Summary: a reentered code site must restore actual state, not its phase.
+
+//! Physical reentry is not a reusable guest loop without a state contract.
+
+#[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
+pub mod layout;
+
+use layout::{
+    PhysicalEntryState, PhysicalReentryError, PhysicalReentryWindow,
+    build_two_input_class_state_with_guarded_third_read_source,
+    observe_physical_reentries,
+};
+use malbolge::{
+    ProfileMachine, ProfileRegisters, StepOutcome, current_profile,
+    decode_profile_instruction,
+};
+
+const ENTRY: u32 = 71;
+const STEPS: usize = 190;
+
+/// The same three explicit physical edits as the source-locked third-read
+/// witness; no host-supplied VM memory or post-load modifications.
+fn source() -> Result<Vec<u8>, String> {
+    let mut source =
+        build_two_input_class_state_with_guarded_third_read_source(
+            current_profile(),
+        )
+        .map_err(|error| format!("{error:?}"))?;
+    for (position, opcode) in [(71usize, b'<'), (104, b'o'), (112, b'p')] {
+        let encoded = (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(
+                    u32::from(*byte),
+                    u32::try_from(position).unwrap_or(u32::MAX),
+                ) == Some(opcode)
+            })
+            .ok_or_else(|| format!("unencodable {opcode} at {position}"))?;
+        *source
+            .get_mut(position)
+            .ok_or_else(|| format!("missing site {position}"))? = encoded;
+    }
+    Ok(source)
+}
+
+#[test]
+fn exact_cycle_predicate_requires_no_io_progress_even_if_core_matches() {
+    // A logical boundary predicate test, not a source-loaded cycle witness.
+    let from = PhysicalEntryState {
+        input_consumed: 0,
+        output_len: 0,
+        registers: ProfileRegisters::default(),
+        step: 0,
+    };
+    let mut window = PhysicalReentryWindow {
+        code_encryption_changes: 0,
+        data_instruction_writes: 0,
+        from,
+        input_events: Vec::new(),
+        net_changed_words: Vec::new(),
+        output_bytes: Vec::new(),
+        to: PhysicalEntryState { step: 5, ..from },
+    };
+    assert!(window.core_state_restored());
+    assert!(window.exact_closed_cycle());
+    window.to.input_consumed = 1;
+    assert!(window.core_state_restored());
+    assert!(!window.exact_closed_cycle());
+    window.to.input_consumed = 0;
+    window.to.output_len = 1;
+    assert!(window.core_state_restored());
+    assert!(!window.exact_closed_cycle());
+    window.to.output_len = 0;
+    window.to.registers.data_pointer = 3;
+    assert!(!window.core_state_restored());
+    assert!(!window.exact_closed_cycle());
+}
+
+#[test]
+fn genuine_third_input_path_reenters_but_does_not_restore_state()
+-> Result<(), String> {
+    let source = source()?;
+    for input in [vec![3, 4, 5], vec![0, 255, 128], vec![255, 0, 1]] {
+        let windows = observe_physical_reentries(
+            current_profile(),
+            &source,
+            &input,
+            ENTRY,
+            2,
+            STEPS,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        let [window] = windows.as_slice() else {
+            return Err("expected exactly one physical reentry".into());
+        };
+        assert_eq!(window.from.registers.code_pointer, ENTRY);
+        assert_eq!(window.to.registers.code_pointer, ENTRY);
+        assert!(window.to.step > window.from.step);
+        assert_ne!(
+            window.from.registers.data_pointer,
+            window.to.registers.data_pointer,
+        );
+        assert!(!window.net_changed_words.is_empty());
+        assert_eq!(window.from.step, 71);
+        assert_eq!(window.to.step, 141);
+        assert_eq!(window.net_changed_words.len(), 78);
+        assert_eq!(window.data_instruction_writes, 8);
+        assert_eq!(window.code_encryption_changes, 70);
+        assert_eq!(window.input_events, []);
+        assert_eq!(window.output_bytes, [134, 154]);
+        assert!(!window.core_state_restored());
+        assert!(!window.exact_closed_cycle());
+    }
+    Ok(())
+}
+
+#[test]
+fn chronological_memory_journal_agrees_with_full_vm_memory_images()
+-> Result<(), String> {
+    let source = source()?;
+    let input = [3, 4, 5];
+    let windows = observe_physical_reentries(
+        current_profile(),
+        &source,
+        &input,
+        ENTRY,
+        2,
+        STEPS,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let window = windows
+        .first()
+        .ok_or_else(|| "missing exact physical window".to_owned())?;
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), &source, input.to_vec())
+            .map_err(|error| error.to_string())?;
+    let mut first_memory = None;
+    let mut second_memory = None;
+    let mut boundaries = Vec::new();
+    for step in 0..STEPS {
+        if vm.registers().code_pointer == ENTRY {
+            boundaries.push((
+                step,
+                vm.registers(),
+                vm.input_consumed(),
+                vm.output().len(),
+            ));
+            if first_memory.is_none() {
+                first_memory = Some(vm.memory().to_vec());
+            } else {
+                second_memory = Some(vm.memory().to_vec());
+                break;
+            }
+        }
+        assert_eq!(
+            vm.step().map_err(|error| error.to_string())?,
+            StepOutcome::Continued,
+        );
+    }
+    let first = first_memory.ok_or_else(|| "no first entry".to_owned())?;
+    let second = second_memory.ok_or_else(|| "no second entry".to_owned())?;
+    let full_diff: Vec<_> = first
+        .iter()
+        .zip(&second)
+        .enumerate()
+        .filter_map(|(address, (before, after))| {
+            (before != after).then_some((
+                u32::try_from(address).unwrap_or(u32::MAX),
+                *before,
+                *after,
+            ))
+        })
+        .collect();
+    let journal_diff: Vec<_> = window
+        .net_changed_words
+        .iter()
+        .map(|change| (change.address, change.before, change.after))
+        .collect();
+    assert_eq!(journal_diff, full_diff);
+    assert_eq!(boundaries.len(), 2);
+    assert_eq!(window.from.step, boundaries[0].0);
+    assert_eq!(window.to.step, boundaries[1].0);
+    assert_eq!(window.from.registers, boundaries[0].1);
+    assert_eq!(window.to.registers, boundaries[1].1);
+    assert_eq!(window.from.input_consumed, boundaries[0].2);
+    assert_eq!(window.to.input_consumed, boundaries[1].2);
+    assert_eq!(window.from.output_len, boundaries[0].3);
+    assert_eq!(window.to.output_len, boundaries[1].3);
+    Ok(())
+}
+
+#[test]
+fn eof_only_path_does_not_fabricate_a_second_entry() -> Result<(), String> {
+    let source = source()?;
+    for input in [vec![], vec![3]] {
+        assert_eq!(
+            observe_physical_reentries(
+                current_profile(),
+                &source,
+                &input,
+                ENTRY,
+                2,
+                STEPS,
+            ),
+            Err(PhysicalReentryError::MissingReentry),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn rejected_steps_and_finite_bounds_fail_closed() -> Result<(), String> {
+    let source = source()?;
+    let profile = current_profile();
+    let invalid = [
+        (0, 2, STEPS),
+        (ENTRY, 1, STEPS),
+        (ENTRY, 5, STEPS),
+        (ENTRY, 2, 0),
+        (ENTRY, 2, 2049),
+        (profile.memory_words(), 2, STEPS),
+    ];
+    for (entry, visits, steps) in invalid {
+        assert_eq!(
+            observe_physical_reentries(
+                profile,
+                &source,
+                &[3, 4, 5],
+                entry,
+                visits,
+                steps,
+            ),
+            if entry == 0 {
+                // C0 is valid, but this path fails before the full budget.
+                Err(PhysicalReentryError::GuestStep)
+            } else {
+                Err(PhysicalReentryError::InvalidRequest)
+            },
+        );
+    }
+    assert_eq!(
+        observe_physical_reentries(profile, &[], &[], ENTRY, 2, STEPS),
+        Err(PhysicalReentryError::InvalidRequest),
+    );
+    assert_eq!(
+        observe_physical_reentries(
+            profile,
+            &source,
+            &vec![0; 2049],
+            ENTRY,
+            2,
+            STEPS,
+        ),
+        Err(PhysicalReentryError::InvalidRequest),
+    );
+    assert_eq!(
+        observe_physical_reentries(
+            profile,
+            &vec![b'o'; 4097],
+            &[],
+            ENTRY,
+            2,
+            STEPS,
+        ),
+        Err(PhysicalReentryError::InvalidRequest),
+    );
+    assert_eq!(
+        observe_physical_reentries(profile, &[0, 0], &[], ENTRY, 2, STEPS),
+        Err(PhysicalReentryError::GuestLoad),
+    );
+    assert_eq!(
+        observe_physical_reentries(
+            profile,
+            &source,
+            &[3, 4, 5],
+            ENTRY,
+            3,
+            STEPS,
+        ),
+        Err(PhysicalReentryError::GuestStep),
+    );
+    Ok(())
+}

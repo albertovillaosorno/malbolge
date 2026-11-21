@@ -75,6 +75,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, exact normative physical reentry accounting for
+  the source-loaded 132-cell signed third-read candidate finds that C71
+  is visited at steps 71 and 141, but D changes 141 to 7,174,359, A changes
+  134 to 4,783,015 and 78 actual memory words differ. The independent
+  full-N15-memory replay matches the trace journal exactly; 8 physical
+  data writes and 70 changed XLAT2 writes occur between entries. Three
+  binary three-byte paths prove the bounded failure of an identical
+  state contract, while EOF and later invalid-encryption paths refuse.
+  `tests/compiler_physical_reentry.rs` and
+  `docs/technical/compiler/physical-reentry-state-contract.md` record
+  the finite, non-publication result. Full C23 mutable EOF checksum
+  compilation remains the P2 exit criterion.
+
 - On 2026-11-21, a complete positional/XLAT2 census of the
   second-pass C102..C112 return window in the guarded third-read N15
   source finds no first-valid graphical byte that encrypts into `p`.

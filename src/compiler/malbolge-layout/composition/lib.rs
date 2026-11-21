@@ -55,6 +55,7 @@ mod guest_state_placement;
 mod live_input_encoded_store;
 mod loader_rotation_source;
 mod loader_seed;
+mod physical_reentry;
 mod signed_eof_branch_source;
 mod source_input_state_trace;
 mod source_input_trace;
@@ -135,6 +136,11 @@ pub use loader_rotation_source::{
 };
 pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
+pub use physical_reentry::{
+    MAX_PHYSICAL_REENTRY_SOURCE, MAX_PHYSICAL_REENTRY_STEPS,
+    MAX_PHYSICAL_REENTRY_VISITS, PhysicalEntryState, PhysicalReentryError,
+    PhysicalReentryWindow, PhysicalWordChange, observe_physical_reentries,
+};
 pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,
     build_guarded_signed_eof_echo_and_second_read_source,
