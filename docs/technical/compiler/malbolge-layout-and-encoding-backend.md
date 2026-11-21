@@ -20,6 +20,33 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Bounded input-selected guest arithmetic operand (2026-11-21)
+
+A follow-on physical experiment extends input-dependent D relocation
+to a reached arithmetic operation, rather than halting immediately.
+The graphical N15 source `u'<A@?>=<;:{z1C/.-,+NN` executes
+`/;j;p;o^8;j;j;p;v`, then halts after exactly 15 VM steps. The
+initial `p` stores a raw-byte/EOF-injective word in M40. After eight
+no-ops, the first return `j` reads unmodified loader M49=39 and
+returns D to M40. The next `j` observes its **new stored value**,
+chooses a data address dependent on the real guest input, and the
+final `p` reads and writes that selected cell. Seven isolated VM
+traces, including actual EOF and high-byte input, compare the
+read operands, result accumulator, data-pointer relocation,
+physical writes, encryption and termination against a separate
+scalar crazy truth table.
+
+The generating search was a finite *exploratory* 15-padding,
+94-prefix, two-through-seven-tail source grammar with 668,032
+admitted graphical-tail comparisons; it found ten candidate
+reentry/follow-on arrangements (five each for `p` and `*`).
+This is a single pinned physical source witness, **not** a
+compiler-linked generic arithmetic operation: the destination is
+input-selected, not a source-C variable, and EOF selects D0,
+which aliases previously executed code. No loop backedge,
+C32 signed result, legal source branch, or checksum program
+is proved. The whole C23 checksum remains unlinked.
+
 ### Input-modified memory drives a real guest data-pointer jump (2026-11-21)
 
 The new `build_live_input_reentry_source` primitive has a **source-loaded

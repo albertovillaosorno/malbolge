@@ -960,3 +960,95 @@ fn real_guest_rereads_physically_stored_input_as_data_pointer()
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "real physical input-dependent arithmetic and guest effects"
+)]
+fn real_guest_input_reentry_drives_followup_crazy_data_operation()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = b"u'<A@?>=<;:{z1C/.-,+NN";
+    let prepared = ProfileMachine::from_source(profile, source, vec![])
+        .map_err(|error| error.to_string())?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![2],
+        vec![0x7f],
+        vec![0x80],
+        vec![0xff],
+        vec![1, 2],
+    ] {
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(15, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 15,
+        });
+        let raw = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let written = independent_crazy(7_174_453, raw);
+        assert_eq!(trace[0].decoded, Some(b'/'));
+        assert_eq!(trace[1].decoded, Some(b'j'));
+        assert_eq!(trace[2].decoded, Some(b'p'));
+        assert_eq!(
+            trace[2]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((40, 7_174_453))
+        );
+        assert_eq!(trace[2].after.registers.accumulator, written);
+        assert_eq!(trace[11].decoded, Some(b'j'));
+        assert_eq!(
+            trace[11]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((49, 39))
+        );
+        assert_eq!(trace[11].after.registers.data_pointer, 40);
+        assert_eq!(trace[12].decoded, Some(b'j'));
+        assert_eq!(
+            trace[12]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((40, written))
+        );
+        let dest = (written + 1) % profile.memory_words();
+        assert_eq!(trace[12].after.registers.data_pointer, dest);
+        assert_eq!(trace[13].decoded, Some(b'p'));
+        let prior = trace[13]
+            .memory_reads
+            .data
+            .ok_or("missing physical post-reentry operand")?;
+        assert_eq!(prior.address, dest);
+        let expected = independent_crazy(prior.value, written);
+        assert_eq!(trace[13].after.registers.accumulator, expected);
+        assert_eq!(guest.memory_word(dest), Ok(expected));
+        assert_eq!(trace[14].decoded, Some(b'v'));
+        for step in trace.iter().take(14) {
+            assert!(step.memory_delta.encryption.is_some());
+        }
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        assert_eq!(guest.output(), &[]);
+    }
+    Ok(())
+}

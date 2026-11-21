@@ -51,6 +51,19 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Bounded Input-Selected Guest Arithmetic (2026-11-21)
+
+A separate graphical 22-cell source reaches
+`/;j;p;o^8;j;j;p;v`: the second `j` rereads the genuine
+input-modified M40 value, and a following `p` actually
+executes at the input-selected D. Seven N15 VM traces verify
+its read operands, ternary result, physical writes, encryption
+and 15-step halt. An exploratory finite source grammar of
+668,032 graphical-tail comparisons found ten candidate
+follow-on `p`/`*` layouts. This is only a pinned physical
+arithmetic operation, not source-C control or C32 SSA linkage.
+The original checksum remains unlinked.
+
 ## Reusing Physical Input-Modified Memory As a Data Jump (2026-11-21)
 
 A bounded real N15 source now performs `/;j;p;o^14;j;j;v`:
