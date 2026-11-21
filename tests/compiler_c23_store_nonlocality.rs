@@ -43,7 +43,6 @@ pub mod layout;
 use layout::typed_cfg_adapter::state_storage::encode_i32_cells;
 use malbolge::{
     ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
-    profile_crazy,
 };
 
 const CONVERTED_EOF: u32 = 62_207;
@@ -68,6 +67,20 @@ struct SecondInputWitness {
 )]
 const fn units_trit(word: u32) -> u32 {
     word % 3
+}
+
+// Independent one-trit crazy table, transcribed from the normative ternary
+// semantics. Never call the VM's production crazy primitive as its own oracle.
+const fn independent_crazy_units(
+    data_digit: u32,
+    input_digit: u32,
+) -> Option<u32> {
+    match (data_digit, input_digit) {
+        (0 | 1, 0) | (2, 2) => Some(1),
+        (1, 2) | (2, 0 | 1) => Some(2),
+        (0, 1 | 2) | (1, 1) => Some(0),
+        _ => None,
+    }
 }
 
 fn execute_second_input(
@@ -173,16 +186,11 @@ fn reached_c23_converter_needs_nonlocal_state_for_signed_eof()
     // indistinguishable at this trit; neither exact C32 cell can result.
     for operand_units in 0u32..=2 {
         assert_eq!(
-            units_trit(profile_crazy(
+            independent_crazy_units(
                 operand_units,
-                success.stored_word,
-                current_profile().word_trits(),
-            )),
-            units_trit(profile_crazy(
-                operand_units,
-                eof.stored_word,
-                current_profile().word_trits(),
-            ))
+                units_trit(success.stored_word),
+            ),
+            independent_crazy_units(operand_units, units_trit(eof.stored_word),)
         );
     }
     Ok(())
