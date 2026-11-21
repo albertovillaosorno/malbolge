@@ -12,6 +12,28 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Physically output-classified byte or EOF (2026-11-21)
+
+`build_guest_byte_c32_pair_eof_classify_source` extends the real
+EOF-zero store to a second guest arithmetic selection. The source
+remains 33 fully graphical cells and executes 28 N15 instructions.
+After C20 writes zero only for EOF, C21 `*` reads the adjacent
+high-zero cell and clears A, C22 `o` advances to a virgin loader
+return word, C23 `j` reenters the written predicate at M7,174,418,
+and C24 `j` selects a data address from that actual word. Reached
+C25 `p` combines the selected memory with A=0 and physically
+writes its result; C26 `<` emits the classification and C27 `v`
+halts. The source yields **53 (`0x35`) for each successful byte**
+and **62 (`0x3e`) for EOF**.
+
+The regression independently encodes the three changed code cells
+and verifies every one of the 256 byte values plus true EOF under
+the normative VM (257 complete, 28-step traces), including physical
+C25 data writes, input consumption and preserved high-zero storage.
+This is real EOF-dependent guest **data** behavior, not a code-pointer
+`i` branch, C23 signed conversion, return/loop control or publication
+of the mutable checksum. Unsupported source programs still refuse.
+
 ### Physical EOF-only zero result and selected data read (2026-11-21)
 
 `build_guest_byte_c32_pair_eof_zero_pointer_source` extends the

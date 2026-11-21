@@ -20,6 +20,30 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Two-class physical EOF output via data rather than code (2026-11-21)
+
+A new source-loaded 33-cell N15 continuation extends the prior
+C20 EOF-zero predicate: C21 `*` rotates the physically zero high
+word, clearing A; C22 `o` advances to the loader return operand;
+C23 `j` returns to the written low-word predicate; C24 `j`
+selects the EOF/byte-dependent address; and C25 `p` reads and
+writes the selected actual memory word before C26 `<` and C27 `v`.
+The output is `0x3e` (62) for true EOF and `0x35` (53) for
+**all 256 successful byte values**. Every input class completes
+28 genuine normative VM steps, not a host-side output shortcut.
+
+`tests/compiler_adjacent_zero_source.rs` independently encodes
+C21/C22/C25 without trusting the new builder and compares the
+byte-exact guest source. The complete 257-case proof also checks
+C20/C25 instructions and a real C25 write, the C24 selected data
+address, input-consumption count, high-zero retention, output and
+halt. A changed output instruction/source path must fail the
+independent evidence. This is a bounded EOF data classifier and
+one physical output, **not** a conditional guest code jump,
+C23 signed `getchar`, arbitrary input-loop linkage or the
+full source checksum; the unchanged seven-block compiler still
+refuses target publication.
+
 ### Bounded direct EOF-data-to-code jump refusal (2026-11-21)
 
 A follow-up four-stream physical N15 experiment changes only the

@@ -1505,3 +1505,146 @@ fn missing_eof_zero_store_changes_guest_data_selection() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    reason = "red-first real 257-class N15 EOF classifier experiment"
+)]
+fn eof_zero_data_pointer_physically_classifies_all_257_inputs()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan =
+        layout::build_guest_byte_c32_pair_eof_zero_pointer_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    // This is deliberately built independently of any proposed publisher.
+    // C21 * rotates the actual high-zero word to A=0; C22 o advances
+    // to virgin low+3; C23 j returns to the input-backed predicate;
+    // C24 j selects a word and C25 p folds it into a byte classifier.
+    let mut source = plan.pair.source.clone();
+    for (site, opcode) in [(21usize, b'*'), (22, b'o'), (25, b'p')] {
+        source[site] = encode(opcode, site)?;
+    }
+    let published =
+        layout::build_guest_byte_c32_pair_eof_classify_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(published.pair.source, source);
+    assert_eq!(published.accumulator_clear_code_address, 21);
+    assert_eq!(published.selected_pointer_code_address, 24);
+    assert_eq!(published.classified_store_code_address, 25);
+    assert_eq!(published.output_code_address, 26);
+    assert_eq!(published.halt_code_address, 27);
+    assert_eq!(
+        layout::build_guest_byte_c32_pair_eof_classify_source(
+            historical_profile()
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile)
+    );
+    let virgin = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    let mut observed = BTreeSet::new();
+    for input_word in 0u32..=256 {
+        let input = if input_word == 256 {
+            vec![]
+        } else {
+            vec![u8::try_from(input_word).map_err(|error| error.to_string())?]
+        };
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            virgin.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut steps = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(28, &mut |step| steps.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 28,
+            }
+        );
+        assert_eq!(steps[20].decoded, Some(b'p'));
+        assert_eq!(steps[21].decoded, Some(b'*'));
+        assert_eq!(steps[22].decoded, Some(b'o'));
+        assert_eq!(steps[23].decoded, Some(b'j'));
+        assert_eq!(steps[24].decoded, Some(b'j'));
+        assert_eq!(steps[25].decoded, Some(b'p'));
+        assert_eq!(steps[26].decoded, Some(b'<'));
+        assert_eq!(steps[27].decoded, Some(b'v'));
+        let selected = steps[24].after.registers.data_pointer;
+        let destination = steps[25]
+            .memory_delta
+            .data
+            .ok_or_else(|| "classifier p must write data".to_owned())?;
+        assert_eq!(destination.address, selected);
+        assert_eq!(guest.memory_word(plan.pair.pair_high_address), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        let expected = if input.is_empty() {
+            62u8
+        } else {
+            53u8
+        };
+        assert_eq!(guest.output(), [expected], "input {input_word}");
+        _ = observed.insert((expected, selected == 1));
+    }
+    assert_eq!(observed, BTreeSet::from([(53, false), (62, true)]));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "physical EOF classifier negative code and data-write controls"
+)]
+fn eof_data_classification_refuses_a_missing_selected_crazy_write()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_guest_byte_c32_pair_eof_classify_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let mut without_classification = plan.pair.source.clone();
+    // C25 must be a real data-write operation, not a dead no-op before output.
+    without_classification[25] = encode(b'o', 25)?;
+    let mut without_clear = plan.pair.source.clone();
+    // C21 must really clear A from the adjacent high-zero store.
+    without_clear[21] = encode(b'o', 21)?;
+    for (input, expected) in [(vec![], 62u8), (vec![0], 53)] {
+        let mut actual = ProfileMachine::from_source(
+            profile,
+            &plan.pair.source,
+            input.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut missing_write = ProfileMachine::from_source(
+            profile,
+            &without_classification,
+            input.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut missing_clear =
+            ProfileMachine::from_source(profile, &without_clear, input)
+                .map_err(|error| error.to_string())?;
+        for guest in [&mut actual, &mut missing_write, &mut missing_clear] {
+            assert_eq!(
+                guest.run(28).map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 28,
+                }
+            );
+        }
+        assert_eq!(actual.output(), [expected]);
+        assert_ne!(missing_write.output(), actual.output());
+        // EOF enters with A=0 already; the clear is necessary on bytes.
+        if expected == 53 {
+            assert_ne!(missing_clear.output(), actual.output());
+        }
+    }
+    Ok(())
+}

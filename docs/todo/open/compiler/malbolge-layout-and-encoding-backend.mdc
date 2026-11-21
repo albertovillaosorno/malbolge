@@ -51,6 +51,22 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Exact Physical EOF/Byte Output Classes (2026-11-21)
+
+A 33-cell graphical N15 source follows the already executed C20
+EOF-zero store with real `*;o;j;j;p;<;v` at C21-C27. Rotating
+the initialized high zero clears A, then two data jumps read
+the loader return and the physically written low predicate.
+The second `p` writes the selected data word and yields one
+actual output byte: 62 (`3e`) for EOF versus 53 (`35`) for
+**every one of 256 valid input bytes**. The new builder's source
+is independently reconstructed and all 257 complete 28-step
+normative VM traces pass. A real C25 data write and the high-zero
+cell's preservation are checked. This is guest data selection,
+not a source-linked conditional code branch, signed C32 `getchar`
+store, or the original mutable checksum's physical linkage.
+The active backend/P2 TODOs remain open.
+
 ## Direct Data-to-Code Jump Negative Witness (2026-11-21)
 
 A genuine N15 C25 `i` substitution after the accepted EOF-zero

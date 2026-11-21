@@ -236,6 +236,31 @@ pub struct GuestByteC32PairEofZeroPointerSource {
     pub pair: GuestByteC32PairSource,
 }
 
+/// Source-loaded N15 EOF/byte selector with one output class for every byte.
+///
+/// The C20 data write is zero only on EOF. C21 rotates the already-zero high
+/// word, clearing A without changing that physical cell. C23 returns to the
+/// actual predicate word, C24 selects an input-dependent loader address, and
+/// C25 `p` combines that selected word with A=0 before the real C26 output.
+/// All successful bytes emit 53 and EOF emits 62 in the bounded N15 guest.
+/// This is *data-path* classification: it does not branch with `i`, store a
+/// signed C23 `getchar`, or link the source checksum to executable code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestByteC32PairEofClassifySource {
+    /// Reached `*` clearing the accumulator from the zero high word.
+    pub accumulator_clear_code_address: u32,
+    /// Reached `j` selecting EOF or a successful-byte loader address.
+    pub selected_pointer_code_address: u32,
+    /// Reached `p` writing the selected word and classified accumulator.
+    pub classified_store_code_address: u32,
+    /// Reached actual output from the classified accumulator.
+    pub output_code_address: u32,
+    /// Reached physical halt after output.
+    pub halt_code_address: u32,
+    /// Original N15 physical source and adjacent signed-width storage.
+    pub pair: GuestByteC32PairSource,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum AdjacentPhysicalMode {
     RawBytePair,
@@ -755,6 +780,50 @@ pub fn build_guest_byte_c32_pair_eof_zero_pointer_source(
         zero_store_code_address: 20,
         selected_pointer_code_address: 24,
         data_rotation_code_address: 25,
+        output_code_address: 26,
+        halt_code_address: 27,
+        pair,
+    })
+}
+
+/// Write one of two EOF-dependent guest output classes using physical data.
+///
+/// This continuation reuses the genuine source-loaded EOF-zero C20 writer.
+/// A C21 `*` clears A by rotating the adjacent high-zero word, C22 `o`
+/// advances to the unchanged loader return word, C23 `j` returns D to the
+/// input-dependent predicate, C24 `j` selects data through that actual word,
+/// and C25 `p` physically folds the selected memory word into A. The final
+/// C26 `<` emits 53 on every successful input byte and 62 on true EOF.
+/// No guest code-pointer branch, source-C conditional or checksum is linked.
+///
+/// # Errors
+///
+/// Refuses unsupported profile, changed source-loader state or missing code.
+pub fn build_guest_byte_c32_pair_eof_classify_source(
+    profile: &ProfileDescriptor,
+) -> Result<GuestByteC32PairEofClassifySource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut pair =
+        build_guest_byte_c32_pair_eof_zero_pointer_source(profile)?.pair;
+    if pair.source.len() != 33
+        || pair.pair_high_address != pair.pair_low_address.saturating_add(1)
+        || pair.relocated_initial_words != [36, 7_174_417, 36, 7_174_417]
+    {
+        return Err(NoLoadableZero);
+    }
+    for (site, operation) in [
+        (21usize, LinearOpcode::RotateData),
+        (22, LinearOpcode::NoOperation),
+        (25, LinearOpcode::CrazyData),
+    ] {
+        *pair.source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(GuestByteC32PairEofClassifySource {
+        accumulator_clear_code_address: 21,
+        selected_pointer_code_address: 24,
+        classified_store_code_address: 25,
         output_code_address: 26,
         halt_code_address: 27,
         pair,
