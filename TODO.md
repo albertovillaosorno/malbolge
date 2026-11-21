@@ -173,6 +173,24 @@ have only one C **guest compilation target**; their parity and whole-program
 tests are separate host validation inputs, never special translators. Only
 one final P10 paper is planned.
 
+## Independent exploration — Self-restoring runtime architecture
+
+### TODO - Explore self-restoring Malbolge runtime architectures
+
+**Experimental freedom, verified outcomes.** Maintain a hand-written guest
+baseline and a complete, evidence-qualified ledger of our current theories:
+282 structural phases, complementary 141 blocks, finite backward jumps,
+state-contract counterexamples, encryption orbits, potential base/dispatcher,
+self-repairing A/B operations, forward clones, a possible ~1,000-step
+recurrence and EOF-selected valid code destinations. Compare brute-force
+search against inverse, random and heuristic proposals on equal frozen
+candidate grammars. Try divergent hypotheses and keep negative findings;
+a productive failure is not a failed roadmap. This is deliberately
+**independent of P2 and does not block the source-C checksum or release**.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/research/self-restoring-runtime-architecture-exploration.mdc](docs/todo/open/research/self-restoring-runtime-architecture-exploration.mdc)
+
 ## P2 — Execute real stateful C
 
 ### TODO - Generalize guest byte-stream emission instead of emit-N fixtures

@@ -1,0 +1,140 @@
+---
+id: "self-restoring-runtime-architecture-exploration"
+status: "pending"
+lane: "2"
+priority: "p2"
+area: "research"
+task: "TODO - Explore self-restoring Malbolge runtime architectures"
+contract: "docs/research/studies/self-restoring-runtime-architecture-exploration.md"
+depends_on: []
+adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "docs/research/studies/"
+  - "docs/research/algorithms/"
+  - "algorithms/"
+  - "tests/compiler/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Explore self-restoring Malbolge runtime architectures
+
+## Objective
+
+Find, compare and, if possible, demonstrate the best **reusable execution
+architecture** for hand-written or synthesized Malbolge: a small permanent
+or recoverable base/dispatcher, manually verified operation blocks, a
+verified path back to a compatible execution state, and a real stateful
+byte-I/O operation repeated after return. Discover architecture freely,
+including brute-force, random, inverse and human-designed proposals,
+without treating existing compiler layouts as mandatory answers.
+
+**Independent exploratory lane:** no production compiler dependency, no
+P2/P4/P5 gate, no prerequisite to building and running the mutable-C EOF
+checksum. A promising research candidate requires separate promotion into
+its owning compiler/linker contract; a rejected hypothesis may be useful
+research without implying that the problem is impossible.
+
+## Research Inventory and Theories
+
+Maintain the full evidence-qualified inventory in the owning study, including:
+
+- **Manual seed and microprogram bank:** hand-author a tiny, authentic guest
+  source that reads/outputs or stores a byte; freeze its loader identity and
+  trace, and preserve it unchanged as the baseline. Add individually verified
+  opcode/data/branch microprograms with explicit live-in/out assumptions.
+- **Structural positional phases:** 94-code-decode positions, at-most-six
+  generated-memory recurrence, 282-position combined *initial* phase and
+  141-position complementary re-encoding; 141 and 282 are not cycle lengths
+  for arbitrary evolved machine state. Exhaustive inspection of 14,348,907
+  distinct cells is not implied by these periodic initial structures.
+- **Finite realized returns:** two +141 complementary blocks and three
+  physical backward code returns C281 to C100, C106 and C120; independently
+  checked inputs and self-encryption. Distinct post-return data pointers,
+  modified code and consumed input disprove a repeated *full* state for the
+  existing fixture; they do not disprove other architectures.
+- **Unverified base/dispatcher hypotheses:** self-restoring base, operations
+  which restore the base before returning, base-side repair after returning,
+  alternating A/B restorers, longer encryption-orbit schedules, fresh-copy
+  forward-only continuation and explicit input/EOF dispatch tables.
+- **Unverified numerical hypotheses:** an apparent +6 then +14 return
+  displacement, a possible recurrence near position 1,000, and symmetry or
+  compact-trit representations (14, 141, 282). Prior jump targets were
+  deliberately seeded, so they do **not** establish a natural increment
+  sequence or a recurrence at 1,000.
+- **Search architectures:** naive exhaustive enumeration as the mandatory
+  simple comparison, plus inverse-state/meet-in-the-middle search, constraint
+  solving, randomized/evolutionary candidate generation, phase-indexed
+  pruning and verifier-backed cached microprograms. Search may be heavily
+  brute-force driven; heuristic methods never replace the guest VM oracle.
+
+## Experimental Freedom and Safety Boundary
+
+- Permit contradictory ideas, manual assembly, independent microprograms,
+  alternative bootstraps, layout grammars and failed searches. No hypothesis
+  must agree with the current compiler or previously preferred C lowering.
+- Keep a hypothesis ledger with an immutable ID, stated expectation,
+  counterexample condition, source/profile and search identities, bounded
+  resource budget, raw result and verdict: observed, rejected, unresolved or
+  architecture candidate. Do not erase failures or mislabel an untested
+  conjecture as a proof.
+- Bound **each executable trial** in advance by source length, state/search
+  nodes, memory, VM transitions, sample inputs, deterministic random seed and
+  wall time. Timeouts and verifier refusals are non-passes. Additional future
+  trials may be proposed with new registered identities; no infinite search
+  or escalating budgets is a hidden completion requirement.
+- Every success means real source-loaded execution in the normative
+  `ProfileMachine`, with valid positional decode, loader effects, code
+  self-encryption, registers, memory writes, I/O and return-state contracts.
+  Host-generated outputs, forged registers, saved-state restoration by the
+  harness or guaranteed infinities inferred from finite runs are forbidden.
+- If a novel executable search algorithm is built, create its separately
+  mirrored research identity under `docs/research/algorithms/` and
+  `algorithms/`, following the existing research ADR. A planning-only study
+  and hand-written guest examples do not silently become production code.
+
+## Finite Initial Acceptance Witness
+
+One reproducible, intentionally broad **architecture exploration report**:
+
+1. Preserve one hand-written source-backed byte-I/O baseline, with one
+   positive and one negative normative-VM replay.
+2. Compare **at least three distinct architectural families** chosen from
+   self-restoring base, alternating A/B, forward clones, multi-visit orbit,
+   or table-based dispatch. Each family gets at least one finite executable
+   candidate or a precise rejected/unsatisfiable bounded search result.
+3. Run a **plain exhaustive/brute-force enumerator** and at least one
+   alternative ordered or random/inverse proposal procedure over the **same
+   frozen candidate grammar**, verifier and finite budget. Report attempted
+   count, distinct reached states, accepted cases, false candidates,
+   wall-clock, memory and time-to-first-verified result. Keep negative results.
+4. Replay at least the five existing binary/EOF streams (empty, `00`,
+   `80`, `ff`, `01 02`) for any claimed byte-dependent result, plus a
+   changed-code/changed-operand negative. Examine one, two and three
+   attempted returns and compare the complete live state; do not call three
+   returns an indefinitely reusable loop.
+5. Select an architecture **only if the evidence distinguishes it**; otherwise
+   publish an explicit inconclusive ranking with next discriminating test.
+   Link existing 282/141/EOF evidence rather than duplicate unreviewed claims.
+
+The task is eligible for completion with an evidence-based **adopt / reject /
+undetermined** conclusion for this initial bounded comparison. It does not
+require discovering a universal loop, running DOOM, a working C compiler or
+exhausting the N15 state space. Separate, newly scoped follow-ups may pursue
+promising directions without retroactively rewriting this acceptance.
+
+## Evidence
+
+- Owning research study and initial theory/experiment ledger:
+  `docs/research/studies/self-restoring-runtime-architecture-exploration.md`.
+- Existing finite source-backed results:
+  `tests/compiler_282_phase_blocks.rs`,
+  `tests/compiler_141_half_phase_returns.rs`,
+  `tests/bounded_revisit_layout.rs` and
+  `docs/technical/compiler/141-half-phase-return-evidence.md`.
+- Existing EOF control negative:
+  `docs/technical/compiler/malbolge-layout-and-encoding-backend.md`.
+- Required new evidence: a preserved hand-built guest source, reproducible
+  search grammar and runner, raw candidates and failures, fixed budgets,
+  independent profile/VM traces, comparison ledger and honest verdict.

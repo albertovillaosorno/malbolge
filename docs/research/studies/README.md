@@ -16,4 +16,5 @@ Product semantics, legal permission, source identity, or ordinary engineering.
 
 - `empirical-malbolge-synthesis-scaling-law.md`
 - `historical-capability-demonstration.md`
+- `self-restoring-runtime-architecture-exploration.md`
 - `superoptimization-program.md`
