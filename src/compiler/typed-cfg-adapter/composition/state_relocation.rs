@@ -1624,6 +1624,250 @@ pub fn plan_source_locked_cfg_minimum_code_targets(
     )
 }
 
+/// One proposed instruction address for an actual source-typed input effect.
+/// The future physical linker must still prove that this position executes
+/// the correct `/` under the target VM and normalizes C23 EOF correctly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeInputAnchor {
+    /// Canonical source block containing the signed/byte input operation.
+    pub block: u32,
+    /// Proposed exact physical instruction position of the input read.
+    pub code_address: u32,
+    /// Canonical source function identity.
+    pub function: u32,
+    /// Source operation ordinal; constants and computations cannot anchor.
+    pub ordinal: u32,
+}
+
+fn first_fit_code_span(
+    reserved: &[(u32, u32)],
+    cells: u32,
+    source_cells: u32,
+) -> Result<(u32, u32), GuestCodePlacementError> {
+    if cells == 0 {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    let mut sorted = reserved.to_vec();
+    sorted.sort_unstable();
+    let mut start = 0u32;
+    for (occupied_start, occupied_end) in sorted {
+        if start
+            .checked_add(cells)
+            .is_some_and(|end| end <= occupied_start)
+        {
+            return Ok((start, start + cells));
+        }
+        start = start.max(occupied_end);
+    }
+    let end = start
+        .checked_add(cells)
+        .filter(|end| *end <= source_cells)
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    Ok((start, end))
+}
+
+fn first_fit_phi_pad(
+    edge: &GuestPlacedControlEdge,
+    function: u32,
+    predecessor: u32,
+    kind: GuestCodeEdgeKind,
+    reserved: &mut Vec<(u32, u32)>,
+    source_cells: u32,
+    pads: &mut Vec<GuestCodeEdgePadPlacement>,
+) -> Result<(), GuestCodePlacementError> {
+    if edge.snapshots.is_empty() && edge.commits.is_empty() {
+        return Ok(());
+    }
+    let writes = edge
+        .snapshots
+        .len()
+        .checked_add(edge.commits.len())
+        .and_then(|count| u32::try_from(count).ok())
+        .and_then(|count| count.checked_add(1))
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    let (start, end_exclusive) =
+        first_fit_code_span(reserved, writes, source_cells)?;
+    reserved.push((start, end_exclusive));
+    pads.push(GuestCodeEdgePadPlacement {
+        end_exclusive,
+        function,
+        kind,
+        predecessor,
+        start,
+        successor: edge.successor,
+    });
+    Ok(())
+}
+
+/// Reserve exact source-typed input code sites inside otherwise minimal,
+/// disjoint code blocks and predecessor-specific phi landing pads.
+///
+/// This allows a future physical linker to *propose* addresses observed in a
+/// real guest input prefix without requiring that all source-C blocks execute
+/// in canonical numeric order. Anchors are checked against actual source
+/// input operations and their preceding minimum write obligations. The
+/// remaining blocks/pads are first-fit packed in deterministic source order;
+/// no target code, runtime control, EOF conversion or guest output is built.
+/// A physical VM witness and true operation/copy instruction encoding remain
+/// mandatory before the result can be used for artifact publication.
+///
+/// # Errors
+///
+/// Refuses non-input/duplicate/foreign anchors, conflicting fixed blocks,
+/// source-capacity exhaustion, invalid frames, and corrupted typed source.
+pub fn plan_source_locked_cfg_with_input_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    anchors: &[GuestCodeInputAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    let relocated =
+        relocate_source_locked_cfg(canonical, source_cells, frame_base)
+            .map_err(GuestCodePlacementError::TypedCfg)?;
+    let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
+    for anchor in anchors {
+        let block = relocated
+            .operation_blocks
+            .iter()
+            .find(|block| {
+                (block.function, block.block) == (anchor.function, anchor.block)
+            })
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let ordinal = usize::try_from(anchor.ordinal)
+            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+        let operation = block
+            .instructions
+            .get(ordinal)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        if !matches!(
+            operation.instruction,
+            Instruction::Getchar { .. } | Instruction::ByteInput { .. }
+        ) {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        let prefix = block.instructions[..ordinal]
+            .iter()
+            .try_fold(0u32, |cells, instruction| {
+                cells.checked_add(minimum_operation_cells(instruction)?)
+            })
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let start = anchor
+            .code_address
+            .checked_sub(prefix)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let operations = block
+            .instructions
+            .iter()
+            .try_fold(0u32, |cells, instruction| {
+                cells.checked_add(minimum_operation_cells(instruction)?)
+            })
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let control_start = start
+            .checked_add(operations)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let end_exclusive = control_start
+            .checked_add(1)
+            .filter(|end| *end <= source_cells)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        if fixed
+            .insert((block.function, block.block), GuestCodeBlockPlacement {
+                block: block.block,
+                control_start,
+                end_exclusive,
+                function: block.function,
+                start,
+            })
+            .is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
+    let mut reserved = Vec::<(u32, u32)>::new();
+    for block in fixed.values() {
+        if reserved.iter().any(|&(start, end)| {
+            block.start < end && start < block.end_exclusive
+        }) {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        reserved.push((block.start, block.end_exclusive));
+    }
+    let mut blocks = Vec::with_capacity(relocated.operation_blocks.len());
+    for block in &relocated.operation_blocks {
+        let key = (block.function, block.block);
+        let placed = if let Some(&placed) = fixed.get(&key) {
+            placed
+        } else {
+            let operations = block
+                .instructions
+                .iter()
+                .try_fold(0u32, |cells, instruction| {
+                    cells.checked_add(minimum_operation_cells(instruction)?)
+                })
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let width = operations
+                .checked_add(1)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let (start, end_exclusive) =
+                first_fit_code_span(&reserved, width, source_cells)?;
+            let control_start = start
+                .checked_add(operations)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let placement = GuestCodeBlockPlacement {
+                block: block.block,
+                control_start,
+                end_exclusive,
+                function: block.function,
+                start,
+            };
+            reserved.push((start, end_exclusive));
+            placement
+        };
+        blocks.push(placed);
+    }
+    let mut pads = Vec::new();
+    for block in &relocated.operation_blocks {
+        let mut reserve = |kind, edge: &GuestPlacedControlEdge| {
+            first_fit_phi_pad(
+                edge,
+                block.function,
+                block.block,
+                kind,
+                &mut reserved,
+                source_cells,
+                &mut pads,
+            )
+        };
+        match &block.control {
+            GuestPlacedControl::Branch { when_false, when_true } => {
+                reserve(GuestCodeEdgeKind::WhenFalse, when_false)?;
+                reserve(GuestCodeEdgeKind::WhenTrue, when_true)?;
+            },
+            GuestPlacedControl::Jump { edge } => {
+                reserve(GuestCodeEdgeKind::Jump, edge)?;
+            },
+            GuestPlacedControl::Return => {},
+        }
+    }
+    let used = reserved
+        .iter()
+        .try_fold(0u32, |sum, &(start, end)| {
+            sum.checked_add(end.checked_sub(start)?)
+        })
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    if used != source_locked_cfg_minimum_code_cells(canonical)? {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    bind_source_locked_cfg_code_targets(
+        canonical,
+        source_cells,
+        frame_base,
+        GuestCodeProposals {
+            code_blocks: &blocks,
+            edge_pads: &pads,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};

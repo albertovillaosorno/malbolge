@@ -1827,6 +1827,148 @@ fn original_checksum_has_source_locked_minimum_code_and_phi_pad_plan() {
 }
 
 #[test]
+fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeInputAnchor, GuestCodeOperationEffect,
+        GuestCodePlacementError, plan_source_locked_cfg_with_input_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 source");
+    // The independent physical converter executes signed '/' at C37 and
+    // C66. These are *candidate coordinates*, not a claim that its bytes
+    // implement the source-C checksum or its parallel phi transfers.
+    let first = GuestCodeInputAnchor {
+        function: 0,
+        block: 0,
+        ordinal: 1,
+        code_address: 37,
+    };
+    let second = GuestCodeInputAnchor {
+        function: 0,
+        block: 5,
+        ordinal: 2,
+        code_address: 66,
+    };
+    let proposed =
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            first, second,
+        ])
+        .expect("source-backed non-overlapping physical input coordinates");
+    assert_eq!(
+        proposed
+            .code_blocks
+            .iter()
+            .map(|block| (block.block, block.start, block.end_exclusive,))
+            .collect::<Vec<_>>(),
+        [
+            (0, 35, 51),
+            (1, 0, 2),
+            (2, 2, 6),
+            (3, 6, 11),
+            (4, 11, 16),
+            (5, 62, 70),
+            (6, 16, 19)
+        ],
+    );
+    assert_eq!(
+        proposed
+            .edge_pads
+            .iter()
+            .map(|pad| (
+                pad.predecessor,
+                pad.successor,
+                pad.start,
+                pad.end_exclusive,
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (0, 1, 19, 28),
+            (3, 5, 28, 33),
+            (4, 5, 51, 56),
+            (5, 1, 70, 79)
+        ],
+    );
+    let inputs = proposed
+        .operation_effect_sites
+        .iter()
+        .filter_map(|site| {
+            matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+                .then_some((site.block, site.ordinal, site.code_address))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(inputs, [(0, 1, 37), (5, 2, 66)]);
+    assert_eq!(proposed.function_entries[0].address, 35);
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            second, first
+        ],),
+        Ok(proposed),
+        "candidate anchors are source identities, not argument order",
+    );
+    let refuses = Err(GuestCodePlacementError::InvalidCodePlacement);
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            first, first
+        ],),
+        refuses,
+        "duplicate physical input anchors must refuse",
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            GuestCodeInputAnchor { ordinal: 0, ..first }
+        ],),
+        refuses,
+        "constants are not signed guest input effects",
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            GuestCodeInputAnchor { code_address: 1, ..first }
+        ],),
+        refuses,
+        "anchor address cannot precede the required entry prefix",
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 70, 128, &[
+            first, second
+        ],),
+        refuses,
+        "71 minimum code cells cannot fit into a 70-cell source",
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            first,
+            GuestCodeInputAnchor {
+                code_address: 37,
+                ..second
+            }
+        ],),
+        refuses,
+        "two pinned source blocks cannot overlap the same guest code",
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            GuestCodeInputAnchor { block: 99, ..first }
+        ],),
+        refuses,
+        "input anchors cannot invent an unseen source block",
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[]),
+        super::typed_cfg_adapter::state_relocation::
+            plan_source_locked_cfg_minimum_code_targets(&wire, 91, 128, 0),
+        "unconstrained first-fit must recover the source-ordered plan",
+    );
+    let mut forged = wire;
+    forged.push(0);
+    assert!(matches!(
+        plan_source_locked_cfg_with_input_anchors(&forged, 91, 128, &[
+            first, second
+        ],),
+        Err(GuestCodePlacementError::TypedCfg(_)),
+    ));
+}
+
+#[test]
 fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     use super::typed_cfg_adapter::state_relocation::{
         GuestCodePlacementError, GuestCodeProposals,

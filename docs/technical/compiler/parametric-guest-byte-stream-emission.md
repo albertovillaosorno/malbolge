@@ -821,6 +821,35 @@ checksum. All proposed code and data addresses remain unlinked. The five
 native C23 input controls still pass and source compilation refuses target
 publication as before.
 
+### Source-typed input anchors with disjoint physical reservations (2026-11-20)
+
+The unmodified seven-block C23 checksum now has an automatic minimum physical
+code plan rather than requiring hand-authored source block and phi-pad
+coordinates. Its 19 typed operations need 36 effect cells; seven terminating
+control sites and four predecessor-specific pads of 9, 5, 5 and 9 cells
+bring the minimum to **71 code cells**. All 43 guest-state words stay outside
+the proposed source interval. A compiler diagnostic reports this exact source-
+derived lower bound but still rejects target publication.
+
+A separate source-locked input-anchor planner takes proposed instruction
+addresses and verifies each against a genuine `Getchar`/`ByteInput` operation
+ordinal and all preceding per-operation reservations. For the original checksum,
+placing its first signed input at C37 and its loop input at C66 yields disjoint
+block intervals C35..C51 and C62..C70. First-fit planning places the other
+five blocks and four complete phi pads within C0..C91 (the last pad ends at
+C79). All branch arms remain unselected; no host-side input chooses an edge.
+Duplicate, non-input, overlapping, out-of-source and corrupted-wire anchors
+are rejected. The first-fit policy is a deterministic feasible *proposal*,
+not a completeness claim for all possible layouts.
+
+C37 and C66 come from a separately executed 91-cell guest conversion probe.
+Matching two address obligations does **not** validate that probe as this C
+program: the proposed C function entry at C35 is not linked from the guest's
+actual C0 entry, and its bytes do not implement the checksum's SSA stores,
+C32 arithmetic, branch decisions, phi copies or EOF loop. The complete
+five-vector guest parity gate remains blocked pending independent physical
+instruction linkage and normative VM acceptance.
+
 ### EOF-classified two-input guest output (2026-11-20)
 
 A new source-built 132-cell N15 guest composes two actual signed `/`
