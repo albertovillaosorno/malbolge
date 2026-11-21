@@ -12,6 +12,17 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Source-loaded C32 constants after a real input
+
+`build_c32_literal_after_input_source` admits a bounded current-profile
+physical source with one real `/` followed by `j; *; (*|p); v`. Each source
+uses exact loader memory for two **adjacent** guest C32 words. The first
+rotate erases the input accumulator, so the literal remains identical for
+all input bytes and true EOF. Ten normative traces cover both templates and
+five binary/EOF inputs; an independent finite census finds 409 representable
+C32 literals. No source-C `getchar` value is stored: full signed EOF,
+mutable-state arithmetic and the original checksum stay unlinked.
+
 ### Conditional third read after two signed echoes
 
 `build_two_echo_guarded_third_read_source` combines the two independent

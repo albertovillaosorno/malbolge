@@ -20,6 +20,37 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Real guest input before source-loaded C32 constant writes (2026-11-21)
+
+`build_c32_literal_after_input_source` emits a current-N15 graphical guest
+that actually executes `/; j; *; (*|p); v`, preceded by 0..93 reached no-ops
+and followed by one unreachable graphical loader tail byte. The physical
+`/` consumes a byte or observes true EOF. Its arbitrary accumulator is
+replaced by the first `*` before the second store; both adjacent C32 words
+are derived from **actual unmodified loader memory**, not host-seeded VM
+state. The fixed `**` and `*p` grammars never admit a first input-dependent
+`p`, because doing so would silently assume a known incoming accumulator.
+
+An independent fifteen-trit decoder, loader and arithmetic census covers
+both 94-prefix by 94-tail grammars: 163 distinct `**` literals, 297 `*p`
+literals and 409 in their union. A deterministic spread of 25 source
+lookups matches the canonical independent source chosen for each sample.
+Two selected graphical sources run on the normative N15 guest with empty,
+NUL, high-byte `80`, byte `ff` and unread-suffix `01 02` input. All ten
+bounded paths terminate at the physical `v`, consume only the available
+first byte, produce no output, and execute two actual adjacent C32 writes
+with exact loader operand reads and post-instruction encryption. Isolated
+VM trials restart from validated copies of one authentic source-loaded
+memory image per candidate, without retaining mutations across inputs.
+
+This demonstrates a live **input effect followed by input-independent C32
+state materialization**. It intentionally does **not** store the C23
+`getchar` result, classify signed EOF, preserve a mutable local, implement
+source CFG branches, or complete the EOF checksum. In particular C32 zero,
+byte `ff` and signed EOF remain outside this grammar and fail closed.
+The unchanged five-input source checksum still refuses guest publication
+at the missing physical operation/control linker.
+
 ### Profile-bound C32 constant-write operand plan (2026-11-20)
 
 The current N15 target now exposes `plan_c32_literal_crazy_writes` from the

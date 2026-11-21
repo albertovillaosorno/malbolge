@@ -64,7 +64,7 @@ fn scalar_crazy(mut left: u32, mut right: u32) -> u32 {
     clippy::integer_division_remainder_used,
     reason = "independent fifteen-trit right rotation"
 )]
-fn scalar_rotate(seed: u32) -> u32 {
+const fn scalar_rotate(seed: u32) -> u32 {
     seed / 3 + seed % 3 * 4_782_969
 }
 
@@ -286,7 +286,22 @@ fn unsupported_c32_literals_and_profiles_fail_before_source_emission() {
         ),
         Err(Error::UnsupportedProfile)
     );
+    assert_eq!(
+        layout::build_c32_literal_after_input_source(
+            historical_profile(),
+            351_548_234
+        ),
+        Err(Error::UnsupportedProfile)
+    );
     for bits in [0, 255, u32::MAX] {
+        assert_eq!(
+            layout::build_c32_literal_after_input_source(
+                current_profile(),
+                bits
+            ),
+            Err(Error::NoLoadableSeed),
+            "input-then-constant cannot forge a missing source seed"
+        );
         assert_eq!(
             layout::build_c32_literal_loader_rotate_source(
                 current_profile(),
@@ -455,6 +470,175 @@ fn vm_stores_three_mixed_c32_literals() -> Result<(), String> {
         assert_eq!(trace[noops + 3].decoded, Some(b'v'));
         assert_eq!(vm.input_consumed(), 0);
         assert_eq!(vm.output(), &[]);
+    }
+    Ok(())
+}
+
+// A real `/` makes A unknown, so only a first `*` may erase it before
+// source-loaded adjacent C32 writes. This oracle is independent of the
+// production graphical encoder, recurrence and ternary arithmetic.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    reason = "bounded independent N15 decoder/loader/trit oracle"
+)]
+fn input_then_c32_oracle() -> Result<BTreeMap<u32, Vec<u8>>, String> {
+    let profile = current_profile();
+    let mut expected = BTreeMap::<u32, Vec<u8>>::new();
+    let mut per_template = Vec::new();
+    for operations in [b"**", b"*p"] {
+        let mut distinct = BTreeSet::new();
+        for noops in 0..PREFIX_BOUND {
+            let mut source = (0..noops)
+                .map(|position| encoded(position, b'o'))
+                .collect::<Result<Vec<_>, _>>()?;
+            for opcode in [b'/', b'j', operations[0], operations[1], b'v'] {
+                source.push(encoded(source.len(), opcode)?);
+            }
+            let data_base = usize::from(source[noops + 1]) + 1;
+            if data_base <= source.len()
+                || data_base.saturating_add(1)
+                    >= usize::try_from(profile.memory_words())
+                        .map_err(|error| error.to_string())?
+            {
+                continue;
+            }
+            for tail in 33..=126u8 {
+                if !graphical_tail(tail, source.len()) {
+                    continue;
+                }
+                source.push(tail);
+                let seeds = original_seed_pair(&source, data_base);
+                let low = scalar_rotate(seeds[0]);
+                let high = if operations[1] == b'*' {
+                    scalar_rotate(seeds[1])
+                } else {
+                    scalar_crazy(seeds[1], low)
+                };
+                let combined =
+                    u64::from(low) + u64::from(high) * u64::from(MODULUS);
+                if let Ok(bits) = u32::try_from(combined) {
+                    _ = distinct.insert(bits);
+                    _ = expected.entry(bits).or_insert_with(|| source.clone());
+                }
+                _ = source.pop();
+            }
+        }
+        per_template.push(distinct.len());
+    }
+    assert_eq!(per_template, [163, 297]);
+    assert_eq!(expected.len(), 409);
+    for unsupported in [0, 255, u32::MAX] {
+        assert!(!expected.contains_key(&unsupported));
+    }
+    Ok(expected)
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "physical VM input, code and adjacent data write effects"
+)]
+fn verify_live_input_c32_source(
+    bits: u32,
+    source: &[u8],
+) -> Result<(), String> {
+    let profile = current_profile();
+    let noops = source.len() - 6;
+    let data_base = u32::from(source[noops + 1]) + 1;
+    let seeds = original_seed_pair(
+        source,
+        usize::try_from(data_base).map_err(|error| error.to_string())?,
+    );
+    let target =
+        layout::typed_cfg_adapter::state_storage::encode_i32_cells(bits);
+    // Load authentic graphical memory once; each case receives its own
+    // independent validated copy rather than retaining guest mutations.
+    let prepared = ProfileMachine::from_source(profile, source, vec![])
+        .map_err(|error| error.to_string())?;
+    for input in [vec![], vec![0], vec![128], vec![255], vec![1, 2]] {
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(noops + 5, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: noops + 5,
+        });
+        assert_eq!(trace[noops].decoded, Some(b'/'));
+        assert_eq!(
+            trace[noops].input,
+            Some(
+                input
+                    .first()
+                    .map_or(malbolge::TraceInput::EndOfInput, |&byte| {
+                        malbolge::TraceInput::Byte(byte)
+                    })
+            )
+        );
+        assert_eq!(trace[noops + 1].decoded, Some(b'j'));
+        assert_eq!(trace[noops + 1].after.registers.data_pointer, data_base);
+        for index in 0..2 {
+            let step = &trace[noops + 2 + index];
+            let address = data_base
+                + u32::try_from(index).map_err(|error| error.to_string())?;
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(
+                step.memory_reads.data.map(|read| read.value),
+                Some(seeds[index])
+            );
+            assert_eq!(step.after.registers.accumulator, target[index]);
+            assert_eq!(vm.memory_word(address), Ok(target[index]));
+            assert!(step.memory_delta.encryption.is_some());
+        }
+        assert_eq!(trace[noops + 4].decoded, Some(b'v'));
+        assert_eq!(vm.input_consumed(), usize::from(!input.is_empty()));
+        assert_eq!(vm.output(), &[]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "source matching and real guest path verification"
+)]
+fn source_loaded_c32_writes_after_real_input_match_bounded_oracle()
+-> Result<(), String> {
+    let profile = current_profile();
+    let expected = input_then_c32_oracle()?;
+    // Exhaust the grammar independently, then check the emitter's search
+    // against a deterministic spread (every seventeenth, including last).
+    for (bits, original) in expected.iter().step_by(17) {
+        let source =
+            layout::build_c32_literal_after_input_source(profile, *bits)
+                .map_err(|error| format!("{bits:#x}: {error:?}"))?;
+        assert_eq!(&source, original, "canonical source for {bits:#x}");
+    }
+    // Both instruction templates must execute real `/` for binary and EOF.
+    for operation in *b"*p" {
+        let (&bits, source) = expected
+            .iter()
+            .find(|(_, source)| {
+                let noops = source.len() - 6;
+                decode_profile_instruction(
+                    u32::from(source[noops + 3]),
+                    u32::try_from(noops + 3).unwrap_or(u32::MAX),
+                ) == Some(operation)
+            })
+            .ok_or_else(|| format!("missing second operation {operation}"))?;
+        verify_live_input_c32_source(bits, source)?;
     }
     Ok(())
 }

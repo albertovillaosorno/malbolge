@@ -89,6 +89,17 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
 
 ## Evidence
 
+- On 2026-11-21, a new source-loaded guest input-then-C32 constant primitive
+  executes real `/` before two adjacent physical data writes. The first `*`
+  erases the unknown input accumulator; either `*` or `p` then writes the
+  second C32 word from the exact loader image. An independent finite census
+  finds 163 `**`, 297 `*p` and 409 union literals. Two emitted examples
+  execute ten normative N15 byte/EOF/unread-suffix paths with exact memory,
+  I/O and code-encryption traces, plus negative unsupported-profile/EOF/zero
+  cases. This does not write the input result into source C32 state, keep
+  a local alive across reads, or compile the original checksum.
+
+
 - On 2026-11-21, the graphical C32 literal writer additionally admits
   two adjacent `p`/`*` arithmetic instructions in four exact templates.
   An independent 94-prefix/94-tail full-input oracle enumerates 164,

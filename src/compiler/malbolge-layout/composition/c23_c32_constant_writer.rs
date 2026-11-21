@@ -251,21 +251,30 @@ fn build_loader_ops(
     profile: &ProfileDescriptor,
     bits: u32,
     operations: [LiteralDataOp; 2],
+    live_input: bool,
 ) -> Result<Vec<u8>, C32LiteralLoadedSourceError> {
     use super::LinearOpcode as Opcode;
     if profile != current_profile() {
         return Err(C32LiteralLoadedSourceError::UnsupportedProfile);
     }
+    if live_input && !matches!(operations[0], LiteralDataOp::Rotate) {
+        return Err(C32LiteralLoadedSourceError::NoLoadableSeed);
+    }
     let targets = encode_i32_cells(bits);
     for noops in 0..94usize {
-        let mut source = Vec::with_capacity(noops.saturating_add(5));
+        let mut source = Vec::with_capacity(
+            noops.saturating_add(5 + usize::from(live_input)),
+        );
         let mut admissible = true;
-        for operation in repeat_n(Opcode::NoOperation, noops).chain([
-            Opcode::RelocateDataPointer,
-            operations[0].opcode(),
-            operations[1].opcode(),
-            Opcode::Halt,
-        ]) {
+        for operation in repeat_n(Opcode::NoOperation, noops)
+            .chain(live_input.then_some(Opcode::InputWord))
+            .chain([
+                Opcode::RelocateDataPointer,
+                operations[0].opcode(),
+                operations[1].opcode(),
+                Opcode::Halt,
+            ])
+        {
             match super::unique_graphical_cell(profile, operation, source.len())
             {
                 Ok(byte) => source.push(byte),
@@ -278,7 +287,8 @@ fn build_loader_ops(
         if !admissible {
             continue;
         }
-        let Some(&jump_byte) = source.get(noops) else {
+        let Some(&jump_byte) = source.get(noops + usize::from(live_input))
+        else {
             continue;
         };
         let data_base = usize::from(jump_byte).saturating_add(1);
@@ -306,6 +316,8 @@ fn build_loader_ops(
                 profile,
             );
             if let (Ok(first), Ok(second)) = (first_seed, second_seed) {
+                // A reached `*` erases an unknown input accumulator;
+                // the checked precondition forbids `p` in that slot.
                 let first_result = operations[0].result(first, 0, profile);
                 let second_result =
                     operations[1].result(second, first_result, profile);
@@ -333,10 +345,12 @@ pub fn build_c32_literal_loader_rotate_source(
     profile: &ProfileDescriptor,
     bits: u32,
 ) -> Result<Vec<u8>, C32LiteralLoadedSourceError> {
-    build_loader_ops(profile, bits, [
-        LiteralDataOp::Rotate,
-        LiteralDataOp::Rotate,
-    ])
+    build_loader_ops(
+        profile,
+        bits,
+        [LiteralDataOp::Rotate, LiteralDataOp::Rotate],
+        false,
+    )
 }
 
 /// Construct a bounded adjacent C32 literal from two real `p`/`*` writes.
@@ -364,7 +378,37 @@ pub fn build_c32_literal_loader_arithmetic_source(
     for operations in [[Rotate, Rotate], [Crazy, Rotate], [Rotate, Crazy], [
         Crazy, Crazy,
     ]] {
-        if let Ok(source) = build_loader_ops(profile, bits, operations) {
+        if let Ok(source) = build_loader_ops(profile, bits, operations, false) {
+            return Ok(source);
+        }
+    }
+    Err(C32LiteralLoadedSourceError::NoLoadableSeed)
+}
+
+/// Source-load two adjacent C32 literal words after a real guest input.
+///
+/// The reached `/` changes A to a byte or the target-profile EOF sentinel.
+/// The first data operation must be `*`, which overwrites A independently
+/// of that input; the second may be `*` or `p` using the new known A. Both
+/// cells come from the actual graphical loader and are written in guest
+/// memory after a `j` relocation. This is a bounded constant-state building
+/// block, not C23 signed input conversion, source-C operation linkage, or
+/// a checksum implementation. The input itself is consumed but not stored.
+///
+/// # Errors
+///
+/// Refuses noncanonical N15 profiles or literals outside the exact two-
+/// template, 94-prefix and 94-tail physical-source grammar.
+pub fn build_c32_literal_after_input_source(
+    profile: &ProfileDescriptor,
+    bits: u32,
+) -> Result<Vec<u8>, C32LiteralLoadedSourceError> {
+    use LiteralDataOp::{Crazy, Rotate};
+    if profile != current_profile() {
+        return Err(C32LiteralLoadedSourceError::UnsupportedProfile);
+    }
+    for operations in [[Rotate, Rotate], [Rotate, Crazy]] {
+        if let Ok(source) = build_loader_ops(profile, bits, operations, true) {
             return Ok(source);
         }
     }
