@@ -37,6 +37,7 @@ use malbolge::{
 
 const ROTATED: u32 = 7_138_732;
 const NEXT_SEED: u32 = 121;
+const TRIT_SIX: u32 = 729;
 const FOLD_SEED: u32 = 157;
 const UNTOUCHED_POINTER: u32 = 7_174_404;
 
@@ -114,6 +115,19 @@ fn signed_c23_conversion_preserves_state_through_post_output_guest_fold()
         let raw = second.map_or(profile.eof_word(), u32::from);
         let converted = scalar_crazy(NEXT_SEED, scalar_crazy(ROTATED, raw));
         assert_eq!(converted % 256, u32::from(second.unwrap_or(255)));
+        match second {
+            Some(byte) => {
+                // Correct full-word successful-byte normalization, not
+                // merely output modulo 256.
+                assert_eq!(converted, u32::from(byte));
+                assert_eq!((converted / TRIT_SIX) % 3, 0);
+            },
+            None => {
+                // EOF is a distinct *encoded* word, not C23 -1.
+                assert_eq!(converted, 62_207);
+                assert_eq!((converted / TRIT_SIX) % 3, 1);
+            },
+        }
         _ = all_converted.insert(converted);
         _ = all_folded.insert(scalar_crazy(FOLD_SEED, converted));
     }
@@ -124,6 +138,12 @@ fn signed_c23_conversion_preserves_state_through_post_output_guest_fold()
         scalar_crazy(NEXT_SEED, scalar_crazy(ROTATED, profile.eof_word()));
     assert_eq!((high % 256, eof % 256), (255, 255));
     assert_ne!(high, eof);
+    // The seventh ternary digit alone separates all successful bytes
+    // from encoded EOF before or after the additional physical crazy.
+    assert_eq!((high / TRIT_SIX) % 3, 0);
+    assert_eq!((eof / TRIT_SIX) % 3, 1);
+    assert_eq!((scalar_crazy(FOLD_SEED, high) / TRIT_SIX) % 3, 1);
+    assert_eq!((scalar_crazy(FOLD_SEED, eof) / TRIT_SIX) % 3, 0);
     let eof_folded = scalar_crazy(FOLD_SEED, eof);
     assert_eq!(eof_folded, 7_112_573);
     assert!((0..=255).all(|byte| {

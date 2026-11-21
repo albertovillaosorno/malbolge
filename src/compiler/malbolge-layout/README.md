@@ -97,11 +97,15 @@ local, reusable conditional lowering, an unbounded loop, or a checksum.
 `build_c23_signed_output_with_post_conversion_fold_source` preserves the
 91-cell `Iy` converter's C66 input, C77/C78 arithmetic and C79 output,
 then executes a new real C80 `p` on loader-expanded M98=157. C81 still
-halts. The reached M96 converted word is distinct for all 256 byte
-inputs **and** true EOF, despite byte 0xff and EOF both emitting 0xff.
+halts. The reached M96 word is **exactly the input byte** (0..255)
+for every successful input, while true EOF becomes the distinct encoded
+word 62,207 (not C23 `-1`). In particular its seventh ternary digit
+is 0 for every successful byte and 1 for EOF; byte 0xff and EOF both
+emit 0xff but retain distinct full-word state.
 The post-output M98 word computes `crazy(157, converted)` and retains only
 118 distinct states across those 257 classes, with EOF still distinct
-from every successful byte. An independent 15-trit
+from every successful byte. Its seventh ternary digit reverses the EOF
+marker to 0, versus 1 for successful bytes. An independent 15-trit
 truth table checks all classes; eight complete 82-step normative VM runs
 check read provenance, all three physical `p` writes, C23 byte output,
 post-output accumulator dependence, exact halt and unread suffixes.

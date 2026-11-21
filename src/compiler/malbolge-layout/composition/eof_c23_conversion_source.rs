@@ -386,7 +386,8 @@ pub fn build_c23_nine_rotated_signed_output_source(
 /// reached C80 `p` writes `crazy(M98, converted)` into M98 before the fixed
 /// C81 halt. C80's data pointer is M98, whose seed is the lossy 157
 /// loader word. M98 loses byte identity but still separates true EOF from
-/// every byte; only M96 retains all 257 input classes distinctly.
+/// every byte by trit six; M96 preserves exact bytes 0..255 versus encoded
+/// EOF=62,207. Neither word is a full C23 signed 32-bit result.
 /// This physical continuation does not realize source-C 32-bit arithmetic,
 /// signed EOF control, a mutable local, or the whole checksum.
 ///
