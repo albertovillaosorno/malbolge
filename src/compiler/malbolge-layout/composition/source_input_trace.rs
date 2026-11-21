@@ -358,9 +358,9 @@ mod tests {
     ) -> SourceInputSiteObservation {
         SourceInputSiteObservation {
             block,
-            code_address: 37 + ordinal,
+            code_address: ordinal.saturating_add(37),
             destination: GuestPlacedOperand {
-                address: 128 + ordinal,
+                address: ordinal.saturating_add(128),
                 type_kind: TernaryCfgScalarKind::U8,
                 value: ordinal,
                 words: 1,
@@ -370,7 +370,7 @@ mod tests {
             ordinal,
             raw_accumulator: 3,
             semantics: GuestCodeInputSemantics::ByteU8,
-            trace_index: ordinal as usize,
+            trace_index: usize::try_from(ordinal).unwrap_or_default(),
         }
     }
 
