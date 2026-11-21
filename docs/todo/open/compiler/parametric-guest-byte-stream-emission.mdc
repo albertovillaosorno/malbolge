@@ -86,7 +86,10 @@ evidence describe the old priority scheme, not the current phase.
   The actual N15 VM then routes C1 to M122 instead of M94, reaches
   M7,174,412 rather than M102 at C43, and emits `0x49` instead of
   the expected second input `0x02`. Two source-bound Rust regressions
-  pin this **bounded** failure; a different bootstrap, real C32 state,
+  pin this **bounded** failure. Sixteen additional deterministic `o`/`j`
+  C38/C39/C40/C42 pointer routes, with C41=93 fixed, reach eight C43
+  addresses but not M102; one normative post-C37 VM state anchors the
+  finite transition enumeration. A different bootstrap, real C32 state,
   arithmetic, phi writes and EOF loop linkage remain open. P2 stays open.
 
 - On 2026-11-20, the original seven-block mutable checksum still passes

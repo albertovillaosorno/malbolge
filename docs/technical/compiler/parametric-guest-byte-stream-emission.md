@@ -55,7 +55,14 @@ changes M41 to 121, so C1 jumps to M122 instead. A 2-byte VM run of
 the modified source still executes both real `/` instructions, but
 its C43 `p` reaches M7,174,412 rather than M102 and emits `0x49`
 instead of the original correct converted `0x02`. Both source traces
-and independent oracle are pinned in a bounded two-test regression.
+and independent oracle are pinned in a bounded regression. A further
+16-case exact pointer simulation begins from the normative post-C37 VM
+memory, holds C41=93 fixed, and enumerates all `o`/`j` choices at
+C38/C39/C40/C42, including code encryption after each instruction.
+Those paths reach only eight distinct C43 pointer addresses
+(37, 38, 67, 68, 159, 7,174,370, 7,174,405 and 7,174,406), never M102.
+This is another **restricted early-operation bound**, not a general
+inability to reach M102 after redesigned code or data initialization.
 
 These results reject only a direct fixed-layout seed swap and this
 specific naive relocation. They do not implement C32 locals, signed EOF

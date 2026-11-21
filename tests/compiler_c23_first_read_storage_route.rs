@@ -28,11 +28,12 @@
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::iter::once;
 
 use malbolge::{
     ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
-    decode_profile_instruction,
+    decode_profile_instruction, encrypt_profile_cell,
 };
 
 const WORDS: u32 = 14_348_907;
@@ -48,7 +49,7 @@ const EOF: u32 = WORDS - 1;
 fn crazy(mut data: u32, mut accumulator: u32) -> u32 {
     let mut result = 0;
     let mut place = 1;
-    for _ in 0..15 {
+    for _ in 0..15u8 {
         let value = match (data % 3, accumulator % 3) {
             (0 | 1, 0) | (2, 2) => 1,
             (1, 2) | (2, 0 | 1) => 2,
@@ -65,16 +66,22 @@ fn crazy(mut data: u32, mut accumulator: u32) -> u32 {
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::integer_division_remainder_used,
+    clippy::integer_division,
     reason = "independent trit rotation arithmetic"
 )]
-fn rotate(word: u32) -> u32 {
+const fn rotate(word: u32) -> u32 {
     (word / 3) + (word % 3) * (WORDS / 3)
 }
 
 fn signed_classes() -> impl Iterator<Item = u32> {
-    (0..=255).chain(std::iter::once(EOF))
+    (0..=255).chain(once(EOF))
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "fixed 34-word loader oracle with loop bounds inside the array"
+)]
 fn loader_words(tail: [u8; 2]) -> [u32; 34] {
     let mut words = [0u32; 34];
     words[0] = u32::from(tail[0]);
@@ -86,6 +93,11 @@ fn loader_words(tail: [u8; 2]) -> [u32; 34] {
 }
 
 #[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "bounded exhaustive oracle assertions and allocation errors"
+)]
 fn fixed_converter_has_no_lossless_m97_tail() -> Result<(), String> {
     let profile = current_profile();
     assert_eq!(profile.word_modulus(), WORDS);
@@ -103,14 +115,10 @@ fn fixed_converter_has_no_lossless_m97_tail() -> Result<(), String> {
                 continue;
             }
             pointer_compatible += 1;
-            let rotated = (0..9).fold(words[6], |word, _| rotate(word));
+            let rotated = (0u8..9).fold(words[6], |word, _| rotate(word));
             let correct_c23 = signed_classes().all(|raw| {
-                let actual = crazy(words[7], crazy(rotated, raw)) % 256;
-                let expected = if raw == EOF {
-                    255
-                } else {
-                    raw
-                };
+                let actual = crazy(words[7], crazy(rotated, raw)) & 255;
+                let expected = raw.min(255);
                 actual == expected
             });
             if !correct_c23 {
@@ -143,6 +151,12 @@ fn fixed_converter_has_no_lossless_m97_tail() -> Result<(), String> {
 }
 
 #[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "normative step-indexed VM trace checks for fixed 91-cell layout"
+)]
 fn moving_c38_save_to_lossless_m102_breaks_executed_bootstrap()
 -> Result<(), String> {
     let profile = current_profile();
@@ -151,15 +165,15 @@ fn moving_c38_save_to_lossless_m102_breaks_executed_bootstrap()
     assert_eq!(source.get(41), Some(&93));
     assert_eq!(decode_profile_instruction(93, 41), Some(b'j'));
     let mut changed = source.clone();
-    for pos in 38..=42usize {
-        changed[pos] = (33..=126u8)
+    for (pos, cell) in changed.iter_mut().enumerate().take(43).skip(38) {
+        *cell = (33..=126u8)
             .find(|byte| {
                 decode_profile_instruction(
                     u32::from(*byte),
                     u32::try_from(pos).unwrap_or(u32::MAX),
                 ) == Some(b'o')
             })
-            .ok_or(format!("missing graphical no-op at C{pos}"))?;
+            .ok_or_else(|| format!("missing graphical no-op at C{pos}"))?;
     }
     changed[43] = (33..=126u8)
         .find(|byte| {
@@ -209,5 +223,102 @@ fn moving_c38_save_to_lossless_m102_breaks_executed_bootstrap()
     assert_ne!(candidate.output(), &[2]);
     // This rejects the naive C38-C43 relocation only. A different complete
     // bootstrap and source-C CFG linker remain unresolved research work.
+    Ok(())
+}
+
+// A fixed C41=93 pointer is necessary for bootstrap. All four other
+// C38..C42 code sites can encode one of two no-writing operations, o/j.
+// Replay those five instructions, including their code encryption, from
+// one verified physical post-C37 memory state rather than rebuilding 16 VMs.
+fn early_pointer_from_vm(memory: &[u32], mask: u8) -> Result<u32, String> {
+    const SITES: [u32; 4] = [38, 39, 40, 42];
+    let mut overlay = BTreeMap::new();
+    for (bit, site) in SITES.into_iter().enumerate() {
+        let opcode = if mask & (1 << bit) == 0 {
+            b'o'
+        } else {
+            b'j'
+        };
+        let raw = (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), site)
+                    == Some(opcode)
+            })
+            .ok_or_else(|| format!("no source opcode at C{site}"))?;
+        _ = overlay.insert(site, u32::from(raw));
+    }
+    let mut pointer = 97u32;
+    for code in 38u32..=42 {
+        let read_word = |address: u32| -> Option<u32> {
+            overlay.get(&address).copied().or_else(|| {
+                usize::try_from(address)
+                    .ok()
+                    .and_then(|index| memory.get(index).copied())
+            })
+        };
+        let opcode = if code == 41 {
+            b'j'
+        } else {
+            let bit = SITES
+                .iter()
+                .position(|site| *site == code)
+                .ok_or("missing site")?;
+            if mask & (1 << bit) == 0 {
+                b'o'
+            } else {
+                b'j'
+            }
+        };
+        pointer = if opcode == b'j' {
+            read_word(pointer)
+                .and_then(|value| value.checked_add(1))
+                .ok_or("invalid pointer read")?
+        } else {
+            pointer.checked_add(1).ok_or("invalid pointer advance")?
+        };
+        let old_code = read_word(code).ok_or("missing source cell")?;
+        let encrypted =
+            encrypt_profile_cell(old_code).ok_or("invalid encryption")?;
+        _ = overlay.insert(code, encrypted);
+    }
+    Ok(pointer)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "finite physical-state oracle asserts the exact reachable set"
+)]
+fn early_o_j_routes_cannot_reach_m102_with_c41_fixed() -> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_c23_nine_rotated_signed_output_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let mut vm = ProfileMachine::from_source(profile, &source, vec![1, 2])
+        .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(38, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?,
+        RunOutcome::BudgetExhausted { steps: 38 },
+    );
+    let post_read = trace.get(37).ok_or("missing first read")?;
+    assert_eq!(post_read.after.registers.data_pointer, 97);
+    assert_eq!(post_read.input, Some(TraceInput::Byte(1)));
+    for step in &trace {
+        assert!(
+            step.memory_reads.data.is_none_or(|read| {
+                ![38, 39, 40, 42].contains(&read.address)
+            })
+        );
+    }
+    let mut reachable = BTreeSet::new();
+    for mask in 0u8..16 {
+        _ = reachable.insert(early_pointer_from_vm(vm.memory(), mask)?);
+    }
+    assert_eq!(
+        reachable,
+        BTreeSet::from([37, 38, 67, 68, 159, 7_174_370, 7_174_405, 7_174_406]),
+    );
+    assert!(!reachable.contains(&102));
     Ok(())
 }
