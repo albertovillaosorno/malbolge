@@ -58,6 +58,7 @@ mod loader_seed;
 mod signed_eof_branch_source;
 mod source_input_state_trace;
 mod source_input_trace;
+mod zero_cell_source;
 
 pub use bounded_revisit::{
     BoundedGuestDataRegion, BoundedGuestRegionsError, BoundedRevisitDataWrite,
@@ -157,6 +158,9 @@ pub use source_input_trace::{
     verify_source_input_site_output_compatible,
     verify_source_input_site_prefix,
     verify_source_input_site_return_compatible,
+};
+pub use zero_cell_source::{
+    ZeroCellSource, ZeroCellSourceError, build_zero_cell_source,
 };
 
 const GRAPHICAL_START: u8 = 33;

@@ -56,6 +56,32 @@ fails closed at physical linking. See
 `tests/compiler_live_input_encoded_store.rs` and the new
 `build_live_input_injective_store_source` helper.
 
+### Actual zero word from source-loaded guest data writes (2026-11-21)
+
+The graphical source `DCBA@?>=<;|32DT` (15 cells) executes ten
+no-ops, `j;p;p;v`, and halts in 14 genuine N15 VM steps. The source's
+own C10 jump operand selects D125. The untouched loader supplies
+M125=7,174,397 and M126=84; these are **not zero seeds** and are not
+host-created VM state. The first reached `p` writes 7,174,481 to M125;
+its accumulator feeds the second `p`, which writes exactly zero to
+M126. The finite independent search finds 43 zero-producing candidates
+in 520 admitted phase/tail cases; the first is selected canonically.
+Every graphical pair of loader source bytes (94 squared) and all six
+recurrent phases yield **no virgin zero** (297 distinct expanded words,
+minimum 27), independently confirming that this word was computed by
+real guest arithmetic. Empty and nonempty stdin execute unchanged:
+no guest `/` is reached, neither input consumption nor output is forged.
+Exact data reads/writes, post-instruction encryption and final memory
+are traced by `tests/compiler_zero_cell_source.rs`.
+
+**Boundary:** this is only one N15 zero cell at program entry with the
+real machine's initial A=0. A negative VM trace beginning with A=3
+instead writes 3. Neither the adjacent high zero word of C32 `[0,0]`
+nor an unknown-entry-accumulator-safe operation has been linked. The
+seven-block mutable EOF checksum still refuses compilation. The
+`build_zero_cell_source` helper therefore provides a physical precursor,
+not a source-C initialization stage.
+
 ### Two retained raw input states across actual guest reads (2026-11-21)
 
 The physical input-store builder now has a separate two-read variant. It

@@ -51,6 +51,18 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Physical Source-Loaded Zero Word (2026-11-21)
+
+One canonical 15-byte graphical N15 source now reaches `j;p;p;v`
+from the real zero-accumulator machine entry and writes actual zero to
+M126, after a real nonzero intermediate data write at M125. An
+independent 94-prefix/graphical-tail search discovers 43 valid layouts;
+all 94-squared graphical source-seed pairs and six-loader phases contain
+no virgin zero. Real traces prove both data writes and self-encryption.
+This is one word **only**. Neither a second adjacent C32 zero word nor a
+source-C frame initializer with unknown live-in accumulator is supplied.
+See `tests/compiler_zero_cell_source.rs` and the layout contract.
+
 ## Two Input-Dependent Guest Memory Stores (2026-11-21)
 
 A bounded, independent 94-prefix/graphical-tail search now yields seven
