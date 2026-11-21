@@ -40,7 +40,7 @@ use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
 const CODE_PHASES: usize = 94;
 const GRAPHICAL_START: u8 = 33;
 const GRAPHICAL_END: u8 = 126;
-const IDENTITY_OPERAND: u32 = 7_174_453;
+pub(super) const IDENTITY_OPERAND: u32 = 7_174_453;
 
 /// Failure to place two source-loaded inverse crazy operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,7 +74,7 @@ pub struct ByteExactInputStoreSource {
 
 // A three-cell chain uses the virgin word following the first p operand to
 // relocate D to an independent second p operand. All reads use loader state.
-fn exact_store_address(
+pub(super) fn exact_store_address(
     source: &[u8],
     first_address: usize,
     profile: &ProfileDescriptor,

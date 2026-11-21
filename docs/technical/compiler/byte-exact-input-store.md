@@ -69,3 +69,32 @@ normalize the true EOF sentinel into the canonical two-word C32 result,
 and choose the source C loop continuation from actual guest state. Merely
 adding an output opcode, identifying a repeated code address or projecting
 the raw sentinel as signed `-1` would not satisfy the C23 checksum.
+
+## Exact raw-state reentry (second bounded guest)
+
+A distinct 27-byte source builds on the two-stage exact input store and
+then makes the *physical data pointer* depend on the stored input word:
+
+- Source: `DCBA@?>=<;:98hx/v-210/po9%H`.
+- SHA-256:
+  `f93c481ba22a4ddfbc7835498af95fe394a3b8e1eb3efa2bbd1d2a3806a01d13`.
+- Reached decoder: `o` x 13, `/jpjp`, `o` x 4, `jjv`.
+- C13 `/` reads one word; C15 `p` writes M121; C17 `p` writes the
+  exact raw input into M73, both from source-derived all-one operands.
+- Four inert steps move D from 74 to M78. At C22, `j` reads untouched
+  M78 = 72 and relocates D back to M73.
+- At C23, the *second* `j` reads the physically overwritten M73,
+  relocating D to `(input_word + 1) mod 14,348,907`; C24 halts.
+- For byte 0, D becomes 1; for byte 255, D becomes 256; for true EOF,
+  D wraps to 0. These are distinct and depend on executed guest data.
+
+`tests/compiler_byte_exact_input_reentry_guest.rs` independently runs all
+256 byte inputs, EOF, and two unread-suffix controls against the normative
+VM, checking the actual operand reads at both `j` sites and the exact
+physical `p` result. A negative source mutation replaces the second `p`
+with an `o`: the last `j` then reads virgin M73 and produces a wrong D,
+so the guest's data-dependence is not inferred from a symbolic projection.
+
+This demonstrates **data-pointer reentry**, not an instruction-pointer
+branch. No C23 signed EOF conversion, checksum arithmetic, phi transfer,
+loop-backedge, or checked whole-source guest output is yet available.
