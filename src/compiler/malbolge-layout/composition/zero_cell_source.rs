@@ -155,6 +155,21 @@ pub struct GuestByteC32PairSource {
     pub source: Vec<u8>,
 }
 
+/// Source-loaded raw-byte C32 storage followed by one real guest output.
+///
+/// The output reads the accumulator after the low-word write, not a C23
+/// signed-EOF scalar. A true EOF still emits a byte and does not implement a
+/// source-C `getchar`/`putchar` EOF guard.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestByteC32PairEchoSource {
+    /// Reached halted-code site after the new output step.
+    pub halt_code_address: u32,
+    /// Reached genuine output instruction after storing both C32 words.
+    pub output_code_address: u32,
+    /// The authenticated physical adjacent data plan and executable source.
+    pub pair: GuestByteC32PairSource,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum AdjacentPhysicalMode {
     RawBytePair,
@@ -521,6 +536,38 @@ pub fn build_guest_byte_c32_pair_source(
 ) -> Result<GuestByteC32PairSource, ZeroCellSourceError> {
     find_physical_adjacent_source(profile, AdjacentPhysicalMode::RawBytePair)
         .and_then(GuestByteC32PairSource::try_from)
+}
+
+/// Append a genuine output after both physical input-dependent pair writes.
+///
+/// This bounded source reuses the exact loader seeds and scratch/data writes
+/// of the raw input pair. C13 becomes the profile's output instruction and
+/// C14 becomes halt; the final two graphical loader-tail bytes stay unchanged.
+/// Successful byte reads are echoed only after storing `[byte, 0]` in guest
+/// memory. True EOF is **not** guarded, and emits its raw byte projection.
+/// This cannot be published as signed-C23 `getchar`/`putchar` or a checksum.
+///
+/// # Errors
+///
+/// Refuses unsupported profile or missing/unencodable 14/15 code sites.
+pub fn build_guest_byte_c32_pair_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<GuestByteC32PairEchoSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut pair = build_guest_byte_c32_pair_source(profile)?;
+    for (site, operation) in [
+        (13usize, LinearOpcode::OutputByte),
+        (14usize, LinearOpcode::Halt),
+    ] {
+        let byte = unique_graphical_cell(profile, operation, site)
+            .map_err(|_error| NoLoadableZero)?;
+        *pair.source.get_mut(site).ok_or(NoLoadableZero)? = byte;
+    }
+    Ok(GuestByteC32PairEchoSource {
+        halt_code_address: 14,
+        output_code_address: 13,
+        pair,
+    })
 }
 
 #[expect(

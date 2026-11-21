@@ -51,6 +51,16 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Physical Stored-Byte Guest Output After Real Input (2026-11-21)
+
+The 33-byte graphical raw-pair source has a bounded C13 `<` / C14 `v`
+continuation, executing 15 real N15 steps and outputting the guest
+byte only after C12 writes the raw low state word. Seven traced
+binary/EOF streams prove true output timing, input consumption and
+preserved adjacent storage. EOF still unconditionally prints its raw
+N15 projection, unlike the required signed C23 EOF-guarded behavior.
+No loop, source-C output path or checksum artifact is published.
+
 ## Signed EOF Cannot Be Repaired By Fixed Crazy Alone (2026-11-21)
 
 After the real guest writes physical `[raw, 0]`, raw byte `0x02`

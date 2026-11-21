@@ -20,6 +20,18 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Guest output after adjacent physical raw-byte state (2026-11-21)
+
+The same 33-byte source loader now admits a post-store output
+continuation: replace C13 halt with `<`, C14 padding with `v`.
+`build_guest_byte_c32_pair_echo_source` executes a 15-step guest
+`jppjpppj*/pjp<v` path, writes actual `[raw, 0]` at
+M7,174,418/M7,174,419, then emits the original successful byte.
+Seven independent normative N15 traces include NUL, high bytes, EOF
+and unread suffix; all output happens **after** C12's physical store.
+EOF unconditionally emits a raw byte projection instead of source-C
+`getchar` EOF handling, so no source-level echo or checksum is claimed.
+
 ### Fixed-crazy EOF limitation after a real raw-byte C32 store (2026-11-21)
 
 The new physical `[raw_input, 0]` store exposes a narrow, independent

@@ -12,6 +12,18 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Raw-byte pair, then genuine guest output (2026-11-21)
+
+`build_guest_byte_c32_pair_echo_source` extends the physical 33-byte
+source at C13/C14 with output and halt, leaving all original graphical
+loader tails and scratch seeds unchanged. The 15 reached N15 steps
+execute `jppjpppj*/pjp<v`. Seven complete binary/EOF VM traces
+verify C12 low-byte write, high-zero preservation and actual C13
+byte emission **after** both physical stores. Success inputs are
+echoed, including NUL and high bytes; an unread input suffix remains
+unconsumed. True EOF also emits its raw N15 byte projection, so this
+is not a C23 signed EOF guard or an executable checksum loop.
+
 ### Raw EOF needs nonlocal conversion (2026-11-21)
 
 From the new source-loaded `[raw, 0]` pair, simply chaining any

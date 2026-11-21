@@ -934,3 +934,79 @@ fn fixed_crazy_postfold_cannot_convert_raw_eof_into_signed_c23()
     assert_eq!(canonical_eof_units, 0);
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "real byte-output trace only after both source-loaded C32 writes"
+)]
+fn real_guest_echoes_raw_byte_only_after_adjacent_state_writes()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_guest_byte_c32_pair_echo_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.pair.source.len(), 33);
+    assert_eq!(plan.output_code_address, 13);
+    assert_eq!(plan.halt_code_address, 14);
+    let raw_plan = layout::build_guest_byte_c32_pair_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(&plan.pair.source[..13], &raw_plan.source[..13]);
+    assert_eq!(&plan.pair.source[15..], &raw_plan.source[15..]);
+    let original_loader =
+        ProfileMachine::from_source(profile, &plan.pair.source, vec![])
+            .map_err(|error| error.to_string())?;
+    for stream in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![0x80],
+        vec![0xff],
+        vec![0x5a, 0x9a],
+    ] {
+        let expected_raw = stream
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let expected_output = u8::try_from(expected_raw % 256)
+            .map_err(|error| error.to_string())?;
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            original_loader.memory().to_vec(),
+            stream.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(15, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 15,
+            }
+        );
+        assert_eq!(trace.len(), 15);
+        for (index, opcode) in b"jppjpppj*/pjp<v".iter().enumerate() {
+            assert_eq!(trace[index].decoded, Some(*opcode));
+        }
+        assert_eq!(trace[13].before.registers.accumulator, expected_raw);
+        assert_eq!(trace[13].after.registers.accumulator, expected_raw);
+        assert_eq!(
+            guest.memory_word(plan.pair.pair_low_address),
+            Ok(expected_raw)
+        );
+        assert_eq!(guest.memory_word(plan.pair.pair_high_address), Ok(0));
+        assert_eq!(guest.output(), [expected_output]);
+        assert_eq!(guest.input_consumed(), usize::from(!stream.is_empty()));
+    }
+    assert_eq!(
+        layout::build_guest_byte_c32_pair_echo_source(historical_profile()),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+    Ok(())
+}
