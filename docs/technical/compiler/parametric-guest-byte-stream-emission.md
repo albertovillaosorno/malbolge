@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Why the Iy converter cannot directly store signed EOF with more p
+
+A second source-locked test exercises the **real 91-cell Iy converter** on
+successful second byte `0x02` and on actual second-read EOF. C78 writes
+M96=`2` or `62,207` respectively, confirmed by the normative 82-step
+trace, while the canonical C32 signed results would be `[2, 0]` and
+`[4,644,102, 299]`. The two *physical converter words* have the same
+units trit `2`, yet both desired C32 result words differ in their units
+trit between byte `0x02` and EOF. Crazy `p` is trit-local for every one
+of the three possible data-operand units trits. Inductively, no finite
+sequence of **constant-operand crazy operations alone** can transform
+these two cases into either required C32 result word. The next physical
+linker needs guest-controlled EOF-specific routing, trit-moving rotation,
+or an independently valid alternative conversion; adding more unchanged
+constant crazy folds cannot solve this input-store obligation. This is a
+restricted obstruction, not an impossibility proof for Malbolge or C23.
+See `tests/compiler_c23_store_nonlocality.rs`.
+
 ### Physical C23 input-result word writes (2026-11-20)
 
 The opt-in `verify_source_input_site_stored_results` strengthens the

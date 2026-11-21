@@ -75,6 +75,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, exact 82-step Iy converter VM runs prove C78 writes
+  M96=`2` for second byte `0x02`, versus M96=`62,207` for true EOF. Both
+  outputs share units trit `2` even though each canonical signed C32
+  result word requires different units trits across the two cases.
+  Exhaustive three-trit crazy-locality evidence rules out any downstream
+  **constant-operand `p`-only** chain from implementing this C32 store.
+  Guest-controlled branching, nonlocal rotation or a different encoding
+  remain open; this does not prove general impossible signed EOF lowering.
+
 - On 2026-11-20, an opt-in physical source-input state gate now
   independently replays the exact normative N15 guest and requires actual
   data instructions to materialize every canonical typed input destination
