@@ -429,8 +429,7 @@ fn physical_window_effects_consistent(window: &PhysicalReentryWindow) -> bool {
             || window
                 .data_operations
                 .binary_search_by_key(&mutation.step, |op| op.step)
-                .ok()
-                .is_some_and(|index| {
+                .is_ok_and(|index| {
                     window.data_operations[index].code_pointer
                         != mutation.execution_site
                 })
@@ -446,8 +445,7 @@ fn physical_window_effects_consistent(window: &PhysicalReentryWindow) -> bool {
             || window
                 .code_mutations
                 .binary_search_by_key(&operation.step, |op| op.step)
-                .ok()
-                .is_some_and(|index| {
+                .is_ok_and(|index| {
                     window.code_mutations[index].execution_site
                         != operation.code_pointer
                 })
@@ -515,8 +513,8 @@ fn physical_window_effects_consistent(window: &PhysicalReentryWindow) -> bool {
         .filter_map(|(address, (before, after))| {
             (before != after).then_some(PhysicalWordChange {
                 address,
-                before,
                 after,
+                before,
             })
         })
         .collect();
