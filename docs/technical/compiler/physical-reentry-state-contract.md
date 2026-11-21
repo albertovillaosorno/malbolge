@@ -62,6 +62,16 @@ cursor. Those predicates permit output growth or changes to dead cells, but
 only describe this *observed fixed-input region*. Neither is a source-C
 loop certificate, a translation proof or a promise about different inputs.
 
+`fixed_input_replay_blockers` converts the dependency predicate into exact,
+ordered repair obligations: the required and actual values for live A/C/D,
+changed live memory words, and a changed input cursor. It ignores writes
+to proven-dead cells while retaining overwritten code bytes and jump-target
+XLAT2 changes when they feed the next traversal. In the C71 source-loaded
+witness, the required A=134 and D=141 differ from next-entry A=4,783,015
+and D=7,174,359, and the fetched C71 code word is a changed live-in.
+A physical linker can use these addresses as proposed repair targets,
+but cannot treat an obligation list as a synthesized or verified repair.
+
 Since source, profile and complete input are fixed, and the observed
 interval has no termination, the stricter `exact_closed_cycle` equality
 suffices for deterministic *fixed-input* repetition.

@@ -139,10 +139,9 @@ use malbolge::{ProfileDescriptor, decode_profile_instruction};
 pub use physical_reentry::{
     MAX_PHYSICAL_REENTRY_SOURCE, MAX_PHYSICAL_REENTRY_STEPS,
     MAX_PHYSICAL_REENTRY_VISITS, PhysicalCodeMutation, PhysicalDataOperation,
-    PhysicalEntryState,
-    PhysicalIoEffect, PhysicalIoOperation,
-    PhysicalReentryError, PhysicalReentryWindow, PhysicalWordChange,
-    observe_physical_reentries,
+    PhysicalEntryState, PhysicalIoEffect, PhysicalIoOperation,
+    PhysicalReentryError, PhysicalReentryWindow, PhysicalReplayBlocker,
+    PhysicalWordChange, observe_physical_reentries,
 };
 pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,

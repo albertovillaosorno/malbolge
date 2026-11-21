@@ -149,7 +149,106 @@ pub struct PhysicalReentryWindow {
     pub to: PhysicalEntryState,
 }
 
+/// One exact obstruction to replaying an observed region on its fixed input.
+///
+/// These are *necessary entry-state repairs*, not executable instructions or
+/// sufficient obligations for a parametric C source-loop translation. A live
+/// memory word is relevant even when its change was post-step encryption.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PhysicalReplayBlocker {
+    /// The observed live accumulator is not restored for the next traversal.
+    Accumulator {
+        /// Accumulator at the first entry.
+        required: u32,
+        /// Accumulator at the following entry.
+        actual: u32,
+    },
+    /// The observed live code pointer is not restored for the next traversal.
+    CodePointer {
+        /// Code pointer at the first entry.
+        required: u32,
+        /// Code pointer at the following entry.
+        actual: u32,
+    },
+    /// The observed live data pointer is not restored for the next traversal.
+    DataPointer {
+        /// Data pointer at the first entry.
+        required: u32,
+        /// Data pointer at the following entry.
+        actual: u32,
+    },
+    /// A word read before any write has a different next-entry version.
+    Memory {
+        /// Physical address of the live-in memory word.
+        address: u32,
+        /// Memory word required at the original entry.
+        required: u32,
+        /// Observed memory word at the following entry.
+        actual: u32,
+    },
+    /// The same input bytes would be read from a different cursor position.
+    InputCursor {
+        /// Bytes consumed at the original entry.
+        required: usize,
+        /// Bytes consumed at the following entry.
+        actual: usize,
+    },
+}
+
 impl PhysicalReentryWindow {
+    /// Exact live-in values blocking replay of this observed fixed-input path.
+    ///
+    /// Order is A, C, D, sorted memory addresses, then the stdin cursor.
+    /// Dead-register and dead-memory differences are deliberately excluded.
+    /// Only actual source-backed VM traces justify using these as a proposed
+    /// repair set; a parametric or source-C loop needs separate verification.
+    #[must_use]
+    pub fn fixed_input_replay_blockers(&self) -> Vec<PhysicalReplayBlocker> {
+        let mut blockers = Vec::new();
+        let required = self.register_live_ins;
+        let from = self.from.registers;
+        let to = self.to.registers;
+        if required.accumulator && from.accumulator != to.accumulator {
+            blockers.push(PhysicalReplayBlocker::Accumulator {
+                required: from.accumulator,
+                actual: to.accumulator,
+            });
+        }
+        if required.code_pointer && from.code_pointer != to.code_pointer {
+            blockers.push(PhysicalReplayBlocker::CodePointer {
+                required: from.code_pointer,
+                actual: to.code_pointer,
+            });
+        }
+        if required.data_pointer && from.data_pointer != to.data_pointer {
+            blockers.push(PhysicalReplayBlocker::DataPointer {
+                required: from.data_pointer,
+                actual: to.data_pointer,
+            });
+        }
+        for live_in in &self.memory_live_ins {
+            if let Some(change) = self
+                .net_changed_words
+                .iter()
+                .find(|change| change.address == live_in.address)
+                && change.after != live_in.value
+            {
+                blockers.push(PhysicalReplayBlocker::Memory {
+                    address: live_in.address,
+                    required: live_in.value,
+                    actual: change.after,
+                });
+            }
+        }
+        if self.from.input_consumed != self.to.input_consumed {
+            blockers.push(PhysicalReplayBlocker::InputCursor {
+                required: self.from.input_consumed,
+                actual: self.to.input_consumed,
+            });
+        }
+        blockers
+    }
+
     /// Registers and all profile memory are exactly restored at this entry.
     ///
     /// Input/output effects may still have advanced, so this is a necessary

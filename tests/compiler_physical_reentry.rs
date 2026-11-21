@@ -20,7 +20,8 @@ pub mod layout;
 
 use layout::{
     PhysicalCodeMutation, PhysicalDataOperation, PhysicalEntryState,
-    PhysicalReentryError, PhysicalReentryWindow, PhysicalWordChange,
+    PhysicalReentryError, PhysicalReentryWindow, PhysicalReplayBlocker,
+    PhysicalWordChange,
     build_two_input_class_state_with_guarded_third_read_source,
     observe_physical_reentries,
 };
@@ -145,6 +146,7 @@ fn dead_memory_changes_do_not_invalidate_observed_replay_preconditions() {
     assert!(window.live_registers_restored());
     assert!(window.live_entry_restored());
     assert!(window.fixed_input_replay_preconditions());
+    assert!(window.fixed_input_replay_blockers().is_empty());
     window.net_changed_words.push(PhysicalWordChange {
         address: 100,
         before: 42,
@@ -153,10 +155,20 @@ fn dead_memory_changes_do_not_invalidate_observed_replay_preconditions() {
     assert!(!window.live_memory_restored());
     assert!(!window.live_entry_restored());
     assert!(!window.fixed_input_replay_preconditions());
+    assert_eq!(window.fixed_input_replay_blockers(), [
+        PhysicalReplayBlocker::Memory {
+            address: 100,
+            required: 42,
+            actual: 43,
+        },
+    ]);
     let _removed = window.net_changed_words.pop();
     window.to.input_consumed = 3;
     assert!(window.live_memory_restored());
     assert!(!window.fixed_input_replay_preconditions());
+    assert_eq!(window.fixed_input_replay_blockers(), [
+        PhysicalReplayBlocker::InputCursor { required: 2, actual: 3 },
+    ]);
     window.to.input_consumed = 2;
     window.to.registers.accumulator = 1;
     // The observed region never reads A before overwriting it.
@@ -164,6 +176,9 @@ fn dead_memory_changes_do_not_invalidate_observed_replay_preconditions() {
     window.register_live_ins.accumulator = true;
     assert!(!window.live_registers_restored());
     assert!(!window.live_entry_restored());
+    assert_eq!(window.fixed_input_replay_blockers(), [
+        PhysicalReplayBlocker::Accumulator { required: 0, actual: 1 },
+    ]);
 }
 
 #[test]
@@ -202,6 +217,23 @@ fn genuine_third_input_path_reenters_but_does_not_restore_state()
         assert!(!window.core_state_restored());
         assert!(!window.live_entry_restored());
         assert!(!window.fixed_input_replay_preconditions());
+        let blockers = window.fixed_input_replay_blockers();
+        assert!(blockers.contains(&PhysicalReplayBlocker::Accumulator {
+            required: 134,
+            actual: 4_783_015,
+        }));
+        assert!(blockers.contains(&PhysicalReplayBlocker::DataPointer {
+            required: 141,
+            actual: 7_174_359,
+        }));
+        assert!(blockers.iter().any(|blocker| matches!(
+            blocker,
+            PhysicalReplayBlocker::Memory { address, .. } if *address == ENTRY
+        )));
+        assert!(!blockers.iter().any(|blocker| matches!(
+            blocker,
+            PhysicalReplayBlocker::InputCursor { .. }
+        )));
         assert!(!window.memory_live_ins.is_empty());
         assert!(
             window
