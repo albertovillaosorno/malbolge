@@ -664,7 +664,7 @@ fn verify_source_cfg_input_order(
 // return path, even though every source input operation must be *anchored*.
 // Do not relax missing-site refusals for functions without one complete
 // source return path matching the entire physical input trace.
-fn verify_skipped_source_input_sites(
+fn verify_source_return_input_path(
     canonical: &[u8],
     sites: &SourceInputSites,
     observations: &[SourceInputSiteObservation],
@@ -717,6 +717,35 @@ fn verify_skipped_source_input_sites(
 pub fn verify_source_input_site_prefix(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+    verify_source_input_site_trace(probe, false)
+}
+
+/// Verify a physically halted guest input trace can reach a return in the
+/// authenticated source CFG without any additional source input operation.
+///
+/// Unlike the input-only prefix verifier, this rejects a halted guest that
+/// physically visited every anchored read once but stopped before the source
+/// would require a further visit to the same input site on a loop backedge.
+/// This is a *necessary* source-path check, not evidence for physical branch
+/// targets, guest arithmetic, C32 local writes, output or translated C code.
+/// Unknown source calculations remain nondeterministic within the bounded
+/// source search; they do not become invented guest predicates.
+///
+/// # Errors
+///
+/// Refuses every prefix-verifier error, plus source paths that cannot return
+/// after exactly the observed input events. Search exhaustion is distinct
+/// from a proven impossible return path.
+pub fn verify_source_input_site_return_compatible(
+    probe: SourceInputProbe<'_>,
+) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+    verify_source_input_site_trace(probe, true)
+}
+
+fn verify_source_input_site_trace(
+    probe: SourceInputProbe<'_>,
+    require_source_return: bool,
+) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
     let sites = authenticate_input_sites(probe)?;
     let mut machine = ProfileMachine::from_source(
         current_profile(),
@@ -755,12 +784,14 @@ pub fn verify_source_input_site_prefix(
         },
     }
     verify_source_cfg_input_order(probe.canonical, &observations)?;
-    if sites.keys().any(|address| {
-        !observations
-            .iter()
-            .any(|entry| entry.code_address == *address)
-    }) {
-        verify_skipped_source_input_sites(
+    if require_source_return
+        || sites.keys().any(|address| {
+            !observations
+                .iter()
+                .any(|entry| entry.code_address == *address)
+        })
+    {
+        verify_source_return_input_path(
             probe.canonical,
             &sites,
             &observations,

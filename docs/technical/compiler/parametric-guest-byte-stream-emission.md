@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Disjoint guarded-input anchors and source-return check (2026-11-20)
+
+The existing 132-cell physical *first*-EOF branch actually reads at C53,
+then reaches the second C101 input only if the first read was a successful
+byte. Unlike the second-read EOF classifier at C53/C63, these two read
+addresses are far enough apart for the unchanged C23 checksum's source-
+locked minimum block intervals to be disjoint. The independent placement
+planner accepts both authenticated input anchors without reducing any
+full-width operand, C23 normalization or phi/control reservation.
+
+The normative N15 VM completes in 119 steps for first EOF and 175 after a
+successful first byte. Four real input streams prove first EOF skips C101,
+and distinguish NUL, `0xff`, and a successful second byte from true EOF.
+The source-CFG input-prefix verifier admits exactly these reached reads.
+
+The new opt-in `verify_source_input_site_return_compatible` additionally
+requires one *possible* source CFG return with exactly the observed read
+events, even when both physical source anchors executed. First EOF and a
+successful byte followed by true EOF pass; two successful bytes, including
+second `0xff`, refuse because the original C loop must read again. A
+174-step ceiling refuses a 175-step physical path. This is a stronger
+necessary condition for a future complete source-linked guest, not proof
+that the physical guest executes the source branches or writes source data.
+The classifier emits its marker rather than the C checksum, so there is no
+source-C guest parity or published checksum artifact. See
+`tests/compiler_source_input_site_guest.rs`.
+
 ### Real EOF-branch guest versus disjoint source block placements (2026-11-20)
 
 The independent, existing 132-cell physical second-input EOF classifier

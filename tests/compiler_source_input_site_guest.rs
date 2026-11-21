@@ -38,8 +38,10 @@ use layout::typed_cfg_adapter::state_relocation::{
 use layout::{
     SourceInputPrefixProof, SourceInputProbe, SourceInputTraceError,
     build_c23_signed_output_with_post_conversion_fold_source,
+    build_guarded_signed_eof_second_read_source,
     build_second_input_eof_classified_first_echo_source,
     verify_source_input_site_prefix,
+    verify_source_input_site_return_compatible,
 };
 use malbolge::{
     ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
@@ -615,5 +617,175 @@ fn physical_second_eof_branch_refuses_overlapping_checksum_blocks()
             &physical, &wire, &anchors, input, second, steps,
         )?;
     }
+    Ok(())
+}
+
+// The first-read EOF branch is a stronger physical candidate than the
+// second-read EOF classifier: its two sites are 48 cells apart, so the
+// checksum's full-width block-0 reservations need not overlap block 5.
+// This remains input-only source/guest linkage, not an emitted C checksum.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded physical conditional input and canonical C23 CFG witness"
+)]
+fn guarded_first_eof_branch_admits_disjoint_checksum_input_anchors()
+-> Result<(), String> {
+    let physical =
+        build_guarded_signed_eof_second_read_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    let wire = checksum_wire()?;
+    let anchors = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 53,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 101,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let plan = layout::typed_cfg_adapter::state_relocation::
+        plan_source_locked_cfg_with_input_anchors(
+            &wire,
+            u32::try_from(physical.len()).map_err(|error| error.to_string())?,
+            256,
+            &anchors,
+        )
+        .map_err(|error| format!("disjoint source plan: {error:?}"))?;
+    let first = plan
+        .code_blocks
+        .iter()
+        .find(|block| block.block == 0)
+        .ok_or("missing source entry block")?;
+    let loop_read = plan
+        .code_blocks
+        .iter()
+        .find(|block| block.block == 5)
+        .ok_or("missing source loop-read block")?;
+    assert!(first.end_exclusive <= loop_read.start);
+    for (input, expected, steps) in [
+        (&[][..], vec![(53, TraceInput::EndOfInput)], 119),
+        (
+            &[0][..],
+            vec![(53, TraceInput::Byte(0)), (101, TraceInput::EndOfInput)],
+            175,
+        ),
+        (
+            &[0xff][..],
+            vec![(53, TraceInput::Byte(0xff)), (101, TraceInput::EndOfInput)],
+            175,
+        ),
+        (
+            &[1, 2][..],
+            vec![(53, TraceInput::Byte(1)), (101, TraceInput::Byte(2))],
+            175,
+        ),
+    ] {
+        let proof = verify_source_input_site_prefix(SourceInputProbe {
+            anchors: &anchors,
+            canonical: &wire,
+            frame_base: 256,
+            input,
+            physical_source: &physical,
+            step_budget: 175,
+        })
+        .map_err(|error| format!("source-guarded guest: {error:?}"))?;
+        assert_eq!(proof.outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps,
+        });
+        assert_eq!(
+            proof
+                .observations
+                .iter()
+                .map(|item| (item.code_address, item.input))
+                .collect::<Vec<_>>(),
+            expected,
+        );
+        assert_eq!(proof.bytes_consumed, input.len().min(2));
+    }
+    Ok(())
+}
+
+// Physical halt following both anchored reads does not prove a completed
+// source input path: a successful second byte makes the C23 checksum loop
+// require another read, whereas true second EOF permits a source return.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "physical EOF-aware return-path evidence and necessary refusal"
+)]
+fn guarded_guest_halt_requires_source_eof_compatible_return_path()
+-> Result<(), String> {
+    let physical =
+        build_guarded_signed_eof_second_read_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    let wire = checksum_wire()?;
+    let anchors = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 53,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 101,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let probe = SourceInputProbe {
+        anchors: &anchors,
+        canonical: &wire,
+        frame_base: 256,
+        input: &[],
+        physical_source: &physical,
+        step_budget: 175,
+    };
+    for (input, steps, consumed) in
+        [(&[][..], 119, 0), (&[1][..], 175, 1), (&[0xff][..], 175, 1)]
+    {
+        let proof =
+            verify_source_input_site_return_compatible(SourceInputProbe {
+                input,
+                ..probe
+            })
+            .map_err(|error| {
+                format!("valid source-return prefix: {error:?}")
+            })?;
+        assert_eq!(proof.outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps,
+        });
+        assert_eq!(proof.bytes_consumed, consumed);
+    }
+    assert_eq!(
+        verify_source_input_site_return_compatible(SourceInputProbe {
+            input: &[1, 2],
+            ..probe
+        }),
+        Err(SourceInputTraceError::UnreachedSourceInput),
+    );
+    assert_eq!(
+        verify_source_input_site_return_compatible(SourceInputProbe {
+            input: &[1, 0xff],
+            ..probe
+        }),
+        Err(SourceInputTraceError::UnreachedSourceInput),
+    );
+    assert_eq!(
+        verify_source_input_site_return_compatible(SourceInputProbe {
+            input: &[1],
+            step_budget: 174,
+            ..probe
+        }),
+        Err(SourceInputTraceError::StepBudgetExhausted),
+    );
     Ok(())
 }

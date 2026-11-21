@@ -75,6 +75,24 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a real N15 first-read EOF classifier supplies
+  C53 and a *conditionally reached* C101 second `/` for the unchanged
+  seven-block C23 checksum source. The canonical 132-cell guest admits
+  disjoint minimum placements for source block 0 and loop-input block 5;
+  this avoids the C53/C63 overlap of the second-EOF classifier without
+  assuming any source operation has been implemented. Four physical input
+  traces reach exactly the source-permitted reads, including first EOF
+  skipping C101 and byte `ff` versus true second EOF. A new optional
+  source-return-compatible trace gate requires a complete canonical CFG
+  return after the observed physical reads even when every anchor was
+  visited: first EOF and byte-then-EOF pass, while two successful bytes
+  correctly refuse because source control requires another loop read.
+  Actual VM termination is 119 or 175 steps; 174-step exhaustion refuses.
+  This is input-order/control *necessity* only. The existing guest still
+  emits fixed classifier markers instead of the checksum, and no C32
+  writes, EOF normalization, arithmetic, phi copies, or source-linked
+  guest branches have been proved. The compiler still refuses publication.
+
 - On 2026-11-20, four real 119/175-step N15 traces of the existing
   conditional second-input EOF branch confirm physical C53/C63 reads.
   Attempting to bind both to the original checksum source CFG refuses:
