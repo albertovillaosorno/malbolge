@@ -75,6 +75,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, source-authenticated physical input-site probing
+  now cross-checks both checksum `getchar` code anchors (C37 and C66)
+  against actual input transitions of the separate 91-cell `Iy` converter
+  in the normative N15 VM. Six finite 82-step streams distinguish byte
+  `0xff` from true raw EOF while checking exact source SSA destinations,
+  consumed bytes, reached input opcodes, physical step indices and output.
+  A missing source anchor, corrupted typed bytes, insufficient 81-step
+  ceiling and an extra real `/` at unassigned C80 refuse. This witness
+  does **not** execute C32 local writes, source arithmetic, phi moves,
+  branch decisions or the original EOF backedge; the full checksum
+  still refuses guest publication and P2 remains open.
+
 - On 2026-11-20, the original seven-block mutable C23 checksum still
   passes its five native `-O0`/`-O2` binary controls and refuses guest
   publication. A finite independent oracle exhausts 8,836 printable

@@ -1,0 +1,306 @@
+// Copyright:
+//   - Copyright © 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - Apache-2.0
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+//
+// Boundary-Contract:
+// - Owns:
+//   - Normative VM evidence for source-typed physical input code sites.
+// - Must-Not:
+//   - Assert C23 conversion, frame stores, phi copies, branch parity or publish
+//     executable C from an input-only trace.
+// - Allows:
+//   - Inputs: source-authenticated typed IR, proposed input addresses, actual
+//     graphical target source, finite byte stream and strict VM step ceiling.
+//   - Outputs: reached input steps and their exact raw guest accumulator words.
+//   - Side effects: isolated current-profile VM execution only.
+// - Split-When:
+//   - A full translation validator verifies every source operation and edge.
+// - Merge-When:
+//   - The source-linked guest backend supplies complete VM trace certificates.
+// - Summary:
+//   - Proves real / operations occurred at the source-locked candidate sites.
+
+//! Source-locked input-site evidence from the actual current-profile VM.
+//!
+//! This verifies only physical input opcodes and their raw accumulator results.
+//! In particular a reached C23 getchar site still owes its two-word signed
+//! normalization and all following source operations. The candidate code is
+//! never published or considered to implement its source CFG.
+
+use std::collections::BTreeMap;
+
+use malbolge::{
+    ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
+    current_profile,
+};
+
+use super::typed_cfg_adapter::state_relocation::{
+    GuestCodeInputAnchor, GuestCodeInputSemantics, GuestCodeOperationEffect,
+    GuestPlacedOperand, plan_source_locked_cfg_with_input_anchors,
+};
+use super::typed_cfg_adapter::state_storage::encode_i32_cells;
+
+/// Physical probe code is intentionally small and entirely graphical.
+pub const MAX_SOURCE_INPUT_TRACE_CELLS: usize = 4096;
+/// Finite physical prefix ceiling; this is not an unbounded C execution gate.
+pub const MAX_SOURCE_INPUT_TRACE_STEPS: usize = 512;
+
+/// A failure to associate a real input transition with authenticated source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceInputTraceError {
+    /// Current-profile VM refused to load or execute this physical program.
+    InvalidGuestExecution,
+    /// Real transition does not carry the expected signed/raw input word.
+    InvalidInputTransition,
+    /// Invalid/too-large source or input, or zero/excessive step budget.
+    InvalidProbeBound,
+    /// Canonical typed source, frame or anchored interval was rejected.
+    InvalidSourcePlacement,
+    /// A source input effect is not assigned exactly one distinct code site.
+    MissingSourceAnchor,
+    /// The same source input site executed more than once in this prefix.
+    RepeatedSourceInput,
+    /// Physical execution did not terminate within the declared ceiling.
+    StepBudgetExhausted,
+    /// An executed input instruction had no authenticated source input site.
+    UnexpectedGuestInput,
+    /// Physical execution terminated without the source-required halt.
+    UnexpectedGuestTermination,
+    /// Some source-locked input site was not executed in the guest prefix.
+    UnreachedSourceInput,
+}
+
+/// An actual input step and its *raw* profile accumulator, before C23 casting.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceInputSiteObservation {
+    /// Authenticated source block that owns this proposed read.
+    pub block: u32,
+    /// Physical code address executed by the normative VM.
+    pub code_address: u32,
+    /// Source SSA destination that still needs signed/byte guest stores.
+    pub destination: GuestPlacedOperand,
+    /// Actual byte or true EOF selected by the guest.
+    pub input: TraceInput,
+    /// Source operation index within its block.
+    pub ordinal: u32,
+    /// Physical VM accumulator after the input instruction.
+    pub raw_accumulator: u32,
+    /// Target interpretation still required after this raw read.
+    pub semantics: GuestCodeInputSemantics,
+    /// Zero-based normative VM trace index, including any jumps.
+    pub trace_index: usize,
+}
+
+/// An input-only physical-prefix witness, never complete C translation proof.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceInputPrefixProof {
+    /// Number of actual bytes consumed; EOF reads do not advance this.
+    pub bytes_consumed: usize,
+    /// Physical VM output, which need not match the source-C program.
+    pub guest_output: Vec<u8>,
+    /// Input effects in guest execution order, not host CFG path selection.
+    pub observations: Vec<SourceInputSiteObservation>,
+    /// Actual bounded physical VM termination.
+    pub outcome: RunOutcome,
+}
+
+/// Source-locked C23 input sites and physical execution input for one probe.
+#[derive(Clone, Copy, Debug)]
+pub struct SourceInputProbe<'source> {
+    /// All source-typed input effects must be anchored exactly once.
+    pub anchors: &'source [GuestCodeInputAnchor],
+    /// Canonical MCTI source-locked compiler representation.
+    pub canonical: &'source [u8],
+    /// Guest state frame, disjoint from code and valid in the N15 domain.
+    pub frame_base: u32,
+    /// Actual binary stream supplied to the normative VM.
+    pub input: &'source [u8],
+    /// Physical, printable Malbolge source bytes.
+    pub physical_source: &'source [u8],
+    /// Positive finite guest instruction ceiling, at most 512.
+    pub step_budget: usize,
+}
+
+#[derive(Clone, Copy)]
+struct SourceInputSite {
+    block: u32,
+    destination: GuestPlacedOperand,
+    ordinal: u32,
+    semantics: GuestCodeInputSemantics,
+}
+
+type SourceInputSites = BTreeMap<u32, SourceInputSite>;
+
+fn authenticate_input_sites(
+    probe: SourceInputProbe<'_>,
+) -> Result<SourceInputSites, SourceInputTraceError> {
+    if probe.physical_source.len() < 2
+        || probe.physical_source.len() > MAX_SOURCE_INPUT_TRACE_CELLS
+        || !probe
+            .physical_source
+            .iter()
+            .all(|byte| (33..=126).contains(byte))
+        || probe.step_budget == 0
+        || probe.step_budget > MAX_SOURCE_INPUT_TRACE_STEPS
+        || probe.input.len() > MAX_SOURCE_INPUT_TRACE_STEPS
+    {
+        return Err(SourceInputTraceError::InvalidProbeBound);
+    }
+    let source_cells = u32::try_from(probe.physical_source.len())
+        .map_err(|_error| SourceInputTraceError::InvalidProbeBound)?;
+    let plan = plan_source_locked_cfg_with_input_anchors(
+        probe.canonical,
+        source_cells,
+        probe.frame_base,
+        probe.anchors,
+    )
+    .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
+    let mut sites = SourceInputSites::new();
+    for effect_site in plan.operation_effect_sites {
+        if let GuestCodeOperationEffect::Input { destination, semantics } =
+            effect_site.effect
+            && sites
+                .insert(effect_site.code_address, SourceInputSite {
+                    block: effect_site.block,
+                    destination,
+                    ordinal: effect_site.ordinal,
+                    semantics,
+                })
+                .is_some()
+        {
+            return Err(SourceInputTraceError::MissingSourceAnchor);
+        }
+    }
+    if sites.is_empty()
+        || sites.len() != probe.anchors.len()
+        || probe.anchors.iter().any(|anchor| {
+            sites.get(&anchor.code_address).is_none_or(|site| {
+                (site.block, site.ordinal) != (anchor.block, anchor.ordinal)
+            })
+        })
+    {
+        return Err(SourceInputTraceError::MissingSourceAnchor);
+    }
+    Ok(sites)
+}
+
+fn observe_input_step(
+    step: &ProfileStepTrace,
+    trace_index: usize,
+    sites: &SourceInputSites,
+    observations: &mut Vec<SourceInputSiteObservation>,
+) -> Result<(), SourceInputTraceError> {
+    let Some(input) = step.input else {
+        return Ok(());
+    };
+    let address = step.before.registers.code_pointer;
+    let Some(site) = sites.get(&address).copied() else {
+        return Err(SourceInputTraceError::UnexpectedGuestInput);
+    };
+    if observations
+        .iter()
+        .any(|entry| entry.code_address == address)
+    {
+        return Err(SourceInputTraceError::RepeatedSourceInput);
+    }
+    let profile = current_profile();
+    let raw_accumulator = match input {
+        TraceInput::Byte(byte) => u32::from(byte),
+        TraceInput::EndOfInput => profile.eof_word(),
+    };
+    let valid_semantics = match site.semantics {
+        GuestCodeInputSemantics::ByteU8 => true,
+        GuestCodeInputSemantics::SignedC23 {
+            raw_eof_word,
+            c23_eof_cells,
+        } => {
+            raw_eof_word == profile.eof_word()
+                && c23_eof_cells == encode_i32_cells(u32::MAX)
+        },
+    };
+    if !valid_semantics
+        || step.decoded != Some(profile.input_instruction())
+        || step.after.registers.accumulator != raw_accumulator
+        || step.result.is_err()
+    {
+        return Err(SourceInputTraceError::InvalidInputTransition);
+    }
+    observations.push(SourceInputSiteObservation {
+        block: site.block,
+        code_address: address,
+        destination: site.destination,
+        input,
+        ordinal: site.ordinal,
+        raw_accumulator,
+        semantics: site.semantics,
+        trace_index,
+    });
+    Ok(())
+}
+
+/// Execute a physical program and prove its source-typed input steps.
+///
+/// Each source input site must be observed exactly once with no extra reads.
+/// Loops and repeated input require a later full control-flow verifier.
+/// This result proves no C23 stores, normalization, branch or arithmetic and
+/// does not discharge any source-C output or artifact-publication obligation.
+///
+/// # Errors
+///
+/// Refuses malformed source, invalid anchors, missing/repeated/extra input,
+/// incorrect raw input state, VM failures and non-halt termination.
+pub fn verify_source_input_site_prefix(
+    probe: SourceInputProbe<'_>,
+) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+    let sites = authenticate_input_sites(probe)?;
+    let mut machine = ProfileMachine::from_source(
+        current_profile(),
+        probe.physical_source,
+        probe.input.to_vec(),
+    )
+    .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
+    let mut observations = Vec::new();
+    let mut failed = None;
+    let mut trace_index = 0usize;
+    let outcome = machine
+        .run_traced(probe.step_budget, &mut |step| {
+            let current = trace_index;
+            trace_index = trace_index.saturating_add(1);
+            if failed.is_none()
+                && let Err(error) =
+                    observe_input_step(step, current, &sites, &mut observations)
+            {
+                failed = Some(error);
+            }
+        })
+        .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
+    if let Some(error) = failed {
+        return Err(error);
+    }
+    match outcome {
+        RunOutcome::BudgetExhausted { .. } => {
+            return Err(SourceInputTraceError::StepBudgetExhausted);
+        },
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        } => {},
+        RunOutcome::Terminated { .. } => {
+            return Err(SourceInputTraceError::UnexpectedGuestTermination);
+        },
+    }
+    if observations.len() != sites.len() {
+        return Err(SourceInputTraceError::UnreachedSourceInput);
+    }
+    Ok(SourceInputPrefixProof {
+        bytes_consumed: machine.input_consumed(),
+        guest_output: machine.output().to_vec(),
+        observations,
+        outcome,
+    })
+}

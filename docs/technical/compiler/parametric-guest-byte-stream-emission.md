@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-typed input sites checked in the real guest (2026-11-20)
+
+The original seven-block mutable C23 checksum still has no executable
+source-C guest artifact. A separate input-only verification stage now
+rederives both `getchar` operation sites from the canonical source-locked
+typed CFG and runs a candidate 91-cell `Iy` converter in the normative
+N15 VM. It checks actual decoded `/` instructions at C37/C66, their raw
+accumulator values, full-width typed destination identities, signed EOF
+obligations, execution order and physical step indices. Six finite streams
+exercise zero, one and two consumed bytes, NUL, the high-bit boundary,
+`0xff`, true EOF and an unread suffix. Exact 82-step halts are retained.
+
+The verifier refuses absent or forged input-site bindings, an 81-step
+incomplete execution, a corrupted canonical typed source, and a physically
+executed *third* `/` at the unassigned C80. This is positive evidence
+that the proposed source input addresses coincide with real guest input
+transitions, **not** evidence that the converter implements source-C block
+entry, C32 result stores, signed EOF normalization, arithmetic, branches,
+phi transfers or the EOF checksum loop. In particular the converter output
+is not claimed to match the original checksum output. P2 remains open.
+
 ### Frozen C23 loader-tail and bootstrap obstruction (2026-11-20)
 
 The original seven-block C23 mutable EOF checksum was retried through its
