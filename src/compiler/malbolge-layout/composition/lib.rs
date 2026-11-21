@@ -47,6 +47,7 @@
 pub mod typed_cfg_adapter;
 
 mod bounded_revisit;
+mod byte_exact_input_store;
 mod c23_c32_constant_writer;
 mod code_cell_schedule;
 mod eof_branch_plan;
@@ -73,6 +74,10 @@ pub use bounded_revisit::{
     admit_bounded_revisit_layout, place_bounded_guest_state_frame,
     verify_bounded_guest_data_regions, verify_bounded_guest_instruction_writes,
     verify_bounded_guest_state_isolation,
+};
+pub use byte_exact_input_store::{
+    ByteExactInputStoreError, ByteExactInputStoreSource,
+    build_byte_exact_input_store_source,
 };
 pub use c23_c32_constant_writer::{
     C32LiteralCrazyError, C32LiteralCrazyPlan, C32LiteralLoadedSourceError,
