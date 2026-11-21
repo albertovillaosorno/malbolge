@@ -61,9 +61,11 @@ fn direct_jump_probe() -> Result<Vec<u8>, String> {
 
 #[test]
 #[expect(
+    clippy::cognitive_complexity,
     clippy::indexing_slicing,
     clippy::panic_in_result_fn,
-    reason = "independent two-stream physical control refusal witness"
+    clippy::too_many_lines,
+    reason = "independent physical EOF/byte control refusal witness"
 )]
 fn direct_jump_after_real_eof_flag_fails_both_control_arms()
 -> Result<(), String> {
@@ -80,7 +82,7 @@ fn direct_jump_after_real_eof_flag_fails_both_control_arms()
         assert_eq!(trace[27].decoded, Some(b'j'));
         assert_eq!(trace[28].decoded, Some(b'i'));
         assert_eq!(machine.input_consumed(), input.len());
-        assert!(machine.output().is_empty());
+        assert_eq!(machine.output(), []);
         if input.is_empty() {
             assert_eq!(
                 outcome.map_err(|error| error.to_string())?,
@@ -140,8 +142,10 @@ fn direct_jump_after_real_eof_flag_fails_both_control_arms()
 
 #[test]
 #[expect(
+    clippy::cognitive_complexity,
     clippy::indexing_slicing,
     clippy::panic_in_result_fn,
+    clippy::too_many_lines,
     reason = "bounded physical loader-extension state alias counterexample"
 )]
 fn six_phase_tail_relocation_does_not_preserve_early_flag_state()
