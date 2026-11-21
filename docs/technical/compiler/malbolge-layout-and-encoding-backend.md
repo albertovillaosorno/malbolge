@@ -20,6 +20,32 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Composed second-input EOF store or guarded third read (2026-11-21)
+
+`build_second_input_eof_store_or_third_read_source` composes three
+previously independent physical capabilities in the **same** 132-cell
+N15 source. C53 reads the first signed input and C54 echoes its low
+byte (including N15 EOF low byte 106). C63 reads a second signed input;
+C114 physically branches on **that second input**, not the first.
+For EOF at the second read, C114 transfers to C126, then C127 `p`
+reads virgin M145=134 and writes M145=4,783,019. The EOF arm outputs
+171 and halts after 119 guest steps. For every successful second byte,
+C114 selects C45 and its encrypted second traversal reaches C101 `/`
+for a **third real input**, never executes C127 and leaves M145=134.
+The byte arm outputs 154 and halts after 175 guest steps.
+
+The regression checks 262 real N15 guest traces: all 256 values at the
+second read (with an unread suffix), plus six empty/truncated and
+mixed first/second/third streams. It independently checks the actual
+`/` site addresses, consumed input, C114 `i` targets, the EOF-only
+memory read/write, exact first echo, fixed class marker and halt.
+Two separate source mutations remove the third read or the EOF store;
+real VM replays catch each difference in consumption, memory and
+output. The original C23 mutable EOF checksum remains unlinked:
+this is finite compositional guest **control and data**, not a C23
+signed input cell, input-dependent checksum arithmetic, repeatable
+loop or source-C CFG linkage.
+
 ### Physically conditional EOF-arm data write (2026-11-21)
 
 `build_signed_eof_branch_with_eof_store_source` extends the existing

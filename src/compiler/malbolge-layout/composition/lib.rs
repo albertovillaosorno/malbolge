@@ -144,6 +144,7 @@ pub use signed_eof_branch_source::{
     build_second_input_branch_with_preseeded_first_fold_source,
     build_second_input_eof_classified_first_echo_source,
     build_second_input_eof_classified_two_echo_source,
+    build_second_input_eof_store_or_third_read_source,
     build_second_input_guarded_third_read_source,
     build_signed_eof_branch_source,
     build_signed_eof_branch_with_eof_store_source,

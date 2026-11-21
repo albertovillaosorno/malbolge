@@ -439,6 +439,29 @@ pub fn build_signed_eof_branch_with_eof_store_source(
     Ok(source)
 }
 
+/// Compose an actual second-input EOF branch, conditional store, and guarded
+/// read.
+///
+/// C53 reads the first word and C54 echoes it. C63 reads a **second** signed
+/// word, whose actual C114 `i` takes the EOF arm only for true EOF. On that
+/// arm C127 writes loader scratch M145; on a successful second byte, the
+/// disjoint C45..C104 arm instead executes its encrypted C101 `/` to read a
+/// **third** word and never touches M145. Both paths emit their fixed class
+/// marker and halt. This is bounded guest control, not C23 storage, a
+/// source-linked conditional, or a repeatable checksum loop.
+///
+/// # Errors
+///
+/// Refuses noncanonical profiles and missing graphical encodings. Every
+/// input path must be admitted by the normative VM before publication.
+pub fn build_second_input_eof_store_or_third_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source = build_second_input_guarded_third_read_source(profile)?;
+    put(&mut source, 127, b'p')?;
+    Ok(source)
+}
+
 /// Read a third signed word only when the second word was not EOF.
 ///
 /// The C63 read controls the physical byte/EOF jump. Only its successful-byte

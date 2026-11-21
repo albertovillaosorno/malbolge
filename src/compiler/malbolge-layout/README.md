@@ -12,6 +12,19 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Composed second-input branch, store, and guarded read (2026-11-21)
+
+`build_second_input_eof_store_or_third_read_source` executes two
+physical `/` reads and branches on the **second** result. The N15
+second-EOF arm performs a reached C127 `p` scratch write at M145 and
+outputs 171; the successful-second-byte arm executes an encrypted
+C101 `/` to read a third guest word, never writes M145 and outputs
+154. C54 also echoes the first signed input. An exhaustive second-byte
+VM sweep, six boundary streams and two mutated-source controls check
+real read/write and control paths with 119/175-step halts. This is
+bounded physical composition, not signed C23 locals or the mutable
+EOF checksum's guest linkage.
+
 ### Conditional guest store after executable EOF branch (2026-11-21)
 
 `build_signed_eof_branch_with_eof_store_source` extends the existing

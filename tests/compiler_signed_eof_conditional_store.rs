@@ -231,3 +231,250 @@ fn unsupported_profile_refuses_before_guest_publication() {
         Err(layout::SignedEofBranchSourceError::UnsupportedProfile)
     );
 }
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "independent three-input conditional store and guard trace"
+)]
+fn second_read_eof_stores_or_reads_third_word_on_real_guest()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_store_or_third_read_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let baseline =
+        layout::build_second_input_guarded_third_read_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 132);
+    assert_eq!(source.get(130..), Some(b"-}".as_slice()));
+    let differences = source
+        .iter()
+        .zip(baseline)
+        .enumerate()
+        .filter_map(|(index, (changed, previous))| {
+            (changed != &previous).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(differences, [127]);
+    assert_eq!(
+        decode_profile_instruction(
+            u32::from(*source.get(127).ok_or("missing C127")?),
+            127,
+        ),
+        Some(b'p')
+    );
+
+    let original =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_ne!(original.get(101), source.get(101));
+    let loaded = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(
+        loaded.memory_word(EOF_SCRATCH_ADDRESS),
+        Ok(EOF_SCRATCH_BEFORE)
+    );
+
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 0, 17],
+        vec![255, 255, 0, 254],
+        vec![128, 127, 255, 44],
+    ];
+    for input in cases
+        .into_iter()
+        .chain((u8::MIN..=u8::MAX).map(|second| vec![0xa7, second, 0, 255]))
+    {
+        // This expectation is defined from the *second* supplied input,
+        // independently of any generated source or guest-state calculation.
+        let eof = input.len() < 2;
+        let expected_first = input.first().copied().unwrap_or(106);
+        let expected_read_sites = if eof {
+            [53, 63].as_slice()
+        } else {
+            [53, 63, 101].as_slice()
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = vec![];
+        let outcome = vm
+            .run_traced(177, &mut |step| trace.push(*step))
+            .map_err(|error| format!("input {input:?}: {error}"))?;
+        let reads = trace
+            .iter()
+            .filter(|step| step.decoded == Some(b'/'))
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>();
+        assert_eq!(reads.as_slice(), expected_read_sites, "input {input:?}");
+        assert_eq!(
+            vm.input_consumed(),
+            input.len().min(expected_read_sites.len()),
+            "input {input:?}"
+        );
+        assert_eq!(
+            vm.output(),
+            &[
+                expected_first,
+                if eof {
+                    171
+                } else {
+                    154
+                }
+            ],
+            "input {input:?}"
+        );
+        assert_eq!(
+            outcome,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: if eof {
+                    119
+                } else {
+                    175
+                },
+            },
+            "input {input:?}"
+        );
+        let branch = trace
+            .iter()
+            .find(|step| step.before.registers.code_pointer == 114)
+            .ok_or("missing physical branch at C114")?;
+        assert_eq!(branch.decoded, Some(b'i'));
+        assert_eq!(
+            branch.after.registers.code_pointer,
+            if eof {
+                126
+            } else {
+                45
+            },
+            "input {input:?}"
+        );
+        let stores = trace
+            .iter()
+            .filter(|step| step.before.registers.code_pointer == 127)
+            .collect::<Vec<_>>();
+        if eof {
+            let [store] = stores.as_slice() else {
+                return Err(format!("input {input:?}: expected one EOF store"));
+            };
+            assert_eq!(store.decoded, Some(b'p'));
+            assert_eq!(store.before.registers.accumulator, EOF_CLASS_WORD);
+            assert_eq!(
+                store
+                    .memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((EOF_SCRATCH_ADDRESS, EOF_SCRATCH_BEFORE))
+            );
+            assert_eq!(
+                store
+                    .memory_delta
+                    .data
+                    .map(|write| (write.address, write.after)),
+                Some((EOF_SCRATCH_ADDRESS, EOF_SCRATCH_AFTER))
+            );
+        } else {
+            assert!(stores.is_empty(), "input {input:?}");
+        }
+        assert_eq!(
+            vm.memory_word(EOF_SCRATCH_ADDRESS),
+            Ok(if eof {
+                EOF_SCRATCH_AFTER
+            } else {
+                EOF_SCRATCH_BEFORE
+            }),
+            "input {input:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn composed_guard_and_store_refuses_noncanonical_profile() {
+    assert_eq!(
+        layout::build_second_input_eof_store_or_third_read_source(
+            malbolge::historical_profile()
+        ),
+        Err(layout::SignedEofBranchSourceError::UnsupportedProfile)
+    );
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "independent guest replay for two destructive source mutations"
+)]
+fn composing_guard_and_store_has_independent_negative_controls()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_store_or_third_read_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    let no_guard = {
+        let mut changed = source.clone();
+        let no_read =
+            layout::build_second_input_eof_classified_first_echo_source(
+                profile,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+        *changed.get_mut(101).ok_or("missing C101")? =
+            *no_read.get(101).ok_or("missing original C101")?;
+        changed
+    };
+    let no_store = {
+        let mut changed = source.clone();
+        *changed.get_mut(127).ok_or("missing C127")? = (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), 127) == Some(b'o')
+            })
+            .ok_or("missing C127 no-op encoding")?;
+        changed
+    };
+    for (guest, expected_consumed, expected_output, expected_scratch) in [
+        (source.as_slice(), 3, vec![0x12, 154], EOF_SCRATCH_BEFORE),
+        (no_guard.as_slice(), 2, vec![0x12, 154], EOF_SCRATCH_BEFORE),
+    ] {
+        let mut vm =
+            ProfileMachine::from_source(profile, guest, vec![0x12, 0x34, 0xff])
+                .map_err(|error| error.to_string())?;
+        assert_eq!(
+            vm.run(176).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 175,
+            }
+        );
+        assert_eq!(vm.input_consumed(), expected_consumed);
+        assert_eq!(vm.output(), expected_output);
+        assert_eq!(vm.memory_word(EOF_SCRATCH_ADDRESS), Ok(expected_scratch));
+    }
+    for (guest, expected_output, expected_scratch) in [
+        (source.as_slice(), vec![0x12, 171], EOF_SCRATCH_AFTER),
+        (no_store.as_slice(), vec![0x12, 154], EOF_SCRATCH_BEFORE),
+    ] {
+        let mut vm = ProfileMachine::from_source(profile, guest, vec![0x12])
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            vm.run(120).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 119,
+            }
+        );
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.output(), expected_output);
+        assert_eq!(vm.memory_word(EOF_SCRATCH_ADDRESS), Ok(expected_scratch));
+    }
+    Ok(())
+}

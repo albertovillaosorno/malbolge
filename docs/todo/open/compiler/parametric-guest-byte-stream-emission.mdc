@@ -75,6 +75,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, the actual 132-cell signed N15 branch now composes
+  **second-input EOF control, EOF-only scratch storage, and guarded
+  third input** in a single graphical source. C53 echoes the first
+  read; C63 is the second `/`, and C114 `i` chooses C126 for EOF or
+  C45 for any of 256 second bytes. EOF reaches C127 `p` and writes
+  M145=4,783,019; only the successful-byte arm reaches encrypted C101
+  `/` for a third guest read and leaves M145=134. Exhaustive
+  second-byte plus six mixed/truncated/EOF VM traces, with two
+  independent source-mutation controls, check exact read sites,
+  branches, memory, outputs and 119/175-step termination. This
+  is a finite conditional guest program, **not** source-C C32
+  state or the still-unlinked seven-block checksum.
+
 - On 2026-11-21, a real 132-cell N15 EOF branch now executes one
   conditional post-branch guest state write. The reached C114 `i`
   chooses C126 for EOF and C45 for all 256 bytes; only the EOF arm
