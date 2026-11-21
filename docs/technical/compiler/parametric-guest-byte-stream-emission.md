@@ -28,6 +28,51 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Post-flag graphical code-transfer bound (2026-11-21)
+
+The original seven-block mutable C23 EOF checksum was again run through the
+pinned frontend/adapter and native C23 `-O0`/`-O2` controls on all five
+binary inputs. The native oracles agree, while real C-to-Malbolge publication
+still **refuses** the unlinked dynamic CFG. No guest checksum was emitted.
+
+`tests/compiler_eof_flag_forwarding_guest.rs` now freezes an additional
+**physical code-transfer search**, not another literal-output witness. It
+starts with the existing 33-character current-N15 EOF-flag source. Each of
+257 independently run, 27-step normative VM prefixes (all 256 byte values
+and actual EOF) leaves A=0 for bytes or A=15 for EOF. Importantly, its live
+D is still byte-dependent even though A has the desired class value. The
+trace checks that C27..C30 are never read, fetched or written during that
+prefix, so changing those future source bytes cannot alter the entry state.
+
+The frozen local grammar has 85 candidates: every length-zero-through-three
+sequence over `o`, `j`, `p`, `*`, followed by a single `i` at C27..C30.
+Each replacement instruction has a graphical source encoding at its actual
+address; C31..C32, which fix the loader recurrence, are not changed. An
+independent 15-trit crazy/rotate oracle evaluates the exact observed VM
+memory and registers, overlays prospective data writes, and checks whether
+the proposed `i` target can undergo the required post-jump encryption. The
+search's **necessary** success predicate is a valid graphical target on
+*all 256 successful byte inputs* plus a separate valid EOF target; only
+after that could distinct destinations establish a two-arm branch.
+
+None of the 85 candidates even has a graphical target on all 256 bytes.
+Consequently zero candidates meet the stronger distinct-two-arm predicate.
+A separate source-loaded VM replay checks five representative continuation
+shapes (empty, `j`, `jo`, `joo`, `p*j`) across EOF, NUL, `01`, `1f` and `ff`:
+25 actual N15 traces agree on whether the proposed `i` is admitted and,
+when successful, on its exact next code pointer. This independently caught
+and corrected the scalar model's initially missing automatic D increment
+for `j` before the full 257-class test was accepted.
+
+This is a finite negative result under the frozen source, candidate positions,
+loader tails and operation grammar, **not** evidence that arbitrary EOF
+control, longer chains, relocated data, a different graphical source, or the
+full C23 loop is impossible. A credible next linker experiment must first
+supply a bounded, verified data-pointer reset or physically relocate this
+branch with live source-C32 state. The already executable 132-cell signed
+EOF branch uses a different control scaffold and is not contradicted by
+this local rejection.
+
 ### Why raw input cannot directly form the first C32 low word (2026-11-21)
 
 `tests/compiler_c32_source_loaded_eof.rs` now exercises two real source-
