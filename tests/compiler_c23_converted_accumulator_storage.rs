@@ -29,6 +29,7 @@
 pub mod layout;
 
 use std::collections::BTreeSet;
+use std::iter::once;
 
 use malbolge::{
     ProfileMachine, ProfileRegisters, RunOutcome, Termination, TraceInput,
@@ -40,6 +41,7 @@ const NEXT_SEED: u32 = 121;
 const TRIT_SIX: u32 = 729;
 const FOLD_SEED: u32 = 157;
 const UNTOUCHED_POINTER: u32 = 7_174_404;
+const CONSTANT_WRITER_DATA_BASE: u32 = 100;
 
 // Independent trit table, not the production profile crazy primitive.
 #[expect(
@@ -51,7 +53,7 @@ fn scalar_crazy(mut data: u32, mut accumulator: u32) -> u32 {
     const TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
     let mut result = 0;
     let mut place = 1;
-    for _ in 0..15 {
+    for _ in 0..15usize {
         result +=
             TABLE[(data % 3) as usize][(accumulator % 3) as usize] * place;
         data /= 3;
@@ -110,7 +112,7 @@ fn signed_c23_conversion_preserves_state_through_post_output_guest_fold()
     assert_eq!(loaded.memory_word(97), Ok(UNTOUCHED_POINTER));
     let mut all_converted = BTreeSet::new();
     let mut all_folded = BTreeSet::new();
-    let all_inputs = (0u8..=255).map(Some).chain(std::iter::once(None));
+    let all_inputs = (0u8..=255).map(Some).chain(once(None));
     for second in all_inputs {
         let raw = second.map_or(profile.eof_word(), u32::from);
         let converted = scalar_crazy(NEXT_SEED, scalar_crazy(ROTATED, raw));
@@ -269,7 +271,7 @@ fn iy_converted_guest_word_has_source_specific_eof_selector()
         )
         .is_err()
     );
-    for raw in (0..=255).chain(std::iter::once(profile.eof_word())) {
+    for raw in (0..=255).chain(once(profile.eof_word())) {
         let converted = scalar_crazy(NEXT_SEED, scalar_crazy(ROTATED, raw));
         let actual =
             scalar_crazy(control[1], scalar_crazy(control[0], converted));
@@ -371,4 +373,179 @@ fn converted_eof_trit_local_branch_requires_distant_jump_targets() {
     let targets = layout::CURRENT_IY_CONVERTED_EOF_TARGET_WORDS;
     assert_eq!(targets[0] % TRIT_SIX, targets[1] % TRIT_SIX);
     assert_eq!(targets[1] - targets[0], TRIT_SIX);
+}
+
+// A three-p constant writer can recover the exact two-cell signed C23 EOF
+// pattern from *any* accumulator word. These are preinitialized data-operand
+// requirements, not yet a loader-realized source-C frame or a branch linker.
+// In particular, the byte arm must preserve its converted byte separately.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "independent exact fixed-width ternary operand construction"
+)]
+fn constant_writer_operands(mut target: u32) -> [u32; 3] {
+    let mut second = 0;
+    let mut final_operand = 0;
+    let mut place = 1;
+    for _ in 0..15usize {
+        let (middle_digit, final_digit) = match target % 3 {
+            0 => (2, 0),
+            1 => (2, 2),
+            _ => (0, 2),
+        };
+        second += middle_digit * place;
+        final_operand += final_digit * place;
+        target /= 3;
+        place *= 3;
+    }
+    [0, second, final_operand]
+}
+
+fn seeded_constant_writer_source() -> Result<Vec<u8>, String> {
+    (0..7u32)
+        .map(|address| {
+            let opcode = if address == 6 {
+                b'v'
+            } else {
+                b'p'
+            };
+            (33..=126u8)
+                .find(|byte| {
+                    decode_profile_instruction(u32::from(*byte), address)
+                        == Some(opcode)
+                })
+                .ok_or_else(|| format!("no graphical {opcode} at C{address}"))
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::integer_division_remainder_used,
+    reason = "all ternary input digits and both canonical C32 EOF cells"
+)]
+fn three_guest_crazy_operands_can_materialize_both_c32_eof_constants() {
+    let targets =
+        layout::typed_cfg_adapter::state_storage::encode_i32_cells(u32::MAX);
+    assert_eq!(targets, [4_644_102, 299]);
+    for target in targets {
+        let [first, second, third] = constant_writer_operands(target);
+        assert_eq!(first, 0);
+        assert!(second < current_profile().word_modulus());
+        assert!(third < current_profile().word_modulus());
+        // Each of the 15 trits uses precisely the same three-state
+        // transition table as scalar_crazy, so all 3^15 inputs are covered
+        // by checking all three input digits at every position.
+        let mut target_digits = target;
+        let mut second_digits = second;
+        let mut third_digits = third;
+        for _ in 0..15usize {
+            for digit in 0..3 {
+                let first_result = scalar_crazy(0, digit) % 3;
+                let middle_result =
+                    scalar_crazy(second_digits % 3, first_result) % 3;
+                assert_eq!(
+                    scalar_crazy(third_digits % 3, middle_result) % 3,
+                    target_digits % 3
+                );
+            }
+            target_digits /= 3;
+            second_digits /= 3;
+            third_digits /= 3;
+        }
+        for converted in (0..=255).chain(once(62_207)) {
+            let actual = scalar_crazy(
+                third,
+                scalar_crazy(second, scalar_crazy(first, converted)),
+            );
+            assert_eq!(actual, target, "converted guest word {converted}");
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "bounded manually seeded normative VM trace with exact write cells"
+)]
+fn six_real_guest_p_steps_write_exact_two_cell_c32_eof_constant()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = seeded_constant_writer_source()?;
+    assert_eq!(source.len(), 7);
+    let initial = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    let targets =
+        layout::typed_cfg_adapter::state_storage::encode_i32_cells(u32::MAX);
+    let first = constant_writer_operands(targets[0]);
+    let second = constant_writer_operands(targets[1]);
+    let operands = [first, second].concat();
+    assert_eq!(operands.len(), 6);
+    for converted in [0, 1, 2, 127, 128, 255, 62_207] {
+        // These seeded operands model the required linker precondition.
+        // A source-valid loader/constant allocator must still establish
+        // them before this fragment can be embedded in a C23 guest.
+        let mut memory = initial.memory().to_vec();
+        for (index, word) in operands.iter().enumerate() {
+            let address = usize::try_from(CONSTANT_WRITER_DATA_BASE)
+                .map_err(|error| error.to_string())?
+                + index;
+            memory[address] = *word;
+        }
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            memory,
+            Vec::new(),
+            ProfileRegisters {
+                accumulator: converted,
+                code_pointer: 0,
+                data_pointer: CONSTANT_WRITER_DATA_BASE,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(7, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 7,
+        });
+        assert_eq!(trace.len(), 7);
+        let mut accumulator = converted;
+        for (index, word) in operands.iter().enumerate() {
+            let step = &trace[index];
+            let address = CONSTANT_WRITER_DATA_BASE
+                + u32::try_from(index).map_err(|error| error.to_string())?;
+            assert_eq!(step.decoded, Some(b'p'));
+            assert_eq!(step.before.registers.data_pointer, address);
+            assert_eq!(step.before.registers.accumulator, accumulator);
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((address, *word))
+            );
+            accumulator = scalar_crazy(*word, accumulator);
+            assert_eq!(step.after.registers.accumulator, accumulator);
+            assert_eq!(vm.memory_word(address), Ok(accumulator));
+        }
+        assert_eq!(trace[6].decoded, Some(b'v'));
+        assert_eq!(
+            vm.memory_word(CONSTANT_WRITER_DATA_BASE + 2),
+            Ok(targets[0])
+        );
+        assert_eq!(
+            vm.memory_word(CONSTANT_WRITER_DATA_BASE + 5),
+            Ok(targets[1])
+        );
+        assert_eq!(vm.output(), &[]);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    Ok(())
 }
