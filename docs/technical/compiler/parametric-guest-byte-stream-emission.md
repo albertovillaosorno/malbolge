@@ -50,6 +50,14 @@ and no output, including an unread third byte. The physical no-ops do
 handoff or source-C artifact publication. This closes a concrete necessary
 same-block placement refusal, not source state storage or the P2 checksum.
 
+The bounded physical input-site verifier also rejects a trace that reads
+source operations in reverse order **within the same function and basic
+block**. Its new source-local ordinal check does not infer the order of
+different blocks, which still requires real CFG linkage, and keeps block
+identity function-qualified. A focused negative regression reverses two
+observation ordinals and rejects them while accepting independent block
+and function sequences. It does not demonstrate a compiled conditional.
+
 ### Source-typed input sites checked in the real guest (2026-11-20)
 
 The original seven-block mutable C23 checksum still has no executable

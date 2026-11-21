@@ -65,6 +65,8 @@ pub enum SourceInputTraceError {
     MissingSourceAnchor,
     /// The same source input site executed more than once in this prefix.
     RepeatedSourceInput,
+    /// Physical input order contradicts source order within one basic block.
+    SourceInputOutOfOrder,
     /// Physical execution did not terminate within the declared ceiling.
     StepBudgetExhausted,
     /// An executed input instruction had no authenticated source input site.
@@ -84,6 +86,8 @@ pub struct SourceInputSiteObservation {
     pub code_address: u32,
     /// Source SSA destination that still needs signed/byte guest stores.
     pub destination: GuestPlacedOperand,
+    /// Canonical function identity (block IDs are function-local).
+    pub function: u32,
     /// Actual byte or true EOF selected by the guest.
     pub input: TraceInput,
     /// Source operation index within its block.
@@ -130,6 +134,7 @@ pub struct SourceInputProbe<'source> {
 struct SourceInputSite {
     block: u32,
     destination: GuestPlacedOperand,
+    function: u32,
     ordinal: u32,
     semantics: GuestCodeInputSemantics,
 }
@@ -168,6 +173,7 @@ fn authenticate_input_sites(
                 .insert(effect_site.code_address, SourceInputSite {
                     block: effect_site.block,
                     destination,
+                    function: effect_site.function,
                     ordinal: effect_site.ordinal,
                     semantics,
                 })
@@ -180,7 +186,8 @@ fn authenticate_input_sites(
         || sites.len() != probe.anchors.len()
         || probe.anchors.iter().any(|anchor| {
             sites.get(&anchor.code_address).is_none_or(|site| {
-                (site.block, site.ordinal) != (anchor.block, anchor.ordinal)
+                (site.function, site.block, site.ordinal)
+                    != (anchor.function, anchor.block, anchor.ordinal)
             })
         })
     {
@@ -234,6 +241,7 @@ fn observe_input_step(
         block: site.block,
         code_address: address,
         destination: site.destination,
+        function: site.function,
         input,
         ordinal: site.ordinal,
         raw_accumulator,
@@ -243,9 +251,33 @@ fn observe_input_step(
     Ok(())
 }
 
+// The input-only witness may span several source blocks, whose control flow
+// has not yet been linked. Within *one* basic block, however, source input
+// effects have an unambiguous instruction order: a guest prefix that reads a
+// later source ordinal before an earlier one cannot implement that block.
+// Function identity is required because block IDs are function-local.
+fn verify_same_block_input_order(
+    observations: &[SourceInputSiteObservation],
+) -> Result<(), SourceInputTraceError> {
+    let mut last_by_block = BTreeMap::new();
+    for observation in observations {
+        let key = (observation.function, observation.block);
+        if last_by_block
+            .get(&key)
+            .is_some_and(|&previous| previous >= observation.ordinal)
+        {
+            return Err(SourceInputTraceError::SourceInputOutOfOrder);
+        }
+        let _previous = last_by_block.insert(key, observation.ordinal);
+    }
+    Ok(())
+}
+
 /// Execute a physical program and prove its source-typed input steps.
 ///
 /// Each source input site must be observed exactly once with no extra reads.
+/// Inputs belonging to the same source function/block must occur in original
+/// operation order. Cross-block CFG edges remain unverified by this prefix.
 /// Loops and repeated input require a later full control-flow verifier.
 /// This result proves no C23 stores, normalization, branch or arithmetic and
 /// does not discharge any source-C output or artifact-publication obligation.
@@ -297,10 +329,73 @@ pub fn verify_source_input_site_prefix(
     if observations.len() != sites.len() {
         return Err(SourceInputTraceError::UnreachedSourceInput);
     }
+    verify_same_block_input_order(&observations)?;
     Ok(SourceInputPrefixProof {
         bytes_consumed: machine.input_consumed(),
         guest_output: machine.output().to_vec(),
         observations,
         outcome,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use malbolge::TraceInput;
+
+    use super::super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
+    use super::{
+        GuestCodeInputSemantics, GuestPlacedOperand,
+        SourceInputSiteObservation, SourceInputTraceError,
+        verify_same_block_input_order,
+    };
+
+    // These are source-linked observation records, not a surrogate guest
+    // execution. Independent VM tests cover actual physical input effects.
+    fn observed(
+        function: u32,
+        block: u32,
+        ordinal: u32,
+    ) -> SourceInputSiteObservation {
+        SourceInputSiteObservation {
+            block,
+            code_address: 37 + ordinal,
+            destination: GuestPlacedOperand {
+                address: 128 + ordinal,
+                type_kind: TernaryCfgScalarKind::U8,
+                value: ordinal,
+                words: 1,
+            },
+            function,
+            input: TraceInput::Byte(3),
+            ordinal,
+            raw_accumulator: 3,
+            semantics: GuestCodeInputSemantics::ByteU8,
+            trace_index: ordinal as usize,
+        }
+    }
+
+    #[test]
+    fn input_order_requires_source_order_within_each_function_block() {
+        let first = observed(0, 0, 0);
+        let second = observed(0, 0, 1);
+        assert_eq!(verify_same_block_input_order(&[first, second]), Ok(()));
+        assert_eq!(
+            verify_same_block_input_order(&[second, first]),
+            Err(SourceInputTraceError::SourceInputOutOfOrder),
+        );
+        assert_eq!(
+            verify_same_block_input_order(&[first, first]),
+            Err(SourceInputTraceError::SourceInputOutOfOrder),
+        );
+        // Different control blocks and distinct functions have independent
+        // source-local ordinals. Their order needs a full CFG verifier.
+        assert_eq!(
+            verify_same_block_input_order(&[
+                second,
+                observed(0, 1, 0),
+                observed(1, 0, 0),
+            ]),
+            Ok(()),
+        );
+    }
 }

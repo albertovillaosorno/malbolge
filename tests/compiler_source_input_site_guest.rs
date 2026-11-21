@@ -100,6 +100,7 @@ fn assert_source_input(
         .find(|item| item.code_address == address)
         .ok_or_else(|| format!("missing guest read at {address}"))?;
     assert_eq!((observation.block, observation.ordinal), (block, ordinal));
+    assert_eq!(observation.function, 0);
     assert_eq!(
         observation.trace_index,
         usize::try_from(address).map_err(|error| error.to_string())?
