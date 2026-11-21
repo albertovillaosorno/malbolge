@@ -159,6 +159,8 @@ struct SourceInputWalkState {
     operation: usize,
 }
 
+type KnownSourceOperator = fn(u32, u32) -> u32;
+type KnownSourceScalar = (u32, Option<u32>);
 type SourceInputSites = BTreeMap<u32, SourceInputSite>;
 
 fn authenticate_input_sites(
@@ -293,27 +295,89 @@ fn verify_same_block_input_order(
     Ok(())
 }
 
-fn advance_known_source_scalar(
+// Exact source scalar facts constrain only feasible input paths, never guest
+// arithmetic or emitted bytes. Unknown operations do not select a branch.
+fn known_source_cast(
     operation: &TernaryOperation,
-    known: &mut BTreeMap<u32, u32>,
-) {
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
     if let TernaryOperation::MaterializeI32 { result, scalar, .. }
     | TernaryOperation::MaterializeU32 { result, scalar, .. } = *operation
     {
-        let _old = known.insert(result, scalar.bits());
-        return;
+        Some((result, Some(scalar.bits())))
+    } else if let TernaryOperation::MaterializeBool { result, value, .. } =
+        *operation
+    {
+        Some((result, Some(u32::from(value))))
+    } else if let TernaryOperation::BitcastI32ToI32 { result, value, .. }
+    | TernaryOperation::BitcastI32ToU32 { result, value, .. }
+    | TernaryOperation::BitcastU32ToI32 { result, value, .. }
+    | TernaryOperation::BitcastU32ToU32 { result, value, .. }
+    | TernaryOperation::BoolToI32 { result, value, .. }
+    | TernaryOperation::ZeroExtendU8ToU32 {
+        result, value, ..
+    } = *operation
+    {
+        Some((result, known.get(&value).copied()))
+    } else if let TernaryOperation::TruncateI32ToU8 { result, value, .. }
+    | TernaryOperation::TruncateU32ToU8 { result, value, .. } =
+        *operation
+    {
+        Some((result, known.get(&value).map(|bits| bits & 0xff)))
+    } else if let TernaryOperation::U8ToBool { result, value, .. }
+    | TernaryOperation::I32ToBool { result, value, .. }
+    | TernaryOperation::U32ToBool { result, value, .. } = *operation
+    {
+        Some((result, known.get(&value).map(|bits| u32::from(*bits != 0))))
+    } else {
+        None
     }
+}
+
+fn apply_known_binary(
+    known: &BTreeMap<u32, u32>,
+    left: u32,
+    right: u32,
+    apply: KnownSourceOperator,
+) -> Option<u32> {
+    known
+        .get(&left)
+        .zip(known.get(&right))
+        .map(|(lhs, rhs)| apply(*lhs, *rhs))
+}
+
+fn known_source_binary(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
     let (result, derived) =
-        if let TernaryOperation::NotEqualI32 { left, result, right, .. }
-        | TernaryOperation::NotEqualU32 { left, result, right, .. } =
-            *operation
+        if let TernaryOperation::EqualI32 { left, result, right, .. }
+        | TernaryOperation::EqualU32 { left, result, right, .. } = *operation
         {
             (
                 result,
-                known
-                    .get(&left)
-                    .zip(known.get(&right))
-                    .map(|(lhs, rhs)| u32::from(lhs != rhs)),
+                apply_known_binary(known, left, right, |lhs, rhs| {
+                    u32::from(lhs == rhs)
+                }),
+            )
+        } else if let TernaryOperation::NotEqualI32 {
+            left,
+            result,
+            right,
+            ..
+        }
+        | TernaryOperation::NotEqualU32 {
+            left,
+            result,
+            right,
+            ..
+        } = *operation
+        {
+            (
+                result,
+                apply_known_binary(known, left, right, |lhs, rhs| {
+                    u32::from(lhs != rhs)
+                }),
             )
         } else if let TernaryOperation::AndI32 { left, result, right, .. }
         | TernaryOperation::AndU32 { left, result, right, .. } =
@@ -321,14 +385,107 @@ fn advance_known_source_scalar(
         {
             (
                 result,
-                known
-                    .get(&left)
-                    .zip(known.get(&right))
-                    .map(|(lhs, rhs)| lhs & rhs),
+                apply_known_binary(known, left, right, |lhs, rhs| lhs & rhs),
+            )
+        } else if let TernaryOperation::OrI32 { left, result, right, .. }
+        | TernaryOperation::OrU32 { left, result, right, .. } =
+            *operation
+        {
+            (
+                result,
+                apply_known_binary(known, left, right, |lhs, rhs| lhs | rhs),
+            )
+        } else if let TernaryOperation::XorI32 { left, result, right, .. }
+        | TernaryOperation::XorU32 { left, result, right, .. } =
+            *operation
+        {
+            (
+                result,
+                apply_known_binary(known, left, right, |lhs, rhs| lhs ^ rhs),
             )
         } else {
-            return;
+            return None;
         };
+    Some((result, derived))
+}
+
+fn known_source_threshold(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
+    let (result, derived) = if let TernaryOperation::LessUnsignedU32 {
+        left,
+        result,
+        right,
+        ..
+    } = *operation
+    {
+        (
+            result,
+            apply_known_binary(known, left, right, |lhs, rhs| {
+                u32::from(lhs < rhs)
+            }),
+        )
+    } else if let TernaryOperation::LessUnsignedEqualU32 {
+        left,
+        result,
+        right,
+        ..
+    } = *operation
+    {
+        (
+            result,
+            apply_known_binary(known, left, right, |lhs, rhs| {
+                u32::from(lhs <= rhs)
+            }),
+        )
+    } else if let TernaryOperation::LessSignedI32 {
+        left, result, right, ..
+    } = *operation
+    {
+        (
+            result,
+            apply_known_binary(known, left, right, |lhs, rhs| {
+                u32::from(
+                    i32::from_be_bytes(lhs.to_be_bytes())
+                        < i32::from_be_bytes(rhs.to_be_bytes()),
+                )
+            }),
+        )
+    } else if let TernaryOperation::LessSignedEqualI32 {
+        left,
+        result,
+        right,
+        ..
+    } = *operation
+    {
+        (
+            result,
+            apply_known_binary(known, left, right, |lhs, rhs| {
+                u32::from(
+                    i32::from_be_bytes(lhs.to_be_bytes())
+                        <= i32::from_be_bytes(rhs.to_be_bytes()),
+                )
+            }),
+        )
+    } else {
+        return None;
+    };
+    Some((result, derived))
+}
+
+fn advance_known_source_scalar(
+    operation: &TernaryOperation,
+    known: &mut BTreeMap<u32, u32>,
+) {
+    // Only total, exact C operations can make a guard source-known.
+    // Unmodeled arithmetic retains unknown values, not host-computed output.
+    let Some((result, derived)) = known_source_cast(operation, known)
+        .or_else(|| known_source_binary(operation, known))
+        .or_else(|| known_source_threshold(operation, known))
+    else {
+        return;
+    };
     if let Some(derived_value) = derived {
         let _old = known.insert(result, derived_value);
     } else {

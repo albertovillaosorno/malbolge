@@ -302,3 +302,208 @@ fn exhausted_source_path_search_is_not_an_unreachable_path_proof() {
         Ok(true)
     );
 }
+
+fn guarded_byte_cast_fixture() -> TernaryCfgFunction {
+    let span = dummy_span();
+    let mut function = guarded_inequality_fixture();
+    let Some(block) = function.blocks.first_mut() else {
+        return function;
+    };
+    block.operations = vec![
+        TernaryOperation::GetcharI32 { result: 0, span },
+        TernaryOperation::BitcastI32ToU32 {
+            result: 1,
+            value: 0,
+            span,
+        },
+        TernaryOperation::TruncateU32ToU8 {
+            result: 2,
+            value: 1,
+            span,
+        },
+        TernaryOperation::U8ToBool {
+            result: 3,
+            value: 2,
+            span,
+        },
+    ];
+    block.terminator = TernaryCfgTerminator::Branch {
+        condition: 3,
+        false_target: 1,
+        true_target: 2,
+        span,
+    };
+    function
+}
+
+#[test]
+fn source_known_c23_casts_preserve_zero_and_truncate_eof() {
+    let function = guarded_byte_cast_fixture();
+    let first_zero = SourceInputSiteObservation {
+        input: TraceInput::Byte(0),
+        raw_accumulator: 0,
+        ..observed(0, 0)
+    };
+    let first_high = SourceInputSiteObservation {
+        input: TraceInput::Byte(255),
+        raw_accumulator: 255,
+        ..observed(0, 0)
+    };
+    let first_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..observed(0, 0)
+    };
+    let zero_arm = observed(1, 0);
+    let nonzero_arm = observed(2, 0);
+    for (first, expected_block) in
+        [(first_zero, 1u32), (first_high, 2u32), (first_eof, 2u32)]
+    {
+        for (arm, block) in [(zero_arm, 1u32), (nonzero_arm, 2u32)] {
+            assert_eq!(
+                source_path_matches_input_prefix(
+                    &function,
+                    &[&first, &arm],
+                    128,
+                ),
+                Ok(block == expected_block),
+                "source input {first:?}, successor block {block}",
+            );
+        }
+    }
+}
+
+#[test]
+fn source_known_equality_selects_only_the_matching_input_arm() {
+    let mut function = guarded_inequality_fixture();
+    let span = dummy_span();
+    if let Some(operation) = function
+        .blocks
+        .first_mut()
+        .and_then(|block| block.operations.get_mut(2))
+    {
+        *operation = TernaryOperation::EqualI32 {
+            left: 0,
+            result: 2,
+            right: 1,
+            span,
+        };
+    }
+    let first_byte = observed(0, 0);
+    let first_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..first_byte
+    };
+    let false_arm = observed(1, 0);
+    let true_arm = observed(2, 0);
+    assert_eq!(
+        source_path_matches_input_prefix(
+            &function,
+            &[&first_byte, &true_arm],
+            128
+        ),
+        Ok(false),
+    );
+    assert_eq!(
+        source_path_matches_input_prefix(
+            &function,
+            &[&first_eof, &false_arm],
+            128
+        ),
+        Ok(false),
+    );
+    assert_eq!(
+        source_path_matches_input_prefix(
+            &function,
+            &[&first_eof, &true_arm],
+            128
+        ),
+        Ok(true),
+    );
+}
+
+fn guarded_threshold_fixture(unsigned: bool) -> TernaryCfgFunction {
+    let span = dummy_span();
+    let mut function = guarded_inequality_fixture();
+    let Some(block) = function.blocks.first_mut() else {
+        return function;
+    };
+    let initial_read = TernaryOperation::GetcharI32 { result: 0, span };
+    let threshold = TernaryI32Scalar::from_bits(128);
+    if unsigned {
+        block.operations = vec![
+            initial_read,
+            TernaryOperation::BitcastI32ToU32 {
+                value: 0,
+                result: 5,
+                span,
+            },
+            TernaryOperation::MaterializeU32 {
+                result: 1,
+                scalar: threshold,
+                span,
+            },
+            TernaryOperation::LessUnsignedU32 {
+                left: 5,
+                right: 1,
+                result: 2,
+                span,
+            },
+        ];
+    } else {
+        block.operations = vec![
+            initial_read,
+            TernaryOperation::MaterializeI32 {
+                result: 1,
+                scalar: threshold,
+                span,
+            },
+            TernaryOperation::LessSignedI32 {
+                left: 0,
+                right: 1,
+                result: 2,
+                span,
+            },
+        ];
+    }
+    function
+}
+
+#[test]
+fn source_known_signed_and_unsigned_thresholds_separate_eof_from_bytes() {
+    let signed = guarded_threshold_fixture(false);
+    let unsigned = guarded_threshold_fixture(true);
+    let first = observed(0, 0);
+    let false_arm = observed(1, 0);
+    let true_arm = observed(2, 0);
+    for (input, signed_true, unsigned_true) in [
+        (TraceInput::Byte(0), true, true),
+        (TraceInput::Byte(127), true, true),
+        (TraceInput::Byte(128), false, false),
+        (TraceInput::Byte(255), false, false),
+        (TraceInput::EndOfInput, true, false),
+    ] {
+        let current = SourceInputSiteObservation { input, ..first };
+        for (function, expected) in
+            [(&signed, signed_true), (&unsigned, unsigned_true)]
+        {
+            assert_eq!(
+                source_path_matches_input_prefix(
+                    function,
+                    &[&current, &true_arm],
+                    128,
+                ),
+                Ok(expected),
+            );
+            assert_eq!(
+                source_path_matches_input_prefix(
+                    function,
+                    &[&current, &false_arm],
+                    128,
+                ),
+                Ok(!expected),
+            );
+        }
+    }
+}

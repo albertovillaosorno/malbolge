@@ -28,6 +28,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-known cast and comparison branch feasibility (2026-11-20)
+
+The source-input prefix verifier now preserves exactly known C23 `getchar`
+values through 32-bit signed/unsigned bitcasts, exact U8 truncation, Boolean
+conversions, equality, signed and unsigned less-than checks, plus total bitwise
+AND/OR/XOR operations. It distinguishes raw N15 EOF from C23 `-1` before
+truncation and correctly maps that C23 `-1` to unsigned byte `255` afterward.
+Red-first source-CFG tests reject input effects on the wrong successors for
+zero, `0x7f`, `0x80`, `0xff`, and true EOF, including the signed-versus-
+unsigned ordering difference. Unknown or unimplemented arithmetic remains
+unknown. These tests constrain only possible source paths after independently
+observed input; they do not validate guest-side casts, comparisons, branches,
+mutable variables, emitted checksum bytes, or a source-C artifact. The original
+complete mutable EOF checksum still refuses guest publication.
+
 ### Source-CFG prefix reachability for physical input sites (2026-11-20)
 
 The bounded source-input trace checker now checks more than each basic block's

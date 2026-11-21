@@ -75,6 +75,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the unchanged seven-block mutable checksum again
+  passed its five native C23 binary controls and correctly refused guest
+  publication at the physical linker. Red-first source-CFG witnesses exposed
+  false-positive reachability when a known read passed through signed/unsigned
+  bitcasts, narrowing and Boolean casts, or equality comparison. The bounded
+  input-prefix checker now preserves these exact scalar facts and distinguishes
+  C23 EOF `-1` from byte `0xff` through truncation, including signed and
+  unsigned threshold guards. Four focused guard tests pass for zero, 127, 128,
+  255 and true EOF. This is **source-path refusal**, not guest C23 arithmetic,
+  physical branch linkage, frame stores, phi moves or checksum parity. P2
+  remains open.
+
 - On 2026-11-20, the original seven-block mutable EOF checksum still passes
   its five independent native C23 controls and fails closed at guest physical
   operation/control linkage. The source-authenticated physical input-prefix
