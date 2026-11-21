@@ -20,6 +20,20 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Guarded third-read data-pointer reset without a code return (2026-11-21)
+
+An independently source-loaded N15 continuation reaches C71 as an encrypted
+second-pass `j`, changing D from 7,174,359 to 135 while preserving the
+real signed C53/C63/C101 input sequence. The ensuing second-pass C114 `i`
+still rejects non-graphical M134=7,174,449 rather than returning to an
+executable loop; a truncated second-read EOF still halts. Separately,
+all 64 source-valid C130/C131 tail pairs leave untouched generated memory
+M7,174,402 non-graphical. This blocks only a specific tail/return route,
+not guest data writes, other branch layouts, C32 lowering or the full
+mutable C23 checksum. Reproducible oracle, traces and boundaries are in
+`tests/compiler_guarded_third_state_transfer.rs` and
+[the focused evidence](guarded-third-read-state-transfer.md).
+
 ### Third-read direct-store and return limit (2026-11-21)
 
 The real EOF-guarded success arm first revisits C101 as `/`, then
