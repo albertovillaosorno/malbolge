@@ -82,6 +82,26 @@ export TMPDIR="$PWD/.temp"
   tests.test_eof_checksum_pipeline -v
 ```
 
+## Input-Site XLAT2 Orbit Census
+
+A distinct exhaustive check of all 94 positional decode phases requires a
+loader-valid graphical `/` before considering any source-body backedge. With
+no guest data write aliasing that cell, the next fetched byte follows the
+same XLAT2 orbit. There are **no** graphical source bytes that decode to
+`/` on two consecutive self-encrypting visits at a fixed address. The first
+return to `/` has periods 2, 4, 5, 6, 9 or 68, occurring at exactly 2, 4,
+5, 6, 9 and 68 of the 94 decoder phases respectively.
+
+Only positions **43** (source byte 74) and **47** (source byte 70), modulo
+94, have a two-encryption input phase with an inert intermediate opcode:
+`/`, inert, `/`. C47 is the independently executed four-input physical
+witness above. A shorter apparent `/` loop cannot simply fetch the same
+cell twice without intervening code modification. Longer orbits are not
+guaranteed useful: intermediate code may have control/data effects, the
+program still needs legal returns, and live D/A/guest storage must match
+source semantics. This is a finite graphical-code fact, **not** an
+impossibility result for self-modifying C loops or code/data writers.
+
 ## Still Missing for P2
 
 This result fixes a **proposal-level code-version gap** only. A complete

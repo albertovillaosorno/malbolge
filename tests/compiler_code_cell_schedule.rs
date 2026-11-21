@@ -228,6 +228,72 @@ fn unchanged_i_site_and_aliased_jump_encryption_have_distinct_schedules()
 #[test]
 #[expect(
     clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "exhaustive positional decoder and XLAT2 orbit census"
+)]
+fn same_site_input_revisit_requires_a_non_input_intermediate_phase()
+-> Result<(), String> {
+    use CodeCellEvent::Fetch;
+    use CodeVisitRequirement::{Decoded, Inert};
+    let profile = current_profile();
+    let mut site_periods = Vec::new();
+    for site in 0..94u32 {
+        let first =
+            encode_code_cell_schedule(profile, site, &[Fetch(Decoded(b'/'))])
+                .map_err(|error| format!("C{site}: {error:?}"))?;
+        assert_eq!(
+            decode_profile_instruction(u32::from(first.initial), site),
+            Some(b'/'),
+        );
+        assert_eq!(
+            encode_code_cell_schedule(profile, site, &[
+                Fetch(Decoded(b'/')),
+                Fetch(Decoded(b'/')),
+            ]),
+            Err(CodeCellScheduleError::NoEncoding),
+            "no direct consecutive / is possible without a code write",
+        );
+        let mut word = u32::from(first.initial);
+        let mut first_return_period = None;
+        for turn in 1..=68usize {
+            word = encrypt_profile_cell(word).ok_or("missing XLAT2 cycle")?;
+            if decode_profile_instruction(word, site) == Some(b'/') {
+                first_return_period = Some(turn);
+                break;
+            }
+        }
+        let period =
+            first_return_period.ok_or("missing input site recurrence")?;
+        if period == 2 {
+            let alternation = encode_code_cell_schedule(profile, site, &[
+                Fetch(Decoded(b'/')),
+                Fetch(Inert),
+                Fetch(Decoded(b'/')),
+            ])
+            .map_err(|error| format!("C{site} alternating: {error:?}"))?;
+            assert_eq!(alternation.initial, first.initial);
+            assert!(matches!((site, first.initial), (43, 74) | (47, 70)));
+        }
+        site_periods.push((site, period));
+    }
+    for (period, expected_count) in
+        [(2, 2), (4, 4), (5, 5), (6, 6), (9, 9), (68, 68)]
+    {
+        assert_eq!(
+            site_periods
+                .iter()
+                .filter(|entry| entry.1 == period)
+                .count(),
+            expected_count,
+            "source-loaded input encoding orbit census for length {period}",
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
     clippy::too_many_lines,
     reason = "explicit phase-schedule refusal matrix"
 )]
