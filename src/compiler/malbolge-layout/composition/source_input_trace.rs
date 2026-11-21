@@ -53,6 +53,7 @@ use super::typed_cfg_adapter::ternary::{
 pub const MAX_SOURCE_INPUT_TRACE_CELLS: usize = 4096;
 /// Finite physical prefix ceiling; this is not an unbounded C execution gate.
 pub const MAX_SOURCE_INPUT_TRACE_STEPS: usize = 512;
+const MAX_SOURCE_INPUT_CFG_SEARCH_STATES: usize = 16_384;
 
 /// A failure to associate a real input transition with authenticated source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -143,6 +144,17 @@ struct SourceInputSite {
     function: u32,
     ordinal: u32,
     semantics: GuestCodeInputSemantics,
+}
+
+// Only source-known scalar values may constrain branch reachability. Unknown
+// arithmetic or data never selects a branch; this is an independent source
+// path check, not target execution or guest branch/control verification.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct SourceInputWalkState {
+    block: u32,
+    consumed: usize,
+    known: BTreeMap<u32, u32>,
+    operation: usize,
 }
 
 type SourceInputSites = BTreeMap<u32, SourceInputSite>;
@@ -279,67 +291,187 @@ fn verify_same_block_input_order(
     Ok(())
 }
 
-// This is a necessary, branch-insensitive source control-flow check. Unlike
-// source-order sorting, it refuses a physical input site reached before a
-// mandatory source read or after an impossible predecessor transition. It
-// neither proves which branch condition held nor that guest jumps match CFG.
-// A walk stops immediately after the last observed read, so this remains a
-// prefix check: following source effects and repeated loop reads are outside
-// the present physical verifier's claims.
+fn advance_known_source_scalar(
+    operation: &TernaryOperation,
+    known: &mut BTreeMap<u32, u32>,
+) {
+    if let TernaryOperation::MaterializeI32 { result, scalar, .. }
+    | TernaryOperation::MaterializeU32 { result, scalar, .. } = *operation
+    {
+        let _old = known.insert(result, scalar.bits());
+        return;
+    }
+    let (result, derived) =
+        if let TernaryOperation::NotEqualI32 { left, result, right, .. }
+        | TernaryOperation::NotEqualU32 { left, result, right, .. } =
+            *operation
+        {
+            (
+                result,
+                known
+                    .get(&left)
+                    .zip(known.get(&right))
+                    .map(|(lhs, rhs)| u32::from(lhs != rhs)),
+            )
+        } else if let TernaryOperation::AndI32 { left, result, right, .. }
+        | TernaryOperation::AndU32 { left, result, right, .. } =
+            *operation
+        {
+            (
+                result,
+                known
+                    .get(&left)
+                    .zip(known.get(&right))
+                    .map(|(lhs, rhs)| lhs & rhs),
+            )
+        } else {
+            return;
+        };
+    if let Some(derived_value) = derived {
+        let _old = known.insert(result, derived_value);
+    } else {
+        let _old = known.remove(&result);
+    }
+}
+
+fn source_successor_state(
+    function: &TernaryCfgFunction,
+    current: &SourceInputWalkState,
+    target: u32,
+) -> Option<SourceInputWalkState> {
+    let target_block = usize::try_from(target)
+        .ok()
+        .and_then(|index| function.blocks.get(index))
+        .filter(|block| block.id == target)?;
+    let updates = target_block
+        .phis
+        .iter()
+        .map(|phi| {
+            let incoming = phi
+                .incoming
+                .iter()
+                .find(|(predecessor, _value)| *predecessor == current.block)?;
+            Some((phi.result, current.known.get(&incoming.1).copied()))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let mut known = current.known.clone();
+    for (result, optional_value) in updates {
+        if let Some(known_value) = optional_value {
+            let _old = known.insert(result, known_value);
+        } else {
+            let _old = known.remove(&result);
+        }
+    }
+    Some(SourceInputWalkState {
+        block: target,
+        consumed: current.consumed,
+        known,
+        operation: 0,
+    })
+}
+
+fn advance_source_input_operation(
+    current: &SourceInputWalkState,
+    operation: &TernaryOperation,
+    observations: &[&SourceInputSiteObservation],
+) -> Option<SourceInputWalkState> {
+    let mut next = current.clone();
+    next.operation = next.operation.saturating_add(1);
+    if let TernaryOperation::GetcharI32 { result, .. }
+    | TernaryOperation::ByteInput { result, .. } = *operation
+    {
+        let observed = observations.get(current.consumed)?;
+        if observed.block != current.block
+            || usize::try_from(observed.ordinal).ok() != Some(current.operation)
+        {
+            return None;
+        }
+        let input_value = match observed.input {
+            TraceInput::Byte(byte) => u32::from(byte),
+            TraceInput::EndOfInput
+                if matches!(operation, TernaryOperation::GetcharI32 { .. }) =>
+            {
+                u32::MAX
+            },
+            TraceInput::EndOfInput => return None,
+        };
+        let _old = next.known.insert(result, input_value);
+        next.consumed = next.consumed.saturating_add(1);
+    } else {
+        advance_known_source_scalar(operation, &mut next.known);
+    }
+    Some(next)
+}
+
+fn source_terminator_successors(
+    function: &TernaryCfgFunction,
+    current: &SourceInputWalkState,
+    terminator: TernaryCfgTerminator,
+) -> Vec<SourceInputWalkState> {
+    let targets = match terminator {
+        TernaryCfgTerminator::Branch {
+            condition,
+            false_target,
+            true_target,
+            ..
+        } => match current.known.get(&condition) {
+            Some(0) => vec![false_target],
+            Some(_) => vec![true_target],
+            None => vec![false_target, true_target],
+        },
+        TernaryCfgTerminator::Jump { target, .. } => vec![target],
+        TernaryCfgTerminator::Return(_) => Vec::new(),
+    };
+    targets
+        .into_iter()
+        .filter_map(|target| source_successor_state(function, current, target))
+        .collect()
+}
+
+// Source-known conditions constrain only possible input paths. Arithmetic
+// not explicitly tracked above is unknown, never evaluated as a host output.
+// The walk ends at the final observed read, not at a source-C return. Guest
+// jump/branch transitions and all following effects still need verification.
 fn source_path_matches_input_prefix(
     function: &TernaryCfgFunction,
     observations: &[&SourceInputSiteObservation],
 ) -> bool {
-    let mut pending = VecDeque::from([(function.entry, 0usize, 0usize)]);
+    let mut pending = VecDeque::from([SourceInputWalkState {
+        block: function.entry,
+        consumed: 0,
+        known: BTreeMap::new(),
+        operation: 0,
+    }]);
     let mut visited = BTreeSet::new();
-    while let Some((block_id, operation, consumed)) = pending.pop_front() {
-        if consumed == observations.len() {
+    while let Some(state) = pending.pop_front() {
+        if state.consumed == observations.len() {
             return true;
         }
-        if !visited.insert((block_id, operation, consumed)) {
+        if visited.len() >= MAX_SOURCE_INPUT_CFG_SEARCH_STATES {
+            return false;
+        }
+        if !visited.insert(state.clone()) {
             continue;
         }
-        let Some(block) = usize::try_from(block_id)
+        let Some(block) = usize::try_from(state.block)
             .ok()
             .and_then(|index| function.blocks.get(index))
-            .filter(|block| block.id == block_id)
+            .filter(|block| block.id == state.block)
         else {
             return false;
         };
-        if let Some(source_operation) = block.operations.get(operation) {
-            let is_input = matches!(
-                source_operation,
-                TernaryOperation::ByteInput { .. }
-                    | TernaryOperation::GetcharI32 { .. }
-            );
-            if !is_input
-                || observations.get(consumed).is_some_and(|observed| {
-                    observed.block == block_id
-                        && usize::try_from(observed.ordinal).ok()
-                            == Some(operation)
-                })
+        if let Some(operation) = block.operations.get(state.operation) {
+            if let Some(next) =
+                advance_source_input_operation(&state, operation, observations)
             {
-                pending.push_back((
-                    block_id,
-                    operation.saturating_add(1),
-                    consumed.saturating_add(usize::from(is_input)),
-                ));
+                pending.push_back(next);
             }
-            continue;
-        }
-        match block.terminator {
-            TernaryCfgTerminator::Branch {
-                false_target,
-                true_target,
-                ..
-            } => {
-                pending.push_back((false_target, 0, consumed));
-                pending.push_back((true_target, 0, consumed));
-            },
-            TernaryCfgTerminator::Jump { target, .. } => {
-                pending.push_back((target, 0, consumed));
-            },
-            TernaryCfgTerminator::Return(_) => {},
+        } else {
+            pending.extend(source_terminator_successors(
+                function,
+                &state,
+                block.terminator,
+            ));
         }
     }
     false
@@ -376,8 +508,9 @@ fn verify_source_cfg_input_order(
 /// Execute a physical program and prove its source-typed input steps.
 ///
 /// Each source input site must be observed exactly once with no extra reads.
-/// Inputs belonging to the same source function/block must occur in original
-/// operation order. Cross-block CFG edges remain unverified by this prefix.
+/// Input order must follow a source-CFG path; branches are constrained only
+/// where source constants and observed input make their conditions known.
+/// Guest branch targets and source arithmetic remain unverified.
 /// Loops and repeated input require a later full control-flow verifier.
 /// This result proves no C23 stores, normalization, branch or arithmetic and
 /// does not discharge any source-C output or artifact-publication obligation.

@@ -41,12 +41,23 @@ reverse order or a block-5-only prefix. Both signed reads remain anchored to
 real N15 `/` transitions in the separate 91-cell converter. A malformed typed
 source or a nonexistent source input ordinal also refuses.
 
-This is strictly **branch-insensitive reachability**: even the source-invalid
-sequence of first-read EOF followed by the loop read may satisfy a possible
-CFG path, because no branch predicate or source arithmetic is evaluated. It
-checks neither actual guest branch/control links nor C23 EOF normalization,
-scalar stores, mutable checksum state, parallel phi writes or the repeatable
-backedge. The original complete checksum still refuses guest publication.
+The checker now also propagates **known source scalar values** across exact
+constant materializations, input results, selected comparisons and bitwise
+AND, plus simultaneous phi assignments. A known Boolean guard constrains
+its source CFG successor; an unknown guard retains both possibilities. In
+particular, true first-read EOF must exit the source checksum before the
+second read, whereas byte `0xff` is a successful read and may continue.
+Normative N15 input-only runs still physically attempt both reads even on
+empty stdin, so this additional checker correctly **refuses** those paths.
+A finite 16,384-state ceiling bounds the path search and cannot become an
+unbounded source-language equivalence claim.
+
+This is source-path feasibility, **not guest control verification**. Neither
+physical guest branch destinations nor runtime C23 EOF normalization,
+scalar stores, mutable checksum arithmetic, parallel phi copies or the
+repeatable backedge are proved. Unmodeled source calculations retain
+unknown values rather than being guessed. The complete checksum still
+refuses guest publication.
 
 ### Real C same-block signed input reservations (2026-11-20)
 

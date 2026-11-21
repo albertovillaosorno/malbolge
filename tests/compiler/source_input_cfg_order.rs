@@ -29,10 +29,15 @@ use std::str;
 
 use malbolge::TraceInput;
 
-use super::super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
+use super::super::typed_cfg_adapter::ternary::{
+    TernaryCfgBlock, TernaryCfgFunction, TernaryCfgScalarKind,
+    TernaryCfgTerminator, TernaryI32Scalar, TernaryOperation,
+    TernarySourcePosition, TernarySourceSpan,
+};
 use super::{
     GuestCodeInputSemantics, GuestPlacedOperand, SourceInputSiteObservation,
-    SourceInputTraceError, verify_source_cfg_input_order,
+    SourceInputTraceError, source_path_matches_input_prefix,
+    verify_source_cfg_input_order,
 };
 
 const CHECKSUM_TYPED: &str =
@@ -98,10 +103,8 @@ fn actual_checksum_cfg_requires_first_read_before_backedge_read()
         Ok(())
     );
     assert_eq!(verify_source_cfg_input_order(&wire, &[first]), Ok(()));
-    // Control predicates are intentionally not interpreted by this check:
-    // an EOF first read cannot justify the second read in source C, even
-    // though the unselected CFG contains a path to it. Guest branch parity
-    // remains a separate mandatory obligation.
+    // First-read EOF must take the source exit, even though a purely
+    // branch-insensitive reachability walk could reach the loop read.
     let first_eof = SourceInputSiteObservation {
         input: TraceInput::EndOfInput,
         raw_accumulator: 14_348_906,
@@ -109,7 +112,7 @@ fn actual_checksum_cfg_requires_first_read_before_backedge_read()
     };
     assert_eq!(
         verify_source_cfg_input_order(&wire, &[first_eof, loop_read]),
-        Ok(())
+        Err(SourceInputTraceError::SourceInputUnreachable)
     );
     assert_eq!(
         verify_source_cfg_input_order(&wire, &[loop_read]),
@@ -125,6 +128,15 @@ fn actual_checksum_cfg_requires_first_read_before_backedge_read()
     assert_eq!(
         verify_source_cfg_input_order(&wire, &[first, loop_read, loop_read]),
         Ok(())
+    );
+    let second_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..loop_read
+    };
+    assert_eq!(
+        verify_source_cfg_input_order(&wire, &[first, second_eof, loop_read]),
+        Err(SourceInputTraceError::SourceInputUnreachable)
     );
     Ok(())
 }
@@ -152,4 +164,108 @@ fn source_cfg_path_cannot_skip_or_invent_source_input_sites()
         Err(SourceInputTraceError::InvalidSourcePlacement)
     );
     Ok(())
+}
+
+fn dummy_span() -> TernarySourceSpan {
+    TernarySourceSpan {
+        begin: TernarySourcePosition {
+            byte: 0,
+            column: 1,
+            line: 1,
+        },
+        end: TernarySourcePosition {
+            byte: 1,
+            column: 2,
+            line: 1,
+        },
+    }
+}
+
+fn guarded_inequality_fixture() -> TernaryCfgFunction {
+    let span = dummy_span();
+    TernaryCfgFunction {
+        blocks: vec![
+            TernaryCfgBlock {
+                id: 0,
+                operations: vec![
+                    TernaryOperation::GetcharI32 { result: 0, span },
+                    TernaryOperation::MaterializeI32 {
+                        result: 1,
+                        scalar: TernaryI32Scalar::from_bits(u32::MAX),
+                        span,
+                    },
+                    TernaryOperation::NotEqualI32 {
+                        left: 0,
+                        result: 2,
+                        right: 1,
+                        span,
+                    },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Branch {
+                    condition: 2,
+                    false_target: 1,
+                    span,
+                    true_target: 2,
+                },
+            },
+            TernaryCfgBlock {
+                id: 1,
+                operations: vec![TernaryOperation::GetcharI32 {
+                    result: 3,
+                    span,
+                }],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Return(
+                    TernaryOperation::ReturnVoid { span },
+                ),
+            },
+            TernaryCfgBlock {
+                id: 2,
+                operations: vec![TernaryOperation::GetcharI32 {
+                    result: 4,
+                    span,
+                }],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Return(
+                    TernaryOperation::ReturnVoid { span },
+                ),
+            },
+        ],
+        entry: 0,
+        id: 0,
+        name: "emit".to_owned(),
+        span,
+    }
+}
+
+#[test]
+fn source_known_inequality_discriminates_high_byte_and_true_eof() {
+    let function = guarded_inequality_fixture();
+    let first_high = SourceInputSiteObservation {
+        input: TraceInput::Byte(255),
+        raw_accumulator: 255,
+        ..observed(0, 0)
+    };
+    let first_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..observed(0, 0)
+    };
+    let eof_arm = observed(1, 0);
+    let byte_arm = observed(2, 0);
+    assert!(source_path_matches_input_prefix(&function, &[
+        &first_high,
+        &byte_arm
+    ],));
+    assert!(!source_path_matches_input_prefix(&function, &[
+        &first_high,
+        &eof_arm
+    ],));
+    assert!(source_path_matches_input_prefix(&function, &[
+        &first_eof, &eof_arm
+    ],));
+    assert!(!source_path_matches_input_prefix(&function, &[
+        &first_eof, &byte_arm
+    ],));
 }

@@ -137,12 +137,13 @@ fn physical_two_read_prefix_matches_both_authenticated_source_input_sites()
     .map_err(|error| format!("{error:?}"))?;
     let wire = checksum_wire()?;
     for stream in [
-        Vec::new(),
         vec![0x5a],
         vec![0x5a, 0],
         vec![0x5a, 1, 0x77],
         vec![0x5a, 0x80],
         vec![0x5a, 0xff],
+        vec![0xff],
+        vec![0xff, 0],
     ] {
         let first = stream.first().copied();
         let second = stream.get(1).copied();
@@ -278,6 +279,34 @@ fn physically_unreached_c23_input_site_is_rejected() -> Result<(), String> {
             step_budget: 82,
         }),
         Err(SourceInputTraceError::UnreachedSourceInput),
+    );
+    Ok(())
+}
+
+
+// Input-only opcode parity must not certify an impossible source path: on
+// true first-read EOF the original C loop exits without a second getchar.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source EOF exit is an essential negative guest prefix witness"
+)]
+fn physical_first_eof_cannot_reach_checksum_loop_read() -> Result<(), String> {
+    let source = build_c23_signed_output_with_post_conversion_fold_source(
+        current_profile(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let wire = checksum_wire()?;
+    assert_eq!(
+        verify_source_input_site_prefix(SourceInputProbe {
+            anchors: &input_anchors(),
+            canonical: &wire,
+            frame_base: 128,
+            input: &[],
+            physical_source: &source,
+            step_budget: 82,
+        }),
+        Err(SourceInputTraceError::SourceInputUnreachable)
     );
     Ok(())
 }

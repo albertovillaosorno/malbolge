@@ -83,11 +83,15 @@ evidence describe the old priority scheme, not the current phase.
   along canonical source control edges without skipping another input effect.
   Two source-derived focused tests reject a block-5-only prefix, reversed
   block-5/block-0 reads, a nonexistent read ordinal and malformed typed wire;
-  the original C37/C66 normative guest input-only paths still pass. Source
-  branch conditions remain unevaluated: even first-read EOF followed by the
-  loop read has a structurally possible path. This is not actual C23 EOF
-  control, guest scalar state/arithmetic, phi copies, dynamic loop linkage or
-  a published checksum artifact. P2 remains open.
+  the original C37/C66 normative guest input-only non-EOF paths still pass.
+  A red-first real N15 empty-stream path exposed a source-invalid second
+  read after first-read EOF. The bounded checker now propagates exact input,
+  constant, comparison, AND and phi values through source CFG guards; it
+  refuses that physical path and a post-loop read after true second EOF,
+  while distinguishing byte `0xff` from true EOF. This source-only check
+  does **not** prove physical guest branches, C23 normalization, scalar
+  state/arithmetic, phi copies, dynamic loop linkage or a published checksum
+  artifact. P2 remains open.
 
 - On 2026-11-20, a real Clang-normalized two-`getchar()` C23 function
   places two signed input anchors in the same typed basic block. The
