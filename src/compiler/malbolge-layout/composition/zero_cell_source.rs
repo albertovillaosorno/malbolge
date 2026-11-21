@@ -34,7 +34,9 @@
 
 use std::iter::repeat_n;
 
-use malbolge::{ProfileDescriptor, current_profile, profile_crazy};
+use malbolge::{
+    ProfileDescriptor, current_profile, encrypt_profile_cell, profile_crazy,
+};
 
 use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
 
@@ -167,6 +169,25 @@ pub struct GuestByteC32PairEchoSource {
     /// Reached genuine output instruction after storing both C32 words.
     pub output_code_address: u32,
     /// The authenticated physical adjacent data plan and executable source.
+    pub pair: GuestByteC32PairSource,
+}
+
+/// Four real guest reloads of the raw low word followed by output.
+///
+/// Each three-jump chain reads the high-zero word, the already-encrypted
+/// source C1 word, and a virgin loader cell before returning to the low
+/// word. Physical rotations update that low word and the accumulator;
+/// their output is independent of the incoming accumulator at reload.
+/// This is not a native C23 byte echo, signed EOF conversion or C32 frame.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestByteC32PairReloadSource {
+    /// Reached halt after four genuine data reload/rotation cycles.
+    pub halt_code_address: u32,
+    /// Reached output after the fourth accumulator reload.
+    pub output_code_address: u32,
+    /// Reached physical rotations reading and rewriting the stored low word.
+    pub rotation_code_addresses: [u32; 4],
+    /// Authenticated source-loader raw-byte pair and executable source.
     pub pair: GuestByteC32PairSource,
 }
 
@@ -566,6 +587,86 @@ pub fn build_guest_byte_c32_pair_echo_source(
     Ok(GuestByteC32PairEchoSource {
         halt_code_address: 14,
         output_code_address: 13,
+        pair,
+    })
+}
+
+/// Reload the physically stored low word through four real guest rotations.
+///
+/// The adjacent high-zero word provides a genuine reentry path: one jump
+/// reads the high zero to select D1, the second reads source C1 as it
+/// actually exists after its own earlier post-instruction encryption,
+/// and the third reads untouched expanded loader M101 to select the low
+/// word. Each rotation reads and rewrites that word, replacing the incoming
+/// accumulator. Four rounds fit before the source-loader scratch at M41.
+///
+/// Output is the fourth ternary rotation modulo 256, **not** the original
+/// byte. The low word is no longer the raw input and signed EOF is not
+/// normalized. This is state-feedback evidence, not C23 publication.
+///
+/// # Errors
+///
+/// Rejects unsupported profile, changed loader return or unencodable code.
+pub fn build_guest_byte_c32_pair_reload_source(
+    profile: &ProfileDescriptor,
+) -> Result<GuestByteC32PairReloadSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut pair = build_guest_byte_c32_pair_source(profile)?;
+    // Require the original high-zero gateway and independently validate the
+    // loaded pointer chain. Do not assume a revised search has the same tail.
+    if pair.pair_high_address != pair.pair_low_address.saturating_add(1)
+        || pair.source.len() != 33
+    {
+        return Err(NoLoadableZero);
+    }
+    let encrypted_c1 = encrypt_profile_cell(u32::from(
+        *pair.source.get(1).ok_or(NoLoadableZero)?,
+    ))
+    .ok_or(NoLoadableZero)?;
+    let destination = usize::try_from(encrypted_c1.saturating_add(1))
+        .map_err(|_error| NoLoadableZero)?;
+    if destination < pair.source.len() {
+        return Err(NoLoadableZero);
+    }
+    let restored_low =
+        unwritten_loader_word(&pair.source, destination, profile)
+            .map_err(|_error| NoLoadableZero)?
+            .saturating_add(1);
+    if restored_low != pair.pair_low_address {
+        return Err(NoLoadableZero);
+    }
+    let mut sites = [0u32; 4];
+    for (round, site) in sites.iter_mut().enumerate() {
+        for hop in 0..3 {
+            let address = 13usize
+                .saturating_add(round.saturating_mul(4))
+                .saturating_add(hop);
+            *pair.source.get_mut(address).ok_or(NoLoadableZero)? =
+                unique_graphical_cell(
+                    profile,
+                    LinearOpcode::RelocateDataPointer,
+                    address,
+                )
+                .map_err(|_error| NoLoadableZero)?;
+        }
+        let address = 16usize.saturating_add(round.saturating_mul(4));
+        *pair.source.get_mut(address).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, LinearOpcode::RotateData, address)
+                .map_err(|_error| NoLoadableZero)?;
+        *site = u32::try_from(address).map_err(|_error| NoLoadableZero)?;
+    }
+    for (address, operation) in [
+        (29usize, LinearOpcode::OutputByte),
+        (30usize, LinearOpcode::Halt),
+    ] {
+        *pair.source.get_mut(address).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, address)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(GuestByteC32PairReloadSource {
+        halt_code_address: 30,
+        output_code_address: 29,
+        rotation_code_addresses: sites,
         pair,
     })
 }

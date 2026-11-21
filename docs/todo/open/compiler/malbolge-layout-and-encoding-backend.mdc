@@ -51,6 +51,19 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Four Guest Memory Reloads After Input-Backed C32 Pair (2026-11-21)
+
+The source-loaded 33-byte N15 guest now executes four three-jump
+return paths to its own input-backed low word, four real rotations
+and one true output after both adjacent physical stores. The
+encrypted C1 word (100), untouched M101 loader word (7,174,417)
+and high-zero cell form a verified repeated data-pointer reentry.
+Eight full VM traces and 24 A-perturbed continuations show output
+depends on reloaded guest memory, not merely stale input A.
+Output and final low word are four trit rotations of raw input,
+**not** a native C23 byte echo. EOF guard, signed conversion,
+source SSA linking and the mutable checksum remain open.
+
 ## Physical Stored-Byte Guest Output After Real Input (2026-11-21)
 
 The 33-byte graphical raw-pair source has a bounded C13 `<` / C14 `v`

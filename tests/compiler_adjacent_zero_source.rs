@@ -1010,3 +1010,152 @@ fn real_guest_echoes_raw_byte_only_after_adjacent_state_writes()
     );
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "independent trit rotation and genuine guest memory-reload trace"
+)]
+fn guest_output_reloads_written_low_word_not_input_accumulator()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_guest_byte_c32_pair_reload_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let raw = layout::build_guest_byte_c32_pair_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.pair.source.len(), 33);
+    assert_eq!(&plan.pair.source[..13], &raw.source[..13]);
+    assert_eq!(&plan.pair.source[31..], &raw.source[31..]);
+    assert_eq!(plan.rotation_code_addresses, [16, 20, 24, 28]);
+    assert_eq!(plan.output_code_address, 29);
+    assert_eq!(plan.halt_code_address, 30);
+    let loader =
+        ProfileMachine::from_source(profile, &plan.pair.source, vec![])
+            .map_err(|error| error.to_string())?;
+    for stream in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![0x7f],
+        vec![0x80],
+        vec![0xff],
+        vec![0x5a, 0x9a],
+    ] {
+        let raw = stream
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let mut expected = raw;
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            loader.memory().to_vec(),
+            stream.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(31, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 31,
+            }
+        );
+        assert_eq!(trace.len(), 31);
+        assert_eq!(trace[9].decoded, Some(b'/'));
+        assert_eq!(trace[12].decoded, Some(b'p'));
+        assert_eq!(
+            trace[12].memory_reads.data.map(|read| read.address),
+            Some(plan.pair.pair_low_address)
+        );
+        for rotation in 0..4 {
+            for hop in 0..3 {
+                let step = &trace[13 + rotation * 4 + hop];
+                assert_eq!(step.decoded, Some(b'j'));
+                let (data_address, read, next_data) = [
+                    (plan.pair.pair_high_address, 0, 1),
+                    (1, 100, 101),
+                    (101, 7_174_417, plan.pair.pair_low_address),
+                ][hop];
+                assert_eq!(
+                    step.memory_reads
+                        .data
+                        .map(|read| (read.address, read.value)),
+                    Some((data_address, read))
+                );
+                assert_eq!(step.after.registers.data_pointer, next_data);
+                assert!(step.memory_delta.encryption.is_some());
+            }
+            let step = &trace[16 + rotation * 4];
+            assert_eq!(step.decoded, Some(b'*'));
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((plan.pair.pair_low_address, expected))
+            );
+            expected = expected / 3 + (expected % 3) * 4_782_969;
+            assert_eq!(step.after.registers.accumulator, expected);
+        }
+        let emitted =
+            u8::try_from(expected % 256).map_err(|error| error.to_string())?;
+        assert_eq!(trace[29].decoded, Some(b'<'));
+        assert_eq!(trace[29].before.registers.accumulator, expected);
+        assert_eq!(guest.output(), [emitted]);
+        assert_eq!(guest.memory_word(plan.pair.pair_low_address), Ok(expected));
+        assert_eq!(guest.memory_word(plan.pair.pair_high_address), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!stream.is_empty()));
+
+        // Perturb only the accumulator at the boundary after the actual
+        // input-backed low-word store. The later output must still be read
+        // from memory through genuine guest rotations, not the old A value.
+        let mut prefix = ProfileMachine::from_state(
+            profile,
+            loader.memory().to_vec(),
+            stream,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(
+            prefix.run(13).map_err(|error| error.to_string())?,
+            RunOutcome::BudgetExhausted { steps: 13 }
+        );
+        assert_eq!(prefix.memory_word(plan.pair.pair_low_address), Ok(raw));
+        for accumulator in [0, 3, profile.eof_word()] {
+            let mut resumed = ProfileMachine::from_state(
+                profile,
+                prefix.memory().to_vec(),
+                vec![],
+                ProfileRegisters {
+                    accumulator,
+                    ..prefix.registers()
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            assert_eq!(
+                resumed.run(18).map_err(|error| error.to_string())?,
+                RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 18,
+                }
+            );
+            assert_eq!(resumed.output(), [emitted]);
+            assert_eq!(
+                resumed.memory_word(plan.pair.pair_low_address),
+                Ok(expected)
+            );
+            assert_eq!(resumed.memory_word(plan.pair.pair_high_address), Ok(0));
+        }
+    }
+    assert_eq!(
+        layout::build_guest_byte_c32_pair_reload_source(historical_profile()),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile)
+    );
+    Ok(())
+}

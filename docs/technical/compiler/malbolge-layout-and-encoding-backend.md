@@ -20,6 +20,30 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Genuine guest output reloaded from mutated data memory (2026-11-21)
+
+`build_guest_byte_c32_pair_reload_source` extends the source-loaded
+33-byte `[raw, 0]` pair beyond the earlier accumulator-only echo.
+The real N15 path executes `jppjpppj*/pjp` followed by four
+`jjj*` cycles, `<` and `v` (31 steps). Each cycle returns to
+M7,174,418 using three real data-pointer jumps: M7,174,419=0
+selects D1; source C1, encrypted by the earlier guest `p`,
+contains 100 and selects D101; untouched loader M101=7,174,417
+selects the stored low word. Each `*` actually reads, rotates and
+rewrites that input-backed word and loads its result into A.
+The adjacent high-zero word survives.
+
+Eight binary/EOF full-path VM cases verify all four reloads and
+the final output. After the guest's true initial low-word store,
+24 independent resumed runs perturb A to three unrelated values;
+the same four physical reloads and output remain unchanged. The
+output is **four trit rotations of raw input modulo 256**, not the
+original input byte; the low word itself is rotated and true EOF
+still emits its raw-byte projection. This closes a specific
+physical store-to-load-to-output dataflow gap, **not** C23
+signed-EOF behavior, preservation of a canonical frame local,
+a dynamic guest loop or the mutable checksum's physical linker.
+
 ### Guest output after adjacent physical raw-byte state (2026-11-21)
 
 The same 33-byte source loader now admits a post-store output
