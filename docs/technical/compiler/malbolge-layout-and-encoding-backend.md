@@ -38,8 +38,9 @@ It separately enumerates the finite exact 94 no-op-phase by 94²
 graphical-tail grammar with strict decoder-admitted tail bytes and finds
 24 such loadable candidates. The deterministic source emitter selects the
 first candidate; its 22 source bytes, C16/C18 positions, M118 seed and
-20-step guest behavior are pinned by tests. Seven independent VM loads cover
-empty input, NUL, byte 02, 7f, 80, ff and a byte with unread suffix.
+20-step guest behavior are pinned by tests. Seven isolated VM restarts
+from authenticated copies of one source-loaded memory image cover empty
+input, NUL, byte 02, 7f, 80, ff and a byte with unread suffix.
 A write whose new value equals M118 (NUL) has no reported memory *delta*;
 the reached `p`, exact data-word read, final memory and accumulator still
 prove that physical write attempt. Post-instruction code encryption and

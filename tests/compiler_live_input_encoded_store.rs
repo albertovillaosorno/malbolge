@@ -176,6 +176,15 @@ fn real_guest_writes_injective_input_state() -> Result<(), String> {
     let profile = current_profile();
     let plan = layout::build_live_input_injective_store_source(profile)
         .map_err(|error| format!("{error:?}"))?;
+    // Build the full physical N15 loader memory once. Independent cases
+    // resume from exact validated copies of this loader-produced image;
+    // no guest word or register is synthesized or host-seeded.
+    let prepared = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(
+        prepared.memory_word(plan.data_address),
+        Ok(plan.initial_data_word)
+    );
     for input in [
         vec![],
         vec![0],
@@ -185,9 +194,13 @@ fn real_guest_writes_injective_input_state() -> Result<(), String> {
         vec![255],
         vec![1, 2],
     ] {
-        let mut guest =
-            ProfileMachine::from_source(profile, &plan.source, input.clone())
-                .map_err(|error| error.to_string())?;
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
         assert_eq!(
             guest.memory_word(plan.data_address),
             Ok(plan.initial_data_word)
