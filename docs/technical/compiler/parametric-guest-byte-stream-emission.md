@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-verified early EOF without a second physical read (2026-11-20)
+
+The source input-site prefix verifier now distinguishes an unexecuted input
+anchor from a missing **mandatory** source read. When an anchored read never
+executes, it searches the original canonical C23 CFG for a complete source
+return after **exactly** the observed physical input events, without any
+further source input. The 16,384-state bound still returns an explicit
+incomplete-search error on exhaustion; unknown scalar computations may keep
+both CFG arms feasible rather than supply an invented guest predicate. This
+source-path condition remains necessary but not sufficient for translation.
+
+A red-first real N15 91-cell probe replaces the converter's second C66 `/`
+with a graphical `o` while preserving its original first C37 `/`. The
+physical input-only trace on empty stdin reads true EOF exactly once and
+halts within 82 steps. This now passes the source input path gate because
+the unchanged checksum must return after the first C23 EOF. The same guest
+probe with a successful first byte rejects `UnreachedSourceInput`, because
+source control then requires the second read. Six source-CFG cases also
+check true first EOF, a non-EOF first read, an EOF after the loop read,
+skipped earlier input, and a one-state search exhaustion. This does **not**
+verify guest stdout, C23 EOF conversion, physical branching, mutable locals,
+checksum arithmetic, output or the full EOF loop. The real source-C guest
+compiler remains fail-closed and P2 open.
+
 ### Source-CFG-bound physical loop input revisits (2026-11-20)
 
 The original complete seven-block C23 mutable EOF checksum still passes its

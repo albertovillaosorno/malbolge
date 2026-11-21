@@ -78,7 +78,7 @@ pub enum SourceInputTraceError {
     UnexpectedGuestInput,
     /// Physical execution terminated without the source-required halt.
     UnexpectedGuestTermination,
-    /// Some source-locked input site was not executed in the guest prefix.
+    /// A skipped source input site is mandatory on every possible return path.
     UnreachedSourceInput,
 }
 
@@ -569,6 +569,19 @@ fn source_path_matches_input_prefix(
     observations: &[&SourceInputSiteObservation],
     max_states: usize,
 ) -> Result<bool, SourceInputTraceError> {
+    source_path_matches_input_trace(function, observations, max_states, false)
+}
+
+// Reaching the last physical read proves only a *prefix*. If a candidate
+// skips a source input site and then halts, require a source return without
+// any additional input operation. Unknown computations can only widen the
+// set of possible source paths, never certify guest arithmetic or output.
+fn source_path_matches_input_trace(
+    function: &TernaryCfgFunction,
+    observations: &[&SourceInputSiteObservation],
+    max_states: usize,
+    require_return: bool,
+) -> Result<bool, SourceInputTraceError> {
     let mut pending = VecDeque::from([SourceInputWalkState {
         block: function.entry,
         consumed: 0,
@@ -577,7 +590,7 @@ fn source_path_matches_input_prefix(
     }]);
     let mut visited = BTreeSet::new();
     while let Some(state) = pending.pop_front() {
-        if state.consumed == observations.len() {
+        if !require_return && state.consumed == observations.len() {
             return Ok(true);
         }
         if visited.len() >= max_states {
@@ -600,6 +613,11 @@ fn source_path_matches_input_prefix(
                 pending.push_back(next);
             }
         } else {
+            if matches!(block.terminator, TernaryCfgTerminator::Return(_))
+                && state.consumed == observations.len()
+            {
+                return Ok(true);
+            }
             pending.extend(source_terminator_successors(
                 function,
                 &state,
@@ -642,10 +660,49 @@ fn verify_source_cfg_input_order(
     Ok(())
 }
 
+// A conditional source input may be legitimately absent on an early-EOF
+// return path, even though every source input operation must be *anchored*.
+// Do not relax missing-site refusals for functions without one complete
+// source return path matching the entire physical input trace.
+fn verify_skipped_source_input_sites(
+    canonical: &[u8],
+    sites: &SourceInputSites,
+    observations: &[SourceInputSiteObservation],
+) -> Result<(), SourceInputTraceError> {
+    let functions = sites
+        .values()
+        .map(|site| site.function)
+        .collect::<BTreeSet<_>>();
+    let function_ids = functions.iter().copied().collect::<Vec<_>>();
+    let [function_id] = function_ids.as_slice() else {
+        // Interprocedural source execution is not modeled by this checker.
+        return Err(SourceInputTraceError::UnreachedSourceInput);
+    };
+    let cfg = lower_canonical_dynamic_cfg(canonical)
+        .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
+    let function = cfg
+        .functions
+        .iter()
+        .find(|function| function.id == *function_id)
+        .ok_or(SourceInputTraceError::InvalidSourcePlacement)?;
+    let observed = observations.iter().collect::<Vec<_>>();
+    if source_path_matches_input_trace(
+        function,
+        &observed,
+        MAX_SOURCE_INPUT_CFG_SEARCH_STATES,
+        true,
+    )? {
+        Ok(())
+    } else {
+        Err(SourceInputTraceError::UnreachedSourceInput)
+    }
+}
+
 /// Execute a physical program and prove its source-typed input steps.
 ///
-/// Every source input site must be observed at least once with no extra reads;
-/// the same code site may occur repeatedly if its physical instruction really
+/// Every source input effect must have an exact physical code anchor, but a
+/// source-CFG-valid early return may skip anchored input sites. The same code
+/// site may occur repeatedly if its physical instruction really
 /// decodes as input again and the authenticated source-CFG walk permits the
 /// entire observed sequence. Source-known guards constrain path feasibility.
 /// Guest branch targets and source arithmetic remain unverified: even when a
@@ -697,14 +754,18 @@ pub fn verify_source_input_site_prefix(
             return Err(SourceInputTraceError::UnexpectedGuestTermination);
         },
     }
+    verify_source_cfg_input_order(probe.canonical, &observations)?;
     if sites.keys().any(|address| {
         !observations
             .iter()
             .any(|entry| entry.code_address == *address)
     }) {
-        return Err(SourceInputTraceError::UnreachedSourceInput);
+        verify_skipped_source_input_sites(
+            probe.canonical,
+            &sites,
+            &observations,
+        )?;
     }
-    verify_source_cfg_input_order(probe.canonical, &observations)?;
     Ok(SourceInputPrefixProof {
         bytes_consumed: machine.input_consumed(),
         guest_output: machine.output().to_vec(),

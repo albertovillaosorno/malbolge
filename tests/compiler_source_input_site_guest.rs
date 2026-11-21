@@ -283,6 +283,30 @@ fn physically_unreached_c23_input_site_is_rejected() -> Result<(), String> {
         }),
         Err(SourceInputTraceError::UnreachedSourceInput),
     );
+    // True first-read EOF takes the original checksum's source exit; it
+    // does not owe the loop's second getchar. This guest is still not a C
+    // implementation because its output/state are unlinked.
+    let early_exit = verify_source_input_site_prefix(SourceInputProbe {
+        anchors: &input_anchors(),
+        canonical: &wire,
+        frame_base: 128,
+        input: &[],
+        physical_source: &missing_read_source,
+        step_budget: 82,
+    })
+    .map_err(|error| {
+        format!("valid EOF source-input prefix refused: {error:?}")
+    })?;
+    assert_eq!(early_exit.observations.len(), 1);
+    assert_eq!(
+        early_exit
+            .observations
+            .first()
+            .ok_or("missing first EOF observation")?
+            .input,
+        TraceInput::EndOfInput,
+    );
+    assert_eq!(early_exit.bytes_consumed, 0);
     Ok(())
 }
 

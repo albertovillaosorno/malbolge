@@ -75,6 +75,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, a red-first N15 input-only trace exposed a false
+  refusal when true first-read EOF legitimately skips the second source
+  `getchar`. The original checksum's canonical C23 CFG now permits a
+  skipped anchored input only after verifying a complete source return
+  with exactly the guest-observed input events and no further source read.
+  The bounded source search retains an explicit exhausted state and does
+  not certify guest instructions, arithmetic, control or output. The
+  91-cell real guest with C66 `/` changed to `o` now accepts only its
+  one-read empty-stdin prefix; a successful first input without C66
+  still refuses. Six independent source CFG return cases pass, including
+  first/loop EOF and finite-budget refusal. The unchanged checksum still
+  publishes no guest artifact, and P2 stays open.
+
 - On 2026-11-20, the original C23 seven-block checksum remains
   guest-unlinked after independent native controls. A red-first physical N15
   input-site trace exposed unconditional refusal of *repeated* execution of

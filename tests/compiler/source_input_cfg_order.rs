@@ -29,6 +29,7 @@ use std::str;
 
 use malbolge::TraceInput;
 
+use super::super::typed_cfg_adapter::lower_canonical_dynamic_cfg;
 use super::super::typed_cfg_adapter::ternary::{
     TernaryCfgBlock, TernaryCfgFunction, TernaryCfgScalarKind,
     TernaryCfgTerminator, TernaryI32Scalar, TernaryOperation,
@@ -37,7 +38,7 @@ use super::super::typed_cfg_adapter::ternary::{
 use super::{
     GuestCodeInputSemantics, GuestPlacedOperand, SourceInputSiteObservation,
     SourceInputTraceError, source_path_matches_input_prefix,
-    verify_source_cfg_input_order,
+    source_path_matches_input_trace, verify_source_cfg_input_order,
 };
 
 const CHECKSUM_TYPED: &str =
@@ -137,6 +138,50 @@ fn actual_checksum_cfg_requires_first_read_before_backedge_read()
     assert_eq!(
         verify_source_cfg_input_order(&wire, &[first, second_eof, loop_read]),
         Err(SourceInputTraceError::SourceInputUnreachable)
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "complete source return and EOF input obligations"
+)]
+fn checksum_cfg_skipped_loop_input_requires_real_source_return()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let cfg = lower_canonical_dynamic_cfg(&wire)
+        .map_err(|error| format!("{error:?}"))?;
+    let function = cfg.functions.first().ok_or("missing source function")?;
+    let first = observed(0, 1);
+    let loop_read = observed(5, 2);
+    let first_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..first
+    };
+    let loop_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..loop_read
+    };
+    for (sequence, possible) in [
+        (vec![&first_eof], true),
+        (vec![&first], false),
+        (vec![&first, &loop_read], false),
+        (vec![&first, &loop_eof], true),
+        (vec![&first_eof, &loop_read], false),
+        (vec![&loop_eof], false),
+    ] {
+        assert_eq!(
+            source_path_matches_input_trace(function, &sequence, 128, true),
+            Ok(possible),
+            "source return after input sequence {sequence:?}",
+        );
+    }
+    assert_eq!(
+        source_path_matches_input_trace(function, &[&first_eof], 1, true),
+        Err(SourceInputTraceError::SourceInputSearchLimit)
     );
     Ok(())
 }
