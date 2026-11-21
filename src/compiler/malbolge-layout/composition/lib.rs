@@ -140,8 +140,9 @@ pub use physical_reentry::{
     MAX_PHYSICAL_REENTRY_SOURCE, MAX_PHYSICAL_REENTRY_STEPS,
     MAX_PHYSICAL_REENTRY_VISITS, PhysicalCodeMutation, PhysicalDataOperation,
     PhysicalEntryState, PhysicalIoEffect, PhysicalIoOperation,
-    PhysicalReentryError, PhysicalReentryWindow, PhysicalReplayBlocker,
-    PhysicalWordChange, observe_physical_reentries,
+    PhysicalReentryChainError, PhysicalReentryError, PhysicalReentryWindow,
+    PhysicalReplayBlocker, PhysicalWordChange, observe_physical_reentries,
+    verify_physical_reentry_chain,
 };
 pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,

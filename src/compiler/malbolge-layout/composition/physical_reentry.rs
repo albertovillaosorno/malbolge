@@ -317,6 +317,117 @@ impl PhysicalReentryWindow {
     }
 }
 
+/// Why a proposed sequence of observed physical windows is inconsistent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PhysicalReentryChainError {
+    /// No physical interval was supplied.
+    Empty,
+    /// A window has invalid bounds, accounting or sorted journals.
+    InvalidWindow {
+        /// Zero-based window index.
+        window_index: usize,
+    },
+    /// A prior exit is not exactly the next window's entry.
+    Disconnected {
+        /// Zero-based index of the window after the broken boundary.
+        window_index: usize,
+    },
+    /// A known physical memory version does not match the later evidence.
+    MemoryVersion {
+        /// Zero-based index of the inconsistent window.
+        window_index: usize,
+        /// Physical memory address carrying the conflicting versions.
+        address: u32,
+        /// Value propagated from earlier live reads or actual writes.
+        expected: u32,
+        /// Value asserted by the later live read or write-before journal.
+        observed: u32,
+    },
+}
+
+/// Verify exact continuity of bounded physical windows without cloning N15.
+///
+/// The verifier propagates only known memory versions: words read at an
+/// interval entry and words changed in its net journal. It cannot infer an
+/// unknown initial cell's value. A source-loaded VM trace authenticates the
+/// journals separately; consistent windows do not certify a loop or input
+/// parametricity. A changed live code cell is checked like any data word.
+///
+/// # Errors
+///
+/// Refuses empty, disconnected, internally inconsistent or contradictory
+/// journals. All input and output counts must agree with recorded effects.
+pub fn verify_physical_reentry_chain(
+    windows: &[PhysicalReentryWindow],
+) -> Result<(), PhysicalReentryChainError> {
+    if windows.is_empty() {
+        return Err(PhysicalReentryChainError::Empty);
+    }
+    let mut known = BTreeMap::<u32, u32>::new();
+    let mut previous_exit = None;
+    for (window_index, window) in windows.iter().enumerate() {
+        let input_bytes = window
+            .input_events
+            .iter()
+            .filter(|event| matches!(event, TraceInput::Byte(_)))
+            .count();
+        if window.from.step >= window.to.step
+            || window.from.registers.code_pointer
+                != window.to.registers.code_pointer
+            || window
+                .to
+                .input_consumed
+                .checked_sub(window.from.input_consumed)
+                != Some(input_bytes)
+            || window.to.output_len.checked_sub(window.from.output_len)
+                != Some(window.output_bytes.len())
+            || !window
+                .memory_live_ins
+                .windows(2)
+                .all(|pair| pair[0].address < pair[1].address)
+            || !window
+                .net_changed_words
+                .windows(2)
+                .all(|pair| pair[0].address < pair[1].address)
+        {
+            return Err(PhysicalReentryChainError::InvalidWindow {
+                window_index,
+            });
+        }
+        if previous_exit.is_some_and(|exit| exit != window.from) {
+            return Err(PhysicalReentryChainError::Disconnected {
+                window_index,
+            });
+        }
+        for live_in in &window.memory_live_ins {
+            if let Some(expected) = known.insert(live_in.address, live_in.value)
+                && expected != live_in.value
+            {
+                return Err(PhysicalReentryChainError::MemoryVersion {
+                    window_index,
+                    address: live_in.address,
+                    expected,
+                    observed: live_in.value,
+                });
+            }
+        }
+        for change in &window.net_changed_words {
+            if let Some(expected) = known.insert(change.address, change.after)
+                && expected != change.before
+            {
+                return Err(PhysicalReentryChainError::MemoryVersion {
+                    window_index,
+                    address: change.address,
+                    expected,
+                    observed: change.before,
+                });
+            }
+        }
+        previous_exit = Some(window.to);
+    }
+    Ok(())
+}
+
 /// Why an exact bounded state comparison could not be completed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhysicalReentryError {
@@ -445,6 +556,8 @@ pub fn observe_physical_reentries(
             code_encryption_changes = 0;
         }
         if windows.len().saturating_add(1) == required_visits {
+            verify_physical_reentry_chain(&windows)
+                .map_err(|_error| PhysicalReentryError::GuestStep)?;
             return Ok(windows);
         }
 

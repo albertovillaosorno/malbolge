@@ -57,7 +57,8 @@ use malbolge::{
 pub mod physical_reentry;
 
 use physical_reentry::{
-    PhysicalIoEffect, PhysicalIoOperation, observe_physical_reentries,
+    PhysicalIoEffect, PhysicalIoOperation, PhysicalReentryChainError,
+    observe_physical_reentries, verify_physical_reentry_chain,
 };
 
 const HALF: usize = 141;
@@ -723,6 +724,7 @@ fn third_traversal_has_two_distinct_physical_live_entry_windows()
         assert_eq!((first.from.step, first.to.step), (120, 302));
         assert_eq!((second.from.step, second.to.step), (302, 478));
         assert_eq!(first.to, second.from);
+        assert_eq!(verify_physical_reentry_chain(&windows), Ok(()));
         assert!(!first.core_state_restored());
         assert!(!first.exact_closed_cycle());
         assert!(!second.core_state_restored());
@@ -765,6 +767,80 @@ fn third_traversal_has_two_distinct_physical_live_entry_windows()
 }
 
 #[test]
+fn cross_window_versions_reject_fabricated_reentry_state() -> Result<(), String>
+{
+    const ENTRY: u32 = 120;
+    let (source, _, _) = three_return_source()?;
+    let windows = observe_physical_reentries(
+        current_profile(),
+        &source,
+        &[0x80],
+        ENTRY,
+        3,
+        640,
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(verify_physical_reentry_chain(&windows), Ok(()));
+    assert_eq!(
+        verify_physical_reentry_chain(&[]),
+        Err(PhysicalReentryChainError::Empty),
+    );
+    let mut disconnected = windows.clone();
+    disconnected[1].from.step += 1;
+    assert_eq!(
+        verify_physical_reentry_chain(&disconnected),
+        Err(PhysicalReentryChainError::Disconnected { window_index: 1 }),
+    );
+    let mut impossible = windows.clone();
+    impossible[0].to.output_len = impossible[0].from.output_len;
+    assert_eq!(
+        verify_physical_reentry_chain(&impossible),
+        Err(PhysicalReentryChainError::InvalidWindow { window_index: 0 }),
+    );
+    let mut false_memory = windows.clone();
+    let entry_read = false_memory[1]
+        .memory_live_ins
+        .iter_mut()
+        .find(|read| read.address == ENTRY)
+        .ok_or("no subsequent C120 live-in")?;
+    entry_read.value ^= 1;
+    let falsified_value = entry_read.value;
+    let expected_value = windows[1]
+        .memory_live_ins
+        .iter()
+        .find(|read| read.address == ENTRY)
+        .ok_or("no original C120 live-in")?
+        .value;
+    assert_eq!(
+        verify_physical_reentry_chain(&false_memory),
+        Err(PhysicalReentryChainError::MemoryVersion {
+            window_index: 1,
+            address: ENTRY,
+            expected: expected_value,
+            observed: falsified_value,
+        }),
+    );
+    let mut false_encryption = windows.clone();
+    let code_change = false_encryption[0]
+        .net_changed_words
+        .iter_mut()
+        .find(|change| change.address == ENTRY)
+        .ok_or("missing first C120 XLAT2 effect")?;
+    code_change.after ^= 1;
+    let forged_after = code_change.after;
+    assert_eq!(
+        verify_physical_reentry_chain(&false_encryption),
+        Err(PhysicalReentryChainError::MemoryVersion {
+            window_index: 1,
+            address: ENTRY,
+            expected: forged_after,
+            observed: expected_value,
+        }),
+    );
+    Ok(())
+}
+
+#[test]
 fn repeated_jump_site_retains_real_live_code_and_operand_dependencies()
 -> Result<(), String> {
     // All three C281 fetches and jump operands are executed by the guest.
@@ -786,6 +862,7 @@ fn repeated_jump_site_retains_real_live_code_and_operand_dependencies()
         assert_eq!((first.from.step, first.to.step), (281, 463));
         assert_eq!((second.from.step, second.to.step), (463, 639));
         assert_eq!(first.to, second.from);
+        assert_eq!(verify_physical_reentry_chain(&windows), Ok(()));
         assert_eq!(first.from.registers.data_pointer, 281);
         assert_eq!(first.to.registers.data_pointer, 463);
         assert_eq!(second.to.registers.data_pointer, 639);

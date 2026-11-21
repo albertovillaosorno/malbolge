@@ -72,6 +72,17 @@ and D=7,174,359, and the fetched C71 code word is a changed live-in.
 A physical linker can use these addresses as proposed repair targets,
 but cannot treat an obligation list as a synthesized or verified repair.
 
+`verify_physical_reentry_chain` checks that adjacent bounded windows agree
+on exact entry/exit registers and I/O counts, have sorted dependency and net
+change journals, and preserve all known physical memory versions across
+entries. Known versions come from actual entry live-ins and net effects;
+unobserved words cannot be inferred. The source-loaded 564-cell half-phase
+guest checks two genuine consecutive windows at C120 and C281 on the same
+five pinned byte/EOF inputs. Tampered C120 code-fetch or XLAT2 journal
+versions, disconnected boundaries, invalid output counts or empty chains
+are refused. This tests finite
+journal composition, not the existence of a reusable state contract.
+
 Since source, profile and complete input are fixed, and the observed
 interval has no termination, the stricter `exact_closed_cycle` equality
 suffices for deterministic *fixed-input* repetition.
