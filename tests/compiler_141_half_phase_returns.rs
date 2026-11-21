@@ -56,7 +56,9 @@ use malbolge::{
 #[path = "../src/compiler/malbolge-layout/composition/physical_reentry.rs"]
 pub mod physical_reentry;
 
-use physical_reentry::observe_physical_reentries;
+use physical_reentry::{
+    PhysicalIoEffect, PhysicalIoOperation, observe_physical_reentries,
+};
 
 const HALF: usize = 141;
 const ACTIVE: usize = HALF * 2;
@@ -880,6 +882,92 @@ fn same_three_return_code_path_does_not_erase_binary_input_state()
         assert_eq!(empty.input_consumed, 0);
         assert_eq!(high.input_consumed, 1);
         assert_ne!(empty.output, high.output);
+    }
+    Ok(())
+}
+
+#[test]
+fn repeated_half_phase_io_keeps_actual_code_sites_and_eof_attempts()
+-> Result<(), String> {
+    // Compare two complete real return intervals with a second, independent
+    // source-loaded traced VM. Matching output lengths cannot stand in for
+    // exact input/output operation ordering at physical C locations.
+    let (source, _, _) = three_return_source()?;
+    for input in [vec![], vec![0x80]] {
+        let windows = observe_physical_reentries(
+            current_profile(),
+            &source,
+            &input,
+            120,
+            3,
+            479,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(windows.len(), 2);
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), &source, input)
+                .map_err(|error| error.to_string())?;
+        let mut expected: [Vec<PhysicalIoOperation>; 2] =
+            [Vec::new(), Vec::new()];
+        for step in 0..478 {
+            let mut trace = None;
+            let outcome = vm
+                .step_traced(&mut |event| trace = Some(*event))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(outcome, malbolge::StepOutcome::Continued);
+            let observed = trace.ok_or("missing independent I/O trace")?;
+            let target = if (120..302).contains(&step) {
+                Some(&mut expected[0])
+            } else if (302..478).contains(&step) {
+                Some(&mut expected[1])
+            } else {
+                None
+            };
+            if let Some(target) = target {
+                if let Some(value) = observed.input {
+                    assert_eq!(observed.decoded, Some(b'/'));
+                    target.push(PhysicalIoOperation {
+                        code_pointer: observed.before.registers.code_pointer,
+                        effect: PhysicalIoEffect::Input(value),
+                        step,
+                    });
+                }
+                if let Some(value) = observed.output {
+                    assert_eq!(observed.decoded, Some(b'<'));
+                    target.push(PhysicalIoOperation {
+                        code_pointer: observed.before.registers.code_pointer,
+                        effect: PhysicalIoEffect::Output(value),
+                        step,
+                    });
+                }
+            }
+        }
+        for (window, expected) in windows.iter().zip(expected) {
+            assert_eq!(window.io_operations, expected);
+            assert!(
+                window
+                    .io_operations
+                    .windows(2)
+                    .all(|pair| { pair[0].step < pair[1].step })
+            );
+            let inputs = window.io_operations.iter().filter_map(|operation| {
+                if let PhysicalIoEffect::Input(value) = operation.effect {
+                    Some(value)
+                } else {
+                    None
+                }
+            });
+            let outputs = window.io_operations.iter().filter_map(|operation| {
+                if let PhysicalIoEffect::Output(value) = operation.effect {
+                    Some(value)
+                } else {
+                    None
+                }
+            });
+            assert_eq!(inputs.collect::<Vec<_>>(), window.input_events);
+            assert_eq!(outputs.collect::<Vec<_>>(), window.output_bytes);
+            assert!(!window.io_operations.is_empty());
+        }
     }
     Ok(())
 }

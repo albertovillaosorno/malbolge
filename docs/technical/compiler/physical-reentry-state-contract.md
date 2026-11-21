@@ -32,7 +32,12 @@ and computed results. A second normative VM trace independently recomputes
 `p` and `*` results and checks their code sites, steps, and operand words.
 An idempotent data write is still recorded even though the changed-cell
 journal excludes it. These values support future operand-version proofs
-before physically reusing any block.
+before physically reusing any block. The same physical windows now include
+`PhysicalIoOperation` events: the exact code pointer and global step of
+every real `/` or `<`, preserving true EOF attempts separately from
+successful consumed bytes. Chronological I/O sites complement the prior
+byte/event-only summaries; a future source-C linker must authenticate
+both effect identity and position, not only final stdout bytes.
 Each observed interval also projects its reached VM traces through the
 existing portable v6 effect-IR checker. Its sorted `memory_live_ins` and
 `register_live_ins` identify values actually read before a first committed
@@ -109,6 +114,12 @@ python3.14 -B -m unittest tests.test_eof_checksum_pipeline -v
 If the machine's `/tmp` quota blocks native Clang, set `TMPDIR` to a
 writable ignored directory before launching the Python test. This only
 redirects temporary host files; it does not change guest oracles.
+
+A separate half-phase source test replays two physical C120 return
+intervals on EOF and high-byte stdin. It independently captures every
+reached I/O site and step and requires exact ordered agreement with the
+window journal, including per-window byte and EOF summaries. This is
+finite trace evidence, not an accepted dynamic-source-C block.
 
 The next P2 physical linker must establish a valid *parametric* entry/exit
 relation for a stateful source-C operation, including live memory versions,

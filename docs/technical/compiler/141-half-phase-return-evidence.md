@@ -153,6 +153,13 @@ register/code comparison to full **two-window physical dependency
 accounting**, without claiming a third identical state or an arbitrary
 byte-stream cycle.
 
+A second source-loaded trace replay now compares the two complete C120
+windows' chronological `/` and `<` operation sites and global step
+indices, for empty and high-byte stdin. It checks the exact event type,
+EOF attempt versus consumed byte, output byte, and the previous event-only
+summaries. Both windows are real N15 code traversals; neither can be
+called a source-C checksum loop merely because an I/O pattern recurs.
+
 An independent **jump-site** check observes C281 at steps 281, 463 and 639
 on those same five streams. Both windows require live data-pointer state:
 D advances 281 to 463 to 639, and real data reads include each incoming

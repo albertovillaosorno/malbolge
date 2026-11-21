@@ -81,6 +81,26 @@ pub struct PhysicalDataOperation {
     pub written_value: Option<u32>,
 }
 
+/// One actual guest I/O effect, retaining its exact source-code site.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PhysicalIoEffect {
+    /// A reached input read, including exhausted-input attempts.
+    Input(TraceInput),
+    /// One committed guest output byte.
+    Output(u8),
+}
+
+/// A chronological I/O event within a source-loaded physical interval.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PhysicalIoOperation {
+    /// Physical code pointer that executed the input or output instruction.
+    pub code_pointer: u32,
+    /// The committed semantic I/O effect.
+    pub effect: PhysicalIoEffect,
+    /// Global zero-based guest instruction index.
+    pub step: usize,
+}
+
 /// One real interval between two entries to an identical code address.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PhysicalReentryWindow {
@@ -101,6 +121,8 @@ pub struct PhysicalReentryWindow {
     pub memory_live_ins: Vec<MemoryLiveIn>,
     /// Register values actually read before their first committed overwrite.
     pub register_live_ins: ProfileRegisterSet,
+    /// Actual source-site and step chronology of every reached I/O effect.
+    pub io_operations: Vec<PhysicalIoOperation>,
     /// All real input attempts, including EOF without consumption.
     pub input_events: Vec<TraceInput>,
     /// Final-minus-initial changes in the *whole* profile memory image.
@@ -251,6 +273,7 @@ pub fn observe_physical_reentries(
     // rather than maintaining another interpreter for read/write dominance.
     let mut region_traces: Vec<ProfileStepTrace> = Vec::new();
     let mut windows = Vec::with_capacity(required_visits.saturating_sub(1));
+    let mut io_operations = Vec::new();
     let mut input_events = Vec::new();
     let mut output_bytes = Vec::new();
     let mut data_instruction_writes = 0usize;
@@ -293,6 +316,7 @@ pub fn observe_physical_reentries(
                     data_read_addresses: take(&mut data_read_addresses),
                     data_write_addresses: take(&mut data_write_addresses),
                     code_encryption_changes,
+                    io_operations: take(&mut io_operations),
                     input_events: take(&mut input_events),
                     output_bytes: take(&mut output_bytes),
                 });
@@ -356,10 +380,26 @@ pub fn observe_physical_reentries(
                 append_write(&mut journal, write)?;
             }
             if let Some(event) = trace.input {
+                if trace.decoded != Some(b'/') {
+                    return Err(PhysicalReentryError::GuestStep);
+                }
                 input_events.push(event);
+                io_operations.push(PhysicalIoOperation {
+                    code_pointer: trace.before.registers.code_pointer,
+                    effect: PhysicalIoEffect::Input(event),
+                    step,
+                });
             }
             if let Some(byte) = trace.output {
+                if trace.decoded != Some(b'<') {
+                    return Err(PhysicalReentryError::GuestStep);
+                }
                 output_bytes.push(byte);
+                io_operations.push(PhysicalIoOperation {
+                    code_pointer: trace.before.registers.code_pointer,
+                    effect: PhysicalIoEffect::Output(byte),
+                    step,
+                });
             }
         }
         if outcome != StepOutcome::Continued {

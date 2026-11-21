@@ -139,6 +139,7 @@ use malbolge::{ProfileDescriptor, decode_profile_instruction};
 pub use physical_reentry::{
     MAX_PHYSICAL_REENTRY_SOURCE, MAX_PHYSICAL_REENTRY_STEPS,
     MAX_PHYSICAL_REENTRY_VISITS, PhysicalDataOperation, PhysicalEntryState,
+    PhysicalIoEffect, PhysicalIoOperation,
     PhysicalReentryError, PhysicalReentryWindow, PhysicalWordChange,
     observe_physical_reentries,
 };

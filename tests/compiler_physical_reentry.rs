@@ -74,6 +74,7 @@ fn exact_cycle_predicate_requires_no_io_progress_even_if_core_matches() {
         data_read_addresses: Vec::new(),
         data_write_addresses: Vec::new(),
         from,
+        io_operations: Vec::new(),
         input_events: Vec::new(),
         memory_live_ins: Vec::new(),
         register_live_ins: ProfileRegisterSet {
@@ -117,6 +118,7 @@ fn dead_memory_changes_do_not_invalidate_observed_replay_preconditions() {
         data_read_addresses: vec![100],
         data_write_addresses: vec![200],
         from,
+        io_operations: Vec::new(),
         input_events: Vec::new(),
         memory_live_ins: vec![MemoryLiveIn { address: 100, value: 42 }],
         register_live_ins: ProfileRegisterSet {
@@ -192,6 +194,7 @@ fn genuine_third_input_path_reenters_but_does_not_restore_state()
         assert_eq!(window.net_changed_words.len(), 78);
         assert_eq!(window.data_instruction_writes, 8);
         assert_eq!(window.code_encryption_changes, 70);
+        assert_eq!(window.io_operations.len(), 2);
         assert_eq!(window.input_events, []);
         assert_eq!(window.output_bytes, [134, 154]);
         assert!(!window.core_state_restored());
