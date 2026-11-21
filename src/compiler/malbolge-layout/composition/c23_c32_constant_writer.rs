@@ -39,6 +39,8 @@
 //! **not contiguous**: a later, separately verified transfer is required to
 //! satisfy the source-C32 adjacent two-cell frame contract.
 
+use std::iter::repeat_n;
+
 use malbolge::{ProfileDescriptor, current_profile};
 
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
@@ -67,6 +69,15 @@ pub struct C32LiteralCrazyPlan {
     pub result_steps: [usize; 2],
     /// Canonical low/high C32 guest words after those steps.
     pub target_cells: [u32; 2],
+}
+
+/// Failure to turn a C32 literal recipe into a fully graphical N15 source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum C32LiteralLoadedSourceError {
+    /// No admitted source tail and graphical no-op prefix supplies the seeds.
+    NoLoadableSeed,
+    /// Only the canonical current 15-trit profile has this loader geometry.
+    UnsupportedProfile,
 }
 
 /// Unsupported precondition for literal adjacent rotate materialization.
@@ -194,4 +205,90 @@ pub fn plan_c32_literal_rotate_writes(
         result_steps: [0, 1],
         target_cells,
     })
+}
+
+/// Construct a bounded source-loaded `o*; j; *; *; v` C32 literal write.
+///
+/// Searches at most one full 94-position decoder phase of reached graphical
+/// no-ops before a `j; *; *; v` sequence and one unreachable graphical tail
+/// cell. The code-pointer phase selects the physical `j` source word and
+/// therefore its data-pointer relocation. Both adjacent data words must lie
+/// beyond the source and be loaded from its true six-phase recurrence.
+/// The result depends on *no* incoming accumulator and contains no input,
+/// branch, phi copy or checksum loop. Unsupported literals refuse outright.
+///
+/// The returned source is a candidate; independent normative VM execution
+/// must still verify its writes, self-encryption, and termination.
+///
+/// # Errors
+///
+/// Refuses other profiles or any literal not source-loadable under the
+/// finite 94-prefix by 94-tail search and strict nonoverlapping geometry.
+pub fn build_c32_literal_loader_rotate_source(
+    profile: &ProfileDescriptor,
+    bits: u32,
+) -> Result<Vec<u8>, C32LiteralLoadedSourceError> {
+    use super::LinearOpcode as Opcode;
+    let plan = plan_c32_literal_rotate_writes(profile, bits)
+        .map_err(|_error| C32LiteralLoadedSourceError::UnsupportedProfile)?;
+
+    for noops in 0..94usize {
+        let mut source = Vec::with_capacity(noops.saturating_add(5));
+        let mut admissible = true;
+        for operation in repeat_n(Opcode::NoOperation, noops).chain([
+            Opcode::RelocateDataPointer,
+            Opcode::RotateData,
+            Opcode::RotateData,
+            Opcode::Halt,
+        ]) {
+            match super::unique_graphical_cell(profile, operation, source.len())
+            {
+                Ok(byte) => source.push(byte),
+                Err(_error) => {
+                    admissible = false;
+                    break;
+                },
+            }
+        }
+        if !admissible {
+            continue;
+        }
+        // Before the j, D equals its own source position after no-ops.
+        // Its data operand is the literal graphical j cell at that address.
+        let Some(&jump_byte) = source.get(noops) else {
+            continue;
+        };
+        let data_base = usize::from(jump_byte).saturating_add(1);
+        if data_base <= source.len()
+            || data_base.saturating_add(1)
+                >= usize::try_from(profile.memory_words()).unwrap_or(0)
+        {
+            continue;
+        }
+        for last in 33..=126u8 {
+            if super::unique_graphical_cell(
+                profile,
+                Opcode::SkippedDataByte { byte: u32::from(last) },
+                source.len(),
+            ) != Ok(last)
+            {
+                continue;
+            }
+            source.push(last);
+            let first =
+                super::unwritten_loader_word(&source, data_base, profile);
+            let second = super::unwritten_loader_word(
+                &source,
+                data_base.saturating_add(1),
+                profile,
+            );
+            if first == Ok(plan.initial_data_words[0])
+                && second == Ok(plan.initial_data_words[1])
+            {
+                return Ok(source);
+            }
+            _ = source.pop();
+        }
+    }
+    Err(C32LiteralLoadedSourceError::NoLoadableSeed)
 }

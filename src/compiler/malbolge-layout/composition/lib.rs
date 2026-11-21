@@ -71,9 +71,10 @@ pub use bounded_revisit::{
     verify_bounded_guest_state_isolation,
 };
 pub use c23_c32_constant_writer::{
-    C32LiteralCrazyError, C32LiteralCrazyPlan, C32LiteralRotateError,
-    C32LiteralRotatePlan,
-    plan_c32_literal_crazy_writes, plan_c32_literal_rotate_writes,
+    C32LiteralCrazyError, C32LiteralCrazyPlan, C32LiteralLoadedSourceError,
+    C32LiteralRotateError, C32LiteralRotatePlan,
+    build_c32_literal_loader_rotate_source, plan_c32_literal_crazy_writes,
+    plan_c32_literal_rotate_writes,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

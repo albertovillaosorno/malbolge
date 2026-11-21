@@ -42,6 +42,40 @@ SSA cells. Neither conditional input dispatch, phi transfers, repeated loop
 control, arithmetic, nor the complete seven-block mutable C23 EOF checksum
 is published. Historical/forged target profiles refuse the plan.
 
+### Bounded source-loaded C32 literal emitter (2026-11-21)
+
+`build_c32_literal_loader_rotate_source` now turns an exact C32 literal
+into a position-sensitive graphical N15 candidate. Its finite search
+tries 0..93 reached `o` prefix instructions, then a physical `j; *; *; v`
+and one unreachable graphical tail cell. The `j` reads its own graphical
+source byte and sets D to that word plus one; the two `*` instructions
+must write separate adjacent data addresses outside the source envelope.
+The candidate is returned only when the normative six-phase loader
+recurrence supplies **both** inverse-rotated target words without any
+host-seeded memory. Unsupported profiles and literals return typed errors.
+
+An independent scalar oracle derives all graphical address decodings,
+loader-tail recurrence values and trit rotations for the entire 94 by 94
+prefix/tail grammar. Exactly 66 prefixes fit nonoverlapping data memory,
+with 528 legal graphical suffixes, 180 successful layouts and **164 distinct
+canonical 32-bit literal values**; duplicate representations select the
+first deterministic source. The source emitter reproduces every distinct
+oracle candidate. Five selected prefix phases (0, 1, 2, 7 and 8) execute
+`j; *; *; v` in the real normative N15 VM, with both empty and binary
+unread stdin. Their traces prove exact expanded seeds, reached code
+positions, pointer transfer, consecutive data reads/writes, output-free
+halt and post-instruction code encryption. The original five-cell source
+`(&%N$` is one member; other verified outputs include `284586666` and
+`337199311`, rather than a sequence of longer literal-byte examples.
+
+This **does not cover all C32 literals**. In particular C32 zero, byte
+`0xff` and signed C23 EOF `0xffffffff` are all refused by this closed
+graphical-loader/rotate grammar. Those missing values require different
+loader preparation or actual guest synthesis. These fixed constants do
+not perform `getchar`, select a data-dependent branch, update source SSA
+state, copy phi edges, or loop. The original seven-block mutable C23 EOF
+checksum remains unlinked; the source-input state verifier is unchanged.
+
 ### Printable loader-tail rotation exhaustion for C32 EOF (2026-11-21)
 
 An independent bounded ternary-oracle regression enumerates all
