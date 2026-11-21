@@ -59,6 +59,18 @@ const STEPS: usize = 465;
 const FIRST_RETURN: u32 = 100;
 const SECOND_RETURN: u32 = 106;
 
+// A physical return alone does not supply the live-in state required for
+// reusable code. The bounded test captures source-authenticated state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ReturnEntryState {
+    accumulator: u32,
+    code_pointer: u32,
+    common_code_word: u32,
+    data_pointer: u32,
+    input_consumed: usize,
+    output: Vec<u8>,
+}
+
 fn encode(operation: u8, position: usize) -> Result<u8, String> {
     let address = u32::try_from(position).map_err(|e| e.to_string())?;
     (33u8..=126)
@@ -69,7 +81,7 @@ fn encode(operation: u8, position: usize) -> Result<u8, String> {
         .ok_or_else(|| format!("no graphical {operation} at {position}"))
 }
 
-fn half_turn(byte: u8) -> u8 {
+const fn half_turn(byte: u8) -> u8 {
     33 + ((byte - 33 + 47) % 94)
 }
 
@@ -153,7 +165,11 @@ fn candidate_source() -> Result<(Vec<u8>, Vec<u8>), String> {
         })
         .collect::<Result<Vec<_>, String>>()?;
     source[463] = 105;
-    assert_eq!(decode_profile_instruction(105, 463), Some(b'i'));
+    assert_eq!(
+        decode_profile_instruction(105, 463),
+        Some(b'i'),
+        "source second-return operand must decode as a physical jump",
+    );
     Ok((source, operations))
 }
 
@@ -199,8 +215,14 @@ fn three_return_source() -> Result<(Vec<u8>, Vec<u8>, usize), String> {
     for (position, &operation) in
         operations.iter().enumerate().take(281).skip(106)
     {
-        assert!(safe_on_second_visit(operation, position)?);
-        assert!(safe_on_third_visit(operation, position)?);
+        assert!(
+            safe_on_second_visit(operation, position)?,
+            "third-return candidate has unsafe second visit at {position}",
+        );
+        assert!(
+            safe_on_third_visit(operation, position)?,
+            "third-return candidate has unsafe third visit at {position}",
+        );
     }
     Ok((source, operations, repairs))
 }
@@ -288,8 +310,12 @@ fn assert_one_input(
     let outcome = machine
         .run_traced(STEPS, &mut |trace| traces.push(*trace))
         .map_err(|error| error.to_string())?;
-    assert_eq!(outcome, RunOutcome::BudgetExhausted { steps: STEPS });
-    assert_eq!(traces.len(), STEPS);
+    assert_eq!(
+        outcome,
+        RunOutcome::BudgetExhausted { steps: STEPS },
+        "two-return prefix must consume exactly the frozen step budget",
+    );
+    assert_eq!(traces.len(), STEPS, "trace must cover every step");
     let mut accumulator = 0u32;
     let mut consumed = 0usize;
     let mut output = Vec::new();
@@ -302,47 +328,82 @@ fn assert_one_input(
             SECOND_RETURN as usize
         };
         let data = step;
-        assert_eq!(trace.before.registers.code_pointer, code as u32);
-        assert_eq!(trace.before.registers.data_pointer, data as u32);
+        assert_eq!(
+            trace.before.registers.code_pointer, code as u32,
+            "source-locked code path differs at step {step}",
+        );
+        assert_eq!(
+            trace.before.registers.data_pointer, data as u32,
+            "source-locked data path differs at step {step}",
+        );
         let operation = expected_opcode(source, operations, step)?;
-        assert_eq!(trace.decoded, Some(operation));
+        assert_eq!(
+            trace.decoded,
+            Some(operation),
+            "source-derived operation differs at step {step}",
+        );
         match operation {
             b'/' => {
                 if let Some(&byte) = input.get(consumed) {
                     accumulator = u32::from(byte);
                     consumed += 1;
-                    assert_eq!(trace.input, Some(TraceInput::Byte(byte)));
+                    assert_eq!(
+                        trace.input,
+                        Some(TraceInput::Byte(byte)),
+                        "input byte differs at step {step}",
+                    );
                 } else {
                     accumulator = current_profile().eof_word();
-                    assert_eq!(trace.input, Some(TraceInput::EndOfInput));
+                    assert_eq!(
+                        trace.input,
+                        Some(TraceInput::EndOfInput),
+                        "EOF event differs at step {step}",
+                    );
                 }
-                assert_eq!(trace.after.registers.accumulator, accumulator);
+                assert_eq!(
+                    trace.after.registers.accumulator, accumulator,
+                    "guest input accumulator differs at step {step}",
+                );
             },
             b'<' => {
                 let byte = (accumulator & 255) as u8;
                 output.push(byte);
-                assert_eq!(trace.output, Some(byte));
+                assert_eq!(
+                    trace.output,
+                    Some(byte),
+                    "guest output differs at step {step}",
+                );
             },
             b'i' if step == ACTIVE - 1 => {
                 assert_eq!(
                     trace.memory_reads.data.map(|read| read.value),
-                    Some(99)
+                    Some(99),
+                    "first physical return must read loader word 99",
                 );
-                assert_eq!(trace.after.registers.code_pointer, FIRST_RETURN);
+                assert_eq!(
+                    trace.after.registers.code_pointer, FIRST_RETURN,
+                    "first physical return destination must be C100",
+                );
                 assert_eq!(
                     trace.memory_reads.encryption.map(|read| read.address),
-                    Some(99)
+                    Some(99),
+                    "first physical return must read loader word 99",
                 );
             },
             b'i' if step == STEPS - 2 => {
                 assert_eq!(
                     trace.memory_reads.data.map(|read| read.value),
-                    Some(105)
+                    Some(105),
+                    "second physical return must read loader word 105",
                 );
-                assert_eq!(trace.after.registers.code_pointer, SECOND_RETURN);
+                assert_eq!(
+                    trace.after.registers.code_pointer, SECOND_RETURN,
+                    "second physical return destination must be C106",
+                );
                 assert_eq!(
                     trace.memory_reads.encryption.map(|read| read.address),
-                    Some(105)
+                    Some(105),
+                    "second physical return must read loader word 105",
                 );
             },
             _ => {
@@ -353,8 +414,16 @@ fn assert_one_input(
             },
         }
     }
-    assert_eq!(machine.input_consumed(), consumed);
-    assert_eq!(machine.output(), output);
+    assert_eq!(
+        machine.input_consumed(),
+        consumed,
+        "input consumption must match the source-locked trace oracle",
+    );
+    assert_eq!(
+        machine.output(),
+        output,
+        "guest output must match the source-locked trace oracle",
+    );
     Ok(())
 }
 
@@ -567,5 +636,120 @@ fn altered_rear_source_operand_does_not_prove_the_same_return()
     assert_eq!(backedges, [(Some(99), FIRST_RETURN), (Some(106), 107)]);
     assert_ne!(backedges[1].1, SECOND_RETURN);
     assert_eq!(operations[281], b'i');
+    Ok(())
+}
+
+// Observe real return boundaries, not host-restored snapshots or a
+// synthetic preloaded pointer.
+
+fn three_return_entry_states(
+    source: &[u8],
+    input: &[u8],
+) -> Result<Vec<ReturnEntryState>, String> {
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), source, input.to_vec())
+            .map_err(|error| error.to_string())?;
+    let mut boundaries = Vec::new();
+    for _ in 0..640 {
+        let mut return_trace = None;
+        let outcome = machine
+            .step_traced(&mut |trace| {
+                if trace.before.registers.code_pointer == 281 {
+                    return_trace = Some(*trace);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            outcome,
+            malbolge::StepOutcome::Continued,
+            "physical return-boundary trace must remain executable",
+        );
+        if let Some(trace) = return_trace {
+            assert_eq!(trace.decoded, Some(b'i'), "expected physical return");
+            assert_eq!(
+                trace.before.registers.code_pointer, 281,
+                "return must execute from physical C281",
+            );
+            let registers = machine.registers();
+            assert_eq!(
+                trace.after.registers, registers,
+                "trace must reflect committed guest registers",
+            );
+            boundaries.push(ReturnEntryState {
+                accumulator: registers.accumulator,
+                code_pointer: registers.code_pointer,
+                // All three traversals already visited physical C120. It
+                // cannot be treated as the same live code state on reentry.
+                common_code_word: machine
+                    .memory_word(120)
+                    .map_err(|error| error.to_string())?,
+                data_pointer: registers.data_pointer,
+                input_consumed: machine.input_consumed(),
+                output: machine.output().to_vec(),
+            });
+        }
+    }
+    Ok(boundaries)
+}
+
+#[test]
+fn repeated_physical_returns_do_not_restore_a_guest_state_contract()
+-> Result<(), String> {
+    let (source, _, repairs) = three_return_source()?;
+    assert_eq!(repairs, 6);
+    let mut last_code = u32::from(source[120]);
+    let mut independently_encrypted_code = Vec::new();
+    for _ in 0..3 {
+        last_code = encrypt_profile_cell(last_code)
+            .ok_or("source code at C120 failed to encrypt")?;
+        independently_encrypted_code.push(last_code);
+    }
+    assert_eq!(
+        independently_encrypted_code.len(),
+        3,
+        "all three physical guest visits have an expected state",
+    );
+    for input in [vec![], vec![0], vec![0x80], vec![0xff], vec![1, 2]] {
+        let states = three_return_entry_states(&source, &input)?;
+        assert_eq!(states.len(), 3);
+        for (index, state) in states.iter().enumerate() {
+            assert_eq!(state.code_pointer, [100, 106, 120][index]);
+            assert_eq!(state.data_pointer, [282, 464, 640][index]);
+            assert_eq!(
+                state.common_code_word,
+                independently_encrypted_code[index]
+            );
+        }
+        for pair in states.windows(2) {
+            let [first, second] = pair else {
+                return Err(
+                    "expected exactly two adjacent boundaries".to_owned()
+                );
+            };
+            assert_ne!(first.data_pointer, second.data_pointer);
+            assert_ne!(first.common_code_word, second.common_code_word);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn same_three_return_code_path_does_not_erase_binary_input_state()
+-> Result<(), String> {
+    let (source, _, _) = three_return_source()?;
+    let eof = three_return_entry_states(&source, &[])?;
+    let high_byte = three_return_entry_states(&source, &[0x80])?;
+    assert_eq!(eof.len(), 3);
+    assert_eq!(high_byte.len(), 3);
+    for (empty, high) in eof.iter().zip(&high_byte) {
+        // Same immutable source and real guest control path do not imply
+        // interchangeable source-sensitive block contracts.
+        assert_eq!(empty.code_pointer, high.code_pointer);
+        assert_eq!(empty.data_pointer, high.data_pointer);
+        assert_eq!(empty.common_code_word, high.common_code_word);
+        assert_eq!(empty.input_consumed, 0);
+        assert_eq!(high.input_consumed, 1);
+        assert_ne!(empty.output, high.output);
+    }
     Ok(())
 }

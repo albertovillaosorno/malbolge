@@ -66,10 +66,10 @@ has 243 values, not 141. The 14,348,907-word N15 memory does not have a
 
 The repository's pinned Cargo command
 `cargo test --test compiler_141_half_phase_returns --quiet`
-passed **5 tests** (phase identity, two- and three-return five-stream N15
-paths, and changed-operand negative controls). This is a reproducible local
-execution receipt; the full Jig gate and the unrelated complete C23 mutable
-EOF checksum are separate acceptance obligations.
+passed **7 tests** (phase identity, two- and three-return five-stream N15
+paths, changed-operand negatives, and exact reentry-state/input controls).
+This is a reproducible local execution receipt. The full Jig gate and the
+unrelated complete C23 mutable EOF checksum are separate obligations.
 
 A separate initial off-repository N15 prototype also demonstrated the first
 C281-to-C100 reentry in 283 real guest steps. The later two-return test is
@@ -100,6 +100,37 @@ first two returns but changes loader M639 to 99. The third real `i` then
 lands at C100 rather than C120. No fabricated or pre-seeded guest memory
 is used. The frozen trace bound is 640 steps, with five original input
 streams and exactly one changed-tail negative case.
+
+## Reentry State-Contract Negative Control
+
+The same source-backed three-return fixture now has two additional normative
+VM tests, `repeated_physical_returns_do_not_restore_a_guest_state_contract`
+and `same_three_return_code_path_does_not_erase_binary_input_state`. They
+examine each state **immediately after** real `i` returns (steps 282, 464,
+640), without replacing guest memory or fabricating a saved register state.
+The exact five-stream matrix remains empty, `00`, `80`, `ff`, `01 02`.
+
+- Return-entry `(C, D)` states are `(100, 282)`, `(106, 464)`,
+  `(120, 640)` for every tested stream. The machine's `D` was never restored
+  by an executed `j`.
+- Physical source code at C120 is visited in every traversal. Its live
+  memory word at the three boundaries equals **one, two, then three**
+  independent applications of the canonical XLAT2 encryption of source
+  byte C120. Consecutive words are distinct. A decoder-phase relation
+  therefore cannot substitute for a live code-image invariant.
+- Empty input and the single high byte `80` follow the same control
+  addresses and have the same C120 code word at each return, yet their
+  consumed-input counters are 0 versus 1 and their guest output sequences
+  differ. A state contract keyed only by the code path would admit an
+  unsound equivalence across the tested binary/EOF inputs.
+
+The frozen rejection predicate is exact: **none** of the three consecutive
+returns provides identical physical live `D` and C120 state; and the same
+code path does **not** determine source-sensitive I/O state. This does not
+rule out a future validated relocation contract with explicit state mapping,
+code-version normalization and input effects, nor prove that no other
+source can form a reusable cycle. It closes only the repeated-state claim
+for this 564-source-cell fixture and these finite guest boundaries.
 
 ## What the Result Does Not Establish
 
