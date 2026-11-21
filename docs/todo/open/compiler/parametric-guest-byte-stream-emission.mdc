@@ -82,7 +82,8 @@ evidence describe the old priority scheme, not the current phase.
   `0xff` from true raw EOF while checking exact source SSA destinations,
   consumed bytes, reached input opcodes, physical step indices and output.
   A missing source anchor, corrupted typed bytes, insufficient 81-step
-  ceiling and an extra real `/` at unassigned C80 refuse. This witness
+  ceiling, a missing `/` at C66, and an extra `/` at C80 refuse.
+  This witness
   does **not** execute C32 local writes, source arithmetic, phi moves,
   branch decisions or the original EOF backedge; the full checksum
   still refuses guest publication and P2 remains open.

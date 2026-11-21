@@ -244,3 +244,39 @@ fn physical_input_witness_rejects_unbound_extra_or_missing_guest_reads()
     );
     Ok(())
 }
+
+// Reaching a physical halt is not enough if a required source input was
+// replaced by an unrelated legal guest instruction at its code address.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "deliberately substituted physical opcode must fail closed"
+)]
+fn physically_unreached_c23_input_site_is_rejected() -> Result<(), String> {
+    let source = build_c23_signed_output_with_post_conversion_fold_source(
+        current_profile(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    let replacement_noop = (33u8..=126)
+        .find(|byte| {
+            decode_profile_instruction(u32::from(*byte), 66) == Some(b'o')
+        })
+        .ok_or("no graphical no-op at C66")?;
+    let mut missing_read_source = source;
+    *missing_read_source
+        .get_mut(66)
+        .ok_or("short guest source")? = replacement_noop;
+    let wire = checksum_wire()?;
+    assert_eq!(
+        verify_source_input_site_prefix(SourceInputProbe {
+            anchors: &input_anchors(),
+            canonical: &wire,
+            frame_base: 128,
+            input: &[3, 4],
+            physical_source: &missing_read_source,
+            step_budget: 82,
+        }),
+        Err(SourceInputTraceError::UnreachedSourceInput),
+    );
+    Ok(())
+}

@@ -42,7 +42,8 @@ exercise zero, one and two consumed bytes, NUL, the high-bit boundary,
 
 The verifier refuses absent or forged input-site bindings, an 81-step
 incomplete execution, a corrupted canonical typed source, and a physically
-executed *third* `/` at the unassigned C80. This is positive evidence
+executed *third* `/` at the unassigned C80, and a missing real
+`/` at C66. This is positive evidence
 that the proposed source input addresses coincide with real guest input
 transitions, **not** evidence that the converter implements source-C block
 entry, C32 result stores, signed EOF normalization, arithmetic, branches,
