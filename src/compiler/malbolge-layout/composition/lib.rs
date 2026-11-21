@@ -133,7 +133,8 @@ pub use signed_eof_branch_source::{
 pub use source_input_trace::{
     MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS,
     SourceInputPrefixProof, SourceInputProbe, SourceInputSiteObservation,
-    SourceInputTraceError, verify_source_input_site_prefix,
+    SourceInputTraceError, verify_source_input_site_output_compatible,
+    verify_source_input_site_prefix,
     verify_source_input_site_return_compatible,
 };
 

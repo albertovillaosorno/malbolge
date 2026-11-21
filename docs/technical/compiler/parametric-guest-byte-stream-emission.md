@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-known checksum output parity gate (2026-11-20)
+
+The opt-in `verify_source_input_site_output_compatible` first requires real
+N15 execution with authenticated physical read sites and a complete possible
+source-CFG return. It then walks the exact original typed checksum CFG to
+compare the guest's actual *complete output byte sequence* with values
+established from source-known C32 unsigned wrapping add/subtract, bitwise
+operations, signed EOF comparison, casts and parallel edge phis. Unknown
+output scalars and unsupported arithmetic cannot certify any guessed byte;
+a finite search-budget refusal remains distinct from a source mismatch.
+This check does **not** establish relative timing of guest output versus
+input events, physical C32 memory writes, opcode semantics for source
+arithmetic, phi copies or branch equivalence.
+
+The original seven-block checksum source produces the independently calculated
+one-byte checksum on empty, NUL, `ff` and two multibyte binary streams.
+Forged one-byte results, missing/extra output, unsupported multiplication,
+and full-width unsigned-add overflow are covered by source-CFG tests. The
+132-cell C53/C101 guarded physical guest passes necessary read and return
+checks for first EOF and byte-then-EOF, but is correctly rejected by this
+output gate: it emits a fixed EOF/byte marker instead of the checksum.
+Two successful input bytes fail at source return first, as the C loop would
+require another read. Nothing is published from this bounded verifier.
+
 ### Disjoint guarded-input anchors and source-return check (2026-11-20)
 
 The existing 132-cell physical *first*-EOF branch actually reads at C53,

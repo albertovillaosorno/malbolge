@@ -75,6 +75,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, an opt-in source-aware output gate now replays the
+  actual bounded VM input/return proof before comparing guest output bytes
+  against independently source-known C23 operations. The frozen seven-block
+  checksum's exact SSA/phi/unsigned-wrap evaluator matches a separate
+  binary checksum oracle on empty, `00`, `ff` and two multibyte streams;
+  wrong/missing/extra outputs, an unknown multiplication result and
+  32-bit wraparound have separate negatives. The disjoint C53/C101 N15
+  guest remains refused as checksum output because its actual fixed marker
+  is wrong; two successful read events refuse earlier at source return.
+  This necessary byte-sequence parity check is *not* a physical output
+  chronology, guest state/branch/operation proof or compiler publication.
+
 - On 2026-11-20, a real N15 first-read EOF classifier supplies
   C53 and a *conditionally reached* C101 second `/` for the unchanged
   seven-block C23 checksum source. The canonical 132-cell guest admits

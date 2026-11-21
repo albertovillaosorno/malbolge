@@ -40,6 +40,7 @@ use layout::{
     build_c23_signed_output_with_post_conversion_fold_source,
     build_guarded_signed_eof_second_read_source,
     build_second_input_eof_classified_first_echo_source,
+    verify_source_input_site_output_compatible,
     verify_source_input_site_prefix,
     verify_source_input_site_return_compatible,
 };
@@ -786,6 +787,59 @@ fn guarded_guest_halt_requires_source_eof_compatible_return_path()
             ..probe
         }),
         Err(SourceInputTraceError::StepBudgetExhausted),
+    );
+    Ok(())
+}
+
+// Source input/return viability is not output parity: this real guest emits
+// EOF/byte classifier markers rather than the mutable C checksum result.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact real-N15 output refusal for source-locked C checksum"
+)]
+fn guarded_guest_refuses_checksum_output_parity() -> Result<(), String> {
+    let physical =
+        build_guarded_signed_eof_second_read_source(current_profile())
+            .map_err(|error| format!("{error:?}"))?;
+    let canonical = checksum_wire()?;
+    let anchors = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 53,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 101,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    for input in [&[][..], &[0][..], &[1][..], &[0xff][..]] {
+        assert_eq!(
+            verify_source_input_site_output_compatible(SourceInputProbe {
+                anchors: &anchors,
+                canonical: &canonical,
+                frame_base: 256,
+                input,
+                physical_source: &physical,
+                step_budget: 175,
+            }),
+            Err(SourceInputTraceError::SourceOutputNotProven),
+        );
+    }
+    assert_eq!(
+        verify_source_input_site_output_compatible(SourceInputProbe {
+            anchors: &anchors,
+            canonical: &canonical,
+            frame_base: 256,
+            input: &[1, 2],
+            physical_source: &physical,
+            step_budget: 175,
+        }),
+        Err(SourceInputTraceError::UnreachedSourceInput),
     );
     Ok(())
 }

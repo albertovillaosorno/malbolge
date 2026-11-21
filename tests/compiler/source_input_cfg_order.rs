@@ -37,8 +37,9 @@ use super::super::typed_cfg_adapter::ternary::{
 };
 use super::{
     GuestCodeInputSemantics, GuestPlacedOperand, SourceInputSiteObservation,
-    SourceInputTraceError, source_path_matches_input_prefix,
-    source_path_matches_input_trace, verify_source_cfg_input_order,
+    SourceInputTraceError, source_path_matches_input_observables,
+    source_path_matches_input_prefix, source_path_matches_input_trace,
+    verify_source_cfg_input_order,
 };
 
 const CHECKSUM_TYPED: &str =
@@ -588,5 +589,183 @@ fn source_known_signed_and_unsigned_thresholds_separate_eof_from_bytes() {
                 Ok(!expected),
             );
         }
+    }
+}
+
+// This oracle walks the original normalized C CFG, not the guest VM. Every
+// real source input (including true EOF) must reach exactly the one C output
+// byte; arbitrary output guesses must not satisfy the authenticated path.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independently computed checksum and source CFG output assertions"
+)]
+fn complete_checksum_source_paths_require_exact_output_bytes()
+-> Result<(), String> {
+    let cfg = lower_canonical_dynamic_cfg(&checksum_wire()?)
+        .map_err(|error| format!("{error:?}"))?;
+    let source = cfg.functions.first().ok_or("missing checksum function")?;
+    for input in [vec![], vec![0], vec![0xff], vec![1, 0, 0x80, 0xfe], vec![
+        5, 0, 0x81,
+    ]] {
+        let first = observed(0, 1);
+        let next = observed(5, 2);
+        let mut reads = Vec::new();
+        for (index, byte) in input.iter().copied().enumerate() {
+            let site = if index == 0 {
+                first
+            } else {
+                next
+            };
+            reads.push(SourceInputSiteObservation {
+                input: TraceInput::Byte(byte),
+                raw_accumulator: u32::from(byte),
+                ..site
+            });
+        }
+        reads.push(SourceInputSiteObservation {
+            input: TraceInput::EndOfInput,
+            raw_accumulator: 14_348_906,
+            ..if input.is_empty() {
+                first
+            } else {
+                next
+            }
+        });
+        let observations = reads.iter().collect::<Vec<_>>();
+        let mut checksum = 0u8;
+        for byte in &input {
+            checksum = if byte & 1 == 0 {
+                checksum.wrapping_add(*byte)
+            } else {
+                checksum ^ byte
+            };
+            checksum = checksum.wrapping_add(3);
+        }
+        assert_eq!(
+            source_path_matches_input_observables(
+                source,
+                &observations,
+                &[checksum],
+                16_384,
+            ),
+            Ok(true),
+            "source refused correct checksum for {input:?}"
+        );
+        assert_eq!(
+            source_path_matches_input_observables(
+                source,
+                &observations,
+                &[checksum ^ 1],
+                16_384,
+            ),
+            Ok(false),
+            "source admitted incorrect checksum for {input:?}"
+        );
+    }
+    Ok(())
+}
+
+// Deliberately unknown target arithmetic must not be promoted into a known
+// source byte merely because a guest happened to emit that particular byte.
+#[test]
+fn unknown_source_arithmetic_cannot_certify_guest_output() {
+    let span = dummy_span();
+    let function = TernaryCfgFunction {
+        blocks: vec![TernaryCfgBlock {
+            id: 0,
+            operations: vec![
+                TernaryOperation::GetcharI32 { result: 0, span },
+                TernaryOperation::MaterializeU32 {
+                    result: 1,
+                    scalar: TernaryI32Scalar::from_bits(0),
+                    span,
+                },
+                TernaryOperation::MultiplyU32 {
+                    left: 0,
+                    result: 2,
+                    right: 1,
+                    span,
+                },
+                TernaryOperation::TruncateU32ToU8 {
+                    result: 3,
+                    value: 2,
+                    span,
+                },
+                TernaryOperation::ByteOutput { value: 3, span },
+            ],
+            phis: Vec::new(),
+            terminator: TernaryCfgTerminator::Return(
+                TernaryOperation::ReturnVoid { span },
+            ),
+        }],
+        entry: 0,
+        id: 0,
+        name: "unknown_output".to_owned(),
+        span,
+    };
+    let first = observed(0, 0);
+    assert_eq!(
+        source_path_matches_input_observables(&function, &[&first], &[0], 128),
+        Ok(false),
+    );
+    // An input-only path may exist without knowledge of target arithmetic.
+    assert_eq!(
+        source_path_matches_input_trace(&function, &[&first], 128, true),
+        Ok(true),
+    );
+}
+
+// Unsigned C32 additions wrap even when the guest must preserve two words.
+// Reject a forged output and missing/extra outputs after a valid source return.
+#[test]
+fn known_source_unsigned_addition_preserves_full_width_wraparound() {
+    let span = dummy_span();
+    let function = TernaryCfgFunction {
+        blocks: vec![TernaryCfgBlock {
+            id: 0,
+            operations: vec![
+                TernaryOperation::MaterializeU32 {
+                    result: 0,
+                    scalar: TernaryI32Scalar::from_bits(u32::MAX),
+                    span,
+                },
+                TernaryOperation::MaterializeU32 {
+                    result: 1,
+                    scalar: TernaryI32Scalar::from_bits(2),
+                    span,
+                },
+                TernaryOperation::AddU32 {
+                    left: 0,
+                    result: 2,
+                    right: 1,
+                    span,
+                },
+                TernaryOperation::TruncateU32ToU8 {
+                    result: 3,
+                    value: 2,
+                    span,
+                },
+                TernaryOperation::ByteOutput { value: 3, span },
+            ],
+            phis: Vec::new(),
+            terminator: TernaryCfgTerminator::Return(
+                TernaryOperation::ReturnVoid { span },
+            ),
+        }],
+        entry: 0,
+        id: 0,
+        name: "unsigned_wrap".to_owned(),
+        span,
+    };
+    assert_eq!(
+        source_path_matches_input_observables(&function, &[], &[1], 128),
+        Ok(true),
+    );
+    for wrong in [&[][..], &[0][..], &[1, 1][..], &[255][..]] {
+        assert_eq!(
+            source_path_matches_input_observables(&function, &[], wrong, 128),
+            Ok(false),
+        );
     }
 }
