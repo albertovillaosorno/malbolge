@@ -199,13 +199,25 @@ fn execute() -> Result<(), String> {
                 .iter()
                 .map(|frame| frame.total_words)
                 .sum();
+            // Exact source-typed operation widths and every parallel
+            // predecessor copy now determine a necessary physical code
+            // capacity. This is not encoded or executable Malbolge.
+            let minimum_code_cells =
+                prelink::state_relocation::source_locked_cfg_minimum_code_cells(
+                    &typed,
+                )
+                .map_err(|error| {
+                    format!("source-locked CFG code bound rejected: {error:?}")
+                })?;
             return Err(format!(
                 concat!(
                     "target lowering rejected: dynamic EOF checksum CFG is ",
                     "unlinked; source-backed prelink has {blocks} blocks, ",
                     "{operations} operations, {phi_edges} phi edges, ",
                     "{phi_moves} phi moves, and {frame_words} reserved ",
-                    "guest words; missing physical guest operations, ",
+                    "guest words; minimum {minimum_code_cells} guest code ",
+                    "cells (unlinked lower bound); missing physical guest ",
+                    "operations, ",
                     "parallel phi writes, branching and EOF loop",
                 ),
                 blocks = blocks,
@@ -213,6 +225,7 @@ fn execute() -> Result<(), String> {
                 phi_edges = phi_edges,
                 phi_moves = phi_moves,
                 frame_words = frame_words,
+                minimum_code_cells = minimum_code_cells,
             ));
         },
         FrontendGuestMode::LatestRead => "--latest-byte-trace",

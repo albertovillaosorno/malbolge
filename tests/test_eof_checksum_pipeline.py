@@ -119,6 +119,7 @@ class MutableEofChecksumTests(unittest.TestCase):
                 b"4 phi edges, 6 phi moves, and 43 reserved guest words",
                 admitted.stderr,
             )
+            self.assertIn(b"minimum 71 guest code cells", admitted.stderr)
             self.assertFalse(output.exists())
 
     def test_complete_compiler_and_guest_or_explicit_refusal(self) -> None:
@@ -204,6 +205,7 @@ class MutableEofChecksumTests(unittest.TestCase):
                     ),
                     compiled.stderr,
                 )
+                self.assertIn(b"minimum 71 guest code cells", compiled.stderr)
                 self.assertIn(b"missing physical guest operations", compiled.stderr)
                 self.assertFalse(
                     target.exists(), "unsupported compiler published a guest"

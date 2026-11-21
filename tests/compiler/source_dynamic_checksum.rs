@@ -1717,6 +1717,116 @@ fn source_checksum_proposed_code_entries_bind_all_unselected_control_edges() {
 }
 
 #[test]
+fn original_checksum_has_source_locked_minimum_code_and_phi_pad_plan() {
+    use super::typed_cfg_adapter::TypedCfgAdapterError;
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodePlacementError, plan_source_locked_cfg_minimum_code_targets,
+        source_locked_cfg_minimum_code_cells,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 source");
+    assert_eq!(source_locked_cfg_minimum_code_cells(&wire), Ok(71));
+    // Exactly 43 minimum block cells and 28 predecessor-specific phi-pad
+    // cells are required. This is a *code capacity* lower bound, not an
+    // executable source or evidence that 71 graphical bytes implement C.
+    let planned =
+        plan_source_locked_cfg_minimum_code_targets(&wire, 91, 128, 0)
+            .expect("source-derived original checksum code reservations");
+    assert_eq!(
+        planned
+            .code_blocks
+            .iter()
+            .map(|block| (
+                block.start,
+                block.control_start,
+                block.end_exclusive,
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (0, 15, 16),
+            (16, 17, 18),
+            (18, 21, 22),
+            (22, 26, 27),
+            (27, 31, 32),
+            (32, 39, 40),
+            (40, 42, 43),
+        ]
+    );
+    assert_eq!(
+        planned
+            .edge_pads
+            .iter()
+            .map(|pad| (
+                pad.predecessor,
+                pad.successor,
+                pad.start,
+                pad.end_exclusive,
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (0, 1, 43, 52),
+            (3, 5, 52, 57),
+            (4, 5, 57, 62),
+            (5, 1, 62, 71),
+        ]
+    );
+    assert_eq!(planned.operation_sites.len(), 19);
+    assert_eq!(planned.operation_effect_sites.len(), 36);
+    assert_eq!(planned.control_edges.len(), 8);
+    assert_eq!(planned.return_sites.len(), 1);
+    assert_eq!(planned.relocated.state_placements[0].base, 128);
+    assert_eq!(planned.relocated.state_placements[0].end_exclusive, 171);
+    assert_eq!(planned.function_entries[0].address, 0);
+    assert_eq!(
+        plan_source_locked_cfg_minimum_code_targets(&wire, 91, 128, 0),
+        Ok(planned.clone()),
+        "canonical source input must yield identical code obligations"
+    );
+    let shifted =
+        plan_source_locked_cfg_minimum_code_targets(&wire, 100, 128, 12)
+            .expect("source-relative code placement can relocate");
+    assert_eq!(shifted.code_blocks[0].start, 12);
+    assert_eq!(
+        shifted.edge_pads.last().map(|pad| pad.end_exclusive),
+        Some(83)
+    );
+    assert_eq!(shifted.relocated.state_placements[0].base, 128);
+    let refused = Err(GuestCodePlacementError::InvalidCodePlacement);
+    assert_eq!(
+        plan_source_locked_cfg_minimum_code_targets(&wire, 70, 128, 0),
+        refused,
+        "one cell short of the true lower bound must refuse"
+    );
+    assert_eq!(
+        plan_source_locked_cfg_minimum_code_targets(&wire, 91, 128, 21),
+        refused,
+        "proposed source too small for shifted placement"
+    );
+    assert_eq!(
+        plan_source_locked_cfg_minimum_code_targets(&wire, 91, 128, u32::MAX),
+        refused,
+        "offset arithmetic cannot wrap"
+    );
+    assert_eq!(
+        plan_source_locked_cfg_minimum_code_targets(&wire, 91, 90, 0),
+        Err(GuestCodePlacementError::TypedCfg(
+            TypedCfgAdapterError::GuestStateAllocation,
+        )),
+        "typed C-state frame may not alias source bytes"
+    );
+    let mut corrupted = wire;
+    corrupted.push(0);
+    assert!(matches!(
+        source_locked_cfg_minimum_code_cells(&corrupted),
+        Err(GuestCodePlacementError::TypedCfg(_)),
+    ));
+    assert!(matches!(
+        plan_source_locked_cfg_minimum_code_targets(&corrupted, 91, 128, 0),
+        Err(GuestCodePlacementError::TypedCfg(_)),
+    ));
+}
+
+#[test]
 fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     use super::typed_cfg_adapter::state_relocation::{
         GuestCodePlacementError, GuestCodeProposals,
@@ -2127,7 +2237,10 @@ fn narrow_join_typed_module(
 fn narrow_signed_and_unsigned_phi_joins_preserve_guest_storage_widths() {
     use super::typed::{TypeDef, canonical_bytes, validate_module};
     use super::typed_cfg_adapter::prepare_canonical_dynamic_cfg;
-    use super::typed_cfg_adapter::state_relocation::relocate_source_locked_cfg;
+    use super::typed_cfg_adapter::state_relocation::{
+        plan_source_locked_cfg_minimum_code_targets,
+        relocate_source_locked_cfg, source_locked_cfg_minimum_code_cells,
+    };
     use super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
 
     for (kind, width, alternatives, target) in [
@@ -2144,6 +2257,23 @@ fn narrow_signed_and_unsigned_phi_joins_preserve_guest_storage_widths() {
         validate_module(&module).expect("valid narrow typed CFG");
         let wire = canonical_bytes(&module).expect("canonical typed CFG");
         assert_eq!(canonical_module(&wire), Ok(module));
+        // Narrow scalar source branches need seven minimum block cells and
+        // two three-cell phi pads. Do not widen them to C32 reservations.
+        assert_eq!(source_locked_cfg_minimum_code_cells(&wire), Ok(13));
+        let compact =
+            plan_source_locked_cfg_minimum_code_targets(&wire, 20, 64, 0)
+                .expect("narrow source-linked minimum physical obligations");
+        assert_eq!(compact.operation_effect_sites.len(), 3);
+        assert_eq!(compact.code_blocks.len(), 4);
+        assert_eq!(compact.edge_pads.len(), 2);
+        assert_eq!(compact.edge_pads[0].start, 7);
+        assert_eq!(compact.edge_pads[1].end_exclusive, 13);
+        assert!(
+            compact
+                .edge_pads
+                .iter()
+                .all(|pad| { pad.end_exclusive - pad.start == 3 })
+        );
         let prepared = prepare_canonical_dynamic_cfg(&wire)
             .expect("narrow phi must preserve original width");
         let [frame] = prepared.state_frames.as_slice() else {

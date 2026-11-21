@@ -763,22 +763,31 @@ pub fn relocate_source_locked_cfg(
     })
 }
 
-fn minimum_operation_cells(
-    instruction: &GuestPlacedInstruction,
+fn minimum_operation_cells_by_width(
+    instruction: &Instruction,
+    destination_words: u32,
+    literal_writes: usize,
 ) -> Option<u32> {
-    let literal_writes =
-        u32::try_from(instruction.constant_cells.len()).ok()?;
-    let destination_writes =
-        instruction.write.map_or(0, |destination| destination.words);
+    let literal_writes = u32::try_from(literal_writes).ok()?;
     let input_steps = u32::from(matches!(
-        instruction.instruction,
+        instruction,
         Instruction::Getchar { .. } | Instruction::ByteInput { .. }
     ));
     Some(
-        destination_writes
+        destination_words
             .checked_add(input_steps)?
             .max(literal_writes)
             .max(1),
+    )
+}
+
+fn minimum_operation_cells(
+    instruction: &GuestPlacedInstruction,
+) -> Option<u32> {
+    minimum_operation_cells_by_width(
+        &instruction.instruction,
+        instruction.write.map_or(0, |destination| destination.words),
+        instruction.constant_cells.len(),
     )
 }
 
@@ -1384,6 +1393,235 @@ pub fn bind_source_locked_cfg_code_targets(
         return_sites,
         relocated,
     })
+}
+
+// This is a lower-bound source reservation, not a candidate encoding. Even a
+// single Malbolge copy or input can require more code for pointer routing,
+// operand preparation, conditional control and self-encryption. Keeping the
+// calculation separate from physical emission avoids authoring imaginary
+// opcode bytes to fill a mathematically possible but unlinked interval.
+fn reserve_minimum_code_cells(
+    next: &mut u32,
+    cells: u32,
+    source_cells: u32,
+) -> Result<(u32, u32), GuestCodePlacementError> {
+    let start = *next;
+    let end_exclusive = start
+        .checked_add(cells)
+        .filter(|end| cells > 0 && *end <= source_cells)
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    *next = end_exclusive;
+    Ok((start, end_exclusive))
+}
+
+fn reserve_minimum_phi_pad(
+    edge: &GuestPlacedControlEdge,
+    function: u32,
+    predecessor: u32,
+    kind: GuestCodeEdgeKind,
+    next: &mut u32,
+    source_cells: u32,
+    pads: &mut Vec<GuestCodeEdgePadPlacement>,
+) -> Result<(), GuestCodePlacementError> {
+    if edge.snapshots.is_empty() && edge.commits.is_empty() {
+        return Ok(());
+    }
+    let copies = edge
+        .snapshots
+        .len()
+        .checked_add(edge.commits.len())
+        .and_then(|len| u32::try_from(len).ok())
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    let minimum = copies
+        .checked_add(1)
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    let (start, end_exclusive) =
+        reserve_minimum_code_cells(next, minimum, source_cells)?;
+    pads.push(GuestCodeEdgePadPlacement {
+        end_exclusive,
+        function,
+        kind,
+        predecessor,
+        start,
+        successor: edge.successor,
+    });
+    Ok(())
+}
+
+/// Count the strict *minimum* physical instruction-cell obligations of a
+/// source-authenticated typed CFG before any source length or frame base is
+/// proposed. Every SSA instruction and terminator consumes at least one
+/// cell, full-width guest writes consume their actual word widths, and each
+/// phi-bearing control arm requires all snapshots and commits plus its jump.
+/// Branch arms with the same target are counted separately: each outcome
+/// owns a distinct physical landing pad when phi writes are required.
+///
+/// No source layout, target instruction, C input conversion or runtime path
+/// is inferred from this count. Physical realizations will generally need
+/// more cells for pointer routing, materialization and self-encryption.
+///
+/// # Errors
+///
+/// Refuses invalid or unsupported canonical typed IR and impossible checked
+/// cell-count arithmetic. This function never publishes target code.
+pub fn source_locked_cfg_minimum_code_cells(
+    canonical: &[u8],
+) -> Result<u32, GuestCodePlacementError> {
+    let prelink = prepare_canonical_dynamic_cfg(canonical)
+        .map_err(GuestCodePlacementError::TypedCfg)?;
+    let mut cells = 0u32;
+    for block in &prelink.operation_blocks {
+        for operation in &block.instructions {
+            let needed = minimum_operation_cells_by_width(
+                &operation.instruction,
+                operation.write.map_or(0, |destination| destination.words),
+                operation.constant_cells.len(),
+            )
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            cells = cells
+                .checked_add(needed)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        }
+        // An unconditional jump, two-way branch selector, or return needs
+        // its own physical control step after all of the block's operations.
+        cells = cells
+            .checked_add(1)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let mut edge_cost = |successor| {
+            if let Some(edge) = prelink.cell_edges.iter().find(|edge| {
+                edge.function == block.function
+                    && edge.predecessor == block.block
+                    && edge.successor == successor
+            }) {
+                let copies = edge
+                    .snapshots
+                    .len()
+                    .checked_add(edge.commits.len())
+                    .and_then(|len| u32::try_from(len).ok())
+                    .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+                cells = cells
+                    .checked_add(copies)
+                    .and_then(|cells| cells.checked_add(1))
+                    .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            }
+            Ok::<(), GuestCodePlacementError>(())
+        };
+        match &block.control.terminator {
+            Terminator::Jump { target } => edge_cost(target.value())?,
+            Terminator::Branch {
+                false_target,
+                true_target,
+                ..
+            } => {
+                edge_cost(false_target.value())?;
+                edge_cost(true_target.value())?;
+            },
+            Terminator::Return { .. } => {},
+            Terminator::Switch { .. } => {
+                return Err(GuestCodePlacementError::TypedCfg(
+                    TypedCfgAdapterError::UnsupportedTypedIr,
+                ));
+            },
+        }
+    }
+    Ok(cells)
+}
+
+/// Automatically reserve the *minimum* disjoint code and phi landing-pad
+/// intervals required by one canonical, source-authenticated typed CFG.
+///
+/// This removes caller-authored block and predecessor-pad coordinates from
+/// the first physical planning attempt. All operations, control arms, return
+/// sites and two-phase phi transfers are re-derived from the exact typed
+/// source; the resulting plan is independently rebound by
+/// [`bind_source_locked_cfg_code_targets`]. No Malbolge source bytes, pointer
+/// paths, runtime arithmetic, signed EOF normalization or jumps are produced.
+/// A real linker must expand these necessary lower bounds and verify its
+/// encoded source under the normative VM before publishing any C artifact.
+///
+/// # Errors
+///
+/// Rejects corrupted canonical source, aliased/out-of-range frame placement,
+/// code position overflow and a source too short for the minimum instruction
+/// and edge-pad obligations. All refusal paths create no guest artifact.
+pub fn plan_source_locked_cfg_minimum_code_targets(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    code_base: u32,
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    let relocated =
+        relocate_source_locked_cfg(canonical, source_cells, frame_base)
+            .map_err(GuestCodePlacementError::TypedCfg)?;
+    let minimum = source_locked_cfg_minimum_code_cells(canonical)?;
+    let expected_end = code_base
+        .checked_add(minimum)
+        .filter(|end| *end <= source_cells)
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    let mut next = code_base;
+    let mut code_blocks = Vec::with_capacity(relocated.operation_blocks.len());
+    for block in &relocated.operation_blocks {
+        let minimum_operations = block
+            .instructions
+            .iter()
+            .try_fold(0u32, |cells, instruction| {
+                cells.checked_add(minimum_operation_cells(instruction)?)
+            })
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let control_start = next
+            .checked_add(minimum_operations)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let (start, end_exclusive) = reserve_minimum_code_cells(
+            &mut next,
+            minimum_operations
+                .checked_add(1)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?,
+            source_cells,
+        )?;
+        code_blocks.push(GuestCodeBlockPlacement {
+            block: block.block,
+            control_start,
+            end_exclusive,
+            function: block.function,
+            start,
+        });
+    }
+    let mut edge_pads = Vec::new();
+    for block in &relocated.operation_blocks {
+        let mut reserve = |kind, edge: &GuestPlacedControlEdge| {
+            reserve_minimum_phi_pad(
+                edge,
+                block.function,
+                block.block,
+                kind,
+                &mut next,
+                source_cells,
+                &mut edge_pads,
+            )
+        };
+        match &block.control {
+            GuestPlacedControl::Branch { when_false, when_true } => {
+                reserve(GuestCodeEdgeKind::WhenFalse, when_false)?;
+                reserve(GuestCodeEdgeKind::WhenTrue, when_true)?;
+            },
+            GuestPlacedControl::Jump { edge } => {
+                reserve(GuestCodeEdgeKind::Jump, edge)?;
+            },
+            GuestPlacedControl::Return => {},
+        }
+    }
+    if next != expected_end {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    bind_source_locked_cfg_code_targets(
+        canonical,
+        source_cells,
+        frame_base,
+        GuestCodeProposals {
+            code_blocks: &code_blocks,
+            edge_pads: &edge_pads,
+        },
+    )
 }
 
 #[cfg(test)]
