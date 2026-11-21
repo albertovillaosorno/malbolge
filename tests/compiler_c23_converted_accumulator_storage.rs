@@ -324,3 +324,51 @@ fn iy_converted_guest_word_has_source_specific_eof_selector()
     // first operand, place both p sites, skip C81 and prove the i branch.
     Ok(())
 }
+
+// For the converted guest representation, every low-six-trit value of EOF
+// occurs in a successful byte at that same digit. A ternary crazy cascade
+// never moves information between trit columns. Consequently any selector
+// that collapses all 256 byte results to one word must preserve the same
+// six least-significant target trits for EOF. Distinct jump words must be
+// separated by a multiple of 3^6=729, not by one nearby code position.
+#[test]
+#[expect(
+    clippy::integer_division_remainder_used,
+    clippy::arithmetic_side_effects,
+    reason = "finite base-three independent local lower-bound proof"
+)]
+fn converted_eof_trit_local_branch_requires_distant_jump_targets() {
+    const EOF_CONVERTED: u32 = 62_207;
+    let trit = |data: u32, input: u32| -> u32 {
+        match (data, input) {
+            (0 | 1, 0) | (2, 2) => 1,
+            (1, 2) | (2, 0 | 1) => 2,
+            _ => 0,
+        }
+    };
+    for exponent in 0..6 {
+        let place = 3u32.pow(exponent);
+        let successful_digits = (0..=255)
+            .map(|byte| (byte / place) % 3)
+            .collect::<BTreeSet<_>>();
+        let eof_digit = (EOF_CONVERTED / place) % 3;
+        assert!(successful_digits.contains(&eof_digit));
+        for first in 0..3 {
+            for second in 0..3 {
+                let mapped_bytes = successful_digits
+                    .iter()
+                    .map(|byte| trit(second, trit(first, *byte)))
+                    .collect::<BTreeSet<_>>();
+                if mapped_bytes.len() == 1 {
+                    assert!(
+                        mapped_bytes
+                            .contains(&trit(second, trit(first, eof_digit),))
+                    );
+                }
+            }
+        }
+    }
+    let targets = layout::CURRENT_IY_CONVERTED_EOF_TARGET_WORDS;
+    assert_eq!(targets[0] % TRIT_SIX, targets[1] % TRIT_SIX);
+    assert_eq!(targets[1] - targets[0], TRIT_SIX);
+}

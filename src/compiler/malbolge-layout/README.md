@@ -127,7 +127,12 @@ first operand has an unavailable loader trit-five=2 and needs a real guest
 write; C810 is outside the original 91-cell source. No `p` for these
 operands, executable jump, C23 two-word `-1` store, or EOF backedge has
 been realized. This is a necessary future linker obligation, not a guest
-conditional or a new source-C acceptance mode.
+conditional or a new source-C acceptance mode. The 729-word target
+separation is minimal under a *trit-local crazy-only cascade*: EOF's six
+lowest ternary digits all occur among successful bytes, so a uniform byte
+control word and its distinct EOF control word must agree modulo `3^6`.
+A finite per-digit regression checks all two-`p` operand trit pairs.
+A linker admitting rotations or cross-trit work needs separate proof.
 
 The naive single-cell alternative, making the original converter C80 an
 `i`, still emits the correct byte at C79 but tries to encrypt the
