@@ -77,7 +77,9 @@ pub use bounded_revisit::{
     verify_bounded_guest_state_isolation,
 };
 pub use byte_exact_input_reentry::{
-    ByteExactInputReentrySource, build_byte_exact_input_reentry_source,
+    ByteExactInputReentrySource, ByteExactTwoInputReentrySource,
+    build_byte_exact_input_reentry_source,
+    build_byte_exact_two_input_reentry_source,
 };
 pub use byte_exact_input_store::{
     ByteExactInputStoreError, ByteExactInputStoreSource,

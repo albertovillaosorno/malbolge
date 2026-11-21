@@ -237,3 +237,109 @@ pub fn build_byte_exact_input_reentry_source(
     }
     Err(NoLoadablePlacement)
 }
+
+/// A fixed source-loaded continuation that reloads the first input after `/`.
+///
+/// The first read is copied to M73 at C17 using two physical crazy stores.
+/// The second read at C25 replaces A, but C28 repositions D using virgin
+/// M78=72, then C29 reads the *previously written* M73. Consequently the
+/// data pointer after C29 depends on the first input, while A retains the
+/// second input (or raw N15 EOF). C24/C26 output the raw accumulator bytes
+/// and C60 halts. The terminal C61/C62 tail seeds the two identity stores.
+/// This does not implement C23 EOF normalization, an input-controlled branch,
+/// arithmetic or a repeatable source-C loop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ByteExactTwoInputReentrySource {
+    /// Exact graphical N15 source; the last two cells are never fetched.
+    pub source: Vec<u8>,
+    /// First input's exact raw word is physically stored here.
+    pub first_input_data_address: u32,
+    /// Actual second input opcode source address.
+    pub second_input_code_address: u32,
+    /// First `j` after second input, reading the untouched reset word.
+    pub reset_code_address: u32,
+    /// Second `j` after second input, reading the first input's stored word.
+    pub reload_code_address: u32,
+    /// Terminal reached halt code address (not including loader-tail cells).
+    pub halt_code_address: u32,
+}
+
+/// Link the exact first raw input store to another physical guest input.
+///
+/// This fixed 63-cell continuation extends the existing exact first-input
+/// identity store. Its source-loaded C59/C60 tail must reproduce the virgin
+/// M73 and M121 all-one words and M78=72. No host input or target memory
+/// mutations participate in construction; all actual guest operations need
+/// separate normative VM verification. Only the canonical N15 profile and
+/// the exact checked first-input geometry are accepted.
+///
+/// # Errors
+///
+/// Refuses other profiles, altered original store placement, an unavailable
+/// graphical instruction encoding, invalid skipped data bytes or loader
+/// words that do not satisfy the fixed exact-store/reentry contract.
+pub fn build_byte_exact_two_input_reentry_source(
+    profile: &ProfileDescriptor,
+) -> Result<ByteExactTwoInputReentrySource, ByteExactInputStoreError> {
+    use ByteExactInputStoreError::NoLoadablePlacement;
+    use LinearOpcode as Opcode;
+
+    let original = build_byte_exact_input_reentry_source(profile)?;
+    if original.store.source.len() != 27
+        || original.store.input_code_address != 13
+        || original.store.first_store_code_address != 15
+        || original.store.exact_store_code_address != 17
+        || original.store.exact_data_address != 73
+        || original.reset_code_address != 22
+        || original.reset_data_address != 78
+        || original.reset_loader_word != 72
+    {
+        return Err(NoLoadablePlacement);
+    }
+    let mut source = original.store.source;
+    source.truncate(23);
+    for position in 23..=60usize {
+        let operation = match position {
+            24 | 26 => Opcode::OutputByte,
+            25 => Opcode::InputWord,
+            28 | 29 => Opcode::RelocateDataPointer,
+            60 => Opcode::Halt,
+            _ => Opcode::NoOperation,
+        };
+        source.push(
+            unique_graphical_cell(profile, operation, position)
+                .map_err(|_error| NoLoadablePlacement)?,
+        );
+    }
+    for (position, byte) in [(61, b'%'), (62, b'H')] {
+        source.push(
+            unique_graphical_cell(
+                profile,
+                Opcode::SkippedDataByte { byte: u32::from(byte) },
+                position,
+            )
+            .map_err(|_error| NoLoadablePlacement)?,
+        );
+    }
+    if source.len() != 63
+        || unwritten_loader_word(&source, 73, profile)
+            .map_err(|_error| NoLoadablePlacement)?
+            != IDENTITY_OPERAND
+        || unwritten_loader_word(&source, 78, profile)
+            .map_err(|_error| NoLoadablePlacement)?
+            != 72
+        || unwritten_loader_word(&source, 121, profile)
+            .map_err(|_error| NoLoadablePlacement)?
+            != IDENTITY_OPERAND
+    {
+        return Err(NoLoadablePlacement);
+    }
+    Ok(ByteExactTwoInputReentrySource {
+        source,
+        first_input_data_address: 73,
+        second_input_code_address: 25,
+        reset_code_address: 28,
+        reload_code_address: 29,
+        halt_code_address: 60,
+    })
+}
