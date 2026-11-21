@@ -51,6 +51,21 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Reusing Physical Input-Modified Memory As a Data Jump (2026-11-21)
+
+A bounded real N15 source now performs `/;j;p;o^14;j;j;v`:
+the first `j` selects M40, the `p` writes an injective byte/EOF
+word there, and a later loader-backed `j` returns D to that same
+written cell. The next `j` consumes the **new guest value** as its
+data-pointer target. A separate finite 15-padding/94-prefix/two-tail
+census finds two full 257-class candidates among 127 source-safe
+loader returns. Seven normative VM runs terminate in 20 steps and
+the independent 257-state oracle proves different final D pointers,
+with EOF wrapping D to zero. This is physical mutable-state reentry,
+not source-C signed conversion, executable EOF control, C32 storage,
+or checksum loop completion. See the layout contract and
+`tests/compiler_live_input_encoded_store.rs`.
+
 ## Physical Source-Loaded Zero Word (2026-11-21)
 
 One canonical 15-byte graphical N15 source now reaches `j;p;p;v`

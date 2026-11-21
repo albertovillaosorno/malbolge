@@ -109,8 +109,9 @@ pub use guest_state_placement::{
 };
 pub use live_input_encoded_store::{
     LiveInputEncodedStoreError, LiveInputEncodedStoreSource,
-    LiveInputThenZeroSource, LiveTwoInputEncodedStoreSource,
-    build_live_input_injective_store_source, build_live_input_then_zero_source,
+    LiveInputReentrySource, LiveInputThenZeroSource,
+    LiveTwoInputEncodedStoreSource, build_live_input_injective_store_source,
+    build_live_input_reentry_source, build_live_input_then_zero_source,
     build_live_two_input_injective_store_source,
 };
 pub use loader_rotation_source::{

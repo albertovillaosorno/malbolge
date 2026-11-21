@@ -119,6 +119,37 @@ pub struct LiveInputThenZeroSource {
     pub zero_data_address: u32,
 }
 
+/// Guest input data word physically revisited by a second data jump.
+///
+/// After the first `/` and `p`, one loader-backed `j` returns D to the
+/// physically overwritten cell. The next `j` then reads the *new* value
+/// rather than the virgin loader word, making the final D depend on the
+/// observed input. This is an encoded, noncanonical input state, not a C32
+/// source local, a guest branch on EOF or a reusable guest loop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LiveInputReentrySource {
+    /// Real `/` code address, after the no-op prefix.
+    pub input_code_address: u32,
+    /// Second `j` code address, reading the input-modified data word.
+    pub input_reentry_code_address: u32,
+    /// First return `j` code address, reading an untouched loader word.
+    pub return_code_address: u32,
+    /// Untouched loader cell selecting the previous stored data address.
+    pub return_data_address: u32,
+    /// Initial source loader value, exactly `store_data_address - 1`.
+    pub return_initial_word: u32,
+    /// Number of reached no-op instructions between `p` and return.
+    pub return_padding: usize,
+    /// Complete graphical source, including two unreachable loader-tail cells.
+    pub source: Vec<u8>,
+    /// The first `p` code address.
+    pub store_code_address: u32,
+    /// Written input state and subsequently reread `j` operand address.
+    pub store_data_address: u32,
+    /// Virgin source-loader word at the input state cell.
+    pub store_initial_word: u32,
+}
+
 /// Predicate for lossless raw 0..255 and EOF in a single guest crazy word.
 ///
 /// Five low seed trits must be one. Since successful input values occupy
@@ -411,4 +442,96 @@ pub fn build_live_input_then_zero_source(
             }))
         },
     )
+}
+
+/// Build source-backed, byte-dependent guest data-pointer reentry.
+///
+/// Enumerates at most 15 padding lengths (0..=14), 94 positional no-op
+/// prefixes and 94 squared graphical two-cell tails for the exact grammar
+/// `o*;/;j;p;o*;j;j;v;tail;tail`. The return `j` must read an unmodified
+/// loader word equal to the previous `p` data address minus one. The next
+/// `j` reads the *physically updated* `p` result, so it relocates to a
+/// different D for every byte and actual EOF.
+///
+/// The bound is intentional: this demonstrates genuine mutable guest data
+/// reuse and data-dependent pointer placement, not executable C control,
+/// signed EOF normalization or a restartable checksum loop.
+///
+/// # Errors
+///
+/// Rejects a noncanonical N15 profile or the absence of a layout within the
+/// fixed 15 x 94 x 94² search budget.
+#[expect(
+    clippy::too_many_lines,
+    reason = "finite physical source-loaded reentry search"
+)]
+pub fn build_live_input_reentry_source(
+    profile: &ProfileDescriptor,
+) -> Result<LiveInputReentrySource, LiveInputEncodedStoreError> {
+    use LiveInputEncodedStoreError::{NoLoadableSeed, UnsupportedProfile};
+    if profile != current_profile() {
+        return Err(UnsupportedProfile);
+    }
+    let memory_words = usize::try_from(profile.memory_words())
+        .map_err(|_error| NoLoadableSeed)?;
+    for padding in 0..=14usize {
+        let mut suffix = vec![
+            LinearOpcode::InputWord,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+        ];
+        suffix.extend(repeat_n(LinearOpcode::NoOperation, padding));
+        suffix.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::Halt,
+        ]);
+        let found = find_injective_source(
+            profile,
+            &suffix,
+            |source, store_address, seed, prefix| {
+                let return_address =
+                    store_address.saturating_add(1).saturating_add(padding);
+                if return_address <= source.len().saturating_add(2)
+                    || return_address >= memory_words
+                {
+                    return Ok(None);
+                }
+                let return_word =
+                    unwritten_loader_word(source, return_address, profile)
+                        .map_err(|_error| NoLoadableSeed)?;
+                if return_word
+                    != u32::try_from(store_address.saturating_sub(1))
+                        .map_err(|_error| NoLoadableSeed)?
+                {
+                    return Ok(None);
+                }
+                let word = |n: usize| {
+                    u32::try_from(n).map_err(|_error| NoLoadableSeed)
+                };
+                Ok(Some(LiveInputReentrySource {
+                    input_code_address: word(prefix)?,
+                    input_reentry_code_address: word(
+                        prefix.saturating_add(4).saturating_add(padding),
+                    )?,
+                    return_code_address: word(
+                        prefix.saturating_add(3).saturating_add(padding),
+                    )?,
+                    return_data_address: word(return_address)?,
+                    return_initial_word: return_word,
+                    return_padding: padding,
+                    source: source.to_vec(),
+                    store_code_address: word(prefix.saturating_add(2))?,
+                    store_data_address: word(store_address)?,
+                    store_initial_word: seed,
+                }))
+            },
+        );
+        match found {
+            Ok(plan) => return Ok(plan),
+            Err(NoLoadableSeed) => {},
+            Err(UnsupportedProfile) => return Err(UnsupportedProfile),
+        }
+    }
+    Err(NoLoadableSeed)
 }

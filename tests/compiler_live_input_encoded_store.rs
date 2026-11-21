@@ -602,16 +602,16 @@ fn input_then_zero_source_is_loader_derived_and_retains_all_257_inputs()
             loader_word(
                 &plan.source,
                 usize::try_from(plan.zero_chain_address)
-                    .map_err(|error| error.to_string())? + offset,
+                    .map_err(|error| error.to_string())?
+                    + offset,
             ),
             plan.zero_chain_seeds[offset],
         );
     }
     let mut state = independent_rotate(plan.zero_chain_seeds[0]);
     assert_eq!(state, 7_174_426);
-    for (seed, result) in plan.zero_chain_seeds[1..]
-        .iter()
-        .zip([80, 7_174_453, 0])
+    for (seed, result) in
+        plan.zero_chain_seeds[1..].iter().zip([80, 7_174_453, 0])
     {
         state = independent_crazy(*seed, state);
         assert_eq!(state, result);
@@ -678,35 +678,46 @@ fn real_guest_retains_input_word_before_independent_zero_write()
                 TraceInput::Byte(*byte)
             })),
         );
-        let raw = input.first().map_or_else(
-            || profile.eof_word(),
-            |byte| u32::from(*byte),
-        );
+        let raw = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
         assert_eq!(trace[44].after.registers.accumulator, raw);
         assert_eq!(trace[45].decoded, Some(b'j'));
         assert_eq!(trace[45].after.registers.data_pointer, 90);
         assert_eq!(trace[46].decoded, Some(b'p'));
         let stored = independent_crazy(plan.input_seed, raw);
         assert_eq!(
-            trace[46].memory_reads.data.map(|read| (read.address, read.value)),
+            trace[46]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
             Some((90, plan.input_seed)),
         );
         assert_eq!(trace[46].after.registers.accumulator, stored);
         assert_eq!(trace[47].decoded, Some(b'j'));
-        assert_eq!(trace[47].memory_reads.data.map(|read| read.value), Some(7_174_412));
-        assert_eq!(trace[47].after.registers.data_pointer, plan.zero_chain_address);
+        assert_eq!(
+            trace[47].memory_reads.data.map(|read| read.value),
+            Some(7_174_412)
+        );
+        assert_eq!(
+            trace[47].after.registers.data_pointer,
+            plan.zero_chain_address
+        );
         let mut expected = independent_rotate(plan.zero_chain_seeds[0]);
         for (offset, opcode) in b"*ppp".iter().enumerate() {
             let step = &trace[48 + offset];
             let addr = plan.zero_chain_address
                 + u32::try_from(offset).map_err(|error| error.to_string())?;
             if offset != 0 {
-                expected = independent_crazy(plan.zero_chain_seeds[offset], expected);
+                expected =
+                    independent_crazy(plan.zero_chain_seeds[offset], expected);
             }
             assert_eq!(step.decoded, Some(*opcode));
             assert_eq!(step.before.registers.data_pointer, addr);
             assert_eq!(
-                step.memory_reads.data.map(|read| (read.address, read.value)),
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
                 Some((addr, plan.zero_chain_seeds[offset])),
             );
             assert_eq!(step.after.registers.accumulator, expected);
@@ -719,6 +730,233 @@ fn real_guest_retains_input_word_before_independent_zero_write()
         assert_eq!(trace[52].decoded, Some(b'v'));
         assert_eq!(machine.input_consumed(), usize::from(!input.is_empty()));
         assert_eq!(machine.output(), &[]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    clippy::too_many_lines,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "independent exhaustive guest input reentry loader census"
+)]
+fn input_reentry_source_matches_independent_bounded_search()
+-> Result<(), String> {
+    let mut matches = Vec::new();
+    let mut backtracks = 0usize;
+    for padding in 0..=14usize {
+        for prefix in 0..MAX_PREFIX {
+            let mut source = (0..prefix)
+                .map(|i| encode(b'o', i))
+                .collect::<Result<Vec<_>, _>>()?;
+            for opcode in b"/jp" {
+                source.push(encode(*opcode, source.len())?);
+            }
+            for _ in 0..padding {
+                source.push(encode(b'o', source.len())?);
+            }
+            for opcode in b"jjv" {
+                source.push(encode(*opcode, source.len())?);
+            }
+            let data_address = usize::from(source[prefix + 1]) + 1;
+            let return_address = data_address + 1 + padding;
+            if data_address <= source.len() + 2
+                || return_address <= source.len() + 2
+            {
+                continue;
+            }
+            for first in 33..=126u8 {
+                if !strict_tail(first, source.len()) {
+                    continue;
+                }
+                source.push(first);
+                for last in 33..=126u8 {
+                    if !strict_tail(last, source.len()) {
+                        continue;
+                    }
+                    source.push(last);
+                    if loader_word(&source, return_address)
+                        == u32::try_from(data_address - 1)
+                            .map_err(|error| error.to_string())?
+                    {
+                        backtracks += 1;
+                        let seed = loader_word(&source, data_address);
+                        if all_raw_input_words_are_distinct(seed) {
+                            matches.push((
+                                source.clone(),
+                                padding,
+                                data_address,
+                                return_address,
+                                seed,
+                            ));
+                        }
+                    }
+                    _ = source.pop();
+                }
+                _ = source.pop();
+            }
+        }
+    }
+    assert_eq!(backtracks, 127);
+    assert_eq!(matches.len(), 2);
+    let plan = layout::build_live_input_reentry_source(current_profile())
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(
+        (
+            plan.source.as_slice(),
+            plan.return_padding,
+            plan.store_data_address,
+            plan.return_data_address,
+            plan.store_initial_word,
+        ),
+        (
+            matches[0].0.as_slice(),
+            matches[0].1,
+            u32::try_from(matches[0].2).map_err(|error| error.to_string())?,
+            u32::try_from(matches[0].3).map_err(|error| error.to_string())?,
+            matches[0].4,
+        )
+    );
+    assert_eq!(plan.source, b"u'<A@?>=<;:987654ut>NN");
+    assert_eq!(
+        (
+            plan.input_code_address,
+            plan.store_code_address,
+            plan.return_code_address,
+            plan.input_reentry_code_address,
+            plan.store_data_address,
+            plan.return_data_address,
+            plan.return_initial_word,
+            plan.return_padding,
+        ),
+        (0, 2, 17, 18, 40, 55, 39, 14),
+    );
+    assert_eq!(
+        layout::build_live_input_reentry_source(historical_profile()),
+        Err(layout::LiveInputEncodedStoreError::UnsupportedProfile),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "complete guest data-dependent jump and independent N15 oracle"
+)]
+fn real_guest_rereads_physically_stored_input_as_data_pointer()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = layout::build_live_input_reentry_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let prepared = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(
+        prepared.memory_word(plan.store_data_address),
+        Ok(plan.store_initial_word),
+    );
+    assert_eq!(
+        prepared.memory_word(plan.return_data_address),
+        Ok(plan.return_initial_word),
+    );
+    let mut pointer_classes = BTreeSet::new();
+    for raw in (0..=255u32).chain(once(profile.eof_word())) {
+        let written = independent_crazy(plan.store_initial_word, raw);
+        let destination = (written + 1) % profile.memory_words();
+        assert!(pointer_classes.insert(destination));
+    }
+    assert_eq!(pointer_classes.len(), 257);
+
+    for input in [
+        vec![],
+        vec![0],
+        vec![2],
+        vec![0x7f],
+        vec![0x80],
+        vec![0xff],
+        vec![0x01, 0xff],
+    ] {
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(20, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 20,
+        });
+        assert_eq!(trace.len(), 20);
+        let raw = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let written = independent_crazy(plan.store_initial_word, raw);
+        assert_eq!(trace[0].decoded, Some(b'/'));
+        assert_eq!(
+            trace[0].input,
+            Some(input.first().map_or(TraceInput::EndOfInput, |byte| {
+                TraceInput::Byte(*byte)
+            })),
+        );
+        assert_eq!(trace[1].decoded, Some(b'j'));
+        assert_eq!(
+            trace[1].after.registers.data_pointer,
+            plan.store_data_address
+        );
+        assert_eq!(trace[2].decoded, Some(b'p'));
+        assert_eq!(
+            trace[2]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.store_data_address, plan.store_initial_word)),
+        );
+        assert_eq!(trace[2].after.registers.accumulator, written);
+        for step in trace.iter().skip(3).take(14) {
+            assert_eq!(step.decoded, Some(b'o'));
+        }
+        assert_eq!(trace[17].decoded, Some(b'j'));
+        assert_eq!(
+            trace[17]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.return_data_address, plan.return_initial_word)),
+        );
+        assert_eq!(
+            trace[17].after.registers.data_pointer,
+            plan.store_data_address
+        );
+        assert_eq!(trace[18].decoded, Some(b'j'));
+        assert_eq!(
+            trace[18]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((plan.store_data_address, written)),
+        );
+        assert_eq!(
+            trace[18].after.registers.data_pointer,
+            (written + 1) % profile.memory_words(),
+        );
+        assert_eq!(trace[19].decoded, Some(b'v'));
+        assert_eq!(guest.memory_word(plan.store_data_address), Ok(written));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        assert!(guest.output().is_empty());
+        for step in trace.iter().take(19) {
+            assert!(step.memory_delta.encryption.is_some());
+        }
     }
     Ok(())
 }

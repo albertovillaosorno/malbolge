@@ -20,6 +20,41 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Input-modified memory drives a real guest data-pointer jump (2026-11-21)
+
+The new `build_live_input_reentry_source` primitive has a **source-loaded
+real guest dataflow cycle**, rather than merely a retained word. The
+22-byte fully graphical N15 source `u'<A@?>=<;:987654ut>NN` reaches
+`/;j;p;o^14;j;j;v` in 20 steps. C0 consumes a real byte or EOF, C1
+selects M40 as the data cell, and C2 writes the injective encoded input
+through `p` with original source-loader operand M40=7,174,453. Fourteen
+reached no-ops carry the D pointer to M55. The first return `j` at
+C17 reads untouched loader M55=39 and redirects D back to M40. The
+second `j` at C18 reads **the value genuinely written by C2**, not
+the loader's old value, and relocates D from that input-dependent word.
+C19 halts; no host-supplied memory or output is involved.
+
+An independent fixed 15-padding by 94-prefix by two-graphical-tail
+census finds 127 valid loader-backed returns with disjoint code/data
+source placements, and exactly **two** whose first `p` retains all
+256 byte values plus true EOF. The emitter chooses the first
+deterministically. A separate scalar 15-trit oracle proves all 257
+final D pointers distinct: EOF stores 14,348,906, whose `j` increment
+wraps D to **0**; successful bytes route to high data addresses.
+Seven real normative VM restarts check reached reads, register
+relocations, code encryption, memory writes and exact input consumption,
+including NUL, high bytes, EOF and an unread input suffix.
+
+**Boundary:** this is data-dependent D relocation with an immediately
+following halt, **not** executable conditional C control, EOF branching,
+a safely follow-on memory operation, a canonical C32 source local or
+a reusable loop. In particular the EOF destination is code address 0:
+appending an arbitrary `p`, `*` or `i` would require its own
+self-modification and control-safety proof. The seven-block original
+mutable C23 checksum still refuses at physical linking. See
+`tests/compiler_live_input_encoded_store.rs` for the independent census
+and real VM executions.
+
 ### Source-loaded, input-dependent one-word state (2026-11-21)
 
 The independent P2 physical-state experiment now emits a **real N15 guest**
