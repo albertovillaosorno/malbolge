@@ -89,6 +89,17 @@ The 14,348,907-cell memory wraps at a non-282 boundary.
 
 ## Evidence
 
+- On 2026-11-21, an independent N15 scalar oracle checked every
+  printable source-tail pair (8,836), every established loader phase
+  (six) and every trit rotation (15): 795,240 exact candidates.
+  Neither signed-EOF adjacent-rotate preseed (`13932306`, `897`) nor
+  the successful-byte high-zero preseed appears; the byte low preseed
+  `765` **does** appear as a positive control. Thus untouched
+  expanded-loader memory plus rotations alone cannot furnish those
+  C32 literal seeds at any expanded address. This is not a general
+  impossibility result for active guest `p` synthesis, writable
+  memory or input-conditional linking; those are the actual next
+  physical capability gaps.
 - On 2026-11-21, the graphical five-byte source `(&%N$` executes
   actual `j; *; *; v` at C0-C3 and skips loader-tail C4. The normative
   current-N15 loader derives M41/M42=`[7174492, 72]`; a real D41

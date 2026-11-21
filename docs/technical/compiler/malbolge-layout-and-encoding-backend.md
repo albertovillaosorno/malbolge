@@ -42,6 +42,27 @@ SSA cells. Neither conditional input dispatch, phi transfers, repeated loop
 control, arithmetic, nor the complete seven-block mutable C23 EOF checksum
 is published. Historical/forged target profiles refuse the plan.
 
+### Printable loader-tail rotation exhaustion for C32 EOF (2026-11-21)
+
+An independent bounded ternary-oracle regression enumerates all
+`94² = 8,836` ordered printable source-tail pairs. For each tail it
+checks the established six recurrence phases and all 15 distinct
+right-trit rotations of each expanded-memory word:
+`8,836 × 6 × 15 = 795,240` candidate values. Neither EOF literal
+preseed word `13,932,306` or `897`, nor the successful-byte `0xff`
+high-cell preseed `0`, occurs. The positive control **does** observe
+the successful-byte low-cell preseed `765`, so the enumeration is not
+a vacuous rejection of loader-derived words.
+
+Because the loader's six-phase recurrence and a 15-trit rotation cycle
+are independently verified, this rules out preparing the required
+signed-EOF C32 constant cells through **untouched graphical-tail
+expansion and rotations alone**, at *any* expanded-memory address.
+It does **not** rule out guest `p` synthesis, active writable-memory
+transformations, additional arithmetic, branch-specific code, or
+a future general signed input result linker. Those remain necessary
+compiler work and cannot be replaced by the enumeration.
+
 ### Source-loaded, adjacent physical C32 constant witness (2026-11-21)
 
 A minimal five-byte graphical N15 source `(&%N$` now takes a physical

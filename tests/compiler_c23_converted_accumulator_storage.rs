@@ -948,3 +948,61 @@ fn graphical_loader_reaches_adjacent_c32_rotates_without_host_seeding()
     assert_eq!(vm.input_consumed(), 0);
     Ok(())
 }
+
+// Finite obstruction for direct source-tail-derivative C32 EOF storage.
+// Given any two printable loader suffix bytes, the six recurrence phases
+// enumerate all untouched expanded data words. Allow *any* 0..14 extra
+// right-trit rotations of each word, not just the new two-step writer.
+// This rules out only loader plus rotations, not guest crazy synthesis,
+// alternate source-cell writes, control branching or general C compilation.
+#[test]
+#[expect(
+    clippy::excessive_nesting,
+    clippy::panic_in_result_fn,
+    reason = "bounded exhaustive independent 94²-by-six-by-fifteen oracle"
+)]
+fn no_printable_loader_expansion_rotations_supply_c32_eof_seeds()
+-> Result<(), String> {
+    let profile = current_profile();
+    let signed_eof = layout::plan_c32_literal_rotate_writes(profile, u32::MAX)
+        .map_err(|error| format!("{error:?}"))?;
+    let successful_ff = layout::plan_c32_literal_rotate_writes(profile, 255)
+        .map_err(|error| format!("{error:?}"))?;
+    let unavailable = [
+        signed_eof.initial_data_words[0],
+        signed_eof.initial_data_words[1],
+        successful_ff.initial_data_words[1],
+    ];
+    assert_eq!(unavailable, [13_932_306, 897, 0]);
+    let mut saw_ff_low_seed = false;
+    let mut examined = 0usize;
+    for first in 33..=126u8 {
+        for second in 33..=126u8 {
+            let (mut older, mut previous) =
+                (u32::from(first), u32::from(second));
+            for phase in 0usize..6 {
+                let next = scalar_crazy(older, previous);
+                older = previous;
+                previous = next;
+                let mut rotated = next;
+                for turns in 0usize..15 {
+                    saw_ff_low_seed |=
+                        rotated == successful_ff.initial_data_words[0];
+                    assert!(
+                        !unavailable.contains(&rotated),
+                        "forbidden {rotated}; tail {first},{second}; {phase}/{turns}"
+                    );
+                    rotated = independent_n15_rotate(rotated);
+                    examined = examined.saturating_add(1);
+                }
+                assert_eq!(rotated, next, "exact 15-trit rotation cycle");
+            }
+        }
+    }
+    assert_eq!(examined, 94 * 94 * 6 * 15);
+    assert!(
+        saw_ff_low_seed,
+        "positive control: byte ff low seed is genuinely reachable"
+    );
+    Ok(())
+}
