@@ -254,18 +254,51 @@ fn source_known_inequality_discriminates_high_byte_and_true_eof() {
     };
     let eof_arm = observed(1, 0);
     let byte_arm = observed(2, 0);
-    assert!(source_path_matches_input_prefix(&function, &[
-        &first_high,
-        &byte_arm
-    ],));
-    assert!(!source_path_matches_input_prefix(&function, &[
-        &first_high,
-        &eof_arm
-    ],));
-    assert!(source_path_matches_input_prefix(&function, &[
-        &first_eof, &eof_arm
-    ],));
-    assert!(!source_path_matches_input_prefix(&function, &[
-        &first_eof, &byte_arm
-    ],));
+    assert_eq!(
+        source_path_matches_input_prefix(
+            &function,
+            &[&first_high, &byte_arm],
+            16_384,
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        source_path_matches_input_prefix(
+            &function,
+            &[&first_high, &eof_arm],
+            16_384,
+        ),
+        Ok(false)
+    );
+    assert_eq!(
+        source_path_matches_input_prefix(
+            &function,
+            &[&first_eof, &eof_arm],
+            16_384,
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        source_path_matches_input_prefix(
+            &function,
+            &[&first_eof, &byte_arm],
+            16_384,
+        ),
+        Ok(false)
+    );
+}
+
+#[test]
+fn exhausted_source_path_search_is_not_an_unreachable_path_proof() {
+    let function = guarded_inequality_fixture();
+    let first = observed(0, 0);
+    let second = observed(2, 0);
+    assert_eq!(
+        source_path_matches_input_prefix(&function, &[&first, &second], 1),
+        Err(SourceInputTraceError::SourceInputSearchLimit)
+    );
+    assert_eq!(
+        source_path_matches_input_prefix(&function, &[&first, &second], 128),
+        Ok(true)
+    );
 }

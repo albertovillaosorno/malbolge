@@ -49,8 +49,10 @@ particular, true first-read EOF must exit the source checksum before the
 second read, whereas byte `0xff` is a successful read and may continue.
 Normative N15 input-only runs still physically attempt both reads even on
 empty stdin, so this additional checker correctly **refuses** those paths.
-A finite 16,384-state ceiling bounds the path search and cannot become an
-unbounded source-language equivalence claim.
+A finite 16,384-state ceiling bounds the path search; exhausting that
+ceiling returns a distinct incomplete-search diagnostic rather than a false
+claim that no source path exists. Neither result can become an unbounded
+source-language equivalence claim.
 
 This is source-path feasibility, **not guest control verification**. Neither
 physical guest branch destinations nor runtime C23 EOF normalization,

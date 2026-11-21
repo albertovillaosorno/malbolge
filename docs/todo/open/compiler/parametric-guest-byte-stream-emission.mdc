@@ -91,7 +91,9 @@ evidence describe the old priority scheme, not the current phase.
   while distinguishing byte `0xff` from true EOF. This source-only check
   does **not** prove physical guest branches, C23 normalization, scalar
   state/arithmetic, phi copies, dynamic loop linkage or a published checksum
-  artifact. P2 remains open.
+  artifact. A red-first finite-budget test now distinguishes a 1-state
+  exhausted source search from a proven unreachable path; the same path
+  admits at a 128-state ceiling. P2 remains open.
 
 - On 2026-11-20, a real Clang-normalized two-`getchar()` C23 function
   places two signed input anchors in the same typed basic block. The

@@ -72,6 +72,8 @@ pub enum SourceInputTraceError {
     RepeatedSourceInput,
     /// Physical input order contradicts source order within one basic block.
     SourceInputOutOfOrder,
+    /// Source-input path search exhausted its finite state budget.
+    SourceInputSearchLimit,
     /// No source CFG walk can produce the observed input-site prefix.
     SourceInputUnreachable,
     /// Physical execution did not terminate within the declared ceiling.
@@ -435,7 +437,8 @@ fn source_terminator_successors(
 fn source_path_matches_input_prefix(
     function: &TernaryCfgFunction,
     observations: &[&SourceInputSiteObservation],
-) -> bool {
+    max_states: usize,
+) -> Result<bool, SourceInputTraceError> {
     let mut pending = VecDeque::from([SourceInputWalkState {
         block: function.entry,
         consumed: 0,
@@ -445,10 +448,10 @@ fn source_path_matches_input_prefix(
     let mut visited = BTreeSet::new();
     while let Some(state) = pending.pop_front() {
         if state.consumed == observations.len() {
-            return true;
+            return Ok(true);
         }
-        if visited.len() >= MAX_SOURCE_INPUT_CFG_SEARCH_STATES {
-            return false;
+        if visited.len() >= max_states {
+            return Err(SourceInputTraceError::SourceInputSearchLimit);
         }
         if !visited.insert(state.clone()) {
             continue;
@@ -458,7 +461,7 @@ fn source_path_matches_input_prefix(
             .and_then(|index| function.blocks.get(index))
             .filter(|block| block.id == state.block)
         else {
-            return false;
+            return Ok(false);
         };
         if let Some(operation) = block.operations.get(state.operation) {
             if let Some(next) =
@@ -474,7 +477,7 @@ fn source_path_matches_input_prefix(
             ));
         }
     }
-    false
+    Ok(false)
 }
 
 fn verify_source_cfg_input_order(
@@ -491,7 +494,11 @@ fn verify_source_cfg_input_order(
             .collect::<Vec<_>>();
         if !observed.is_empty() {
             let _new = found_functions.insert(function.id);
-            if !source_path_matches_input_prefix(function, &observed) {
+            if !source_path_matches_input_prefix(
+                function,
+                &observed,
+                MAX_SOURCE_INPUT_CFG_SEARCH_STATES,
+            )? {
                 return Err(SourceInputTraceError::SourceInputUnreachable);
             }
         }
