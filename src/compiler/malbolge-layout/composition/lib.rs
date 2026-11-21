@@ -48,6 +48,7 @@ pub mod typed_cfg_adapter;
 
 mod bounded_revisit;
 mod c23_c32_constant_writer;
+mod code_cell_schedule;
 mod eof_branch_plan;
 mod eof_c23_conversion_source;
 mod eof_output_plan;
@@ -80,6 +81,10 @@ pub use c23_c32_constant_writer::{
     build_c32_literal_loader_arithmetic_source,
     build_c32_literal_loader_rotate_source, plan_c32_literal_crazy_writes,
     plan_c32_literal_rotate_writes,
+};
+pub use code_cell_schedule::{
+    CodeCellEvent, CodeCellSchedule, CodeCellScheduleError,
+    MAX_CODE_CELL_EVENTS, admit_code_cell_schedule, encode_code_cell_schedule,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

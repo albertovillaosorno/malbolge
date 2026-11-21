@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, a new checked physical code-cell phase scheduler
+  distinguishes a fetched instruction's XLAT2 from a reached `i` jump's
+  *target* XLAT2. The same 120-cell source-loaded four-read guest has seven
+  unchanged fetched `i` instructions at C49, seven encrypted C47 visits,
+  and C43 receives off-site target writes. Five binary/EOF streams agree
+  with normative final code words; a deliberately omitted target write
+  disagrees. This is a necessary linker-phase primitive, not signed-C23
+  state normalization, source phi/arithmetic linkage or a complete checksum.
+  See `tests/compiler_code_cell_schedule.rs` and
+  `docs/technical/compiler/physical-code-cell-schedule.md`.
+
 - On 2026-11-21, the physical reentry chain checker gained per-window
   chronological instruction-effect consistency. A source-backed N15 C71
   interval containing eight data writes and 70 changed XLAT2 writes now

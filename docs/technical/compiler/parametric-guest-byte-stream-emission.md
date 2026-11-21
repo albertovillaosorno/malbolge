@@ -28,6 +28,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-bound code-cell mutation scheduling (2026-11-21)
+
+A bounded physical-linker prerequisite now checks ordered graphical
+code-cell fetches and off-site `i` target encryption separately. A repeated
+`i` does **not** self-encrypt, whereas an `i` on another site may encrypt a
+cell without fetching it. The source-loaded four-read N15 fixture verifies
+seven stable C49 `i` visits, seven encrypted C47 visits, C43 external
+XLAT2 and exact final code words on five byte/EOF streams; deleting one
+actual C43 target-encryption event gives the wrong final memory word.
+The enumerating and source-checking planners do not prove that proposed
+jumps or source arithmetic execute. See
+`docs/technical/compiler/physical-code-cell-schedule.md` and
+`tests/compiler_code_cell_schedule.rs`. The original mutable C23 checksum
+still refuses at the physical linker, not at this local phase schedule.
+
 ### Live-dependency-bound physical reentry (2026-11-21)
 
 The 132-cell C71 return analyzer now projects each reached interval through
