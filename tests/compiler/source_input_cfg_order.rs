@@ -36,9 +36,10 @@ use super::super::typed_cfg_adapter::ternary::{
     TernarySourcePosition, TernarySourceSpan,
 };
 use super::{
-    GuestCodeInputSemantics, GuestPlacedOperand, SourceInputSiteObservation,
-    SourceInputTraceError, source_path_matches_input_observables,
-    source_path_matches_input_prefix, source_path_matches_input_trace,
+    GuestCodeInputSemantics, GuestPlacedOperand, SourceInputIoEvent,
+    SourceInputSiteObservation, SourceInputTraceError,
+    source_path_matches_input_observables, source_path_matches_input_prefix,
+    source_path_matches_input_trace, source_path_matches_input_walk,
     verify_source_cfg_input_order,
 };
 
@@ -768,4 +769,53 @@ fn known_source_unsigned_addition_preserves_full_width_wraparound() {
             Ok(false),
         );
     }
+}
+
+// Matching the final bytes is not enough: the source checksum emits only
+// after the exact final EOF input, not before a pending source read.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "original source CFG checks independently ordered physical I/O"
+)]
+fn checksum_source_io_requires_output_after_final_eof() -> Result<(), String> {
+    let cfg = lower_canonical_dynamic_cfg(&checksum_wire()?)
+        .map_err(|error| format!("{error:?}"))?;
+    let source = cfg.functions.first().ok_or("missing source CFG")?;
+    let first = SourceInputSiteObservation {
+        input: TraceInput::Byte(1),
+        raw_accumulator: 1,
+        ..observed(0, 1)
+    };
+    let end = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..observed(5, 2)
+    };
+    let input_zero = SourceInputIoEvent::Input { observation_index: 0 };
+    let input_one = SourceInputIoEvent::Input { observation_index: 1 };
+    let output = SourceInputIoEvent::Output(4);
+    let observed = [&first, &end];
+    let good = [input_zero, input_one, output];
+    let early = [input_zero, output, input_one];
+    let reordered = [input_one, input_zero, output];
+    for (events, valid) in [
+        (&good[..], true),
+        (&early[..], false),
+        (&reordered[..], false),
+    ] {
+        assert_eq!(
+            source_path_matches_input_walk(
+                source,
+                &observed,
+                16_384,
+                true,
+                Some(&[4]),
+                Some(events),
+            ),
+            Ok(valid),
+            "I/O order {events:?}"
+        );
+    }
+    Ok(())
 }

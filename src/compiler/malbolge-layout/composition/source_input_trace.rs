@@ -107,6 +107,21 @@ pub struct SourceInputSiteObservation {
     pub trace_index: usize,
 }
 
+/// One actual I/O event in the physical VM's trace order.
+///
+/// Input indexes refer to [`SourceInputPrefixProof::observations`] and
+/// therefore retain real input bytes, source code addresses and step indices.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceInputIoEvent {
+    /// A verified source-anchored physical input instruction.
+    Input {
+        /// Index of the corresponding observed physical source read.
+        observation_index: u16,
+    },
+    /// A real output instruction emitted one byte.
+    Output(u8),
+}
+
 /// An input-only physical-prefix witness, never complete C translation proof.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceInputPrefixProof {
@@ -114,6 +129,8 @@ pub struct SourceInputPrefixProof {
     pub bytes_consumed: usize,
     /// Physical VM output, which need not match the source-C program.
     pub guest_output: Vec<u8>,
+    /// Real VM input/output effects in their actual execution order.
+    pub io_events: Vec<SourceInputIoEvent>,
     /// Input effects in guest execution order, not host CFG path selection.
     pub observations: Vec<SourceInputSiteObservation>,
     /// Actual bounded physical VM termination.
@@ -154,6 +171,7 @@ struct SourceInputWalkState {
     block: u32,
     consumed: usize,
     known: BTreeMap<u32, u32>,
+    io_count: usize,
     operation: usize,
     output_count: usize,
 }
@@ -519,6 +537,7 @@ fn source_successor_state(
         block: target,
         consumed: current.consumed,
         known,
+        io_count: current.io_count,
         operation: 0,
         output_count: current.output_count,
     })
@@ -529,6 +548,7 @@ fn advance_source_input_operation(
     operation: &TernaryOperation,
     observations: &[&SourceInputSiteObservation],
     expected_output: Option<&[u8]>,
+    expected_io: Option<&[SourceInputIoEvent]>,
 ) -> Option<SourceInputWalkState> {
     let mut next = current.clone();
     next.operation = next.operation.saturating_add(1);
@@ -551,6 +571,16 @@ fn advance_source_input_operation(
             TraceInput::EndOfInput => return None,
         };
         let _old = next.known.insert(result, input_value);
+        if let Some(events) = expected_io {
+            if events.get(next.io_count)
+                != Some(&SourceInputIoEvent::Input {
+                    observation_index: u16::try_from(next.consumed).ok()?,
+                })
+            {
+                return None;
+            }
+            next.io_count = next.io_count.saturating_add(1);
+        }
         next.consumed = next.consumed.saturating_add(1);
     } else if let TernaryOperation::ByteOutput { value, .. } = *operation {
         if let Some(expected) = expected_output {
@@ -560,6 +590,14 @@ fn advance_source_input_operation(
             let byte = u8::try_from(*next.known.get(&value)?).ok()?;
             if expected.get(next.output_count) != Some(&byte) {
                 return None;
+            }
+            if let Some(events) = expected_io {
+                if events.get(next.io_count)
+                    != Some(&SourceInputIoEvent::Output(byte))
+                {
+                    return None;
+                }
+                next.io_count = next.io_count.saturating_add(1);
             }
             next.output_count = next.output_count.saturating_add(1);
         }
@@ -622,12 +660,14 @@ fn source_path_matches_input_trace(
         max_states,
         require_return,
         None,
+        None,
     )
 }
 
 // Compare the complete source-input/byte-output effect sequence against one
 // caller-supplied finite byte vector. A matching path cannot use unknown
 // output scalars; all guest effects still require independent VM evidence.
+#[cfg(test)]
 fn source_path_matches_input_observables(
     function: &TernaryCfgFunction,
     observations: &[&SourceInputSiteObservation],
@@ -640,6 +680,7 @@ fn source_path_matches_input_observables(
         max_states,
         true,
         Some(expected_output),
+        None,
     )
 }
 
@@ -649,11 +690,13 @@ fn source_path_matches_input_walk(
     max_states: usize,
     require_return: bool,
     expected_output: Option<&[u8]>,
+    expected_io: Option<&[SourceInputIoEvent]>,
 ) -> Result<bool, SourceInputTraceError> {
     let mut pending = VecDeque::from([SourceInputWalkState {
         block: function.entry,
         consumed: 0,
         known: BTreeMap::new(),
+        io_count: 0,
         operation: 0,
         output_count: 0,
     }]);
@@ -681,6 +724,7 @@ fn source_path_matches_input_walk(
                 operation,
                 observations,
                 expected_output,
+                expected_io,
             ) {
                 pending.push_back(next);
             }
@@ -689,6 +733,8 @@ fn source_path_matches_input_walk(
                 && state.consumed == observations.len()
                 && expected_output
                     .is_none_or(|bytes| state.output_count == bytes.len())
+                && expected_io
+                    .is_none_or(|events| state.io_count == events.len())
             {
                 return Ok(true);
             }
@@ -816,14 +862,15 @@ pub fn verify_source_input_site_return_compatible(
     verify_source_input_site_trace(probe, true)
 }
 
-/// Require the physical guest's complete binary output to agree with one
-/// source-known CFG path after exactly the independently observed input reads.
+/// Require the physical guest's complete I/O effect order and output bytes
+/// to agree with one source-known CFG path after the observed input reads.
 ///
 /// The input/return checker runs first against the actual normative VM. Only
 /// exact source-known constants, casts, unsigned wrapping addition/subtraction,
 /// comparisons, bitwise operations and parallel phi assignments can justify
 /// output here. Unknown byte scalars fail closed; no host-produced checksum
-/// is substituted for a guest output. This is a necessary finite I/O check,
+/// is substituted for a guest output, and output-before-read is not accepted
+/// as output-after-read. This is a necessary finite I/O check,
 /// *not* target arithmetic, state writes, jump or full C translation proof.
 ///
 /// # Errors
@@ -854,11 +901,13 @@ pub fn verify_source_input_site_output_compatible(
         .find(|function| function.id == function_id)
         .ok_or(SourceInputTraceError::InvalidSourcePlacement)?;
     let observed = proof.observations.iter().collect::<Vec<_>>();
-    if !source_path_matches_input_observables(
+    if !source_path_matches_input_walk(
         function,
         &observed,
-        &proof.guest_output,
         MAX_SOURCE_INPUT_CFG_SEARCH_STATES,
+        true,
+        Some(&proof.guest_output),
+        Some(&proof.io_events),
     )? {
         return Err(SourceInputTraceError::SourceOutputNotProven);
     }
@@ -877,17 +926,33 @@ fn verify_source_input_site_trace(
     )
     .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
     let mut observations = Vec::new();
+    let mut io_events = Vec::new();
     let mut failed = None;
     let mut trace_index = 0usize;
     let outcome = machine
         .run_traced(probe.step_budget, &mut |step| {
             let current = trace_index;
             trace_index = trace_index.saturating_add(1);
-            if failed.is_none()
-                && let Err(error) =
+            if failed.is_none() {
+                if step.input.is_some() && step.output.is_some() {
+                    failed = Some(SourceInputTraceError::InvalidGuestExecution);
+                } else if let Err(error) =
                     observe_input_step(step, current, &sites, &mut observations)
-            {
-                failed = Some(error);
+                {
+                    failed = Some(error);
+                } else if step.input.is_some() {
+                    if let Ok(observation_index) =
+                        u16::try_from(observations.len().saturating_sub(1))
+                    {
+                        io_events.push(SourceInputIoEvent::Input {
+                            observation_index,
+                        });
+                    } else {
+                        failed = Some(SourceInputTraceError::InvalidProbeBound);
+                    }
+                } else if let Some(byte) = step.output {
+                    io_events.push(SourceInputIoEvent::Output(byte));
+                }
             }
         })
         .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
@@ -923,6 +988,7 @@ fn verify_source_input_site_trace(
     Ok(SourceInputPrefixProof {
         bytes_consumed: machine.input_consumed(),
         guest_output: machine.output().to_vec(),
+        io_events,
         observations,
         outcome,
     })

@@ -36,7 +36,8 @@ use layout::typed_cfg_adapter::state_relocation::{
     GuestCodeInputAnchor, GuestCodeInputSemantics,
 };
 use layout::{
-    SourceInputPrefixProof, SourceInputProbe, SourceInputTraceError,
+    SourceInputIoEvent, SourceInputPrefixProof, SourceInputProbe,
+    SourceInputTraceError,
     build_c23_signed_output_with_post_conversion_fold_source,
     build_guarded_signed_eof_second_read_source,
     build_second_input_eof_classified_first_echo_source,
@@ -709,6 +710,14 @@ fn guarded_first_eof_branch_admits_disjoint_checksum_input_anchors()
             expected,
         );
         assert_eq!(proof.bytes_consumed, input.len().min(2));
+        let input_zero = SourceInputIoEvent::Input { observation_index: 0 };
+        let input_one = SourceInputIoEvent::Input { observation_index: 1 };
+        let expected_io = if input.is_empty() {
+            vec![input_zero, SourceInputIoEvent::Output(30)]
+        } else {
+            vec![input_zero, SourceInputIoEvent::Output(154), input_one]
+        };
+        assert_eq!(proof.io_events, expected_io);
     }
     Ok(())
 }

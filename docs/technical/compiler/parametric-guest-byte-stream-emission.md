@@ -33,14 +33,15 @@ or hundreds of individual documentation pages.
 The opt-in `verify_source_input_site_output_compatible` first requires real
 N15 execution with authenticated physical read sites and a complete possible
 source-CFG return. It then walks the exact original typed checksum CFG to
-compare the guest's actual *complete output byte sequence* with values
+compare the guest's actual *ordered input/output event sequence* and
+complete output bytes with values
 established from source-known C32 unsigned wrapping add/subtract, bitwise
 operations, signed EOF comparison, casts and parallel edge phis. Unknown
 output scalars and unsupported arithmetic cannot certify any guessed byte;
 a finite search-budget refusal remains distinct from a source mismatch.
-This check does **not** establish relative timing of guest output versus
-input events, physical C32 memory writes, opcode semantics for source
-arithmetic, phi copies or branch equivalence.
+This checks source I/O **effect order**, but not elapsed instruction timings,
+physical C32 memory writes, opcode semantics for source arithmetic, phi
+copies or branch equivalence.
 
 The original seven-block checksum source produces the independently calculated
 one-byte checksum on empty, NUL, `ff` and two multibyte binary streams.
@@ -48,7 +49,11 @@ Forged one-byte results, missing/extra output, unsupported multiplication,
 and full-width unsigned-add overflow are covered by source-CFG tests. The
 132-cell C53/C101 guarded physical guest passes necessary read and return
 checks for first EOF and byte-then-EOF, but is correctly rejected by this
-output gate: it emits a fixed EOF/byte marker instead of the checksum.
+output gate: it emits a fixed EOF/byte marker instead of the checksum. Its
+real VM I/O stream is `read C53 → marker output → read C101` after a
+successful first byte, whereas the C checksum must output *after* the
+last read returns EOF. The previously unchecked early emission is now an
+independent source/guest chronology mismatch.
 Two successful input bytes fail at source return first, as the C loop would
 require another read. Nothing is published from this bounded verifier.
 

@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, the source-aware output gate now also binds the
+  ordered physical VM input/output effects to source CFG operation order.
+  The real C53/C101 classifier places its fixed marker *between* its
+  first and second reads, not after the second as assumed by a byte-only
+  oracle. The new canonical checksum checker rejects that early-output
+  path even when output bytes are separately guessed equal; deliberately
+  reordered source IO vectors are negative tests. Output chronology now
+  holds for the bounded trace check, but source arithmetic, phi writes,
+  frame state, general jumps and full artifact publication remain open.
+
 - On 2026-11-20, an opt-in source-aware output gate now replays the
   actual bounded VM input/return proof before comparing guest output bytes
   against independently source-known C23 operations. The frozen seven-block
