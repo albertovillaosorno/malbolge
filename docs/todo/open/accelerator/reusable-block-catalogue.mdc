@@ -54,6 +54,27 @@ must expose the state and layout contract required for safe linking.
   invalid composition rejection and one repeated CPU lookup; GPU rows are P8
   follow-up.
 
+## 282-Phase Micro-Operation Catalogue Candidate
+
+If P2/P4 independently admit a 282-position structural-phase block, store it
+as a **conditional, verified micro-operation**, not as a globally portable
+282-cell opcode template. Distinguish the arithmetic / branch / memory /
+call / I/O semantic role from the selected physical placement.
+
+- Record canonical profile and source/loader identity, 282-phase class,
+  actual source length and address, register/memory/input preconditions,
+  state/encryption mutation footprint, output, exit/continuation contract,
+  step/search cost and verifier receipt. Return to an identical address
+  must additionally show that the next entry satisfies all modified-memory
+  requirements.
+- For a finite repeated-lookup trial, compare one identical placement with
+  one shifted-by-282 candidate and one deliberately mutated-memory case;
+  accept reuse only when the **complete** contract matches. Phase equality
+  without state equality must reject.
+- Treat a fixed 282-cell envelope as an optional search family; allow other
+  code lengths if required for correctness. Neither exhaustive exploration
+  of 14,348,907 addresses nor the unbounded cycle claim is required by P6.
+
 ## Evidence
 
 - Expected durable artifact surface: `accelerator/`, `algorithms/`,

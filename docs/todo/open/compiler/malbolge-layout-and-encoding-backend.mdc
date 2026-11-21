@@ -51,6 +51,42 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Optional 282-Position Single-Cycle Block Experiment (2026-11-20)
+
+Owner-authorized exploratory layout hypothesis, not a replacement for the
+original P2 whole-C checksum or the finite backend acceptance witness.
+The N15 generated-memory recurrence has period dividing six after its
+initial seeds; the graphical opcode decoder has 94 address phases. Their
+combined **initial** structural phase repeats after 282 positions. Neither
+this fact nor a padded 282-cell source implies the same machine state,
+repeatable execution, a legitimate return jump, or source-C semantics.
+The 14,348,907-cell memory wraps at a non-282 boundary.
+
+- **Freeze one experiment before searching:** use the current canonical N15
+  profile, one existing physical byte-input / data-retention primitive and
+  one independently specified observable effect. Bound the source to two
+  consecutive 282-cell envelopes (564 total source cells), at most 4,096
+  normative VM steps and five fixed inputs: empty, `00`, `80`, `ff` and
+  `01 02`. Set a finite CPU-search budget before execution; never relax a
+  negative result by silently increasing the candidate family.
+- Construct the first block by hand or deterministic search. Every physical
+  padding cell must be loader-valid and its **reached** behavior known;
+  skipped cells cannot be assumed inert. Instantiate a second block exactly
+  282 addresses later only if source bytes, expanded loader memory,
+  positional decode and evolving code/data registers permit it.
+- Try an explicit continuation or restart stub and trace the actual N15 VM.
+  A successful candidate must prove the declared primitive twice, accurate
+  byte consumption/output, exact reached code/data addresses, and all
+  self-encryption and data writes. Distinguish returning to the **same**
+  physical code address from entering an equivalent but distinct copy.
+- Record a failed placement, unsafe alias, wrong return target or changed
+  memory precondition as an explicit rejection. A failed candidate refutes
+  only its frozen physical grammar; it does not prove all 282-cell layouts
+  impossible or automatically block the existing P2 compiler path.
+- Hand off any **positively verified** block state contract to the future
+  P4 linker and P6 reusable catalogue; do not promote a phase-only or
+  input-specific witness to a generally reusable C operation.
+
 ## Evidence
 
 - On 2026-11-17, a source-loaded 29-cell N15 guest executes nine real

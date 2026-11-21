@@ -32,6 +32,24 @@ binary stream edge cases, verify supported lowerability and advance the P5
 single-command acceptance. Never fake guest output or defer safety,
 correctness, or source/guest verification.
 
+**Owner-directed 282-position cycle-block experiment (2026-11-20):** In
+parallel with the unchanged P2 checksum target, test a **single structural
+phase cycle per proposed block**: 282 consecutive N15 memory positions, the
+combined initial memory-recurrence phase (up to six) and positional decoder
+phase (94). Hand-build or search for one small operation, pad its physical
+source envelope to exactly 282 cells where valid, and prove a second
+phase-aligned instance plus an explicit restart/continuation transfer using
+real guest execution. A block's verified entry/exit register state, required
+memory cells, executed instruction/encryption effects and remaining input
+must determine whether it composes; position phase alone is insufficient.
+The N15 memory capacity is 14,348,907, not a multiple of 282: linear
+282-cell strides neither imply an exact address return nor a semantic cycle.
+Test the exact return separately and accept a failure as a bounded negative
+result, not as proof that all layouts are impossible. This is an optional P2
+layout hypothesis, **not a new prerequisite**, a simulated C execution,
+or a substitute for the complete source-C checksum acceptance. If useful,
+P4 links verified blocks and P6 indexes only proven reusable contracts.
+
 **Phase exit is evidence-based.** A gate passes only with the exact source,
 guest artifact, independent oracle, validation receipt and known limits under
 its owning typed TODO. Optional tasks do not block a proven earlier release.
@@ -162,7 +180,9 @@ instruction.
 
 Implement address-sensitive instruction layout, self-modification planning,
 encoding, jumps, data placement, runtime linkage, and final `.malbolge`
-emission.
+emission. Trial exactly one 282-position initial-phase envelope for one bounded
+micro-operation, a second instance and explicit continuation/restart; verify
+the real guest state rather than assuming a 282-cell physical or semantic loop.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc](docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc)
@@ -238,7 +258,8 @@ produced `.malbolge` artifacts where deterministic builds are promised.
 Build a linker that composes independently compiled Malbolge blocks while
 resolving symbols, addresses, entry/exit machine-state contracts, positional
 decode phase, post-instruction encryption phase, and self-modification
-footprints.
+footprints. Distinguish 282-position initial-phase equivalence from a proven
+restart at the exact code address and compatible post-mutation machine state.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/state-aware-malbolge-linker.mdc](docs/todo/open/compiler/state-aware-malbolge-linker.mdc)
@@ -287,7 +308,9 @@ waiting for native acceleration, CUDA, DOOM, self-hosting or publication.
 
 Build a deterministic catalogue of verified arithmetic, branch, memory, calling
 convention, and runtime blocks so common operations are solved once and reused
-instead of synthesized from scratch for every compilation.
+instead of synthesized from scratch for every compilation. Index any proven
+282-position phase-block candidates by complete entry and mutation contracts,
+not address-phase equivalence alone.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/accelerator/reusable-block-catalogue.mdc](docs/todo/open/accelerator/reusable-block-catalogue.mdc)

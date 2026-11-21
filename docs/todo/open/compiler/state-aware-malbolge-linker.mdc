@@ -50,6 +50,27 @@ concatenation.
   mutation/aliasing fixture and one rejected unsafe relocation, each with finite
   image-size and VM-step bounds; later arbitrary libraries are not required.
 
+## 282-Position Phase-Block Composition Trial
+
+After its existing P2 prerequisites, attempt the bounded two-block
+phase-aligned handoff from the P2 layout experiment. A candidate may have an
+exact 282-cell source envelope, but **282 is only a potential initial-memory
+and decoder-phase classification**, not an address-independent executable
+semantics, safe relocation theorem, or cycle length for all guest state.
+
+- Verify the exact entry and exit registers, live-in memory, overwritten code
+  and data cells, input stream position, output and encryption state for each
+  instance. Re-encode and replay moved code rather than copying bytes on the
+  premise that a positional decoder phase matches.
+- Prove the continuation/return stub's **actual** destination. If it targets
+  the original physical code cell, verify its changed contents and entrance
+  contract; if it targets a fresh copy, record that it is continuation, not
+  a proven infinite loop. Detect the N15 wrap seam explicitly.
+- Use one finite two-block positive fixture and one negative alias or
+  phase-only false-equivalence fixture under the existing finite image and
+  VM-step ceilings. Reject unverified or impossible restarts without
+  publishing an executable or expanding the declared P4 exit obligations.
+
 ## Evidence
 
 - Expected durable artifact surface: `compiler/linker/`, `compiler/`,
