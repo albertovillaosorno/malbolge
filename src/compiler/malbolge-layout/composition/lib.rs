@@ -138,7 +138,8 @@ pub use loader_seed::{LoaderSeedSelectionError, select_rotated_loader_seed};
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 pub use physical_reentry::{
     MAX_PHYSICAL_REENTRY_SOURCE, MAX_PHYSICAL_REENTRY_STEPS,
-    MAX_PHYSICAL_REENTRY_VISITS, PhysicalDataOperation, PhysicalEntryState,
+    MAX_PHYSICAL_REENTRY_VISITS, PhysicalCodeMutation, PhysicalDataOperation,
+    PhysicalEntryState,
     PhysicalIoEffect, PhysicalIoOperation,
     PhysicalReentryError, PhysicalReentryWindow, PhysicalWordChange,
     observe_physical_reentries,

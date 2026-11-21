@@ -819,6 +819,25 @@ fn repeated_jump_site_retains_real_live_code_and_operand_dependencies()
                     .iter()
                     .any(|change| change.address == target)
             );
+            // The reached i at C281 encrypts the *jump target* on each
+            // traversal; an unchanged C281 word is not an unchanged code
+            // image or an invariant dispatcher.
+            let jump_mutations: Vec<_> = window
+                .code_mutations
+                .iter()
+                .filter(|change| change.execution_site == JUMP)
+                .collect();
+            assert_eq!(jump_mutations.len(), 1);
+            assert_eq!(jump_mutations[0].step, window.from.step);
+            assert_eq!(jump_mutations[0].write.address, target);
+            assert_ne!(
+                jump_mutations[0].write.before,
+                jump_mutations[0].write.after
+            );
+            assert_eq!(
+                window.code_mutations.len(),
+                window.code_encryption_changes
+            );
         }
     }
     Ok(())

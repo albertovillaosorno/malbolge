@@ -166,9 +166,13 @@ D advances 281 to 463 to 639, and real data reads include each incoming
 jump operand location. Crucially, C281 itself is *not* changed between
 visits. The `i` instruction updates C before post-instruction XLAT2, so
 the reached encryption writes instead to the jump destinations C99 and
-C105. Both target cells have actual net changes. This is an executable
-counterexample to treating a matching code word at the repeated jump site
-as sufficient loop state; the IR-derived register dependencies reject it.
+C105. Both target cells have actual net changes. The physical
+XLAT2-operation journal now checks an actual changed word at C99 on
+the first C281 jump (step 281), then at C105 on the next C281 jump
+(step 463). Neither code mutation is attributed to C281 itself.
+This is an executable counterexample to treating a matching code word
+at the repeated jump site as sufficient loop state. The IR-derived
+register dependencies reject it.
 
 Reproduce both checks with:
 

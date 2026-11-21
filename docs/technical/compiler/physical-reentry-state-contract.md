@@ -27,6 +27,11 @@ A typed `PhysicalDataOperation` additionally retains each reached operation's
 global step, code address, decoded data opcode, exact read address and
 **word value**, and the `p`/`*` computed word **before** post-step XLAT2.
 For data/encryption aliasing that word may differ from the final cell.
+`PhysicalCodeMutation` separately stores each changed XLAT2 word's
+original value, final value, actual target cell, executing code site and
+step. It retains jump-target encryption when that target differs from
+the fetched `i` instruction. The net-memory journal can therefore be
+compared with ordered code and data versions.
 The collector checks ordinary data deltas against actual operand values
 and computed results. A second normative VM trace independently recomputes
 `p` and `*` results and checks their code sites, steps, and operand words.

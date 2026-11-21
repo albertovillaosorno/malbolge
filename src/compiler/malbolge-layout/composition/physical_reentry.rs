@@ -81,6 +81,20 @@ pub struct PhysicalDataOperation {
     pub written_value: Option<u32>,
 }
 
+/// One changed post-instruction XLAT2 word, with source and target sites.
+///
+/// For a reached `i` the encrypted cell is the *jump target*, rather than
+/// the fetched instruction. Aliases to a data write retain the final effect.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PhysicalCodeMutation {
+    /// Code pointer fetched at the start of the committed instruction.
+    pub execution_site: u32,
+    /// Exact changed cell, original value and final encrypted value.
+    pub write: ProfileMemoryWrite,
+    /// Global zero-based guest instruction index.
+    pub step: usize,
+}
+
 /// One actual guest I/O effect, retaining its exact source-code site.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhysicalIoEffect {
@@ -106,6 +120,8 @@ pub struct PhysicalIoOperation {
 pub struct PhysicalReentryWindow {
     /// Count of real changed-value post-instruction XLAT2 writes.
     pub code_encryption_changes: usize,
+    /// Chronological changed XLAT2 effects, including actual jump targets.
+    pub code_mutations: Vec<PhysicalCodeMutation>,
     /// Count of reached p/* instruction writes, including idempotent writes.
     pub data_instruction_writes: usize,
     /// Exact chronological data-operand operations and their values.
@@ -281,6 +297,7 @@ pub fn observe_physical_reentries(
     let mut data_read_addresses = Vec::new();
     let mut data_write_addresses = Vec::new();
     let mut code_encryption_changes = 0usize;
+    let mut code_mutations = Vec::new();
 
     for step in 0..step_budget {
         if vm.registers().code_pointer == entry_code_pointer {
@@ -316,6 +333,7 @@ pub fn observe_physical_reentries(
                     data_read_addresses: take(&mut data_read_addresses),
                     data_write_addresses: take(&mut data_write_addresses),
                     code_encryption_changes,
+                    code_mutations: take(&mut code_mutations),
                     io_operations: take(&mut io_operations),
                     input_events: take(&mut input_events),
                     output_bytes: take(&mut output_bytes),
@@ -377,6 +395,11 @@ pub fn observe_physical_reentries(
             if let Some(write) = trace.memory_delta.encryption {
                 code_encryption_changes =
                     code_encryption_changes.saturating_add(1);
+                code_mutations.push(PhysicalCodeMutation {
+                    execution_site: trace.before.registers.code_pointer,
+                    write,
+                    step,
+                });
                 append_write(&mut journal, write)?;
             }
             if let Some(event) = trace.input {

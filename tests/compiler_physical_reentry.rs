@@ -19,8 +19,8 @@
 pub mod layout;
 
 use layout::{
-    PhysicalDataOperation, PhysicalEntryState, PhysicalReentryError,
-    PhysicalReentryWindow, PhysicalWordChange,
+    PhysicalCodeMutation, PhysicalDataOperation, PhysicalEntryState,
+    PhysicalReentryError, PhysicalReentryWindow, PhysicalWordChange,
     build_two_input_class_state_with_guarded_third_read_source,
     observe_physical_reentries,
 };
@@ -69,6 +69,7 @@ fn exact_cycle_predicate_requires_no_io_progress_even_if_core_matches() {
     };
     let mut window = PhysicalReentryWindow {
         code_encryption_changes: 0,
+        code_mutations: Vec::new(),
         data_instruction_writes: 0,
         data_operations: Vec::new(),
         data_read_addresses: Vec::new(),
@@ -113,6 +114,7 @@ fn dead_memory_changes_do_not_invalidate_observed_replay_preconditions() {
     };
     let mut window = PhysicalReentryWindow {
         code_encryption_changes: 1,
+        code_mutations: Vec::new(),
         data_instruction_writes: 1,
         data_operations: Vec::new(),
         data_read_addresses: vec![100],
@@ -236,6 +238,7 @@ fn real_guest_data_footprints_match_an_independent_traced_replay()
     let mut actual_reads = Vec::new();
     let mut actual_writes = Vec::new();
     let mut actual_operations = Vec::new();
+    let mut actual_code_mutations = Vec::new();
     for step in 0..STEPS {
         if vm.registers().code_pointer == ENTRY {
             if visiting {
@@ -249,6 +252,13 @@ fn real_guest_data_footprints_match_an_independent_traced_replay()
             .map_err(|error| error.to_string())?;
         if visiting {
             let observed = trace.ok_or("missing trace event")?;
+            if let Some(write) = observed.memory_delta.encryption {
+                actual_code_mutations.push(PhysicalCodeMutation {
+                    execution_site: observed.before.registers.code_pointer,
+                    write,
+                    step,
+                });
+            }
             if let Some(read) = observed.memory_reads.data {
                 let opcode = observed.decoded.ok_or("read without opcode")?;
                 actual_reads.push(read.address);
@@ -286,6 +296,15 @@ fn real_guest_data_footprints_match_an_independent_traced_replay()
     assert_eq!(window.data_read_addresses, actual_reads);
     assert_eq!(window.data_write_addresses, actual_writes);
     assert_eq!(window.data_operations, actual_operations);
+    assert_eq!(window.code_mutations, actual_code_mutations);
+    assert_eq!(window.code_mutations.len(), window.code_encryption_changes);
+    assert_eq!(window.code_mutations.len(), 70);
+    assert!(
+        window
+            .code_mutations
+            .iter()
+            .any(|write| { write.execution_site != write.write.address })
+    );
     assert!(window.data_operations.iter().any(|op| op.opcode == b'j'));
     assert!(window.data_operations.iter().any(|op| op.opcode == b'i'));
     assert!(window.data_operations.iter().any(|op| op.opcode == b'p'));
