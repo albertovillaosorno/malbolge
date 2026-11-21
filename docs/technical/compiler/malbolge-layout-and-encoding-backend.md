@@ -20,6 +20,28 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Profile-bound C32 constant-write operand plan (2026-11-20)
+
+The current N15 target now exposes `plan_c32_literal_crazy_writes` from the
+layout composition boundary. Given an exact 32-bit C bit pattern, including
+signed EOF `0xffffffff`, it derives six full-width data operands for six
+consecutive *physical* `p` instructions. The instruction result after steps
+2 and 5 is independently proven to equal the canonical low/high C32 words,
+regardless of the incoming accumulator. A real VM trace executes all six
+writes and confirms C23 EOF's two words `[4644102, 299]` from seven
+representative entry states, while a separate operand oracle covers all 257
+signed-converted input classes and all ternary input digits. A wider
+259-value C32 matrix also preserves `0xff` as `[255, 0]`, **not** EOF.
+
+This is a **prelink recipe**, not completed source-guest state storage. The
+initial six operand words are manually seeded for the VM trace; the exact
+source loader has not been shown to produce them. The two physical results
+land at *nonadjacent* entry-data offsets `2` and `5`, so the future linker
+must also establish a sound transfer to the original C32 frame's adjacent
+SSA cells. Neither conditional input dispatch, phi transfers, repeated loop
+control, arithmetic, nor the complete seven-block mutable C23 EOF checksum
+is published. Historical/forged target profiles refuse the plan.
+
 ### Bounded physical 282-phase copies and data reset (2026-11-20)
 
 `tests/compiler_282_phase_blocks.rs` now verifies a restricted two-block

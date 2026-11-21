@@ -47,6 +47,7 @@
 pub mod typed_cfg_adapter;
 
 mod bounded_revisit;
+mod c23_c32_constant_writer;
 mod eof_branch_plan;
 mod eof_c23_conversion_source;
 mod eof_output_plan;
@@ -68,6 +69,9 @@ pub use bounded_revisit::{
     admit_bounded_revisit_layout, place_bounded_guest_state_frame,
     verify_bounded_guest_data_regions, verify_bounded_guest_instruction_writes,
     verify_bounded_guest_state_isolation,
+};
+pub use c23_c32_constant_writer::{
+    C32LiteralCrazyError, C32LiteralCrazyPlan, plan_c32_literal_crazy_writes,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

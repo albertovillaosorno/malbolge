@@ -336,7 +336,6 @@ fn iy_converted_guest_word_has_source_specific_eof_selector()
 #[test]
 #[expect(
     clippy::integer_division_remainder_used,
-    clippy::arithmetic_side_effects,
     reason = "finite base-three independent local lower-bound proof"
 )]
 fn converted_eof_trit_local_branch_requires_distant_jump_targets() {
@@ -467,6 +466,72 @@ fn three_guest_crazy_operands_can_materialize_both_c32_eof_constants() {
 
 #[test]
 #[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "canonical 32-bit and signed-EOF guest materialization plans"
+)]
+fn c32_constant_write_plan_matches_independent_three_p_oracle()
+-> Result<(), String> {
+    let profile = current_profile();
+    assert_eq!(
+        layout::plan_c32_literal_crazy_writes(historical_profile(), u32::MAX),
+        Err(layout::C32LiteralCrazyError::UnsupportedProfile)
+    );
+    let cases = (0..=255u32).chain([256, 0x8000_0000, u32::MAX]);
+    for bits in cases {
+        let plan = layout::plan_c32_literal_crazy_writes(profile, bits)
+            .map_err(|error| format!("{error:?}"))?;
+        let target_cells =
+            layout::typed_cfg_adapter::state_storage::encode_i32_cells(bits);
+        let independent = [
+            constant_writer_operands(target_cells[0]),
+            constant_writer_operands(target_cells[1]),
+        ]
+        .concat();
+        assert_eq!(plan.bits, bits);
+        assert_eq!(plan.target_cells, target_cells);
+        assert_eq!(plan.result_steps, [2, 5]);
+        assert_eq!(plan.result_data_offsets, [2, 5]);
+        assert_eq!(plan.operands.as_slice(), independent.as_slice());
+        assert!(
+            plan.operands
+                .iter()
+                .all(|word| *word < profile.word_modulus())
+        );
+        // The plan does not depend on the guest register state. For each
+        // source C32 literal, verify the two required results starting
+        // from a byte, from a different signed byte, and from raw EOF.
+        for incoming in [0, 255, profile.eof_word()] {
+            let observed = plan
+                .operands
+                .iter()
+                .scan(incoming, |accumulator, operand| {
+                    *accumulator = scalar_crazy(*operand, *accumulator);
+                    Some(*accumulator)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                observed.get(plan.result_steps[0]),
+                Some(&target_cells[0])
+            );
+            assert_eq!(
+                observed.get(plan.result_steps[1]),
+                Some(&target_cells[1])
+            );
+        }
+    }
+    let successful_ff = layout::plan_c32_literal_crazy_writes(profile, 255)
+        .map_err(|error| format!("{error:?}"))?;
+    let actual_eof = layout::plan_c32_literal_crazy_writes(profile, u32::MAX)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(successful_ff.target_cells, [255, 0]);
+    assert_eq!(actual_eof.target_cells, [4_644_102, 299]);
+    assert_ne!(successful_ff.operands, actual_eof.operands);
+    Ok(())
+}
+
+#[test]
+#[expect(
     clippy::indexing_slicing,
     clippy::panic_in_result_fn,
     clippy::too_many_lines,
@@ -480,11 +545,12 @@ fn six_real_guest_p_steps_write_exact_two_cell_c32_eof_constant()
     assert_eq!(source.len(), 7);
     let initial = ProfileMachine::from_source(profile, &source, vec![])
         .map_err(|error| error.to_string())?;
-    let targets =
-        layout::typed_cfg_adapter::state_storage::encode_i32_cells(u32::MAX);
-    let first = constant_writer_operands(targets[0]);
-    let second = constant_writer_operands(targets[1]);
-    let operands = [first, second].concat();
+    let plan = layout::plan_c32_literal_crazy_writes(profile, u32::MAX)
+        .map_err(|error| format!("{error:?}"))?;
+    let targets = plan.target_cells;
+    let operands = plan.operands;
+    assert_eq!(plan.result_steps, [2, 5]);
+    assert_eq!(plan.result_data_offsets, [2, 5]);
     assert_eq!(operands.len(), 6);
     for converted in [0, 1, 2, 127, 128, 255, 62_207] {
         // These seeded operands model the required linker precondition.
@@ -537,11 +603,15 @@ fn six_real_guest_p_steps_write_exact_two_cell_c32_eof_constant()
         }
         assert_eq!(trace[6].decoded, Some(b'v'));
         assert_eq!(
-            vm.memory_word(CONSTANT_WRITER_DATA_BASE + 2),
+            vm.memory_word(
+                CONSTANT_WRITER_DATA_BASE + plan.result_data_offsets[0]
+            ),
             Ok(targets[0])
         );
         assert_eq!(
-            vm.memory_word(CONSTANT_WRITER_DATA_BASE + 5),
+            vm.memory_word(
+                CONSTANT_WRITER_DATA_BASE + plan.result_data_offsets[1]
+            ),
             Ok(targets[1])
         );
         assert_eq!(vm.output(), &[]);
