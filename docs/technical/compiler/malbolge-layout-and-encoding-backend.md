@@ -20,6 +20,36 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Adjacent physical C32 zero pair through real guest data reentry (2026-11-21)
+
+`build_adjacent_c32_zero_source` deterministically emits one 62-cell
+fully graphical current-N15 source with 60 code/padding cells and two
+loader-tail cells. Nine initial no-ops lead to `j;p;p;j;p;p;p;j;p;v`.
+The first genuine jump selects M126. Two actual `p` instructions write
+M126=7,174,453 and scratch M127=0. The second `j` reads untouched
+loader M128=7,174,416 and relocates D to 7,174,417. Three further
+`p` instructions write 7,174,453, **0**, 7,174,453 to cells
+M7,174,417..419. The third `j` reads untouched M7,174,420=7,174,416
+and reenters M7,174,417; the final `p` rewrites that cell to **0**.
+Consequently the **adjacent** source-derived cells M7,174,417 and
+M7,174,418 both contain zero, and both were initially nonzero.
+
+An independent 15-trit scalar census of 2,752 graphical source-tail
+cases admits exactly 21 such paired writes; the canonical first source
+halts in 19 normative guest steps on five fresh binary/EOF inputs.
+The VM traces verify all six data writes, three pointer relocations,
+original loader operands, reached code encryption and no I/O effects.
+A nonzero initial A=3 produces `[3, 3]` instead, so the zero-pair
+contract requires A=0 at entry. Source positions C19..C59 are
+unreached graphical padding, not extra executed instructions.
+
+This closes the earlier **physical adjacent-zero feasibility gap**, but
+not the source-C compiler gap: the pair is at one fixed loader-dependent
+location, with no source SSA/frame allocation, EOF normalization,
+dynamic C arithmetic, phi copies, branch or loop. The unchanged seven-
+block mutable EOF checksum still refuses guest publication. See
+`tests/compiler_adjacent_zero_source.rs`.
+
 ### Bounded input-selected guest arithmetic operand (2026-11-21)
 
 A follow-on physical experiment extends input-dependent D relocation

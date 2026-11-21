@@ -9,9 +9,9 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Genuine source-loaded N15 zero synthesis through two guest crazy writes.
+//   - Genuine source-loaded N15 zero synthesis, including adjacent guest cells.
 // - Must-Not:
-//   - Treat one zero word as adjacent C32 zero or assume unknown entry A=0.
+//   - Treat a physical zero pair as a source-linked C local or unknown-entry A.
 // - Allows:
 //   - Inputs: initial zero-accumulator N15 and a finite 94-phase source tail.
 //   - Outputs: graphical code, exact loader seeds and final zero data address.
@@ -21,21 +21,24 @@
 // - Merge-When:
 //   - The source-C literal linker owns placement and guest initialization.
 // - Summary:
-//   - Emits a real p;p store of zero absent from the virgin graphical loader.
+//   - Emits one and two-cell zero plans with actual source-loaded guest writes.
 
-//! A bounded first step toward a physically written C32 zero initializer.
+//! Source-loaded physical zero constructors for one or two guest words.
 //!
 //! Every fully graphical N15 source begins with A=0. A single `p` cannot
 //! produce a zero trit from a zero accumulator, but a second `p` can. This
-//! source proves one *written* 15-trit zero; it does not provide the adjacent
-//! high word required for a canonical C32 zero local, nor a general block
-//! entry with an unknown accumulator.
+//! first source proves one *written* 15-trit zero. A separate bounded
+//! source executes data-pointer reentry and writes both adjacent C32-zero
+//! cells, without proving a general source-C initializer or arbitrary A.
 
 use std::iter::repeat_n;
 
 use malbolge::{ProfileDescriptor, current_profile, profile_crazy};
 
 use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
+
+const C32_ZERO_SOURCE_CELLS: usize = 62;
+const C32_ZERO_CODE_CELLS: usize = C32_ZERO_SOURCE_CELLS - 2;
 
 const PREFIX_BOUND: usize = 94;
 
@@ -87,6 +90,34 @@ pub struct AccumulatorIndependentZeroCellSource {
     pub written_words: [u32; 3],
     /// Exact physical address of the zero-producing `p` instruction.
     pub zero_store_code_address: u32,
+}
+
+/// Two adjacent, physically written zero words in a source-loaded N15 guest.
+///
+/// The first data relocation prepares an accumulator and a scratch zero. The
+/// second relocation executes three crazy operations, the middle of which
+/// writes the high zero word. A third genuine data jump revisits the first
+/// word and overwrites it with zero, preserving the adjacent high word.
+/// The complete source is initially graphical, and all writes avoid code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroSource {
+    /// Loader-provided operands for three following writes and return jump.
+    pub relocated_initial_words: [u32; 4],
+    /// Original source-code jump destination before the two scratch writes.
+    pub scratch_data_address: u32,
+    /// Loader-provided operands for the two scratch writes and first jump.
+    pub scratch_initial_words: [u32; 3],
+    /// Executable source with unreachable graphical padding and two tail
+    /// cells.
+    pub source: Vec<u8>,
+    /// Second of the two physically zeroed, consecutive 15-trit data cells.
+    pub zero_high_address: u32,
+    /// First high-word zero write code position before physical reentry.
+    pub zero_high_code_address: u32,
+    /// First of the two physically zeroed, consecutive 15-trit data cells.
+    pub zero_low_address: u32,
+    /// Final low-word zero rewrite code position after physical reentry.
+    pub zero_low_code_address: u32,
 }
 
 /// Emit a source whose second real `p` writes exactly zero from initial A=0.
@@ -325,6 +356,186 @@ fn find_accumulator_independent_zero_source(
                         )
                         .map_err(|_error| NoLoadableZero)?,
                     });
+                }
+                _ = source.pop();
+            }
+            _ = source.pop();
+        }
+    }
+    Err(NoLoadableZero)
+}
+
+/// Find a graphical N15 source that *writes* adjacent `[0, 0]` data words.
+///
+/// Search is bounded to a 62-byte source, 60 valid code/padding cells, two
+/// graphical loader-tail cells and at most 94 no-op prefixes. Its exact guest
+/// body is `j;p;p;j;p;p;p;j;p;v`. The two words are written in reverse order
+/// and the second `j` revisit is mandatory: a direct adjacent crazy chain
+/// cannot write a second zero from accumulator zero and virgin loader data.
+///
+/// This is a source-loaded **initializer primitive**, not a variable address
+/// allocator, arbitrary-entry-state operation, C23 signed conversion, guest
+/// branch or completion of the original mutable EOF checksum linker.
+///
+/// # Errors
+///
+/// Refuses noncurrent profiles or an unrepresentable bounded graphical plan.
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    clippy::too_many_lines,
+    reason = "finite graphical search and exact data-reentry proof"
+)]
+pub fn build_adjacent_c32_zero_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::{NoLoadableZero, UnsupportedProfile};
+    if profile != current_profile() {
+        return Err(UnsupportedProfile);
+    }
+    let memory_words = usize::try_from(profile.memory_words())
+        .map_err(|_error| NoLoadableZero)?;
+    for prefix in 0..PREFIX_BOUND {
+        if prefix.saturating_add(10) > C32_ZERO_CODE_CELLS {
+            break;
+        }
+        let mut source = Vec::with_capacity(C32_ZERO_SOURCE_CELLS);
+        for opcode in repeat_n(LinearOpcode::NoOperation, prefix).chain([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::CrazyData,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::CrazyData,
+            LinearOpcode::CrazyData,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::Halt,
+        ]) {
+            source.push(
+                unique_graphical_cell(profile, opcode, source.len())
+                    .map_err(|_error| NoLoadableZero)?,
+            );
+        }
+        while source.len() < C32_ZERO_CODE_CELLS {
+            source.push(
+                unique_graphical_cell(
+                    profile,
+                    LinearOpcode::NoOperation,
+                    source.len(),
+                )
+                .map_err(|_error| NoLoadableZero)?,
+            );
+        }
+        let Some(&first_jump_byte) = source.get(prefix) else {
+            return Err(NoLoadableZero);
+        };
+        let first_address = usize::from(first_jump_byte).saturating_add(1);
+        if first_address <= C32_ZERO_SOURCE_CELLS.saturating_add(2)
+            || first_address.saturating_add(2) >= memory_words
+        {
+            continue;
+        }
+        for first_tail in 33..=126u8 {
+            if unique_graphical_cell(
+                profile,
+                LinearOpcode::SkippedDataByte {
+                    byte: u32::from(first_tail),
+                },
+                source.len(),
+            ) != Ok(first_tail)
+            {
+                continue;
+            }
+            source.push(first_tail);
+            for last_tail in 33..=126u8 {
+                if unique_graphical_cell(
+                    profile,
+                    LinearOpcode::SkippedDataByte {
+                        byte: u32::from(last_tail),
+                    },
+                    source.len(),
+                ) != Ok(last_tail)
+                {
+                    continue;
+                }
+                source.push(last_tail);
+                let mut scratch = [0; 3];
+                for (offset, slot) in scratch.iter_mut().enumerate() {
+                    *slot = unwritten_loader_word(
+                        &source,
+                        first_address.saturating_add(offset),
+                        profile,
+                    )
+                    .map_err(|_error| NoLoadableZero)?;
+                }
+                let first_written =
+                    profile_crazy(scratch[0], 0, profile.word_trits());
+                let scratch_zero = profile_crazy(
+                    scratch[1],
+                    first_written,
+                    profile.word_trits(),
+                );
+                let relocated_address =
+                    usize::try_from(scratch[2].saturating_add(1))
+                        .map_err(|_error| NoLoadableZero)?;
+                if scratch_zero == 0
+                    && relocated_address > C32_ZERO_SOURCE_CELLS
+                    && relocated_address.saturating_add(3) < memory_words
+                    && !(first_address..=first_address.saturating_add(2))
+                        .contains(&relocated_address)
+                    && !(relocated_address
+                        ..=relocated_address.saturating_add(3))
+                        .contains(&first_address)
+                {
+                    let mut words = [0; 4];
+                    for (offset, slot) in words.iter_mut().enumerate() {
+                        *slot = unwritten_loader_word(
+                            &source,
+                            relocated_address.saturating_add(offset),
+                            profile,
+                        )
+                        .map_err(|_error| NoLoadableZero)?;
+                    }
+                    let first = profile_crazy(
+                        words[0],
+                        scratch_zero,
+                        profile.word_trits(),
+                    );
+                    let high =
+                        profile_crazy(words[1], first, profile.word_trits());
+                    let third =
+                        profile_crazy(words[2], high, profile.word_trits());
+                    let low = profile_crazy(first, third, profile.word_trits());
+                    if high == 0
+                        && low == 0
+                        && words[3].saturating_add(1)
+                            == u32::try_from(relocated_address)
+                                .map_err(|_error| NoLoadableZero)?
+                        && words[0] != 0
+                        && words[1] != 0
+                    {
+                        let as_word = |value: usize| {
+                            u32::try_from(value)
+                                .map_err(|_error| NoLoadableZero)
+                        };
+                        return Ok(AdjacentC32ZeroSource {
+                            relocated_initial_words: words,
+                            scratch_data_address: as_word(first_address)?,
+                            scratch_initial_words: scratch,
+                            source,
+                            zero_high_address: as_word(
+                                relocated_address.saturating_add(1),
+                            )?,
+                            zero_high_code_address: as_word(
+                                prefix.saturating_add(5),
+                            )?,
+                            zero_low_address: as_word(relocated_address)?,
+                            zero_low_code_address: as_word(
+                                prefix.saturating_add(8),
+                            )?,
+                        });
+                    }
                 }
                 _ = source.pop();
             }

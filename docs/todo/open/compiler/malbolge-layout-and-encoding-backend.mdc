@@ -51,6 +51,19 @@ emission.
   one impossible/over-budget negative case; pin the maximum words and search
   operations.
 
+## Adjacent Physical Zero Writes After Guest Reentry (2026-11-21)
+
+A bounded 62-cell N15 source executes real `j;ppjpppjp;v` after nine
+no-ops. Three original loader-backed `j` operations reach a pair of
+consecutive data cells and physically write two zero words (the higher
+first, then the lower by a genuine reentry). An independent 2,752-case
+census finds 21 accepted source layouts; five 19-step real VM traces
+validate source bytes, all data writes, jump operands, encryption and
+halt. An A=3 entry instead writes `[3, 3]`, proving the A=0 boundary.
+This is the first **adjacent** C32-sized physical zero pair, not yet a
+source-bound C23 local, mutable checksum, arithmetic block or loop.
+See `tests/compiler_adjacent_zero_source.rs` and the layout contract.
+
 ## Bounded Input-Selected Guest Arithmetic (2026-11-21)
 
 A separate graphical 22-cell source reaches
