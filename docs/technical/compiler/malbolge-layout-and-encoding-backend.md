@@ -20,6 +20,33 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Physically conditional EOF-arm data write (2026-11-21)
+
+`build_signed_eof_branch_with_eof_store_source` extends the existing
+132-cell, two-arm N15 code branch with one **reached EOF-only `p`** at
+C127. The real C114 `i` sends true EOF to C126 and every successful
+byte to C45. On EOF, C126 advances D to M145; the next guest step
+reads the untouched 134 there, combines it with the live A=2,391,450,
+and writes exactly 4,783,019. C128 then emits byte 171, and C129
+halts at step 119. On every successful byte, the executable C45..C104
+path still emits 154 and halts at step 175, without ever fetching
+C127 or altering M145.
+
+The independent 15-trit crazy-table oracle verifies the exact EOF
+word and its low byte. The new regression runs **all 256 byte inputs,
+actual EOF, and two unread-suffix streams** through normative N15
+traces. It checks the reached code-pointer `i` destinations, actual
+`p` memory read/write and accumulator values, absence of the C127
+write on byte paths, output, input consumption and termination.
+The original `*`-at-C127 source remains a distinct comparison.
+
+This is physical **control-dependent guest state mutation**, not
+source-C state or checksum compilation. M145 is a loader-derived
+scratch cell, not the reserved C23 C32 frame. It does not normalize
+signed EOF, preserve the read byte, implement phi/arithmetic or
+provide a repeatable input loop. The original mutable checksum
+still rejects artifact publication at the source/physical linker.
+
 ### Post-flag code transfer and source-extension hazard (2026-11-21)
 
 A bounded independent attempt retained the exact 33-cell physical flag

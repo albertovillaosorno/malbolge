@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, a real 132-cell N15 EOF branch now executes one
+  conditional post-branch guest state write. The reached C114 `i`
+  chooses C126 for EOF and C45 for all 256 bytes; only the EOF arm
+  reaches C127 `p`, reads virgin M145=134, and physically writes
+  M145=4,783,019 from live A=2,391,450. An independent 15-trit
+  oracle and 259 physical VM paths check EOF output 171 versus byte
+  output 154, termination, exact write/no-write and unread suffix.
+  This is a genuine control-dependent scratch data mutation, **not**
+  canonical C23 signed EOF/C32 storage or a source-linked checksum.
+  The original seven-block checksum still refuses guest publication.
+
 - On 2026-11-21, an independent 257-input and 15-rotation ternary
   census rejects every C32 low/high store through a single rotation
   and fixed-operand trit-local crazy chain from the Iy converter.

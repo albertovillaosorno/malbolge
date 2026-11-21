@@ -12,6 +12,18 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Conditional guest store after executable EOF branch (2026-11-21)
+
+`build_signed_eof_branch_with_eof_store_source` extends the existing
+fully executable 132-cell N15 signed EOF/byte branch with a physical
+C127 `p` reached only on EOF. It writes M145=4,783,019 and outputs
+171 for true EOF; every successful byte takes the disjoint C45 arm,
+leaves M145=134 and emits 154. All 257 input classes and two binary
+suffixes run through the normative VM with independent ternary and
+memory-write checks. This proves a finite conditional guest state
+effect, **not** a C23 signed-input frame, dynamic source-C branch or
+completed mutable EOF checksum.
+
 ### Physically output-classified byte or EOF (2026-11-21)
 
 `build_guest_byte_c32_pair_eof_classify_source` extends the real

@@ -416,6 +416,29 @@ pub fn build_signed_eof_branch_source(
     Ok(source)
 }
 
+/// Extend the real signed EOF branch with an actual branch-conditional write.
+///
+/// The byte arm still executes its verified C45..C104 return path and emits
+/// 154. The EOF arm now reaches C127 as a `p` rather than a rotation: after
+/// the physical `i` at C114, D advances to M145 and `p` combines its
+/// untouched source-loader operand 134 with accumulator 2,391,450. This
+/// writes M145=4,783,019 and emits byte 171 at C128 before halting at C129.
+/// No successful byte reaches that data write. M145 is an experimental
+/// loader-derived scratch word, **not** a C32 source local or a checksum
+/// destination. The complete source is not a general branch allocator.
+///
+/// # Errors
+///
+/// Rejects profiles other than the exact N15 layout and missing encodings.
+/// Full guest-path admission remains an independent publication obligation.
+pub fn build_signed_eof_branch_with_eof_store_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, SignedEofBranchSourceError> {
+    let mut source = build_signed_eof_branch_source(profile)?;
+    put(&mut source, 127, b'p')?;
+    Ok(source)
+}
+
 /// Read a third signed word only when the second word was not EOF.
 ///
 /// The C63 read controls the physical byte/EOF jump. Only its successful-byte

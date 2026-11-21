@@ -145,7 +145,9 @@ pub use signed_eof_branch_source::{
     build_second_input_eof_classified_first_echo_source,
     build_second_input_eof_classified_two_echo_source,
     build_second_input_guarded_third_read_source,
-    build_signed_eof_branch_source, build_two_echo_guarded_third_read_source,
+    build_signed_eof_branch_source,
+    build_signed_eof_branch_with_eof_store_source,
+    build_two_echo_guarded_third_read_source,
     build_two_input_eof_classified_echo_source,
     build_two_signed_guest_echo_source,
 };
