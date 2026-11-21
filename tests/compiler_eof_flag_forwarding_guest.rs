@@ -49,21 +49,22 @@ const CONTINUATION_START: usize = 27;
 const CONTINUATION_END: usize = 30;
 const SOURCE_CELLS: usize = 33;
 const INPUT_CLASSES: usize = 257;
-const OPERATION_CHOICES: [u8; 4] = [b'o', b'j', b'p', b'*'];
+const OPERATION_CHOICES: [u8; 4] = *b"ojp*";
 
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::integer_division_remainder_used,
+    clippy::indexing_slicing,
     reason = "independent finite base-three guest operand oracle"
 )]
 fn independent_crazy(mut data: u32, mut accumulator: u32) -> u32 {
     const TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
-    let mut result = 0;
-    let mut place = 1;
-    for _ in 0..15 {
-        let x = usize::try_from(data % 3).unwrap_or_default();
-        let y = usize::try_from(accumulator % 3).unwrap_or_default();
-        result += TABLE[x][y] * place;
+    let mut result = 0u32;
+    let mut place = 1u32;
+    for _ in 0usize..15 {
+        let row = usize::try_from(data % 3).unwrap_or_default();
+        let column = usize::try_from(accumulator % 3).unwrap_or_default();
+        result += TABLE[row][column] * place;
         place *= 3;
         data /= 3;
         accumulator /= 3;
@@ -74,6 +75,7 @@ fn independent_crazy(mut data: u32, mut accumulator: u32) -> u32 {
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::integer_division_remainder_used,
+    clippy::integer_division,
     reason = "independent fixed-width trit rotation"
 )]
 fn independent_rotate(word: u32) -> u32 {
@@ -91,7 +93,7 @@ fn graphical_source_op(position: usize, op: u8) -> Option<u8> {
 fn candidates() -> Vec<Vec<u8>> {
     let mut result = Vec::new();
     let mut previous = vec![Vec::new()];
-    for _ in 0..=3 {
+    for _ in 0usize..=3 {
         result.extend(previous.iter().cloned());
         previous = previous
             .into_iter()
@@ -121,20 +123,31 @@ fn proposed_target(
     let mut writes = BTreeMap::new();
     let mut patched_source = original_source.to_vec();
     for (offset, operation) in operations.iter().chain([&b'i']).enumerate() {
-        let position = CONTINUATION_START + offset;
-        patched_source[position] = graphical_source_op(position, *operation)
-            .ok_or("missing graphical continuation encoding")?;
+        let position = CONTINUATION_START.saturating_add(offset);
+        *patched_source
+            .get_mut(position)
+            .ok_or("missing source position")? =
+            graphical_source_op(position, *operation)
+                .ok_or("missing graphical continuation encoding")?;
     }
-    let read = |address: u32, writes: &BTreeMap<u32, u32>| {
-        if let Some(word) = writes.get(&address) {
+    let first =
+        u32::try_from(CONTINUATION_START).map_err(|error| error.to_string())?;
+    let last =
+        u32::try_from(CONTINUATION_END).map_err(|error| error.to_string())?;
+    let read = |address: u32, overlay: &BTreeMap<u32, u32>| {
+        if let Some(word) = overlay.get(&address) {
             return Ok(*word);
         }
-        if (CONTINUATION_START as u32..=CONTINUATION_END as u32)
-            .contains(&address)
-        {
-            return Ok(u32::from(patched_source[address as usize]));
+        if (first..=last).contains(&address) {
+            let index =
+                usize::try_from(address).map_err(|error| error.to_string())?;
+            let byte =
+                patched_source.get(index).ok_or("missing source word")?;
+            return Ok(u32::from(*byte));
         }
-        machine.memory_word(address).map_err(|e| e.to_string())
+        machine
+            .memory_word(address)
+            .map_err(|error| error.to_string())
     };
     for op in operations {
         let word = read(data_pointer, &writes)?;
@@ -168,10 +181,9 @@ fn proposed_target(
 #[expect(
     clippy::too_many_lines,
     clippy::indexing_slicing,
-    clippy::arithmetic_side_effects,
-    clippy::integer_division_remainder_used,
     clippy::panic_in_result_fn,
     clippy::cognitive_complexity,
+    clippy::excessive_nesting,
     reason = "257-class authentic guest state and finite 85-candidate search"
 )]
 fn real_eof_flag_has_no_short_graphical_two_arm_code_transfer()
@@ -192,6 +204,10 @@ fn real_eof_flag_has_no_short_graphical_two_arm_code_transfer()
     let prepared =
         ProfileMachine::from_source(profile, &plan.pair.source, Vec::new())
             .map_err(|error| error.to_string())?;
+    let patch_begin =
+        u32::try_from(CONTINUATION_START).map_err(|error| error.to_string())?;
+    let patch_end =
+        u32::try_from(CONTINUATION_END).map_err(|error| error.to_string())?;
     let mut byte_targets = vec![None::<u32>; proposals.len()];
     let mut all_byte_targets = vec![true; proposals.len()];
     let mut graphical_counts = vec![0usize; proposals.len()];
@@ -217,9 +233,7 @@ fn real_eof_flag_has_no_short_graphical_two_arm_code_transfer()
             .into_iter()
             .flatten()
             {
-                if (CONTINUATION_START as u32..=CONTINUATION_END as u32)
-                    .contains(&address)
-                {
+                if (patch_begin..=patch_end).contains(&address) {
                     touched_future_code = true;
                 }
             }
@@ -229,7 +243,7 @@ fn real_eof_flag_has_no_short_graphical_two_arm_code_transfer()
             "candidate edits changed the 27-step prefix"
         );
         assert_eq!(
-            result.map_err(|e| e.to_string())?,
+            result.map_err(|error| error.to_string())?,
             RunOutcome::BudgetExhausted { steps: PREFIX_STEPS }
         );
         assert_eq!(machine.input_consumed(), input.len());
@@ -281,7 +295,6 @@ fn real_eof_flag_has_no_short_graphical_two_arm_code_transfer()
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     clippy::too_many_lines,
-    clippy::cognitive_complexity,
     reason = "independent scalar branch proposal checked against executed N15 i"
 )]
 fn sampled_continuations_match_actual_guest_jump_admission()
