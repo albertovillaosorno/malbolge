@@ -14,8 +14,8 @@
 //   - Treat an encoded M96 word as signed C32 or an EOF checksum compiler.
 // - Allows:
 //   - Inputs: all 256 signed byte classes plus true EOF, and unread suffix.
-//   - Outputs: real input, both conversion writes, final fold and exact output.
-//   - Side effects: isolated 82-step profile VM executions only.
+//   - Outputs: converted signed input and adjacent source-loaded C32 writes.
+//   - Side effects: isolated, bounded profile VM executions only.
 // - Split-When:
 //   - A general physical typed-C32 arithmetic linker replaces this probe.
 // - Merge-When:
@@ -715,10 +715,11 @@ fn assert_two_adjacent_c32_rotate_steps(
     trace: &[malbolge::ProfileStepTrace],
     plan: &layout::C32LiteralRotatePlan,
     vm: &ProfileMachine,
+    data_base: u32,
 ) -> Result<(), String> {
     for (index, target) in plan.target_cells.iter().enumerate() {
         let step = &trace[index];
-        let data_address = CONSTANT_WRITER_DATA_BASE
+        let data_address = data_base
             .checked_add(
                 u32::try_from(index).map_err(|error| error.to_string())?,
             )
@@ -811,11 +812,139 @@ fn two_real_guest_rotates_materialize_adjacent_c32_cells() -> Result<(), String>
                 steps: 3,
             });
             assert_eq!(trace.len(), 3);
-            assert_two_adjacent_c32_rotate_steps(&trace, &plan, &vm)?;
+            assert_two_adjacent_c32_rotate_steps(
+                &trace,
+                &plan,
+                &vm,
+                CONSTANT_WRITER_DATA_BASE,
+            )?;
             assert_eq!(trace[2].decoded, Some(b'v'));
             assert_eq!(vm.output(), &[]);
             assert_eq!(vm.input_consumed(), 0);
         }
     }
+    Ok(())
+}
+
+// Exact source-loaded C32 guest storage. Unlike the isolated pre-seeded
+// rotate plan, this five-byte graphical source initializes all memory
+// through the normative loader. A physical j shifts D past the code and
+// two consecutive reached * steps write adjacent, full-width C32 words.
+// It is a constant, not a getchar-dependent source-C checksum.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "real VM four-step pointer, loader, storage and encryption proof"
+)]
+fn graphical_loader_reaches_adjacent_c32_rotates_without_host_seeding()
+-> Result<(), String> {
+    const SOURCE: &[u8; 5] = b"(&%N$";
+    const BITS: u32 = 351_548_234;
+    const DATA_BASE: u32 = 41;
+    const SEED_WORDS: [u32; 2] = [7_174_492, 72];
+    const RESULT_WORDS: [u32; 2] = [7_174_466, 24];
+
+    let profile = current_profile();
+    for (code_pointer, decoded) in b"j**v".iter().enumerate() {
+        let position =
+            u32::try_from(code_pointer).map_err(|error| error.to_string())?;
+        assert_eq!(
+            decode_profile_instruction(
+                u32::from(SOURCE[code_pointer]),
+                position
+            ),
+            Some(*decoded),
+            "graphical reached code C{code_pointer}"
+        );
+    }
+    // The last source byte is loader data, not an executed j instruction.
+    assert_eq!(
+        decode_profile_instruction(u32::from(SOURCE[4]), 4),
+        Some(b'j')
+    );
+    assert_eq!(
+        scalar_crazy(u32::from(SOURCE[3]), u32::from(SOURCE[4])),
+        SEED_WORDS[0]
+    );
+    assert_eq!(
+        scalar_crazy(u32::from(SOURCE[4]), SEED_WORDS[0]),
+        SEED_WORDS[1]
+    );
+    let plan = layout::plan_c32_literal_rotate_writes(profile, BITS)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.initial_data_words, SEED_WORDS);
+    assert_eq!(
+        layout::select_rotated_loader_seed(
+            profile, 5, DATA_BASE, 0, SEED_WORDS
+        ),
+        Ok(*b"N$"),
+        "the exact source tail must match existing verified seed selector"
+    );
+    // This only proves a source-loadable *literal* C32. With the same
+    // code/control grammar, neither true EOF nor successful 0xff can
+    // be initialized from a graphical loader tail at these addresses.
+    for bits in [255, u32::MAX] {
+        let required = layout::plan_c32_literal_rotate_writes(profile, bits)
+            .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(
+            layout::select_rotated_loader_seed(
+                profile,
+                5,
+                DATA_BASE,
+                0,
+                required.initial_data_words
+            ),
+            Err(layout::LoaderSeedSelectionError::NoLoadableSeed),
+            "unrealized signed-input literal {bits:#x}"
+        );
+    }
+    assert_eq!(plan.target_cells, RESULT_WORDS);
+    assert_eq!(
+        layout::typed_cfg_adapter::state_storage::decode_i32_cells(
+            plan.target_cells
+        ),
+        Some(BITS)
+    );
+
+    let mut vm = ProfileMachine::from_source(profile, SOURCE, vec![])
+        .map_err(|error| error.to_string())?;
+    for (offset, word) in SEED_WORDS.iter().enumerate() {
+        let address = DATA_BASE
+            .checked_add(
+                u32::try_from(offset).map_err(|error| error.to_string())?,
+            )
+            .ok_or("address overflow")?;
+        assert_eq!(vm.memory_word(address), Ok(*word));
+        // This source's loader period is six: M5,M6 = M41,M42.
+        let origin = 5u32
+            .checked_add(
+                u32::try_from(offset).map_err(|error| error.to_string())?,
+            )
+            .ok_or("address overflow")?;
+        assert_eq!(vm.memory_word(origin), Ok(*word));
+    }
+    let mut trace = Vec::new();
+    let outcome = vm
+        .run_traced(4, &mut |step| trace.push(*step))
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 4,
+    });
+    assert_eq!(trace.len(), 4);
+    assert_eq!(trace[0].decoded, Some(b'j'));
+    assert_eq!(trace[0].before.registers.data_pointer, 0);
+    assert_eq!(trace[0].after.registers.data_pointer, DATA_BASE);
+    assert_eq!(trace[0].memory_reads.data.map(|word| word.value), Some(40));
+    assert!(trace[0].memory_delta.encryption.is_some());
+    assert_two_adjacent_c32_rotate_steps(&trace[1..3], &plan, &vm, DATA_BASE)?;
+    assert_eq!(trace[1].before.registers.code_pointer, 1);
+    assert_eq!(trace[2].before.registers.code_pointer, 2);
+    assert_eq!(trace[3].decoded, Some(b'v'));
+    assert_eq!(vm.output(), &[]);
+    assert_eq!(vm.input_consumed(), 0);
     Ok(())
 }

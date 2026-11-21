@@ -42,6 +42,34 @@ SSA cells. Neither conditional input dispatch, phi transfers, repeated loop
 control, arithmetic, nor the complete seven-block mutable C23 EOF checksum
 is published. Historical/forged target profiles refuse the plan.
 
+### Source-loaded, adjacent physical C32 constant witness (2026-11-21)
+
+A minimal five-byte graphical N15 source `(&%N$` now takes a physical
+`j; *; *; v` path at C0-C3, with C4 (decoded `j`) **unreached**.
+The initial C0 `j` reads M0=40 and resets the data pointer to D41
+after the VM's mandatory increment. The real loader, not a manually
+edited guest-memory vector, provides untouched M41=7,174,492 and M42=72
+from the C3-C4 source tail `N$`; the period-six loader recurrence is
+independently checked against M5/M6 and an exact scalar trit oracle.
+
+The reached C1/C2 `*` instructions rotate and physically overwrite
+those adjacent cells with M41=7,174,466 and M42=24, encoding the
+canonical 32-bit value `351548234`. A four-step normative VM trace
+checks source positional decode, the `j` data read and pointer target,
+both `*` data reads, writes, accumulator results, and self-encryption;
+the program halts at C3 with no I/O effects. The established loader
+tail selector also finds exactly `N$` for these seed requirements.
+The same fixed five-byte grammar refuses the distinct byte `0xff`
+and signed EOF `0xffffffff` initial seed pairs: neither is generated
+by a graphical two-byte tail at D41/D42. This is a bounded grammar
+result, not proof that arbitrary loader/guest initialization is
+impossible.
+
+This is the first source-loaded **adjacent C32 literal write** under
+this contract; it does not read or classify `getchar`, route runtime
+C32 results, implement phi transfers, or satisfy the original mutable
+EOF-checksum program. Its signed-EOF fail-closed gate remains active.
+
 ### Adjacent two-rotate C32 literal write plan (2026-11-20)
 
 A second current-N15 prelink plan uses two physical `*` operations rather
