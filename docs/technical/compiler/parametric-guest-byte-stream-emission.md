@@ -97,6 +97,30 @@ constant crazy folds cannot solve this input-store obligation. This is a
 restricted obstruction, not an impossibility proof for Malbolge or C23.
 See `tests/compiler_c23_store_nonlocality.rs`.
 
+### One-rotation C32 signed-store locality limit (2026-11-21)
+
+A separate independent 257-class finite ternary oracle now checks all
+15 whole-word rotations of the actual Iy converter's output domain:
+successful bytes `0..255` remain unchanged, while true EOF is the
+**different** encoded word `62,207`. Each exact signed C32 destination
+is either `[byte, 0]` or `[4,644,102, 299]` at EOF. A fixed-operand
+`p` chain operates separately on ternary coordinates; one `*` can only
+permute those coordinates. Therefore, with **at most one rotation**
+and any number of fixed crazy operations, each result digit can only
+be a unary function of one source digit. The checker allows arbitrary
+unary trit maps (more than Malbolge supports), then looks for pairs
+of successful bytes/EOF with the same source digit but contradictory
+target digits.
+
+No rotation count 0..14 gives a consistent unary map for **either**
+complete C32 cell. Even the best rotation leaves at least ten
+conflicting low-word trits, or one conflicting high-word trit. The
+proof rules out this narrow accumulator-data transform grammar, **not**
+real guest programs with two or more rotations, variable operands,
+guest branch selection, or other nonlocal state movement. The physical
+checksum remains unlinked; see
+`tests/compiler_c23_store_nonlocality.rs`.
+
 ### Physical C23 input-result word writes (2026-11-20)
 
 The opt-in `verify_source_input_site_stored_results` strengthens the

@@ -13,8 +13,8 @@
 // - Must-Not:
 //   - Claim rotation or runtime branch linkage, or source-C compilation.
 // - Allows:
-//   - Inputs: exact two-input Iy guest, byte two and true EOF.
-//   - Outputs: bounded N15 trace and ternary locality impossibility witness.
+//   - Inputs: exact Iy guest and 257 converted input classes.
+//   - Outputs: real N15 traces and finite ternary locality bounds.
 //   - Side effects: two isolated normative VM executions only.
 // - Split-When:
 //   - The complete C32 store linker subsumes this necessary condition.
@@ -36,9 +36,14 @@
 //! This is a restricted physical obstruction, not a general impossibility:
 //! branch-dependent control, runtime operands, rotation or a different source
 //! may move the EOF flag between trit positions before storing C32 values.
+//! A stronger finite census also rejects every one-rotation, fixed-crazy
+//! chain by showing that even arbitrary unary maps on the fifteen rotated
+//! trits cannot reproduce either full C32 cell across all 257 inputs.
 
 #[path = "../src/compiler/malbolge-layout/composition/lib.rs"]
 pub mod layout;
+
+use std::iter::once;
 
 use layout::typed_cfg_adapter::state_storage::encode_i32_cells;
 use malbolge::{
@@ -194,4 +199,70 @@ fn reached_c23_converter_needs_nonlocal_state_for_signed_eof()
         );
     }
     Ok(())
+}
+
+// Each fixed-operand crazy composition acts separately on each ternary
+// coordinate. Exactly one whole-word rotation only permutes those inputs;
+// at each destination trit the result must be a unary function of the one
+// source trit placed there. This oracle allows *every* unary function, even
+// ones unavailable to Malbolge crazy, making any contradiction stronger.
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "independent canonical base-three coordinate oracle"
+)]
+fn ternary_digit(mut word: u32, index: usize) -> u32 {
+    for _ in 0..index {
+        word /= 3;
+    }
+    word % 3
+}
+
+#[test]
+#[expect(
+    clippy::excessive_nesting,
+    clippy::integer_division_remainder_used,
+    clippy::indexing_slicing,
+    reason = "finite 15-rotation by 257-input mathematical locality census"
+)]
+fn one_rotation_and_constant_crazy_cannot_store_signed_c32() {
+    const TRITS: usize = 15;
+    const EOF_CELLS: [u32; 2] = [4_644_102, 299];
+    let canonical_eof = encode_i32_cells(u32::MAX);
+    assert_eq!(canonical_eof, EOF_CELLS);
+    let mut minimum_conflicts = [TRITS; 2];
+    for rotation_count in 0..TRITS {
+        for word in 0..2usize {
+            let mut conflicting_trits = 0usize;
+            for destination_trit in 0..TRITS {
+                let source_trit = (destination_trit + rotation_count) % TRITS;
+                let mut mapped: [Option<u32>; 3] = [None; 3];
+                let cases = (u8::MIN..=u8::MAX)
+                    .map(|byte| (u32::from(byte), [u32::from(byte), 0]))
+                    .chain(once((CONVERTED_EOF, EOF_CELLS)));
+                let mut conflict = false;
+                for (converted, targets) in cases {
+                    let argument = ternary_digit(converted, source_trit);
+                    let result = ternary_digit(targets[word], destination_trit);
+                    let index = usize::try_from(argument).unwrap_or(usize::MAX);
+                    let previous = &mut mapped[index];
+                    if previous.is_some_and(|prior| prior != result) {
+                        conflict = true;
+                        break;
+                    }
+                    *previous = Some(result);
+                }
+                conflicting_trits += usize::from(conflict);
+            }
+            minimum_conflicts[word] =
+                minimum_conflicts[word].min(conflicting_trits);
+            assert!(
+                conflicting_trits > 0,
+                "word {word} could arise from one rotate {rotation_count} \
+                 and a trit-local source mapping",
+            );
+        }
+    }
+    // Even an arbitrary per-trit unary map cannot repair every position.
+    // The high word gets closest at 7 rotations, but one trit still fails.
+    assert_eq!(minimum_conflicts, [10, 1]);
 }

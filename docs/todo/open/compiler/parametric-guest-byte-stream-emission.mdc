@@ -75,6 +75,14 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-21, an independent 257-input and 15-rotation ternary
+  census rejects every C32 low/high store through a single rotation
+  and fixed-operand trit-local crazy chain from the Iy converter.
+  Every rotation has at least ten conflicting low-word coordinates
+  or one conflicting high-word coordinate, even permitting arbitrary
+  unary trit maps. Multi-rotation and guest-controlled data/control
+  paths remain open; no new compiler acceptance is implied.
+
 - On 2026-11-21, the opt-in source input-result verifier now requires
   **possible causal influence** from each actual `/` to at least one
   correctly stored word in its own C32/byte SSA destination. A conservative
