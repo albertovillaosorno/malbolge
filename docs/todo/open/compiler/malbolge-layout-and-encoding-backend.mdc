@@ -63,6 +63,19 @@ This is one word **only**. Neither a second adjacent C32 zero word nor a
 source-C frame initializer with unknown live-in accumulator is supplied.
 See `tests/compiler_zero_cell_source.rs` and the layout contract.
 
+## Retained Input Plus Separate Zero Store (2026-11-21)
+
+A bounded `o*;/;j;p;j;*;p;p;p;v` graphical source now combines one real
+input-dependent M90 write with a distinct zero write at M7,174,416.
+Both `j` operands come from the real loader; the second relocates to
+M7,174,413 through untouched M91=7,174,412. The first `p` uses
+seed 121 and keeps all 257 raw byte/EOF cases distinct. Its M90 state
+survives the subsequent `*;p;p;p` chain, whose final value is exactly
+zero for every guest input. Seven normative VM traces plus an independent
+257-class ternary oracle verify this physical two-region composition.
+Neither site is a canonical source-C32 two-word cell. The mutable EOF
+checksum, actual source local binding and general loop remain open.
+
 ## Accumulator-Independent Physical Zero (2026-11-21)
 
 The new bounded graphical `j;*;p;p;v` source `DC&$:9K!6` writes

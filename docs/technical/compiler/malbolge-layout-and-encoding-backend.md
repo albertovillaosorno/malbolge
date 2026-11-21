@@ -82,6 +82,26 @@ seven-block mutable EOF checksum still refuses compilation. The
 `build_zero_cell_source` helper therefore provides a physical precursor,
 not a source-C initialization stage.
 
+### Live input store followed by independent physical zero (2026-11-21)
+
+`build_live_input_then_zero_source` now combines two *real* source-loaded
+`j` relocations. A bounded search of `o*;/;j;p;j;*;p;p;p;v` with graphical
+loader tails selects the 55-cell N15 source at prefix 44. C44 consumes a
+raw byte or true EOF; C46 stores an injective encoded value at M90 using
+loader operand 121. C47 reads *untouched* M91=7,174,412 and relocates D
+so C48..C51 write M7,174,413..416 through `*;p;p;p` with original
+loader seeds `[7174372, 161, 7174412, 121]`. Their guest-independent
+values are `[7174426, 80, 7174453, 0]`. The first input-dependent store
+at M90 survives every subsequent operation. A separate 257-class scalar
+oracle verifies the first store is injective, and seven real N15 guest
+traces cover bytes, NUL, EOF and unread suffixes, checking all reads,
+relocations, writes, encryption and halt.
+
+This advances **two-region physical state composition**. The first word
+is not canonical signed C32 `getchar`; the second is one zero 15-trit
+word, not an adjacent two-word C32 zero local. No source C arithmetic,
+phi copies, looping or whole-checksum target artifact is emitted.
+
 ### Accumulator-independent physical zero after real guest input
 
 Two source-backed N15 zero constructors now search bounded graphical

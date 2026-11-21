@@ -95,6 +95,30 @@ pub struct LiveTwoInputEncodedStoreSource {
     pub source: Vec<u8>,
 }
 
+/// Source-loaded input word retained before a separate physical zero write.
+///
+/// Two genuine `j` instructions separate the raw input destination from a
+/// later `*;p;p;p` arithmetic chain. The `*` discards the input accumulator
+/// but does not overwrite its earlier stored word. This does not implement
+/// C23 signed normalization, two-cell C32 zero or an input-dependent loop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LiveInputThenZeroSource {
+    /// First reached `/` instruction.
+    pub input_code_address: u32,
+    /// Data cell receiving one injective raw input encoding.
+    pub input_data_address: u32,
+    /// Unmodified loader operand for the input-dependent `p`.
+    pub input_seed: u32,
+    /// Exact graphical source with two unreachable loader-tail bytes.
+    pub source: Vec<u8>,
+    /// Fresh data cells used by `*;p;p;p`, after the second `j`.
+    pub zero_chain_address: u32,
+    /// Loader-derived initial words at all four chain positions.
+    pub zero_chain_seeds: [u32; 4],
+    /// The fourth chain write produces actual zero here.
+    pub zero_data_address: u32,
+}
+
 /// Predicate for lossless raw 0..255 and EOF in a single guest crazy word.
 ///
 /// Five low seed trits must be one. Since successful input values occupy
@@ -296,6 +320,94 @@ pub fn build_live_two_input_injective_store_source(
                 second_input_code_address: word(prefix.saturating_add(3))?,
                 second_store_code_address: word(prefix.saturating_add(5))?,
                 source: source.to_vec(),
+            }))
+        },
+    )
+}
+
+/// Emit a bounded input-retaining store followed by an independent zero.
+///
+/// The finite source grammar is `o*;/;j;p;j;*;p;p;p;v;tail;tail` with at
+/// most 94 no-op prefixes and 94² legal graphical tails. Both data-pointer
+/// relocations read genuine source/expanded-loader memory. The first `p`
+/// injectively retains every byte and EOF, and the second arithmetic chain
+/// overwrites A without clobbering the earlier data word.
+///
+/// # Errors
+///
+/// Refuses forged profiles or an unsatisfiable loader-derived placement.
+#[expect(
+    clippy::too_many_lines,
+    reason = "bounded physical two-region source and loader search"
+)]
+pub fn build_live_input_then_zero_source(
+    profile: &ProfileDescriptor,
+) -> Result<LiveInputThenZeroSource, LiveInputEncodedStoreError> {
+    use LiveInputEncodedStoreError::NoLoadableSeed;
+    find_injective_source(
+        profile,
+        &[
+            LinearOpcode::InputWord,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::CrazyData,
+            LinearOpcode::CrazyData,
+            LinearOpcode::CrazyData,
+            LinearOpcode::Halt,
+        ],
+        |source, input_data_address, input_seed, prefix| {
+            let memory_words = usize::try_from(profile.memory_words())
+                .map_err(|_error| NoLoadableSeed)?;
+            let next = input_data_address.saturating_add(1);
+            if next >= memory_words {
+                return Ok(None);
+            }
+            let relocated_word = unwritten_loader_word(source, next, profile)
+                .map_err(|_error| NoLoadableSeed)?;
+            let base = usize::try_from(relocated_word.saturating_add(1))
+                .map_err(|_error| NoLoadableSeed)?;
+            if base <= source.len().saturating_add(2)
+                || base.saturating_add(3) >= memory_words
+                || (base..=base.saturating_add(3)).contains(&input_data_address)
+            {
+                return Ok(None);
+            }
+            let mut seeds = [0; 4];
+            for (offset, seed) in seeds.iter_mut().enumerate() {
+                *seed = unwritten_loader_word(
+                    source,
+                    base.saturating_add(offset),
+                    profile,
+                )
+                .map_err(|_error| NoLoadableSeed)?;
+            }
+            let rotated =
+                malbolge::profile_rotate(seeds[0], profile.word_modulus());
+            let first = malbolge::profile_crazy(
+                seeds[1],
+                rotated,
+                profile.word_trits(),
+            );
+            let second =
+                malbolge::profile_crazy(seeds[2], first, profile.word_trits());
+            let third =
+                malbolge::profile_crazy(seeds[3], second, profile.word_trits());
+            if third != 0 {
+                return Ok(None);
+            }
+            let word = |value: usize| {
+                u32::try_from(value).map_err(|_error| NoLoadableSeed)
+            };
+            Ok(Some(LiveInputThenZeroSource {
+                input_code_address: word(prefix)?,
+                input_data_address: word(input_data_address)?,
+                input_seed,
+                source: source.to_vec(),
+                zero_chain_address: word(base)?,
+                zero_chain_seeds: seeds,
+                zero_data_address: word(base.saturating_add(3))?,
             }))
         },
     )
