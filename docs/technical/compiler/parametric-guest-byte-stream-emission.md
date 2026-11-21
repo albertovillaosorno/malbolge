@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Real EOF-branch guest versus disjoint source block placements (2026-11-20)
+
+The independent, existing 132-cell physical second-input EOF classifier
+executes real `/` operations at C53 and C63. Four bounded normative N15
+runs confirm both input effects and the 119-step true-EOF branch versus
+the 175-step successful-byte branch. However its two physical reads cannot
+be directly assigned to the original checksum's disjoint minimum code
+blocks: canonical C23 block 0 reserves 16 cells, so an anchored C53 input
+forces an interval overlapping the later C63 loop-input block. The canonical
+source-locked placement planner refuses `InvalidCodePlacement`; input-site
+verification accordingly refuses `InvalidSourcePlacement` for every path.
+
+The real physical EOF branch is valuable input/control evidence, but not a
+validly linked instance of this specific C CFG. A future linker must relocate
+those physical input sites or realize complete source operation and control
+code in disjoint intervals without relaxing the frame/code integrity check.
+No checksum output or whole-program target artifact is claimed. The
+regression is `physical_second_eof_branch_refuses_overlapping_checksum_blocks`
+in `tests/compiler_source_input_site_guest.rs`. P2 remains open.
+
 ### Source-verified early EOF without a second physical read (2026-11-20)
 
 The source input-site prefix verifier now distinguishes an unexecuted input

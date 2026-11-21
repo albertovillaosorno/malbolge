@@ -38,10 +38,11 @@ use layout::typed_cfg_adapter::state_relocation::{
 use layout::{
     SourceInputPrefixProof, SourceInputProbe, SourceInputTraceError,
     build_c23_signed_output_with_post_conversion_fold_source,
+    build_second_input_eof_classified_first_echo_source,
     verify_source_input_site_prefix,
 };
 use malbolge::{
-    RunOutcome, Termination, TraceInput, current_profile,
+    ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
     decode_profile_instruction,
 };
 
@@ -492,5 +493,127 @@ fn physical_loop_read_site_can_repeat_after_source_cfg_backedge()
         }),
         Err(SourceInputTraceError::StepBudgetExhausted),
     );
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_arguments,
+    reason = "frozen physical source, two source anchors and one bounded stream"
+)]
+fn assert_two_read_branch_overlap(
+    physical: &[u8],
+    wire: &[u8],
+    anchors: &[GuestCodeInputAnchor],
+    input: &[u8],
+    second: TraceInput,
+    steps: usize,
+) -> Result<(), String> {
+    let profile = current_profile();
+    let mut machine =
+        ProfileMachine::from_source(profile, physical, input.to_vec())
+            .map_err(|error| error.to_string())?;
+    let mut inputs = Vec::new();
+    let outcome = machine
+        .run_traced(175, &mut |step| {
+            if let Some(byte) = step.input {
+                inputs.push((step.before.registers.code_pointer, byte));
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps,
+    });
+    assert_eq!(inputs, vec![
+        (
+            53,
+            input
+                .first()
+                .copied()
+                .map_or(TraceInput::EndOfInput, TraceInput::Byte,)
+        ),
+        (63, second),
+    ]);
+    assert_eq!(
+        verify_source_input_site_prefix(SourceInputProbe {
+            anchors,
+            canonical: wire,
+            frame_base: 256,
+            input,
+            physical_source: physical,
+            step_budget: 175,
+        }),
+        Err(SourceInputTraceError::InvalidSourcePlacement),
+    );
+    Ok(())
+}
+
+// This real physical guest branches after two independent input opcodes,
+// but the checksum's C23 block-0 minimum 16-word interval cannot fit beside
+// the block-5 input anchor only ten positions later. Reject this exact
+// source-site linkage rather than weakening disjoint code-region admission.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded physical EOF-branch witness and exact layout refusal"
+)]
+fn physical_second_eof_branch_refuses_overlapping_checksum_blocks()
+-> Result<(), String> {
+    let profile = current_profile();
+    let physical = build_second_input_eof_classified_first_echo_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let wire = checksum_wire()?;
+    let anchors = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 53,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 63,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let minimum = layout::typed_cfg_adapter::state_relocation::
+        plan_source_locked_cfg_minimum_code_targets(
+            &wire,
+            u32::try_from(physical.len()).map_err(|error| error.to_string())?,
+            256,
+            0,
+        )
+        .map_err(|error| format!("minimum plan: {error:?}"))?;
+    let block0 = minimum.code_blocks.first().ok_or("missing block 0")?;
+    assert_eq!(block0.end_exclusive - block0.start, 16);
+    let first = anchors.first().ok_or("missing first anchor")?;
+    let loop_anchor = anchors.get(1).ok_or("missing loop anchor")?;
+    let first_end =
+        first.code_address + block0.end_exclusive - block0.start - 1;
+    assert!(first_end > loop_anchor.code_address);
+    assert_eq!(
+        layout::typed_cfg_adapter::state_relocation::
+            plan_source_locked_cfg_with_input_anchors(
+                &wire,
+                u32::try_from(physical.len())
+                    .map_err(|error| error.to_string())?,
+                256,
+                &anchors,
+            ),
+        Err(layout::typed_cfg_adapter::state_relocation::
+            GuestCodePlacementError::InvalidCodePlacement),
+    );
+    for (input, second, steps) in [
+        (&[][..], TraceInput::EndOfInput, 119usize),
+        (&[1][..], TraceInput::EndOfInput, 119),
+        (&[1, 0][..], TraceInput::Byte(0), 175),
+        (&[0xff, 0xff][..], TraceInput::Byte(0xff), 175),
+    ] {
+        assert_two_read_branch_overlap(
+            &physical, &wire, &anchors, input, second, steps,
+        )?;
+    }
     Ok(())
 }

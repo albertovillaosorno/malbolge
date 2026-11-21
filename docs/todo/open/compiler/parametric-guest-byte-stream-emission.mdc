@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-20, four real 119/175-step N15 traces of the existing
+  conditional second-input EOF branch confirm physical C53/C63 reads.
+  Attempting to bind both to the original checksum source CFG refuses:
+  the first anchored read needs a 16-cell block-0 reservation and the
+  separate block-5 read C63 overlaps it. The canonical disjoint-placement
+  planner reports `InvalidCodePlacement` and the source-input checker
+  `InvalidSourcePlacement`. This is a concrete source/physical control
+  linkage obstacle, not permission to bypass the integrity boundary.
+  Relocation or full disjoint operation/control emission remains necessary.
+
 - On 2026-11-20, a red-first N15 input-only trace exposed a false
   refusal when true first-read EOF legitimately skips the second source
   `getchar`. The original checksum's canonical C23 CFG now permits a
