@@ -20,6 +20,41 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Source-loaded, input-dependent one-word state (2026-11-21)
+
+The independent P2 physical-state experiment now emits a **real N15 guest**
+with graphical source `DCBA@?>=<;:98765eu,>=<` (22 cells). C0..C15 are
+executed no-ops; C16 reads the genuine guest `/`, C17 executes `j`, C18
+executes `p` and C19 halts. The jump uses its original graphical code word
+to select D118. The untouched original source loader supplies M118=7,174,453;
+no host data-cell initialization or output substitution occurs. In the
+20-step normative VM trace, C18 actually reads and overwrites M118 with
+`crazy(7,174,453, raw_input)` for each tested raw byte/EOF stream.
+
+This *one-word intermediate representation* distinguishes every raw byte
+0..255 and true N15 EOF (14,348,906) without a preselected input branch.
+An independent 15-trit scalar truth table proves all **257 results distinct**.
+It separately enumerates the finite exact 94 no-op-phase by 94²
+graphical-tail grammar with strict decoder-admitted tail bytes and finds
+24 such loadable candidates. The deterministic source emitter selects the
+first candidate; its 22 source bytes, C16/C18 positions, M118 seed and
+20-step guest behavior are pinned by tests. Seven independent VM loads cover
+empty input, NUL, byte 02, 7f, 80, ff and a byte with unread suffix.
+A write whose new value equals M118 (NUL) has no reported memory *delta*;
+the reached `p`, exact data-word read, final memory and accumulator still
+prove that physical write attempt. Post-instruction code encryption and
+input consumption are checked.
+
+**Not yet supported:** the written word is **not** the canonical signed C23
+`getchar` C32 low/high pair (nor the EOF `-1` representation). It does not
+place a source-SSA frame value, preserve a local across a second read, select
+C23 EOF branches, execute checksum arithmetic/phis, or implement a repeatable
+guest loop. It is an injective lower-level building block, not successful
+source-C publication. The original seven-block mutable EOF checksum still
+fails closed at physical linking. See
+`tests/compiler_live_input_encoded_store.rs` and the new
+`build_live_input_injective_store_source` helper.
+
 ### Three bounded physical 141-position guest backedges (2026-11-21)
 
 The initial complementary 141-cell source experiment established two actual

@@ -127,6 +127,19 @@ See `tests/compiler_141_half_phase_returns.rs` and
 
 ## Evidence
 
+- On 2026-11-21, an exact 22-byte source-loaded N15 guest now retains all
+  257 raw input classes in **one actual input-dependent data word**. A
+  bounded 94-phase by graphical-tail-pair search yields 24 eligible
+  sources; an independent 15-trit oracle proves injection for all byte
+  values plus EOF. The first physical source executes C16 `/`, C17 `j`
+  and C18 `p`, updating M118 from its genuine loader word 7,174,453,
+  before halting at C19 in 20 steps. Seven guest cases confirm input
+  effects, exact operand reads, memory writes and code encryption, with
+  no host-seeded state. This encoded intermediate word is **not** C23
+  signed EOF normalization or canonical C32 input storage. The original
+  mutable EOF checksum still refuses physical operation/control linking;
+  P2 remains open. See `tests/compiler_live_input_encoded_store.rs`.
+
 - On 2026-11-21, a new source-loaded guest input-then-C32 constant primitive
   executes real `/` before two adjacent physical data writes. The first `*`
   erases the unknown input accumulator; either `*` or `p` then writes the

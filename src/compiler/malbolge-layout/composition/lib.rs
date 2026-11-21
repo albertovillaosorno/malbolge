@@ -52,6 +52,7 @@ mod eof_branch_plan;
 mod eof_c23_conversion_source;
 mod eof_output_plan;
 mod guest_state_placement;
+mod live_input_encoded_store;
 mod loader_rotation_source;
 mod loader_seed;
 mod signed_eof_branch_source;
@@ -104,6 +105,10 @@ pub use eof_output_plan::{
 pub use guest_state_placement::{
     GuestStatePlacementCandidate, GuestStatePlacementError,
     GuestStatePlacementRequest, place_source_bound_guest_state,
+};
+pub use live_input_encoded_store::{
+    LiveInputEncodedStoreError, LiveInputEncodedStoreSource,
+    build_live_input_injective_store_source,
 };
 pub use loader_rotation_source::{
     RepeatedLoaderRotationError, build_c23_seed_nine_rotated_operand_source,
