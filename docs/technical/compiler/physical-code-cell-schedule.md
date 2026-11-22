@@ -265,3 +265,36 @@ compact and once with all six whitespace forms interspersed. Current N15 and
 historical VM runs both produce the identical authenticated code-site journal,
 initial code word, final word and termination. These checks preserve the
 existing byte/step ceiling and do not imply source-C linkage.
+
+## Physical Non-Graphical Code-Cell Termination (2026-11-21)
+
+The modern normative VM can terminate on a fetched *non-graphical* code
+word. That is different from an invalid loader source byte: an initially
+valid graphical code cell may have been overwritten by a real `p`/`*`
+before its first fetch. A verifier that assumes every fetched code cell
+has a decoded opcode incorrectly rejects that legal final transition.
+
+`CodeCellEvent::FetchNonGraphicalHalt` now records this exact terminal
+fetch without invented decode or XLAT2. The phase scheduler requires the
+current word to be non-graphical and the event to be last; a still-graphical
+word and any effect after the terminal fetch refuse. The frozen historical
+profile does not use the same termination rule and explicitly rejects this
+event. The normative source-backed tracer obtains the event only from an
+actual `NonGraphicalCell` VM termination.
+
+A 43-cell current-N15 graphical source executes C0 `j`, C1 `p`, C2 `i`,
+C40 `o` and then attempts C41. C0 positions D at M41; the reached C1
+`p` overwrites originally graphical M41 with a non-graphical full-width
+word. C2's actual jump operand M42=39 transfers to C40, whose inert
+instruction advances to C41. The fifth attempted fetch terminates
+without decode, register advancement or encryption. A real VM trace and
+the resulting single-site journal agree on the ordered off-site data
+write followed by the terminal fetch and exact final M41 word.
+
+The regression was red first (`InvalidEffect`), then passed after the
+verifier admitted the actual termination. Negative controls omit the
+required write, invent an initial terminal fetch, append an effect after
+termination or claim the modern halt rule under the historical profile.
+This closes one physical code/data alias verification gap only. It does
+not provide a dynamic C23 branch, reusable EOF loop, guest arithmetic,
+source-state linkage or publication of the full mutable checksum.

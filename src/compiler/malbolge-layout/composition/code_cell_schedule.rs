@@ -36,7 +36,8 @@
 //! the resulting guest-width word must be decoded at the actual code position.
 
 use malbolge::{
-    ProfileDescriptor, decode_profile_instruction, encrypt_profile_cell,
+    ProfileDescriptor, ProfileKind, decode_profile_instruction,
+    encrypt_profile_cell,
 };
 
 use super::CodeVisitRequirement;
@@ -72,6 +73,10 @@ pub enum CodeCellEvent {
         /// Full-width guest memory word produced by the data operation.
         after: u32,
     },
+    /// A fetched non-graphical word terminates a modern-profile VM with no
+    /// decode or XLAT2. A prior real data write may have made it non-graphical.
+    /// The frozen historical profile does not have this termination rule.
+    FetchNonGraphicalHalt,
 }
 
 /// Checked full-width code-memory state following an event schedule.
@@ -228,6 +233,21 @@ pub fn admit_code_cell_schedule(
                         },
                     )?;
                 }
+            },
+            CodeCellEvent::FetchNonGraphicalHalt => {
+                if profile.kind() == ProfileKind::HistoricalConformance
+                    || (33..=126).contains(&cell)
+                {
+                    return Err(CodeCellScheduleError::DecodeMismatch {
+                        event: index,
+                    });
+                }
+                if index != events.len().saturating_sub(1) {
+                    return Err(CodeCellScheduleError::EventsAfterHalt {
+                        event: index,
+                    });
+                }
+                fetches = fetches.saturating_add(1);
             },
             CodeCellEvent::FetchSelfWrite { opcode, after } => {
                 if !matches!(*opcode, b'p' | b'*')

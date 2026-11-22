@@ -33,7 +33,7 @@
 
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileStepTrace, RunOutcome,
-    is_source_whitespace,
+    StepOutcome, Termination, is_source_whitespace,
 };
 
 use super::code_cell_schedule::{
@@ -148,18 +148,31 @@ fn append_site_effects(
         }
     }
     if fetched_site {
-        let opcode = step
-            .decoded
-            .ok_or(SourceCodeCellTraceError::InvalidEffect)?;
-        if let Some(after) = self_write {
-            events.push(CodeCellEvent::FetchSelfWrite { opcode, after });
+        if step.result
+            == Ok(StepOutcome::Terminated(Termination::NonGraphicalCell))
+            && step
+                .fetched_cell
+                .is_some_and(|cell| !(33..=126).contains(&cell))
+            && step.decoded.is_none()
+        {
+            // A physical data/code alias may make a previously loader-valid
+            // code cell non-graphical. Its attempted fetch terminates before
+            // decode or XLAT2, but is still a real code-site effect.
+            events.push(CodeCellEvent::FetchNonGraphicalHalt);
         } else {
-            let requirement = if is_active(opcode, profile) {
-                CodeVisitRequirement::Decoded(opcode)
+            let opcode = step
+                .decoded
+                .ok_or(SourceCodeCellTraceError::InvalidEffect)?;
+            if let Some(after) = self_write {
+                events.push(CodeCellEvent::FetchSelfWrite { opcode, after });
             } else {
-                CodeVisitRequirement::Inert
-            };
-            events.push(CodeCellEvent::Fetch(requirement));
+                let requirement = if is_active(opcode, profile) {
+                    CodeVisitRequirement::Decoded(opcode)
+                } else {
+                    CodeVisitRequirement::Inert
+                };
+                events.push(CodeCellEvent::Fetch(requirement));
+            }
         }
     }
     if step

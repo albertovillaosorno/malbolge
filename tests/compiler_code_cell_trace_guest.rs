@@ -416,3 +416,115 @@ fn raw_source_whitespace_does_not_shift_code_cell_journals()
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-loaded non-graphical terminal fetch and physical alias"
+)]
+fn code_write_followed_by_non_graphical_fetch_is_a_valid_terminal_effect()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut source = (0..43u32)
+        .map(|site| encoded(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [(0, b'j'), (1, b'p'), (2, b'i'), (41, b'i')] {
+        *source.get_mut(site).ok_or("missing source cell")? = encoded(
+            u32::try_from(site).map_err(|error| error.to_string())?,
+            opcode,
+        )?;
+    }
+    // C0 j moves D to C41; C1 p writes a non-graphical word there.
+    // C2 i reads graphical M42=39 to jump to C40. C40 o advances to C41,
+    // which must terminate without fetching a decoded instruction or XLAT2.
+    *source.get_mut(42).ok_or("missing jump operand")? = 39;
+    assert_eq!(decode_profile_instruction(39, 42), Some(b'v'));
+    let mut machine = ProfileMachine::from_source(profile, &source, vec![])
+        .map_err(|error| error.to_string())?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(8, &mut |step| steps.push(*step))
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: malbolge::Termination::NonGraphicalCell,
+        steps: 5,
+    });
+    assert_eq!(steps.len(), 5);
+    let data = steps
+        .get(1)
+        .ok_or("missing reached p")?
+        .memory_delta
+        .data
+        .ok_or("missing p data write")?;
+    assert_eq!(data.address, 41);
+    assert!(data.after > 126);
+    assert_eq!(
+        steps.get(4).ok_or("missing terminal fetch")?.fetched_cell,
+        Some(data.after)
+    );
+    let terminal = steps.get(4).ok_or("missing terminal fetch")?;
+    assert_eq!(terminal.decoded, None);
+    assert_eq!(terminal.before.registers, terminal.after.registers);
+    assert!(terminal.memory_delta.data.is_none());
+    assert!(terminal.memory_delta.encryption.is_none());
+    assert!(terminal.memory_reads.encryption.is_none());
+    assert_eq!(machine.memory_word(41), Ok(data.after));
+    let verified = verify_source_code_cell_trace(profile, &source, &[], 8, 41)
+        .map_err(|error| format!("actual terminal source site: {error:?}"))?;
+    let journal = [
+        CodeCellEvent::DataWrite {
+            before: data.before,
+            after: data.after,
+        },
+        CodeCellEvent::FetchNonGraphicalHalt,
+    ];
+    assert_eq!(verified.events, journal);
+    assert_eq!(verified.schedule.data_writes, 1);
+    assert_eq!(verified.schedule.fetches, 1);
+    assert_eq!(verified.schedule.target_encryptions, 0);
+    assert_eq!(verified.final_word, data.after);
+    assert_eq!(verified.outcome, outcome);
+    let source_byte = *source.get(41).ok_or("missing aliased code")?;
+    assert_eq!(data.before, u32::from(source_byte));
+    assert_eq!(
+        admit_code_cell_schedule(profile, 41, source_byte, &journal),
+        Ok(verified.schedule),
+    );
+    assert_eq!(
+        admit_code_cell_schedule(profile, 41, source_byte, &[
+            CodeCellEvent::FetchNonGraphicalHalt,
+        ]),
+        Err(CodeCellScheduleError::DecodeMismatch { event: 0 }),
+        "the loader-graphical source cannot itself be a terminal fetch",
+    );
+    assert_eq!(
+        admit_code_cell_schedule(profile, 41, source_byte, &[
+            CodeCellEvent::DataWrite {
+                before: data.before,
+                after: data.after,
+            },
+            CodeCellEvent::FetchNonGraphicalHalt,
+            CodeCellEvent::JumpTargetEncryption,
+        ]),
+        Err(CodeCellScheduleError::EventsAfterHalt { event: 1 }),
+    );
+    assert_eq!(
+        admit_code_cell_schedule(historical_profile(), 41, source_byte, &[
+            CodeCellEvent::DataWrite {
+                before: data.before,
+                after: 127,
+            },
+            CodeCellEvent::FetchNonGraphicalHalt,
+        ]),
+        Err(CodeCellScheduleError::DecodeMismatch { event: 1 }),
+        "historical non-graphical fetch is not modern termination",
+    );
+    let mut missing_write = source.clone();
+    *missing_write.get_mut(1).ok_or("missing original p")? = encoded(1, b'o')?;
+    assert_ne!(
+        verify_source_code_cell_trace(profile, &missing_write, &[], 8, 41),
+        Ok(verified),
+        "removing the actual p must not authenticate its terminal journal",
+    );
+    Ok(())
+}
