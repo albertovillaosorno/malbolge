@@ -21,7 +21,8 @@ applies XLAT2 after every visit mis-models both cases.
 `encode_code_cell_schedule` in
 `src/compiler/malbolge-layout/composition/code_cell_schedule.rs` enumerates
 94 graphical candidate source bytes under an ordered, address-bound schedule
-of `Fetch(Decoded(opcode) | Inert)`, `JumpTargetEncryption`, and full-width
+of `Fetch(Decoded(opcode) | Inert)`, `JumpTargetEncryption`,
+`FetchSelfWrite { opcode, after }` and full-width
 `DataWrite { before, after }` events. `admit_code_cell_schedule` checks an
 already-proposed source byte instead. Both return the resulting full-width
 physical cell word, the initial graphical byte, and separate fetch, guest
@@ -33,8 +34,9 @@ fetch. Subsequent effects must be in actual execution order. Data writers
 bind exact before/after live memory versions (including non-graphical values).
 A later fetch must decode a graphical cell; off-site XLAT2 on a non-graphical
 cell is refused. A reached `v` cannot precede another event. The finite
-budget is **64 single-cell effects**, and invalid guest-width words or
-physical addresses are refused. No host state is installed into guest memory.
+budget is **64 chronological journal entries** (a coupled self-write counts
+as one entry), and invalid guest-width words or physical addresses refuse.
+No host state is installed into guest memory.
 
 These functions deliberately **do not** guess whether a jump or data writer
 can reach its claimed target, whether the source compiler's arithmetic
@@ -155,11 +157,10 @@ A separate two-step source-loaded `i; ...; v` guest verifies an initially
 unfetched code-cell XLAT2 event; a truly untouched cell instead reports
 `MissingEffect`. A zero/over-budget path is rejected before execution.
 The verifier is capped at the preexisting 512 steps and 4,096 source bytes.
-It refuses **same-step code/data self-aliases** because a single atomic
-`Fetch` event cannot represent the intervening write before encryption.
-Supporting those requires a finer event model. The result is specific to
-one input and finite guest prefix; it proves neither source-C arithmetic nor
-C23 branches, phi transfers, loops or correct EOF-checksum output.
+Same-step code/data writes now use the distinct coupled event described below;
+a standalone `Fetch` is never sufficient to authenticate the data write.
+The result is specific to one input and finite guest prefix; it proves neither
+source-C arithmetic nor C23 branches, phi transfers, loops or output parity.
 
 Reproduce the independent suite with:
 
@@ -198,3 +199,52 @@ branch arm selection, source phi edges, mutable checksum arithmetic and
 does **not** establish a reusable operation or the source C checksum.
 EOF-dependent termination and byte-stream correctness require separate
 independent guest/source semantic verification.
+
+## Same-Step Code/Data Self-Aliases
+
+A reached `p` or `*` can have **C == D**. In that case, the instruction
+first fetches the old graphical code word, then uses that *same* word as its
+data operand, writes the resulting accumulator into the code address, and
+finally encrypts the **new data word** through XLAT2. A separate atomic
+`Fetch` followed by a `DataWrite` is incorrect: it encrypts the old word
+before the write. The phase planner now represents this coupled transition
+as `FetchSelfWrite { opcode, after }`, counting one fetch and one physical
+data-write attempt. The returned word is `XLAT2(after)`. An invalid opcode,
+out-of-range result, or non-graphical post-write encryption target refuses.
+The 64-entry journal limit counts **chronological entries**; one compound
+self-write entry represents both its fetch and its reached data operation.
+
+`verify_source_code_cell_trace` reconstructs that compound entry from actual
+source-loaded VM steps. The VM reports only its final **net encryption delta**
+when data and code writes hit the same address. It does not report a separate
+intermediate `memory_delta.data` even when the intermediate data value changed.
+The verifier therefore authenticates the fetched code word, the exact data
+read at C == D, the post-instruction accumulator, and the final encryption
+delta before admitting the coupled event. Idempotent data writes remain
+counted even when they have no standalone changed-cell delta.
+
+Two independent source-loaded guests cover this previously rejected case
+on both the current N15 and frozen historical target profiles:
+
+- C0 `j`, C1 `p`, C2 `i` initialize A and skip the now-overwritten C41.
+  C76..C83 then reach C83 `j`, which aligns D with C84 `p`. The real
+  C84 operand/source word is 72; `p` writes the same 72 and XLAT2 encrypts
+  it. The 14-step guest halts at C85.
+- A different branch begins at C92. C121 `j` aligns D with C122 `*`,
+  which rotates its own fetched word 105 into 35, then XLAT2 encrypts
+  **35**, not 105. The 35-step guest halts at C123; the independent
+  VM net delta and physical final word agree exactly.
+
+Forged self-write opcodes, out-of-width words, and non-graphical written
+words refuse. A forged ordinary fetch of the reached `*` site produces a
+different final code word and omits its data write. These are real guest
+instruction effects, not arbitrary source-C arithmetic, conditional branches,
+repeatable loops, or a published C23 checksum. Cross-cell inputs/outputs and
+source-SSA/phi-state linkage remain open.
+
+Reproduce with:
+
+```sh
+.dependencies/rust/1.98.1/bin/cargo.bin test --locked \
+  --test compiler_code_cell_trace_guest
+```

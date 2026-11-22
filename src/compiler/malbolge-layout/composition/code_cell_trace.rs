@@ -12,8 +12,7 @@
 //   - Normative guest-origin code-cell phase journals including unchanged
 //     writes.
 // - Must-Not:
-//   - Infer source-C operations, admit same-step code/data aliases or publish
-//     code.
+//   - Infer source-C operations or publish code without whole-path proof.
 // - Allows:
 //   - Inputs: graphical source, binary stream, bounded steps and one code site.
 //   - Outputs: authenticated N15/classic site events and final live memory
@@ -59,8 +58,6 @@ pub enum SourceCodeCellTraceError {
     InvalidSource,
     /// No actual fetched, written or jump-encrypted effect reaches this site.
     MissingEffect,
-    /// Atomic fetch+encryption cannot represent same-step code/data writes.
-    SameStepCodeDataAlias,
     /// The exact chronological site events do not match the source byte.
     Schedule(CodeCellScheduleError),
 }
@@ -86,9 +83,9 @@ const fn is_active(opcode: u8, profile: &ProfileDescriptor) -> bool {
 
 /// Append one real guest step's effects on a single source code site.
 ///
-/// A same-step code/data alias cannot be modeled by an atomic `Fetch`: a
-/// `p` or `*` writes data *after* instruction fetch and *before* XLAT2.
-/// Reject rather than reorder those effects and certify a false schedule.
+/// A same-step code/data alias must be represented as one atomic
+/// `FetchSelfWrite`: `p` or `*` writes data *after* fetch and *before* XLAT2.
+/// Treating the same step as a standalone `Fetch` would encrypt the wrong word.
 #[expect(
     clippy::excessive_nesting,
     reason = "an idempotent writer must preserve exact operand and delta checks"
@@ -103,41 +100,65 @@ fn append_site_effects(
         return Err(SourceCodeCellTraceError::InvalidExecution);
     }
     let fetched_site = step.before.registers.code_pointer == site;
+    let mut self_write = None;
     if matches!(step.decoded, Some(b'p' | b'*')) {
         let read = step
             .memory_reads
             .data
             .ok_or(SourceCodeCellTraceError::InvalidEffect)?;
         if read.address == site {
-            if fetched_site {
-                return Err(SourceCodeCellTraceError::SameStepCodeDataAlias);
-            }
             let after = step.after.registers.accumulator;
-            if let Some(delta) = step.memory_delta.data {
-                if (delta.address, delta.before, delta.after)
-                    != (site, read.value, after)
+            if fetched_site {
+                // The normative VM reports only the *net* encryption delta
+                // for a same-address data write. It never publishes the
+                // intermediate p/* write in `memory_delta.data`.
+                let encrypted = malbolge::encrypt_profile_cell(after)
+                    .ok_or(SourceCodeCellTraceError::InvalidEffect)?;
+                let encryption_matches = match step.memory_delta.encryption {
+                    Some(delta) => {
+                        (delta.address, delta.before, delta.after)
+                            == (site, read.value, encrypted)
+                    },
+                    None => encrypted == read.value,
+                };
+                if step.fetched_cell != Some(read.value)
+                    || step.memory_delta.data.is_some()
+                    || !encryption_matches
                 {
                     return Err(SourceCodeCellTraceError::InvalidEffect);
                 }
-            } else if read.value != after {
-                return Err(SourceCodeCellTraceError::InvalidEffect);
+                self_write = Some(after);
+            } else {
+                if let Some(delta) = step.memory_delta.data {
+                    if (delta.address, delta.before, delta.after)
+                        != (site, read.value, after)
+                    {
+                        return Err(SourceCodeCellTraceError::InvalidEffect);
+                    }
+                } else if read.value != after {
+                    return Err(SourceCodeCellTraceError::InvalidEffect);
+                }
+                events.push(CodeCellEvent::DataWrite {
+                    before: read.value,
+                    after,
+                });
             }
-            events.push(CodeCellEvent::DataWrite {
-                before: read.value,
-                after,
-            });
         }
     }
     if fetched_site {
         let opcode = step
             .decoded
             .ok_or(SourceCodeCellTraceError::InvalidEffect)?;
-        let requirement = if is_active(opcode, profile) {
-            CodeVisitRequirement::Decoded(opcode)
+        if let Some(after) = self_write {
+            events.push(CodeCellEvent::FetchSelfWrite { opcode, after });
         } else {
-            CodeVisitRequirement::Inert
-        };
-        events.push(CodeCellEvent::Fetch(requirement));
+            let requirement = if is_active(opcode, profile) {
+                CodeVisitRequirement::Decoded(opcode)
+            } else {
+                CodeVisitRequirement::Inert
+            };
+            events.push(CodeCellEvent::Fetch(requirement));
+        }
     }
     if step
         .memory_delta
@@ -156,14 +177,14 @@ fn append_site_effects(
 /// An unchanged `p` or `*` still creates a `DataWrite` event, unlike a
 /// changed-cell delta-only projection. Source-valid code bytes are checked
 /// against chronological guest operations and the final live memory word.
-/// This intentionally refuses self-aliasing data/code instructions, which
-/// need a finer-grained fetch/write/encryption representation. The returned
-/// step outcome can be a budget stop and never implies a complete C23 program.
+/// Reached same-step `p`/`*` self-aliases are checked in their VM order as
+/// one fetch/write/XLAT2 effect. The returned step outcome can be a budget
+/// stop and never implies a complete C23 program.
 ///
 /// # Errors
 ///
-/// Rejects oversized sources/budgets, invalid VM code, unsupported aliases,
-/// inconsistent instruction effects and mismatched final physical memory.
+/// Rejects oversized sources/budgets, invalid VM code, inconsistent
+/// instruction effects and mismatched final physical memory.
 #[expect(
     clippy::too_many_arguments,
     reason = "source/profile identity, binary input, budget and physical site"

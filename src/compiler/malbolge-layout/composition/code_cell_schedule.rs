@@ -41,7 +41,8 @@ use malbolge::{
 
 use super::CodeVisitRequirement;
 
-/// At most this many chronological effects per code cell.
+/// At most this many chronological journal entries per code cell.
+/// A `FetchSelfWrite` represents two coupled physical effects in one entry.
 pub const MAX_CODE_CELL_EVENTS: usize = 64;
 
 /// One proposed chronological effect on a source-backed guest code cell.
@@ -55,6 +56,14 @@ pub enum CodeCellEvent {
     /// An `i` executed at some other code site encrypts *this* target cell.
     /// The caller must prove that jump and its exact target independently.
     JumpTargetEncryption,
+    /// One fetched `p` or `*` reads and writes its own code cell, then XLAT2
+    /// encrypts the just-written word. `after` is the full guest data result.
+    FetchSelfWrite {
+        /// Actual fetched writer instruction (`p` or `*` only).
+        opcode: u8,
+        /// Committed data result before the post-instruction encryption.
+        after: u32,
+    },
     /// A reached `p` or `*` at another code position writes this cell.
     /// The caller must prove the off-site writer and its exact operand.
     DataWrite {
@@ -140,8 +149,9 @@ fn admitted(profile: &ProfileDescriptor, opcode: u8) -> bool {
 /// must still decode to a loader-admitted instruction, even if overwritten
 /// before its first fetch. Data writes bind exact live `before`/`after` words
 /// and may leave non-graphical memory if no subsequent fetch or XLAT2
-/// operation requires it. Same-step self-aliases
-/// and other cross-cell effects still need whole-path VM verification.
+/// operation requires it. A `FetchSelfWrite` represents a reached `p` or
+/// `*` with C == D, where the guest encrypts its *new* data result. All
+/// proposed effects still require whole-path VM verification.
 ///
 /// This is a **necessary phase check only**, not independent evidence that
 /// any promised jump, input, arithmetic or backedge actually takes place.
@@ -218,6 +228,30 @@ pub fn admit_code_cell_schedule(
                         },
                     )?;
                 }
+            },
+            CodeCellEvent::FetchSelfWrite { opcode, after } => {
+                if !matches!(*opcode, b'p' | b'*')
+                    || decode_profile_instruction(cell, position)
+                        != Some(*opcode)
+                {
+                    return Err(CodeCellScheduleError::DecodeMismatch {
+                        event: index,
+                    });
+                }
+                if *after >= profile.memory_words() {
+                    return Err(CodeCellScheduleError::InvalidDataWord {
+                        event: index,
+                    });
+                }
+                // Normative order: fetch/decode, read old M[D], store the
+                // result at C == D, then encrypt that *new* code-cell word.
+                cell = encrypt_profile_cell(*after).ok_or(
+                    CodeCellScheduleError::InvalidEncryptionTarget {
+                        event: index,
+                    },
+                )?;
+                fetches = fetches.saturating_add(1);
+                data_writes = data_writes.saturating_add(1);
             },
             CodeCellEvent::JumpTargetEncryption => {
                 target_encryptions = target_encryptions.saturating_add(1);
