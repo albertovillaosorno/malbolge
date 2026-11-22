@@ -112,7 +112,7 @@ pub enum CodeCellScheduleError {
         /// Zero-based physical event index that cannot encrypt.
         event: usize,
     },
-    /// The initial fetch or pre-fetch write needs a loader-admitted byte.
+    /// The original source byte decodes to a loader-forbidden instruction.
     InvalidFirstEvent,
     /// A source cell is not a printable graphical instruction byte.
     InvalidSourceCell,
@@ -135,9 +135,12 @@ fn admitted(profile: &ProfileDescriptor, opcode: u8) -> bool {
 /// `JumpTargetEncryption`. Other non-halting fetches encrypt their own cell
 /// exactly once. A reached `v` halts and never encrypts itself. An event can
 /// claim an exact opcode or an inert decoded symbol, including explicit `o`.
-/// An off-site `DataWrite` may precede the first code fetch. It binds exact
-/// live `before`/`after` guest words and may leave non-graphical memory if no
-/// subsequent fetch or XLAT2 operation requires it. Same-step self-aliases
+/// An off-site `DataWrite` or jump-target encryption may precede the first
+/// code fetch. An initial inert `o` fetch is also legal. Every source byte
+/// must still decode to a loader-admitted instruction, even if overwritten
+/// before its first fetch. Data writes bind exact live `before`/`after` words
+/// and may leave non-graphical memory if no subsequent fetch or XLAT2
+/// operation requires it. Same-step self-aliases
 /// and other cross-cell effects still need whole-path VM verification.
 ///
 /// This is a **necessary phase check only**, not independent evidence that
@@ -170,13 +173,13 @@ pub fn admit_code_cell_schedule(
     if !(33..=126).contains(&initial) {
         return Err(CodeCellScheduleError::InvalidSourceCell);
     }
-    match events.first() {
-        Some(CodeCellEvent::Fetch(CodeVisitRequirement::Decoded(first)))
-            if admitted(profile, *first) => {},
-        Some(CodeCellEvent::DataWrite { .. })
-            if decode_profile_instruction(u32::from(initial), position)
-                .is_some_and(|opcode| admitted(profile, opcode)) => {},
-        _ => return Err(CodeCellScheduleError::InvalidFirstEvent),
+    // The loader authenticates the original source, not the first proposed
+    // effect. A valid initial o can be fetched inert, while a reached i can
+    // encrypt this cell even before it is ever fetched or data-written.
+    if !decode_profile_instruction(u32::from(initial), position)
+        .is_some_and(|opcode| admitted(profile, opcode))
+    {
+        return Err(CodeCellScheduleError::InvalidFirstEvent);
     }
     let mut cell = u32::from(initial);
     let mut fetches = 0usize;
@@ -268,13 +271,9 @@ pub fn encode_code_cell_schedule(
             Ok(schedule) => return Ok(schedule),
             Err(
                 CodeCellScheduleError::DecodeMismatch { .. }
-                | CodeCellScheduleError::DataWriteMismatch { .. },
+                | CodeCellScheduleError::DataWriteMismatch { .. }
+                | CodeCellScheduleError::InvalidFirstEvent,
             ) => {},
-            Err(CodeCellScheduleError::InvalidFirstEvent)
-                if matches!(
-                    events.first(),
-                    Some(CodeCellEvent::DataWrite { .. })
-                ) => {},
             Err(error) => return Err(error),
         }
     }

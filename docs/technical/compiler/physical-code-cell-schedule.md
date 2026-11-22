@@ -25,10 +25,12 @@ of `Fetch(Decoded(opcode) | Inert)`, `JumpTargetEncryption`, and full-width
 `DataWrite { before, after }` events. `admit_code_cell_schedule` checks an
 already-proposed source byte instead. Both return the resulting full-width
 physical cell word, the initial graphical byte, and separate fetch, guest
-data-write and jump-target XLAT2 counts. The first event must either fetch a
-loader-admitted source opcode or be a data write against such a source byte;
-subsequent events must be in actual execution order. Data writers bind the
-exact before/after live memory versions (including non-graphical values).
+data-write and jump-target XLAT2 counts. The *original* source byte must
+decode to a loader-admitted opcode regardless of its first scheduled effect.
+The first effect can be a fetch, a data write, **or an off-site jump-target
+XLAT2** before any fetch. A source-valid `o` can also be the first inert
+fetch. Subsequent effects must be in actual execution order. Data writers
+bind exact before/after live memory versions (including non-graphical values).
 A later fetch must decode a graphical cell; off-site XLAT2 on a non-graphical
 cell is refused. A reached `v` cannot precede another event. The finite
 budget is **64 single-cell effects**, and invalid guest-width words or
@@ -73,10 +75,29 @@ C43's schedule. Its computed final cell then **differs** from the normative
 VM final word; the omitted physical effect cannot be silently called a
 verified target state. Separate refusals cover incompatible second-read
 opcode, invalid source byte, invalid address, empty or over-budget schedule,
-unsupported initial event, and physical events after a halt. All 94 position
-phases under current and historical profiles permit repeated `i` fetches
+loader-forbidden initial source code, and physical events after a halt.
+All 94 position phases under current and historical profiles permit repeated
+`i` fetches
 without changing the code word; one explicit target-encryption event then
 changes the word by exactly XLAT2.
+
+An additional source-loaded two-step N15 guest now proves a missing
+first-effect case. A reached C0 `i` targets a future source cell, encrypts
+that cell without fetching it, and transfers to an adjacent real `v` halt.
+The first physical effect on the target is **only** XLAT2. The scheduler
+accepts that initial `JumpTargetEncryption`, reproduces the VM's final word,
+and refuses a following forged data write using the stale pre-XLAT2 value.
+An independently loaded `o; v` source executes an inert first instruction:
+`Fetch(Inert)` is equivalent to the reached `o` and must not be rejected
+as an invalid first event. Both regressions were red before the admission
+repair. The source loader still rejects initially invalid instructions,
+even when a later data write or XLAT2 would mutate them; a printable byte
+is not automatically loader-admitted. A proposed XLAT2-only schedule does
+not uniquely determine its original graphical byte, so the encoder's
+candidate must not be mistaken for the source's observed initial byte.
+
+This repairs source-valid event scheduling, not target reachability proofs,
+source-C control, reusable loop state or the complete checksum.
 
 Reproduce the focused source-loaded and C23 regression checks with:
 
