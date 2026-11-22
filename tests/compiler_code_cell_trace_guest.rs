@@ -369,3 +369,38 @@ fn source_loaded_fetch_and_self_write_preserves_real_event_order()
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "loader-accurate whitespace positions and source-backed VM parity"
+)]
+fn raw_source_whitespace_does_not_shift_code_cell_journals()
+-> Result<(), String> {
+    let source = source_with_self_alias(b'*', 92, 122, 72)?;
+    let mut spaced = Vec::new();
+    spaced.extend_from_slice(b" \t\n\x0b\x0c\r");
+    for (index, byte) in source.iter().copied().enumerate() {
+        spaced.push(byte);
+        spaced.push([b' ', b'\t', b'\n', 0x0b, 0x0c, b'\r'][index % 6]);
+    }
+    // A site outside the *loaded* code does not become valid just because
+    // whitespace occupies many raw presentation offsets.
+    let beyond =
+        u32::try_from(source.len()).map_err(|error| error.to_string())?;
+    for profile in [current_profile(), historical_profile()] {
+        let canonical =
+            verify_source_code_cell_trace(profile, &source, &[], 35, 122)
+                .map_err(|error| format!("canonical source: {error:?}"))?;
+        let formatted =
+            verify_source_code_cell_trace(profile, &spaced, &[], 35, 122)
+                .map_err(|error| format!("whitespace source: {error:?}"))?;
+        assert_eq!(canonical, formatted);
+        assert_eq!(formatted.schedule.initial, source[122]);
+        assert_eq!(
+            verify_source_code_cell_trace(profile, &spaced, &[], 35, beyond),
+            Err(SourceCodeCellTraceError::InvalidBound),
+        );
+    }
+    Ok(())
+}

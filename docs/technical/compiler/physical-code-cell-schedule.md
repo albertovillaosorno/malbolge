@@ -248,3 +248,20 @@ Reproduce with:
 .dependencies/rust/1.98.1/bin/cargo.bin test --locked \
   --test compiler_code_cell_trace_guest
 ```
+
+## Raw Loader Position Fidelity
+
+`verify_source_code_cell_trace` now resolves a requested code-site address
+through the raw source loader's exact six ASCII whitespace exclusions, not by
+indexing raw presentation bytes. A formatted source with spaces, tabs, LF, CR,
+vertical tabs, and form feeds therefore verifies the **same loaded code cell**
+as the equivalent compact source. An address beyond the loaded graphical
+source remains out of bounds even when its numerical offset falls within the
+longer whitespace-bearing presentation stream. This uses raw loader semantics:
+it does not skip annotated-source comments or reinterpret a `#` code byte.
+
+An independent real guest C122 self-rotation source is checked twice, once
+compact and once with all six whitespace forms interspersed. Current N15 and
+historical VM runs both produce the identical authenticated code-site journal,
+initial code word, final word and termination. These checks preserve the
+existing byte/step ceiling and do not imply source-C linkage.

@@ -33,6 +33,7 @@
 
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileStepTrace, RunOutcome,
+    is_source_whitespace,
 };
 
 use super::code_cell_schedule::{
@@ -202,12 +203,17 @@ pub fn verify_source_code_cell_trace(
     if steps == 0
         || steps > MAX_REVISIT_STEPS
         || source.len() > MAX_REVISIT_SOURCE_CELLS
-        || index >= source.len()
     {
         return Err(SourceCodeCellTraceError::InvalidBound);
     }
-    let initial = *source
-        .get(index)
+    // VM source positions count graphical code words, not presentation
+    // whitespace. Use the exact shared raw-loader predicate, including VT
+    // and FF; annotated-source comment handling does not apply here.
+    let initial = source
+        .iter()
+        .copied()
+        .filter(|byte| !is_source_whitespace(*byte))
+        .nth(index)
         .ok_or(SourceCodeCellTraceError::InvalidBound)?;
     let mut machine =
         ProfileMachine::from_source(profile, source, input.to_vec())
