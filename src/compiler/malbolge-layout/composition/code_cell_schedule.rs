@@ -131,7 +131,7 @@ pub enum CodeCellScheduleError {
     TooMany,
 }
 
-fn admitted(profile: &ProfileDescriptor, opcode: u8) -> bool {
+const fn admitted(profile: &ProfileDescriptor, opcode: u8) -> bool {
     matches!(opcode, b'o' | b'i' | b'j' | b'p' | b'*' | b'v')
         || opcode == profile.input_instruction()
         || opcode == profile.output_instruction()

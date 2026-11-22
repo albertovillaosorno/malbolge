@@ -200,8 +200,11 @@ fn source_with_self_alias(
     self_site: u32,
     operand_site: u32,
 ) -> Result<Vec<u8>, String> {
-    let len =
-        usize::try_from(self_site + 2).map_err(|error| error.to_string())?;
+    let stop = self_site.checked_add(2).ok_or("source exceeds u32")?;
+    let previous = self_site.checked_sub(1).ok_or("missing predecessor")?;
+    let next = self_site.checked_add(1).ok_or("missing successor")?;
+    let entry_data = entry.checked_sub(1).ok_or("missing entry operand")?;
+    let len = usize::try_from(stop).map_err(|error| error.to_string())?;
     let mut source = (0..u32::try_from(len)
         .map_err(|error| error.to_string())?)
         .map(|site| encoded(site, b'o'))
@@ -210,16 +213,15 @@ fn source_with_self_alias(
         (0, b'j'),
         (1, b'p'),
         (2, b'i'),
-        (self_site - 1, b'j'),
+        (previous, b'j'),
         (self_site, opcode),
-        (self_site + 1, b'v'),
+        (next, b'v'),
     ] {
         *source
             .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
             .ok_or("missing code site")? = encoded(site, operation)?;
     }
-    for (site, value) in
-        [(41, 40), (42, entry - 1), (operand_site, self_site - 1)]
+    for (site, value) in [(41, 40), (42, entry_data), (operand_site, previous)]
     {
         *source
             .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
@@ -232,6 +234,8 @@ fn source_with_self_alias(
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
     reason = "real same-step guest self-alias and exact journal evidence"
 )]
 fn source_loaded_fetch_and_self_write_preserves_real_event_order()
@@ -380,9 +384,14 @@ fn raw_source_whitespace_does_not_shift_code_cell_journals()
     let source = source_with_self_alias(b'*', 92, 122, 72)?;
     let mut spaced = Vec::new();
     spaced.extend_from_slice(b" \t\n\x0b\x0c\r");
-    for (index, byte) in source.iter().copied().enumerate() {
+    let whitespace = [b' ', b'\t', b'\n', 0x0b, 0x0c, b'\r'];
+    for (byte, separator) in source
+        .iter()
+        .copied()
+        .zip(whitespace.iter().copied().cycle())
+    {
         spaced.push(byte);
-        spaced.push([b' ', b'\t', b'\n', 0x0b, 0x0c, b'\r'][index % 6]);
+        spaced.push(separator);
     }
     // A site outside the *loaded* code does not become valid just because
     // whitespace occupies many raw presentation offsets.
@@ -396,7 +405,10 @@ fn raw_source_whitespace_does_not_shift_code_cell_journals()
             verify_source_code_cell_trace(profile, &spaced, &[], 35, 122)
                 .map_err(|error| format!("whitespace source: {error:?}"))?;
         assert_eq!(canonical, formatted);
-        assert_eq!(formatted.schedule.initial, source[122]);
+        assert_eq!(
+            formatted.schedule.initial,
+            *source.get(122).ok_or("missing source site")?,
+        );
         assert_eq!(
             verify_source_code_cell_trace(profile, &spaced, &[], 35, beyond),
             Err(SourceCodeCellTraceError::InvalidBound),

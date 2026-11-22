@@ -89,7 +89,8 @@ const fn is_active(opcode: u8, profile: &ProfileDescriptor) -> bool {
 /// Treating the same step as a standalone `Fetch` would encrypt the wrong word.
 #[expect(
     clippy::excessive_nesting,
-    reason = "an idempotent writer must preserve exact operand and delta checks"
+    clippy::too_many_lines,
+    reason = "real fetch, self-write, data and XLAT2 journal ordering"
 )]
 fn append_site_effects(
     profile: &ProfileDescriptor,
@@ -115,13 +116,13 @@ fn append_site_effects(
                 // intermediate p/* write in `memory_delta.data`.
                 let encrypted = malbolge::encrypt_profile_cell(after)
                     .ok_or(SourceCodeCellTraceError::InvalidEffect)?;
-                let encryption_matches = match step.memory_delta.encryption {
-                    Some(delta) => {
+                let encryption_matches = step.memory_delta.encryption.map_or(
+                    encrypted == read.value,
+                    |delta| {
                         (delta.address, delta.before, delta.after)
                             == (site, read.value, encrypted)
                     },
-                    None => encrypted == read.value,
-                };
+                );
                 if step.fetched_cell != Some(read.value)
                     || step.memory_delta.data.is_some()
                     || !encryption_matches
