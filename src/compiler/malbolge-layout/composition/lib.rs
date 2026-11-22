@@ -51,6 +51,7 @@ mod byte_exact_input_reentry;
 mod byte_exact_input_store;
 mod c23_c32_constant_writer;
 mod code_cell_schedule;
+mod code_cell_trace;
 mod eof_branch_plan;
 mod eof_c23_conversion_source;
 mod eof_output_plan;
@@ -96,6 +97,10 @@ pub use c23_c32_constant_writer::{
 pub use code_cell_schedule::{
     CodeCellEvent, CodeCellSchedule, CodeCellScheduleError,
     MAX_CODE_CELL_EVENTS, admit_code_cell_schedule, encode_code_cell_schedule,
+};
+pub use code_cell_trace::{
+    SourceCodeCellTrace, SourceCodeCellTraceError,
+    verify_source_code_cell_trace,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

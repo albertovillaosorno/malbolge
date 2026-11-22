@@ -129,6 +129,45 @@ scheduling, but not physical source-C EOF branching, phi writes or a loop.
 See `docs/technical/compiler/physical-code-data-aliasing.md` for the full
 bounded witness and its exact limitations.
 
+## Normative Guest-Origin Journals, Including Unchanged Stores
+
+`verify_source_code_cell_trace` in
+`src/compiler/malbolge-layout/composition/code_cell_trace.rs` now replays a
+source-loaded canonical VM for one binary input and bounded step budget. It
+collects a single **source-backed code cell's** fetched instructions,
+actual `i`-target XLAT2 and actual `p`/`*` data writes in chronological
+order, then checks the source byte, resulting schedule and VM final memory.
+It never accepts a caller-supplied effect journal as its evidence.
+
+Changed-memory deltas intentionally omit writes where `before == after`.
+The new verifier instead reads the VM's actual data operand and the actual
+post-instruction accumulator on *every reached* `p`/`*`. A 59-cell graphical
+N15 source with reached `j; p; j; p; v` first makes A=7,174,453 using M41=40.
+The second `j` sets D to M57 using M42=56. The second `p` then computes
+`crazy(60, 7,174,453) == 60`, writing source-backed M57 **idempotently**.
+The normative trace records no changed-value data delta, but the verified
+journal records exactly `DataWrite { before: 60, after: 60 }`. Replacing the
+second `p` with an inert `o` removes the physical write and is refused as
+`MissingEffect`. This proves why a delta-only source-cell journal is
+insufficient even when the final memory word happens to match.
+
+A separate two-step source-loaded `i; ...; v` guest verifies an initially
+unfetched code-cell XLAT2 event; a truly untouched cell instead reports
+`MissingEffect`. A zero/over-budget path is rejected before execution.
+The verifier is capped at the preexisting 512 steps and 4,096 source bytes.
+It refuses **same-step code/data self-aliases** because a single atomic
+`Fetch` event cannot represent the intervening write before encryption.
+Supporting those requires a finer event model. The result is specific to
+one input and finite guest prefix; it proves neither source-C arithmetic nor
+C23 branches, phi transfers, loops or correct EOF-checksum output.
+
+Reproduce the independent suite with:
+
+```sh
+.dependencies/rust/1.98.1/bin/cargo.bin test \
+  --test compiler_code_cell_trace_guest
+```
+
 ## Input-Site XLAT2 Orbit Census
 
 A distinct exhaustive check of all 94 positional decode phases requires a
