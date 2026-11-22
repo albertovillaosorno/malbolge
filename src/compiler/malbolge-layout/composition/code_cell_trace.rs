@@ -31,6 +31,8 @@
 //! traces retain the operand read and resulting accumulator even in that case.
 //! This verifier uses the normative VM itself, not caller-forged trace events.
 
+use std::collections::BTreeMap;
+
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileStepTrace, RunOutcome,
     StepOutcome, Termination, is_source_whitespace,
@@ -263,5 +265,186 @@ pub fn verify_source_code_cell_trace(
         final_word,
         outcome,
         schedule,
+    })
+}
+
+/// One source code cell changed, fetched or jump-encrypted by the real guest.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceCodeImageCellTrace {
+    /// Code position in loaded, whitespace-stripped source coordinates.
+    pub site: u32,
+    /// Chronological code/data effects from the single normative replay.
+    pub events: Vec<CodeCellEvent>,
+    /// Independently checked full-width final word at this code site.
+    pub final_word: u32,
+    /// Admitted phase transition schedule for this code site.
+    pub schedule: CodeCellSchedule,
+}
+
+/// Complete bounded source-code image accounting from one guest execution.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceCodeImageTrace {
+    /// Physical sites with at least one actual effect, sorted by code address.
+    pub touched: Vec<SourceCodeImageCellTrace>,
+    /// Count of loader-admitted source cells, excluding raw whitespace.
+    pub source_cells: usize,
+    /// Normative guest termination or exact step-budget exhaustion.
+    pub outcome: RunOutcome,
+}
+
+/// Precise bounded whole-source code-image verification refusal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceCodeImageTraceError {
+    /// Source or step budget exceeds the existing finite trace limits.
+    InvalidBound,
+    /// The normative guest did not commit the requested bounded execution.
+    InvalidExecution,
+    /// Source bytes were not admitted by the selected normative loader.
+    InvalidSource,
+    /// This code site's real effects could not be reconciled with its source.
+    Cell {
+        /// Loaded source code position with inconsistent effects.
+        site: u32,
+        /// Exact underlying one-site refusal.
+        error: SourceCodeCellTraceError,
+    },
+    /// A source cell changed without any observed fetched/write/XLAT2 effect.
+    UntouchedChanged {
+        /// Loaded source cell with a missing physical effect.
+        site: u32,
+    },
+}
+
+/// Find all possible source-code sites touched by this physical step.
+///
+/// The fetched instruction, guest `p`/`*` data operand and encryption target
+/// can alias. The caller deduplicates them before reconstructing effects.
+fn affected_code_sites(step: &ProfileStepTrace) -> [Option<u32>; 4] {
+    let write = if matches!(step.decoded, Some(b'p' | b'*')) {
+        step.memory_reads.data.map(|read| read.address)
+    } else {
+        None
+    };
+    [
+        step.memory_reads.fetch.map(|read| read.address),
+        write,
+        step.memory_reads.encryption.map(|read| read.address),
+        step.memory_delta.encryption.map(|delta| delta.address),
+    ]
+}
+
+/// Verify every loaded source code cell against one complete physical replay.
+///
+/// All actual fetches, idempotent and changed data writes, and off-site `i`
+/// XLAT2 effects are considered in chronological VM order. Each touched code
+/// word is independently checked by the phase scheduler. Every untouched
+/// source word is also compared with final VM memory, so missing write effects
+/// cannot silently leave a mismatched code image. Only the loaded *source*
+/// region is claimed, not arbitrary loader-expanded memory or C23 semantics.
+///
+/// # Errors
+///
+/// Rejects invalid source/bounds, VM execution failure, per-site phase
+/// mismatches and unexplained final changes to source code memory.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one bounded normative replay and full source-image reconciliation"
+)]
+pub fn verify_source_code_image_trace(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    input: &[u8],
+    steps: usize,
+) -> Result<SourceCodeImageTrace, SourceCodeImageTraceError> {
+    if steps == 0
+        || steps > MAX_REVISIT_STEPS
+        || source.len() > MAX_REVISIT_SOURCE_CELLS
+    {
+        return Err(SourceCodeImageTraceError::InvalidBound);
+    }
+    let initial = source
+        .iter()
+        .copied()
+        .filter(|byte| !is_source_whitespace(*byte))
+        .collect::<Vec<_>>();
+    let source_cells = initial.len();
+    let mut machine =
+        ProfileMachine::from_source(profile, source, input.to_vec())
+            .map_err(|_error| SourceCodeImageTraceError::InvalidSource)?;
+    let mut per_site = BTreeMap::<u32, Vec<CodeCellEvent>>::new();
+    let mut failure = None;
+    let outcome = machine
+        .run_traced(steps, &mut |step| {
+            if failure.is_some() {
+                return;
+            }
+            if step.result.is_err() {
+                failure = Some(SourceCodeImageTraceError::InvalidExecution);
+                return;
+            }
+            let mut seen = Vec::with_capacity(4);
+            for site in affected_code_sites(step).into_iter().flatten() {
+                if usize::try_from(site)
+                    .ok()
+                    .is_none_or(|index| index >= source_cells)
+                    || seen.contains(&site)
+                {
+                    continue;
+                }
+                seen.push(site);
+                if let Err(error) = append_site_effects(
+                    profile,
+                    site,
+                    step,
+                    per_site.entry(site).or_default(),
+                ) {
+                    failure =
+                        Some(SourceCodeImageTraceError::Cell { site, error });
+                    break;
+                }
+            }
+        })
+        .map_err(|_error| SourceCodeImageTraceError::InvalidExecution)?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    let mut touched = Vec::with_capacity(per_site.len());
+    for (index, source_byte) in initial.into_iter().enumerate() {
+        let site = u32::try_from(index)
+            .map_err(|_error| SourceCodeImageTraceError::InvalidBound)?;
+        let final_word = machine
+            .memory_word(site)
+            .map_err(|_error| SourceCodeImageTraceError::InvalidExecution)?;
+        let Some(events) = per_site.remove(&site) else {
+            if final_word != u32::from(source_byte) {
+                return Err(SourceCodeImageTraceError::UntouchedChanged {
+                    site,
+                });
+            }
+            continue;
+        };
+        let schedule =
+            admit_code_cell_schedule(profile, site, source_byte, &events)
+                .map_err(|error| SourceCodeImageTraceError::Cell {
+                    site,
+                    error: SourceCodeCellTraceError::Schedule(error),
+                })?;
+        if schedule.final_cell != final_word {
+            return Err(SourceCodeImageTraceError::Cell {
+                site,
+                error: SourceCodeCellTraceError::FinalWordMismatch,
+            });
+        }
+        touched.push(SourceCodeImageCellTrace {
+            site,
+            events,
+            final_word,
+            schedule,
+        });
+    }
+    Ok(SourceCodeImageTrace {
+        touched,
+        source_cells,
+        outcome,
     })
 }

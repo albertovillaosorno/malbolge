@@ -298,3 +298,40 @@ termination or claim the modern halt rule under the historical profile.
 This closes one physical code/data alias verification gap only. It does
 not provide a dynamic C23 branch, reusable EOF loop, guest arithmetic,
 source-state linkage or publication of the full mutable checksum.
+
+## Complete Source-Code Image Journal (2026-11-21)
+
+`verify_source_code_image_trace` now uses **one** bounded, normative
+profile VM execution to inspect the entire loaded source-code region,
+rather than replaying the same binary stream separately for each code
+site. For every reached instruction, it gathers all in-range fetched,
+written and encryption-target cells, deduplicates same-step aliases, and
+appends chronological effects through the existing single-cell event
+checker. Every touched site must pass `admit_code_cell_schedule` against
+its original loader-admitted byte and its independent final VM word;
+every **untouched** site must retain that initial source byte. The output
+is address-sorted and preserves exact step-budget or termination status.
+Raw input whitespace follows the normative six-byte C-locale predicate.
+No arbitrary loader-expanded word is claimed to be a source code site.
+
+The tests use a real 81-step N15 future-code mutation (C57 `*` changes
+C79 from output to input), with independent single-site and full-VM
+comparison; a real 120-cell, 83-step four-read physical guest with seven
+C47 input-site fetches, seven unchanged C49 `i` fetches and true off-site
+C43 jump-target encryption; original/whitespace-rich byte-for-byte
+journal parity; a historical C0/C1 halt with untouched C2/C3 source
+suffix; and a real non-graphical C41 terminating fetch after an off-site
+C1 `p` write. Oversized budgets, invalid input code and source lengths
+refuse. The four-read trace is a budget-limited prefix, not a proved
+source-C iteration or arbitrary stream. One replay prevents independent
+per-site executions from accidentally combining different guest paths,
+but still establishes **physical image consistency only**: no source-SSA
+arithmetic, phi-transfer, signed-EOF branch, or complete mutable C23
+checksum linkage follows from this local verifier.
+
+To reproduce the focused image checks:
+
+```sh
+.dependencies/rust/1.98.1/bin/cargo.bin test \
+  --test compiler_code_image_trace_guest
+```

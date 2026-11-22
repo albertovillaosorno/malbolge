@@ -99,8 +99,9 @@ pub use code_cell_schedule::{
     MAX_CODE_CELL_EVENTS, admit_code_cell_schedule, encode_code_cell_schedule,
 };
 pub use code_cell_trace::{
-    SourceCodeCellTrace, SourceCodeCellTraceError,
-    verify_source_code_cell_trace,
+    SourceCodeCellTrace, SourceCodeCellTraceError, SourceCodeImageCellTrace,
+    SourceCodeImageTrace, SourceCodeImageTraceError,
+    verify_source_code_cell_trace, verify_source_code_image_trace,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,
