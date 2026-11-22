@@ -29,6 +29,7 @@
 use malbolge::{
     ProfileMachine, ProfileMemoryRead, ProfileRegisters, ProfileStepTrace,
     RunOutcome, TraceInput, current_profile, decode_profile_instruction,
+    encrypt_profile_cell,
 };
 
 // The checked two-p byte-exact reentry fixture, with only its C24 halt
@@ -38,6 +39,14 @@ const GUEST_EOF: u32 = 14_348_906;
 const ONE_TRITS: u32 = 7_174_453;
 const GUEST_STEPS: usize = 25;
 const SIX_PHASE_ROM: [u32; 6] = [7_174_489, 36, 7_174_489, 72, 7_174_453, 72];
+
+// Freeze the first 25 code-cell XLAT2 results independently from guest
+// tracing. Every source-loaded execution reaches C0..C24 in that order;
+// subsequent indexed reads must consult this *encrypted* code region.
+const EXECUTED_CODE_WORDS: [u32; 25] = [
+    33, 85, 62, 59, 81, 43, 76, 100, 51, 92, 37, 91, 44, 89, 58, 52, 107, 119,
+    80, 87, 123, 52, 68, 120, 126,
+];
 
 // Deliberately separate from the normative VM's precomputed crazy table.
 #[expect(
@@ -145,6 +154,11 @@ fn real_guest_high_byte_parity_addresses_and_alias_exceptions()
             RunOutcome::BudgetExhausted { steps: GUEST_STEPS }
         );
         assert_eq!(trace.len(), GUEST_STEPS);
+        for (step_index, step) in trace.iter().enumerate() {
+            let expected_code =
+                u32::try_from(step_index).map_err(|error| error.to_string())?;
+            assert_eq!(step.before.registers.code_pointer, expected_code);
+        }
         let read = trace.get(13).ok_or("missing physical input")?;
         assert_eq!(read.decoded, Some(b'/'));
         assert_eq!(
@@ -256,5 +270,67 @@ fn replacing_indexed_j_with_inert_code_removes_parity_routing()
                 + 1
         );
     }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "closed 256-input code/data-alias census, not full VM replay"
+)]
+fn full_byte_scalar_census_refuses_fourteen_parity_aliases()
+-> Result<(), String> {
+    let guest = ProfileMachine::from_source(current_profile(), SOURCE, vec![])
+        .map_err(|error| error.to_string())?;
+    for (index, &ciphertext) in EXECUTED_CODE_WORDS.iter().enumerate() {
+        let source_cell = SOURCE.get(index).copied().ok_or("missing code")?;
+        assert_eq!(
+            encrypt_profile_cell(u32::from(source_cell)),
+            Some(ciphertext)
+        );
+    }
+    let mut parity_failures = Vec::new();
+    let mut rom_hits: usize = 0;
+    let mut live_alias_hits: usize = 0;
+    for byte in u8::MIN..=u8::MAX {
+        let address = u32::from(byte) + 1;
+        let live_operand = match address {
+            1..=24 => {
+                let index = usize::try_from(address)
+                    .map_err(|error| error.to_string())?;
+                EXECUTED_CODE_WORDS
+                    .get(index)
+                    .copied()
+                    .ok_or("missing encrypted code word")?
+            },
+            25 | 26 => {
+                let index = usize::try_from(address)
+                    .map_err(|error| error.to_string())?;
+                u32::from(*SOURCE.get(index).ok_or("missing source tail")?)
+            },
+            73 => {
+                live_alias_hits = live_alias_hits.saturating_add(1);
+                u32::from(byte)
+            },
+            121 => {
+                live_alias_hits = live_alias_hits.saturating_add(1);
+                scalar_crazy(ONE_TRITS, u32::from(byte))
+            },
+            _ => {
+                rom_hits = rom_hits.saturating_add(1);
+                guest
+                    .memory_word(address)
+                    .map_err(|error| error.to_string())?
+            },
+        };
+        if (live_operand > 1_000_000) != (byte.rem_euclid(2) == 0) {
+            parity_failures.push(byte);
+        }
+    }
+    assert_eq!(rom_hits, 228);
+    assert_eq!(live_alias_hits, 2);
+    assert_eq!(parity_failures, vec![
+        0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 72,
+    ]);
     Ok(())
 }

@@ -79,6 +79,30 @@ would be unsound. An `i` transfer would additionally need valid code
 landing pads and source-C branch equivalence for all 257 byte/EOF
 classes. None is established here.
 
+## Whole-byte scalar census (not whole-byte guest parity)
+
+A closed 256-byte scalar audit of this **same** source accounts for all
+25 sequential fetched code-cell XLAT2 writes, the two original source
+tail bytes, the two live `p` data writes, and the rest of the generated
+loader. Reading the indexed cell and comparing its word to one million
+would partition 242 of 256 bytes by parity, but **14 bytes disagree**:
+
+- Bytes `0, 2, 4, ..., 24` index encrypted graphical code (M1..M25,
+  where M25 is the untouched source tail); all 13 are even but their
+  indexed operand is a small graphical word.
+- Byte `72` is even but indexes input-overwritten M73=72, not the
+  original loader all-one word. M121 is also mutable but its collision
+  for byte `120` remains in the large-value parity class.
+
+The auditor's 256 index classes cover 24 encrypted-code positions,
+two source-tail positions, 228 virgin loader positions, and two live
+store aliases. The 128 high-byte VM tests and two alias-specific VM
+traces confirm the reachable physical read paths. This audit is a
+**necessary negative result** for treating this fixed indexed lookup
+as a total C parity primitive, not proof of a physically executing
+conditional branch for the other 242 cases. EOF is a separate raw
+profile sentinel and cannot be counted as a successful C byte.
+
 ## Finite verification and next capability
 
 `tests/compiler_loader_periodic_dispatch_guest.rs` independently derives
@@ -91,7 +115,8 @@ routing on two opposite-parity bytes. The first 25-step guest prefix is
 input-independent in its fetched code positions and two data-write
 addresses; only the raw values differ. The six physical input-residue
 classes and the independent full six-cycle calculation establish the
-bounded high-byte partition.
+bounded high-byte partition. The same suite also closes the 256-case
+scalar alias census and explicitly refuses all 14 failing byte classes.
 
 This experiment is finite and positive only for the stated pointer
 transfer. It does not warrant acceptance of any C expression or guest
