@@ -169,6 +169,34 @@ Reproduce the independent suite with:
   --test compiler_code_cell_trace_guest
 ```
 
+## Complete-Prefix Physical Stores and Byte-Stream Effects (2026-11-23)
+
+`verify_source_physical_image_trace` also returns an **ordered physical
+store journal**, separate from the per-cell code/loader phase schedules.
+Every reached `p` or `*` records its decoded code address, D address, exact
+pre-operation operand, post-operation accumulator/write, guest step and
+last prior physical effect. The intermediate data write is retained even
+when `before == after` or C == D: a VM changed-cell delta alone loses both
+kinds of write. Subsequent operand reads still record their preceding store
+and the latest XLAT2, without asserting that either is a source-C local.
+
+The same normative pass records actual I/O in instruction order: each `/`
+includes its raw accumulator and an explicit input byte or true EOF; each
+`<` includes the previous accumulator and emitted low byte. The checker
+reconciles these events with the VM's total bytes consumed and output.
+Repeated EOF reads are not invented byte consumption. A fresh graphical
+`/; <; v` guest proves output ordering on empty, NUL and high-byte input;
+the four-read source proves repeated EOF and guest input-site identity.
+A five-step source verifies a physically idempotent `p`, while a C84
+same-step `p` code/data alias verifies its intermediate store before XLAT2.
+Removing the idempotent `p` removes the physical write even though the
+final word is unchanged.
+
+This is an input-specific, <=512-step **physical footprint**; it does not
+translate the C23 checksum, certify unexecuted branches, link signed C32
+result cells, prove SSA arithmetic or authorize guest artifact publication.
+The unchanged source-controlled checksum still refuses at the linker.
+
 ## Input-Site XLAT2 Orbit Census
 
 A distinct exhaustive check of all 94 positional decode phases requires a

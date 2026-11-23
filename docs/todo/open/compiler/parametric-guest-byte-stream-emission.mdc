@@ -75,6 +75,18 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the complete physical-image trace gained chronological
+  `p`/`*` write identities and raw guest input/EOF/output events, including
+  idempotent and same-step code/data stores not visible as data deltas.
+  Source-loaded current-N15 guests check exact operand values, last effects,
+  input bytes versus EOF, actual output bytes and step ordering. Full-image
+  I/O totals reconcile with the normative VM. This is a necessary physical
+  memory/I/O provenance capability for linking source C, not the missing C32
+  signed-local conversion, checksum arithmetic, phi control or EOF loop.
+  The five-source-stream C23 oracle and explicit linker-refusal gate still
+  pass; no checksum `.malbolge` artifact is published. See
+  `tests/compiler_code_image_trace_guest.rs` and the physical schedule record.
+
 - On 2026-11-22 the source-locked physical code planner gained authenticated
   **first-effect operation anchors**, leaving bounded setup gaps before
   concrete input/compute/store obligations. The unchanged 132-cell current-N15

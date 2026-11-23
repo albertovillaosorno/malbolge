@@ -30,8 +30,9 @@ pub mod layout;
 
 use layout::{
     CodeCellEvent, CodeVisitRequirement, SourceCodeImageTraceError,
-    SourcePhysicalCodeFetch, SourcePhysicalDataRead,
-    SourcePhysicalImageTraceError, SourcePhysicalWordEffect,
+    SourcePhysicalCodeFetch, SourcePhysicalDataRead, SourcePhysicalDataWrite,
+    SourcePhysicalImageTraceError, SourcePhysicalIoEvent,
+    SourcePhysicalWordEffect,
     build_byte_exact_input_store_source, verify_source_code_cell_trace,
     verify_source_code_image_trace, verify_source_expanded_code_cells_trace,
     verify_source_physical_image_trace,
@@ -170,9 +171,10 @@ fn full_four_input_code_image_has_repeated_fetches_and_offsite_xlat2()
 -> Result<(), String> {
     let profile = current_profile();
     for input in [&b""[..], &b"\x00\xff\x80\x01\x02"[..]] {
-        let image =
-            verify_source_code_image_trace(profile, FOUR_READS, input, 83)
+        let full =
+            verify_source_physical_image_trace(profile, FOUR_READS, input, 83)
                 .map_err(|error| format!("four-read image: {error:?}"))?;
+        let image = &full.source;
         assert_eq!(image.source_cells, 120);
         assert_eq!(image.outcome, RunOutcome::BudgetExhausted { steps: 83 });
         for (site, fetches, jump_encryption) in
@@ -189,6 +191,33 @@ fn full_four_input_code_image_has_repeated_fetches_and_offsite_xlat2()
                 jump_encryption
             );
         }
+        let actual_input = if input.is_empty() {
+            TraceInput::EndOfInput
+        } else {
+            TraceInput::Byte(input[0])
+        };
+        let io_reads = &full.io_events;
+        assert_eq!(io_reads.len(), 5);
+        assert_eq!(
+            io_reads.iter().filter(|event| matches!(
+                event, SourcePhysicalIoEvent::Input { code_address: 47, .. }
+            )).count(),
+            4,
+        );
+        assert!(matches!(io_reads[3], SourcePhysicalIoEvent::Output {
+            code_address: 46,
+            trace_index: 73,
+            ..
+        }));
+        assert_eq!(io_reads[0], SourcePhysicalIoEvent::Input {
+            code_address: 47,
+            raw_word: match actual_input {
+                TraceInput::Byte(byte) => u32::from(byte),
+                TraceInput::EndOfInput => profile.eof_word(),
+            },
+            read: actual_input,
+            trace_index: 47,
+        });
         let input_site = image
             .touched
             .iter()
@@ -472,6 +501,15 @@ fn physical_image_discovers_indirect_jump_and_unexecutable_expanded_cell()
     // Prove one actually reached guest p write precedes the later i operand
     // read of the *new* value, without inferring a C source branch.
     assert_eq!(complete.data_reads, INDIRECT_DATA_READS);
+    assert_eq!(complete.data_writes, [SourcePhysicalDataWrite {
+        code_address: 1,
+        data_address: 41,
+        before: 7_174_467,
+        after: 7_174_480,
+        last_word_effect: None,
+        opcode: b'p',
+        trace_index: 1,
+    }]);
     assert_eq!(
         complete.expanded,
         verify_source_expanded_code_cells_trace(profile, source, &[], 5, &[
@@ -499,6 +537,15 @@ fn physical_fetches_retain_data_write_and_xlat2_provenance()
         verify_source_physical_image_trace(profile, DYNAMIC_INPUT, &[], 81)
             .map_err(|error| format!("source-code alias image: {error:?}"))?;
     assert_eq!(alias.code_fetches.len(), 81);
+    assert!(alias.data_writes.iter().any(|write| {
+        write.code_address == 57
+            && write.opcode == b'*'
+            && write.data_address == 79
+            && write.before == 114
+            && write.after == 38
+            && write.last_word_effect.is_none()
+            && write.trace_index == 57
+    }));
     assert_eq!(alias.code_fetches[79], SourcePhysicalCodeFetch {
         code_address: 79,
         last_data_write_step: Some(57),
@@ -798,6 +845,15 @@ fn physical_operand_reads_preserve_loader_positions_and_prefix_bounds()
             steps: 3,
         });
         assert_eq!(complete.data_reads.len(), 2);
+        assert_eq!(complete.data_writes.len(), 1);
+        assert_eq!(complete.data_writes[0].trace_index, 1);
+        assert_eq!(complete.data_writes[0].code_address, 1);
+        assert_eq!(complete.data_writes[0].data_address, 41);
+        assert_eq!(
+            complete.data_writes[0].before,
+            complete.data_reads[1].value
+        );
+        assert_eq!(complete.data_writes[0].opcode, b'p');
         assert_eq!(
             complete.data_reads.first().map(|read| (
                 read.trace_index,
@@ -838,8 +894,221 @@ fn physical_operand_reads_preserve_loader_positions_and_prefix_bounds()
                     format!("one-step read-only prefix: {error:?}")
                 })?;
         assert!(prefix.expanded.is_empty());
+        assert!(prefix.data_writes.is_empty());
         assert_eq!(prefix.data_reads.len(), 1);
         assert_eq!(prefix.data_reads.first(), complete.data_reads.first());
     }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "three real guest I/O instructions and exact EOF effects"
+)]
+fn physical_input_output_journal_keeps_raw_eof_and_output_order()
+-> Result<(), String> {
+    // The actual graphical source executes /; <; v. This is a physical
+    // I/O witness only: it is not a source-C EOF normalization or checksum.
+    let profile = current_profile();
+    let source = [b'/', b'<', b'v']
+        .into_iter()
+        .enumerate()
+        .map(|(site, opcode)| {
+            (33..=126u8)
+                .find(|byte| {
+                    decode_profile_instruction(
+                        u32::from(*byte),
+                        u32::try_from(site).unwrap_or_default(),
+                    ) == Some(opcode)
+                })
+                .ok_or_else(|| format!("cannot encode {opcode} at C{site}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for input in [&b""[..], &b"\x00"[..], &b"\xff\x05"[..]] {
+        let raw = input.first().map_or_else(
+            || profile.eof_word(), |byte| u32::from(*byte),
+        );
+        let read = input.first().map_or(
+            TraceInput::EndOfInput, |byte| TraceInput::Byte(*byte),
+        );
+        let image = verify_source_physical_image_trace(
+            profile, &source, input, 3,
+        )
+        .map_err(|error| format!("real guest byte I/O: {error:?}"))?;
+        assert_eq!(image.source.outcome, RunOutcome::Terminated {
+            reason: malbolge::Termination::HaltInstruction,
+            steps: 3,
+        });
+        assert!(image.data_reads.is_empty());
+        assert!(image.data_writes.is_empty());
+        assert_eq!(image.io_events, [
+            SourcePhysicalIoEvent::Input {
+                code_address: 0,
+                raw_word: raw,
+                read,
+                trace_index: 0,
+            },
+            SourcePhysicalIoEvent::Output {
+                code_address: 1,
+                accumulator: raw,
+                byte: *raw.to_le_bytes().first().ok_or("missing low byte")?,
+                trace_index: 1,
+            },
+        ]);
+        let prefix = verify_source_physical_image_trace(
+            profile, &source, input, 1,
+        )
+        .map_err(|error| format!("one-input prefix: {error:?}"))?;
+        assert_eq!(prefix.source.outcome, RunOutcome::BudgetExhausted {
+            steps: 1,
+        });
+        assert_eq!(prefix.io_events, image.io_events[..1]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "idempotent physical store is a reached guest effect, not a delta"
+)]
+fn physical_data_writes_retain_idempotent_store_and_last_writer()
+-> Result<(), String> {
+    let profile = current_profile();
+    let encode = |site: u32, opcode: u8| {
+        (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), site)
+                    == Some(opcode)
+            })
+            .ok_or_else(|| format!("cannot encode {opcode} at C{site}"))
+    };
+    let mut source = (0..59u32)
+        .map(|site| encode(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in
+        [(0, b'j'), (1, b'p'), (2, b'j'), (3, b'p'), (4, b'v')]
+    {
+        source[site] = encode(
+            u32::try_from(site).map_err(|error| error.to_string())?,
+            opcode,
+        )?;
+    }
+    for (site, byte) in [(41, 40), (42, 56), (57, 60)] {
+        source[site] = byte;
+    }
+    let image = verify_source_physical_image_trace(profile, &source, &[], 5)
+        .map_err(|error| format!("idempotent guest image: {error:?}"))?;
+    assert_eq!(image.source.outcome, RunOutcome::Terminated {
+        reason: malbolge::Termination::HaltInstruction,
+        steps: 5,
+    });
+    assert_eq!(image.data_writes, [
+        SourcePhysicalDataWrite {
+            code_address: 1,
+            data_address: 41,
+            before: 40,
+            after: 7_174_453,
+            last_word_effect: None,
+            opcode: b'p',
+            trace_index: 1,
+        },
+        SourcePhysicalDataWrite {
+            code_address: 3,
+            data_address: 57,
+            before: 60,
+            after: 60,
+            last_word_effect: None,
+            opcode: b'p',
+            trace_index: 3,
+        },
+    ]);
+    let observed = image
+        .source
+        .touched
+        .iter()
+        .find(|cell| cell.site == 57)
+        .ok_or("idempotent source site not journaled")?;
+    assert_eq!(observed.events, [CodeCellEvent::DataWrite {
+        before: 60,
+        after: 60,
+    }]);
+    assert_eq!(observed.schedule.data_writes, 1);
+    assert_eq!(observed.final_word, 60);
+    let mut without_store = source;
+    without_store[3] = encode(3, b'o')?;
+    let missing =
+        verify_source_physical_image_trace(profile, &without_store, &[], 5)
+            .map_err(|error| format!("disabled idempotent store: {error:?}"))?;
+    assert_eq!(missing.data_writes.len(), 1);
+    assert!(!missing.source.touched.iter().any(|cell| cell.site == 57));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-loaded p self-alias and post-store XLAT2"
+)]
+fn physical_data_journal_distinguishes_same_step_alias_from_xlat2()
+-> Result<(), String> {
+    let profile = current_profile();
+    let encode = |site: u32, opcode: u8| {
+        (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), site)
+                    == Some(opcode)
+            })
+            .ok_or_else(|| format!("cannot encode {opcode} at C{site}"))
+    };
+    let mut source = (0..86u32)
+        .map(|site| encode(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, b'j'), (1, b'p'), (2, b'i'), (83, b'j'),
+        (84, b'p'), (85, b'v'),
+    ] {
+        source[site] = encode(
+            u32::try_from(site).map_err(|error| error.to_string())?,
+            opcode,
+        )?;
+    }
+    for (site, byte) in [(41, 40), (42, 75), (50, 83)] {
+        source[site] = byte;
+    }
+    assert_eq!(source[84], 72);
+    let image = verify_source_physical_image_trace(profile, &source, &[], 13)
+        .map_err(|error| format!("self-alias physical image: {error:?}"))?;
+    assert_eq!(image.source.outcome, RunOutcome::Terminated {
+        reason: malbolge::Termination::HaltInstruction,
+        steps: 13,
+    });
+    assert_eq!(image.data_writes.len(), 2);
+    let last = image.data_writes.last().ok_or("missing self-alias p")?;
+    assert_eq!(*last, SourcePhysicalDataWrite {
+        code_address: 84,
+        data_address: 84,
+        before: 72,
+        after: 72,
+        last_word_effect: None,
+        opcode: b'p',
+        trace_index: 11,
+    });
+    let code = image.code_fetches.iter()
+        .find(|read| read.code_address == 84)
+        .ok_or("self-alias fetch not found")?;
+    assert_eq!(code.trace_index, last.trace_index);
+    assert_eq!(code.value, last.before);
+    assert_eq!(code.last_word_effect, None);
+    let cell = image.source.touched.iter()
+        .find(|cell| cell.site == 84)
+        .ok_or("missing self-alias cell")?;
+    assert_eq!(cell.events, [CodeCellEvent::FetchSelfWrite {
+        opcode: b'p', after: 72,
+    }]);
+    assert_eq!(cell.schedule.data_writes, 1);
+    assert_eq!(cell.final_word, malbolge::encrypt_profile_cell(72)
+        .ok_or("self-alias must encrypt")?);
     Ok(())
 }

@@ -35,7 +35,7 @@ use std::collections::BTreeMap;
 
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileStepTrace, RunOutcome,
-    StepOutcome, Termination, is_source_whitespace,
+    StepOutcome, Termination, TraceInput, is_source_whitespace,
 };
 
 use super::code_cell_schedule::{
@@ -400,6 +400,31 @@ pub struct SourcePhysicalDataRead {
     pub value: u32,
 }
 
+/// An actual guest `p` or `*` data store and its prior physical version.
+///
+/// The old word is the exact data operand fetched by the normative VM;
+/// the new word is the accumulator it committed to guest memory. A write
+/// is present even when both values are equal or when C == D and the later
+/// same-step XLAT2 masks its intermediate data mutation in VM deltas.
+/// No C-source assignment identity is inferred from this physical write.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourcePhysicalDataWrite {
+    /// Reached code address responsible for this guest store.
+    pub code_address: u32,
+    /// Exact physical address written through the D register.
+    pub data_address: u32,
+    /// Word read by the guest immediately before its data operation.
+    pub before: u32,
+    /// Word written by the data operation, before any same-step XLAT2.
+    pub after: u32,
+    /// Last effect strictly before this store, including prior XLAT2.
+    pub last_word_effect: Option<SourcePhysicalWordEffect>,
+    /// Reached position-decoded `p` or `*` opcode.
+    pub opcode: u8,
+    /// Zero-based normative guest step performing the store.
+    pub trace_index: usize,
+}
+
 /// One physically fetched guest word and the latest prior writing effect.
 ///
 /// This includes fetched non-graphical cells that terminate modern execution.
@@ -419,6 +444,37 @@ pub struct SourcePhysicalCodeFetch {
     pub value: u32,
 }
 
+/// An actually committed guest byte-stream operation in instruction order.
+///
+/// A genuine EOF read remains distinct from byte 0xff, and repeated EOF
+/// attempts are retained as separate reached instructions. Outputs record
+/// their exact incoming accumulator, not a source-C `putchar` interpretation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourcePhysicalIoEvent {
+    /// Reached input instruction, including a real EOF attempt.
+    Input {
+        /// Exact physical input opcode address.
+        code_address: u32,
+        /// Raw guest accumulator after the completed input.
+        raw_word: u32,
+        /// Input byte or true EOF from the normative VM.
+        read: TraceInput,
+        /// Zero-based physical guest instruction index.
+        trace_index: usize,
+    },
+    /// Reached output instruction, with the accumulator before output.
+    Output {
+        /// Exact physical output opcode address.
+        code_address: u32,
+        /// Accumulator from which the output byte was emitted.
+        accumulator: u32,
+        /// Actually emitted guest byte.
+        byte: u8,
+        /// Zero-based physical guest instruction index.
+        trace_index: usize,
+    },
+}
+
 /// One normative bounded replay of all reached source and expanded effects.
 ///
 /// Unlike separately selected expanded sites, this footprint discovers every
@@ -432,6 +488,11 @@ pub struct SourcePhysicalImageTrace {
     pub code_fetches: Vec<SourcePhysicalCodeFetch>,
     /// Actual data-operand reads, in reached guest execution order.
     pub data_reads: Vec<SourcePhysicalDataRead>,
+    /// Every reached `p` or `*` store in chronological order, including
+    /// idempotent and same-site code/data writes absent from changed deltas.
+    pub data_writes: Vec<SourcePhysicalDataWrite>,
+    /// Actual input/EOF attempts and output bytes in source execution order.
+    pub io_events: Vec<SourcePhysicalIoEvent>,
     /// All reached loader-expanded physical sites, in increasing order.
     pub expanded: Vec<SourceExpandedCodeCellTrace>,
     /// Exact source-code image, including untouched source-cell comparison.
@@ -464,6 +525,8 @@ struct ExpandedPhysicalJournal {
 struct PhysicalImageJournals {
     code_fetches: Vec<SourcePhysicalCodeFetch>,
     data_reads: Vec<SourcePhysicalDataRead>,
+    data_writes: Vec<SourcePhysicalDataWrite>,
+    io_events: Vec<SourcePhysicalIoEvent>,
     expanded: BTreeMap<u32, ExpandedPhysicalJournal>,
     last_data_write_steps: BTreeMap<u32, usize>,
     last_word_effects: BTreeMap<u32, SourcePhysicalWordEffect>,
@@ -679,10 +742,22 @@ fn record_physical_operand_read(
             value: read.value,
         });
         if matches!(opcode, b'p' | b'*') {
-            let _previous = journals
+            journals.data_writes.push(SourcePhysicalDataWrite {
+                code_address: step.before.registers.code_pointer,
+                data_address: read.address,
+                before: read.value,
+                after: step.after.registers.accumulator,
+                last_word_effect: journals
+                    .last_word_effects
+                    .get(&read.address)
+                    .copied(),
+                opcode,
+                trace_index,
+            });
+            let _previous_data_write = journals
                 .last_data_write_steps
                 .insert(read.address, trace_index);
-            let _previous = journals
+            let _previous_word_effect = journals
                 .last_word_effects
                 .insert(read.address, SourcePhysicalWordEffect::DataWrite {
                     trace_index,
@@ -722,6 +797,59 @@ fn committed_encryption_site(
     Ok(Some(site))
 }
 
+/// Project the normative VM's actual I/O into the physical operation ledger.
+/// The selected instruction, raw accumulator and byte effect must agree.
+fn record_physical_io(
+    profile: &ProfileDescriptor,
+    step: &ProfileStepTrace,
+    trace_index: usize,
+    journals: &mut PhysicalImageJournals,
+) -> Result<(), SourcePhysicalImageTraceError> {
+    use SourceCodeImageTraceError as SourceError;
+    use SourcePhysicalImageTraceError as PhysicalError;
+    let invalid = || PhysicalError::Source(SourceError::InvalidExecution);
+    let code_address = step.before.registers.code_pointer;
+    match (step.input, step.output) {
+        (Some(read), None)
+            if step.decoded == Some(profile.input_instruction()) =>
+        {
+            let raw_word = step.after.registers.accumulator;
+            let expected = match read {
+                TraceInput::Byte(byte) => u32::from(byte),
+                TraceInput::EndOfInput => profile.eof_word(),
+            };
+            if raw_word != expected {
+                return Err(invalid());
+            }
+            journals.io_events.push(SourcePhysicalIoEvent::Input {
+                code_address,
+                raw_word,
+                read,
+                trace_index,
+            });
+        },
+        (None, Some(byte))
+            if step.decoded == Some(profile.output_instruction()) =>
+        {
+            let accumulator = step.before.registers.accumulator;
+            if accumulator.to_le_bytes().first().copied() != Some(byte) {
+                return Err(invalid());
+            }
+            journals.io_events.push(SourcePhysicalIoEvent::Output {
+                code_address,
+                accumulator,
+                byte,
+                trace_index,
+            });
+        },
+        (None, None)
+            if step.decoded != Some(profile.input_instruction())
+                && step.decoded != Some(profile.output_instruction()) => {},
+        _ => return Err(invalid()),
+    }
+    Ok(())
+}
+
 /// Record all distinct physical effects of one reached normative VM step.
 fn append_physical_step_effects(
     profile: &ProfileDescriptor,
@@ -738,6 +866,7 @@ fn append_physical_step_effects(
     }
     record_physical_code_fetch(step, trace_index, journals)?;
     record_physical_operand_read(step, trace_index, journals)?;
+    record_physical_io(profile, step, trace_index, journals)?;
     let mut seen = Vec::with_capacity(4);
     for site in affected_code_sites(step).into_iter().flatten() {
         if seen.contains(&site) {
@@ -833,6 +962,8 @@ pub fn verify_source_physical_image_trace(
     let mut journals = PhysicalImageJournals {
         code_fetches: Vec::new(),
         data_reads: Vec::new(),
+        data_writes: Vec::new(),
+        io_events: Vec::new(),
         expanded: BTreeMap::new(),
         last_data_write_steps: BTreeMap::new(),
         last_word_effects: BTreeMap::new(),
@@ -859,6 +990,30 @@ pub fn verify_source_physical_image_trace(
         })?;
     if let Some(error) = failure {
         return Err(error);
+    }
+    // Independent aggregate checks protect the per-step projection from
+    // silently losing a reached EOF attempt or emitting a host-only byte.
+    let actual_output = journals
+        .io_events
+        .iter()
+        .filter_map(|event| match event {
+            SourcePhysicalIoEvent::Output { byte, .. } => Some(*byte),
+            SourcePhysicalIoEvent::Input { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    let consumed = journals
+        .io_events
+        .iter()
+        .filter(|event| {
+            matches!(event, SourcePhysicalIoEvent::Input {
+                read: TraceInput::Byte(_),
+                ..
+            })
+        })
+        .count();
+    if actual_output != machine.output() || consumed != machine.input_consumed()
+    {
+        return Err(PhysicalError::Source(SourceError::InvalidExecution));
     }
     let mut source_events = journals.source;
     let expanded_events = journals.expanded;
@@ -936,6 +1091,8 @@ pub fn verify_source_physical_image_trace(
     Ok(SourcePhysicalImageTrace {
         code_fetches: journals.code_fetches,
         data_reads: journals.data_reads,
+        data_writes: journals.data_writes,
+        io_events: journals.io_events,
         expanded,
         source: SourceCodeImageTrace {
             touched,
