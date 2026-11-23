@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 an additional opt-in physical CFG exit gate now
+  authenticates every reached source-block departure against its own
+  canonical control suffix and outgoing edge target, including phi-free
+  successors. Real N15 traces accept C2 -> C3 phi-pad ingress and
+  separate C1 -> C2 phi-free fallthrough, while a real C1 `i` bypassing
+  the C2 control and a forged phi-free C1 -> C3 edge refuse. The gate
+  remains necessary-only: source branch truth, C arithmetic, return
+  semantics and the entire C23 EOF checksum guest are unimplemented.
+  See `tests/compiler/source_phi_copy_trace.rs` and the P2 contract.
+
 - On 2026-11-23 the opt-in physical phi verifier also began checking
   **entry** into each reached predecessor-specific phi pad. In a real
   source-loaded, seeded N15 guest, the C2 source control falls through

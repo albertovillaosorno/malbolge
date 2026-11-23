@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-bound physical exits from CFG blocks (2026-11-23)
+
+The opt-in `SourcePhiCopyProbe::verify_with_cfg_phi_copy_anchors` now
+checks every reached physical **departure** from a reserved source block,
+including phi-free edges. If the next real VM instruction falls outside
+that source block, the leaving instruction must be inside its reserved
+control suffix, and the reached code address must be one of that canonical
+predecessor's source-bound edge entries. This runs on the same finite VM
+trace as phi-pad ingress, actual two-phase copies, and successor exits.
+A source return's terminal action remains a separate proof obligation;
+this check neither proves branch-condition truth nor implements guest C.
+
+A real nine-step current-N15 guest exits the C0-C2 source block at C2
+and enters its phi pad at C3. A physically executed C1 `i` instead exits
+too early into that same pad; changing only the proposed edge target also
+refuses. A separate real five-step N15 source witnesses the adjacent
+phi-free C1 -> C2 edge, while the forged C1 -> C3 target refuses. These
+are bounded necessary physical control/placement checks; the seven-block
+C23 checksum still refuses before target publication.
+
 ### Source-locked physical predecessor-to-phi ingress (2026-11-23)
 
 The opt-in `SourcePhiCopyProbe::verify_with_predecessor_phi_copy_anchors`

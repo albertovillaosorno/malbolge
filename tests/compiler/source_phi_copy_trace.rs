@@ -1229,3 +1229,66 @@ fn real_guest_foreign_predecessor_jump_cannot_authorize_phi_pad()
     );
     Ok(())
 }
+
+// A source control exit must land at the exact bound successor, whether the
+// predecessor targets an edge-local phi pad or a phi-free successor block.
+// Source-block exit admission is separate from source branch truth, which
+// still requires later guest arithmetic and condition verification.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real guest source edge and negative target assertions"
+)]
+fn real_guest_source_block_exits_refuse_early_and_wrong_targets()
+-> Result<(), String> {
+    let good = guest_phi_trace_with_predecessor_bypass(false)?;
+    let bypass = guest_phi_trace_with_predecessor_bypass(true)?;
+    let mut phi = linked_phi_edge()?.0;
+    phi.control_address = 2;
+    phi.entry_address = 3;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 3,
+        control_start: 2,
+    }];
+    assert_eq!(
+        verify_source_block_exits(&blocks, from_ref(&phi), &good),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_block_exits(&blocks, from_ref(&phi), &bypass),
+        Err(SourcePhiCopyTraceError::InvalidControlTransfer),
+    );
+    phi.entry_address = 4;
+    assert_eq!(
+        verify_source_block_exits(&blocks, from_ref(&phi), &good),
+        Err(SourcePhiCopyTraceError::InvalidControlTransfer),
+    );
+
+    // The real five-step guest has an adjacent phi-free C1 -> C2 source
+    // edge. A matching output or return would not authenticate C1 -> C3.
+    let compact = guest_trace()?;
+    let block = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 2,
+        control_start: 1,
+    }];
+    let mut direct = placed_edge();
+    direct.control_address = 1;
+    direct.entry_address = 2;
+    direct.pad_exit_address = None;
+    assert_eq!(
+        verify_source_block_exits(&block, from_ref(&direct), &compact),
+        Ok(())
+    );
+    direct.entry_address = 3;
+    assert_eq!(
+        verify_source_block_exits(&block, from_ref(&direct), &compact),
+        Err(SourcePhiCopyTraceError::InvalidControlTransfer),
+    );
+    Ok(())
+}

@@ -57,6 +57,8 @@ pub const MAX_SOURCE_PHI_TRACE_STEPS: usize = 512;
 pub enum SourcePhiCopyTraceError {
     /// Source, stream or run ceiling exceeded the finite guest study bounds.
     InvalidBound,
+    /// A reached block escaped without a source-placed control edge.
+    InvalidControlTransfer,
     /// Normative VM did not execute a complete, valid bounded guest run.
     InvalidGuestExecution,
     /// A reached phi site did not write the declared destination/value.
@@ -123,6 +125,14 @@ pub struct SourcePhiCopyProbe<'source> {
     pub proposals: GuestCodeProposals<'source>,
     /// Exact positive guest step ceiling.
     pub step_budget: usize,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum PhiTransferPolicy {
+    AllEdges,
+    CopyOnly,
+    Exit,
+    Ingress,
 }
 
 #[derive(Clone, Copy)]
@@ -324,6 +334,26 @@ impl SourcePhiCopyProbe<'_> {
         self.verify_with_phi_copy_anchors(&[])
     }
 
+    /// Verify all reached source-block exits as well as phi pad ingress,
+    /// ordered snapshot/commit writes, and exact successor transfers.
+    ///
+    /// Physical exits from a source block must originate in its reserved
+    /// control suffix and land at a declared edge entry. This cannot prove
+    /// the truth of a source branch predicate or execute missing arithmetic.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an unplaced or early source block exit in the bounded VM trace.
+    pub fn verify_with_cfg_phi_copy_anchors(
+        self,
+        phi_anchors: &[GuestCodePhiCopyAnchor],
+    ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+        self.verify_with_transfer_policy(
+            phi_anchors,
+            PhiTransferPolicy::AllEdges,
+        )
+    }
+
     /// Also require every reached, completed phi pad to execute its reserved
     /// `i` code transfer to the source-bound successor block entry.
     ///
@@ -340,7 +370,7 @@ impl SourcePhiCopyProbe<'_> {
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
-        self.verify_with_transfer_policy(phi_anchors, true, false)
+        self.verify_with_transfer_policy(phi_anchors, PhiTransferPolicy::Exit)
     }
 
     /// Verify with source-locked, sparse physical phi snapshot/commit sites.
@@ -357,7 +387,10 @@ impl SourcePhiCopyProbe<'_> {
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
-        self.verify_with_transfer_policy(phi_anchors, false, false)
+        self.verify_with_transfer_policy(
+            phi_anchors,
+            PhiTransferPolicy::CopyOnly,
+        )
     }
 
     /// Verify that every reached phi pad was *entered* from its owning
@@ -375,14 +408,16 @@ impl SourcePhiCopyProbe<'_> {
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
-        self.verify_with_transfer_policy(phi_anchors, true, true)
+        self.verify_with_transfer_policy(
+            phi_anchors,
+            PhiTransferPolicy::Ingress,
+        )
     }
 
     fn verify_with_transfer_policy(
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
-        require_transfer: bool,
-        require_predecessor: bool,
+        policy: PhiTransferPolicy,
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
         if self.physical_source.len() < 2
             || self.physical_source.len() > MAX_SOURCE_PHI_TRACE_CELLS
@@ -412,23 +447,22 @@ impl SourcePhiCopyProbe<'_> {
             .map_err(|_error| {
                 SourcePhiCopyTraceError::InvalidSourcePlacement
             })?;
-        let mut machine = ProfileMachine::from_source(
-            current_profile(),
+        let steps = replay_phi_guest_steps(
             self.physical_source,
-            self.input.to_vec(),
-        )
-        .map_err(|_error| SourcePhiCopyTraceError::InvalidGuestExecution)?;
-        let mut steps = Vec::new();
-        let result = machine
-            .run_traced(self.step_budget, &mut |step| steps.push(*step))
-            .map_err(|_error| SourcePhiCopyTraceError::InvalidGuestExecution)?;
-        if !matches!(result, RunOutcome::Terminated {
-            reason: Termination::HaltInstruction,
-            ..
-        }) {
-            return Err(SourcePhiCopyTraceError::InvalidGuestExecution);
+            self.input,
+            self.step_budget,
+        )?;
+        if policy == PhiTransferPolicy::AllEdges {
+            verify_source_block_exits(
+                &plan.code_blocks,
+                &plan.control_edges,
+                &steps,
+            )?;
         }
-        if require_predecessor {
+        if matches!(
+            policy,
+            PhiTransferPolicy::Ingress | PhiTransferPolicy::AllEdges
+        ) {
             verify_predecessor_phi_entries(
                 &plan.code_blocks,
                 &plan.control_edges,
@@ -442,9 +476,67 @@ impl SourcePhiCopyProbe<'_> {
                 frames: &plan.relocated.state_placements,
             },
             &steps,
-            require_transfer,
+            policy != PhiTransferPolicy::CopyOnly,
         )
     }
+}
+
+fn replay_phi_guest_steps(
+    source: &[u8],
+    input: &[u8],
+    budget: usize,
+) -> Result<Vec<ProfileStepTrace>, SourcePhiCopyTraceError> {
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), source, input.to_vec())
+            .map_err(|_error| SourcePhiCopyTraceError::InvalidGuestExecution)?;
+    let mut steps = Vec::new();
+    let result = machine
+        .run_traced(budget, &mut |step| steps.push(*step))
+        .map_err(|_error| SourcePhiCopyTraceError::InvalidGuestExecution)?;
+    if !matches!(result, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        ..
+    }) {
+        return Err(SourcePhiCopyTraceError::InvalidGuestExecution);
+    }
+    Ok(steps)
+}
+
+// This is a physical *edge-target* check, not a branch-condition evaluator.
+// A real VM can reach an adjacent block by falling through or by jumping;
+// either route must leave the source block only from its control suffix and
+// land at an entry bound to a canonical source successor. The last step of
+// an explicitly returning block is checked by its separate return gate.
+fn verify_source_block_exits(
+    blocks: &[GuestCodeBlockPlacement],
+    edges: &[GuestCodeControlEdge],
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourcePhiCopyTraceError> {
+    for pair in steps.windows(2) {
+        let [previous, next] = pair else {
+            continue;
+        };
+        let from = previous.before.registers.code_pointer;
+        let to = next.before.registers.code_pointer;
+        let Some(block) = blocks
+            .iter()
+            .find(|block| (block.start..block.end_exclusive).contains(&from))
+        else {
+            continue;
+        };
+        if (block.start..block.end_exclusive).contains(&to) {
+            continue;
+        }
+        if from < block.control_start
+            || !edges.iter().any(|edge| {
+                (edge.function, edge.predecessor, edge.entry_address)
+                    == (block.function, block.block, to)
+            })
+        {
+            return Err(SourcePhiCopyTraceError::InvalidControlTransfer);
+        }
+    }
+    Ok(())
 }
 
 // Source placement already authenticates all block and edge intervals. The
