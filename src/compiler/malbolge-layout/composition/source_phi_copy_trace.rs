@@ -42,7 +42,8 @@ use super::typed_cfg_adapter::state_relocation::{
     GuestCodeEdgeKind, GuestCodeEffectAnchor, GuestCodeFunctionEntry,
     GuestCodeOperationAnchor, GuestCodeOperationEffect,
     GuestCodeOperationEffectSite, GuestCodePhiCopyAnchor,
-    GuestCodePhiCopyPlacement, GuestCodeProposals, GuestPlacedCellCopy,
+    GuestCodePhiCopyPlacement, GuestCodeProposals, GuestCodeReturnSite,
+    GuestPlacedCellCopy,
     bind_source_locked_cfg_code_targets_with_phi_copy_anchors,
 };
 use super::typed_cfg_adapter::state_storage::GuestFramePlacement;
@@ -65,6 +66,8 @@ pub enum SourcePhiCopyTraceError {
     InvalidBranchSelection,
     /// A reached block escaped without a source-placed control edge.
     InvalidControlTransfer,
+    /// The actual VM halt did not occur in a source return control suffix.
+    InvalidSourceReturn,
     /// Normative VM did not execute a complete, valid bounded guest run.
     InvalidGuestExecution,
     /// A reached phi site did not write the declared destination/value.
@@ -512,6 +515,11 @@ impl SourcePhiCopyProbe<'_> {
                 &plan.operation_effect_sites,
                 &steps,
             )?;
+            verify_source_return_sites(
+                &plan.code_blocks,
+                &plan.return_sites,
+                &steps,
+            )?;
         }
         if matches!(
             policy,
@@ -736,6 +744,35 @@ fn verify_source_block_effect_visits(
                 .checked_add(reached + 1)
                 .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
         }
+    }
+    Ok(())
+}
+
+// The bounded normative VM's `v` is not a source-C return merely because
+// an earlier source block chose legal edges or emitted its required effects.
+// The actual terminal instruction must be in the control suffix of an
+// authenticated Return block. This is only physical terminal provenance:
+// it does not prove the source return value or preceding C computations.
+fn verify_source_return_sites(
+    blocks: &[GuestCodeBlockPlacement],
+    returns: &[GuestCodeReturnSite],
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourcePhiCopyTraceError> {
+    let last = steps
+        .last()
+        .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
+    if last.decoded != Some(b'v') {
+        return Err(SourcePhiCopyTraceError::InvalidGuestExecution);
+    }
+    let code = last.before.registers.code_pointer;
+    if !returns.iter().any(|site| {
+        blocks.iter().any(|block| {
+            (site.function, site.block) == (block.function, block.block)
+                && site.address == block.control_start
+                && (block.control_start..block.end_exclusive).contains(&code)
+        })
+    }) {
+        return Err(SourcePhiCopyTraceError::InvalidSourceReturn);
     }
     Ok(())
 }

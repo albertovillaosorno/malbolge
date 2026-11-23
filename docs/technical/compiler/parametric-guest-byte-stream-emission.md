@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical source return control (2026-11-23)
+
+The strongest opt-in physical CFG check now requires the final real guest
+`v` instruction to occur in the source-bound control suffix of a Return
+block. A valid source-block exit, complete operation effects or successful
+phi copies cannot authorize a halt somewhere else in the code image.
+The return's canonical block/function and reserved control start must
+match the source-locked addressed plan; this gate verifies terminal code
+provenance, not the function's returned scalar or preceding C computation.
+
+A five-step N15 `p, o, o, o, v` trace reaches source Return block C4.
+A separate real four-step `p, o, o, v` trace executes the same required
+operation effects but halts at C3 in its predecessor's control suffix.
+The older physical block exit and operation-effect checks admit both;
+the return control gate now refuses the early halt and accepts C4.
+The original seven-block mutable EOF checksum remains physically unlinked,
+so no source-C guest artifact or parity is claimed. See
+`tests/compiler/source_phi_copy_trace.rs`.
+
 ### Physical phi-pad completion on every visit (2026-11-23)
 
 The stronger opt-in physical phi transfer/ingress/CFG gates now account for

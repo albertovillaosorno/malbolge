@@ -1579,6 +1579,7 @@ fn real_guest_source_block_entries_require_own_predecessors()
 fn physical_source_effect_skip(
     skip: bool,
     store_opcode: u8,
+    early_halt: bool,
 ) -> Result<Vec<ProfileStepTrace>, String> {
     let mut source = (0..59)
         .map(|site| graphical(site, b'o'))
@@ -1594,7 +1595,14 @@ fn physical_source_effect_skip(
             },
         ),
         (2, b'o'),
-        (3, b'o'),
+        (
+            3,
+            if early_halt {
+                b'v'
+            } else {
+                b'o'
+            },
+        ),
         (4, b'v'),
     ] {
         source[site] = graphical(site, opcode)?;
@@ -1622,7 +1630,7 @@ fn physical_source_effect_skip(
         .map_err(|error| format!("effect skip run: {error:?}"))?;
     assert_eq!(outcome, RunOutcome::Terminated {
         reason: Termination::HaltInstruction,
-        steps: if skip {
+        steps: if skip || early_halt {
             4
         } else {
             5
@@ -1635,6 +1643,8 @@ fn physical_source_effect_skip(
             .collect::<Vec<_>>(),
         if skip {
             vec![0, 1, 3, 4]
+        } else if early_halt {
+            vec![0, 1, 2, 3]
         } else {
             vec![0, 1, 2, 3, 4]
         },
@@ -1649,9 +1659,9 @@ fn physical_source_effect_skip(
 )]
 fn real_guest_cannot_skip_source_operation_inside_same_block()
 -> Result<(), String> {
-    let complete = physical_source_effect_skip(false, b'p')?;
-    let skipped = physical_source_effect_skip(true, b'p')?;
-    let wrong_store = physical_source_effect_skip(false, b'o')?;
+    let complete = physical_source_effect_skip(false, b'p', false)?;
+    let skipped = physical_source_effect_skip(true, b'p', false)?;
+    let wrong_store = physical_source_effect_skip(false, b'o', false)?;
     let blocks = [
         GuestCodeBlockPlacement {
             function: 0,
@@ -1751,6 +1761,84 @@ fn real_guest_cannot_skip_source_operation_inside_same_block()
     assert_eq!(
         verify_source_block_effect_visits(&blocks, &reversed, &complete),
         Err(SourcePhiCopyTraceError::MissingBlockEffect)
+    );
+    Ok(())
+}
+
+// An actual `v` in an earlier source control suffix can halt without
+// traversing the source Return block. All earlier source effects are present,
+// so ordinary block visitation and edge checks alone cannot reject it.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded real guest return and early-halt provenance"
+)]
+fn real_guest_halt_requires_source_return_control() -> Result<(), String> {
+    let good = physical_source_effect_skip(false, b'p', false)?;
+    let early = physical_source_effect_skip(false, b'p', true)?;
+    let blocks = [
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 0,
+            start: 0,
+            end_exclusive: 4,
+            control_start: 3,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 1,
+            start: 4,
+            end_exclusive: 5,
+            control_start: 4,
+        },
+    ];
+    let mut edge = placed_edge();
+    edge.snapshot_sites.clear();
+    edge.commit_sites.clear();
+    edge.snapshots.clear();
+    edge.commits.clear();
+    edge.control_address = 3;
+    edge.entry_address = 4;
+    edge.pad_exit_address = None;
+    edge.target_address = 4;
+    let effects = [initial_store(None), GuestCodeOperationEffectSite {
+        block: 0,
+        code_address: 2,
+        effect: GuestCodeOperationEffect::Compute,
+        function: 0,
+        ordinal: 1,
+    }];
+    for steps in [&good, &early] {
+        assert_eq!(
+            verify_source_block_exits(&blocks, from_ref(&edge), steps),
+            Ok(())
+        );
+        assert_eq!(
+            verify_source_block_effect_visits(&blocks, &effects, steps),
+            Ok(())
+        );
+    }
+    let returns = [GuestCodeReturnSite {
+        block: 1,
+        address: 4,
+        function: 0,
+        value: None,
+    }];
+    assert_eq!(verify_source_return_sites(&blocks, &returns, &good), Ok(()));
+    assert_eq!(
+        verify_source_return_sites(&blocks, &returns, &early),
+        Err(SourcePhiCopyTraceError::InvalidSourceReturn)
+    );
+    assert_eq!(
+        verify_source_return_sites(&blocks, &[], &good),
+        Err(SourcePhiCopyTraceError::InvalidSourceReturn)
+    );
+    // Even a claimed return in the reached block must start at its exact
+    // source-reserved control address, not a convenient earlier code cell.
+    let misplaced = [GuestCodeReturnSite { address: 3, ..returns[0] }];
+    assert_eq!(
+        verify_source_return_sites(&blocks, &misplaced, &good),
+        Err(SourcePhiCopyTraceError::InvalidSourceReturn)
     );
     Ok(())
 }

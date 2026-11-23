@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The opt-in strongest physical CFG trace gate now also requires a genuine
+halt inside the source-authenticated Return block's reserved control suffix.
+A real five-step N15 guest reaches C4 Return; a real four-step guest halts
+at C3 after completing all required source effects, and is refused. This
+is terminal control provenance only; it does not compute C return values,
+link source arithmetic or publish the original C23 EOF checksum. See the
+P2 compiler contract and `tests/compiler/source_phi_copy_trace.rs`.
+
 The latest opt-in physical phi-pad transfer check (2026-11-23) now
 requires **each entered pad** to complete its own source-bound snapshot
 and commit sites. A 16-step real N15 guest with two complete pads passes;
