@@ -41,7 +41,8 @@ fn graphical(position: usize, opcode: u8) -> Result<u8, String> {
 // three stored values 1,2,3; seeding M72=6 changes only the result to 2.
 #[expect(
     clippy::indexing_slicing,
-    reason = "fixed four-step VM witness"
+    clippy::panic_in_result_fn,
+    reason = "fixed real four-step guest witness and exact terminal assertion"
 )]
 fn traced_three_stores_with_seeds(
     seeds: [u32; 3],
@@ -58,7 +59,7 @@ fn traced_three_stores_with_seeds(
             .map_err(|error| format!("source load: {error:?}"))?;
     let mut memory = loaded.memory().to_vec();
     for (offset, value) in seeds.into_iter().enumerate() {
-        memory[70 + offset] = value;
+        memory[70usize.saturating_add(offset)] = value;
     }
     let registers = malbolge::ProfileRegisters {
         accumulator: profile.eof_word(),
@@ -123,13 +124,13 @@ fn operations(
 fn effects() -> [GuestCodeOperationEffectSite; 3] {
     [70u32, 71, 72].map(|destination| GuestCodeOperationEffectSite {
         block: 0,
-        code_address: destination - 70,
+        code_address: destination.saturating_sub(70),
         effect: GuestCodeOperationEffect::Store {
             destination,
             literal: None,
         },
         function: 0,
-        ordinal: destination - 70,
+        ordinal: destination.saturating_sub(70),
     })
 }
 
@@ -142,6 +143,11 @@ fn frames() -> [GuestFramePlacement; 1] {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one real guest control and strict numerical failure matrix"
+)]
 fn real_guest_computed_result_requires_correct_typed_operation()
 -> Result<(), String> {
     let correct = traced_three_stores(9)?;
@@ -212,6 +218,11 @@ fn real_guest_computed_result_requires_correct_typed_operation()
 // low word is insufficient: a second genuine guest rotation at the high-word
 // site must preserve the complete source-typed zero extension.
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "two real guest executions check both C32 result words"
+)]
 fn real_guest_two_word_computation_rejects_wrong_high_result_word()
 -> Result<(), String> {
     let valid = traced_three_stores_with_seeds([6, 6, 0])?;
@@ -296,10 +307,16 @@ fn typed_c32_checksum_operations_preserve_full_width() {
     let mut journal = BTreeMap::new();
     for (offset, word) in encode_i32_cells(0xffff_fffe).into_iter().enumerate()
     {
-        _ = journal.insert(70 + offset as u32, word);
+        _ = journal.insert(
+            70u32.saturating_add(u32::try_from(offset).unwrap_or(u32::MAX)),
+            word,
+        );
     }
     for (offset, word) in encode_i32_cells(4).into_iter().enumerate() {
-        _ = journal.insert(72 + offset as u32, word);
+        _ = journal.insert(
+            72u32.saturating_add(u32::try_from(offset).unwrap_or(u32::MAX)),
+            word,
+        );
     }
     let arithmetic = GuestCodeComputation::Binary {
         operation: BinaryOp::Add,
