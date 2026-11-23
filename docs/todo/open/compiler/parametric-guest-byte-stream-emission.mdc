@@ -41,6 +41,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strict source-computation result checker now validates typed integer
+left, logical-right and arithmetic-right shifts at their original width,
+including defined unsigned wrapping and signed right-shift bits. Actual N15
+VM stores and canonical C32 controls reject invalid counts, signed negative
+left operands and signed overflow. Two real N15 six-store C32 guests also
+reject a wrong high result word with an identical low word. This is a
+necessary numeric gate only; physical operand causality, source-C loop
+linkage and signed EOF conversion
+remain unimplemented. The unchanged checksum still refuses publication.
+See `tests/compiler/source_computation_trace.rs` and the compiler contract.
+
 The opt-in exact source-computation result gate now interprets typed integer
 signed/unsigned division and remainder from prior authenticated guest frame
 writes. Real N15 VM red-first positives and negatives plus C32 controls

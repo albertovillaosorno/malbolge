@@ -28,6 +28,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Width-aware typed shift-result checks (2026-11-23)
+
+The strict opt-in source-computation verifier now interprets integer
+`ShiftLeft`, `ShiftRightLogical` and `ShiftRightArithmetic`, instead of
+refusing even numerically valid source-placed guest results. It checks the
+original typed 8-, 16- or 32-bit width and refuses shift counts outside
+that width (including negative signed counts), signed negative left
+operands and signed left-result overflow. Unsigned left shift wraps at the
+declared width; logical right shift is unsigned and arithmetic right shift
+uses the explicit signed IR operation. Boolean shifts and mismatched right
+shift signedness remain unsupported.
+
+A red-first real four-step N15 guest initially failed the valid shift
+result with `UnsupportedComputation`. Five distinct executed VM store
+journals now cover defined positive shifts, unsigned wrapping, a signed
+negative arithmetic right shift, wrong right-shift semantics and invalid
+counts/negative left operands. Independent canonical two-word C32 controls
+check the high bit, signed overflow, 32-bit count boundary and negative
+right shifts. Additionally, two seven-step N15 guests physically write both
+words of a C32 left operand, count and result; the checker accepts unsigned
+`1 << 31`, refuses the same signed overflow and rejects a corrupted high
+result word even when the low word matches. These are **numerical checks of
+seeded physical writes**, not causal Malbolge computation of C shifts. The unchanged original C23
+EOF checksum still refuses its unlinked CFG without publication, and P2
+remains open. Regression: `tests/compiler/source_computation_trace.rs`.
+
 ### Defined integer division and remainder result checks (2026-11-23)
 
 The strongest opt-in numerical source-computation verifier now accepts

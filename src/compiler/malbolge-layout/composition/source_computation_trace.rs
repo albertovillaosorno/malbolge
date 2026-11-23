@@ -208,6 +208,65 @@ fn checked_integer_division(
     }
 }
 
+// A typed shift has its original scalar width, not the VM word width.
+// Signed left shift of a negative operand or out-of-range result is refused;
+// unsigned left shift wraps. The distinct signed/arithmetic and unsigned/
+// logical right-shift operators retain the IR's explicit bit semantics.
+fn checked_integer_shift(
+    operation: BinaryOp,
+    lhs: u32,
+    rhs: u32,
+    kind: TernaryCfgScalarKind,
+) -> Result<u32, SourcePhiCopyTraceError> {
+    use SourcePhiCopyTraceError::{
+        InvalidComputationValue, UnsupportedComputation,
+    };
+    let width = scalar_bits(kind);
+    if kind == TernaryCfgScalarKind::Bool {
+        return Err(UnsupportedComputation);
+    }
+    if rhs >= width {
+        return Err(InvalidComputationValue);
+    }
+    let signed_kind = matches!(
+        kind,
+        TernaryCfgScalarKind::I8
+            | TernaryCfgScalarKind::I16
+            | TernaryCfgScalarKind::I32
+    );
+    match operation {
+        BinaryOp::ShiftLeft if signed_kind => {
+            let value = i64::from(signed(lhs, width));
+            if value < 0 {
+                return Err(InvalidComputationValue);
+            }
+            signed_result_bits(
+                value.checked_shl(rhs).ok_or(InvalidComputationValue)?,
+                width,
+            )
+        },
+        BinaryOp::ShiftLeft => Ok(lhs.wrapping_shl(rhs) & bit_mask(width)),
+        BinaryOp::ShiftRightArithmetic if signed_kind => {
+            Ok(signed(lhs, width).wrapping_shr(rhs).cast_unsigned()
+                & bit_mask(width))
+        },
+        BinaryOp::ShiftRightLogical if !signed_kind => Ok(lhs >> rhs),
+        BinaryOp::Add
+        | BinaryOp::And
+        | BinaryOp::DivideFloat
+        | BinaryOp::DivideSigned
+        | BinaryOp::DivideUnsigned
+        | BinaryOp::Multiply
+        | BinaryOp::Or
+        | BinaryOp::RemainderSigned
+        | BinaryOp::RemainderUnsigned
+        | BinaryOp::ShiftRightArithmetic
+        | BinaryOp::ShiftRightLogical
+        | BinaryOp::Subtract
+        | BinaryOp::Xor => Err(UnsupportedComputation),
+    }
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "exhaustive typed operations share one closed result interpreter"
@@ -258,10 +317,15 @@ fn evaluate(
                     rhs,
                     result.type_kind,
                 )?,
-                BinaryOp::DivideFloat
-                | BinaryOp::ShiftLeft
+                BinaryOp::ShiftLeft
                 | BinaryOp::ShiftRightArithmetic
-                | BinaryOp::ShiftRightLogical => {
+                | BinaryOp::ShiftRightLogical => checked_integer_shift(
+                    operation,
+                    lhs,
+                    rhs,
+                    result.type_kind,
+                )?,
+                BinaryOp::DivideFloat => {
                     return Err(UnsupportedComputation);
                 },
             };

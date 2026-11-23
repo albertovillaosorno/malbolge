@@ -594,6 +594,98 @@ fn checked_signed_arithmetic_preserves_c32_and_i16_boundaries() {
         ),
         invalid
     );
+    // A source C32 shift keeps all 32 result bits across two N15 words.
+    assert_eq!(
+        computed(TernaryCfgScalarKind::U32, BinaryOp::ShiftLeft, 1, 31),
+        Ok(0x8000_0000)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I32, BinaryOp::ShiftLeft, 1, 31),
+        invalid
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I32, BinaryOp::ShiftLeft, 7, 3),
+        Ok(56)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::U32, BinaryOp::ShiftLeft, 1, 32),
+        invalid
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::ShiftLeft,
+            1,
+            0xffff_ffff
+        ),
+        invalid
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::U32,
+            BinaryOp::ShiftRightLogical,
+            0xffff_ffff,
+            31
+        ),
+        Ok(1)
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::ShiftRightArithmetic,
+            0xffff_fffd,
+            1
+        ),
+        Ok(0xffff_fffe)
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::ShiftRightLogical,
+            0xffff_fffd,
+            1
+        ),
+        Err(SourcePhiCopyTraceError::UnsupportedComputation)
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::U32,
+            BinaryOp::ShiftRightArithmetic,
+            0xffff_fffd,
+            1
+        ),
+        Err(SourcePhiCopyTraceError::UnsupportedComputation)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::U16, BinaryOp::ShiftLeft, 1, 15),
+        Ok(0x8000)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I16, BinaryOp::ShiftLeft, 1, 15),
+        invalid
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I16,
+            BinaryOp::ShiftRightArithmetic,
+            0x8000,
+            15
+        ),
+        Ok(0xffff)
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::U16,
+            BinaryOp::ShiftRightLogical,
+            0x8000,
+            16
+        ),
+        invalid
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::Bool, BinaryOp::ShiftLeft, 1, 0),
+        Err(SourcePhiCopyTraceError::UnsupportedComputation)
+    );
 }
 
 // Distinguish actual source-defined integer division from a numeric guest
@@ -670,6 +762,196 @@ fn real_guest_division_and_remainder_require_defined_c23_results()
             384, 765, 384
         ])?,
         undefined
+    );
+    Ok(())
+}
+
+// Real guest p writes form the typed left/right/result word journal. The
+// verifier must check shift count bounds and distinguish arithmetic from
+// logical right shift before a linker can rely on these typed results.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    reason = "one bounded real VM bit-shift witness family"
+)]
+fn real_guest_shift_results_obey_width_signedness_and_count()
+-> Result<(), String> {
+    let positive = traced_three_stores_with_seeds([6, 3, 12])?;
+    let wrapping = traced_three_stores_with_seeds([384, 3, 0])?;
+    let negative = traced_three_stores_with_seeds([747, 3, 756])?;
+    let bad_count = traced_three_stores_with_seeds([6, 24, 0])?;
+    let logical = traced_three_stores_with_seeds([765, 3, 381])?;
+    let check = |steps: &[ProfileStepTrace], operation, kind| {
+        let operand = |address| GuestPlacedOperand {
+            address,
+            type_kind: kind,
+            value: address.saturating_sub(70),
+            words: 1,
+        };
+        let sites = operations(GuestCodeComputation::Binary {
+            operation,
+            left: operand(70),
+            right: operand(71),
+            result: operand(72),
+        });
+        verify_source_computation_values(
+            &sites,
+            &effects(),
+            &[],
+            &frames(),
+            steps,
+        )
+    };
+    let unsigned = TernaryCfgScalarKind::U8;
+    let signed = TernaryCfgScalarKind::I8;
+    let invalid = Err(SourcePhiCopyTraceError::InvalidComputationValue);
+    assert_eq!(check(&positive, BinaryOp::ShiftLeft, unsigned), Ok(()));
+    assert_eq!(check(&positive, BinaryOp::ShiftLeft, signed), Ok(()));
+    assert_eq!(check(&wrapping, BinaryOp::ShiftLeft, unsigned), Ok(()));
+    assert_eq!(check(&wrapping, BinaryOp::ShiftLeft, signed), invalid);
+    assert_eq!(check(&negative, BinaryOp::ShiftLeft, signed), invalid);
+    assert_eq!(
+        check(&negative, BinaryOp::ShiftRightArithmetic, signed),
+        Ok(())
+    );
+    assert_eq!(
+        check(&negative, BinaryOp::ShiftRightLogical, unsigned),
+        invalid
+    );
+    assert_eq!(check(&bad_count, BinaryOp::ShiftLeft, unsigned), invalid);
+    assert_eq!(
+        check(&bad_count, BinaryOp::ShiftRightLogical, unsigned),
+        invalid
+    );
+    assert_eq!(
+        check(&logical, BinaryOp::ShiftRightLogical, unsigned),
+        Ok(())
+    );
+    assert_eq!(
+        check(&logical, BinaryOp::ShiftRightArithmetic, signed),
+        invalid
+    );
+    Ok(())
+}
+
+// Every C32 operand and result cell is genuinely rotated into place by a
+// reached guest *, with no preconstructed VM trace. A differing *high* result
+// word must not authorize a correct-looking low-word unsigned shift.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one canonical 32-bit two-word N15 guest shift witness"
+)]
+fn real_guest_c32_shift_requires_both_result_words() -> Result<(), String> {
+    fn traced_words(values: [u32; 3]) -> Result<Vec<ProfileStepTrace>, String> {
+        const TOP_TRIT: u32 = 4_782_969;
+        let mut source = (0..59)
+            .map(|at| graphical(at, b'o'))
+            .collect::<Result<Vec<_>, _>>()?;
+        for (at, opcode) in (0..6).map(|at| (at, b'*')).chain([(6, b'v')]) {
+            *source.get_mut(at).ok_or("missing source code cell")? =
+                graphical(at, opcode)?;
+        }
+        let profile = malbolge::current_profile();
+        let loaded =
+            malbolge::ProfileMachine::from_source(profile, &source, Vec::new())
+                .map_err(|error| format!("source load: {error:?}"))?;
+        let mut memory = loaded.memory().to_vec();
+        for (index, word) in
+            values.into_iter().flat_map(encode_i32_cells).enumerate()
+        {
+            // Inverse of a one-trit right rotate, valid for every N15 word.
+            let low = word.checked_rem(TOP_TRIT).ok_or("trit remainder")?;
+            let high = word.checked_div(TOP_TRIT).ok_or("trit quotient")?;
+            let seed = low
+                .checked_mul(3)
+                .and_then(|part| part.checked_add(high))
+                .ok_or("trit rotation inverse overflow")?;
+            *memory.get_mut(70 + index).ok_or("missing data word")? = seed;
+        }
+        let mut machine = malbolge::ProfileMachine::from_state(
+            profile,
+            memory,
+            Vec::new(),
+            malbolge::ProfileRegisters {
+                accumulator: profile.eof_word(),
+                code_pointer: 0,
+                data_pointer: 70,
+            },
+        )
+        .map_err(|error| format!("state load: {error:?}"))?;
+        let mut steps = Vec::new();
+        let outcome = machine
+            .run_traced(7, &mut |step| steps.push(*step))
+            .map_err(|error| format!("guest run: {error:?}"))?;
+        assert_eq!(outcome, malbolge::RunOutcome::Terminated {
+            reason: malbolge::Termination::HaltInstruction,
+            steps: 7,
+        });
+        Ok(steps)
+    }
+    let correct = traced_words([1, 31, 0x8000_0000])?;
+    let wrong_high = traced_words([1, 31, 0x8000_0000 + 14_348_907])?;
+    let operand = |address, type_kind| GuestPlacedOperand {
+        address,
+        type_kind,
+        value: address.saturating_sub(70).wrapping_shr(1),
+        words: 2,
+    };
+    let computation = |type_kind| GuestCodeComputation::Binary {
+        operation: BinaryOp::ShiftLeft,
+        left: operand(70, type_kind),
+        right: operand(72, type_kind),
+        result: operand(74, type_kind),
+    };
+    let effects = (0..6)
+        .map(|index| GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: index,
+            effect: GuestCodeOperationEffect::Store {
+                destination: 70 + index,
+                literal: None,
+            },
+            function: 0,
+            ordinal: if index < 4 {
+                index.wrapping_shr(1)
+            } else {
+                2
+            },
+        })
+        .collect::<Vec<_>>();
+    let frame = [GuestFramePlacement {
+        base: 70,
+        end_exclusive: 76,
+        source_cells: 59,
+    }];
+    let verify = |steps: &[ProfileStepTrace], kind| {
+        let operation = [GuestCodeOperationSite {
+            block: 0,
+            computation: Some(computation(kind)),
+            start: 4,
+            end_exclusive: 6,
+            function: 0,
+            ordinal: 2,
+        }];
+        verify_source_computation_values(
+            &operation,
+            &effects,
+            &[],
+            &frame,
+            steps,
+        )
+    };
+    assert_eq!(verify(&correct, TernaryCfgScalarKind::U32), Ok(()));
+    assert_eq!(
+        verify(&wrong_high, TernaryCfgScalarKind::U32),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue)
+    );
+    assert_eq!(
+        verify(&correct, TernaryCfgScalarKind::I32),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue)
     );
     Ok(())
 }
