@@ -44,6 +44,10 @@ control suffix without visiting the separately reserved phi pad. The
 independently checked block exit, entry, effect, return, predecessor-phi,
 and branch gates all pass. The transfer verifier now accepts zero copies,
 while the unchanged copy-only gate rejects the identical genuine trace.
+A second five-step normative guest enters a real phi pad then halts before
+its first required snapshot. The stronger transfer gate still refuses
+`InvalidPhiOrder` even with zero observations; an earlier 16/14-step
+pair also continues to reject a second pad that skips its copies.
 This corrects a false refusal; it does not link the seven-block C23 checksum,
 prove source-C arithmetic or make a source CFG candidate executable.
 Regression: `tests/compiler/source_phi_copy_trace.rs`.

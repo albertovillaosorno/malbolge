@@ -2787,3 +2787,57 @@ fn real_guest_phi_free_return_path_satisfies_cfg_transfer_gate()
     );
     Ok(())
 }
+
+// Optional *arrival* at a phi pad is not optional *execution*: entering the
+// pad and halting before its first snapshot must fail the transfer policy,
+// even when the complete trace contains no phi copies at all.
+#[test]
+fn real_guest_entered_phi_pad_without_copies_refuses_cfg_transfer()
+-> Result<(), String> {
+    let mut source = (0..10)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    *source.get_mut(4).ok_or("missing phi entry")? = graphical(4, b'v')?;
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), &source, Vec::new())
+            .map_err(|error| format!("early phi halt: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(6, &mut |step| steps.push(*step))
+        .map_err(|error| format!("early phi trace: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 5,
+    });
+    let mut edge = placed_edge();
+    edge.control_address = 3;
+    edge.entry_address = 4;
+    edge.snapshot_sites[0].code_address = 5;
+    edge.commit_sites[0].code_address = 6;
+    edge.pad_exit_address = Some(7);
+    edge.target_address = 8;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 4,
+        control_start: 3,
+    }];
+    assert_eq!(
+        verify_predecessor_phi_entries(&blocks, from_ref(&edge), &steps),
+        Ok(())
+    );
+    assert_eq!(
+        verify_traced_phi_copies_with_transfer_policy(
+            PhiTraceContext {
+                edges: from_ref(&edge),
+                effects: &[],
+                frames: &frames(),
+            },
+            &steps,
+            true,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidPhiOrder),
+    );
+    Ok(())
+}

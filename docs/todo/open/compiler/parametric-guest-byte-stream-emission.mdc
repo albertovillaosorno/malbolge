@@ -45,8 +45,10 @@ The strongest physical CFG verifier now admits a completed path with zero
 observed phi copies when no phi pad was reached, rather than confusing a
 reachable conditional branch's phi-free arm with missing phi work. A real
 three-step N15 return guest proves the narrow red-first correction; the
-copy-only probe still requires a genuine reached copy. All reached pads
-remain subject to exact copy/exit obligations. This is a verifier false-
+copy-only probe still requires a genuine reached copy. A five-step
+negative guest enters a pad and halts before its first required snapshot,
+refusing `InvalidPhiOrder`; all reached pads retain exact copy/exit duties.
+This is a verifier false-
 refusal fix, not a linked mutable C23 checksum. See the P2 contract and
 `tests/compiler/source_phi_copy_trace.rs`.
 
