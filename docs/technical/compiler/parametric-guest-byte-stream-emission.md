@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked physical operation anchors (2026-11-22)
+
+`GuestCodeOperationAnchor` supplies a source-identified proposed position for
+an instruction's **first physical effect**. The source-locked CFG linker
+planner can now leave checked setup gaps in an expanded code block rather
+than forcing every SSA operation's minimum effect cells to start at the
+block's first address. It preserves canonical source identity, instruction
+order, full-width input/store effect obligations, unselected branch edges,
+addressed phi landing pads, and disjoint code/data reservations. Duplicate,
+foreign, out-of-order, overlapping or out-of-range anchors refuse. Later
+effects of a single operation still occupy consecutive *minimum* cells:
+the added flexibility does not yet synthesize pointer routing between them.
+
+An explicit-proposals option on the public `SourceInputProbe` now checks the
+real normative VM's input steps against those source anchors, rather than
+accepting only the earliest automatically packed code cells. The unchanged
+132-cell signed EOF branch physically reads at C53 and conditionally C101:
+empty input performs one EOF read in 119 steps, while `00` and `ff 00 2c`
+perform two reads in 175 steps. The source-locked checksum's corresponding
+input operations can be placed at those addresses with disjoint minimum
+CFG reservations. The stricter output/return check **rejects** the same
+physical helper: its marker output is not the source checksum, and its
+byte-byte path halts before the next required source loop input.
+
+This is an input-site and code-placement **necessary-condition witness**,
+not guest code synthesis, typed C32 input storage, arithmetic, phi writes,
+reusable loop control, or a whole-program translation certificate. The
+original `mutable_eof_checksum.c` continues to refuse before publication.
+Regression sources: `tests/compiler/source_dynamic_checksum.rs` and
+`tests/compiler/source_input_cfg_order.rs`.
+
 ### Source-modified future input opcode (2026-11-21)
 
 A physically executed 81-cell N15 guest now demonstrates an actual code/data

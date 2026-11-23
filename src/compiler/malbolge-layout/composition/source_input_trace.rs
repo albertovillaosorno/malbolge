@@ -41,8 +41,10 @@ use malbolge::{
 
 use super::typed_cfg_adapter::lower_canonical_dynamic_cfg;
 use super::typed_cfg_adapter::state_relocation::{
-    GuestCodeInputAnchor, GuestCodeInputSemantics, GuestCodeOperationEffect,
-    GuestPlacedOperand, plan_source_locked_cfg_with_input_anchors,
+    GuestCodeInputAnchor, GuestCodeInputSemantics, GuestCodeOperationAnchor,
+    GuestCodeOperationEffect, GuestCodeProposals, GuestPlacedOperand,
+    bind_source_locked_cfg_code_targets_with_operation_anchors,
+    plan_source_locked_cfg_with_input_anchors,
 };
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
 use super::typed_cfg_adapter::ternary::{
@@ -185,9 +187,14 @@ struct SourceInputWalkState {
 type KnownSourceOperator = fn(u32, u32) -> u32;
 type KnownSourceScalar = (u32, Option<u32>);
 type SourceInputSites = BTreeMap<u32, SourceInputSite>;
+type ExplicitOperationPlacement<'source> = (
+    GuestCodeProposals<'source>,
+    &'source [GuestCodeOperationAnchor],
+);
 
 fn authenticate_input_sites(
     probe: SourceInputProbe<'_>,
+    explicit: Option<ExplicitOperationPlacement<'_>>,
 ) -> Result<SourceInputSites, SourceInputTraceError> {
     if probe.physical_source.len() < 2
         || probe.physical_source.len() > MAX_SOURCE_INPUT_TRACE_CELLS
@@ -203,12 +210,39 @@ fn authenticate_input_sites(
     }
     let source_cells = u32::try_from(probe.physical_source.len())
         .map_err(|_error| SourceInputTraceError::InvalidProbeBound)?;
-    let plan = plan_source_locked_cfg_with_input_anchors(
-        probe.canonical,
-        source_cells,
-        probe.frame_base,
-        probe.anchors,
-    )
+    let plan = if let Some((proposals, anchors)) = explicit {
+        if probe.anchors.iter().any(|read| {
+            !anchors.iter().any(|anchor| {
+                (
+                    anchor.function,
+                    anchor.block,
+                    anchor.ordinal,
+                    anchor.code_address,
+                ) == (
+                    read.function,
+                    read.block,
+                    read.ordinal,
+                    read.code_address,
+                )
+            })
+        }) {
+            return Err(SourceInputTraceError::InvalidSourcePlacement);
+        }
+        bind_source_locked_cfg_code_targets_with_operation_anchors(
+            probe.canonical,
+            source_cells,
+            probe.frame_base,
+            proposals,
+            anchors,
+        )
+    } else {
+        plan_source_locked_cfg_with_input_anchors(
+            probe.canonical,
+            source_cells,
+            probe.frame_base,
+            probe.anchors,
+        )
+    }
     .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
     let mut sites = SourceInputSites::new();
     for effect_site in plan.operation_effect_sites {
@@ -843,7 +877,48 @@ fn verify_source_return_input_path(
 pub fn verify_source_input_site_prefix(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    verify_source_input_site_trace(probe, false)
+    verify_source_input_site_trace(probe, false, None)
+}
+
+impl SourceInputProbe<'_> {
+    /// Verify real VM input steps at explicitly positioned source operations.
+    ///
+    /// Every input anchor must match the first effect of an authenticated
+    /// source operation. Checked in-block gaps may contain unverified
+    /// pointer/setup instructions; neither those instructions, C23 signed
+    /// conversion, later stores nor source CFG branching become proven.
+    ///
+    /// # Errors
+    ///
+    /// Refuses contradictory code reservations, missing operation anchors,
+    /// and every physical input/source-order violation.
+    pub fn verify_with_operation_anchors(
+        self,
+        proposals: GuestCodeProposals<'_>,
+        anchors: &[GuestCodeOperationAnchor],
+    ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+        verify_source_input_site_trace(self, false, Some((proposals, anchors)))
+    }
+
+    /// Require a complete source return and matching source-known output
+    /// after the physically reached, explicitly placed guest input sites.
+    /// No unproved source computation or control transition is accepted.
+    ///
+    /// # Errors
+    ///
+    /// Refuses physical input, source return or output-order disagreements.
+    pub fn verify_output_with_operation_anchors(
+        self,
+        proposals: GuestCodeProposals<'_>,
+        anchors: &[GuestCodeOperationAnchor],
+    ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+        let proof = verify_source_input_site_trace(
+            self,
+            true,
+            Some((proposals, anchors)),
+        )?;
+        verify_source_output_path(self, proof)
+    }
 }
 
 /// Verify a physically halted guest input trace can reach a return in the
@@ -865,7 +940,7 @@ pub fn verify_source_input_site_prefix(
 pub fn verify_source_input_site_return_compatible(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    verify_source_input_site_trace(probe, true)
+    verify_source_input_site_trace(probe, true, None)
 }
 
 /// Require the physical guest's complete I/O effect order and output bytes
@@ -887,6 +962,13 @@ pub fn verify_source_input_site_output_compatible(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
     let proof = verify_source_input_site_return_compatible(probe)?;
+    verify_source_output_path(probe, proof)
+}
+
+fn verify_source_output_path(
+    probe: SourceInputProbe<'_>,
+    proof: SourceInputPrefixProof,
+) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
     let function_ids = probe
         .anchors
         .iter()
@@ -923,8 +1005,9 @@ pub fn verify_source_input_site_output_compatible(
 fn verify_source_input_site_trace(
     probe: SourceInputProbe<'_>,
     require_source_return: bool,
+    explicit: Option<ExplicitOperationPlacement<'_>>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    let sites = authenticate_input_sites(probe)?;
+    let sites = authenticate_input_sites(probe, explicit)?;
     let mut machine = ProfileMachine::from_source(
         current_profile(),
         probe.physical_source,

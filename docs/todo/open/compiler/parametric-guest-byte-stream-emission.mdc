@@ -75,6 +75,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-22 the source-locked physical code planner gained authenticated
+  **first-effect operation anchors**, leaving bounded setup gaps before
+  concrete input/compute/store obligations. The unchanged 132-cell current-N15
+  signed-EOF branch now passes a real-VM input-prefix check for C23 checksum
+  source operations at C53 and C101 across empty, NUL and high-byte streams.
+  Distinct source/physical positions, operation order and disjoint blocks/phi
+  pads are checked; duplicated, impossible and non-source anchors refuse.
+  Source-output verification independently rejects the same candidate for
+  wrong output and early loop termination. The original checksum remains
+  explicitly unlinked; no C artifact is published. See
+  `tests/compiler/source_dynamic_checksum.rs`,
+  `tests/compiler/source_input_cfg_order.rs` and the active P2 contract.
+
 - On 2026-11-21, a source-loaded 81-cell N15 guest physically rotates
   the unfetched C79 output opcode into a genuine `/` via C56 `j` and C57
   `*`. Four real byte/EOF streams attempt exactly one input (only byte

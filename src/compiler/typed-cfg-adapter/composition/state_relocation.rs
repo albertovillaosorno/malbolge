@@ -364,6 +364,21 @@ pub struct GuestCodeOperationSite {
     pub ordinal: u32,
 }
 
+/// A source-identified instruction whose first required physical effect has
+/// a fixed proposed code position. The region before an anchor may contain
+/// unverified operand setup; it is never treated as an encoded instruction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeOperationAnchor {
+    /// Canonical source block containing the operation.
+    pub block: u32,
+    /// Proposed location of the first required physical effect.
+    pub code_address: u32,
+    /// Canonical source function identity.
+    pub function: u32,
+    /// Source-ordered instruction index within the block.
+    pub ordinal: u32,
+}
+
 /// Exact interpretation owed by one physically executed guest input.
 ///
 /// A signed C23 `getchar` has two *different* EOF representations: the raw
@@ -1042,6 +1057,7 @@ fn bound_computation(
 fn bind_operation_sites(
     block: &GuestPlacedBlock,
     placement: GuestCodeBlockPlacement,
+    anchors: &BTreeMap<(u32, u32, u32), u32>,
 ) -> Result<
     (
         Vec<GuestCodeOperationSite>,
@@ -1056,14 +1072,21 @@ fn bind_operation_sites(
         let effects = required_operation_effects(instruction)?;
         let length = u32::try_from(effects.len())
             .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
-        let end_exclusive = next_address
+        let ordinal = u32::try_from(index)
+            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+        let start = anchors
+            .get(&(block.function, block.block, ordinal))
+            .copied()
+            .unwrap_or(next_address);
+        if start < next_address {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        let end_exclusive = start
             .checked_add(length)
             .filter(|end| *end <= placement.control_start)
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        let ordinal = u32::try_from(index)
-            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
         for (effect_index, effect) in effects.into_iter().enumerate() {
-            let code_address = next_address
+            let code_address = start
                 .checked_add(u32::try_from(effect_index).map_err(|_| {
                     GuestCodePlacementError::InvalidCodePlacement
                 })?)
@@ -1082,7 +1105,7 @@ fn bind_operation_sites(
             end_exclusive,
             function: block.function,
             ordinal,
-            start: next_address,
+            start,
         });
         next_address = end_exclusive;
     }
@@ -1302,6 +1325,55 @@ pub fn bind_source_locked_cfg_code_targets(
     frame_base: u32,
     proposals: GuestCodeProposals<'_>,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    bind_source_locked_cfg_code_targets_with_operation_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        proposals,
+        &[],
+    )
+}
+
+/// Bind canonical source operations to proposed physical effect locations.
+///
+/// A source operation may need preparatory guest code before its first
+/// effective input, output, computation or data write. Each supplied anchor
+/// identifies a source instruction and its *first required effect*, not an
+/// arbitrary N15 instruction or a completed source operation. The checked
+/// effect cells remain consecutive within that instruction and ordered
+/// relative to other operations in its block. Unanchored operations retain
+/// their earliest nonoverlapping minimum placements, and all code/control/phi
+/// intervals retain their original source-owned reservations.
+///
+/// No operation execution, operands, jumps, signed EOF normalization or
+/// self-modification is proved. The physical linker must independently check
+/// the proposed effects against the normative guest VM before publication.
+///
+/// # Errors
+///
+/// Rejects unknown or duplicated source identities, an anchor before a prior
+/// effect, insufficient instruction capacity, out-of-block positions, source
+/// tampering or code/data/phi overlaps.
+pub fn bind_source_locked_cfg_code_targets_with_operation_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    proposals: GuestCodeProposals<'_>,
+    anchors: &[GuestCodeOperationAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    let mut anchored = BTreeMap::new();
+    for anchor in anchors {
+        if anchored
+            .insert(
+                (anchor.function, anchor.block, anchor.ordinal),
+                anchor.code_address,
+            )
+            .is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
+    let mut unmatched = anchored.clone();
     let GuestCodeProposals {
         code_blocks: proposed,
         edge_pads: proposed_pads,
@@ -1342,7 +1414,12 @@ pub fn bind_source_locked_cfg_code_targets(
             .copied()
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         code_blocks.push(placement);
-        let (sites, effects) = bind_operation_sites(block, placement)?;
+        let (sites, effects) =
+            bind_operation_sites(block, placement, &anchored)?;
+        for site in &sites {
+            let _matched =
+                unmatched.remove(&(site.function, site.block, site.ordinal));
+        }
         operation_sites.extend(sites);
         operation_effect_sites.extend(effects);
         let mut bind = |kind, edge: &GuestPlacedControlEdge| {
@@ -1380,7 +1457,7 @@ pub fn bind_source_locked_cfg_code_targets(
             },
         }
     }
-    if edge_pads.len() != pads.len() {
+    if edge_pads.len() != pads.len() || !unmatched.is_empty() {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
     Ok(GuestAddressedCfgPlan {

@@ -819,3 +819,185 @@ fn checksum_source_io_requires_output_after_final_eof() -> Result<(), String> {
     }
     Ok(())
 }
+
+// The same physical 132-cell byte/EOF branch can host two source-identified
+// input effect sites even when their proposed code blocks reserve extra room
+// for operand setup. This is input-only, not source-C state or CFG linkage.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded source-locked and normative-guest input admission"
+)]
+fn physically_reached_input_effects_allow_expanded_code_block_anchors()
+-> Result<(), String> {
+    use malbolge::{RunOutcome, Termination, current_profile};
+
+    use super::super::signed_eof_branch_source as signed_source;
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeEdgeKind, GuestCodeEdgePadPlacement,
+        GuestCodeInputAnchor, GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+    use super::SourceInputProbe;
+
+    let wire = checksum_wire()?;
+    let physical = signed_source::build_guarded_signed_eof_second_read_source(
+        current_profile(),
+    )
+    .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(physical.len(), 132);
+    let blocks = [
+        (0, 40, 66, 67),
+        (1, 0, 1, 2),
+        (2, 2, 5, 6),
+        (3, 6, 10, 11),
+        (4, 11, 15, 16),
+        (5, 91, 104, 105),
+        (6, 16, 18, 19),
+    ]
+    .map(|(block, start, control_start, end_exclusive)| {
+        GuestCodeBlockPlacement {
+            block,
+            control_start,
+            end_exclusive,
+            function: 0,
+            start,
+        }
+    });
+    let pads = [
+        (0, 1, 19, 28),
+        (3, 5, 28, 33),
+        (4, 5, 33, 38),
+        (5, 1, 105, 114),
+    ]
+    .map(|(predecessor, successor, start, end_exclusive)| {
+        GuestCodeEdgePadPlacement {
+            end_exclusive,
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor,
+            start,
+            successor,
+        }
+    });
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &pads,
+    };
+    let read_sites = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 53,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 101,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let operation_anchors = [
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 53,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeOperationAnchor {
+            block: 5,
+            code_address: 101,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    for (input, expected, steps) in [
+        (&[][..], vec![(53, TraceInput::EndOfInput)], 119),
+        (
+            &[0][..],
+            vec![(53, TraceInput::Byte(0)), (101, TraceInput::EndOfInput)],
+            175,
+        ),
+        (
+            &[255, 0, 44][..],
+            vec![(53, TraceInput::Byte(255)), (101, TraceInput::Byte(0))],
+            175,
+        ),
+    ] {
+        let proof = SourceInputProbe {
+            anchors: &read_sites,
+            canonical: &wire,
+            frame_base: 256,
+            input,
+            physical_source: &physical,
+            step_budget: 175,
+        }
+        .verify_with_operation_anchors(proposals, &operation_anchors)
+        .map_err(|error| format!("source-bound guest: {error:?}"))?;
+        assert_eq!(proof.outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps,
+        });
+        assert_eq!(
+            proof
+                .observations
+                .iter()
+                .map(|event| (event.code_address, event.input))
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+    // Reached signed reads alone do not implement the source checksum.
+    // The unchanged physical helper emits a class marker, not the source
+    // checksum byte, and one branch outputs before the final EOF read.
+    for input in [&[][..], &[0][..], &[255][..]] {
+        assert_eq!(
+            SourceInputProbe {
+                anchors: &read_sites,
+                canonical: &wire,
+                frame_base: 256,
+                input,
+                physical_source: &physical,
+                step_budget: 175,
+            }
+            .verify_output_with_operation_anchors(
+                proposals,
+                &operation_anchors,
+            ),
+            Err(SourceInputTraceError::SourceOutputNotProven),
+        );
+    }
+    assert_eq!(
+        SourceInputProbe {
+            anchors: &read_sites,
+            canonical: &wire,
+            frame_base: 256,
+            input: &[255, 0, 44],
+            physical_source: &physical,
+            step_budget: 175,
+        }
+        .verify_output_with_operation_anchors(proposals, &operation_anchors),
+        Err(SourceInputTraceError::UnreachedSourceInput),
+        "source CFG cannot halt before its third loop input",
+    );
+    let changed = [
+        GuestCodeInputAnchor {
+            code_address: 52,
+            ..read_sites[0]
+        },
+        read_sites[1],
+    ];
+    assert_eq!(
+        SourceInputProbe {
+            anchors: &changed,
+            canonical: &wire,
+            frame_base: 256,
+            input: &[0],
+            physical_source: &physical,
+            step_budget: 175,
+        }
+        .verify_with_operation_anchors(proposals, &operation_anchors),
+        Err(SourceInputTraceError::InvalidSourcePlacement),
+    );
+    Ok(())
+}

@@ -2249,6 +2249,132 @@ fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
 }
 
 #[test]
+fn source_checksum_effect_anchors_allow_checked_runtime_setup_gaps() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeOperationAnchor, GuestCodeOperationEffect,
+        GuestCodePlacementError, GuestCodeProposals,
+        bind_source_locked_cfg_code_targets,
+        bind_source_locked_cfg_code_targets_with_operation_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 source");
+    let mut blocks = checksum_proposed_code_blocks();
+    let starts = [64, 120, 140, 160, 184, 208, 252];
+    let ends = [112, 132, 156, 180, 204, 248, 268];
+    for (index, block) in blocks.iter_mut().enumerate() {
+        block.start = starts[index];
+        block.end_exclusive = ends[index];
+        block.control_start = ends[index] - 1;
+    }
+    let mut pads = checksum_proposed_phi_edge_pads();
+    for (pad, (start, end_exclusive)) in
+        pads.iter_mut()
+            .zip([(300, 324), (328, 344), (348, 364), (368, 408)])
+    {
+        pad.start = start;
+        pad.end_exclusive = end_exclusive;
+    }
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &pads,
+    };
+    let first = GuestCodeOperationAnchor {
+        block: 0,
+        code_address: 83,
+        function: 0,
+        ordinal: 1,
+    };
+    let second = GuestCodeOperationAnchor {
+        block: 5,
+        code_address: 226,
+        function: 0,
+        ordinal: 2,
+    };
+    let middle = GuestCodeOperationAnchor {
+        block: 2,
+        code_address: 147,
+        function: 0,
+        ordinal: 0,
+    };
+    let anchors = [first, second, middle];
+    let anchored = bind_source_locked_cfg_code_targets_with_operation_anchors(
+        &wire, 512, 4096, proposals, &anchors,
+    )
+    .expect("source-authenticated effects may follow unverified setup space");
+    let previous =
+        bind_source_locked_cfg_code_targets(&wire, 512, 4096, proposals)
+            .expect(
+                "original minimum effects still fit inside expanded blocks",
+            );
+    assert_eq!(anchored.relocated, previous.relocated);
+    assert_eq!(anchored.control_edges, previous.control_edges);
+    assert_eq!(anchored.code_blocks, previous.code_blocks);
+    assert_eq!(anchored.edge_pads, previous.edge_pads);
+    assert_eq!(anchored.operation_sites.len(), 19);
+    assert_ne!(anchored.operation_sites, previous.operation_sites);
+    for anchor in anchors {
+        let site = anchored.operation_sites.iter().find(|site| {
+            (site.function, site.block, site.ordinal)
+                == (anchor.function, anchor.block, anchor.ordinal)
+        });
+        assert_eq!(site.map(|site| site.start), Some(anchor.code_address));
+    }
+    let input_sites = anchored
+        .operation_effect_sites
+        .iter()
+        .filter_map(|site| {
+            matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+                .then_some((site.block, site.ordinal, site.code_address))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(input_sites, [(0, 1, 83), (5, 2, 226)]);
+    assert_eq!(
+        bind_source_locked_cfg_code_targets_with_operation_anchors(
+            &wire,
+            512,
+            4096,
+            proposals,
+            &[middle, first, second],
+        ),
+        Ok(anchored.clone()),
+        "anchors must be identified by source operation, not input order",
+    );
+    let refuses = Err(GuestCodePlacementError::InvalidCodePlacement);
+    for forged in [
+        vec![first, first],
+        vec![GuestCodeOperationAnchor { ordinal: 99, ..first }],
+        vec![GuestCodeOperationAnchor { block: 99, ..first }],
+        vec![GuestCodeOperationAnchor { function: 1, ..first }],
+        vec![GuestCodeOperationAnchor {
+            code_address: 64,
+            ..first
+        }],
+        vec![GuestCodeOperationAnchor {
+            code_address: 111,
+            ..first
+        }],
+        vec![first, GuestCodeOperationAnchor {
+            block: 0,
+            ordinal: 0,
+            code_address: 84,
+            ..first
+        }],
+        vec![GuestCodeOperationAnchor {
+            code_address: u32::MAX,
+            ..second
+        }],
+    ] {
+        assert_eq!(
+            bind_source_locked_cfg_code_targets_with_operation_anchors(
+                &wire, 512, 4096, proposals, &forged,
+            ),
+            refuses,
+            "unmapped, overlapping or out-of-order effect anchors refuse",
+        );
+    }
+}
+
+#[test]
 fn source_checksum_code_entry_bindings_fail_closed_on_invalid_code_layout() {
     use super::typed_cfg_adapter::state_relocation::{
         GuestCodePlacementError, GuestCodeProposals,
