@@ -46,7 +46,12 @@ j, p, v`: its snapshot at C2 and commit at C4 are separated by a real
 pointer-routing instruction that moves D from M102 to remote M120. Both
 copy words are checked against earlier guest frame writes. Replacing the C3
 setup with a real `p` on a reserved source frame
-refuses as an unaccounted store. For the original C23 checksum's 5->1
+refuses as an unaccounted store. A second physical negative executes an
+*idempotent* `p`: with the EOF accumulator and M102=0, `crazy(0, EOF)=0`,
+so the guest writes M102 with no changed-cell delta. The verifier still
+refuses the unauthorized store. A real `i` from C3 to C5 also refuses
+because it skips the required C4 commit and halts mid-pad. For the
+original C23 checksum's 5->1
 backedge, a source-locked 8-copy proposal accepts sparse physical positions
 and rejects incomplete, swapped, duplicate, off-pad, forged-edge and
 successor-transfer aliases. These are separate bounded placement and guest

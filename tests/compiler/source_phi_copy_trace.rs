@@ -560,8 +560,8 @@ fn real_guest_two_word_phi_snapshot_and_commit() -> Result<(), String> {
 
 // A real six-step current-N15 guest inserts a physical `j` between
 // snapshot and commit. It routes D from M102 to the distant M120, rather
-// than the adjacent M103. A forged p in the same gap
-// performs an extra frame write despite preserving final copy words.
+// than the adjacent M103. A forged p in the same gap performs an
+// unauthorized real frame write regardless of final output.
 #[expect(
     clippy::indexing_slicing,
     clippy::panic_in_result_fn,
@@ -569,6 +569,7 @@ fn real_guest_two_word_phi_snapshot_and_commit() -> Result<(), String> {
 )]
 fn guest_phi_trace_with_setup(
     gap_opcode: u8,
+    gap_word: u32,
 ) -> Result<Vec<ProfileStepTrace>, String> {
     let mut source = (0..59)
         .map(|site| graphical(site, b'o'))
@@ -591,7 +592,7 @@ fn guest_phi_trace_with_setup(
         *memory.get_mut(address).ok_or("missing frame seed")? = 7_174_453;
     }
     *memory.get_mut(71).ok_or("missing jump seed")? = 100;
-    *memory.get_mut(102).ok_or("missing pointer route")? = 119;
+    *memory.get_mut(102).ok_or("missing pointer route")? = gap_word;
     let registers = malbolge::ProfileRegisters {
         accumulator: profile.eof_word(),
         code_pointer: 0,
@@ -604,18 +605,23 @@ fn guest_phi_trace_with_setup(
     let outcome = machine
         .run_traced(6, &mut |step| steps.push(*step))
         .map_err(|error| format!("physical guest execution: {error:?}"))?;
+    let escaped = gap_opcode == b'i';
     assert_eq!(outcome, RunOutcome::Terminated {
         reason: Termination::HaltInstruction,
-        steps: 6,
+        steps: if escaped {
+            5
+        } else {
+            6
+        },
     });
-    assert_eq!(steps.iter().map(|step| step.decoded).collect::<Vec<_>>(), [
-        Some(b'p'),
-        Some(b'j'),
-        Some(b'p'),
-        Some(gap_opcode),
-        Some(b'p'),
-        Some(b'v'),
-    ]);
+    let actual = steps.iter().map(|step| step.decoded).collect::<Vec<_>>();
+    let mut expected =
+        vec![Some(b'p'), Some(b'j'), Some(b'p'), Some(gap_opcode)];
+    if !escaped {
+        expected.push(Some(b'p'));
+    }
+    expected.push(Some(b'v'));
+    assert_eq!(actual, expected);
     assert_eq!(steps[2].before.registers.data_pointer, 101);
     assert_eq!(steps[3].before.registers.data_pointer, 102);
     if gap_opcode == b'j' {
@@ -627,7 +633,7 @@ fn guest_phi_trace_with_setup(
 #[test]
 fn real_guest_sparse_phi_pad_allows_setup_but_not_foreign_frame_writes()
 -> Result<(), String> {
-    let good = guest_phi_trace_with_setup(b'j')?;
+    let good = guest_phi_trace_with_setup(b'j', 119)?;
     let mut edge = placed_edge();
     edge.entry_address = 2;
     let commit = edge.commit_sites.first_mut().ok_or("missing commit")?;
@@ -655,7 +661,7 @@ fn real_guest_sparse_phi_pad_allows_setup_but_not_foreign_frame_writes()
     {
         return Err(format!("incorrect sparse phi proof: {proof:?}"));
     }
-    let forged = guest_phi_trace_with_setup(b'p')?;
+    let forged = guest_phi_trace_with_setup(b'p', 119)?;
     if verify_traced_phi_copies(
         from_ref(&edge),
         &[initial_store(None)],
@@ -679,6 +685,70 @@ fn real_guest_sparse_phi_pad_allows_setup_but_not_foreign_frame_writes()
     ) != Err(SourcePhiCopyTraceError::InvalidPhiCopy)
     {
         return Err("wrong-site guest phi copy must refuse".into());
+    }
+    Ok(())
+}
+
+// The first sparse copy at C2 is valid, but the next instruction must not
+// write even an unchanged frame word or jump out before the final commit.
+#[test]
+fn real_guest_sparse_phi_gap_rejects_idempotent_effect_and_escape()
+-> Result<(), String> {
+    // For the all-two-trit EOF accumulator, crazy(0, EOF) == 0:
+    // this is a physical p write which does not produce a changed-cell delta.
+    let stable_word = 0u32;
+    let idempotent = guest_phi_trace_with_setup(b'p', stable_word)?;
+    let step = idempotent.get(3).ok_or("missing real gap instruction")?;
+    if step.decoded != Some(b'p')
+        || !step.memory_reads.data.is_some_and(|read| {
+            (read.address, read.value) == (102, stable_word)
+        })
+        || step.after.registers.accumulator != stable_word
+        || step.memory_delta.data.is_some()
+    {
+        return Err(format!("expected actual unchanged physical p: {step:?}"));
+    }
+    let mut edge = placed_edge();
+    edge.entry_address = 2;
+    let commit = edge.commit_sites.first_mut().ok_or("missing commit")?;
+    commit.code_address = 4;
+    commit.copy.destination = 120;
+    edge.commits.first_mut().ok_or("missing copy")?.destination = 120;
+    edge.pad_exit_address = Some(5);
+    edge.target_address = 6;
+    let [first] = frames();
+    let frame = [GuestFramePlacement {
+        end_exclusive: 121,
+        ..first
+    }];
+    if verify_traced_phi_copies(
+        from_ref(&edge),
+        &[initial_store(None)],
+        &frame,
+        &idempotent,
+    ) != Err(SourcePhiCopyTraceError::UnexpectedFrameEffect)
+    {
+        return Err("idempotent foreign p in phi gap must refuse".into());
+    }
+
+    // At C3 a real `i` reads M102=4, jumps directly to the halt at C5
+    // and skips the required C4 commit; output and termination alone must
+    // not turn a partial phi copy into a complete authenticated pad.
+    let escaped = guest_phi_trace_with_setup(b'i', 4)?;
+    if !matches!(escaped.last(), Some(step)
+        if step.before.registers.code_pointer == 5
+            && step.decoded == Some(b'v'))
+    {
+        return Err("physical jump did not escape the phi pad".into());
+    }
+    if verify_traced_phi_copies(
+        from_ref(&edge),
+        &[initial_store(None)],
+        &frame,
+        &escaped,
+    ) != Err(SourcePhiCopyTraceError::InvalidPhiOrder)
+    {
+        return Err("guest escape before final phi commit must refuse".into());
     }
     Ok(())
 }
