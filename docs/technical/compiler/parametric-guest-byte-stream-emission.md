@@ -130,6 +130,30 @@ prove the correct guest arithmetic, dynamic C branching, or that a complete
 C23 EOF checksum is linked. The original seven-block checksum still refuses
 publication. Regression: `tests/compiler/source_phi_copy_trace.rs`.
 
+### Lossless one-read C23 bootstrap state (2026-11-23)
+
+A source-loaded 91-cell N15 guest reuses the original Iy converter bootstrap
+and executes its first five physical M95 rotations before a genuine C37 `/`.
+Replacing the never-reached source C67 with graphical 125 (valid `i` at its
+own phase) causes the already-reached C42 `j` to read M67=125 and select the
+virgin M126=121 operand. C43 `p` then writes `crazy(121, input)` to M126.
+An independent 15-trit scalar oracle proves this mapping has 257 distinct
+images across all 256 input bytes plus true EOF. Five real 45-step guest
+traces (EOF, NUL, 1, 128 and 255) prove the actual M126 write, unchanged
+prepared M95=4,281,052 and M96=121, no extra input, and C44 halt. A real
+no-store mutation leaves the virgin M126 word unchanged. See
+`tests/compiler_c23_first_read_indirect_store.rs` and
+`build_c23_first_input_lossless_store_source`.
+
+This fixes the **lossy first-read state** of the prior C38/M97 probe under a
+**different, fixed physical prefix**, not the C23 checksum. The new C43 store
+advances D to M127, whose loader pointer enters a fixed point far from M95;
+C44 therefore halts rather than performing the sixth through ninth rotations.
+There is no verified return to the converter, C32 normalization, selected
+branch or output; the original complete seven-block mutable EOF checksum
+still refuses physical target linkage. The local state-preservation witness
+must not be confused with full source-C publication.
+
 ### Width-aware typed shift-result checks (2026-11-23)
 
 The strict opt-in source-computation verifier now interprets integer

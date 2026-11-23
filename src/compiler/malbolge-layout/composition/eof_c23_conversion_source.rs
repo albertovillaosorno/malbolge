@@ -385,6 +385,36 @@ pub fn build_c23_nine_rotated_signed_output_source(
     Ok(source)
 }
 
+/// Preserve the *first* real signed input in a lossless, virgin data cell.
+///
+/// The original Iy bootstrap executes five physical rotations of M95 before
+/// C37 reads stdin. C42 then reads the source-valid M67=125 (an unreachable
+/// `i` opcode), so C43 `p` visits virgin M126=121 and writes
+/// `crazy(121, input)`. This stores all 256 bytes and true EOF injectively,
+/// without changing the prepared M95 or M96 conversion operands. C44 halts
+/// before the sixth rotation. It is deliberately a bounded state-preservation
+/// **probe**: there is no route back to M95, C32 normalization, source-C
+/// arithmetic, guest output, or checksum loop.
+///
+/// # Errors
+///
+/// Rejects a profile outside current N15 or unencodable physical instructions.
+/// A real VM witness must check the code and data effects independently.
+pub fn build_c23_first_input_lossless_store_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source = build_c23_nine_rotated_signed_output_source(profile)?;
+    // Unreached source C67 remains graphically valid but now moves C42's
+    // data pointer from M68 to M126, an untouched all-one low-trit operand.
+    *source.get_mut(67).ok_or(
+        C23OperandProbeSourceError::InvalidPosition { position: 67 },
+    )? = 125;
+    set(&mut source, 43, b'p')?;
+    set(&mut source, 44, b'v')?;
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
 /// Convert and emit the second signed input, then fold it into guest state.
 ///
 /// The genuine C66 input and C77/C78 crazy operations leave the fully
