@@ -28,6 +28,31 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### One-read physical input-to-pointer after nine rotations (2026-11-23)
+
+A modified **fully source-loaded** 91-cell `Iy` guest now makes its first
+signed `/` at C37 the **only** input attempt through C67. Its real C38 `p`
+stores `crazy(M97, raw)` into M97, while nine physical `*` writes prepare
+the original C23 operand M95=7,138,732 without touching that saved word.
+C66 is changed from `/` to `o`; C67 then executes a real `j` and reads the
+**guest-written M97**, selecting a data pointer derived from the first
+input, rather than a loader constant. Five bounded 68-step normative N15
+traces (EOF, NUL, one with unread suffix, high byte, `0xff`) check the
+exact input count, C38 physical write and C67 real memory read/indirect
+pointer. A no-store C38 `o` mutation leaves the original M97 loader seed
+at that pointer read. An independent 15-trit crazy oracle confirms that
+the saved word separates true EOF from successful bytes.
+
+**This storage is lossy:** all 256 successful bytes collapse to only 36
+stored words, while EOF produces one distinct additional word. The guest
+prefix neither reproduces a full signed C23 `int` nor completes the later
+physical output/linkage; execution is deliberately bounded before the
+unlinked remainder. It cannot provide the mutable EOF checksum's arithmetic,
+phi writes, conditional branch or repeatable loop, and no C guest artifact
+is published. The original full checksum continues to refuse target
+publication (three end-to-end gate tests green). Regression:
+`tests/compiler_one_read_bootstrap_route.rs`.
+
 ### One-read signed-EOF output with seeded guest data (2026-11-23)
 
 The already proven exact N15 two-crazy operands `[87844, 2551]` now

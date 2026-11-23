@@ -41,6 +41,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A single genuinely source-loaded 91-cell guest now carries its lone C37
+signed input through a C38 physical M97 crazy write, nine independent
+C23 operand rotations and a reached C67 `j` based on that earlier write.
+Five real 68-step N15 traces and an independent scalar oracle also show
+why this remains only a **partial** milestone: the C38 saved encoding has
+36 images for 256 bytes (plus one distinct EOF image), so it cannot
+represent a full C23 `int`. The C66 second read is eliminated only within
+the bounded prefix, with no source-C control, complete output or EOF loop.
+The original full mutable C23 checksum still refuses publication. See
+`tests/compiler_one_read_bootstrap_route.rs` and the compiler contract.
+
 The strongest opt-in physical computation gate now requires each latest
 source-SSA operand word to flow through actual guest `p`/`*` data effects
 into its typed result. A real three-step N15 cast counterfeit is numerically
