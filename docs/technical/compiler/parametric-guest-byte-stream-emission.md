@@ -28,6 +28,36 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked physical predecessor-to-phi ingress (2026-11-23)
+
+The opt-in `SourcePhiCopyProbe::verify_with_predecessor_phi_copy_anchors`
+now replays every reached phi-pad **entry** against the source-authenticated
+predecessor block's reserved control suffix. The immediately preceding real
+VM transition must originate between that block's control start and its end,
+and its actual post-step C must equal the first cell of the edge-local pad.
+A jump into the middle of a pad, or a landing from a foreign control site,
+refuses `InvalidPhiEntry`. The existing snapshot/commit word-copy and
+reserved successor-`i` checks are still required in the **same** finite
+normative guest trace. The earlier copy-only and exit-only public gates
+remain separately available with their narrower guarantees.
+
+A nine-step current-N15 seeded guest physically executes C0 `p`, C1/C2
+`o`, C3 `j`, C4 `p`, C5 `j`, C6 `p`, C7 `i`, then C10 `v`. Its source control
+C2 falls through into the C3 phi pad, copies the prior frame word through
+M101 into M120, and transfers from C7 to the successor C10. An eight-step
+negative instead uses a **real C1 `i`** to bypass the source control C2,
+but still reaches C3, performs both identical physical copies and the same
+C7 -> C10 successor jump. The old copy-plus-exit check accepts both;
+the predecessor check accepts only the actual C2 ingress. Mid-pad and
+foreign source-control negatives also refuse. The seeded machine state
+is a finite physical transfer witness, not an emitted whole-C program.
+
+This necessary control-**origin** check does not establish the truth of a
+conditional branch, guest arithmetic, an unbounded loop or source-C output
+parity. The original seven-block mutable C23 EOF checksum still refuses
+unlinked target lowering and publishes no `.malbolge` artifact. Regression:
+`tests/compiler/source_phi_copy_trace.rs`.
+
 ### Source-locked phi successor-transfer replay (2026-11-23)
 
 The opt-in `SourcePhiCopyProbe::verify_with_linked_phi_copy_anchors`

@@ -1012,3 +1012,220 @@ fn real_guest_phi_transfer_allows_post_commit_setup() -> Result<(), String> {
     );
     Ok(())
 }
+
+// The same real source-loaded N15 guest can complete every phi copy and its
+// reserved successor jump without proving where the phi pad was entered.
+// Physical ingress must come from the source-identified predecessor's control
+// interval, not an arbitrary earlier instruction or a foreign jump.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-bound real VM ingress/refusal assertions"
+)]
+fn real_guest_phi_entry_requires_own_predecessor_control() -> Result<(), String>
+{
+    let steps = guest_phi_trace_with_successor(b'i', 7)?;
+    let (edge, frame) = linked_phi_edge()?;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 2,
+        control_start: 1,
+    }];
+    // All predecessor, copy and exit addresses come from the actual trace.
+    let proof = verify_traced_phi_copies_with_transfer_policy(
+        PhiTraceContext {
+            edges: from_ref(&edge),
+            effects: &[initial_store(None)],
+            frames: &frame,
+        },
+        &steps,
+        true,
+    )
+    .map_err(|error| format!("source phi exit: {error:?}"))?;
+    assert_eq!(proof.completed_pads, 1);
+    assert_eq!(
+        verify_predecessor_phi_entries(&blocks, from_ref(&edge), &steps),
+        Ok(())
+    );
+
+    // Correct physical copies and C5 -> C8 exit cannot make an instruction
+    // outside the declared predecessor's control suffix into a CFG transfer.
+    let foreign_control = [GuestCodeBlockPlacement {
+        end_exclusive: 1,
+        control_start: 0,
+        ..blocks[0]
+    }];
+    assert_eq!(
+        verify_predecessor_phi_entries(
+            &foreign_control,
+            from_ref(&edge),
+            &steps
+        ),
+        Err(SourcePhiCopyTraceError::InvalidPhiEntry),
+    );
+    // An unexpected direct landing in the middle of this pad is never
+    // justified by correctly executed writes after the landing.
+    let middle = steps.get(3..).ok_or("missing guest suffix")?;
+    assert_eq!(
+        verify_predecessor_phi_entries(&blocks, from_ref(&edge), middle),
+        Err(SourcePhiCopyTraceError::InvalidPhiEntry),
+    );
+    Ok(())
+}
+
+// Two complete, real N15 guest runs perform identical frame stores and phi
+// snapshots/commits, but only one reaches the phi pad from its reserved
+// predecessor control C2. The other uses an actual C1 `i` to skip C2. The
+// two traces retain the same real C3 pointer route and C4/C6 frame effects.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bounded graphical source sites are checked before indexing"
+)]
+fn guest_phi_source_with_predecessor_bypass(
+    bypass: bool,
+) -> Result<Vec<u8>, String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, graphical(0, b'p')?),
+        (
+            1,
+            graphical(
+                1,
+                if bypass {
+                    b'i'
+                } else {
+                    b'o'
+                },
+            )?,
+        ),
+        (2, graphical(2, b'o')?),
+        (3, graphical(3, b'j')?),
+        (4, graphical(4, b'p')?),
+        (5, graphical(5, b'j')?),
+        (6, graphical(6, b'p')?),
+        (7, graphical(7, b'i')?),
+        (10, graphical(10, b'v')?),
+    ] {
+        source[site] = opcode;
+    }
+    Ok(source)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded actual N15 execution and exact control flow assertions"
+)]
+fn guest_phi_trace_with_predecessor_bypass(
+    bypass: bool,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let source = guest_phi_source_with_predecessor_bypass(bypass)?;
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("loader: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    for address in [70usize, 101, 120] {
+        *memory.get_mut(address).ok_or("missing frame seed")? = 7_174_453;
+    }
+    for (address, value) in
+        [(71, 2), (72, 100), (73, 100), (102, 119), (121, 9)]
+    {
+        *memory.get_mut(address).ok_or("missing control seed")? = value;
+    }
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("guest setup: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(12, &mut |step| steps.push(*step))
+        .map_err(|error| format!("guest trace: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: if bypass {
+            8
+        } else {
+            9
+        },
+    });
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        if bypass {
+            vec![0, 1, 3, 4, 5, 6, 7, 10]
+        } else {
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 10]
+        }
+    );
+    assert_eq!(
+        steps
+            .iter()
+            .find(|step| step.before.registers.code_pointer == 3)
+            .and_then(|step| step.decoded),
+        Some(b'j')
+    );
+    Ok(steps)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "paired real VM transfer and refusal assertions"
+)]
+fn real_guest_foreign_predecessor_jump_cannot_authorize_phi_pad()
+-> Result<(), String> {
+    let good = guest_phi_trace_with_predecessor_bypass(false)?;
+    let bypass = guest_phi_trace_with_predecessor_bypass(true)?;
+    let (mut edge, frame) = linked_phi_edge()?;
+    edge.control_address = 2;
+    edge.entry_address = 3;
+    edge.snapshot_sites
+        .first_mut()
+        .ok_or("snapshot")?
+        .code_address = 4;
+    edge.commit_sites.first_mut().ok_or("commit")?.code_address = 6;
+    edge.pad_exit_address = Some(7);
+    edge.target_address = 10;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 3,
+        control_start: 2,
+    }];
+    for steps in [&good, &bypass] {
+        let proof = verify_traced_phi_copies_with_transfer_policy(
+            PhiTraceContext {
+                edges: from_ref(&edge),
+                effects: &[initial_store(None)],
+                frames: &frame,
+            },
+            steps,
+            true,
+        )
+        .map_err(|error| format!("source copy/successor: {error:?}"))?;
+        assert_eq!(proof.completed_pads, 1);
+        assert_eq!(proof.copies.len(), 2);
+    }
+    assert_eq!(
+        verify_predecessor_phi_entries(&blocks, from_ref(&edge), &good),
+        Ok(())
+    );
+    assert_eq!(
+        verify_predecessor_phi_entries(&blocks, from_ref(&edge), &bypass),
+        Err(SourcePhiCopyTraceError::InvalidPhiEntry),
+    );
+    Ok(())
+}

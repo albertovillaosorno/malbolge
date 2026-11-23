@@ -38,8 +38,8 @@ use malbolge::{
 };
 
 use super::typed_cfg_adapter::state_relocation::{
-    GuestAddressedCfgPlan, GuestCodeControlEdge, GuestCodeEffectAnchor,
-    GuestCodeOperationAnchor, GuestCodeOperationEffect,
+    GuestAddressedCfgPlan, GuestCodeBlockPlacement, GuestCodeControlEdge,
+    GuestCodeEffectAnchor, GuestCodeOperationAnchor, GuestCodeOperationEffect,
     GuestCodeOperationEffectSite, GuestCodePhiCopyAnchor,
     GuestCodePhiCopyPlacement, GuestCodeProposals, GuestPlacedCellCopy,
     bind_source_locked_cfg_code_targets_with_phi_copy_anchors,
@@ -61,6 +61,8 @@ pub enum SourcePhiCopyTraceError {
     InvalidGuestExecution,
     /// A reached phi site did not write the declared destination/value.
     InvalidPhiCopy,
+    /// A phi pad was entered without the source predecessor control path.
+    InvalidPhiEntry,
     /// A reached phi site was absent, reordered or left mid-transfer.
     InvalidPhiOrder,
     /// A finished phi pad did not physically jump to its source successor.
@@ -338,7 +340,7 @@ impl SourcePhiCopyProbe<'_> {
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
-        self.verify_with_transfer_policy(phi_anchors, true)
+        self.verify_with_transfer_policy(phi_anchors, true, false)
     }
 
     /// Verify with source-locked, sparse physical phi snapshot/commit sites.
@@ -355,13 +357,32 @@ impl SourcePhiCopyProbe<'_> {
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
-        self.verify_with_transfer_policy(phi_anchors, false)
+        self.verify_with_transfer_policy(phi_anchors, false, false)
+    }
+
+    /// Verify that every reached phi pad was *entered* from its owning
+    /// predecessor's source-reserved control suffix, then copied and exited.
+    ///
+    /// This is a stronger physical CFG-linkage prerequisite than checking
+    /// copy values and successor jumps alone. It does not prove source
+    /// condition truth, source arithmetic or all unreachable CFG edges.
+    ///
+    /// # Errors
+    ///
+    /// Refuses wrong/foreign/mid-pad entries and any ordinary phi-copy or
+    /// successor transfer failure from the same finite normative VM trace.
+    pub fn verify_with_predecessor_phi_copy_anchors(
+        self,
+        phi_anchors: &[GuestCodePhiCopyAnchor],
+    ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+        self.verify_with_transfer_policy(phi_anchors, true, true)
     }
 
     fn verify_with_transfer_policy(
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
         require_transfer: bool,
+        require_predecessor: bool,
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
         if self.physical_source.len() < 2
             || self.physical_source.len() > MAX_SOURCE_PHI_TRACE_CELLS
@@ -407,6 +428,13 @@ impl SourcePhiCopyProbe<'_> {
         }) {
             return Err(SourcePhiCopyTraceError::InvalidGuestExecution);
         }
+        if require_predecessor {
+            verify_predecessor_phi_entries(
+                &plan.code_blocks,
+                &plan.control_edges,
+                &steps,
+            )?;
+        }
         verify_traced_phi_copies_with_transfer_policy(
             PhiTraceContext {
                 edges: &plan.control_edges,
@@ -417,6 +445,54 @@ impl SourcePhiCopyProbe<'_> {
             require_transfer,
         )
     }
+}
+
+// Source placement already authenticates all block and edge intervals. The
+// physical trace must still demonstrate *how* each phi pad was reached: a
+// genuine executed instruction in the predecessor's control suffix, with
+// its actual post-step C pointing at the pad's first cell. Checking every
+// fresh entry also catches jumps into the middle of the pad, even if a
+// later copy happens to produce the right word.
+fn verify_predecessor_phi_entries(
+    blocks: &[GuestCodeBlockPlacement],
+    edges: &[GuestCodeControlEdge],
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourcePhiCopyTraceError> {
+    for (index, step) in steps.iter().enumerate() {
+        let code = step.before.registers.code_pointer;
+        for edge in edges {
+            let Some(exit) = edge.pad_exit_address else {
+                continue;
+            };
+            let pad = edge.entry_address..=exit;
+            if !pad.contains(&code) {
+                continue;
+            }
+            let predecessor = index.checked_sub(1).and_then(|at| steps.get(at));
+            if predecessor.is_some_and(|previous| {
+                pad.contains(&previous.before.registers.code_pointer)
+            }) {
+                continue;
+            }
+            let previous =
+                predecessor.ok_or(SourcePhiCopyTraceError::InvalidPhiEntry)?;
+            let block = blocks
+                .iter()
+                .find(|block| {
+                    (block.function, block.block)
+                        == (edge.function, edge.predecessor)
+                })
+                .ok_or(SourcePhiCopyTraceError::InvalidSourcePlacement)?;
+            let from = previous.before.registers.code_pointer;
+            if code != edge.entry_address
+                || !(edge.control_address..block.end_exclusive).contains(&from)
+                || previous.after.registers.code_pointer != edge.entry_address
+            {
+                return Err(SourcePhiCopyTraceError::InvalidPhiEntry);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn in_frame(address: u32, frames: &[GuestFramePlacement]) -> bool {

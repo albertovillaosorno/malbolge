@@ -75,6 +75,19 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the opt-in physical phi verifier also began checking
+  **entry** into each reached predecessor-specific phi pad. In a real
+  source-loaded, seeded N15 guest, the C2 source control falls through
+  into C3, two p writes copy the prior frame state and C7 `i` reaches
+  successor C10 after nine steps. A separate eight-step guest uses a real
+  C1 `i` to bypass C2 but retains the same pad copies and successor
+  jump: the older exit-only gate admits both, while the source-bound
+  predecessor ingress gate rejects the bypass. Mid-pad and foreign
+  control-origin negatives also refuse. The original full C23 checksum
+  remains unlinked, without branch-condition or arithmetic proof and
+  without a published `.malbolge` artifact. See
+  `tests/compiler/source_phi_copy_trace.rs` and the P2 contract.
+
 - On 2026-11-23 an opt-in physical phi transfer gate extended
   source-locked snapshot/commit evidence through each reached pad's reserved
   successor `i`. A real seven-step seeded N15 guest writes both copies and
