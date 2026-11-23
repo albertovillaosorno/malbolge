@@ -39,6 +39,12 @@ use malbolge::{
 const WORDS: u32 = 14_348_907;
 const EOF: u32 = WORDS - 1;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct EarlyPointerState {
+    accumulator: u32,
+    data_pointer: u32,
+}
+
 // Independent scalar trit arithmetic; no production crazy/rotate helper is
 // consulted while classifying the exact graphical loader-tail candidate set.
 #[expect(
@@ -320,5 +326,194 @@ fn early_o_j_routes_cannot_reach_m102_with_c41_fixed() -> Result<(), String> {
         BTreeSet::from([37, 38, 67, 68, 159, 7_174_370, 7_174_405, 7_174_406]),
     );
     assert!(!reachable.contains(&102));
+    Ok(())
+}
+
+// A fixed 4^4 grammar expands the prior o/j-only relocation experiment:
+// C38,39,40,42 may decode as o, j, *, or p while bootstrap-critical C41
+// remains untouched. The five-step independent interpreter preserves actual
+// code encryption, ternary writes and data-dependent pointer jumps. This
+// asks only whether a C43 p could save the first input at lossless M102.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "small fixed N15 interpreter with checked bounded source sites"
+)]
+fn early_arithmetic_pointer(
+    memory: &[u32],
+    choices: [u8; 4],
+    raw: u32,
+) -> Result<EarlyPointerState, String> {
+    let mut overlay = BTreeMap::new();
+    for (site, opcode) in [38u32, 39, 40, 42].into_iter().zip(choices) {
+        let encoded = (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), site)
+                    == Some(opcode)
+            })
+            .ok_or("no graphical opcode")?;
+        _ = overlay.insert(site, u32::from(encoded));
+    }
+    let mut pointer = 97u32;
+    let mut accumulator = raw;
+    for site in 38u32..=42 {
+        let read = |address: u32, writes: &BTreeMap<u32, u32>| {
+            writes.get(&address).copied().or_else(|| {
+                usize::try_from(address)
+                    .ok()
+                    .and_then(|index| memory.get(index).copied())
+            })
+        };
+        let code = read(site, &overlay).ok_or("missing code")?;
+        let opcode = decode_profile_instruction(code, site)
+            .ok_or("non-graphical instruction")?;
+        let data = read(pointer, &overlay).ok_or("missing data")?;
+        match opcode {
+            b'o' => pointer = (pointer + 1) % WORDS,
+            b'j' => pointer = (data + 1) % WORDS,
+            b'*' => {
+                accumulator = rotate(data);
+                _ = overlay.insert(pointer, accumulator);
+                pointer = (pointer + 1) % WORDS;
+            },
+            b'p' => {
+                accumulator = crazy(data, accumulator);
+                _ = overlay.insert(pointer, accumulator);
+                pointer = (pointer + 1) % WORDS;
+            },
+            _ => return Err("unexpected mutated code opcode".into()),
+        }
+        let prior = read(site, &overlay).ok_or("missing executed code")?;
+        let encrypted = encrypt_profile_cell(prior)
+            .ok_or("non-graphical code encryption")?;
+        _ = overlay.insert(site, encrypted);
+    }
+    Ok(EarlyPointerState {
+        accumulator,
+        data_pointer: pointer,
+    })
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "all 256 frozen pointer instructions check the first C23 NUL"
+)]
+fn early_arithmetic_routes_cannot_reach_m102_on_nul() -> Result<(), String> {
+    let profile = current_profile();
+    let source = layout::build_c23_nine_rotated_signed_output_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let mut vm = ProfileMachine::from_source(profile, &source, vec![0])
+        .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(38, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?,
+        RunOutcome::BudgetExhausted { steps: 38 }
+    );
+    assert_eq!(
+        trace.get(37).ok_or("missing C37 read")?.input,
+        Some(TraceInput::Byte(0))
+    );
+    assert_eq!(
+        trace
+            .get(37)
+            .ok_or("missing C37 state")?
+            .after
+            .registers
+            .data_pointer,
+        97
+    );
+    // The bootstrap has no earlier data dependency on edited source cells.
+    // In particular the C41=M41 pointer seed remains exactly unchanged.
+    for step in &trace {
+        assert!(
+            step.memory_reads.data.is_none_or(|read| {
+                ![38, 39, 40, 42].contains(&read.address)
+            })
+        );
+    }
+    let mut targets = BTreeSet::new();
+    let mut examined = 0usize;
+    for mask in 0..=255u8 {
+        let choices = [0u32, 2, 4, 6].map(|shift| match (mask >> shift) & 3 {
+            0 => b'o',
+            1 => b'j',
+            2 => b'*',
+            _ => b'p',
+        });
+        examined += 1;
+        let result = early_arithmetic_pointer(vm.memory(), choices, 0)?;
+        _ = targets.insert(result.data_pointer);
+    }
+    assert_eq!(examined, 256);
+    assert_eq!(
+        targets,
+        BTreeSet::from([37, 38, 67, 68, 159, 7_174_370, 7_174_405, 7_174_406,])
+    );
+    assert!(!targets.contains(&102));
+    Ok(())
+}
+
+// Recheck the independent five-step interpreter against actual source-loaded
+// guest transitions, including opcodes that modify guest memory and A.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "representative executed mixed rotation/crazy pointer controls"
+)]
+fn early_arithmetic_pointer_matches_real_guest_control() -> Result<(), String> {
+    let profile = current_profile();
+    let original = layout::build_c23_nine_rotated_signed_output_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let mut baseline = ProfileMachine::from_source(profile, &original, vec![0])
+        .map_err(|error| error.to_string())?;
+    assert_eq!(
+        baseline.run(38).map_err(|error| error.to_string())?,
+        RunOutcome::BudgetExhausted { steps: 38 }
+    );
+    for choices in [*b"oj*p", *b"p*jo", *b"jpo*", *b"*p*p"] {
+        let mut candidate = original.clone();
+        for (site, opcode) in [38u32, 39, 40, 42].into_iter().zip(choices) {
+            let encoded = (33..=126u8)
+                .find(|byte| {
+                    decode_profile_instruction(u32::from(*byte), site)
+                        == Some(opcode)
+                })
+                .ok_or("no graphical candidate")?;
+            *candidate
+                .get_mut(usize::try_from(site).unwrap_or(usize::MAX))
+                .ok_or("missing code byte")? = encoded;
+        }
+        assert_eq!(candidate.get(41), original.get(41));
+        layout::admit_c23_probe_graphical_source(&candidate)
+            .map_err(|error| format!("{error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, &candidate, vec![0])
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(43, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::BudgetExhausted { steps: 43 }
+        );
+        assert_eq!(
+            trace.get(37).ok_or("missing C37")?.input,
+            Some(TraceInput::Byte(0))
+        );
+        let actual = trace
+            .get(42)
+            .ok_or("missing C42 transition")?
+            .after
+            .registers;
+        let expected = early_arithmetic_pointer(baseline.memory(), choices, 0)?;
+        assert_eq!(
+            actual.data_pointer, expected.data_pointer,
+            "choices {choices:?}"
+        );
+        assert_eq!(
+            actual.accumulator, expected.accumulator,
+            "choices {choices:?}"
+        );
+    }
     Ok(())
 }

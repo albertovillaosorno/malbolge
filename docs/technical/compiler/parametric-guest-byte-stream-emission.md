@@ -1381,6 +1381,38 @@ cell without losing the original accumulator or corrupting subsequent
 control. No C38-to-M102 guest path has been executed or admitted.
 The P2 checksum remains unlinked and produces no guest artifact.
 
+### Early signed-read relocation with real `p`/`*` (2026-11-23)
+
+The unchanged 91-cell `Iy` signed-C23 converter was reexamined as a
+possible one-read building block for the complete mutable checksum.
+Its first genuine `/` at C37 leaves D=M97. M102=121 would make a
+single `p` lossless across all 256 bytes plus EOF, whereas M97 loses
+input identity. A proposed five-instruction route C38..C42 must
+reach D=M102 before such a C43 `p` could use it.
+
+The prior fixed-bootstrap, four-choice-site `o`/`j` experiment has now
+been extended to **256** positional graphical choices: each of C38,
+C39, C40 and C42 may be `o`, `j`, `*` or `p`, while C41 retains its
+bootstrap-critical original `j` source byte. An independent bounded
+five-step interpreter uses the actual normative post-C37 N15 memory,
+reached data words, accumulator, data writes, source-cell encryption
+and positional opcode decoding. For the necessary **NUL input** case,
+all 256 routes produce exactly eight terminal D values:
+`37, 38, 67, 68, 159, 7174370, 7174405, 7174406`. None is 102.
+The control separately verifies the original 38-step input trace had
+no data read from the four edited code cells before C37. Four mixed
+`p`/`*`/`j`/`o` choices were also run as genuine source-loaded 43-step
+N15 guests, with matching post-C42 D and A.
+
+This rejects a **C43 lossless-M102 save only in the frozen five-cell
+and four-opcode grammar**, even if arithmetic writes are admitted.
+It does not rule out a modified bootstrap, different code/data layout,
+longer pointer route, different lossless operand or completed C23
+single-read converter. No checksum arithmetic, branch/phi linkage or
+EOF loop is delivered; the original full C23 checksum still refuses
+guest artifact publication. Regression:
+`tests/compiler_c23_first_read_storage_route.rs`.
+
 ### Exact third signed-word recovery after guest storage (2026-11-20)
 
 The exact same 91-cell three-input N15 source admits a second physical

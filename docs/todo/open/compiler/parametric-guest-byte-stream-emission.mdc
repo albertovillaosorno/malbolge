@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A bounded extension of the frozen 91-cell signed-first-read pointer
+route permits real `p`/`*` writes at C38/C39/C40/C42 alongside `o`/`j`.
+All 256 finite combinations miss the lossless M102 store address on NUL;
+four selected mixed-opcode paths match the normative N15 VM. This is a
+negative result for that fixed bootstrap and five-step grammar only.
+Relocated signed EOF storage and the full C23 checksum linker remain open.
+See `tests/compiler_c23_first_read_storage_route.rs` and the contract.
+
 The strict source-computation result checker now validates typed integer
 left, logical-right and arithmetic-right shifts at their original width,
 including defined unsigned wrapping and signed right-shift bits. Actual N15
