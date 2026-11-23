@@ -30,9 +30,9 @@ pub mod layout;
 
 use layout::{
     CodeCellEvent, CodeVisitRequirement, SourceCodeImageTraceError,
-    SourcePhysicalImageTraceError, build_byte_exact_input_store_source,
-    verify_source_code_cell_trace, verify_source_code_image_trace,
-    verify_source_expanded_code_cells_trace,
+    SourcePhysicalDataRead, SourcePhysicalImageTraceError,
+    build_byte_exact_input_store_source, verify_source_code_cell_trace,
+    verify_source_code_image_trace, verify_source_expanded_code_cells_trace,
     verify_source_physical_image_trace,
 };
 use malbolge::{
@@ -44,6 +44,42 @@ const FOUR_READS: &[u8] =
     include_bytes!("compiler/fixtures/same-site-four-read.malbolge");
 const DYNAMIC_INPUT: &[u8] =
     include_bytes!("compiler/fixtures/code-data-alias-dynamic-input.malbolge");
+
+/// Literal physical oracle from the five-step dependent indirect jump guest.
+const INDIRECT_DATA_READS: [SourcePhysicalDataRead; 4] = [
+    SourcePhysicalDataRead {
+        code_address: 0,
+        data_address: 0,
+        last_data_write_step: None,
+        opcode: b'j',
+        trace_index: 0,
+        value: 40,
+    },
+    SourcePhysicalDataRead {
+        code_address: 1,
+        data_address: 41,
+        last_data_write_step: None,
+        opcode: b'p',
+        trace_index: 1,
+        value: 7_174_467,
+    },
+    SourcePhysicalDataRead {
+        code_address: 2,
+        data_address: 42,
+        last_data_write_step: None,
+        opcode: b'j',
+        trace_index: 2,
+        value: 40,
+    },
+    SourcePhysicalDataRead {
+        code_address: 3,
+        data_address: 41,
+        last_data_write_step: Some(1),
+        opcode: b'i',
+        trace_index: 3,
+        value: 7_174_480,
+    },
+];
 
 #[test]
 #[expect(
@@ -426,6 +462,9 @@ fn physical_image_discovers_indirect_jump_and_unexecutable_expanded_cell()
         complete.expanded.get(2).map(|cell| cell.events.as_slice()),
         Some([CodeCellEvent::FetchNonGraphicalHalt].as_slice())
     );
+    // Prove one actually reached guest p write precedes the later i operand
+    // read of the *new* value, without inferring a C source branch.
+    assert_eq!(complete.data_reads, INDIRECT_DATA_READS);
     assert_eq!(
         complete.expanded,
         verify_source_expanded_code_cells_trace(profile, source, &[], 5, &[
@@ -473,5 +512,92 @@ fn physical_image_is_bounded_and_does_not_invent_unreached_expanded_effects()
             SourceCodeImageTraceError::InvalidBound
         ))
     );
+    Ok(())
+}
+
+/// Encode only the three real positional guest instructions used below.
+fn three_step_read_source() -> Result<Vec<u8>, String> {
+    b"jpv"
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(site, opcode)| {
+            (33..=126u8)
+                .find(|byte| {
+                    decode_profile_instruction(
+                        u32::from(*byte),
+                        u32::try_from(site).unwrap_or_default(),
+                    ) == Some(opcode)
+                })
+                .ok_or_else(|| format!("cannot encode {opcode} at C{site}"))
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "two real profile executions with whitespace and prefix parity"
+)]
+fn physical_operand_reads_preserve_loader_positions_and_prefix_bounds()
+-> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let source = three_step_read_source()?;
+        assert_eq!(source.first(), Some(&40));
+        let complete =
+            verify_source_physical_image_trace(profile, &source, &[], 3)
+                .map_err(|error| {
+                    format!("full three-step read journal: {error:?}")
+                })?;
+        assert_eq!(complete.source.source_cells, 3);
+        assert_eq!(complete.source.outcome, RunOutcome::Terminated {
+            reason: malbolge::Termination::HaltInstruction,
+            steps: 3,
+        });
+        assert_eq!(complete.data_reads.len(), 2);
+        assert_eq!(
+            complete.data_reads.first().map(|read| (
+                read.trace_index,
+                read.opcode,
+                read.data_address,
+                read.value,
+            )),
+            Some((0, b'j', 0, 40)),
+        );
+        assert_eq!(
+            complete.data_reads.get(1).map(|read| (
+                read.trace_index,
+                read.opcode,
+                read.data_address,
+                read.last_data_write_step,
+            )),
+            Some((1, b'p', 41, None)),
+        );
+        assert_eq!(complete.expanded.len(), 1);
+        assert_eq!(
+            complete
+                .expanded
+                .first()
+                .map(|cell| (cell.site, cell.schedule.data_writes,)),
+            Some((41, 1))
+        );
+        let padded = source
+            .iter()
+            .flat_map(|byte| [b'\n', *byte, b'\t'])
+            .collect::<Vec<_>>();
+        assert_eq!(
+            verify_source_physical_image_trace(profile, &padded, &[], 3),
+            Ok(complete.clone()),
+        );
+        let prefix =
+            verify_source_physical_image_trace(profile, &source, &[], 1)
+                .map_err(|error| {
+                    format!("one-step read-only prefix: {error:?}")
+                })?;
+        assert!(prefix.expanded.is_empty());
+        assert_eq!(prefix.data_reads.len(), 1);
+        assert_eq!(prefix.data_reads.first(), complete.data_reads.first());
+    }
     Ok(())
 }

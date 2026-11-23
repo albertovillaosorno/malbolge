@@ -358,13 +358,37 @@ pub enum SourceCodeImageTraceError {
     },
 }
 
+/// A real decoded guest instruction's data operand and preceding p/* store.
+///
+/// `last_data_write_step` is the last reached guest `p` or `*` store at the
+/// same address strictly *before* this read. It is not a C23 source variable
+/// nor proof the address was not changed by intervening XLAT2 encryption.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourcePhysicalDataRead {
+    /// Code address executing the reached `j`, `i`, `p` or `*` instruction.
+    pub code_address: u32,
+    /// Exact address read from the guest D register.
+    pub data_address: u32,
+    /// Earlier write-step index, including idempotent physical stores.
+    pub last_data_write_step: Option<usize>,
+    /// Reached, position-decoded data-operand opcode.
+    pub opcode: u8,
+    /// Zero-based executed step index in the finite actual VM prefix.
+    pub trace_index: usize,
+    /// Actual physical word read by this guest instruction.
+    pub value: u32,
+}
+
 /// One normative bounded replay of all reached source and expanded effects.
 ///
 /// Unlike separately selected expanded sites, this footprint discovers every
 /// actual fetched, data-written or jump-encrypted address as the VM executes.
-/// Pure data reads are not modifications and are not listed independently.
+/// Pure data reads do not modify cells; their chronology is retained in
+/// the separate operand-read journal.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourcePhysicalImageTrace {
+    /// Actual data-operand reads, in reached guest execution order.
+    pub data_reads: Vec<SourcePhysicalDataRead>,
     /// All reached loader-expanded physical sites, in increasing order.
     pub expanded: Vec<SourceExpandedCodeCellTrace>,
     /// Exact source-code image, including untouched source-cell comparison.
@@ -395,7 +419,9 @@ struct ExpandedPhysicalJournal {
 
 /// Source and expanded event accumulators for one bounded guest execution.
 struct PhysicalImageJournals {
+    data_reads: Vec<SourcePhysicalDataRead>,
     expanded: BTreeMap<u32, ExpandedPhysicalJournal>,
+    last_data_write_steps: BTreeMap<u32, usize>,
     source: BTreeMap<u32, Vec<CodeCellEvent>>,
     source_cells: usize,
 }
@@ -551,10 +577,44 @@ fn initial_effect_word(step: &ProfileStepTrace, site: u32) -> Option<u32> {
     .map(|read| read.value)
 }
 
+/// Record one source-independent data-operand read, before its own write.
+fn record_physical_operand_read(
+    step: &ProfileStepTrace,
+    trace_index: usize,
+    journals: &mut PhysicalImageJournals,
+) -> Result<(), SourcePhysicalImageTraceError> {
+    use SourceCodeImageTraceError as SourceError;
+    use SourcePhysicalImageTraceError as PhysicalError;
+    if let Some(opcode @ (b'j' | b'i' | b'p' | b'*')) = step.decoded {
+        let read = step
+            .memory_reads
+            .data
+            .ok_or(PhysicalError::Source(SourceError::InvalidExecution))?;
+        journals.data_reads.push(SourcePhysicalDataRead {
+            code_address: step.before.registers.code_pointer,
+            data_address: read.address,
+            last_data_write_step: journals
+                .last_data_write_steps
+                .get(&read.address)
+                .copied(),
+            opcode,
+            trace_index,
+            value: read.value,
+        });
+        if matches!(opcode, b'p' | b'*') {
+            let _previous = journals
+                .last_data_write_steps
+                .insert(read.address, trace_index);
+        }
+    }
+    Ok(())
+}
+
 /// Record all distinct physical effects of one reached normative VM step.
 fn append_physical_step_effects(
     profile: &ProfileDescriptor,
     step: &ProfileStepTrace,
+    trace_index: usize,
     journals: &mut PhysicalImageJournals,
 ) -> Result<(), SourcePhysicalImageTraceError> {
     use std::collections::btree_map::Entry;
@@ -564,6 +624,7 @@ fn append_physical_step_effects(
     if step.result.is_err() {
         return Err(PhysicalError::Source(SourceError::InvalidExecution));
     }
+    record_physical_operand_read(step, trace_index, journals)?;
     let mut seen = Vec::with_capacity(4);
     for site in affected_code_sites(step).into_iter().flatten() {
         if seen.contains(&site) {
@@ -652,18 +713,26 @@ pub fn verify_source_physical_image_trace(
             |_error| PhysicalError::Source(SourceError::InvalidSource),
         )?;
     let mut journals = PhysicalImageJournals {
+        data_reads: Vec::new(),
         expanded: BTreeMap::new(),
+        last_data_write_steps: BTreeMap::new(),
         source: BTreeMap::new(),
         source_cells,
     };
     let mut failure = None;
+    let mut trace_index = 0usize;
     let outcome = machine
         .run_traced(steps, &mut |step| {
             if failure.is_none() {
-                failure =
-                    append_physical_step_effects(profile, step, &mut journals)
-                        .err();
+                failure = append_physical_step_effects(
+                    profile,
+                    step,
+                    trace_index,
+                    &mut journals,
+                )
+                .err();
             }
+            trace_index = trace_index.saturating_add(1);
         })
         .map_err(|_error| {
             PhysicalError::Source(SourceError::InvalidExecution)
@@ -745,6 +814,7 @@ pub fn verify_source_physical_image_trace(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SourcePhysicalImageTrace {
+        data_reads: journals.data_reads,
         expanded,
         source: SourceCodeImageTrace {
             touched,

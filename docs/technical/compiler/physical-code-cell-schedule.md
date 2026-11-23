@@ -420,8 +420,9 @@ provides the live *pre-effect* word. The verifier then replays all reached
 `p`/`*` stores, fetched instructions and off-site `i` encryptions through
 `admit_loaded_code_cell_schedule`, checking each final word against the
 normative VM. An unchanged data write remains a real physical effect.
-Pure data reads do not create a footprint entry. Source and expanded effects
-come from the **same** execution, and the expanded report is address-sorted.
+Pure data reads do not create an effect-site entry, but are included in the
+ordered operand-read journal described below. Source and expanded effects
+come from the **same** execution; expanded sites are address-sorted.
 
 The first source-backed witness is the actual `/;j;p;j;p;v` guest from the
 byte-exact input store. Four EOF/binary streams each produce two expanded
@@ -446,3 +447,28 @@ export TMPDIR="$PWD/.temp"
 .dependencies/rust/1.98.1/bin/cargo.bin test \
   --test compiler_code_image_trace_guest
 ```
+
+## Ordered Guest Data-Operand Reads (2026-11-22)
+
+The complete physical image additionally returns `data_reads`, an ordered
+journal of real `j`, `i`, `p` and `*` data-operand reads. Each entry records
+the zero-based VM step, fetched code address, actually decoded opcode,
+selected guest D address, exact read word and the most recent **earlier**
+physical `p`/`*` store step at that same address, if one exists. The current
+instruction's own data write is recorded *after* its operand read, even when
+C and D alias. A store is considered reached even when it is idempotent.
+The optional predecessor identifies only the last **data store**: it does
+not assert that intervening XLAT2 instructions left the word unchanged.
+
+A new source-locked red-then-green regression uses the actual N15
+`"(=&_@?>=<;:987C"` indirect-branch guest. It observes C0 `j` reading
+M0=40, C1 `p` reading the original expanded M41=7,174,467, C2 `j`
+reading M42=40, and C3 `i` reading the *new* M41=7,174,480 with its
+`last_data_write_step` bound to C1's real step 1. The other reads have
+no prior data-store predecessor. Separate three-step `j;p;v` source tests
+execute under both current N15 and historical profiles and agree with
+whitespace-padded raw source. A one-step prefix retains only the first
+read and no premature data-write site. These are observed physical
+read-after-write relationships, **not** C23 typed variable identities,
+source-SSA control edges or an executable C checksum loop.
+EOF normalization, source branches and mutable checksum linkage remain open.
