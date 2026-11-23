@@ -349,8 +349,14 @@ pub fn build_c23_nine_rotated_signed_conversion_without_output_source(
 /// halts. This avoids executing C81, whose fixed source byte is `v`.
 ///
 /// This is a genuine guest-physical signed-byte conversion, not ordinary C
-/// `getchar`: the first independent read is still consumed at C37. There is
-/// no source C32 state, checksum branch, phi movement, or looping program.
+/// `getchar`: the first independent read is still consumed at C37.
+/// The graphical value 80 at C37 is also an early pointer operand: C10
+/// reads M37 before executing C37, C11 follows M81=94, and C12 must rotate
+/// M95. Simply replacing the C37 read with graphical no-op 125 changes that
+/// early pointer reset. The apparent successful-byte echo then stores the
+/// wrong M158/M159 words and fails C23 EOF conversion. This is a local
+/// one-cell obstruction, not a general impossibility of single-read code.
+/// No source C32 state, checksum branch, phi movement, or looping program.
 ///
 /// # Errors
 ///

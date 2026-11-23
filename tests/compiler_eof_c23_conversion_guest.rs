@@ -124,6 +124,141 @@ fn scalar_crazy(mut data: u32, mut accumulator: u32) -> u32 {
     result
 }
 
+// Exhaust the graphical C37 edits that might remove the converter's
+// discarded first read without changing the rest of its 91-cell source.
+// This is a local single-cell obstruction, not a proof that a different
+// physical assembler cannot construct a true one-read C23 conversion.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "eight graphical replacements and certified VM prefix"
+)]
+fn one_cell_c37_replacement_cannot_remove_discarded_read_and_keep_c23_operand()
+-> Result<(), String> {
+    let profile = current_profile();
+    let original = layout::build_c23_nine_rotated_signed_output_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(original[37], 80);
+    let mut original_vm =
+        ProfileMachine::from_source(profile, &original, Vec::new())
+            .map_err(|error| error.to_string())?;
+    let mut prefix = Vec::new();
+    let _ = original_vm.run_traced(13, &mut |step| prefix.push(*step));
+    assert_eq!(prefix.len(), 13);
+    assert_eq!(prefix[10].decoded, Some(b'j'));
+    assert_eq!(
+        prefix[10]
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value)),
+        Some((37, 80))
+    );
+    assert_eq!(prefix[11].decoded, Some(b'j'));
+    assert_eq!(prefix[11].before.registers.data_pointer, 81);
+    assert_eq!(prefix[12].decoded, Some(b'*'));
+    assert_eq!(prefix[12].before.registers.data_pointer, 95);
+    // Before C10 no instruction writes M37 and no instruction fetches it.
+    // Changing only source[37] must therefore change its initial value at
+    // this mandatory pointer read, not the earlier execution path.
+    assert!(prefix[..10].iter().all(|step| {
+        step.before.registers.code_pointer != 37
+            && step
+                .memory_delta
+                .data
+                .is_none_or(|write| write.address != 37)
+            && step
+                .memory_delta
+                .encryption
+                .is_none_or(|write| write.address != 37)
+    }));
+    let mut candidate_count = 0u32;
+    let mut original_path_count = 0u32;
+    for glyph in 33..=126u8 {
+        if !matches!(
+            decode_profile_instruction(u32::from(glyph), 37),
+            Some(b'j' | b'i' | b'*' | b'p' | b'o' | b'<' | b'/' | b'v')
+        ) {
+            continue;
+        }
+        candidate_count += 1;
+        let mut candidate = original.clone();
+        candidate[37] = glyph;
+        layout::admit_c23_probe_graphical_source(&candidate)
+            .map_err(|error| format!("{error:?}"))?;
+        // With C10 still reading M37 and C11 still reading the selected
+        // source cell, only M37=80 can retain the certified C12/M95 path.
+        // This is a *necessary path-identity* check, not a VM replacement
+        // or an assertion that alternative source programs are impossible.
+        let preserves_c23_operand = glyph == 80;
+        if preserves_c23_operand {
+            original_path_count += 1;
+            assert_eq!(glyph, original[37]);
+            assert_eq!(
+                decode_profile_instruction(u32::from(glyph), 37),
+                Some(b'/')
+            );
+        } else {
+            assert_ne!(glyph, original[37]);
+        }
+    }
+    assert_eq!(candidate_count, 8);
+    assert_eq!(original_path_count, 1);
+    Ok(())
+}
+
+// A tempting one-byte mutation appears correct for an ASCII witness but
+// destroys the real M95/M96 conversion. EOF exposes this false positive.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "normative N15 counterexample on byte and true EOF"
+)]
+fn deleting_first_read_by_changing_c37_must_not_claim_signed_conversion()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut source =
+        layout::build_c23_nine_rotated_signed_output_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    source[37] = 125;
+    assert_eq!(
+        decode_profile_instruction(u32::from(source[37]), 37),
+        Some(b'o')
+    );
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for (input, expected_emitted) in [(vec![0x5a], 0x5au8), (Vec::new(), 89u8)]
+    {
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(81, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 81,
+            },
+        );
+        assert_eq!(trace[37].decoded, Some(b'o'));
+        assert!(trace[37].input.is_none());
+        assert_eq!(trace[66].decoded, Some(b'/'));
+        assert_eq!(trace[77].before.registers.data_pointer, 158);
+        assert_eq!(trace[78].before.registers.data_pointer, 159);
+        assert_eq!(trace[79].output, Some(expected_emitted));
+        assert_eq!(vm.output(), &[expected_emitted]);
+        assert_ne!(trace[77].before.registers.data_pointer, 95);
+        assert_ne!(trace[78].before.registers.data_pointer, 96);
+    }
+    // Actual EOF output is 89 rather than the C23 unsigned-char 255.
+    assert_ne!(89u8, u8::MAX);
+    Ok(())
+}
+
 #[test]
 #[expect(
     clippy::cognitive_complexity,
