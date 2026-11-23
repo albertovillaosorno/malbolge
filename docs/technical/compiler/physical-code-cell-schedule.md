@@ -335,3 +335,53 @@ To reproduce the focused image checks:
 .dependencies/rust/1.98.1/bin/cargo.bin test \
   --test compiler_code_image_trace_guest
 ```
+
+## Loader-Expanded Physical Cell Phases (2026-11-22)
+
+The previous per-cell schedule required an original graphical, loader-admitted
+source byte. That is correct for code positions inside the source image, but
+not for a future instruction or data operand at an address initialized by the
+Malbolge loader recurrence. Its initial value can be any full-width guest
+word. A source-only schedule therefore cannot authenticate a later off-site
+`p`/`*` store, `i`-target XLAT2, or attempted fetch at such an address.
+
+`admit_loaded_code_cell_schedule` now shares the original chronological
+phase rules but accepts a checked initial full-width memory word, independent
+of any graphical source-byte encoding. The original
+`admit_code_cell_schedule` retains its strict loader-valid source-byte gate.
+This separation prevents a solver from declaring a non-graphical source byte
+valid merely because a future write would replace it. The new
+`verify_source_expanded_code_cell_trace` always obtains the **actual**
+loader-initialized word from `ProfileMachine::from_source`, replays genuine
+execution, reconstructs the site's reached chronological effects and checks
+its final word. Missing effects, invalid initial words, forged opcodes,
+stale pre-write values and invalid jump-encryption targets refuse.
+
+`tests/compiler_expanded_code_trace_guest.rs` contains two concrete normative
+witnesses. First, a three-source-cell `j;(p|*);v` guest uses C0 `j` to address
+loader-expanded M41. Both current N15 and historical profiles execute three
+instructions, write M41 through a real `p` or `*` and halt. The checked
+full-width initial value, exact data write and resulting word agree with the
+normative VM. The old graphical-source planner correctly refuses this site.
+Second, a six-cell N15 `j;i;o;o;o;o` guest has loader M41=63, M63=36 and
+M64=7,174,471. A reached C1 `i` jumps via M41, encrypts unfetched expanded
+M63, and C64 then attempts to fetch its still non-graphical word. The new
+trace checker verifies both off-site XLAT2 and the genuine terminal fetch;
+forcing XLAT2 on the non-graphical M64 refuses.
+
+This is a bounded necessary checker for **one requested expanded cell** in
+one source-loaded trace of at most 512 steps and 4,096 source bytes. It is
+not a planner that proves proposed guest control or C semantics, and it does
+not claim the original seven-block mutable C23 checksum has been linked.
+The missing compiler stage must still emit and verify the actual arithmetic,
+phi writes, EOF edges, state restoration and output under the normative VM.
+
+Reproduce its real-guest witnesses and the unchanged P2 refusal with:
+
+```sh
+export TMPDIR="$PWD/.temp"
+.dependencies/rust/1.98.1/bin/cargo.bin test \
+  --test compiler_expanded_code_trace_guest
+.dependencies/python/3.14.7/bin/python3.14 -B -m unittest \
+  tests.test_eof_checksum_pipeline -v
+```

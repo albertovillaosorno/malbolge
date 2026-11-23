@@ -96,12 +96,14 @@ pub use c23_c32_constant_writer::{
 };
 pub use code_cell_schedule::{
     CodeCellEvent, CodeCellSchedule, CodeCellScheduleError,
-    MAX_CODE_CELL_EVENTS, admit_code_cell_schedule, encode_code_cell_schedule,
+    LoadedCodeCellSchedule, MAX_CODE_CELL_EVENTS, admit_code_cell_schedule,
+    admit_loaded_code_cell_schedule, encode_code_cell_schedule,
 };
 pub use code_cell_trace::{
     SourceCodeCellTrace, SourceCodeCellTraceError, SourceCodeImageCellTrace,
     SourceCodeImageTrace, SourceCodeImageTraceError,
-    verify_source_code_cell_trace, verify_source_code_image_trace,
+    SourceExpandedCodeCellTrace, verify_source_code_cell_trace,
+    verify_source_code_image_trace, verify_source_expanded_code_cell_trace,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

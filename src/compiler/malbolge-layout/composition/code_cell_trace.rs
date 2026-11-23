@@ -40,7 +40,8 @@ use malbolge::{
 
 use super::code_cell_schedule::{
     CodeCellEvent, CodeCellSchedule, CodeCellScheduleError,
-    admit_code_cell_schedule,
+    LoadedCodeCellSchedule, admit_code_cell_schedule,
+    admit_loaded_code_cell_schedule,
 };
 use super::{
     CodeVisitRequirement, MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS,
@@ -261,6 +262,104 @@ pub fn verify_source_code_cell_trace(
         return Err(SourceCodeCellTraceError::FinalWordMismatch);
     }
     Ok(SourceCodeCellTrace {
+        events,
+        final_word,
+        outcome,
+        schedule,
+    })
+}
+
+/// One loader-expanded guest cell authenticated by its source-loaded VM.
+///
+/// A non-graphical initial word can become executable after a guest data
+/// write; until that write, no graphical source-byte identity is assumed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceExpandedCodeCellTrace {
+    /// Full-width pre-execution word produced by actual loader expansion.
+    pub initial_word: u32,
+    /// Reached chronological effects, including unchanged physical writes.
+    pub events: Vec<CodeCellEvent>,
+    /// Final memory word independently compared against the phase replay.
+    pub final_word: u32,
+    /// Normative VM termination or a finite step-budget exhaustion.
+    pub outcome: RunOutcome,
+    /// Exact resulting schedule for the loader-expanded memory cell.
+    pub schedule: LoadedCodeCellSchedule,
+}
+
+/// Verify an expanded-memory cell, including a guest-created future opcode.
+///
+/// The selected address must be outside the graphical source but inside the
+/// selected profile memory. The normative loader supplies the *actual* initial
+/// full-width word. Every reached data write, jump-target encryption, or fetch
+/// at that address is reconstructed from one real VM trace and replayed in
+/// order; the final word must agree with the VM. An untouched cell refuses.
+/// No source-C CFG, input dependence or unbounded behavior is inferred.
+///
+/// # Errors
+///
+/// Refuses invalid source/geometry/bounds, unsupported execution, a missing
+/// physical effect, stale word versions, or a different actual final word.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "normative profile, source/input, bounded trace and expanded site"
+)]
+pub fn verify_source_expanded_code_cell_trace(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    input: &[u8],
+    steps: usize,
+    site: u32,
+) -> Result<SourceExpandedCodeCellTrace, SourceCodeCellTraceError> {
+    if steps == 0
+        || steps > MAX_REVISIT_STEPS
+        || source.len() > MAX_REVISIT_SOURCE_CELLS
+        || site >= profile.memory_words()
+        || usize::try_from(site).ok().is_none_or(|position| {
+            position
+                < source
+                    .iter()
+                    .filter(|byte| !is_source_whitespace(**byte))
+                    .count()
+        })
+    {
+        return Err(SourceCodeCellTraceError::InvalidBound);
+    }
+    let mut machine =
+        ProfileMachine::from_source(profile, source, input.to_vec())
+            .map_err(|_error| SourceCodeCellTraceError::InvalidSource)?;
+    let initial_word = machine
+        .memory_word(site)
+        .map_err(|_error| SourceCodeCellTraceError::InvalidBound)?;
+    let mut events = Vec::new();
+    let mut failure = None;
+    let outcome = machine
+        .run_traced(steps, &mut |step| {
+            if failure.is_none()
+                && let Err(error) =
+                    append_site_effects(profile, site, step, &mut events)
+            {
+                failure = Some(error);
+            }
+        })
+        .map_err(|_error| SourceCodeCellTraceError::InvalidExecution)?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    if events.is_empty() {
+        return Err(SourceCodeCellTraceError::MissingEffect);
+    }
+    let schedule =
+        admit_loaded_code_cell_schedule(profile, site, initial_word, &events)
+            .map_err(SourceCodeCellTraceError::Schedule)?;
+    let final_word = machine
+        .memory_word(site)
+        .map_err(|_error| SourceCodeCellTraceError::InvalidExecution)?;
+    if schedule.final_cell != final_word {
+        return Err(SourceCodeCellTraceError::FinalWordMismatch);
+    }
+    Ok(SourceExpandedCodeCellTrace {
+        initial_word,
         events,
         final_word,
         outcome,

@@ -94,6 +94,26 @@ pub struct CodeCellSchedule {
     pub target_encryptions: usize,
 }
 
+/// Replayed effects on a word initialized by the normative profile loader.
+///
+/// Unlike a graphical source byte, loader-expanded memory can begin with any
+/// full-width word. This record is a phase obligation, not proof that the
+/// caller's proposed write, fetch or jump actually executes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LoadedCodeCellSchedule {
+    /// Number of declared physical `p`/`*` writes, even if idempotent.
+    pub data_writes: usize,
+    /// Number of fetched code cells, including non-graphical terminal fetch.
+    pub fetches: usize,
+    /// Final live word after all scheduled effects.
+    pub final_cell: u32,
+    /// Exact source-loaded *memory word*, not a presumed graphical source
+    /// byte.
+    pub initial_word: u32,
+    /// Number of actual off-site `i` target encryptions.
+    pub target_encryptions: usize,
+}
+
 /// Exact bounded reason a graphical cell/schedule was not admitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CodeCellScheduleError {
@@ -116,6 +136,8 @@ pub enum CodeCellScheduleError {
         /// Zero-based terminal fetch preceding an impossible event.
         event: usize,
     },
+    /// Initial loader-expanded memory word exceeds the target word geometry.
+    InvalidLoadedWord,
     /// A data write supplied a word beyond the profile memory geometry.
     InvalidDataWord {
         /// Zero-based physical event index with the out-of-range word.
@@ -165,11 +187,6 @@ const fn admitted(profile: &ProfileDescriptor, opcode: u8) -> bool {
 ///
 /// Refuses invalid bytes or words, inconsistent effects, impossible post-halt
 /// events, and out-of-budget/address requests.
-#[expect(
-    clippy::excessive_nesting,
-    clippy::too_many_lines,
-    reason = "exact ordered fetch and target-encryption transitions"
-)]
 pub fn admit_code_cell_schedule(
     profile: &ProfileDescriptor,
     position: u32,
@@ -188,15 +205,66 @@ pub fn admit_code_cell_schedule(
     if !(33..=126).contains(&initial) {
         return Err(CodeCellScheduleError::InvalidSourceCell);
     }
-    // The loader authenticates the original source, not the first proposed
-    // effect. A valid initial o can be fetched inert, while a reached i can
-    // encrypt this cell even before it is ever fetched or data-written.
+    // A source byte must be loader-admitted before any data write or XLAT2.
+    // Loader-expanded memory has no such initial-source requirement.
     if !decode_profile_instruction(u32::from(initial), position)
         .is_some_and(|opcode| admitted(profile, opcode))
     {
         return Err(CodeCellScheduleError::InvalidFirstEvent);
     }
-    let mut cell = u32::from(initial);
+    let loaded = admit_loaded_code_cell_schedule(
+        profile,
+        position,
+        u32::from(initial),
+        events,
+    )?;
+    Ok(CodeCellSchedule {
+        data_writes: loaded.data_writes,
+        fetches: loaded.fetches,
+        final_cell: loaded.final_cell,
+        initial,
+        target_encryptions: loaded.target_encryptions,
+    })
+}
+
+/// Check phases of a cell initialized by full-width guest loader expansion.
+///
+/// This does **not** prove `initial_word` equals the real loader output or
+/// that off-site effects execute. Callers must obtain the initial word from
+/// a source-loaded normative VM and independently prove the reached effects.
+/// Unlike a source byte, an expanded word may start non-graphical and become
+/// executable only after a genuine `p`/`*` store. It may also remain data for
+/// the entire prefix. Fetch and self-write ordering is identical to source
+/// cells, and all full-width word versions are checked in execution order.
+///
+/// # Errors
+///
+/// Refuses invalid initial/data words, positions, budgets, fetched opcodes,
+/// XLAT2 targets, stale write versions and impossible effects after halt.
+#[expect(
+    clippy::excessive_nesting,
+    clippy::too_many_lines,
+    reason = "exact ordered fetch and target-encryption transitions"
+)]
+pub fn admit_loaded_code_cell_schedule(
+    profile: &ProfileDescriptor,
+    position: u32,
+    initial_word: u32,
+    events: &[CodeCellEvent],
+) -> Result<LoadedCodeCellSchedule, CodeCellScheduleError> {
+    if position >= profile.memory_words() {
+        return Err(CodeCellScheduleError::AddressOutOfBounds);
+    }
+    if events.is_empty() {
+        return Err(CodeCellScheduleError::Empty);
+    }
+    if events.len() > MAX_CODE_CELL_EVENTS {
+        return Err(CodeCellScheduleError::TooMany);
+    }
+    if initial_word >= profile.memory_words() {
+        return Err(CodeCellScheduleError::InvalidLoadedWord);
+    }
+    let mut cell = initial_word;
     let mut fetches = 0usize;
     let mut data_writes = 0usize;
     let mut target_encryptions = 0usize;
@@ -297,11 +365,11 @@ pub fn admit_code_cell_schedule(
             },
         }
     }
-    Ok(CodeCellSchedule {
+    Ok(LoadedCodeCellSchedule {
         data_writes,
         fetches,
         final_cell: cell,
-        initial,
+        initial_word,
         target_encryptions,
     })
 }
