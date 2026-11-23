@@ -381,3 +381,105 @@ fn selected_expanded_sites_share_one_normative_execution() -> Result<(), String>
     );
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "real p write, j pointer restore, i dependency and guest fetch"
+)]
+fn actual_guest_write_controls_an_expanded_indirect_jump() -> Result<(), String>
+{
+    // Loader-encoded positions: C0 j, C1 p, C2 j, C3 i, then inert
+    // filler, ending with v. The real loader yields M42=40 so C2 j
+    // restores D41 after the p write, and C3 i reads that changed M41.
+    let source = b"(=&_@?>=<;:987C";
+    let profile = current_profile();
+    let site = 41;
+    let target = 7_174_480;
+    let next = target + 1;
+    let mut machine = ProfileMachine::from_source(profile, source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    assert_eq!(machine.memory_word(site), Ok(7_174_467));
+    assert_eq!(machine.memory_word(42), Ok(40));
+    assert_eq!(machine.memory_word(target), Ok(67));
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(5, &mut |step| steps.push(*step))
+        .map_err(|error| format!("live write/indirect jump: {error}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::NonGraphicalCell,
+        steps: 5,
+    });
+    assert_eq!(steps.len(), 5);
+    let first = steps.first().ok_or("missing initial j")?;
+    let write = steps.get(1).ok_or("missing p store")?;
+    let restore = steps.get(2).ok_or("missing D-restore j")?;
+    let jump = steps.get(3).ok_or("missing indirect i")?;
+    let halt = steps.get(4).ok_or("missing non-graphical fetch")?;
+    assert_eq!(first.decoded, Some(b'j'));
+    assert_eq!(write.decoded, Some(b'p'));
+    assert_eq!(
+        write
+            .memory_delta
+            .data
+            .map(|delta| { (delta.address, delta.before, delta.after) }),
+        Some((site, 7_174_467, target))
+    );
+    assert_eq!(restore.decoded, Some(b'j'));
+    assert_eq!(
+        restore
+            .memory_reads
+            .data
+            .map(|read| { (read.address, read.value) }),
+        Some((42, 40))
+    );
+    assert_eq!(jump.decoded, Some(b'i'));
+    assert_eq!(
+        jump.memory_reads
+            .data
+            .map(|read| { (read.address, read.value) }),
+        Some((site, target))
+    );
+    assert_eq!(
+        jump.memory_delta
+            .encryption
+            .map(|delta| { (delta.address, delta.before) }),
+        Some((target, 67))
+    );
+    assert_eq!(halt.before.registers.code_pointer, next);
+    assert_eq!(halt.decoded, None);
+
+    let cells =
+        verify_source_expanded_code_cells_trace(profile, source, &[], 5, &[
+            site, target, next,
+        ])
+        .map_err(|error| format!("data-dependent expanded i: {error:?}"))?;
+    assert_eq!(cells.len(), 3);
+    let data = cells.first().ok_or("no M41 observation")?;
+    let encrypted = cells.get(1).ok_or("no jump-target observation")?;
+    let fetched = cells.get(2).ok_or("no fetched-site observation")?;
+    assert_eq!(data.site, site);
+    assert_eq!(data.initial_word, 7_174_467);
+    assert_eq!(data.final_word, target);
+    assert_eq!(data.events, [CodeCellEvent::DataWrite {
+        before: 7_174_467,
+        after: target,
+    }]);
+    assert_eq!(encrypted.site, target);
+    assert_eq!(encrypted.events, [CodeCellEvent::JumpTargetEncryption]);
+    assert_eq!(fetched.site, next);
+    assert_eq!(fetched.events, [CodeCellEvent::FetchNonGraphicalHalt]);
+    assert_eq!(fetched.outcome, outcome);
+    assert_eq!(
+        verify_source_expanded_code_cells_trace(profile, source, &[], 5, &[
+            site, 42, target
+        ],),
+        Err(SourceExpandedCodeBatchError::Cell {
+            site: 42,
+            error: SourceCodeCellTraceError::MissingEffect,
+        })
+    );
+    Ok(())
+}

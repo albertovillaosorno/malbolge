@@ -381,6 +381,17 @@ batch with its exact offending address. The six-cell indirect `i` guest checks
 M63 and M64 together, including raw-source whitespace invariance, and agrees
 with both separate singleton witnesses.
 
+A third 15-cell N15 guest, `"(=&_@?>=<;:987C"`, demonstrates actual
+inter-site **data-dependent control**, rather than two independent events.
+C0 `j` positions D at expanded M41; C1 `p` changes its live value from
+7,174,467 to 7,174,480. The source-loaded M42 is 40, so C2 `j` restores
+D41; C3 `i` now reads the previously written M41 and encrypts expanded
+M7174480, initially 67. A non-graphical fetch from M7174481 ends the
+five-step guest trace. The multi-site verifier checks actual physical
+write, subsequent dependent branch and target encryption in a *single*
+execution; it refuses a false assertion that M42 was data-written. This
+witness verifies a concrete guest branch, not a source-C CFG edge.
+
 This is a bounded necessary checker for **requested expanded cells** in
 one source-loaded trace of at most 512 steps and 4,096 source bytes. It is
 not a planner that proves proposed guest control or C semantics, and it does
