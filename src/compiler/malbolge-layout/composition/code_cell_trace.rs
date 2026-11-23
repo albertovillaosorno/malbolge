@@ -358,6 +358,48 @@ pub enum SourceCodeImageTraceError {
     },
 }
 
+/// One normative bounded replay of all reached source and expanded effects.
+///
+/// Unlike separately selected expanded sites, this footprint discovers every
+/// actual fetched, data-written or jump-encrypted address as the VM executes.
+/// Pure data reads are not modifications and are not listed independently.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourcePhysicalImageTrace {
+    /// All reached loader-expanded physical sites, in increasing order.
+    pub expanded: Vec<SourceExpandedCodeCellTrace>,
+    /// Exact source-code image, including untouched source-cell comparison.
+    pub source: SourceCodeImageTrace,
+}
+
+/// One-pass complete-prefix physical memory footprint failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourcePhysicalImageTraceError {
+    /// One source-loaded expanded site cannot be phase-reconciled.
+    ExpandedCell {
+        /// Exact independently observed phase or final-word failure.
+        error: SourceCodeCellTraceError,
+        /// Reached loader-expanded guest memory address.
+        site: u32,
+    },
+    /// More than 128 distinct expanded effect sites were reached.
+    ExpandedLimit,
+    /// Source loader, prefix bounds or source-site checks refused.
+    Source(SourceCodeImageTraceError),
+}
+
+/// Loader-expanded site initially discovered through a real VM effect.
+struct ExpandedPhysicalJournal {
+    events: Vec<CodeCellEvent>,
+    initial_word: u32,
+}
+
+/// Source and expanded event accumulators for one bounded guest execution.
+struct PhysicalImageJournals {
+    expanded: BTreeMap<u32, ExpandedPhysicalJournal>,
+    source: BTreeMap<u32, Vec<CodeCellEvent>>,
+    source_cells: usize,
+}
+
 /// Find all possible source-code sites touched by this physical step.
 ///
 /// The fetched instruction, guest `p`/`*` data operand and encryption target
@@ -489,6 +531,226 @@ pub fn verify_source_code_image_trace(
         touched,
         source_cells,
         outcome,
+    })
+}
+
+/// Read the first real physical pre-effect version at a touched site.
+///
+/// The VM trace exposes the live word *before* each reached fetch, operand
+/// write or XLAT2. The first such read must equal the source loader's initial
+/// word, since all earlier physical effects are included by this collector.
+fn initial_effect_word(step: &ProfileStepTrace, site: u32) -> Option<u32> {
+    [
+        step.memory_reads.fetch,
+        step.memory_reads.data,
+        step.memory_reads.encryption,
+    ]
+    .into_iter()
+    .flatten()
+    .find(|read| read.address == site)
+    .map(|read| read.value)
+}
+
+/// Record all distinct physical effects of one reached normative VM step.
+fn append_physical_step_effects(
+    profile: &ProfileDescriptor,
+    step: &ProfileStepTrace,
+    journals: &mut PhysicalImageJournals,
+) -> Result<(), SourcePhysicalImageTraceError> {
+    use std::collections::btree_map::Entry;
+
+    use SourceCodeImageTraceError as SourceError;
+    use SourcePhysicalImageTraceError as PhysicalError;
+    if step.result.is_err() {
+        return Err(PhysicalError::Source(SourceError::InvalidExecution));
+    }
+    let mut seen = Vec::with_capacity(4);
+    for site in affected_code_sites(step).into_iter().flatten() {
+        if seen.contains(&site) {
+            continue;
+        }
+        seen.push(site);
+        if usize::try_from(site)
+            .is_ok_and(|index| index < journals.source_cells)
+        {
+            append_site_effects(
+                profile,
+                site,
+                step,
+                journals.source.entry(site).or_default(),
+            )
+            .map_err(|error| {
+                PhysicalError::Source(SourceError::Cell { site, error })
+            })?;
+            continue;
+        }
+        let old_count = journals.expanded.len();
+        let journal = match journals.expanded.entry(site) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                if old_count >= MAX_EXPANDED_CODE_CELLS {
+                    return Err(PhysicalError::ExpandedLimit);
+                }
+                let initial = initial_effect_word(step, site).ok_or(
+                    PhysicalError::ExpandedCell {
+                        site,
+                        error: SourceCodeCellTraceError::InvalidEffect,
+                    },
+                )?;
+                entry.insert(ExpandedPhysicalJournal {
+                    events: Vec::new(),
+                    initial_word: initial,
+                })
+            },
+        };
+        append_site_effects(profile, site, step, &mut journal.events)
+            .map_err(|error| PhysicalError::ExpandedCell { site, error })?;
+    }
+    Ok(())
+}
+
+/// Verify all guest-touched physical memory sites in one normative VM prefix.
+///
+/// Unlike a caller-selected expanded-site batch, this checks every source
+/// cell and *discovers* every reached loader-expanded fetch, physical `p`/`*`
+/// write (including idempotent ones), and `i` target encryption. First-event
+/// pre-effect words come directly from the source-loaded VM trace, rather
+/// than a caller's guessed loader state. All chronological schedules must
+/// agree with the final actual VM memory. A bounded prefix is not a whole-C
+/// translation proof or evidence of any unexecuted control path.
+///
+/// # Errors
+///
+/// Refuses invalid sources/budgets, physical VM failures, incoherent code
+/// phases or more than 128 distinct expanded-memory effect sites.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one VM pass must reconcile both source and expanded code cells"
+)]
+pub fn verify_source_physical_image_trace(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    input: &[u8],
+    steps: usize,
+) -> Result<SourcePhysicalImageTrace, SourcePhysicalImageTraceError> {
+    use SourceCodeImageTraceError as SourceError;
+    use SourcePhysicalImageTraceError as PhysicalError;
+    if steps == 0
+        || steps > MAX_REVISIT_STEPS
+        || source.len() > MAX_REVISIT_SOURCE_CELLS
+    {
+        return Err(PhysicalError::Source(SourceError::InvalidBound));
+    }
+    let initial = source
+        .iter()
+        .copied()
+        .filter(|byte| !is_source_whitespace(*byte))
+        .collect::<Vec<_>>();
+    let source_cells = initial.len();
+    let mut machine =
+        ProfileMachine::from_source(profile, source, input.to_vec()).map_err(
+            |_error| PhysicalError::Source(SourceError::InvalidSource),
+        )?;
+    let mut journals = PhysicalImageJournals {
+        expanded: BTreeMap::new(),
+        source: BTreeMap::new(),
+        source_cells,
+    };
+    let mut failure = None;
+    let outcome = machine
+        .run_traced(steps, &mut |step| {
+            if failure.is_none() {
+                failure =
+                    append_physical_step_effects(profile, step, &mut journals)
+                        .err();
+            }
+        })
+        .map_err(|_error| {
+            PhysicalError::Source(SourceError::InvalidExecution)
+        })?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    let mut source_events = journals.source;
+    let expanded_events = journals.expanded;
+    let mut touched = Vec::with_capacity(source_events.len());
+    for (index, source_byte) in initial.into_iter().enumerate() {
+        let site = u32::try_from(index).map_err(|_error| {
+            PhysicalError::Source(SourceError::InvalidBound)
+        })?;
+        let final_word = machine.memory_word(site).map_err(|_error| {
+            PhysicalError::Source(SourceError::InvalidExecution)
+        })?;
+        let Some(events) = source_events.remove(&site) else {
+            if final_word != u32::from(source_byte) {
+                return Err(PhysicalError::Source(
+                    SourceError::UntouchedChanged { site },
+                ));
+            }
+            continue;
+        };
+        let schedule =
+            admit_code_cell_schedule(profile, site, source_byte, &events)
+                .map_err(|error| {
+                    PhysicalError::Source(SourceError::Cell {
+                        site,
+                        error: SourceCodeCellTraceError::Schedule(error),
+                    })
+                })?;
+        if schedule.final_cell != final_word {
+            return Err(PhysicalError::Source(SourceError::Cell {
+                site,
+                error: SourceCodeCellTraceError::FinalWordMismatch,
+            }));
+        }
+        touched.push(SourceCodeImageCellTrace {
+            site,
+            events,
+            final_word,
+            schedule,
+        });
+    }
+    let expanded = expanded_events
+        .into_iter()
+        .map(|(site, ExpandedPhysicalJournal { initial_word, events })| {
+            let error_at = |error| PhysicalError::ExpandedCell { site, error };
+            if events.is_empty() {
+                return Err(error_at(SourceCodeCellTraceError::MissingEffect));
+            }
+            let schedule = admit_loaded_code_cell_schedule(
+                profile,
+                site,
+                initial_word,
+                &events,
+            )
+            .map_err(|error| {
+                error_at(SourceCodeCellTraceError::Schedule(error))
+            })?;
+            let final_word = machine.memory_word(site).map_err(|_error| {
+                PhysicalError::Source(SourceError::InvalidExecution)
+            })?;
+            if schedule.final_cell != final_word {
+                return Err(error_at(
+                    SourceCodeCellTraceError::FinalWordMismatch,
+                ));
+            }
+            Ok(SourceExpandedCodeCellTrace {
+                events,
+                final_word,
+                initial_word,
+                outcome,
+                schedule,
+                site,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SourcePhysicalImageTrace {
+        expanded,
+        source: SourceCodeImageTrace {
+            touched,
+            source_cells,
+            outcome,
+        },
     })
 }
 

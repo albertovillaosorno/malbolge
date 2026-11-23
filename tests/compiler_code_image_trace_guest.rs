@@ -30,7 +30,10 @@ pub mod layout;
 
 use layout::{
     CodeCellEvent, CodeVisitRequirement, SourceCodeImageTraceError,
+    SourcePhysicalImageTraceError, build_byte_exact_input_store_source,
     verify_source_code_cell_trace, verify_source_code_image_trace,
+    verify_source_expanded_code_cells_trace,
+    verify_source_physical_image_trace,
 };
 use malbolge::{
     ProfileMachine, RunOutcome, TraceInput, current_profile,
@@ -312,5 +315,163 @@ fn terminal_non_graphical_code_fetch_is_reconciled_in_whole_image()
         Some(&CodeCellEvent::FetchNonGraphicalHalt)
     );
     assert!(image.touched.iter().all(|cell| cell.site <= 42));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real byte/EOF stores and all expanded memory from one VM replay"
+)]
+fn complete_physical_footprint_includes_both_input_dependent_expanded_writes()
+-> Result<(), String> {
+    let profile = current_profile();
+    let plan = build_byte_exact_input_store_source(profile)
+        .map_err(|error| format!("source builder: {error:?}"))?;
+    assert!(
+        usize::try_from(plan.exact_data_address)
+            .is_ok_and(|site| site >= plan.source.len())
+    );
+    assert!(
+        usize::try_from(plan.first_data_address)
+            .is_ok_and(|site| site >= plan.source.len())
+    );
+    let mut sites = [plan.first_data_address, plan.exact_data_address];
+    sites.sort_unstable();
+    for input in [&b""[..], &b"\x00"[..], &b"\x02"[..], &b"\xff"[..]] {
+        let complete = verify_source_physical_image_trace(
+            profile,
+            &plan.source,
+            input,
+            512,
+        )
+        .map_err(|error| format!("complete physical image: {error:?}"))?;
+        let isolated = verify_source_expanded_code_cells_trace(
+            profile,
+            &plan.source,
+            input,
+            512,
+            &sites,
+        )
+        .map_err(|error| format!("isolated expanded sites: {error:?}"))?;
+        let source_only =
+            verify_source_code_image_trace(profile, &plan.source, input, 512)
+                .map_err(|error| format!("source image: {error:?}"))?;
+        assert_eq!(complete.source, source_only);
+        assert_eq!(complete.expanded, isolated);
+        assert_eq!(complete.expanded.len(), 2);
+        assert!(complete.expanded.iter().all(|cell| {
+            cell.schedule.data_writes == 1 && cell.schedule.fetches == 0
+        }));
+        assert_eq!(
+            complete
+                .expanded
+                .iter()
+                .map(|cell| cell.site)
+                .collect::<Vec<_>>(),
+            sites,
+        );
+        let expected = input
+            .first()
+            .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte));
+        let stored = complete
+            .expanded
+            .iter()
+            .find(|cell| cell.site == plan.exact_data_address)
+            .ok_or("missing exact input store")?;
+        assert_eq!(stored.final_word, expected);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual data-dependent guest jump and expanded terminal fetch"
+)]
+fn physical_image_discovers_indirect_jump_and_unexecutable_expanded_cell()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = b"(=&_@?>=<;:987C";
+    let complete = verify_source_physical_image_trace(profile, source, &[], 5)
+        .map_err(|error| format!("complete indirect jump: {error:?}"))?;
+    assert_eq!(complete.source.source_cells, source.len());
+    assert_eq!(complete.source.outcome, RunOutcome::Terminated {
+        reason: malbolge::Termination::NonGraphicalCell,
+        steps: 5,
+    });
+    assert_eq!(
+        complete
+            .expanded
+            .iter()
+            .map(|cell| cell.site)
+            .collect::<Vec<_>>(),
+        [41, 7_174_480, 7_174_481]
+    );
+    assert_eq!(
+        complete.expanded.first().map(|cell| cell.events.as_slice()),
+        Some(
+            [CodeCellEvent::DataWrite {
+                before: 7_174_467,
+                after: 7_174_480,
+            }]
+            .as_slice()
+        )
+    );
+    assert_eq!(
+        complete.expanded.get(1).map(|cell| cell.events.as_slice()),
+        Some([CodeCellEvent::JumpTargetEncryption].as_slice())
+    );
+    assert_eq!(
+        complete.expanded.get(2).map(|cell| cell.events.as_slice()),
+        Some([CodeCellEvent::FetchNonGraphicalHalt].as_slice())
+    );
+    assert_eq!(
+        complete.expanded,
+        verify_source_expanded_code_cells_trace(profile, source, &[], 5, &[
+            41, 7_174_480, 7_174_481
+        ],)
+        .map_err(|error| format!("selected indirect jump: {error:?}"))?
+    );
+    assert_eq!(
+        complete.source,
+        verify_source_code_image_trace(profile, source, &[], 5)
+            .map_err(|error| format!("indirect jump source: {error:?}"))?
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "complete-prefix bounds and source-only negative controls"
+)]
+fn physical_image_is_bounded_and_does_not_invent_unreached_expanded_effects()
+-> Result<(), String> {
+    let profile = current_profile();
+    let image =
+        verify_source_physical_image_trace(profile, DYNAMIC_INPUT, &[], 81)
+            .map_err(|error| format!("source-only image: {error:?}"))?;
+    assert!(image.expanded.is_empty());
+    assert_eq!(image.source.source_cells, DYNAMIC_INPUT.len());
+    for steps in [0, 513] {
+        assert_eq!(
+            verify_source_physical_image_trace(
+                profile,
+                DYNAMIC_INPUT,
+                &[],
+                steps,
+            ),
+            Err(SourcePhysicalImageTraceError::Source(
+                SourceCodeImageTraceError::InvalidBound
+            ))
+        );
+    }
+    assert_eq!(
+        verify_source_physical_image_trace(profile, &vec![b' '; 4097], &[], 1,),
+        Err(SourcePhysicalImageTraceError::Source(
+            SourceCodeImageTraceError::InvalidBound
+        ))
+    );
     Ok(())
 }

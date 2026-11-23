@@ -103,9 +103,11 @@ pub use code_cell_trace::{
     MAX_EXPANDED_CODE_CELLS, SourceCodeCellTrace, SourceCodeCellTraceError,
     SourceCodeImageCellTrace, SourceCodeImageTrace, SourceCodeImageTraceError,
     SourceExpandedCodeBatchError, SourceExpandedCodeCellTrace,
+    SourcePhysicalImageTrace, SourcePhysicalImageTraceError,
     verify_source_code_cell_trace, verify_source_code_image_trace,
     verify_source_expanded_code_cell_trace,
     verify_source_expanded_code_cells_trace,
+    verify_source_physical_image_trace,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

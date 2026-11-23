@@ -408,3 +408,41 @@ export TMPDIR="$PWD/.temp"
 .dependencies/python/3.14.7/bin/python3.14 -B -m unittest \
   tests.test_eof_checksum_pipeline -v
 ```
+
+## One-Pass Source and Expanded Effect Footprint (2026-11-22)
+
+`verify_source_physical_image_trace` now collects the **entire reached
+physical effect footprint** of one source-loaded VM prefix, without trusting
+an external list of expanded sites. Every source cell is reconciled against
+its graphical loader byte, including untouched cells. For addresses outside
+the source, the first actual fetch, data-write operand or encryption read
+provides the live *pre-effect* word. The verifier then replays all reached
+`p`/`*` stores, fetched instructions and off-site `i` encryptions through
+`admit_loaded_code_cell_schedule`, checking each final word against the
+normative VM. An unchanged data write remains a real physical effect.
+Pure data reads do not create a footprint entry. Source and expanded effects
+come from the **same** execution, and the expanded report is address-sorted.
+
+The first source-backed witness is the actual `/;j;p;j;p;v` guest from the
+byte-exact input store. Four EOF/binary streams each produce two expanded
+physical writes, independently matched against the older selected-site
+verifier. The second witness, the 15-cell guest with an input-independent
+written indirect jump, exposes **all three** physical effects without a
+supplied site list: M41 data write, M7174480 `i`-target XLAT2, and the
+terminal non-graphical fetch at M7174481. An original source-only guest
+has no invented expanded effects. Invalid source/step budgets refuse.
+The first regression failed to compile before the implementation existed.
+
+The finite envelope is 4,096 raw source bytes, 512 steps and at most 128
+distinct reached expanded sites; overflowing that effect budget refuses
+rather than returning an incomplete footprint. This authenticates actual
+physical effect chronology for the **observed bounded prefix** only. It
+does not prove source-C operation linkage, proposed unreachable paths,
+signed EOF normalization, full checksum arithmetic, or reusable loop state.
+The original seven-block source C23 checksum remains unlinked.
+
+```sh
+export TMPDIR="$PWD/.temp"
+.dependencies/rust/1.98.1/bin/cargo.bin test \
+  --test compiler_code_image_trace_guest
+```
