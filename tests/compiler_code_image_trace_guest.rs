@@ -31,6 +31,7 @@ pub mod layout;
 use layout::{
     CodeCellEvent, CodeVisitRequirement, SourceCodeImageTraceError,
     SourcePhysicalCodeFetch, SourcePhysicalDataRead, SourcePhysicalDataWrite,
+    SourcePhysicalEncryptionWrite,
     SourcePhysicalImageTraceError, SourcePhysicalIoEvent,
     SourcePhysicalWordEffect,
     build_byte_exact_input_store_source, verify_source_code_cell_trace,
@@ -724,6 +725,14 @@ fn offsite_xlat2_precedes_first_code_fetch_at_original_target()
     assert_eq!(image.data_reads.len(), 2);
     assert_eq!(image.data_reads[0].value, target);
     assert_eq!(image.data_reads[1].value, target - 1);
+    assert_eq!(image.encryptions[0], SourcePhysicalEncryptionWrite {
+        after: encrypted_target,
+        code_address: 0,
+        input_word: u32::from(original_target),
+        prior_word: u32::from(original_target),
+        target_address: target,
+        trace_index: 0,
+    });
     assert_eq!(image.code_fetches[2], SourcePhysicalCodeFetch {
         code_address: target,
         last_data_write_step: None,
@@ -1108,7 +1117,19 @@ fn physical_data_journal_distinguishes_same_step_alias_from_xlat2()
         opcode: b'p', after: 72,
     }]);
     assert_eq!(cell.schedule.data_writes, 1);
-    assert_eq!(cell.final_word, malbolge::encrypt_profile_cell(72)
-        .ok_or("self-alias must encrypt")?);
+    let encrypted = malbolge::encrypt_profile_cell(72)
+        .ok_or("self-alias must encrypt")?;
+    assert_eq!(cell.final_word, encrypted);
+    let final_encryption = image.encryptions.iter()
+        .find(|write| write.trace_index == 11)
+        .ok_or("missing self-alias XLAT2 event")?;
+    assert_eq!(*final_encryption, SourcePhysicalEncryptionWrite {
+        after: encrypted,
+        code_address: 84,
+        input_word: 72,
+        prior_word: 72,
+        target_address: 84,
+        trace_index: 11,
+    });
     Ok(())
 }

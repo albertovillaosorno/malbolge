@@ -444,6 +444,28 @@ pub struct SourcePhysicalCodeFetch {
     pub value: u32,
 }
 
+/// A reached XLAT2 mutation with its physical pre-encryption word.
+///
+/// `prior_word` is the memory word before the guest step; `input_word`
+/// is what XLAT2 actually encrypts. They differ for a same-step p/* store
+/// whose data pointer aliases its post-instruction encryption target.
+/// The event exists even when the final word equals the prior word.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourcePhysicalEncryptionWrite {
+    /// Exact memory word after the completed XLAT2 mutation.
+    pub after: u32,
+    /// Physical instruction that caused this encryption.
+    pub code_address: u32,
+    /// Exact graphical input word encrypted by XLAT2.
+    pub input_word: u32,
+    /// Original memory word before this guest instruction began.
+    pub prior_word: u32,
+    /// Address actually encrypted, possibly different from code address.
+    pub target_address: u32,
+    /// Zero-based committed instruction index.
+    pub trace_index: usize,
+}
+
 /// An actually committed guest byte-stream operation in instruction order.
 ///
 /// A genuine EOF read remains distinct from byte 0xff, and repeated EOF
@@ -491,6 +513,8 @@ pub struct SourcePhysicalImageTrace {
     /// Every reached `p` or `*` store in chronological order, including
     /// idempotent and same-site code/data writes absent from changed deltas.
     pub data_writes: Vec<SourcePhysicalDataWrite>,
+    /// Chronological post-instruction XLAT2, including masked self-aliases.
+    pub encryptions: Vec<SourcePhysicalEncryptionWrite>,
     /// Actual input/EOF attempts and output bytes in source execution order.
     pub io_events: Vec<SourcePhysicalIoEvent>,
     /// All reached loader-expanded physical sites, in increasing order.
@@ -527,6 +551,7 @@ struct PhysicalImageJournals {
     data_reads: Vec<SourcePhysicalDataRead>,
     data_writes: Vec<SourcePhysicalDataWrite>,
     io_events: Vec<SourcePhysicalIoEvent>,
+    encryptions: Vec<SourcePhysicalEncryptionWrite>,
     expanded: BTreeMap<u32, ExpandedPhysicalJournal>,
     last_data_write_steps: BTreeMap<u32, usize>,
     last_word_effects: BTreeMap<u32, SourcePhysicalWordEffect>,
@@ -850,6 +875,54 @@ fn record_physical_io(
     Ok(())
 }
 
+/// Extract the real XLAT2 word, accounting for p/* self-alias write order.
+fn record_physical_encryption(
+    step: &ProfileStepTrace,
+    trace_index: usize,
+    journals: &mut PhysicalImageJournals,
+) -> Result<(), SourcePhysicalImageTraceError> {
+    use SourceCodeImageTraceError as SourceError;
+    use SourcePhysicalImageTraceError as PhysicalError;
+    let invalid = || PhysicalError::Source(SourceError::InvalidExecution);
+    let Some(site) = committed_encryption_site(step)? else {
+        return Ok(());
+    };
+    let aliased_data = matches!(step.decoded, Some(b'p' | b'*'))
+        .then_some(step.memory_reads.data)
+        .flatten()
+        .filter(|read| read.address == site);
+    let (prior_word, input_word) = if let Some(read) = aliased_data {
+        (read.value, step.after.registers.accumulator)
+    } else {
+        let read = step.memory_reads.encryption.ok_or_else(invalid)?;
+        if read.address != site {
+            return Err(invalid());
+        }
+        (read.value, read.value)
+    };
+    let after =
+        malbolge::encrypt_profile_cell(input_word).ok_or_else(invalid)?;
+    match step.memory_delta.encryption {
+        Some(delta)
+            if (delta.address, delta.before, delta.after)
+                == (site, prior_word, after) => {},
+        None if prior_word == after => {},
+        _ => return Err(invalid()),
+    }
+    journals.encryptions.push(SourcePhysicalEncryptionWrite {
+        after,
+        code_address: step.before.registers.code_pointer,
+        input_word,
+        prior_word,
+        target_address: site,
+        trace_index,
+    });
+    let _previous = journals
+        .last_word_effects
+        .insert(site, SourcePhysicalWordEffect::Encryption { trace_index });
+    Ok(())
+}
+
 /// Record all distinct physical effects of one reached normative VM step.
 fn append_physical_step_effects(
     profile: &ProfileDescriptor,
@@ -909,11 +982,7 @@ fn append_physical_step_effects(
         append_site_effects(profile, site, step, &mut journal.events)
             .map_err(|error| PhysicalError::ExpandedCell { site, error })?;
     }
-    if let Some(site) = committed_encryption_site(step)? {
-        let _previous = journals
-            .last_word_effects
-            .insert(site, SourcePhysicalWordEffect::Encryption { trace_index });
-    }
+    record_physical_encryption(step, trace_index, journals)?;
     Ok(())
 }
 
@@ -964,6 +1033,7 @@ pub fn verify_source_physical_image_trace(
         data_reads: Vec::new(),
         data_writes: Vec::new(),
         io_events: Vec::new(),
+        encryptions: Vec::new(),
         expanded: BTreeMap::new(),
         last_data_write_steps: BTreeMap::new(),
         last_word_effects: BTreeMap::new(),
@@ -1093,6 +1163,7 @@ pub fn verify_source_physical_image_trace(
         data_reads: journals.data_reads,
         data_writes: journals.data_writes,
         io_events: journals.io_events,
+        encryptions: journals.encryptions,
         expanded,
         source: SourceCodeImageTrace {
             touched,

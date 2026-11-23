@@ -192,6 +192,17 @@ same-step `p` code/data alias verifies its intermediate store before XLAT2.
 Removing the idempotent `p` removes the physical write even though the
 final word is unchanged.
 
+The complete physical footprint also records **every committed XLAT2** in
+guest step order, including off-site target encryption and same-step
+code/data aliasing. Its `prior_word` is the memory word before the step;
+`input_word` is the word actually encrypted after any guest `p`/`*` data
+write. The verifier derives the exact post-XLAT2 word from the normative
+translation table and checks net changed-cell deltas, including the case
+where an intermediate data write and encryption leave the original word.
+C0's off-site `i` encryption of C98 and C84's self-aliasing `p` have
+separate independent source-loaded regression witnesses. These records
+explain physical mutation but do not certify source-C operation linkage.
+
 This is an input-specific, <=512-step **physical footprint**; it does not
 translate the C23 checksum, certify unexecuted branches, link signed C32
 result cells, prove SSA arithmetic or authorize guest artifact publication.
