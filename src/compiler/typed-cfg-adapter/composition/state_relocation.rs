@@ -568,6 +568,7 @@ type PlacedFrames<'frame> = (Vec<GuestFramePlacement>, FramePlacements<'frame>);
 type BlockPlacements = BTreeMap<(u32, u32), GuestCodeBlockPlacement>;
 type EdgeKey = (u32, u32, GuestCodeEdgeKind, u32);
 type EdgePadPlacements = BTreeMap<EdgeKey, GuestCodeEdgePadPlacement>;
+type PhiSiteAnchors = BTreeMap<EdgeKey, BTreeMap<u32, u32>>;
 type ValidatedCodeProposals = (BlockPlacements, EdgePadPlacements);
 
 struct CodeEdgeIndex<'index> {
@@ -1614,25 +1615,6 @@ pub fn bind_source_locked_cfg_code_targets_with_effect_anchors(
     })
 }
 
-/// Bind sparse, source-identified physical phi-copy effect addresses.
-///
-/// The ordinary operation/effect anchors and disjoint source pad placement
-/// remain mandatory. Each edge with explicit phi anchors must name **every**
-/// snapshot and commit in source order; unanchored edges retain the compact
-/// right-aligned copy suffix. Setup cells before and between physical copies
-/// are reserved but do not acquire invented opcode semantics. The final pad
-/// cell stays reserved for an independently verified successor transfer.
-///
-/// Copy values, destinations, widths and phases come only from the canonical
-/// typed source. This binds proposed code cells, not executable copy proof.
-///
-/// # Errors
-///
-/// Rejects incomplete, duplicate, foreign, unordered, overlapping, off-pad
-/// or exit-cell anchors, in addition to ordinary source placement errors.
-type PhiEdgeIdentity = (u32, u32, GuestCodeEdgeKind, u32);
-type PhiSiteAnchors = BTreeMap<PhiEdgeIdentity, BTreeMap<u32, u32>>;
-
 fn source_phi_site_anchors(
     anchors: &[GuestCodePhiCopyAnchor],
 ) -> Result<PhiSiteAnchors, GuestCodePlacementError> {
@@ -1700,11 +1682,22 @@ fn place_source_phi_edge_effects(
     Ok(())
 }
 
-/// Bind sparse physical phi-copy sites to source-authenticated CFG edges.
+/// Bind sparse, source-identified physical phi-copy effect addresses.
+///
+/// The ordinary operation/effect anchors and disjoint source pad placement
+/// remain mandatory. Each edge with explicit phi anchors must name **every**
+/// snapshot and commit in source order; unanchored edges retain the compact
+/// right-aligned copy suffix. Setup cells before and between physical copies
+/// are reserved but do not acquire invented opcode semantics. The final pad
+/// cell stays reserved for an independently verified successor transfer.
+///
+/// Copy values, destinations, widths and phases come only from the canonical
+/// typed source. This binds proposed code cells, not executable copy proof.
 ///
 /// # Errors
 ///
-/// Refuses foreign, incomplete, reordered or off-pad physical copies.
+/// Rejects incomplete, duplicate, foreign, unordered, overlapping, off-pad
+/// or exit-cell anchors, in addition to ordinary source placement errors.
 pub fn bind_source_locked_cfg_code_targets_with_phi_copy_anchors(
     request: GuestCodePhiCopyPlacement<'_>,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
