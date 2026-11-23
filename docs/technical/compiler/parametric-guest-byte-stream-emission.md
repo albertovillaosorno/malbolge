@@ -28,6 +28,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Sparse source-locked physical phi-copy sites (2026-11-23)
+
+Source-backed physical CFG placement now optionally binds every snapshot and
+commit in one predecessor-owned phi pad to an individually named effect site.
+These `GuestCodePhiCopyAnchor` positions are re-identified against the
+canonical source and must remain strictly increasing, unique, complete,
+inside the correct disjoint edge pad and before its successor-transfer cell.
+Unanchored pads retain the old compact suffix. Explicit sites allow guest
+pointer routing or operand setup **between** writes, not just before the
+first snapshot. This is a code-placement obligation, not emitted source.
+
+The bounded `SourcePhiCopyProbe` replays those placements in the normative
+N15 VM and allows non-copy instructions only while an in-flight pad stays
+inside its own physical interval. A real six-step N15 trace uses `p, j, p,
+j, p, v`: its snapshot at C2 and commit at C4 are separated by a real
+pointer-routing instruction that moves D from M102 to remote M120. Both
+copy words are checked against earlier guest frame writes. Replacing the C3
+setup with a real `p` on a reserved source frame
+refuses as an unaccounted store. For the original C23 checksum's 5->1
+backedge, a source-locked 8-copy proposal accepts sparse physical positions
+and rejects incomplete, swapped, duplicate, off-pad, forged-edge and
+successor-transfer aliases. These are separate bounded placement and guest
+witnesses; no checksum phi pad has yet been physically linked and executed
+from source C. Branch selection, source arithmetic, input-dependent EOF
+termination and the original five-stream C23 guest remain unresolved.
+
 ### Temporal source-output operand materialization (2026-11-23)
 
 The opt-in combined source-output/input-store verifier now checks each reached

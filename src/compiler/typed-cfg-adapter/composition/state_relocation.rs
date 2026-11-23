@@ -267,6 +267,48 @@ pub struct GuestCodeCellCopySite {
     pub copy: GuestPlacedCellCopy,
 }
 
+/// One proposed physical phi-copy write within a source-specific edge pad.
+///
+/// `copy_index` numbers snapshots first, then commits. Copy operands and
+/// widths are always rederived from canonical source, never caller-supplied.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodePhiCopyAnchor {
+    /// Absolute code address at which the required p/* must execute.
+    pub code_address: u32,
+    /// Zero-based source-derived snapshot/commit write ordinal.
+    pub copy_index: u32,
+    /// Canonical source-function identity.
+    pub function: u32,
+    /// Source control arm owning this private phi pad.
+    pub kind: GuestCodeEdgeKind,
+    /// Source CFG predecessor.
+    pub predecessor: u32,
+    /// Source CFG successor.
+    pub successor: u32,
+}
+
+/// Complete source-checked sparse phi binding request.
+///
+/// The caller supplies only address proposals. Copy operands, two-phase
+/// order and edge identities must still match the canonical source.
+#[derive(Clone, Copy, Debug)]
+pub struct GuestCodePhiCopyPlacement<'source> {
+    /// Exact source-authenticated canonical typed wire.
+    pub canonical: &'source [u8],
+    /// Complete reserved physical code source length.
+    pub source_cells: u32,
+    /// First word of the source SSA frame reservations.
+    pub frame_base: u32,
+    /// Disjoint source block and edge-pad interval proposals.
+    pub proposals: GuestCodeProposals<'source>,
+    /// Source-identified operation first-effect proposals.
+    pub operation_anchors: &'source [GuestCodeOperationAnchor],
+    /// Source-identified individual operation effect proposals.
+    pub effect_anchors: &'source [GuestCodeEffectAnchor],
+    /// Source-identified individual snapshot and commit effect proposals.
+    pub phi_anchors: &'source [GuestCodePhiCopyAnchor],
+}
+
 /// One proposed physical target with its *edge-local* parallel copies.
 ///
 /// Neither the target address nor the copies are guest instructions yet.
@@ -1570,6 +1612,125 @@ pub fn bind_source_locked_cfg_code_targets_with_effect_anchors(
         return_sites,
         relocated,
     })
+}
+
+/// Bind sparse, source-identified physical phi-copy effect addresses.
+///
+/// The ordinary operation/effect anchors and disjoint source pad placement
+/// remain mandatory. Each edge with explicit phi anchors must name **every**
+/// snapshot and commit in source order; unanchored edges retain the compact
+/// right-aligned copy suffix. Setup cells before and between physical copies
+/// are reserved but do not acquire invented opcode semantics. The final pad
+/// cell stays reserved for an independently verified successor transfer.
+///
+/// Copy values, destinations, widths and phases come only from the canonical
+/// typed source. This binds proposed code cells, not executable copy proof.
+///
+/// # Errors
+///
+/// Rejects incomplete, duplicate, foreign, unordered, overlapping, off-pad
+/// or exit-cell anchors, in addition to ordinary source placement errors.
+type PhiEdgeIdentity = (u32, u32, GuestCodeEdgeKind, u32);
+type PhiSiteAnchors = BTreeMap<PhiEdgeIdentity, BTreeMap<u32, u32>>;
+
+fn source_phi_site_anchors(
+    anchors: &[GuestCodePhiCopyAnchor],
+) -> Result<PhiSiteAnchors, GuestCodePlacementError> {
+    let mut by_edge = PhiSiteAnchors::new();
+    for anchor in anchors {
+        let sites = by_edge
+            .entry((
+                anchor.function,
+                anchor.predecessor,
+                anchor.kind,
+                anchor.successor,
+            ))
+            .or_default();
+        if sites
+            .insert(anchor.copy_index, anchor.code_address)
+            .is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
+    Ok(by_edge)
+}
+
+fn place_source_phi_edge_effects(
+    edge: &mut GuestCodeControlEdge,
+    mut anchors: BTreeMap<u32, u32>,
+) -> Result<(), GuestCodePlacementError> {
+    let exit = edge
+        .pad_exit_address
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    let total = edge
+        .snapshots
+        .len()
+        .checked_add(edge.commits.len())
+        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+    if anchors.len() != total || total == 0 {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    let mut previous = None;
+    let mut placed = Vec::with_capacity(total);
+    for (ordinal, copy) in
+        edge.snapshots.iter().chain(&edge.commits).enumerate()
+    {
+        let index = u32::try_from(ordinal)
+            .map_err(|_error| GuestCodePlacementError::InvalidCodePlacement)?;
+        let address = anchors
+            .remove(&index)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        if !(edge.entry_address..exit).contains(&address)
+            || previous.is_some_and(|prior| prior >= address)
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        previous = Some(address);
+        placed.push(GuestCodeCellCopySite {
+            code_address: address,
+            copy: *copy,
+        });
+    }
+    if !anchors.is_empty() {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    edge.commit_sites = placed.split_off(edge.snapshots.len());
+    edge.snapshot_sites = placed;
+    Ok(())
+}
+
+/// Bind sparse physical phi-copy sites to source-authenticated CFG edges.
+///
+/// # Errors
+///
+/// Refuses foreign, incomplete, reordered or off-pad physical copies.
+pub fn bind_source_locked_cfg_code_targets_with_phi_copy_anchors(
+    request: GuestCodePhiCopyPlacement<'_>,
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    let mut plan = bind_source_locked_cfg_code_targets_with_effect_anchors(
+        request.canonical,
+        request.source_cells,
+        request.frame_base,
+        request.proposals,
+        request.operation_anchors,
+        request.effect_anchors,
+    )?;
+    let mut by_edge = source_phi_site_anchors(request.phi_anchors)?;
+    for edge in &mut plan.control_edges {
+        if let Some(sites) = by_edge.remove(&(
+            edge.function,
+            edge.predecessor,
+            edge.kind,
+            edge.successor,
+        )) {
+            place_source_phi_edge_effects(edge, sites)?;
+        }
+    }
+    if !by_edge.is_empty() {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    Ok(plan)
 }
 
 // This is a lower-bound source reservation, not a candidate encoding. Even a

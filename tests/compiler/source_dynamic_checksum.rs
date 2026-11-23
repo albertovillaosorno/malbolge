@@ -3053,3 +3053,136 @@ fn source_checksum_code_sites_bind_real_arithmetic_operands() {
     assert_eq!(comparisons, 2, "both C23 guards require guest comparison");
     assert!(conversions > 0, "source casts cannot be pre-evaluated");
 }
+
+#[test]
+fn source_checksum_sparse_phi_copy_anchors_preserve_exact_two_phase_edges() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEdgeKind, GuestCodePhiCopyAnchor, GuestCodePhiCopyPlacement,
+        GuestCodePlacementError, GuestCodeProposals,
+        bind_source_locked_cfg_code_targets_with_phi_copy_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("pinned C23 checksum");
+    let blocks = checksum_proposed_code_blocks();
+    let pads = checksum_proposed_phi_edge_pads();
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &pads,
+    };
+    let locations = [338, 341, 344, 349, 354, 359, 363, 371];
+    let anchors = locations
+        .into_iter()
+        .enumerate()
+        .map(|(copy_index, code_address)| GuestCodePhiCopyAnchor {
+            code_address,
+            copy_index: u32::try_from(copy_index).expect("eight copies"),
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        })
+        .collect::<Vec<_>>();
+    let bind = |candidate: &[_]| {
+        bind_source_locked_cfg_code_targets_with_phi_copy_anchors(
+            GuestCodePhiCopyPlacement {
+                canonical: &wire,
+                source_cells: 2048,
+                frame_base: 4096,
+                proposals,
+                operation_anchors: &[],
+                effect_anchors: &[],
+                phi_anchors: candidate,
+            },
+        )
+    };
+    let sparse = bind(&anchors).expect("sparse phi sites preserve typed edge");
+    let original = bind(&[]).expect("old compact site defaults");
+    assert_eq!(sparse.relocated, original.relocated);
+    assert_eq!(sparse.code_blocks, original.code_blocks);
+    assert_eq!(
+        sparse.operation_effect_sites,
+        original.operation_effect_sites
+    );
+    assert_eq!(sparse.control_edges.len(), original.control_edges.len());
+    for (before, after) in
+        original.control_edges.iter().zip(&sparse.control_edges)
+    {
+        assert_eq!(before.snapshots, after.snapshots);
+        assert_eq!(before.commits, after.commits);
+        assert_eq!(before.entry_address, after.entry_address);
+        assert_eq!(before.pad_exit_address, after.pad_exit_address);
+        if before.predecessor != 5 {
+            assert_eq!(before, after);
+        }
+    }
+    let changed = sparse
+        .control_edges
+        .iter()
+        .find(|edge| (edge.predecessor, edge.successor) == (5, 1))
+        .expect("source backedge");
+    assert_eq!(
+        changed
+            .snapshot_sites
+            .iter()
+            .chain(&changed.commit_sites)
+            .map(|site| site.code_address)
+            .collect::<Vec<_>>(),
+        locations
+    );
+    assert_eq!(changed.pad_exit_address, Some(375));
+    let mut shuffled = anchors.clone();
+    shuffled.reverse();
+    assert_eq!(bind(&shuffled), Ok(sparse));
+
+    let refuses = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let mut incomplete = anchors.clone();
+    assert!(incomplete.pop().is_some());
+    assert_eq!(bind(&incomplete), refuses);
+    let mut duplicate = anchors.clone();
+    duplicate.push(anchors[0]);
+    assert_eq!(bind(&duplicate), refuses);
+    for forged in [
+        GuestCodePhiCopyAnchor {
+            copy_index: 8,
+            ..anchors[0]
+        },
+        GuestCodePhiCopyAnchor {
+            function: 1,
+            ..anchors[0]
+        },
+        GuestCodePhiCopyAnchor {
+            predecessor: 4,
+            ..anchors[0]
+        },
+        GuestCodePhiCopyAnchor {
+            successor: 5,
+            ..anchors[0]
+        },
+        GuestCodePhiCopyAnchor {
+            kind: GuestCodeEdgeKind::WhenTrue,
+            ..anchors[0]
+        },
+        GuestCodePhiCopyAnchor {
+            code_address: 335,
+            ..anchors[0]
+        },
+        GuestCodePhiCopyAnchor {
+            code_address: 375,
+            ..anchors[0]
+        },
+        GuestCodePhiCopyAnchor {
+            code_address: 271,
+            ..anchors[0]
+        },
+    ] {
+        let mut changed = anchors.clone();
+        changed[0] = forged;
+        assert_eq!(bind(&changed), refuses, "forged anchor: {forged:?}");
+    }
+    let mut alias = anchors.clone();
+    alias[1].code_address = alias[0].code_address;
+    assert_eq!(bind(&alias), refuses);
+    let mut reverse = anchors.clone();
+    reverse[1].code_address = 337;
+    assert_eq!(bind(&reverse), refuses);
+}

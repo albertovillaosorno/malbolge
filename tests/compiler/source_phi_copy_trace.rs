@@ -557,3 +557,128 @@ fn real_guest_two_word_phi_snapshot_and_commit() -> Result<(), String> {
     );
     Ok(())
 }
+
+// A real six-step current-N15 guest inserts a physical `j` between
+// snapshot and commit. It routes D from M102 to the distant M120, rather
+// than the adjacent M103. A forged p in the same gap
+// performs an extra frame write despite preserving final copy words.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "one fixed finite physical guest trace"
+)]
+fn guest_phi_trace_with_setup(
+    gap_opcode: u8,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, b'p'),
+        (1, b'j'),
+        (2, b'p'),
+        (3, gap_opcode),
+        (4, b'p'),
+        (5, b'v'),
+    ] {
+        source[site] = graphical(site, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("loaded guest: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    for address in [70usize, 101, 103, 120] {
+        *memory.get_mut(address).ok_or("missing frame seed")? = 7_174_453;
+    }
+    *memory.get_mut(71).ok_or("missing jump seed")? = 100;
+    *memory.get_mut(102).ok_or("missing pointer route")? = 119;
+    let registers = malbolge::ProfileRegisters {
+        accumulator: profile.eof_word(),
+        code_pointer: 0,
+        data_pointer: 70,
+    };
+    let mut machine =
+        ProfileMachine::from_state(profile, memory, Vec::new(), registers)
+            .map_err(|error| format!("physical guest state: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(6, &mut |step| steps.push(*step))
+        .map_err(|error| format!("physical guest execution: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 6,
+    });
+    assert_eq!(steps.iter().map(|step| step.decoded).collect::<Vec<_>>(), [
+        Some(b'p'),
+        Some(b'j'),
+        Some(b'p'),
+        Some(gap_opcode),
+        Some(b'p'),
+        Some(b'v'),
+    ]);
+    assert_eq!(steps[2].before.registers.data_pointer, 101);
+    assert_eq!(steps[3].before.registers.data_pointer, 102);
+    if gap_opcode == b'j' {
+        assert_eq!(steps[4].before.registers.data_pointer, 120);
+    }
+    Ok(steps)
+}
+
+#[test]
+fn real_guest_sparse_phi_pad_allows_setup_but_not_foreign_frame_writes()
+-> Result<(), String> {
+    let good = guest_phi_trace_with_setup(b'j')?;
+    let mut edge = placed_edge();
+    edge.entry_address = 2;
+    let commit = edge.commit_sites.first_mut().ok_or("missing commit")?;
+    commit.code_address = 4;
+    commit.copy.destination = 120;
+    edge.commits.first_mut().ok_or("missing copy")?.destination = 120;
+    edge.pad_exit_address = Some(5);
+    edge.target_address = 6;
+    let [first] = frames();
+    let frame = [GuestFramePlacement {
+        end_exclusive: 121,
+        ..first
+    }];
+    let proof = verify_traced_phi_copies(
+        from_ref(&edge),
+        &[initial_store(None)],
+        &frame,
+        &good,
+    )
+    .map_err(|error| format!("sparse phi guest: {error:?}"))?;
+    if proof.completed_pads != 1
+        || !matches!(proof.copies.as_slice(), [snapshot, commit]
+            if (snapshot.trace_index, commit.trace_index, commit.destination)
+                == (2, 4, 120))
+    {
+        return Err(format!("incorrect sparse phi proof: {proof:?}"));
+    }
+    let forged = guest_phi_trace_with_setup(b'p')?;
+    if verify_traced_phi_copies(
+        from_ref(&edge),
+        &[initial_store(None)],
+        &frame,
+        &forged,
+    ) != Err(SourcePhiCopyTraceError::UnexpectedFrameEffect)
+    {
+        return Err("off-site guest frame write must refuse".into());
+    }
+    let mut wrong_site = edge;
+    wrong_site
+        .commit_sites
+        .first_mut()
+        .ok_or("missing commit")?
+        .code_address = 3;
+    if verify_traced_phi_copies(
+        &[wrong_site],
+        &[initial_store(None)],
+        &frame,
+        &good,
+    ) != Err(SourcePhiCopyTraceError::InvalidPhiCopy)
+    {
+        return Err("wrong-site guest phi copy must refuse".into());
+    }
+    Ok(())
+}

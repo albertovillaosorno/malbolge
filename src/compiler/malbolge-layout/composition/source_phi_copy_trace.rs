@@ -40,8 +40,9 @@ use malbolge::{
 use super::typed_cfg_adapter::state_relocation::{
     GuestAddressedCfgPlan, GuestCodeControlEdge, GuestCodeEffectAnchor,
     GuestCodeOperationAnchor, GuestCodeOperationEffect,
-    GuestCodeOperationEffectSite, GuestCodeProposals, GuestPlacedCellCopy,
-    bind_source_locked_cfg_code_targets_with_effect_anchors,
+    GuestCodeOperationEffectSite, GuestCodePhiCopyAnchor,
+    GuestCodePhiCopyPlacement, GuestCodeProposals, GuestPlacedCellCopy,
+    bind_source_locked_cfg_code_targets_with_phi_copy_anchors,
 };
 use super::typed_cfg_adapter::state_storage::GuestFramePlacement;
 
@@ -142,15 +143,25 @@ impl PhiTraceProgress {
     fn check_interleaving(
         &self,
         code_address: u32,
+        edges: &[GuestCodeControlEdge],
         sites: &PhiCopySites,
     ) -> Result<(), SourcePhiCopyTraceError> {
-        // Copy suffixes cannot interleave with setup, another pad or a
-        // different physical copy. A revisited *completed* pad is allowed.
+        // After a snapshot, permit setup instructions *inside that pad*
+        // before the next required copy. A jump outside, another pad's
+        // copy or a premature exit may never silently complete a transfer.
+        // Frame writes in the gaps are checked separately below.
         if self.progress.iter().enumerate().any(|(index, at)| {
-            *at > 0
-                && sites.get(&code_address).is_none_or(|site| {
-                    site.edge_index != index || site.ordinal != *at
-                })
+            if *at == 0 {
+                return false;
+            }
+            let Some(edge) = edges.get(index) else {
+                return true;
+            };
+            !edge.pad_exit_address.is_some_and(|exit| {
+                (edge.entry_address..exit).contains(&code_address)
+            }) || sites.get(&code_address).is_some_and(|site| {
+                site.edge_index != index || site.ordinal != *at
+            })
         }) {
             return Err(SourcePhiCopyTraceError::InvalidPhiOrder);
         }
@@ -251,6 +262,23 @@ impl SourcePhiCopyProbe<'_> {
     /// Refuses invalid bounds/placements, failed guest execution,
     /// unmaterialized copy operands, wrong writes and incomplete copy suffixes.
     pub fn verify(self) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+        self.verify_with_phi_copy_anchors(&[])
+    }
+
+    /// Verify with source-locked, sparse physical phi snapshot/commit sites.
+    ///
+    /// Every explicitly anchored pad must name every snapshot and commit;
+    /// unanchored pads use the original compact right-aligned copy suffix.
+    /// Real pad-local setup steps are admitted only between successive
+    /// copies, without allowing foreign frame writes or interleaved pads.
+    ///
+    /// # Errors
+    ///
+    /// Refuses invalid placements, guest execution and copy chronology.
+    pub fn verify_with_phi_copy_anchors(
+        self,
+        phi_anchors: &[GuestCodePhiCopyAnchor],
+    ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
         if self.physical_source.len() < 2
             || self.physical_source.len() > MAX_SOURCE_PHI_TRACE_CELLS
             || !self
@@ -265,13 +293,16 @@ impl SourcePhiCopyProbe<'_> {
         let source_cells = u32::try_from(self.physical_source.len())
             .map_err(|_error| SourcePhiCopyTraceError::InvalidBound)?;
         let plan: GuestAddressedCfgPlan =
-            bind_source_locked_cfg_code_targets_with_effect_anchors(
-                self.canonical,
-                source_cells,
-                self.frame_base,
-                self.proposals,
-                self.operation_anchors,
-                self.effect_anchors,
+            bind_source_locked_cfg_code_targets_with_phi_copy_anchors(
+                GuestCodePhiCopyPlacement {
+                    canonical: self.canonical,
+                    source_cells,
+                    frame_base: self.frame_base,
+                    proposals: self.proposals,
+                    operation_anchors: self.operation_anchors,
+                    effect_anchors: self.effect_anchors,
+                    phi_anchors,
+                },
             )
             .map_err(|_error| {
                 SourcePhiCopyTraceError::InvalidSourcePlacement
@@ -379,7 +410,7 @@ fn verify_traced_phi_copies(
         {
             return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
         }
-        progress.check_interleaving(code_address, &copies_by_code)?;
+        progress.check_interleaving(code_address, edges, &copies_by_code)?;
         if let Some(site) = copies_by_code.get(&code_address) {
             let edge = edges
                 .get(site.edge_index)
