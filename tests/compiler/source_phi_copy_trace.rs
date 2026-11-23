@@ -1568,6 +1568,121 @@ fn real_guest_source_block_entries_require_own_predecessors()
     Ok(())
 }
 
+// A physically executed control-suffix jump back to the same block start is
+// a source CFG backedge, not an invisible ordinary setup loop. The post-jump
+// fetch at C0 is a real VM step even though its code was self-encrypted.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    reason = "fixed three-step N15 control-to-entry backedge"
+)]
+fn real_guest_self_backedge_requires_source_control_edge() -> Result<(), String>
+{
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    source[0] = graphical(0, b'p')?;
+    source[1] = graphical(1, b'i')?;
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("self-backedge loader: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    memory[70] = 7_174_453;
+    memory[71] = u32::try_from(loaded.memory().len())
+        .map_err(|error| format!("memory bound: {error:?}"))?
+        - 1;
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("self-backedge machine: {error:?}"))?;
+    let mut steps = Vec::new();
+    let _ = machine
+        .run_traced(3, &mut |step| steps.push(*step))
+        .map_err(|error| format!("self-backedge run: {error:?}"))?;
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        [0, 1, 0]
+    );
+    assert_eq!(steps[1].decoded, Some(b'i'));
+    assert_eq!(steps[1].after.registers.code_pointer, 0);
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 2,
+        control_start: 1,
+    }];
+    let entries = [GuestCodeFunctionEntry {
+        function: 0,
+        block: 0,
+        address: 0,
+    }];
+    let mut backedge = placed_edge();
+    backedge.snapshot_sites.clear();
+    backedge.commit_sites.clear();
+    backedge.snapshots.clear();
+    backedge.commits.clear();
+    backedge.predecessor = 0;
+    backedge.successor = 0;
+    backedge.control_address = 1;
+    backedge.entry_address = 0;
+    backedge.pad_exit_address = None;
+    backedge.target_address = 0;
+    assert_eq!(
+        verify_source_block_exits(&blocks, &[], &steps),
+        Err(SourcePhiCopyTraceError::InvalidControlTransfer)
+    );
+    assert_eq!(
+        verify_source_block_entries(&blocks, &[], &entries, &steps),
+        Err(SourcePhiCopyTraceError::InvalidBlockEntry)
+    );
+    assert_eq!(
+        verify_source_block_exits(&blocks, from_ref(&backedge), &steps),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &[],
+            from_ref(&initial_store(None)),
+            &frames(),
+            &steps
+        ),
+        Err(SourcePhiCopyTraceError::InvalidControlTransfer)
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            from_ref(&backedge),
+            from_ref(&initial_store(None)),
+            &frames(),
+            &steps
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_block_entries(
+            &blocks,
+            from_ref(&backedge),
+            &entries,
+            &steps
+        ),
+        Ok(())
+    );
+    Ok(())
+}
+
 // The source-block control suffix can be reached by a real intra-block `i`
 // that skips a prior mandatory operation site. Source-block exit and entry
 // checks alone cannot distinguish that execution from a complete visit.

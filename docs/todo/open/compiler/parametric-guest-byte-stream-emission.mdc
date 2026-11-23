@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest source physical CFG gate now treats a real control-suffix
+backjump to the same source block's entry as a source edge, not inert
+intra-block movement. A three-step N15 `p`, `i`, reentry trace rejects
+undeclared self-edges and accepts the correctly declared edge. This is
+bounded control provenance, not a reusable source loop or the executable
+C23 EOF checksum. See the P2 contract and
+`tests/compiler/source_phi_copy_trace.rs`.
+
 The strongest opt-in source CFG gate now rejects extra real guest `/` or `<`
 I/O at unanchored code positions, even when every source-declared operation
 site is reached. Source-placed matching I/O sites pass on the same N15 guest.

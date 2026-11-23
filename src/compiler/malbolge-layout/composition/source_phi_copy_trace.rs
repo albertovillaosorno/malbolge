@@ -576,6 +576,18 @@ fn replay_phi_guest_steps(
     Ok(steps)
 }
 
+// A control-suffix jump to the *start* of its own block is an actual source
+// backedge. Ordinary intra-block setup loops remain exempt; their control
+// does not return through the canonical source block entry.
+fn is_same_block_source_backedge(
+    block: &GuestCodeBlockPlacement,
+    from: u32,
+    to: u32,
+) -> bool {
+    to == block.start
+        && (block.control_start..block.end_exclusive).contains(&from)
+}
+
 // This is a physical *edge-target* check, not a branch-condition evaluator.
 // A real VM can reach an adjacent block by falling through or by jumping;
 // either route must leave the source block only from its control suffix and
@@ -598,7 +610,9 @@ fn verify_source_block_exits(
         else {
             continue;
         };
-        if (block.start..block.end_exclusive).contains(&to) {
+        if (block.start..block.end_exclusive).contains(&to)
+            && !is_same_block_source_backedge(block, from, to)
+        {
             continue;
         }
         if from < block.control_start
@@ -649,7 +663,9 @@ fn verify_source_block_entries(
         else {
             continue;
         };
-        if (block.start..block.end_exclusive).contains(&from) {
+        if (block.start..block.end_exclusive).contains(&from)
+            && !is_same_block_source_backedge(block, from, to)
+        {
             continue;
         }
         if to != block.start
@@ -894,7 +910,9 @@ fn verify_source_branch_choices(
         else {
             continue;
         };
-        if (block.start..block.end_exclusive).contains(&to) {
+        if (block.start..block.end_exclusive).contains(&to)
+            && !is_same_block_source_backedge(block, from, to)
+        {
             continue;
         }
         let selected = edges.iter().filter(|edge| {

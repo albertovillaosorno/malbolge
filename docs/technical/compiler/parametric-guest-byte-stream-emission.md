@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source CFG self-backedge control authentication (2026-11-23)
+
+The strongest opt-in physical source CFG exit, entry and branch checks now
+recognize a source block's **own control suffix** returning to its canonical
+entry as a real source CFG self-backedge. Previously all same-block movement
+was exempt, so an undeclared control-suffix `i` could reenter C0 without a
+source edge. Ordinary setup movement between cells within the same block
+remains exempt; only an actual control-to-start transfer requires the source
+edge and, where applicable, its materialized Boolean branch selection.
+
+A three-step source-loaded N15 prefix executes a genuine C0 `p`, C1 `i`,
+then fetches the self-encrypted C0 again. Its pointer destination is seeded
+at the last guest memory word and wraps precisely to C0. Before the repair,
+source exit/entry/branch checks admitted this transfer with no source edge;
+all three now refuse it, while the source-declared C0 self-edge passes.
+This is finite loop **control provenance**, not an unbounded working loop,
+correct repeated effect execution, signed EOF handling or C23 checksum.
+Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Extra physical I/O outside source effect sites (2026-11-23)
 
 The opt-in strongest source-CFG trace gate now refuses **every** real `/`
