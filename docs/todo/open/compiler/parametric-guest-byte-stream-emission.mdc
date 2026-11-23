@@ -75,6 +75,14 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 output-site verification also retained each physical
+  output's exact canonical source operation identity and trace step. The
+  normative 63-cell guest executes two identical-byte outputs at C24/C26
+  for NUL, `0x25` and `0xff`, while a two-operation source path rejects
+  swapped identities even when bytes and output addresses match. This
+  strengthens one necessary output-order condition only; mutable signed
+  checksum state, arithmetic and physical loop linkage remain missing.
+  See `tests/compiler/source_input_cfg_order.rs` and the active contract.
 - On 2026-11-23 the combined source-input/output verifier gained a complete
   physical `p`/`*` journal for reached input-result frame cells and checks all
   effects against authenticated source store positions, including idempotent

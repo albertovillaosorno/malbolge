@@ -135,6 +135,23 @@ pub enum SourceInputIoEvent {
     Output(u8),
 }
 
+/// One reached output's source-authenticated physical effect identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceOutputSiteObservation {
+    /// Canonical source block containing the output operation.
+    pub block: u32,
+    /// Normative VM's actual emitted byte.
+    pub byte: u8,
+    /// Exact physical code cell of the reached output instruction.
+    pub code_address: u32,
+    /// Canonical source function containing the output operation.
+    pub function: u32,
+    /// Source operation ordinal within its block.
+    pub ordinal: u32,
+    /// Normative VM step at which this output occurred.
+    pub trace_index: usize,
+}
+
 /// An input-only physical-prefix witness, never complete C translation proof.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceInputPrefixProof {
@@ -144,6 +161,9 @@ pub struct SourceInputPrefixProof {
     pub guest_output: Vec<u8>,
     /// Real VM input/output effects in their actual execution order.
     pub io_events: Vec<SourceInputIoEvent>,
+    /// Reached output sites when explicit source effect anchors were required.
+    /// Empty for an unanchored probe or a guest with no output.
+    pub output_sites: Vec<SourceOutputSiteObservation>,
     /// Input effects in guest execution order, not host CFG path selection.
     pub observations: Vec<SourceInputSiteObservation>,
     /// Actual bounded physical VM termination.
@@ -165,6 +185,13 @@ pub struct SourceInputProbe<'source> {
     pub physical_source: &'source [u8],
     /// Positive finite guest instruction ceiling, at most 512.
     pub step_budget: usize,
+}
+
+#[derive(Clone, Copy)]
+struct SourceOutputSite {
+    block: u32,
+    function: u32,
+    ordinal: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -196,8 +223,16 @@ type SourceInputSites = BTreeMap<u32, SourceInputSite>;
 /// Source-placed input and output code effects, never complete VM operations.
 struct SourceIoSites {
     inputs: SourceInputSites,
-    outputs: BTreeSet<u32>,
+    outputs: BTreeMap<u32, SourceOutputSite>,
 }
+#[derive(Clone, Copy)]
+struct SourceOutputExpectations<'expected> {
+    expected_output: Option<&'expected [u8]>,
+    expected_io: Option<&'expected [SourceInputIoEvent]>,
+    expected_sites: Option<&'expected [SourceOutputSiteObservation]>,
+    function: u32,
+}
+
 type ExplicitOperationPlacement<'source> = (
     GuestCodeProposals<'source>,
     &'source [GuestCodeOperationAnchor],
@@ -258,11 +293,18 @@ fn authenticate_io_sites(
     }
     .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
     let mut sites = SourceInputSites::new();
-    let mut outputs = BTreeSet::new();
+    let mut outputs = BTreeMap::new();
     for effect_site in plan.operation_effect_sites {
         match effect_site.effect {
             GuestCodeOperationEffect::Output { .. } => {
-                if !outputs.insert(effect_site.code_address) {
+                if outputs
+                    .insert(effect_site.code_address, SourceOutputSite {
+                        block: effect_site.block,
+                        function: effect_site.function,
+                        ordinal: effect_site.ordinal,
+                    })
+                    .is_some()
+                {
                     return Err(SourceInputTraceError::InvalidSourcePlacement);
                 }
             },
@@ -607,12 +649,53 @@ fn source_successor_state(
     })
 }
 
+// Preserve the exact physical output effect's source operation identity.
+// Equal bytes from different source operations are not interchangeable.
+fn advance_source_output_operation(
+    next: &mut SourceInputWalkState,
+    current: &SourceInputWalkState,
+    value: u32,
+    expected: SourceOutputExpectations<'_>,
+) -> Option<()> {
+    let output = expected.expected_output?;
+    // The canonical ByteOutput operand is typed u8. Never infer this byte
+    // from an unknown source scalar or from the physical VM accumulator.
+    let byte = u8::try_from(*next.known.get(&value)?).ok()?;
+    if output.get(next.output_count) != Some(&byte) {
+        return None;
+    }
+    if let Some(events) = expected.expected_io {
+        if events.get(next.io_count) != Some(&SourceInputIoEvent::Output(byte))
+        {
+            return None;
+        }
+        next.io_count = next.io_count.saturating_add(1);
+    }
+    if let Some(sites) = expected.expected_sites {
+        let site = sites.get(next.output_count)?;
+        if (
+            site.function,
+            site.block,
+            usize::try_from(site.ordinal).ok(),
+            site.byte,
+        ) != (
+            expected.function,
+            current.block,
+            Some(current.operation),
+            byte,
+        ) {
+            return None;
+        }
+    }
+    next.output_count = next.output_count.saturating_add(1);
+    Some(())
+}
+
 fn advance_source_input_operation(
     current: &SourceInputWalkState,
     operation: &TernaryOperation,
     observations: &[&SourceInputSiteObservation],
-    expected_output: Option<&[u8]>,
-    expected_io: Option<&[SourceInputIoEvent]>,
+    expected: SourceOutputExpectations<'_>,
 ) -> Option<SourceInputWalkState> {
     let mut next = current.clone();
     next.operation = next.operation.saturating_add(1);
@@ -635,7 +718,7 @@ fn advance_source_input_operation(
             TraceInput::EndOfInput => return None,
         };
         let _old = next.known.insert(result, input_value);
-        if let Some(events) = expected_io {
+        if let Some(events) = expected.expected_io {
             if events.get(next.io_count)
                 != Some(&SourceInputIoEvent::Input {
                     observation_index: u16::try_from(next.consumed).ok()?,
@@ -647,23 +730,10 @@ fn advance_source_input_operation(
         }
         next.consumed = next.consumed.saturating_add(1);
     } else if let TernaryOperation::ByteOutput { value, .. } = *operation {
-        if let Some(expected) = expected_output {
-            // The canonical ByteOutput operand is typed u8. Refuse
-            // unknown/mismatched source values; never infer guest output
-            // from an unmodeled operation or from the physical VM's A.
-            let byte = u8::try_from(*next.known.get(&value)?).ok()?;
-            if expected.get(next.output_count) != Some(&byte) {
-                return None;
-            }
-            if let Some(events) = expected_io {
-                if events.get(next.io_count)
-                    != Some(&SourceInputIoEvent::Output(byte))
-                {
-                    return None;
-                }
-                next.io_count = next.io_count.saturating_add(1);
-            }
-            next.output_count = next.output_count.saturating_add(1);
+        if expected.expected_output.is_some() {
+            advance_source_output_operation(
+                &mut next, current, value, expected,
+            )?;
         }
     } else {
         advance_known_source_scalar(operation, &mut next.known);
@@ -725,6 +795,7 @@ fn source_path_matches_input_trace(
         require_return,
         None,
         None,
+        None,
     )
 }
 
@@ -745,6 +816,7 @@ fn source_path_matches_input_observables(
         true,
         Some(expected_output),
         None,
+        None,
     )
 }
 
@@ -755,6 +827,7 @@ fn source_path_matches_input_walk(
     require_return: bool,
     expected_output: Option<&[u8]>,
     expected_io: Option<&[SourceInputIoEvent]>,
+    expected_sites: Option<&[SourceOutputSiteObservation]>,
 ) -> Result<bool, SourceInputTraceError> {
     let mut pending = VecDeque::from([SourceInputWalkState {
         block: function.entry,
@@ -787,8 +860,12 @@ fn source_path_matches_input_walk(
                 &state,
                 operation,
                 observations,
-                expected_output,
-                expected_io,
+                SourceOutputExpectations {
+                    expected_output,
+                    expected_io,
+                    expected_sites,
+                    function: function.id,
+                },
             ) {
                 pending.push_back(next);
             }
@@ -1086,6 +1163,8 @@ fn verify_source_output_path(
         true,
         Some(&proof.guest_output),
         Some(&proof.io_events),
+        (!proof.output_sites.is_empty())
+            .then_some(proof.output_sites.as_slice()),
     )? {
         return Err(SourceInputTraceError::SourceOutputNotProven);
     }
@@ -1106,6 +1185,7 @@ fn append_reached_source_io(
     sites: &SourceIoSites,
     observations: &mut Vec<SourceInputSiteObservation>,
     io_events: &mut Vec<SourceInputIoEvent>,
+    output_sites: &mut Vec<SourceOutputSiteObservation>,
     require_output_anchors: bool,
 ) -> Result<(), SourceInputTraceError> {
     if step.input.is_some() && step.output.is_some() {
@@ -1120,10 +1200,20 @@ fn append_reached_source_io(
             .ok_or(SourceInputTraceError::InvalidProbeBound)?;
         io_events.push(SourceInputIoEvent::Input { observation_index });
     } else if let Some(byte) = step.output {
-        if require_output_anchors
-            && !sites.outputs.contains(&step.before.registers.code_pointer)
-        {
-            return Err(SourceInputTraceError::UnexpectedGuestOutput);
+        if require_output_anchors {
+            let code_address = step.before.registers.code_pointer;
+            let site = sites
+                .outputs
+                .get(&code_address)
+                .ok_or(SourceInputTraceError::UnexpectedGuestOutput)?;
+            output_sites.push(SourceOutputSiteObservation {
+                block: site.block,
+                byte,
+                code_address,
+                function: site.function,
+                ordinal: site.ordinal,
+                trace_index,
+            });
         }
         io_events.push(SourceInputIoEvent::Output(byte));
     }
@@ -1145,6 +1235,7 @@ fn verify_source_input_site_trace(
     .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
     let mut observations = Vec::new();
     let mut io_events = Vec::new();
+    let mut output_sites = Vec::new();
     let mut failed = None;
     let mut trace_index = 0usize;
     let outcome = machine
@@ -1158,6 +1249,7 @@ fn verify_source_input_site_trace(
                     &sites,
                     &mut observations,
                     &mut io_events,
+                    &mut output_sites,
                     require_output_anchors,
                 )
                 .err();
@@ -1197,6 +1289,7 @@ fn verify_source_input_site_trace(
         bytes_consumed: machine.input_consumed(),
         guest_output: machine.output().to_vec(),
         io_events,
+        output_sites,
         observations,
         outcome,
     })

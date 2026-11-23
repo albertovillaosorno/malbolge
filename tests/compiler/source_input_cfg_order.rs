@@ -38,9 +38,9 @@ use super::super::typed_cfg_adapter::ternary::{
 use super::{
     GuestCodeInputSemantics, GuestPlacedOperand, SourceInputIoEvent,
     SourceInputSiteObservation, SourceInputTraceError,
-    source_path_matches_input_observables, source_path_matches_input_prefix,
-    source_path_matches_input_trace, source_path_matches_input_walk,
-    verify_source_cfg_input_order,
+    SourceOutputSiteObservation, source_path_matches_input_observables,
+    source_path_matches_input_prefix, source_path_matches_input_trace,
+    source_path_matches_input_walk, verify_source_cfg_input_order,
 };
 
 const CHECKSUM_TYPED: &str =
@@ -812,6 +812,7 @@ fn checksum_source_io_requires_output_after_final_eof() -> Result<(), String> {
                 true,
                 Some(&[4]),
                 Some(events),
+                None,
             ),
             Ok(valid),
             "I/O order {events:?}"
@@ -1107,6 +1108,10 @@ fn single_byte_input_output_wire() -> Result<Vec<u8>, String> {
 }
 
 fn single_byte_program_wire(with_output: bool) -> Result<Vec<u8>, String> {
+    single_byte_program_with_outputs(usize::from(with_output))
+}
+
+fn single_byte_program_with_outputs(outputs: usize) -> Result<Vec<u8>, String> {
     use super::super::typed_cfg_adapter::typed::{
         BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
         FunctionSpec, Instruction, LocatedInstruction, Module, ModuleSpec,
@@ -1125,7 +1130,7 @@ fn single_byte_program_wire(with_output: bool) -> Result<Vec<u8>, String> {
         },
         span,
     )];
-    if with_output {
+    for _ in 0..outputs {
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput { value: ValueId::new(0) },
             span,
@@ -1146,10 +1151,10 @@ fn single_byte_program_wire(with_output: bool) -> Result<Vec<u8>, String> {
             })],
             entry: BlockId::new(0),
             id: FunctionId::new(0),
-            name: String::from(if with_output {
-                "single_byte_input_output"
-            } else {
-                "single_byte_input"
+            name: String::from(match outputs {
+                0 => "single_byte_input",
+                1 => "single_byte_input_output",
+                _ => "single_byte_input_two_outputs",
             }),
             parameters: Vec::new(),
             signature: TypeId::new(1),
@@ -1157,15 +1162,15 @@ fn single_byte_program_wire(with_output: bool) -> Result<Vec<u8>, String> {
         })],
         globals: Vec::new(),
         proof_obligations: Vec::new(),
-        source_id: String::from(if with_output {
-            "fixtures/single-byte-input-output.c"
-        } else {
-            "fixtures/single-byte-input.c"
+        source_id: String::from(match outputs {
+            0 => "fixtures/single-byte-input.c",
+            1 => "fixtures/single-byte-input-output.c",
+            _ => "fixtures/single-byte-input-two-outputs.c",
         }),
-        source_sha256: if with_output {
-            [0x54; 32]
-        } else {
-            [0x53; 32]
+        source_sha256: match outputs {
+            0 => [0x53; 32],
+            1 => [0x54; 32],
+            _ => [0x55; 32],
         },
         target_profile: String::from("malbolge-2026"),
         types: vec![
@@ -1178,6 +1183,172 @@ fn single_byte_program_wire(with_output: bool) -> Result<Vec<u8>, String> {
     });
     validate_module(&module).map_err(|error| format!("typed: {error:?}"))?;
     canonical_bytes(&module).map_err(|error| format!("canonical: {error:?}"))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "identical output bytes must not erase source operation identity"
+)]
+fn identical_source_outputs_refuse_reversed_physical_effect_identity()
+-> Result<(), String> {
+    let wire = single_byte_program_with_outputs(2)?;
+    let cfg = lower_canonical_dynamic_cfg(&wire)
+        .map_err(|error| format!("typed CFG: {error:?}"))?;
+    let function = cfg.functions.first().ok_or("missing source function")?;
+    let observation = SourceInputSiteObservation {
+        block: 0,
+        code_address: 13,
+        destination: GuestPlacedOperand {
+            address: 73,
+            type_kind: TernaryCfgScalarKind::U8,
+            value: 0,
+            words: 1,
+        },
+        function: 0,
+        input: TraceInput::Byte(37),
+        ordinal: 0,
+        raw_accumulator: 37,
+        semantics: GuestCodeInputSemantics::ByteU8,
+        trace_index: 13,
+    };
+    let input = SourceInputIoEvent::Input { observation_index: 0 };
+    let first = SourceOutputSiteObservation {
+        block: 0,
+        byte: 37,
+        code_address: 24,
+        function: 0,
+        ordinal: 1,
+        trace_index: 24,
+    };
+    let second = SourceOutputSiteObservation {
+        block: 0,
+        byte: 37,
+        code_address: 26,
+        function: 0,
+        ordinal: 2,
+        trace_index: 26,
+    };
+    assert_eq!(
+        source_path_matches_input_walk(
+            function,
+            &[&observation],
+            128,
+            true,
+            Some(&[37, 37]),
+            Some(&[
+                input,
+                SourceInputIoEvent::Output(37),
+                SourceInputIoEvent::Output(37)
+            ]),
+            Some(&[first, second]),
+        ),
+        Ok(true),
+    );
+    assert_eq!(
+        source_path_matches_input_walk(
+            function,
+            &[&observation],
+            128,
+            true,
+            Some(&[37, 37]),
+            Some(&[
+                input,
+                SourceInputIoEvent::Output(37),
+                SourceInputIoEvent::Output(37)
+            ]),
+            Some(&[second, first]),
+        ),
+        Ok(false),
+        "two identical output bytes cannot swap source effect identities",
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-placed two-output normative guest trace"
+)]
+fn actual_guest_two_identical_outputs_keep_distinct_source_effects()
+-> Result<(), String> {
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeInputAnchor,
+        GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+    use super::SourceInputProbe;
+
+    let mut physical =
+        b"DCBA@?>=<;:98hx/v-210/p-K+*)ji&%$#\"!~}|{zyxwvutsrqponmlkjihgs%H"
+            .to_vec();
+    let output_code = (33..=126u8)
+        .find(|byte| {
+            malbolge::decode_profile_instruction(u32::from(*byte), 26)
+                == Some(b'<')
+        })
+        .ok_or("no graphical second output")?;
+    *physical.get_mut(26).ok_or("missing second output cell")? = output_code;
+    let wire = single_byte_program_with_outputs(2)?;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 61,
+        control_start: 60,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operations = [
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 0,
+            code_address: 13,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            code_address: 24,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 2,
+            code_address: 26,
+        },
+    ];
+    let inputs = [GuestCodeInputAnchor {
+        function: 0,
+        block: 0,
+        ordinal: 0,
+        code_address: 13,
+    }];
+    for stream in [&[0u8][..], &[37, 99][..], &[255][..]] {
+        let probe = SourceInputProbe {
+            anchors: &inputs,
+            canonical: &wire,
+            frame_base: 73,
+            input: stream,
+            physical_source: &physical,
+            step_budget: 61,
+        };
+        let proof = probe
+            .verify_output_with_operation_anchors(proposals, &operations)
+            .map_err(|error| {
+                format!("two-output guest {stream:?}: {error:?}")
+            })?;
+        assert_eq!(proof.bytes_consumed, 1);
+        assert_eq!(proof.guest_output, [stream[0], stream[0]]);
+        assert_eq!(proof.output_sites.len(), 2);
+        assert_eq!(proof.output_sites[0].code_address, 24);
+        assert_eq!(proof.output_sites[0].ordinal, 1);
+        assert_eq!(proof.output_sites[1].code_address, 26);
+        assert_eq!(proof.output_sites[1].ordinal, 2);
+    }
+    Ok(())
 }
 
 #[test]
@@ -1797,6 +1968,14 @@ fn explicit_output_anchors_require_reached_guest_output_site()
             SourceInputIoEvent::Input { observation_index: 1 },
             SourceInputIoEvent::Output(expected),
         ]);
+        assert_eq!(proof.output_sites, [SourceOutputSiteObservation {
+            block: 0,
+            byte: expected,
+            code_address: 4,
+            function: 0,
+            ordinal: 2,
+            trace_index: 4,
+        }]);
         let shifted = SourceInputProbe {
             physical_source: &mislocated,
             ..probe

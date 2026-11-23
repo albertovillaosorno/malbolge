@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Authenticated output-operation identity (2026-11-23)
+
+The opt-in output trace now records each real VM output's source-bound
+`(function, block, ordinal)`, code address, byte and step index. A
+source-return path must match the **ordered source operations**, not only
+identical output bytes emitted at some reserved output address. The original
+byte I/O event sequence remains unchanged; physical site observations are
+separate and present only for explicitly anchored output verification.
+
+A real 63-cell current-N15 guest reads at C13 and outputs the same byte at
+C24 and C26. NUL, `0x25` and `0xff` streams prove two individually reached
+source-placed output instructions. A typed two-output path whose operation
+identities are reversed refuses despite byte-for-byte equality. This closes
+one finite trace-authentication gap, **not** physical source-C arithmetic,
+C23 signed EOF stores, CFG transfer or the checksum loop. Regression:
+`tests/compiler/source_input_cfg_order.rs`.
+
 ### Source frame write chronology and return integrity (2026-11-23)
 
 The opt-in source input-store verifier now retains the exact chronological
