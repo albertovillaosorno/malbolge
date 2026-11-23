@@ -94,6 +94,12 @@ pub enum SourcePhiCopyTraceError {
     MissingOutputProvenance,
     /// A physical phi write has no guest data path from its live source cell.
     MissingPhiProvenance,
+    /// Strict computation mode needs earlier authenticated source operands.
+    MissingComputationOperand,
+    /// A source-placed computed value differs from exact typed arithmetic.
+    InvalidComputationValue,
+    /// Strict computation mode cannot interpret this typed operation.
+    UnsupportedComputation,
     /// A reached branch did not materialize its Boolean before departure.
     MissingBranchCondition,
     /// A copy source had no earlier, actual source-placed guest data write.
@@ -157,6 +163,7 @@ pub struct SourcePhiCopyProbe<'source> {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum PhiTransferPolicy {
     AllEdges,
+    AllEdgesWithComputations,
     CopyOnly,
     Exit,
     Ingress,
@@ -506,6 +513,26 @@ impl SourcePhiCopyProbe<'_> {
         )
     }
 
+    /// Apply exact typed arithmetic to earlier source-authenticated frame
+    /// cells and require each real guest result store to match its computed
+    /// word. This strict opt-in extends the strongest CFG/phi checks; it does
+    /// not prove the physical guest used the operands to compute that word.
+    /// Unsupported source operations refuse instead of being guessed.
+    ///
+    /// # Errors
+    ///
+    /// Refuses all ordinary CFG/phi errors plus absent source operands,
+    /// unsupported computations and wrong physical result words.
+    pub fn verify_with_source_computations(
+        self,
+        phi_anchors: &[GuestCodePhiCopyAnchor],
+    ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+        self.verify_with_transfer_policy(
+            phi_anchors,
+            PhiTransferPolicy::AllEdgesWithComputations,
+        )
+    }
+
     /// Also require every reached, completed phi pad to execute its reserved
     /// `i` code transfer to the source-bound successor block entry.
     ///
@@ -604,7 +631,11 @@ impl SourcePhiCopyProbe<'_> {
             self.input,
             self.step_budget,
         )?;
-        if policy == PhiTransferPolicy::AllEdges {
+        if matches!(
+            policy,
+            PhiTransferPolicy::AllEdges
+                | PhiTransferPolicy::AllEdgesWithComputations
+        ) {
             verify_source_block_exits(
                 &plan.code_blocks,
                 &plan.control_edges,
@@ -629,7 +660,9 @@ impl SourcePhiCopyProbe<'_> {
         }
         if matches!(
             policy,
-            PhiTransferPolicy::Ingress | PhiTransferPolicy::AllEdges
+            PhiTransferPolicy::Ingress
+                | PhiTransferPolicy::AllEdges
+                | PhiTransferPolicy::AllEdgesWithComputations
         ) {
             verify_predecessor_phi_entries(
                 &plan.code_blocks,
@@ -646,11 +679,24 @@ impl SourcePhiCopyProbe<'_> {
             &steps,
             policy != PhiTransferPolicy::CopyOnly,
         )?;
-        if policy == PhiTransferPolicy::AllEdges {
+        if matches!(
+            policy,
+            PhiTransferPolicy::AllEdges
+                | PhiTransferPolicy::AllEdgesWithComputations
+        ) {
             verify_source_branch_choices(
                 &plan.code_blocks,
                 &plan.control_edges,
                 &plan.operation_effect_sites,
+                &plan.relocated.state_placements,
+                &steps,
+            )?;
+        }
+        if policy == PhiTransferPolicy::AllEdgesWithComputations {
+            super::source_computation_trace::verify_source_computation_values(
+                &plan.operation_sites,
+                &plan.operation_effect_sites,
+                &plan.control_edges,
                 &plan.relocated.state_placements,
                 &steps,
             )?;

@@ -41,6 +41,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest source-locked physical CFG/phi checker has a new **opt-in exact
+computation-result** policy. Real four-step N15 traces accept a typed XOR
+result of 1 ^ 2 = 3, refuse a physically written 2 or a forged AND result,
+refuse absent operand writes and unsupported divisions, and check both guest
+words for a C32 zero-extension. The guest trace is genuinely executed, but
+its source arithmetic values were seeded: numerical agreement does **not**
+prove the Malbolge program computed from the operands. The complete C23
+mutable EOF checksum remains physically unlinked; the three-test end-to-end
+pipeline still passes only its explicit no-publication refusal. Next: link
+real guest arithmetic and operand reads, signed input conversion and loop
+control before asserting any checksum parity. See the contract and
+`tests/compiler/source_computation_trace.rs`.
+
 A linked physical phi copy must now carry guest data provenance from its
 **latest source SSA write**, not merely produce the same numeric word.
 A paired seven-step N15 guest preserves all values but one variant rotates

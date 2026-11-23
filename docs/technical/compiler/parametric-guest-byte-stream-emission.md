@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Opt-in source computation result authentication (2026-11-23)
+
+`SourcePhiCopyProbe::verify_with_source_computations` extends the strongest
+physical source-CFG and phi verification with a **strict, numerical** typed
+computation check. Only source-authorized VM `p`/`*` writes or completed
+source-bound phi copies can materialize operands; loader-seeded cells never
+authorize a computation. At a reached source-placed result Store, the actual
+post-step accumulator must equal the typed operation applied to the earlier
+physical source operand words. Multiword C32 values are decoded canonically
+and both result words must match. The checker supports exact bitwise/additive
+integer operations, integer comparisons, and selected integer casts. Unknown
+operations refuse as `UnsupportedComputation` rather than passing silently.
+
+An actual four-step N15 `*, *, *, v` guest writes `1`, `2` and `3` from
+separately seeded data cells; the strict XOR result check admits `1 ^ 2 = 3`,
+but the otherwise identical guest writing `2` at the result site refuses
+`InvalidComputationValue`. The same VM trace also rejects a forged AND
+operation, an unwritten source operand and an unsupported divide. A separate
+four-step real guest carries a two-word zero-extended value and rejects a
+wrong high word even when its low word agrees. Independent C32 arithmetic,
+comparison and truncation checks exercise typed 32-bit boundaries.
+
+This check is a **necessary value consistency condition**, not proof that a
+guest opcode's accumulator causally depended on each source operand. Guest
+arithmetic synthesis and operand-read provenance remain unfinished, along
+with signed C23 input conversion, source CFG target linkage and the original
+mutable EOF checksum. The checksum's complete five-vector regression still
+passes only its **explicit refusal/no guest artifact** contract; P2 remains
+open. See `src/compiler/malbolge-layout/composition/source_computation_trace.rs`
+and `tests/compiler/source_computation_trace.rs`.
+
 ### Physically sourced phi-copy dataflow (2026-11-23)
 
 The linked-CFG physical phi transfer gate now requires the *latest*

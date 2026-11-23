@@ -61,6 +61,7 @@ mod loader_rotation_source;
 mod loader_seed;
 mod physical_reentry;
 mod signed_eof_branch_source;
+mod source_computation_trace;
 mod source_input_state_trace;
 mod source_input_trace;
 mod source_phi_copy_trace;
