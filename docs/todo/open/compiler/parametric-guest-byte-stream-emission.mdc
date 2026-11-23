@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 source-typed individual effect anchors can reserve setup
+  gaps between a real input and its guest result stores without relaxing
+  operation order or disjoint CFG code reservations. The opt-in source
+  input/store verifier binds every observed `p`/`*` code address to its
+  source-derived store effect. A genuine 13-step N15 input/p/p guest
+  writes the exact successful byte at M55 from C11; moving only the typed
+  store anchor to C10 or leaving it at C8 refuses despite matching bytes.
+  NUL and high-byte streams pass, while true EOF refuses as an invalid U8
+  input. No full signed C23 stores, arithmetic, phi control, EOF loop or
+  compiled checksum is claimed. See
+  `tests/compiler/source_input_cfg_order.rs` and the active contract.
 - On 2026-11-23 explicit source-locked output verification also bound reached
   guest output opcodes to their proposed canonical `ByteOutput` code sites.
   A real six-step two-input byte guest passes when output executes at C4;

@@ -379,6 +379,26 @@ pub struct GuestCodeOperationAnchor {
     pub ordinal: u32,
 }
 
+/// One individually located effect inside a source-authenticated operation.
+///
+/// Unlike an operation's first-effect anchor, this may leave setup cells
+/// between the input and its frame writes, or between two C32 word writes.
+/// The index selects an effect derived from the typed instruction, not a
+/// caller-provided opcode, destination, or instruction order.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeEffectAnchor {
+    /// Canonical source block containing the instruction.
+    pub block: u32,
+    /// Proposed physical instruction address performing this effect.
+    pub code_address: u32,
+    /// Zero-based effect order within its canonical source instruction.
+    pub effect_index: u32,
+    /// Canonical source function containing the block.
+    pub function: u32,
+    /// Zero-based instruction index inside the source block.
+    pub ordinal: u32,
+}
+
 /// Exact interpretation owed by one physically executed guest input.
 ///
 /// A signed C23 `getchar` has two *different* EOF representations: the raw
@@ -1058,6 +1078,7 @@ fn bind_operation_sites(
     block: &GuestPlacedBlock,
     placement: GuestCodeBlockPlacement,
     anchors: &BTreeMap<(u32, u32, u32), u32>,
+    effect_anchors: &BTreeMap<(u32, u32, u32, u32), u32>,
 ) -> Result<
     (
         Vec<GuestCodeOperationSite>,
@@ -1070,26 +1091,33 @@ fn bind_operation_sites(
     let mut effect_sites = Vec::new();
     for (index, instruction) in block.instructions.iter().enumerate() {
         let effects = required_operation_effects(instruction)?;
-        let length = u32::try_from(effects.len())
-            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
         let ordinal = u32::try_from(index)
             .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+        let key = (block.function, block.block, ordinal);
         let start = anchors
-            .get(&(block.function, block.block, ordinal))
+            .get(&key)
             .copied()
+            .or_else(|| effect_anchors.get(&(key.0, key.1, key.2, 0)).copied())
             .unwrap_or(next_address);
-        if start < next_address {
-            return Err(GuestCodePlacementError::InvalidCodePlacement);
-        }
-        let end_exclusive = start
-            .checked_add(length)
-            .filter(|end| *end <= placement.control_start)
-            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         for (effect_index, effect) in effects.into_iter().enumerate() {
-            let code_address = start
-                .checked_add(u32::try_from(effect_index).map_err(|_| {
-                    GuestCodePlacementError::InvalidCodePlacement
-                })?)
+            let effect_index = u32::try_from(effect_index)
+                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+            let code_address = effect_anchors
+                .get(&(key.0, key.1, key.2, effect_index))
+                .copied()
+                .unwrap_or(if effect_index == 0 {
+                    start
+                } else {
+                    next_address
+                });
+            if (effect_index == 0 && code_address != start)
+                || code_address < next_address
+            {
+                return Err(GuestCodePlacementError::InvalidCodePlacement);
+            }
+            next_address = code_address
+                .checked_add(1)
+                .filter(|end| *end <= placement.control_start)
                 .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
             effect_sites.push(GuestCodeOperationEffectSite {
                 block: block.block,
@@ -1102,12 +1130,11 @@ fn bind_operation_sites(
         sites.push(GuestCodeOperationSite {
             block: block.block,
             computation: bound_computation(instruction),
-            end_exclusive,
+            end_exclusive: next_address,
             function: block.function,
             ordinal,
             start,
         });
-        next_address = end_exclusive;
     }
     Ok((sites, effect_sites))
 }
@@ -1361,6 +1388,41 @@ pub fn bind_source_locked_cfg_code_targets_with_operation_anchors(
     proposals: GuestCodeProposals<'_>,
     anchors: &[GuestCodeOperationAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    bind_source_locked_cfg_code_targets_with_effect_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        proposals,
+        anchors,
+        &[],
+    )
+}
+
+/// Bind source-typed individual effects to sparse physical code addresses.
+///
+/// Within each canonical instruction, required effects stay in their exact
+/// source-derived order; unanchored effects follow the preceding effect in
+/// the earliest available cell. Arbitrary setup gaps are permitted before
+/// or between them, but cannot overlap later operations, source control or
+/// phi pads. The existing operation anchors still identify only the first
+/// effect and must agree with an optional index-zero effect anchor.
+///
+/// These are checked **proposals**, not verified VM transitions. In
+/// particular a signed C23 input remains unimplemented unless real `/` and
+/// both full-width guest writes execute with correct values and dependence.
+///
+/// # Errors
+///
+/// Refuses foreign, duplicated, inconsistent, out-of-order or out-of-block
+/// effect addresses, along with all ordinary source relocation errors.
+pub fn bind_source_locked_cfg_code_targets_with_effect_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    proposals: GuestCodeProposals<'_>,
+    anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let mut anchored = BTreeMap::new();
     for anchor in anchors {
         if anchored
@@ -1374,6 +1436,24 @@ pub fn bind_source_locked_cfg_code_targets_with_operation_anchors(
         }
     }
     let mut unmatched = anchored.clone();
+    let mut anchored_effects = BTreeMap::new();
+    for anchor in effect_anchors {
+        if anchored_effects
+            .insert(
+                (
+                    anchor.function,
+                    anchor.block,
+                    anchor.ordinal,
+                    anchor.effect_index,
+                ),
+                anchor.code_address,
+            )
+            .is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
+    let mut unmatched_effects = anchored_effects.clone();
     let GuestCodeProposals {
         code_blocks: proposed,
         edge_pads: proposed_pads,
@@ -1414,8 +1494,25 @@ pub fn bind_source_locked_cfg_code_targets_with_operation_anchors(
             .copied()
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         code_blocks.push(placement);
-        let (sites, effects) =
-            bind_operation_sites(block, placement, &anchored)?;
+        let (sites, effects) = bind_operation_sites(
+            block,
+            placement,
+            &anchored,
+            &anchored_effects,
+        )?;
+        let mut effect_indices = BTreeMap::<u32, u32>::new();
+        for effect_site in &effects {
+            let index = effect_indices.entry(effect_site.ordinal).or_insert(0);
+            let _matched = unmatched_effects.remove(&(
+                effect_site.function,
+                effect_site.block,
+                effect_site.ordinal,
+                *index,
+            ));
+            *index = index
+                .checked_add(1)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        }
         for site in &sites {
             let _matched =
                 unmatched.remove(&(site.function, site.block, site.ordinal));
@@ -1457,7 +1554,10 @@ pub fn bind_source_locked_cfg_code_targets_with_operation_anchors(
             },
         }
     }
-    if edge_pads.len() != pads.len() || !unmatched.is_empty() {
+    if edge_pads.len() != pads.len()
+        || !unmatched.is_empty()
+        || !unmatched_effects.is_empty()
+    {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
     Ok(GuestAddressedCfgPlan {

@@ -1095,6 +1095,347 @@ fn two_input_byte_output_wire() -> Result<Vec<u8>, String> {
     canonical_bytes(&module).map_err(|error| format!("canonical: {error:?}"))
 }
 
+// This typed function owns one U8 result and no host-produced output.
+// Its source-backed byte store can be tested against an actual N15 p/p
+// identity rather than only a minimum code reservation.
+fn single_byte_input_wire() -> Result<Vec<u8>, String> {
+    use super::super::typed_cfg_adapter::typed::{
+        BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
+        FunctionSpec, Instruction, LocatedInstruction, Module, ModuleSpec,
+        SourcePosition, SourceSpan, Terminator, TypeDef, TypeEntry, TypeId,
+        ValueId, canonical_bytes, validate_module,
+    };
+    let span = SourceSpan::new(
+        SourcePosition::new(0, 1, 1),
+        SourcePosition::new(1, 1, 2),
+    );
+    let byte_type = TypeId::new(0);
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version:
+            super::super::typed_cfg_adapter::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions: vec![LocatedInstruction::new(
+                    Instruction::ByteInput {
+                        result: ValueId::new(0),
+                        type_id: byte_type,
+                    },
+                    span,
+                )],
+                phis: Vec::new(),
+                span,
+                terminator: Terminator::Return { value: None },
+                terminator_span: span,
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("single_byte_input"),
+            parameters: Vec::new(),
+            signature: TypeId::new(1),
+            span,
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/single-byte-input.c"),
+        source_sha256: [0x53; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(byte_type, TypeDef::U8),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    });
+    validate_module(&module).map_err(|error| format!("typed: {error:?}"))?;
+    canonical_bytes(&module).map_err(|error| format!("canonical: {error:?}"))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real byte-exact N15 guest and source-locked store-site refusals"
+)]
+fn actual_guest_byte_store_requires_its_source_effect_address()
+-> Result<(), String> {
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeEffectAnchor, GuestCodeInputAnchor,
+        GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+    use super::{SourceInputProbe, SourceInputTraceError};
+
+    // Pinned source bytes are independently decoded and proven in the
+    // byte-exact guest test; avoid regenerating the bounded search here.
+    let physical = b"DCBA@?>n~5|3Ex6";
+    assert_eq!(
+        malbolge::decode_profile_instruction(u32::from(physical[7]), 7),
+        Some(b'/'),
+    );
+    assert_eq!(
+        malbolge::decode_profile_instruction(u32::from(physical[11]), 11),
+        Some(b'p'),
+    );
+    let wire = single_byte_input_wire()?;
+    let blocks = [GuestCodeBlockPlacement {
+        block: 0,
+        control_start: 12,
+        end_exclusive: 13,
+        function: 0,
+        start: 0,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operations = [GuestCodeOperationAnchor {
+        block: 0,
+        code_address: 7,
+        function: 0,
+        ordinal: 0,
+    }];
+    let effects = [GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 11,
+        effect_index: 1,
+        function: 0,
+        ordinal: 0,
+    }];
+    let inputs = [GuestCodeInputAnchor {
+        block: 0,
+        code_address: 7,
+        function: 0,
+        ordinal: 0,
+    }];
+    for stream in [&[0][..], &[255, 99][..]] {
+        let probe = SourceInputProbe {
+            anchors: &inputs,
+            canonical: &wire,
+            frame_base: 55,
+            input: stream,
+            physical_source: physical,
+            step_budget: 13,
+        };
+        let proof = probe
+            .verify_stored_with_effect_anchors(proposals, &operations, &effects)
+            .map_err(|error| format!("source store {stream:?}: {error:?}"))?;
+        assert_eq!(proof.prefix.bytes_consumed, 1);
+        assert!(proof.prefix.guest_output.is_empty());
+        assert_eq!(proof.stores.len(), 1);
+        assert_eq!(proof.stores[0].cells.len(), 1);
+        assert_eq!(
+            (
+                proof.stores[0].cells[0].code_address,
+                proof.stores[0].cells[0].address,
+                proof.stores[0].cells[0].trace_index,
+                proof.stores[0].cells[0].value,
+            ),
+            (11, 55, 11, u32::from(stream[0])),
+        );
+    }
+    let probe = SourceInputProbe {
+        anchors: &inputs,
+        canonical: &wire,
+        frame_base: 55,
+        input: &[42, 99],
+        physical_source: physical,
+        step_budget: 13,
+    };
+    // Matching stored bytes, dependencies and return are insufficient
+    // if the only source-identified store code site is C10, not C11.
+    let wrong_site = [GuestCodeEffectAnchor {
+        code_address: 10,
+        ..effects[0]
+    }];
+    assert!(
+        probe
+            .verify_return_with_effect_anchors(
+                proposals,
+                &operations,
+                &wrong_site,
+            )
+            .is_ok()
+    );
+    assert_eq!(
+        probe.verify_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &wrong_site,
+        ),
+        Err(SourceInputTraceError::UnexpectedGuestStoreSite),
+    );
+    // Without a sparse store anchor, an adjacent C8 proposal also
+    // cannot authenticate the genuine C11 word write.
+    assert_eq!(
+        probe.verify_stored_with_effect_anchors(proposals, &operations, &[],),
+        Err(SourceInputTraceError::UnexpectedGuestStoreSite),
+    );
+    let probe = SourceInputProbe {
+        anchors: &inputs,
+        canonical: &wire,
+        frame_base: 55,
+        input: &[],
+        physical_source: physical,
+        step_budget: 13,
+    };
+    assert_eq!(
+        probe.verify_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        ),
+        Err(SourceInputTraceError::SourceInputUnreachable),
+        "unsigned-byte source paths cannot read true EOF",
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-locked sparse guest effect placement refusals"
+)]
+fn sparse_input_effect_anchors_allow_real_setup_gaps_but_not_reordering()
+-> Result<(), String> {
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeEffectAnchor,
+        GuestCodeOperationAnchor, GuestCodeOperationEffect,
+        GuestCodePlacementError, GuestCodeProposals,
+        bind_source_locked_cfg_code_targets_with_effect_anchors,
+    };
+
+    let wire = two_input_byte_output_wire()?;
+    let blocks = [GuestCodeBlockPlacement {
+        block: 0,
+        control_start: 15,
+        end_exclusive: 16,
+        function: 0,
+        start: 0,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operations = [
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 0,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 7,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 14,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let stores = [
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 5,
+            effect_index: 1,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 12,
+            effect_index: 1,
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    let bind = |effects: &[GuestCodeEffectAnchor]| {
+        bind_source_locked_cfg_code_targets_with_effect_anchors(
+            &wire,
+            16,
+            256,
+            proposals,
+            &operations,
+            effects,
+        )
+    };
+    let plan = bind(&stores).map_err(|error| format!("layout: {error:?}"))?;
+    assert_eq!(
+        plan.operation_effect_sites
+            .iter()
+            .map(|site| (site.code_address, site.ordinal, site.effect))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, 0, plan.operation_effect_sites[0].effect),
+            (5, 0, plan.operation_effect_sites[1].effect),
+            (7, 1, plan.operation_effect_sites[2].effect),
+            (12, 1, plan.operation_effect_sites[3].effect),
+            (14, 2, plan.operation_effect_sites[4].effect),
+        ],
+    );
+    assert!(matches!(
+        plan.operation_effect_sites[1].effect,
+        GuestCodeOperationEffect::Store { .. }
+    ));
+    assert!(matches!(
+        plan.operation_effect_sites[3].effect,
+        GuestCodeOperationEffect::Store { .. }
+    ));
+    assert_eq!(
+        plan.operation_sites
+            .iter()
+            .map(|site| (site.start, site.end_exclusive))
+            .collect::<Vec<_>>(),
+        [(0, 6), (7, 13), (14, 15)],
+    );
+    let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+    for invalid in [
+        vec![stores[0], stores[0]],
+        vec![GuestCodeEffectAnchor {
+            code_address: 0,
+            ..stores[0]
+        }],
+        vec![GuestCodeEffectAnchor {
+            code_address: 7,
+            ..stores[0]
+        }],
+        vec![GuestCodeEffectAnchor {
+            code_address: 15,
+            ..stores[1]
+        }],
+        vec![GuestCodeEffectAnchor {
+            effect_index: 2,
+            ..stores[0]
+        }],
+        vec![GuestCodeEffectAnchor { ordinal: 99, ..stores[0] }],
+        vec![GuestCodeEffectAnchor { block: 99, ..stores[0] }],
+        vec![GuestCodeEffectAnchor {
+            function: 99,
+            ..stores[0]
+        }],
+    ] {
+        assert_eq!(bind(&invalid), refusal);
+    }
+    // The old operation-only entrypoint keeps its adjacent effect layout.
+    let ordinary = super::super::typed_cfg_adapter::state_relocation::
+        bind_source_locked_cfg_code_targets_with_operation_anchors(
+            &wire, 16, 256, proposals, &operations,
+        ).map_err(|error| format!("adjacent layout: {error:?}"))?;
+    assert_eq!(
+        ordinary
+            .operation_effect_sites
+            .iter()
+            .map(|site| site.code_address)
+            .collect::<Vec<_>>(),
+        [0, 1, 7, 8, 14],
+    );
+    Ok(())
+}
+
 #[test]
 #[expect(
     clippy::panic_in_result_fn,

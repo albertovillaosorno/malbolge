@@ -164,7 +164,7 @@ fn physical_store_accounting_refuses_loader_values_and_partial_c32_writes()
     let input = input_observation(TraceInput::Byte(0), signed_c23(), 2);
     let mut partial = synthetic_tracker(input)?;
     // Even if the loader state happened to be zero, no write occurred there.
-    partial.observe_data_write(256, 54, &BTreeSet::from([0]));
+    partial.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
     assert_eq!(
         partial
             .pending
@@ -178,8 +178,8 @@ fn physical_store_accounting_refuses_loader_values_and_partial_c32_writes()
     );
 
     let mut complete = synthetic_tracker(input)?;
-    complete.observe_data_write(257, 54, &BTreeSet::from([0]));
-    complete.observe_data_write(256, 55, &BTreeSet::from([0]));
+    complete.observe_data_write(257, 54, 54, &BTreeSet::from([0]));
+    complete.observe_data_write(256, 55, 55, &BTreeSet::from([0]));
     let stores = complete.complete()?;
     assert_eq!(stores.len(), 1);
     assert_eq!(
@@ -208,9 +208,9 @@ fn physical_store_accounting_rejects_wrong_eof_high_word_until_corrected()
     let input = input_observation(TraceInput::EndOfInput, signed_c23(), 2);
     let mut corrected = synthetic_tracker(input)?;
     let _previous_low = corrected.words.insert(256, 4_644_102);
-    corrected.observe_data_write(256, 54, &BTreeSet::from([0]));
+    corrected.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
     let _previous_high = corrected.words.insert(257, 298);
-    corrected.observe_data_write(257, 55, &BTreeSet::from([0]));
+    corrected.observe_data_write(257, 55, 55, &BTreeSet::from([0]));
     assert_eq!(
         corrected
             .pending
@@ -223,10 +223,10 @@ fn physical_store_accounting_rejects_wrong_eof_high_word_until_corrected()
             .pending
             .first()
             .map(|store| store.writes.as_slice()),
-        Some([Some(54), Some(55)].as_slice()),
+        Some([Some((54, 54)), Some((55, 55))].as_slice()),
     );
     let _previous_corrected_high = corrected.words.insert(257, 299);
-    corrected.observe_data_write(257, 56, &BTreeSet::from([0]));
+    corrected.observe_data_write(257, 56, 56, &BTreeSet::from([0]));
     let stores = corrected.complete()?;
     let result = stores.first();
     assert_eq!(result.map(|store| store.cells.len()), Some(2));
@@ -249,9 +249,9 @@ fn physical_store_accounting_rejects_wrong_eof_high_word_until_corrected()
 
     let mut wrong = synthetic_tracker(input)?;
     let _wrong_low = wrong.words.insert(256, 4_644_102);
-    wrong.observe_data_write(256, 54, &BTreeSet::from([0]));
+    wrong.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
     let _wrong_high = wrong.words.insert(257, 298);
-    wrong.observe_data_write(257, 55, &BTreeSet::from([0]));
+    wrong.observe_data_write(257, 55, 55, &BTreeSet::from([0]));
     assert_eq!(
         wrong.complete().err(),
         Some(SourceInputTraceError::InputResultMismatch),
@@ -268,8 +268,8 @@ fn matching_constant_writes_are_not_input_stores()
 -> Result<(), SourceInputTraceError> {
     let input = input_observation(TraceInput::Byte(0), signed_c23(), 2);
     let mut unrelated = synthetic_tracker(input)?;
-    unrelated.observe_data_write(256, 54, &BTreeSet::new());
-    unrelated.observe_data_write(257, 55, &BTreeSet::new());
+    unrelated.observe_data_write(256, 54, 54, &BTreeSet::new());
+    unrelated.observe_data_write(257, 55, 55, &BTreeSet::new());
     assert_eq!(
         unrelated.complete().err(),
         Some(SourceInputTraceError::InputResultUnrelatedToInput)
@@ -278,13 +278,13 @@ fn matching_constant_writes_are_not_input_stores()
     // C23's successful-byte high word may correctly be fixed zero. At
     // least one constituent write must nevertheless depend on *this* read.
     let mut mixed = synthetic_tracker(input)?;
-    mixed.observe_data_write(256, 54, &BTreeSet::from([0]));
-    mixed.observe_data_write(257, 55, &BTreeSet::new());
+    mixed.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
+    mixed.observe_data_write(257, 55, 55, &BTreeSet::new());
     assert_eq!(mixed.complete()?.len(), 1);
 
     let mut wrong_read = synthetic_tracker(input)?;
-    wrong_read.observe_data_write(256, 54, &BTreeSet::from([1]));
-    wrong_read.observe_data_write(257, 55, &BTreeSet::from([1]));
+    wrong_read.observe_data_write(256, 54, 54, &BTreeSet::from([1]));
+    wrong_read.observe_data_write(257, 55, 55, &BTreeSet::from([1]));
     assert_eq!(
         wrong_read.complete().err(),
         Some(SourceInputTraceError::InputResultUnrelatedToInput),

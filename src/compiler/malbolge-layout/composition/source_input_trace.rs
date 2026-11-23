@@ -41,9 +41,10 @@ use malbolge::{
 
 use super::typed_cfg_adapter::lower_canonical_dynamic_cfg;
 use super::typed_cfg_adapter::state_relocation::{
-    GuestCodeInputAnchor, GuestCodeInputSemantics, GuestCodeOperationAnchor,
-    GuestCodeOperationEffect, GuestCodeProposals, GuestPlacedOperand,
-    bind_source_locked_cfg_code_targets_with_operation_anchors,
+    GuestCodeEffectAnchor, GuestCodeInputAnchor, GuestCodeInputSemantics,
+    GuestCodeOperationAnchor, GuestCodeOperationEffect, GuestCodeProposals,
+    GuestPlacedOperand,
+    bind_source_locked_cfg_code_targets_with_effect_anchors,
     plan_source_locked_cfg_with_input_anchors,
 };
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
@@ -88,6 +89,8 @@ pub enum SourceInputTraceError {
     UnexpectedGuestInput,
     /// A physical output opcode was not at a source-placed output effect.
     UnexpectedGuestOutput,
+    /// Real input-dependent frame write ran at the wrong source effect site.
+    UnexpectedGuestStoreSite,
     /// Physical execution terminated without the source-required halt.
     UnexpectedGuestTermination,
     /// A skipped source input site is mandatory on every possible return path.
@@ -198,6 +201,7 @@ struct SourceIoSites {
 type ExplicitOperationPlacement<'source> = (
     GuestCodeProposals<'source>,
     &'source [GuestCodeOperationAnchor],
+    &'source [GuestCodeEffectAnchor],
 );
 
 fn authenticate_io_sites(
@@ -218,7 +222,7 @@ fn authenticate_io_sites(
     }
     let source_cells = u32::try_from(probe.physical_source.len())
         .map_err(|_error| SourceInputTraceError::InvalidProbeBound)?;
-    let plan = if let Some((proposals, anchors)) = explicit {
+    let plan = if let Some((proposals, anchors, effect_anchors)) = explicit {
         if probe.anchors.iter().any(|read| {
             !anchors.iter().any(|anchor| {
                 (
@@ -236,12 +240,13 @@ fn authenticate_io_sites(
         }) {
             return Err(SourceInputTraceError::InvalidSourcePlacement);
         }
-        bind_source_locked_cfg_code_targets_with_operation_anchors(
+        bind_source_locked_cfg_code_targets_with_effect_anchors(
             probe.canonical,
             source_cells,
             probe.frame_base,
             proposals,
             anchors,
+            effect_anchors,
         )
     } else {
         plan_source_locked_cfg_with_input_anchors(
@@ -919,7 +924,7 @@ impl SourceInputProbe<'_> {
         verify_source_input_site_trace(
             self,
             false,
-            Some((proposals, anchors)),
+            Some((proposals, anchors, &[])),
             false,
         )
     }
@@ -938,7 +943,28 @@ impl SourceInputProbe<'_> {
         verify_source_input_site_trace(
             self,
             true,
-            Some((proposals, anchors)),
+            Some((proposals, anchors, &[])),
+            false,
+        )
+    }
+
+    /// Require a source-compatible return after individually anchored
+    /// effects. Subsequent guest stores remain unverified by this method.
+    ///
+    /// # Errors
+    ///
+    /// Refuses unsupported or reordered effect positions, physical input
+    /// mismatches, and source CFG paths without a matching return.
+    pub fn verify_return_with_effect_anchors(
+        self,
+        proposals: GuestCodeProposals<'_>,
+        operation_anchors: &[GuestCodeOperationAnchor],
+        effect_anchors: &[GuestCodeEffectAnchor],
+    ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+        verify_source_input_site_trace(
+            self,
+            true,
+            Some((proposals, operation_anchors, effect_anchors)),
             false,
         )
     }
@@ -960,7 +986,7 @@ impl SourceInputProbe<'_> {
         let proof = verify_source_input_site_trace(
             self,
             true,
-            Some((proposals, anchors)),
+            Some((proposals, anchors, &[])),
             true,
         )?;
         verify_source_output_path(self, proof)

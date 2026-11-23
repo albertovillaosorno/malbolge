@@ -40,7 +40,9 @@ use super::source_input_trace::{
     SourceInputTraceError, verify_source_input_site_return_compatible,
 };
 use super::typed_cfg_adapter::state_relocation::{
-    GuestCodeInputSemantics, GuestCodeOperationAnchor, GuestCodeProposals,
+    GuestCodeEffectAnchor, GuestCodeInputSemantics, GuestCodeOperationAnchor,
+    GuestCodeOperationEffect, GuestCodeProposals,
+    bind_source_locked_cfg_code_targets_with_effect_anchors,
 };
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
 
@@ -50,7 +52,7 @@ struct PendingInputStore {
     input: SourceInputSiteObservation,
     saw_matching_unrelated: bool,
     write_dependent: Vec<bool>,
-    writes: Vec<Option<usize>>,
+    writes: Vec<Option<(usize, u32)>>,
 }
 
 // A conservative dynamic dependency shadow for an authentic profile trace.
@@ -152,6 +154,8 @@ impl GuestInfluence {
 /// One actual guest data write that completed a source input word.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SourceInputStoreCell {
+    /// Actual code cell where the normative VM executed the p/* write.
+    pub code_address: u32,
     /// Exact absolute source-reserved guest word.
     pub address: u32,
     /// Zero-based physical VM step that wrote this cell.
@@ -256,6 +260,7 @@ impl StoreTracker {
         &mut self,
         address: u32,
         step_index: usize,
+        code_address: u32,
         dependencies: &BTreeSet<usize>,
     ) {
         for (input_index, store) in
@@ -276,7 +281,7 @@ impl StoreTracker {
             let Some(write_step) = store.writes.get_mut(cell_index) else {
                 continue;
             };
-            *write_step = Some(step_index);
+            *write_step = Some((step_index, code_address));
             if let Some(dependent) = store.write_dependent.get_mut(cell_index) {
                 *dependent = dependencies.contains(&input_index);
             }
@@ -292,10 +297,11 @@ impl StoreTracker {
                     let cell_address =
                         store.input.destination.cell_address(offset)?;
                     let actual_word = *self.words.get(&cell_address)?;
-                    let write_index =
+                    let (write_index, write_code_address) =
                         store.writes.get(cell_offset).copied().flatten()?;
                     (actual_word == *expected_word).then_some(
                         SourceInputStoreCell {
+                            code_address: write_code_address,
                             address: cell_address,
                             trace_index: write_index,
                             value: actual_word,
@@ -369,6 +375,7 @@ impl StoreTracker {
             self.observe_data_write(
                 step.before.registers.data_pointer,
                 index,
+                step.before.registers.code_pointer,
                 &dependencies,
             );
         }
@@ -449,6 +456,90 @@ impl SourceInputProbe<'_> {
             self.verify_return_with_operation_anchors(proposals, anchors)?;
         verify_source_input_stored_prefix(self, prefix)
     }
+
+    /// Require that each physical input-result write executes at its exact
+    /// individually anchored, source-authenticated store-effect code site.
+    ///
+    /// A real input, source-compatible return, full typed value and input
+    /// dependence are prerequisites. Pointer setup between effects is legal;
+    /// a write at another code site is not proof of the placed source store.
+    /// This is still not C arithmetic, phi or branch verification.
+    ///
+    /// # Errors
+    ///
+    /// Refuses all input/store prerequisites, forged or incompatible sparse
+    /// placements and a matching guest value written at a foreign code site.
+    pub fn verify_stored_with_effect_anchors(
+        self,
+        proposals: GuestCodeProposals<'_>,
+        operation_anchors: &[GuestCodeOperationAnchor],
+        effect_anchors: &[GuestCodeEffectAnchor],
+    ) -> Result<SourceInputStoredProof, SourceInputTraceError> {
+        let prefix = self.verify_return_with_effect_anchors(
+            proposals,
+            operation_anchors,
+            effect_anchors,
+        )?;
+        let proof = verify_source_input_stored_prefix(self, prefix)?;
+        verify_source_input_store_effect_sites(
+            self,
+            proposals,
+            operation_anchors,
+            effect_anchors,
+            &proof,
+        )?;
+        Ok(proof)
+    }
+}
+
+// Recompute store obligations from the same canonical source and bounded
+// block placements. Only the traced real VM, never the layout proposal,
+// supplies the code address and written word for each completed input store.
+fn verify_source_input_store_effect_sites(
+    probe: SourceInputProbe<'_>,
+    proposals: GuestCodeProposals<'_>,
+    operation_anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+    proof: &SourceInputStoredProof,
+) -> Result<(), SourceInputTraceError> {
+    let source_cells = u32::try_from(probe.physical_source.len())
+        .map_err(|_error| SourceInputTraceError::InvalidProbeBound)?;
+    let plan = bind_source_locked_cfg_code_targets_with_effect_anchors(
+        probe.canonical,
+        source_cells,
+        probe.frame_base,
+        proposals,
+        operation_anchors,
+        effect_anchors,
+    )
+    .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
+    let mut effects = BTreeMap::new();
+    for site in plan.operation_effect_sites {
+        if let GuestCodeOperationEffect::Store { destination, .. } = site.effect
+        {
+            let key = (site.function, site.block, site.ordinal, destination);
+            if effects.insert(key, site.code_address).is_some() {
+                return Err(SourceInputTraceError::InvalidSourcePlacement);
+            }
+        }
+    }
+    for store in &proof.stores {
+        for cell in &store.cells {
+            let key = (
+                store.input.function,
+                store.input.block,
+                store.input.ordinal,
+                cell.address,
+            );
+            let expected = effects
+                .get(&key)
+                .ok_or(SourceInputTraceError::InvalidSourcePlacement)?;
+            if cell.code_address != *expected {
+                return Err(SourceInputTraceError::UnexpectedGuestStoreSite);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn verify_source_input_stored_prefix(

@@ -28,6 +28,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated sparse input/store effects (2026-11-23)
+
+The source-locked physical planner can now bind individual required guest
+instruction effects to `GuestCodeEffectAnchor` addresses in an expanded
+code block. For a source `ByteInput`, this permits real setup code between
+its `/` and later `p`/`*` store; signed C23 `Getchar` can similarly reserve
+separate locations for both required C32 word stores. Canonical type,
+operation/effect order, code/block bounds and non-overlap still decide
+admission. Duplicate, foreign, reordered or inconsistent anchors refuse;
+old operation-only callers retain their adjacent minimum effect sites.
+
+The opt-in `verify_stored_with_effect_anchors` gate independently executes
+the original physical source in the normative VM, verifies input-dependent
+result words and checks that every completing data-write instruction ran at
+its source-placed store address. A real 13-step N15 guest executes `/` at
+C7, an intermediate `p` at C9, and a byte-exact `p` at C11 writing M55.
+The typed U8 source admits NUL and high-byte streams, but moving the
+otherwise identical store obligation to C10 or leaving it at the old
+adjacent C8 is rejected with `UnexpectedGuestStoreSite`. True EOF is
+rejected at the U8 source path, not silently converted into a byte.
+
+This proves a small real guest byte-input store, not signed C23 EOF
+normalization or stores, full checksum state, guest arithmetic, physical
+CFG/phi transfers, a reusable loop or a published checksum artifact.
+Regression: `tests/compiler/source_input_cfg_order.rs`.
+
 ### Reached output-site provenance for source-placed I/O (2026-11-23)
 
 The explicit-operation `SourceInputProbe` output gate now requires each
@@ -60,8 +86,9 @@ block's first address. It preserves canonical source identity, instruction
 order, full-width input/store effect obligations, unselected branch edges,
 addressed phi landing pads, and disjoint code/data reservations. Duplicate,
 foreign, out-of-order, overlapping or out-of-range anchors refuse. Later
-effects of a single operation still occupy consecutive *minimum* cells:
-the added flexibility does not yet synthesize pointer routing between them.
+effects of a single operation occupy consecutive *minimum* cells in
+this operation-only path; the newer effect-anchor path above can reserve
+setup gaps but still cannot synthesize the pointer routing itself.
 
 An explicit-proposals option on the public `SourceInputProbe` now checks the
 real normative VM's input steps against those source anchors, rather than
