@@ -39,12 +39,14 @@ use malbolge::{
 
 use super::typed_cfg_adapter::state_relocation::{
     GuestAddressedCfgPlan, GuestCodeBlockPlacement, GuestCodeControlEdge,
-    GuestCodeEffectAnchor, GuestCodeOperationAnchor, GuestCodeOperationEffect,
+    GuestCodeEdgeKind, GuestCodeEffectAnchor, GuestCodeFunctionEntry,
+    GuestCodeOperationAnchor, GuestCodeOperationEffect,
     GuestCodeOperationEffectSite, GuestCodePhiCopyAnchor,
     GuestCodePhiCopyPlacement, GuestCodeProposals, GuestPlacedCellCopy,
     bind_source_locked_cfg_code_targets_with_phi_copy_anchors,
 };
 use super::typed_cfg_adapter::state_storage::GuestFramePlacement;
+use super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
 
 /// Maximum source size for one isolated phi-copy guest witness.
 pub const MAX_SOURCE_PHI_TRACE_CELLS: usize = 4096;
@@ -57,6 +59,10 @@ pub const MAX_SOURCE_PHI_TRACE_STEPS: usize = 512;
 pub enum SourcePhiCopyTraceError {
     /// Source, stream or run ceiling exceeded the finite guest study bounds.
     InvalidBound,
+    /// A reached source block was entered from an unplaced site or mid-body.
+    InvalidBlockEntry,
+    /// A reached branch chose an arm inconsistent with its guest Boolean.
+    InvalidBranchSelection,
     /// A reached block escaped without a source-placed control edge.
     InvalidControlTransfer,
     /// Normative VM did not execute a complete, valid bounded guest run.
@@ -71,6 +77,8 @@ pub enum SourcePhiCopyTraceError {
     InvalidPhiTransfer,
     /// Canonical source and proposed code/SSA placement do not agree.
     InvalidSourcePlacement,
+    /// A reached branch did not materialize its Boolean before departure.
+    MissingBranchCondition,
     /// A copy source had no earlier, actual source-placed guest data write.
     MissingSourceMaterialization,
     /// No physical source-placed phi snapshot or commit was reached.
@@ -334,12 +342,13 @@ impl SourcePhiCopyProbe<'_> {
         self.verify_with_phi_copy_anchors(&[])
     }
 
-    /// Verify all reached source-block exits as well as phi pad ingress,
-    /// ordered snapshot/commit writes, and exact successor transfers.
+    /// Verify all reached source-block exits and entries, physically written
+    /// branch Booleans, phi pad ingress, copies, and successor transfers.
     ///
-    /// Physical exits from a source block must originate in its reserved
-    /// control suffix and land at a declared edge entry. This cannot prove
-    /// the truth of a source branch predicate or execute missing arithmetic.
+    /// Physical exits must originate in the reserved control suffix, land at
+    /// a declared edge entry, and agree with the most recent source-placed
+    /// guest Boolean write. This cannot prove how that Boolean was computed
+    /// or whether the source expression was evaluated correctly.
     ///
     /// # Errors
     ///
@@ -458,6 +467,12 @@ impl SourcePhiCopyProbe<'_> {
                 &plan.control_edges,
                 &steps,
             )?;
+            verify_source_block_entries(
+                &plan.code_blocks,
+                &plan.control_edges,
+                &plan.function_entries,
+                &steps,
+            )?;
         }
         if matches!(
             policy,
@@ -469,7 +484,7 @@ impl SourcePhiCopyProbe<'_> {
                 &steps,
             )?;
         }
-        verify_traced_phi_copies_with_transfer_policy(
+        let proof = verify_traced_phi_copies_with_transfer_policy(
             PhiTraceContext {
                 edges: &plan.control_edges,
                 effects: &plan.operation_effect_sites,
@@ -477,7 +492,17 @@ impl SourcePhiCopyProbe<'_> {
             },
             &steps,
             policy != PhiTransferPolicy::CopyOnly,
-        )
+        )?;
+        if policy == PhiTransferPolicy::AllEdges {
+            verify_source_branch_choices(
+                &plan.code_blocks,
+                &plan.control_edges,
+                &plan.operation_effect_sites,
+                &plan.relocated.state_placements,
+                &steps,
+            )?;
+        }
+        Ok(proof)
     }
 }
 
@@ -539,6 +564,72 @@ fn verify_source_block_exits(
     Ok(())
 }
 
+// Every freshly entered source block must begin at its canonical first code
+// cell. A phi-free transfer must come directly from its authenticated source
+// predecessor control suffix. A phi-bearing transfer must come from the
+// reserved edge-local `i` exit, never from foreign code or a pad interior.
+// This does not establish source control truth or intra-block operation order.
+fn verify_source_block_entries(
+    blocks: &[GuestCodeBlockPlacement],
+    edges: &[GuestCodeControlEdge],
+    entries: &[GuestCodeFunctionEntry],
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourcePhiCopyTraceError> {
+    let Some(first) = steps.first() else {
+        return Err(SourcePhiCopyTraceError::InvalidGuestExecution);
+    };
+    let initial_code = first.before.registers.code_pointer;
+    if blocks.iter().any(|block| {
+        (block.start..block.end_exclusive).contains(&initial_code)
+            && !entries.iter().any(|entry| {
+                (entry.function, entry.block, entry.address)
+                    == (block.function, block.block, initial_code)
+            })
+    }) {
+        return Err(SourcePhiCopyTraceError::InvalidBlockEntry);
+    }
+    for pair in steps.windows(2) {
+        let [previous, next] = pair else {
+            continue;
+        };
+        let from = previous.before.registers.code_pointer;
+        let to = next.before.registers.code_pointer;
+        let Some(block) = blocks
+            .iter()
+            .find(|block| (block.start..block.end_exclusive).contains(&to))
+        else {
+            continue;
+        };
+        if (block.start..block.end_exclusive).contains(&from) {
+            continue;
+        }
+        if to != block.start
+            || !edges.iter().any(|edge| {
+                if (edge.function, edge.successor, edge.target_address)
+                    != (block.function, block.block, to)
+                    || previous.after.registers.code_pointer != to
+                {
+                    return false;
+                }
+                if let Some(exit) = edge.pad_exit_address {
+                    return from == exit && previous.decoded == Some(b'i');
+                }
+                edge.entry_address == to
+                    && blocks.iter().any(|predecessor| {
+                        (predecessor.function, predecessor.block)
+                            == (edge.function, edge.predecessor)
+                            && (predecessor.control_start
+                                ..predecessor.end_exclusive)
+                                .contains(&from)
+                    })
+            })
+        {
+            return Err(SourcePhiCopyTraceError::InvalidBlockEntry);
+        }
+    }
+    Ok(())
+}
+
 // Source placement already authenticates all block and edge intervals. The
 // physical trace must still demonstrate *how* each phi pad was reached: a
 // genuine executed instruction in the predecessor's control suffix, with
@@ -582,6 +673,96 @@ fn verify_predecessor_phi_entries(
             {
                 return Err(SourcePhiCopyTraceError::InvalidPhiEntry);
             }
+        }
+    }
+    Ok(())
+}
+
+// A reached conditional edge must agree with the most recent *physical*
+// write of its source-authenticated Boolean SSA cell. The source frame gate
+// checks every such write's site and literal before this function is called.
+// Loader-seeded values are not evidence of a source computation, and the
+// actual source expression that produced the Boolean is not proved here.
+fn verify_source_branch_choices(
+    blocks: &[GuestCodeBlockPlacement],
+    edges: &[GuestCodeControlEdge],
+    effects: &[GuestCodeOperationEffectSite],
+    frames: &[GuestFramePlacement],
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourcePhiCopyTraceError> {
+    let stores = source_store_sites(effects)?;
+    let copies = phi_copy_sites(edges)?;
+    let mut materialized = BTreeMap::new();
+    for (index, previous) in steps.iter().enumerate() {
+        let from = previous.before.registers.code_pointer;
+        let data = previous.before.registers.data_pointer;
+        if matches!(previous.decoded, Some(b'p' | b'*'))
+            && in_frame(data, frames)
+        {
+            if !stores.contains_key(&(from, data))
+                && !copies
+                    .get(&from)
+                    .is_some_and(|site| site.copy.destination == data)
+            {
+                return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
+            }
+            let _old =
+                materialized.insert(data, previous.after.registers.accumulator);
+        }
+        let Some(next) = steps.get(index + 1) else {
+            continue;
+        };
+        let to = next.before.registers.code_pointer;
+        let Some(block) = blocks
+            .iter()
+            .find(|block| (block.start..block.end_exclusive).contains(&from))
+        else {
+            continue;
+        };
+        if (block.start..block.end_exclusive).contains(&to) {
+            continue;
+        }
+        let selected = edges.iter().filter(|edge| {
+            (edge.function, edge.predecessor, edge.entry_address)
+                == (block.function, block.block, to)
+        });
+        let mut saw_missing = false;
+        let mut saw_invalid = false;
+        let mut matches_arm = false;
+        for edge in selected {
+            let expected = match edge.kind {
+                GuestCodeEdgeKind::Jump => {
+                    matches_arm = true;
+                    break;
+                },
+                GuestCodeEdgeKind::WhenFalse => 0,
+                GuestCodeEdgeKind::WhenTrue => 1,
+            };
+            let Some(condition) = edge.condition else {
+                return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
+            };
+            if condition.words != 1
+                || condition.type_kind != TernaryCfgScalarKind::Bool
+            {
+                return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
+            }
+            match materialized.get(&condition.address) {
+                Some(&value) if value == expected => {
+                    matches_arm = true;
+                    break;
+                },
+                Some(&_value) => saw_invalid = true,
+                None => saw_missing = true,
+            }
+        }
+        if !matches_arm {
+            return Err(if saw_invalid {
+                SourcePhiCopyTraceError::InvalidBranchSelection
+            } else if saw_missing {
+                SourcePhiCopyTraceError::MissingBranchCondition
+            } else {
+                SourcePhiCopyTraceError::InvalidControlTransfer
+            });
         }
     }
     Ok(())

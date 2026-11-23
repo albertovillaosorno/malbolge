@@ -27,9 +27,7 @@
 
 use std::slice::from_ref;
 
-use super::super::typed_cfg_adapter::state_relocation::{
-    GuestCodeCellCopySite, GuestCodeEdgeKind,
-};
+use super::super::typed_cfg_adapter::state_relocation::GuestCodeCellCopySite;
 use super::*;
 
 type LinkedPhiState = (GuestCodeControlEdge, [GuestFramePlacement; 1]);
@@ -656,8 +654,9 @@ fn real_guest_sparse_phi_pad_allows_setup_but_not_foreign_frame_writes()
     .map_err(|error| format!("sparse phi guest: {error:?}"))?;
     if proof.completed_pads != 1
         || !matches!(proof.copies.as_slice(), [snapshot, observed_commit]
-            if (snapshot.trace_index, observed_commit.trace_index, observed_commit.destination)
-                == (2, 4, 120))
+            if snapshot.trace_index == 2
+                && observed_commit.trace_index == 4
+                && observed_commit.destination == 120)
     {
         return Err(format!("incorrect sparse phi proof: {proof:?}"));
     }
@@ -1289,6 +1288,280 @@ fn real_guest_source_block_exits_refuse_early_and_wrong_targets()
     assert_eq!(
         verify_source_block_exits(&block, from_ref(&direct), &compact),
         Err(SourcePhiCopyTraceError::InvalidControlTransfer),
+    );
+    Ok(())
+}
+
+// A real current-profile guest writes one Boolean by rotating M70, then an
+// actual indirect C1 `i` chooses either the false C2 or true C4 source block.
+// The pointer is seeded independently: this witnesses *consistency* of the
+// reached edge with a prior guest-written Boolean, not implementation of a
+// C expression or dependence of the jump target on that Boolean.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "fixed real VM branch and physical pointer assertions"
+)]
+fn physical_source_boolean_branch(
+    seed: u32,
+    destination: u32,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [(0, b'*'), (1, b'i'), (2, b'v'), (4, b'v')] {
+        source[site] = graphical(site, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("Boolean source load: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    *memory.get_mut(70).ok_or("missing Boolean SSA cell")? = seed;
+    *memory.get_mut(71).ok_or("missing branch pointer cell")? =
+        destination.checked_sub(1).ok_or("invalid branch target")?;
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("physical Boolean branch: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(3, &mut |step| steps.push(*step))
+        .map_err(|error| format!("Boolean branch run: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 3,
+    });
+    assert_eq!(steps[0].decoded, Some(b'*'));
+    assert_eq!(steps[1].decoded, Some(b'i'));
+    assert_eq!(steps[2].decoded, Some(b'v'));
+    assert_eq!(steps[1].after.registers.code_pointer, destination);
+    Ok(steps)
+}
+
+fn physical_boolean_edges() -> [GuestCodeControlEdge; 2] {
+    let mut false_edge = placed_edge();
+    false_edge.snapshot_sites.clear();
+    false_edge.commit_sites.clear();
+    false_edge.snapshots.clear();
+    false_edge.commits.clear();
+    false_edge.control_address = 1;
+    false_edge.entry_address = 2;
+    false_edge.pad_exit_address = None;
+    false_edge.target_address = 2;
+    false_edge.kind = GuestCodeEdgeKind::WhenFalse;
+    false_edge.condition = Some(
+        super::super::typed_cfg_adapter::state_relocation::GuestPlacedOperand {
+            address: 70,
+            type_kind: TernaryCfgScalarKind::Bool,
+            value: 0,
+            words: 1,
+        },
+    );
+    let mut true_edge = false_edge.clone();
+    true_edge.kind = GuestCodeEdgeKind::WhenTrue;
+    true_edge.entry_address = 4;
+    true_edge.target_address = 4;
+    true_edge.successor = 2;
+    [false_edge, true_edge]
+}
+
+fn physical_boolean_blocks() -> [GuestCodeBlockPlacement; 3] {
+    [
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 0,
+            start: 0,
+            end_exclusive: 2,
+            control_start: 1,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 1,
+            start: 2,
+            end_exclusive: 3,
+            control_start: 2,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 2,
+            start: 4,
+            end_exclusive: 5,
+            control_start: 4,
+        },
+    ]
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded physical Boolean decisions and negative proofs"
+)]
+fn real_guest_branch_arm_requires_prior_source_boolean_write()
+-> Result<(), String> {
+    let false_run = physical_source_boolean_branch(0, 2)?;
+    let true_run = physical_source_boolean_branch(3, 4)?;
+    let edges = physical_boolean_edges();
+    let blocks = physical_boolean_blocks();
+    let stores = [initial_store(None)];
+    let frames = frames();
+    for (steps, expected) in [(&false_run, 0), (&true_run, 1)] {
+        assert_eq!(steps[0].after.registers.accumulator, expected);
+        assert_eq!(verify_source_block_exits(&blocks, &edges, steps), Ok(()));
+        assert_eq!(
+            verify_source_branch_choices(
+                &blocks, &edges, &stores, &frames, steps
+            ),
+            Ok(())
+        );
+    }
+    // Both mismatches reach source-placed successor blocks through real i
+    // instructions, yet neither follows its materialized Boolean arm.
+    let false_to_true = physical_source_boolean_branch(0, 4)?;
+    let true_to_false = physical_source_boolean_branch(3, 2)?;
+    for steps in [&false_to_true, &true_to_false] {
+        assert_eq!(verify_source_block_exits(&blocks, &edges, steps), Ok(()));
+        assert_eq!(
+            verify_source_branch_choices(
+                &blocks, &edges, &stores, &frames, steps
+            ),
+            Err(SourcePhiCopyTraceError::InvalidBranchSelection)
+        );
+    }
+    // A loader-seeded condition cannot authorize a branch without the
+    // actual source-placed write, even when the same physical guest wrote it
+    // earlier in a prefix omitted from the alleged control-flow proof.
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &edges,
+            &stores,
+            &frames,
+            false_run.get(1..).ok_or("missing branch suffix")?,
+        ),
+        Err(SourcePhiCopyTraceError::MissingBranchCondition)
+    );
+    let non_boolean = physical_source_boolean_branch(6, 4)?;
+    assert_eq!(non_boolean[0].after.registers.accumulator, 2);
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &edges,
+            &stores,
+            &frames,
+            &non_boolean
+        ),
+        Err(SourcePhiCopyTraceError::InvalidBranchSelection)
+    );
+    assert_eq!(
+        verify_source_branch_choices(&blocks, &edges, &[], &frames, &true_run),
+        Err(SourcePhiCopyTraceError::UnexpectedFrameEffect)
+    );
+    Ok(())
+}
+
+// Source-locked block ingress is a separate physical proof obligation from
+// source-block exit or Boolean arm consistency: an unexplained arrival at a
+// successor is not justified by a valid site anywhere else in the trace.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual three-/nine-step N15 branch and phi ingress assertions"
+)]
+fn real_guest_source_block_entries_require_own_predecessors()
+-> Result<(), String> {
+    let blocks = physical_boolean_blocks();
+    let edges = physical_boolean_edges();
+    let entry = [GuestCodeFunctionEntry {
+        function: 0,
+        block: 0,
+        address: 0,
+    }];
+    let false_run = physical_source_boolean_branch(0, 2)?;
+    let true_run = physical_source_boolean_branch(3, 4)?;
+    for steps in [&false_run, &true_run] {
+        assert_eq!(
+            verify_source_block_entries(&blocks, &edges, &entry, steps),
+            Ok(())
+        );
+    }
+    // A trace starting from the successor cannot launder an arbitrary
+    // source block into the canonical function entry.
+    assert_eq!(
+        verify_source_block_entries(
+            &blocks,
+            &edges,
+            &entry,
+            false_run.get(2..).ok_or("missing successor")?,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidBlockEntry)
+    );
+    let mut wrong_predecessor = edges.clone();
+    wrong_predecessor[0].predecessor = 2;
+    assert_eq!(
+        verify_source_block_entries(
+            &blocks,
+            &wrong_predecessor,
+            &entry,
+            &false_run
+        ),
+        Err(SourcePhiCopyTraceError::InvalidBlockEntry)
+    );
+    // The actual true jump enters C4, not the start of a forged combined
+    // C2..C4 successor body, even if the proposed edge claims C4.
+    let mut middle = blocks;
+    middle[2].start = 2;
+    assert_eq!(
+        verify_source_block_entries(&middle, &edges, &entry, &true_run),
+        Err(SourcePhiCopyTraceError::InvalidBlockEntry)
+    );
+
+    let pad_run = guest_phi_trace_with_predecessor_bypass(false)?;
+    let mut phi = linked_phi_edge()?.0;
+    phi.control_address = 2;
+    phi.entry_address = 3;
+    phi.pad_exit_address = Some(7);
+    phi.target_address = 10;
+    let pad_blocks = [
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 0,
+            start: 0,
+            end_exclusive: 3,
+            control_start: 2,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 1,
+            start: 10,
+            end_exclusive: 11,
+            control_start: 10,
+        },
+    ];
+    assert_eq!(
+        verify_source_block_entries(
+            &pad_blocks,
+            from_ref(&phi),
+            &entry,
+            &pad_run
+        ),
+        Ok(())
+    );
+    phi.pad_exit_address = Some(6);
+    assert_eq!(
+        verify_source_block_entries(
+            &pad_blocks,
+            from_ref(&phi),
+            &entry,
+            &pad_run
+        ),
+        Err(SourcePhiCopyTraceError::InvalidBlockEntry)
     );
     Ok(())
 }

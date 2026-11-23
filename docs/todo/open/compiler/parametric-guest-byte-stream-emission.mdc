@@ -75,6 +75,27 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the strongest source-locked CFG gate also began checking
+  each **entry** into a reserved source block. Real three-step N15 false/
+  true branch guests enter only from their canonical predecessor control;
+  a truncated successor-only trace, foreign predecessor and mid-block
+  target refuse. A nine-step phi guest accepts the C7 `i` exit into C10
+  but refuses a forged exit at C6. This proves bounded physical block
+  ingress, not source instruction order, branch derivation, or the C23
+  checksum. See `tests/compiler/source_phi_copy_trace.rs`.
+
+- On 2026-11-23 the full source C23 mutable EOF checksum was retried through
+  the pinned frontend, JSON adapter and target lowering. It still refused
+  the unlinked 7-block, 19-operation, 4-phi-edge target (71 minimum source
+  code cells); no guest artifact was published. The strongest opt-in source
+  CFG trace gate now requires each physically chosen conditional arm to
+  agree with an earlier source-placed guest Boolean write, not a loader
+  value. A real three-step N15 `*`, `i`, `v` guest witnesses false/true
+  paths, wrong-arm refusals, non-Boolean writes, omitted writes and wrong
+  effect sites. Jump pointers are separately seeded: this is necessary
+  branch-state consistency, not C predicate computation or a linked guest
+  checksum. See `tests/compiler/source_phi_copy_trace.rs` and the contract.
+
 - On 2026-11-23 an additional opt-in physical CFG exit gate now
   authenticates every reached source-block departure against its own
   canonical control suffix and outgoing edge target, including phi-free

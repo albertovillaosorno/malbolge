@@ -28,6 +28,52 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked physical CFG block ingress (2026-11-23)
+
+The opt-in `SourcePhiCopyProbe::verify_with_cfg_phi_copy_anchors` also
+checks each reached **arrival** into a source-reserved code block. A fresh
+arrival must land at the block's canonical start. The initial reached
+source block must be the source-identified function entry; subsequent
+arrivals must come from a canonical predecessor's reserved control suffix
+for a phi-free edge, or the exact source-placed `i` exit of an edge-local
+phi pad. A correct outgoing target alone cannot authorize an arbitrary
+incoming jump, a middle-of-block landing, or a foreign predecessor. This
+reuses the same normative guest trace as the outgoing-edge and phi checks.
+
+A real three-step N15 `*`, `i`, `v` guest enters either source successor C2
+or C4 from C1, while a truncated trace that begins inside the successor,
+a forged predecessor, and a mid-block target refuse. A separate real
+nine-step N15 phi guest accepts C7 `i` -> successor C10, but refuses a
+forged pad exit C6. This is a finite necessary block-entry condition;
+source operation execution order, branch condition computation, C return,
+and the unlinked C23 checksum remain separate open obligations. Regression:
+`tests/compiler/source_phi_copy_trace.rs`.
+
+### Physically materialized Boolean branch-arm consistency (2026-11-23)
+
+The opt-in source-locked `verify_with_cfg_phi_copy_anchors` now also checks
+that every reached conditional source-block departure agrees with the most
+recent **real guest-written** Boolean value at the canonical one-word SSA
+condition cell. Frame write sites are checked first; the branch checker does
+not trust loader-seeded data, a future store, an unrelated frame write, or a
+non-Boolean value outside `0`/`1`. A source branch's true/false outcome must
+match the selected canonical edge. A common successor with two distinct
+source edge identities remains indistinguishable by code address alone; the
+branch checker can only require one matching outcome at that address.
+Unconditional control edges are unaffected. The same finite normative VM
+trace supplies the frame chronology, block exits, phi ingress and phi copies.
+
+A three-step seeded N15 guest executes real `*`, `i`, `v`: C0 rotates M70
+from 0 to 0 or 3 to 1; C1 takes the physical false C2 or true C4 edge.
+Matching values/edges pass; both reversed targets, a word-2 Boolean, a
+truncated trace that omits the prior write, and an unapproved effect site
+refuse. A separately seeded pointer selects the target in these witnesses:
+this proves **consistency**, not that the guest computed the C condition
+correctly or that its branch depends on that computed Boolean. The seven-
+block mutable C23 EOF checksum still refuses unlinked target lowering,
+with no published guest artifact. Regression:
+`tests/compiler/source_phi_copy_trace.rs`.
+
 ### Source-bound physical exits from CFG blocks (2026-11-23)
 
 The opt-in `SourcePhiCopyProbe::verify_with_cfg_phi_copy_anchors` now
