@@ -369,7 +369,7 @@ fn real_guest_input_dependence_survives_crazy_but_not_fresh_rotate()
             assert_eq!(trace[1].decoded, Some(b'j'));
             assert_eq!(trace[4].decoded, Some(b'v'));
             assert_eq!(vm.input_consumed(), usize::from(!input.is_empty()));
-            assert_eq!(vm.output(), &[]);
+            assert!(vm.output().is_empty());
         }
     }
     Ok(())
