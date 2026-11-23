@@ -63,8 +63,8 @@ mutable C23 EOF checksum remain unimplemented. See the P2 contract and
 The strongest source-locked physical CFG/phi checker has a new **opt-in exact
 computation-result** policy. Real four-step N15 traces accept a typed XOR
 result of 1 ^ 2 = 3, refuse a physically written 2 or a forged AND result,
-refuse absent operand writes and unsupported divisions, and check both guest
-words for a C32 zero-extension. The guest trace is genuinely executed, but
+refuse absent operand writes, undefined integer division and unsupported
+floating division, and check both guest words for a C32 zero-extension. The guest trace is genuinely executed, but
 its source arithmetic values were seeded: numerical agreement does **not**
 prove the Malbolge program computed from the operands. The complete C23
 mutable EOF checksum remains physically unlinked; the three-test end-to-end
