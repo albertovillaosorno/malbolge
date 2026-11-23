@@ -75,6 +75,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the combined source-input/output verifier gained a complete
+  physical `p`/`*` journal for reached input-result frame cells and checks all
+  effects against authenticated source store positions, including idempotent
+  writes. A physical 63-cell guest mutated at C29 performs an extra real M73
+  rotate *after* correct C17 storage and C24 output; NUL preserves the output
+  and final value but refuses the foreign effect site, while `0x25` corrupts
+  the final result and refuses. The original C23 checksum remains unlinked;
+  no signed EOF conversion, arithmetic or physical CFG loop is claimed.
+  See `tests/compiler/source_input_cfg_order.rs` and the active contract.
 - On 2026-11-23 a unified opt-in verifier now requires source-known output
   from an authenticated reached `<` instruction **and** real input-dependent
   `p`/`*` stores at source-placed frame effect addresses in the same bounded

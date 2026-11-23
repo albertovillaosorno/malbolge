@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source frame write chronology and return integrity (2026-11-23)
+
+The opt-in source input-store verifier now retains the exact chronological
+journal of **every** reached `p`/`*` write to a reserved input-result frame
+word, including unchanged (idempotent) writes and overwritten values. The
+source-effect gate matches every such physical `(code address, frame address)`
+to an authenticated typed store effect, not just the first successful input
+store. The current source value must remain correct at bounded return; a
+jump-target XLAT2 into a reserved frame is also rejected as code/data aliasing.
+These checks are in addition to the existing source-compatible output and
+real input-dependence conditions.
+
+For the same 63-cell source-loaded N15 byte input/store/output guest, changing
+C29 from `j` to `*` produces an extra real M73 write **after** C17's genuine
+store and C24's output. With NUL input, the extra rotation is idempotent:
+physical output, stored byte and termination are preserved, yet the stricter
+effect gate refuses `UnexpectedGuestStoreSite` because only C17 was authorized.
+With byte `0x25`, the extra rotation corrupts the stored result, so final
+state verification independently refuses `InputResultMismatch`. This closes
+a physical-frame provenance hole without implementing source-C arithmetic,
+C23 EOF normalization, phi transfers or a guest checksum loop.
+Regression: `tests/compiler/source_input_cfg_order.rs` and
+`tests/compiler/source_input_store.rs`.
+
 ### Combined source output and physical input-store gate (2026-11-23)
 
 The opt-in `verify_output_and_stored_with_effect_anchors` gate now requires

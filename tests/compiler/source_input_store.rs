@@ -151,6 +151,7 @@ fn synthetic_tracker(
         pending: vec![pending],
         trace_index: 54,
         words,
+        frame_writes: Vec::new(),
     })
 }
 
@@ -421,5 +422,55 @@ fn real_guest_second_input_depends_on_both_reads() -> Result<(), String> {
         (51, 95, BTreeSet::from([0, 1])),
     ]);
     assert_eq!(vm.input_consumed(), 2);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "frame integrity assertions"
+)]
+fn stored_input_value_must_survive_until_return()
+-> Result<(), SourceInputTraceError> {
+    let input = input_observation(
+        TraceInput::Byte(37),
+        GuestCodeInputSemantics::ByteU8,
+        1,
+    );
+    let mut corrupted = synthetic_tracker(input)?;
+    let _prior = corrupted.words.insert(256, 37);
+    corrupted.observe_data_write(256, 54, 11, &BTreeSet::from([0]));
+    assert!(
+        corrupted
+            .pending
+            .first()
+            .is_some_and(|store| store.completed.is_some())
+    );
+    let _prior = corrupted.words.insert(256, 38);
+    corrupted.observe_data_write(256, 55, 12, &BTreeSet::new());
+    assert_eq!(
+        corrupted
+            .frame_writes
+            .iter()
+            .map(|write| (write.code_address, write.trace_index, write.value))
+            .collect::<Vec<_>>(),
+        [(11, 54, 37), (12, 55, 38)],
+    );
+    assert_eq!(
+        corrupted.complete().err(),
+        Some(SourceInputTraceError::InputResultMismatch),
+    );
+
+    let mut restored = synthetic_tracker(input)?;
+    for (step, site, value) in [(54, 11, 37), (55, 12, 38), (56, 13, 37)] {
+        let _prior = restored.words.insert(256, value);
+        restored.observe_data_write(256, step, site, &BTreeSet::from([0]));
+    }
+    assert_eq!(restored.frame_writes.len(), 3);
+    let stores = restored.complete()?;
+    assert_eq!(stores.len(), 1);
+    let cell = stores.first().and_then(|store| store.cells.first());
+    assert_eq!(cell.map(|cell| cell.code_address), Some(11));
+    assert_eq!(cell.map(|cell| cell.value), Some(37));
     Ok(())
 }

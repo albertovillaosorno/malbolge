@@ -29,7 +29,8 @@
 //! subsequent real rotate/crazy data writes to materialize the exact signed
 //! C23 or byte input result in every source-reserved guest frame cell.
 //! Matching the result once is necessary, not sufficient: later guest code
-//! can clobber the cells, and unrelated C operations remain unchecked.
+//! may clobber the cells. The checker tracks the live words through return;
+//! unrelated C arithmetic and CFG operations remain unchecked.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -181,6 +182,9 @@ pub struct SourceInputStoredProof {
     pub prefix: SourceInputPrefixProof,
     /// One completed word-store observation per physical input event.
     pub stores: Vec<SourceInputStoreObservation>,
+    /// Every actual p/* write to any reserved input-result frame word,
+    /// including repeated, idempotent, and subsequently overwritten writes.
+    pub frame_writes: Vec<SourceInputStoreCell>,
 }
 
 struct StoreTracker {
@@ -190,6 +194,7 @@ struct StoreTracker {
     pending: Vec<PendingInputStore>,
     trace_index: usize,
     words: BTreeMap<u32, u32>,
+    frame_writes: Vec<SourceInputStoreCell>,
 }
 
 impl StoreTracker {
@@ -203,7 +208,19 @@ impl StoreTracker {
             return Err(SourceInputTraceError::InvalidInputTransition);
         }
         let mut stores = Vec::new();
+        let mut last_expected = BTreeMap::new();
         for pending in self.pending {
+            for (offset, expected) in pending.expected.iter().enumerate() {
+                let offset = u32::try_from(offset).map_err(|_error| {
+                    SourceInputTraceError::InputResultMismatch
+                })?;
+                let address = pending
+                    .input
+                    .destination
+                    .cell_address(offset)
+                    .ok_or(SourceInputTraceError::InputResultMismatch)?;
+                let _previous = last_expected.insert(address, *expected);
+            }
             if let Some(completed) = pending.completed {
                 stores.push(completed);
             } else if pending.writes.iter().any(Option::is_none) {
@@ -211,6 +228,13 @@ impl StoreTracker {
             } else if pending.saw_matching_unrelated {
                 return Err(SourceInputTraceError::InputResultUnrelatedToInput);
             } else {
+                return Err(SourceInputTraceError::InputResultMismatch);
+            }
+        }
+        // A previously completed store is not sufficient if subsequent guest
+        // instructions corrupt its SSA result before the source return.
+        for (address, expected) in last_expected {
+            if self.words.get(&address) != Some(&expected) {
                 return Err(SourceInputTraceError::InputResultMismatch);
             }
         }
@@ -248,6 +272,7 @@ impl StoreTracker {
             pending,
             trace_index: 0,
             words,
+            frame_writes: Vec::new(),
         })
     }
 
@@ -264,6 +289,14 @@ impl StoreTracker {
         code_address: u32,
         dependencies: &BTreeSet<usize>,
     ) {
+        if let Some(&value) = self.words.get(&address) {
+            self.frame_writes.push(SourceInputStoreCell {
+                code_address,
+                address,
+                trace_index: step_index,
+                value,
+            });
+        }
         for (input_index, store) in
             self.pending.iter_mut().take(self.next_input).enumerate()
         {
@@ -361,8 +394,20 @@ impl StoreTracker {
             return;
         }
 
-        // Include actual code encryption in observed memory state, but it
-        // cannot itself count as a source result's guest data write.
+        // A jump-target XLAT2 may encrypt a source frame word without ever
+        // fetching that cell. Such code/data aliasing cannot silently alter
+        // a reserved SSA value or impersonate an input-result store.
+        if step
+            .memory_delta
+            .encryption
+            .is_some_and(|write| self.words.contains_key(&write.address))
+        {
+            self.error = Some(SourceInputTraceError::InputResultMismatch);
+            return;
+        }
+
+        // Include actual data changes in observed memory state; even an
+        // idempotent p/* is journaled as a real frame-write instruction.
         for write in [step.memory_delta.data, step.memory_delta.encryption]
             .into_iter()
             .flatten()
@@ -421,8 +466,9 @@ fn pending_store(
 /// after the source input/return check. Every input must be followed by guest
 /// data writes to **every** reserved result word; those words must jointly
 /// equal the source C23/byte scalar at one observed step before that SSA input
-/// is redefined by a later execution of its source read. No unchanged loader
-/// memory or post-hoc host state update can stand in for a guest write.
+/// is redefined by a later execution of its source read. The final definition
+/// must also survive to the bounded guest return. No unchanged loader memory,
+/// post-hoc host update, or code encryption may stand in for a guest write.
 ///
 /// This is deliberately stricter than the input/return or I/O-output gates.
 /// A positive result does not prove later uses of the scalar, code control,
@@ -550,13 +596,24 @@ fn verify_source_input_store_effect_sites(
     )
     .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
     let mut effects = BTreeMap::new();
+    let mut allowed_frame_writes = BTreeSet::new();
     for site in plan.operation_effect_sites {
         if let GuestCodeOperationEffect::Store { destination, .. } = site.effect
         {
             let key = (site.function, site.block, site.ordinal, destination);
+            let _allowed =
+                allowed_frame_writes.insert((site.code_address, destination));
             if effects.insert(key, site.code_address).is_some() {
                 return Err(SourceInputTraceError::InvalidSourcePlacement);
             }
+        }
+    }
+    // Check every reached frame mutation, not only the final successful
+    // stores. Otherwise an unanchored earlier/later p/* could be invisible.
+    for write in &proof.frame_writes {
+        if !allowed_frame_writes.contains(&(write.code_address, write.address))
+        {
+            return Err(SourceInputTraceError::UnexpectedGuestStoreSite);
         }
     }
     for store in &proof.stores {
@@ -598,9 +655,11 @@ fn verify_source_input_stored_prefix(
     {
         return Err(SourceInputTraceError::InvalidGuestExecution);
     }
+    let frame_writes = std::mem::take(&mut tracker.frame_writes);
     Ok(SourceInputStoredProof {
         prefix,
         stores: tracker.complete()?,
+        frame_writes,
     })
 }
 

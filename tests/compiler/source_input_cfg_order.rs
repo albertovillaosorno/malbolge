@@ -1405,6 +1405,7 @@ fn real_guest_byte_store_and_source_output_require_both_effect_sites()
         assert_eq!(cell.code_address, 17, "reached source store opcode");
         assert_eq!(cell.address, 73, "source result word");
         assert_eq!(cell.value, u32::from(first_byte), "guest input word");
+        assert_eq!(proof.frame_writes, [*cell], "no extra frame writes");
     }
     let probe = SourceInputProbe {
         anchors: &inputs,
@@ -1497,6 +1498,53 @@ fn real_guest_byte_store_and_source_output_require_both_effect_sites()
             &effects,
         ),
         Err(SourceInputTraceError::SourceInputUnreachable),
+    );
+
+    // After the authentic C17 store and C24 output, C29 has D=M73
+    // again. Replacing its j with * performs a second *real* store
+    // of zero to M73 on NUL. This idempotent mutation leaves the
+    // source-compatible input, output, final memory and halt intact,
+    // but it is not the source-anchored C17 store.
+    let mut rogue = physical.to_vec();
+    let extra_rotate = (33..=126u8)
+        .find(|byte| {
+            malbolge::decode_profile_instruction(u32::from(*byte), 29)
+                == Some(b'*')
+        })
+        .ok_or("graphical rogue rotation missing")?;
+    *rogue.get_mut(29).ok_or("rogue code cell absent")? = extra_rotate;
+    let rogue_probe = SourceInputProbe {
+        input: &[0],
+        physical_source: &rogue,
+        ..probe
+    };
+    assert!(
+        rogue_probe
+            .verify_output_with_operation_anchors(proposals, &operations)
+            .is_ok(),
+        "raw NUL output and source return still agree",
+    );
+    assert_eq!(
+        rogue_probe.verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        ),
+        Err(SourceInputTraceError::UnexpectedGuestStoreSite),
+        "all frame mutations, not just the correct C17 store, need anchors",
+    );
+    let changed_probe = SourceInputProbe {
+        input: &[37],
+        ..rogue_probe
+    };
+    assert_eq!(
+        changed_probe.verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        ),
+        Err(SourceInputTraceError::InputResultMismatch),
+        "non-idempotent late mutation also corrupts the live source result",
     );
     Ok(())
 }
