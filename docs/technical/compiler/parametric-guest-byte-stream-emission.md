@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Temporal source-output operand materialization (2026-11-23)
+
+The opt-in combined source-output/input-store verifier now checks each reached
+physical `<` against the **current, previously guest-written** value of its
+exact source-authenticated U8 SSA operand. Every candidate operand value must
+come from an earlier normative-VM `p`/`*` write at a source-placed Store or
+phi-copy site, not from loader data, a future write, or an unrelated cell.
+The existing whole-frame effect-site check still rejects foreign writes and
+frame XLAT2 aliasing. It uses the same bounded VM trace; no additional replay
+is required. Exact U8 constants are now evaluated by the source-known output
+path, enabling the independent guest to expose wrong SSA operand linkage.
+
+A real 61-step N15 guest emits byte 37 and stores its input in M73. Its
+single-byte input/output source is accepted, but a different source whose
+`ByteOutput` instead reads a constant-37 SSA cell M74 is rejected despite the
+identical real output and matching input store: no guest instruction ever
+materialized M74. This verifies a temporal *necessary condition*, not that the
+VM accumulator actually loaded the operand, reproduced source arithmetic, or
+executed correct CFG branches. The original C23 checksum remains unlinked.
+See `tests/compiler/source_input_cfg_order.rs` and
+`src/compiler/malbolge-layout/composition/source_input_state_trace.rs`.
+
 ### Source-wide physical frame-store site checks (2026-11-23)
 
 The opt-in combined source input/output/store verifier now reuses the already

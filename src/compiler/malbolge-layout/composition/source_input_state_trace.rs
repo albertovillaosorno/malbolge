@@ -520,8 +520,9 @@ impl SourceInputProbe<'_> {
     ///
     /// Both obligations apply to the same physical source and byte stream;
     /// two independent normative VM passes must agree on the complete trace
-    /// outcome and output. This is not a proof of physical CFG linkage, guest
-    /// arithmetic, or arbitrary source output-operand dataflow.
+    /// outcome and output. Each reached source output also requires an earlier
+    /// physical write to its own SSA operand. This does not prove the actual
+    /// operand read, guest arithmetic, or physical CFG linkage.
     ///
     /// # Errors
     ///
@@ -548,6 +549,7 @@ impl SourceInputProbe<'_> {
             effect_anchors,
             &proof,
             &steps,
+            true,
         )?;
         Ok(proof)
     }
@@ -558,7 +560,8 @@ impl SourceInputProbe<'_> {
     /// A real input, source-compatible return, full typed value and input
     /// dependence are prerequisites. Pointer setup between effects is legal;
     /// a write at another code site is not proof of the placed source store.
-    /// This is still not C arithmetic, phi or branch verification.
+    /// This store-only check does not require source output operand writes;
+    /// it is not C arithmetic, phi or branch verification.
     ///
     /// # Errors
     ///
@@ -584,6 +587,7 @@ impl SourceInputProbe<'_> {
             effect_anchors,
             &proof,
             &steps,
+            false,
         )?;
         Ok(proof)
     }
@@ -599,6 +603,7 @@ fn verify_source_input_store_effect_sites(
     effect_anchors: &[GuestCodeEffectAnchor],
     proof: &SourceInputStoredProof,
     steps: &[ProfileStepTrace],
+    require_output_operand: bool,
 ) -> Result<(), SourceInputTraceError> {
     let source_cells = u32::try_from(probe.physical_source.len())
         .map_err(|_error| SourceInputTraceError::InvalidProbeBound)?;
@@ -653,7 +658,7 @@ fn verify_source_input_store_effect_sites(
     // source effect, even when that second write leaves the word unchanged.
     // Keep the more specific wrong-site diagnostic above for foreign writes.
     verify_complete_frame_write_journal(proof)?;
-    verify_source_frame_write_sites(&plan, steps)
+    verify_source_frame_write_sites(&plan, steps, require_output_operand)
 }
 
 // Only the physically reached p/* site can perform a source-frame store.
@@ -711,18 +716,30 @@ fn verify_source_frame_write_step(
 fn verify_source_frame_write_sites(
     plan: &super::typed_cfg_adapter::state_relocation::GuestAddressedCfgPlan,
     steps: &[ProfileStepTrace],
+    require_output_operand: bool,
 ) -> Result<(), SourceInputTraceError> {
     let mut allowed = BTreeMap::new();
+    let mut output_operands = BTreeMap::new();
     for site in &plan.operation_effect_sites {
-        if let GuestCodeOperationEffect::Store { destination, literal } =
-            site.effect
-        {
-            if allowed
-                .insert((site.code_address, destination), literal)
-                .is_some()
-            {
-                return Err(SourceInputTraceError::InvalidSourcePlacement);
-            }
+        match site.effect {
+            GuestCodeOperationEffect::Store { destination, literal } => {
+                if allowed
+                    .insert((site.code_address, destination), literal)
+                    .is_some()
+                {
+                    return Err(SourceInputTraceError::InvalidSourcePlacement);
+                }
+            },
+            GuestCodeOperationEffect::Output { source } => {
+                if output_operands
+                    .insert(site.code_address, source.address)
+                    .is_some()
+                {
+                    return Err(SourceInputTraceError::InvalidSourcePlacement);
+                }
+            },
+            GuestCodeOperationEffect::Input { .. }
+            | GuestCodeOperationEffect::Compute => {},
         }
     }
     for edge in &plan.control_edges {
@@ -735,15 +752,37 @@ fn verify_source_frame_write_sites(
             }
         }
     }
-    // These are the original normative VM steps of the input-store replay.
-    // The replay's outcome, input consumption and output were already checked
-    // against the independent source I/O run before admission.
+    // A physically emitted byte may match the C oracle accidentally, or
+    // from an unrelated SSA cell. Require its own source-reserved U8 operand
+    // to have been materialized by an earlier real p/* or phi-copy write.
+    // This is a temporal *necessary* condition, not proof that A was loaded
+    // from the operand or that the defining computation ran correctly.
+    let mut latest_source_writes = BTreeMap::new();
     for step in steps {
         verify_source_frame_write_step(
             step,
             &plan.relocated.state_placements,
             &allowed,
         )?;
+        if step.result.is_err() {
+            continue;
+        }
+        let code_address = step.before.registers.code_pointer;
+        if let Some(byte) = step.output.filter(|_byte| require_output_operand) {
+            let operand = output_operands
+                .get(&code_address)
+                .ok_or(SourceInputTraceError::UnexpectedGuestOutput)?;
+            if latest_source_writes.get(operand) != Some(&u32::from(byte)) {
+                return Err(SourceInputTraceError::SourceOutputNotProven);
+            }
+        }
+        if matches!(step.decoded, Some(b'p' | b'*')) {
+            let address = step.before.registers.data_pointer;
+            if allowed.contains_key(&(code_address, address)) {
+                let _previous = latest_source_writes
+                    .insert(address, step.after.registers.accumulator);
+            }
+        }
     }
     Ok(())
 }

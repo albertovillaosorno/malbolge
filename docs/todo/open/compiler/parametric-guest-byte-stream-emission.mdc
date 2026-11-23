@@ -75,6 +75,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the combined source I/O/store gate began requiring every
+  reached output's own source-placed U8 SSA cell to have an earlier genuine
+  frame `p`/`*` write of the exact emitted value. A 61-step real N15 guest
+  that writes the input at M73 and emits 37 now refuses the otherwise
+  output-equivalent source that expects a separate, unwritten constant-37
+  operand at M74. The source-known path also now handles exact U8 literals.
+  This is temporal operand materialization, not an operand-read proof, guest
+  arithmetic, physical CFG linkage, or a completed C23 checksum.
+
 - On 2026-11-23 the combined physical source input/output/store gate began
   checking every reached `p`/`*` destination in **all** source-owned SSA
   frames and phi scratch, not only completed input-result cells. Exact

@@ -1116,11 +1116,22 @@ fn single_byte_program_wire(with_output: bool) -> Result<Vec<u8>, String> {
 }
 
 fn single_byte_program_with_outputs(outputs: usize) -> Result<Vec<u8>, String> {
+    single_byte_program_with_output_source(outputs, false)
+}
+
+fn single_byte_constant_output_wire() -> Result<Vec<u8>, String> {
+    single_byte_program_with_output_source(1, true)
+}
+
+fn single_byte_program_with_output_source(
+    outputs: usize,
+    constant_output: bool,
+) -> Result<Vec<u8>, String> {
     use super::super::typed_cfg_adapter::typed::{
         BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
-        FunctionSpec, Instruction, LocatedInstruction, Module, ModuleSpec,
-        SourcePosition, SourceSpan, Terminator, TypeDef, TypeEntry, TypeId,
-        ValueId, canonical_bytes, validate_module,
+        FunctionSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
+        ModuleSpec, SourcePosition, SourceSpan, Terminator, TypeDef, TypeEntry,
+        TypeId, ValueId, canonical_bytes, validate_module,
     };
     let span = SourceSpan::new(
         SourcePosition::new(0, 1, 1),
@@ -1134,9 +1145,21 @@ fn single_byte_program_with_outputs(outputs: usize) -> Result<Vec<u8>, String> {
         },
         span,
     )];
+    if constant_output {
+        instructions.push(LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(8, vec![37]),
+                result: ValueId::new(1),
+                type_id: byte_type,
+            },
+            span,
+        ));
+    }
     for _ in 0..outputs {
         instructions.push(LocatedInstruction::new(
-            Instruction::ByteOutput { value: ValueId::new(0) },
+            Instruction::ByteOutput {
+                value: ValueId::new(u32::from(constant_output)),
+            },
             span,
         ));
     }
@@ -1155,9 +1178,10 @@ fn single_byte_program_with_outputs(outputs: usize) -> Result<Vec<u8>, String> {
             })],
             entry: BlockId::new(0),
             id: FunctionId::new(0),
-            name: String::from(match outputs {
-                0 => "single_byte_input",
-                1 => "single_byte_input_output",
+            name: String::from(match (outputs, constant_output) {
+                (1, true) => "single_byte_constant_output",
+                (0, false) => "single_byte_input",
+                (1, false) => "single_byte_input_output",
                 _ => "single_byte_input_two_outputs",
             }),
             parameters: Vec::new(),
@@ -1166,14 +1190,16 @@ fn single_byte_program_with_outputs(outputs: usize) -> Result<Vec<u8>, String> {
         })],
         globals: Vec::new(),
         proof_obligations: Vec::new(),
-        source_id: String::from(match outputs {
-            0 => "fixtures/single-byte-input.c",
-            1 => "fixtures/single-byte-input-output.c",
+        source_id: String::from(match (outputs, constant_output) {
+            (1, true) => "fixtures/single-byte-constant-output.c",
+            (0, false) => "fixtures/single-byte-input.c",
+            (1, false) => "fixtures/single-byte-input-output.c",
             _ => "fixtures/single-byte-input-two-outputs.c",
         }),
-        source_sha256: match outputs {
-            0 => [0x53; 32],
-            1 => [0x54; 32],
+        source_sha256: match (outputs, constant_output) {
+            (1, true) => [0x56; 32],
+            (0, false) => [0x53; 32],
+            (1, false) => [0x54; 32],
             _ => [0x55; 32],
         },
         target_profile: String::from("malbolge-2026"),
@@ -1489,6 +1515,99 @@ fn actual_guest_byte_store_requires_its_source_effect_address()
         ),
         Err(SourceInputTraceError::SourceInputUnreachable),
         "unsigned-byte source paths cannot read true EOF",
+    );
+    Ok(())
+}
+
+// A matching physical byte is not a physical SSA operand. This guest stores
+// the input in M73 and emits byte 37, but the authenticated source asks it to
+// output a *different*, constant-37 SSA value at M74. Nothing wrote M74.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source operand not materialized in a real N15 guest"
+)]
+fn source_output_requires_a_prior_physical_write_to_its_own_ssa_cell()
+-> Result<(), String> {
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeEffectAnchor, GuestCodeInputAnchor,
+        GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+    use super::{SourceInputProbe, SourceInputTraceError};
+
+    let wire = single_byte_constant_output_wire()?;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 61,
+        control_start: 60,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operations = [
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 13,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 18,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 24,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let effects = [GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 17,
+        effect_index: 1,
+        function: 0,
+        ordinal: 0,
+    }];
+    let inputs = [GuestCodeInputAnchor {
+        block: 0,
+        code_address: 13,
+        function: 0,
+        ordinal: 0,
+    }];
+    let probe = SourceInputProbe {
+        anchors: &inputs,
+        canonical: &wire,
+        frame_base: 73,
+        input: &[37],
+        physical_source: BYTE_INPUT_STORE_OUTPUT_PHYSICAL,
+        step_budget: 61,
+    };
+    // A source-known constant of 37 makes the raw I/O path acceptable.
+    let output = probe
+        .verify_output_with_operation_anchors(proposals, &operations)
+        .map_err(|error| format!("raw output gate: {error:?}"))?;
+    assert_eq!(output.guest_output, [37]);
+    assert_eq!(output.output_sites[0].ordinal, 2);
+    // The store-only API intentionally does not promise source output
+    // operand materialization; it authenticates the genuine input store.
+    let stored = probe
+        .verify_stored_with_effect_anchors(proposals, &operations, &effects)
+        .map_err(|error| format!("store-only gate: {error:?}"))?;
+    assert_eq!(stored.stores[0].cells[0].value, 37);
+    assert_eq!(
+        probe.verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        ),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+        "the output operand M74 must be written before C24",
     );
     Ok(())
 }

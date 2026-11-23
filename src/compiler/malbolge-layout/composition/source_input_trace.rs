@@ -411,6 +411,10 @@ fn known_source_cast(
         *operation
     {
         Some((result, Some(u32::from(value))))
+    } else if let TernaryOperation::MaterializeU8 { result, scalar, .. } =
+        *operation
+    {
+        Some((result, Some(u32::from(scalar.bits()))))
     } else if let TernaryOperation::BitcastI32ToI32 { result, value, .. }
     | TernaryOperation::BitcastI32ToU32 { result, value, .. }
     | TernaryOperation::BitcastU32ToI32 { result, value, .. }
