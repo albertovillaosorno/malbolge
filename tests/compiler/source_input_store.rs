@@ -474,3 +474,99 @@ fn stored_input_value_must_survive_until_return()
     assert_eq!(cell.map(|cell| cell.value), Some(37));
     Ok(())
 }
+
+// Build a deliberately synthetic proof so no fake trace is ever called a VM
+// execution witness. The production gate obtains each word from ProfileMachine.
+fn synthetic_completed_proof(
+    input: SourceInputSiteObservation,
+    tracker: StoreTracker,
+) -> Result<SourceInputStoredProof, SourceInputTraceError> {
+    let frame_writes = tracker.frame_writes.clone();
+    let stores = tracker.complete()?;
+    Ok(SourceInputStoredProof {
+        prefix: SourceInputPrefixProof {
+            bytes_consumed: 1,
+            guest_output: Vec::new(),
+            io_events: Vec::new(),
+            output_sites: Vec::new(),
+            observations: vec![input],
+            outcome: malbolge::RunOutcome::Terminated {
+                reason: malbolge::Termination::HaltInstruction,
+                steps: 55,
+            },
+        },
+        stores,
+        frame_writes,
+    })
+}
+
+// One source Store effect owns one physical p/* event. Even a repeat at the
+// exact same effect site with the same value is a foreign guest mutation.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source effect cardinality and physical trace order assertions"
+)]
+fn full_frame_journal_refuses_repeated_authorized_store_site()
+-> Result<(), SourceInputTraceError> {
+    let input = input_observation(
+        TraceInput::Byte(0),
+        GuestCodeInputSemantics::ByteU8,
+        1,
+    );
+    let mut tracker = synthetic_tracker(input)?;
+    tracker.observe_data_write(256, 54, 55, &BTreeSet::from([0]));
+    let proof = synthetic_completed_proof(input, tracker)?;
+    assert_eq!(verify_complete_frame_write_journal(&proof), Ok(()));
+    let cell = *proof
+        .frame_writes
+        .first()
+        .ok_or(SourceInputTraceError::MissingInputResultStore)?;
+    for trace_index in [52, 56] {
+        let mut extra = proof.clone();
+        extra
+            .frame_writes
+            .push(SourceInputStoreCell { trace_index, ..cell });
+        extra
+            .frame_writes
+            .sort_unstable_by_key(|write| write.trace_index);
+        assert_eq!(
+            verify_complete_frame_write_journal(&extra),
+            Err(SourceInputTraceError::UnattributedGuestStore),
+        );
+    }
+    // A true loop revisit with a distinct source input and store is valid.
+    let mut loop_revisit = proof.clone();
+    let mut next_store = proof
+        .stores
+        .first()
+        .ok_or(SourceInputTraceError::MissingInputResultStore)?
+        .clone();
+    next_store.input.trace_index = 60;
+    let next_cell = next_store
+        .cells
+        .first_mut()
+        .ok_or(SourceInputTraceError::MissingInputResultStore)?;
+    next_cell.trace_index = 61;
+    loop_revisit.frame_writes.push(*next_cell);
+    loop_revisit.stores.push(next_store);
+    assert_eq!(verify_complete_frame_write_journal(&loop_revisit), Ok(()));
+    Ok(())
+}
+
+// A signed C23 high-word store may precede its low-word write in the trace.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "C23 physical word order"
+)]
+fn complete_frame_journal_accepts_reverse_c23_word_order()
+-> Result<(), SourceInputTraceError> {
+    let input = input_observation(TraceInput::Byte(0), signed_c23(), 2);
+    let mut tracker = synthetic_tracker(input)?;
+    tracker.observe_data_write(257, 54, 55, &BTreeSet::from([0]));
+    tracker.observe_data_write(256, 55, 56, &BTreeSet::from([0]));
+    let proof = synthetic_completed_proof(input, tracker)?;
+    assert_eq!(verify_complete_frame_write_journal(&proof), Ok(()));
+    Ok(())
+}

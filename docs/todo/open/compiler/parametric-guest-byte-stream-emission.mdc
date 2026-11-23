@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the source-authenticated input-store verifier began
+  reconciling every reached physical frame write with the exact completed
+  source store-event journal, including repeats at an already-authorized
+  physical effect site. Synthetic idempotent repeats and pre-input writes
+  now refuse, while source-loop revisits and reversed full-width C23 word
+  order remain valid. Off-site writes retain their distinct diagnostic.
+  This remains a bounded trace condition, not the missing checksum guest
+  arithmetic or loop linkage. See `tests/compiler/source_input_store.rs`
+  and the active compiler contract.
+
 - On 2026-11-23 output-site verification also retained each physical
   output's exact canonical source operation identity and trace step. The
   normative 63-cell guest executes two identical-byte outputs at C24/C26

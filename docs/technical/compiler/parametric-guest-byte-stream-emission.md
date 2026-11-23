@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Complete source input-store effect chronology (2026-11-23)
+
+The opt-in physical source input-store gate now checks **exactly one**
+real `p`/`*` frame write per source-authenticated input-result Store effect,
+ordered by the actual normative VM trace index. Valid source-loop revisits
+retain a distinct write for every newly reached input definition; signed C23
+high/low words may be written in either physical order. Additional writes at
+**the same authorized code address and frame address** now refuse as
+`UnattributedGuestStore`, even when the extra store is idempotent or is
+followed by a matching final value. A write at an unauthorized location still
+receives the more specific `UnexpectedGuestStoreSite` refusal.
+
+This sharpens the finite source/store authenticity check without proving a
+linked mutable C23 checksum, guest arithmetic, phi transfers or repeatable
+source control flow. The regression uses synthetic trace-journal mutation;
+the existing actual 63-cell N15 input/store/output guest still independently
+proves the positive physical path and off-site store refusal. See
+`tests/compiler/source_input_store.rs` and
+`tests/compiler/source_input_cfg_order.rs`.
+
 ### Authenticated output-operation identity (2026-11-23)
 
 The opt-in output trace now records each real VM output's source-bound

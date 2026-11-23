@@ -91,6 +91,8 @@ pub enum SourceInputTraceError {
     UnexpectedGuestOutput,
     /// Real input-dependent frame write ran at the wrong source effect site.
     UnexpectedGuestStoreSite,
+    /// Guest made extra/missing writes, even at an authorized source site.
+    UnattributedGuestStore,
     /// Physical execution terminated without the source-required halt.
     UnexpectedGuestTermination,
     /// A skipped source input site is mandatory on every possible return path.

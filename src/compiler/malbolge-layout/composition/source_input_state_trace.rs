@@ -641,6 +641,30 @@ fn verify_source_input_store_effect_sites(
             }
         }
     }
+    // A source Store effect is a single physical write per reached input
+    // definition. Re-executing an already authorized site is not another
+    // source effect, even when that second write leaves the word unchanged.
+    // Keep the more specific wrong-site diagnostic above for foreign writes.
+    verify_complete_frame_write_journal(proof)?;
+    Ok(())
+}
+
+// Each completed source input word owns exactly one physical p/* event.
+// Use the normative trace index rather than source operand order: a C32
+// high word may be stored before its low word. A repeated authorized
+// instruction has no extra source effect to which it can be attributed.
+fn verify_complete_frame_write_journal(
+    proof: &SourceInputStoredProof,
+) -> Result<(), SourceInputTraceError> {
+    let mut attributed = proof
+        .stores
+        .iter()
+        .flat_map(|store| store.cells.iter().copied())
+        .collect::<Vec<_>>();
+    attributed.sort_unstable_by_key(|cell| cell.trace_index);
+    if attributed != proof.frame_writes {
+        return Err(SourceInputTraceError::UnattributedGuestStore);
+    }
     Ok(())
 }
 
