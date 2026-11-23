@@ -365,3 +365,195 @@ fn phi_guest_public_gate_refuses_unlinked_or_unbounded_source() {
         Err(SourcePhiCopyTraceError::InvalidBound),
     );
 }
+
+// Two source-placed p writes materialize both guest words required
+// by a signed C23 scalar. A real j follows, then two snapshot p writes and two
+// commit p writes. This forces the phi implementation to preserve both
+// independent source words before either destination is committed.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "exact bounded eight-step VM trace and N15 frame offsets"
+)]
+fn two_word_guest_trace(
+    high_snapshot_seed: u32,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, b'p'),
+        (1, b'p'),
+        (2, b'j'),
+        (3, b'p'),
+        (4, b'p'),
+        (5, b'p'),
+        (6, b'p'),
+        (7, b'v'),
+    ] {
+        source[site] = graphical(site, opcode)?;
+    }
+    let profile = current_profile();
+    let loader = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("source loader: {error:?}"))?;
+    let mut memory = loader.memory().to_vec();
+    for address in [70usize, 71, 101, 102, 103, 104] {
+        *memory.get_mut(address).ok_or("seed cell absent")? = 7_174_453;
+    }
+    *memory.get_mut(72).ok_or("jump cell absent")? = 100;
+    *memory.get_mut(102).ok_or("high snapshot absent")? = high_snapshot_seed;
+    let registers = malbolge::ProfileRegisters {
+        accumulator: profile.eof_word(),
+        code_pointer: 0,
+        data_pointer: 70,
+    };
+    let mut machine =
+        ProfileMachine::from_state(profile, memory, Vec::new(), registers)
+            .map_err(|error| format!("seeded VM: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(8, &mut |step| steps.push(*step))
+        .map_err(|error| format!("guest replay: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 8,
+    });
+    assert_eq!(steps.iter().map(|step| step.decoded).collect::<Vec<_>>(), [
+        Some(b'p'),
+        Some(b'p'),
+        Some(b'j'),
+        Some(b'p'),
+        Some(b'p'),
+        Some(b'p'),
+        Some(b'p'),
+        Some(b'v'),
+    ]);
+    for (index, address) in
+        [(0, 70), (1, 71), (3, 101), (4, 102), (5, 103), (6, 104)]
+    {
+        assert_eq!(steps[index].before.registers.data_pointer, address);
+    }
+    Ok(steps)
+}
+
+fn two_word_phi_edge() -> GuestCodeControlEdge {
+    let mut edge = placed_edge();
+    let snapshots = [
+        GuestPlacedCellCopy {
+            destination: 101,
+            source: 70,
+        },
+        GuestPlacedCellCopy {
+            destination: 102,
+            source: 71,
+        },
+    ];
+    let commits = [
+        GuestPlacedCellCopy {
+            destination: 103,
+            source: 101,
+        },
+        GuestPlacedCellCopy {
+            destination: 104,
+            source: 102,
+        },
+    ];
+    edge.snapshot_sites = snapshots
+        .iter()
+        .enumerate()
+        .map(|(index, copy)| GuestCodeCellCopySite {
+            code_address: u32::try_from(index)
+                .unwrap_or(u32::MAX)
+                .saturating_add(3),
+            copy: *copy,
+        })
+        .collect();
+    edge.commit_sites = commits
+        .iter()
+        .enumerate()
+        .map(|(index, copy)| GuestCodeCellCopySite {
+            code_address: u32::try_from(index)
+                .unwrap_or(u32::MAX)
+                .saturating_add(5),
+            copy: *copy,
+        })
+        .collect();
+    edge.snapshots = snapshots.to_vec();
+    edge.commits = commits.to_vec();
+    edge.control_address = 2;
+    edge.entry_address = 3;
+    edge.pad_exit_address = Some(7);
+    edge.target_address = 8;
+    edge
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "two-word physical guest transfer and high-word forgery checks"
+)]
+fn real_guest_two_word_phi_snapshot_and_commit() -> Result<(), String> {
+    let expected = current_profile().eof_word();
+    let good = two_word_guest_trace(7_174_453)?;
+    let edge = two_word_phi_edge();
+    let stores = [initial_store(None), GuestCodeOperationEffectSite {
+        code_address: 1,
+        effect: GuestCodeOperationEffect::Store {
+            destination: 71,
+            literal: None,
+        },
+        ..initial_store(None)
+    }];
+    let proof =
+        verify_traced_phi_copies(from_ref(&edge), &stores, &frames(), &good)
+            .map_err(|error| format!("physical two-word copy: {error:?}"))?;
+    assert_eq!(proof.completed_pads, 1);
+    assert_eq!(proof.copies.len(), 4);
+    assert_eq!(
+        proof
+            .copies
+            .iter()
+            .map(|copy| copy.code_address)
+            .collect::<Vec<_>>(),
+        [3, 4, 5, 6]
+    );
+    assert_eq!(
+        proof
+            .copies
+            .iter()
+            .map(|copy| copy.word)
+            .collect::<Vec<_>>(),
+        [expected; 4]
+    );
+    // Real incorrect high snapshot retains a valid low word, source order
+    // and identical source CFG but must not authenticate the high-word phi.
+    let wrong_high = two_word_guest_trace(0)?;
+    assert_eq!(wrong_high[3].after.registers.accumulator, expected);
+    assert_ne!(wrong_high[4].after.registers.accumulator, expected);
+    assert_eq!(
+        verify_traced_phi_copies(
+            from_ref(&edge),
+            &stores,
+            &frames(),
+            &wrong_high
+        ),
+        Err(SourcePhiCopyTraceError::InvalidPhiCopy),
+    );
+    let mut swapped = edge.clone();
+    swapped.snapshot_sites.swap(0, 1);
+    assert_eq!(
+        verify_traced_phi_copies(from_ref(&swapped), &stores, &frames(), &good),
+        Err(SourcePhiCopyTraceError::InvalidPhiOrder),
+    );
+    assert_eq!(
+        verify_traced_phi_copies(
+            from_ref(&edge),
+            &stores,
+            &frames(),
+            &good[..6]
+        ),
+        Err(SourcePhiCopyTraceError::InvalidPhiOrder),
+    );
+    Ok(())
+}
