@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Extra physical I/O outside source effect sites (2026-11-23)
+
+The opt-in strongest source-CFG trace gate now refuses **every** real `/`
+input or `<` output that executes outside its exact source-authenticated
+operation-effect address, including setup gaps, phi pads and unreserved code.
+Previously, reaching every declared operation site was sufficient even when
+additional guest I/O happened at an unrelated instruction. The new check
+runs on the same normative VM trace before source-block effect visitation;
+copy-only and ingress-only phi probes keep their narrower contracts.
+
+A five-step source-loaded N15 guest executes its required C0 Store and C2
+Compute sites, but replacing the otherwise inert C1 setup instruction with
+`/` or `<` introduces extra input/EOF or output and now refuses. Each actual
+opcode is accepted when the C1 effect is explicitly source-placed as the
+matching input or output. This is physical event provenance, **not** proof
+of input conversion, operand values, C arithmetic, output parity, or the
+complete EOF checksum. The whole source C23 compile was retried unchanged:
+it still refuses seven unlinked blocks, 19 operations, four phi edges and
+43 reserved guest words without publishing a `.malbolge` program. Regression:
+`tests/compiler/source_phi_copy_trace.rs`.
+
 ### Physical source return control (2026-11-23)
 
 The strongest opt-in physical CFG check now requires the final real guest

@@ -28,7 +28,7 @@
 use std::slice::from_ref;
 
 use super::super::typed_cfg_adapter::state_relocation::{
-    GuestCodeCellCopySite, GuestPlacedOperand,
+    GuestCodeCellCopySite, GuestCodeInputSemantics, GuestPlacedOperand,
 };
 use super::*;
 
@@ -1579,6 +1579,7 @@ fn real_guest_source_block_entries_require_own_predecessors()
 fn physical_source_effect_skip(
     skip: bool,
     store_opcode: u8,
+    setup_opcode: u8,
     early_halt: bool,
 ) -> Result<Vec<ProfileStepTrace>, String> {
     let mut source = (0..59)
@@ -1591,7 +1592,7 @@ fn physical_source_effect_skip(
             if skip {
                 b'i'
             } else {
-                b'o'
+                setup_opcode
             },
         ),
         (2, b'o'),
@@ -1659,9 +1660,11 @@ fn physical_source_effect_skip(
 )]
 fn real_guest_cannot_skip_source_operation_inside_same_block()
 -> Result<(), String> {
-    let complete = physical_source_effect_skip(false, b'p', false)?;
-    let skipped = physical_source_effect_skip(true, b'p', false)?;
-    let wrong_store = physical_source_effect_skip(false, b'o', false)?;
+    let complete = physical_source_effect_skip(false, b'p', b'o', false)?;
+    let skipped = physical_source_effect_skip(true, b'p', b'o', false)?;
+    let wrong_store = physical_source_effect_skip(false, b'o', b'o', false)?;
+    let stray_output = physical_source_effect_skip(false, b'p', b'<', false)?;
+    let stray_input = physical_source_effect_skip(false, b'p', b'/', false)?;
     let blocks = [
         GuestCodeBlockPlacement {
             function: 0,
@@ -1717,6 +1720,69 @@ fn real_guest_cannot_skip_source_operation_inside_same_block()
     assert_eq!(
         verify_source_block_effect_visits(&blocks, &effects, &complete),
         Ok(())
+    );
+    // An extra real guest read/write in an unanchored setup cell is not
+    // source-C I/O, even if all declared operation sites still execute.
+    for steps in [&stray_output, &stray_input] {
+        assert_eq!(
+            verify_source_block_effect_visits(&blocks, &effects, steps),
+            Err(SourcePhiCopyTraceError::UnexpectedSourceIo)
+        );
+    }
+    // Conversely, each real I/O opcode is admissible at its exact source
+    // effect site; this alone does not prove guest C dataflow or EOF
+    // conversion.
+    let mut sourced_output = vec![
+        effects[0],
+        GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: 1,
+            effect: GuestCodeOperationEffect::Output {
+                source: GuestPlacedOperand {
+                    address: 70,
+                    type_kind: TernaryCfgScalarKind::U8,
+                    value: 1,
+                    words: 1,
+                },
+            },
+            function: 0,
+            ordinal: 1,
+        },
+        effects[1],
+    ];
+    sourced_output[2].ordinal = 2;
+    assert_eq!(
+        verify_source_block_effect_visits(
+            &blocks,
+            &sourced_output,
+            &stray_output
+        ),
+        Ok(())
+    );
+    sourced_output[1].effect = GuestCodeOperationEffect::Input {
+        destination: GuestPlacedOperand {
+            address: 71,
+            type_kind: TernaryCfgScalarKind::U8,
+            value: 2,
+            words: 1,
+        },
+        semantics: GuestCodeInputSemantics::ByteU8,
+    };
+    assert_eq!(
+        verify_source_block_effect_visits(
+            &blocks,
+            &sourced_output,
+            &stray_input
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_block_effect_visits(
+            &blocks,
+            &sourced_output,
+            &stray_output
+        ),
+        Err(SourcePhiCopyTraceError::UnexpectedSourceIo)
     );
     assert_eq!(
         verify_source_block_effect_visits(&blocks, &effects, &skipped),
@@ -1774,8 +1840,8 @@ fn real_guest_cannot_skip_source_operation_inside_same_block()
     reason = "bounded real guest return and early-halt provenance"
 )]
 fn real_guest_halt_requires_source_return_control() -> Result<(), String> {
-    let good = physical_source_effect_skip(false, b'p', false)?;
-    let early = physical_source_effect_skip(false, b'p', true)?;
+    let good = physical_source_effect_skip(false, b'p', b'o', false)?;
+    let early = physical_source_effect_skip(false, b'p', b'o', true)?;
     let blocks = [
         GuestCodeBlockPlacement {
             function: 0,

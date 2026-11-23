@@ -90,6 +90,8 @@ pub enum SourcePhiCopyTraceError {
     MissingSourceMaterialization,
     /// No physical source-placed phi snapshot or commit was reached.
     NoReachedPhiCopy,
+    /// A real guest input/output executed outside its source operation site.
+    UnexpectedSourceIo,
     /// A frame write or code mutation had no source-placed authorization.
     UnexpectedFrameEffect,
 }
@@ -687,6 +689,32 @@ fn verify_source_block_effect_visits(
     effects: &[GuestCodeOperationEffectSite],
     steps: &[ProfileStepTrace],
 ) -> Result<(), SourcePhiCopyTraceError> {
+    // Every physical I/O opcode is guest-observable, including instructions
+    // hidden in setup gaps, phi pads or otherwise unreserved code. Checking
+    // only the declared effect sites would miss such extra reads/writes.
+    for step in steps {
+        let code = step.before.registers.code_pointer;
+        let sourced = match step.decoded {
+            Some(b'/') => effects.iter().any(|effect| {
+                effect.code_address == code
+                    && matches!(
+                        effect.effect,
+                        GuestCodeOperationEffect::Input { .. }
+                    )
+            }),
+            Some(b'<') => effects.iter().any(|effect| {
+                effect.code_address == code
+                    && matches!(
+                        effect.effect,
+                        GuestCodeOperationEffect::Output { .. }
+                    )
+            }),
+            _ => true,
+        };
+        if !sourced {
+            return Err(SourcePhiCopyTraceError::UnexpectedSourceIo);
+        }
+    }
     let mut index = 0;
     while let Some(step) = steps.get(index) {
         let code = step.before.registers.code_pointer;
