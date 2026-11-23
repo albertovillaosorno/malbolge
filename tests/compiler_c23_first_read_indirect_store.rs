@@ -182,3 +182,141 @@ fn absence_of_first_input_store_retains_loader_word() -> Result<(), String> {
     assert_ne!(scalar_crazy(EXACT_DATA_SEED, 255), EXACT_DATA_SEED,);
     Ok(())
 }
+
+// Independent scalar check: eight rotations are ordinary 15-trit right
+// rotations, not host-precomputed guest memory states.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    reason = "independent 15-trit cyclic word rotation"
+)]
+fn scalar_rotate(word: u32) -> u32 {
+    word / 3 + word % 3 * 4_782_969
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "source-locked 66-step normative guest trace for five inputs"
+)]
+fn first_signed_input_survives_eighth_rotation_without_second_read()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_c23_first_input_saved_eight_rotations_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..91), Some(b"Iy".as_slice()));
+    let initial = 7_174_404u32;
+    let expected_eighth = (0u8..8).fold(initial, |word, _| scalar_rotate(word));
+    assert_eq!(expected_eighth, 7_067_290);
+    for first in INPUT_CLASSES {
+        let stdin = first.map_or_else(Vec::new, |byte| vec![byte]);
+        let mut vm = ProfileMachine::from_source(profile, &source, stdin)
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(66, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 66,
+        });
+        assert_eq!(trace.len(), 66);
+        assert_eq!(trace[37].decoded, Some(b'/'));
+        assert_eq!(
+            trace[37].input,
+            Some(first.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+        );
+        let expected_store = scalar_crazy(
+            EXACT_DATA_SEED,
+            first.map_or(profile.eof_word(), u32::from),
+        );
+        assert_eq!(
+            trace[43]
+                .memory_delta
+                .data
+                .map(|write| (write.address, write.after)),
+            Some((EXACT_DATA_ADDRESS, expected_store)),
+        );
+        assert_eq!(trace[44].decoded, Some(b'p'));
+        assert_eq!(
+            trace[44]
+                .memory_delta
+                .data
+                .map(|write| (write.address, write.before)),
+            Some((127, 7_174_404)),
+        );
+        for (round, position) in [50usize, 57, 64].iter().enumerate() {
+            let previous =
+                (0..(round + 5)).fold(initial, |word, _| scalar_rotate(word));
+            let next = scalar_rotate(previous);
+            assert_eq!(trace[*position].decoded, Some(b'*'));
+            assert_eq!(
+                trace[*position].memory_delta.data.map(|write| (
+                    write.address,
+                    write.before,
+                    write.after
+                )),
+                Some((95, previous, next)),
+            );
+        }
+        for reset in [49usize, 56, 63] {
+            assert_eq!(
+                trace[reset]
+                    .memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((68, 94)),
+            );
+        }
+        assert_eq!(trace[65].decoded, Some(b'v'));
+        assert_eq!(vm.memory_word(95), Ok(expected_eighth));
+        assert_eq!(vm.memory_word(96), Ok(121));
+        assert_eq!(vm.memory_word(EXACT_DATA_ADDRESS), Ok(expected_store));
+        assert_eq!(vm.input_consumed(), usize::from(first.is_some()));
+        assert_eq!(vm.output(), []);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    reason = "bounded real no-store mutation following eight rotations"
+)]
+fn eighth_rotation_requires_the_original_input_write() -> Result<(), String> {
+    let profile = current_profile();
+    let mut source =
+        layout::build_c23_first_input_saved_eight_rotations_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    source[43] = (33..=126u8)
+        .find(|byte| {
+            decode_profile_instruction(u32::from(*byte), 43) == Some(b'o')
+        })
+        .ok_or("no graphical no-op at C43")?;
+    let mut vm = ProfileMachine::from_source(profile, &source, vec![255])
+        .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(66, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 66,
+        },
+    );
+    assert_eq!(trace[43].decoded, Some(b'o'));
+    assert_eq!(trace[43].memory_delta.data, None);
+    assert_eq!(vm.memory_word(95), Ok(7_067_290));
+    assert_eq!(vm.memory_word(96), Ok(121));
+    assert_eq!(vm.memory_word(EXACT_DATA_ADDRESS), Ok(EXACT_DATA_SEED));
+    assert_ne!(scalar_crazy(EXACT_DATA_SEED, 255), EXACT_DATA_SEED);
+    assert_eq!(vm.output(), []);
+    Ok(())
+}

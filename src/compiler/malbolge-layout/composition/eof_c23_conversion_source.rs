@@ -415,6 +415,55 @@ pub fn build_c23_first_input_lossless_store_source(
     Ok(source)
 }
 
+/// Extend a first-read lossless store across the eighth real Iy rotation.
+///
+/// The first signed `/` at C37 feeds a physical C43 `p` write to M126.
+/// C44 writes temporary M127, and the C45..C49 pointer chain returns D to
+/// M95 without touching M126. C50, C57 and C64 then perform rotations six,
+/// seven and eight with two further source-loaded data-pointer resets.
+/// C65 halts before reaching the unmodified second `/` at C66 and the
+/// source-required C67=125 `i`. The original M96=121 operand remains virgin.
+/// This is **not** a ninth rotation, signed C23 conversion, a source-C
+/// checksum or an arbitrary-input loop, and no guest output is emitted.
+///
+/// # Errors
+///
+/// Rejects non-N15 profiles, non-graphical instructions and failed upstream
+/// loadable first-read storage. Normative VM traces must check every effect.
+pub fn build_c23_first_input_saved_eight_rotations_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source = build_c23_first_input_lossless_store_source(profile)?;
+    for (position, opcode) in [
+        (44, b'p'),
+        (45, b'j'),
+        (46, b'j'),
+        (47, b'j'),
+        (48, b'o'),
+        (49, b'j'),
+        (50, b'*'),
+        (51, b'j'),
+        (52, b'j'),
+        (53, b'j'),
+        (54, b'j'),
+        (55, b'o'),
+        (56, b'j'),
+        (57, b'*'),
+        (58, b'j'),
+        (59, b'j'),
+        (60, b'j'),
+        (61, b'j'),
+        (62, b'o'),
+        (63, b'j'),
+        (64, b'*'),
+        (65, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
 /// Convert and emit the second signed input, then fold it into guest state.
 ///
 /// The genuine C66 input and C77/C78 crazy operations leave the fully

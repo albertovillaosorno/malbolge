@@ -154,6 +154,19 @@ branch or output; the original complete seven-block mutable EOF checksum
 still refuses physical target linkage. The local state-preservation witness
 must not be confused with full source-C publication.
 
+An extended variant, `build_c23_first_input_saved_eight_rotations_source`,
+uses a real C44 `p` scratch write to M127 and three independent loader-return
+chains, restoring D to M95 for genuine C50, C57 and C64 rotations. The
+first signed C37 value remains saved in M126 throughout. Five further
+independent N15 guest executions (EOF, 0, 1, 128, 255) terminate at C65
+after exactly 66 steps, with M95=7,067,290 (eight physical rotations),
+M96=121 intact, M126 input-dependent, no second read and no output.
+The checked C65 halt intentionally avoids reaching the original C66 `/`
+and source-required C67 `i`; linking the ninth rotation and returning to
+the correctly signed converter are still unsolved. The regression checks
+each physical M95 rotation and each final pointer reset against an independent
+15-trit scalar rotation oracle, not a host-created memory snapshot.
+
 ### Width-aware typed shift-result checks (2026-11-23)
 
 The strict opt-in source-computation verifier now interprets integer
