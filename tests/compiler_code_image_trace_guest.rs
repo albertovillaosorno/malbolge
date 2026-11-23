@@ -623,6 +623,108 @@ fn physical_fetches_include_terminal_non_graphical_read_after_data_write()
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "real two-indirect-jump physical XLAT2 before target fetch"
+)]
+fn offsite_xlat2_precedes_first_code_fetch_at_original_target()
+-> Result<(), String> {
+    let profile = current_profile();
+    let encode = |site: u32, opcode: u8| {
+        (33..=126u8)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), site)
+                    == Some(opcode)
+            })
+            .ok_or_else(|| format!("cannot encode {opcode} at C{site}"))
+    };
+    // C0 i encrypts C98 and jumps to C99; C99 i reads untouched M1=97,
+    // targets C97 and jumps back to C98, *after* its earlier off-site XLAT2.
+    let first_jump = encode(0, b'i')?;
+    assert_eq!(first_jump, 98);
+    let target = u32::from(first_jump);
+    let jump_site = target.checked_add(1).ok_or("jump overflow")?;
+    let mut source = (0..=jump_site)
+        .map(|site| encode(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    source[0] = first_jump;
+    source[1] = first_jump.checked_sub(1).ok_or("bad jump operand")?;
+    assert_eq!(
+        decode_profile_instruction(u32::from(source[1]), 1),
+        Some(b'i'),
+        "the unexecuted second-jump operand must remain loader-admitted",
+    );
+    source[usize::try_from(jump_site).map_err(|error| error.to_string())?] =
+        encode(jump_site, b'i')?;
+    let original_target =
+        source[usize::try_from(target).map_err(|error| error.to_string())?];
+    let encrypted_target =
+        malbolge::encrypt_profile_cell(u32::from(original_target))
+            .ok_or("source target cannot be encrypted")?;
+    assert_ne!(encrypted_target, u32::from(original_target));
+    let image = verify_source_physical_image_trace(profile, &source, &[], 3)
+        .map_err(|error| format!("XLAT2-before-fetch image: {error:?}"))?;
+    assert_eq!(image.source.outcome, RunOutcome::BudgetExhausted {
+        steps: 3
+    });
+    assert_eq!(image.code_fetches.len(), 3);
+    assert_eq!(
+        image
+            .code_fetches
+            .iter()
+            .map(|read| read.code_address)
+            .collect::<Vec<_>>(),
+        [0, jump_site, target],
+    );
+    assert_eq!(image.data_reads.len(), 2);
+    assert_eq!(image.data_reads[0].value, target);
+    assert_eq!(image.data_reads[1].value, target - 1);
+    assert_eq!(image.code_fetches[2], SourcePhysicalCodeFetch {
+        code_address: target,
+        last_data_write_step: None,
+        last_word_effect: Some(SourcePhysicalWordEffect::Encryption {
+            trace_index: 0,
+        }),
+        trace_index: 2,
+        value: encrypted_target,
+    });
+    assert_eq!(
+        decode_profile_instruction(image.code_fetches[2].value, target),
+        Some(b'J'),
+        "post-XLAT2 target is an inert instruction, not its original o",
+    );
+    // Changing only the second i to a true halt leaves C98 encrypted, but
+    // never fetched. An XLAT2 effect is not evidence of target reachability.
+    let mut no_fetch = source;
+    no_fetch
+        [usize::try_from(jump_site).map_err(|error| error.to_string())?] =
+        encode(jump_site, b'v')?;
+    let halted = verify_source_physical_image_trace(profile, &no_fetch, &[], 3)
+        .map_err(|error| format!("unreached XLAT2 target image: {error:?}"))?;
+    assert_eq!(halted.source.outcome, RunOutcome::Terminated {
+        reason: malbolge::Termination::HaltInstruction,
+        steps: 2,
+    });
+    assert_eq!(halted.code_fetches.len(), 2);
+    assert!(
+        !halted
+            .code_fetches
+            .iter()
+            .any(|fetch| { fetch.code_address == target })
+    );
+    let untouched_by_fetch = halted
+        .source
+        .touched
+        .iter()
+        .find(|cell| cell.site == target)
+        .ok_or("missing real off-site XLAT2")?;
+    assert_eq!(untouched_by_fetch.events, [
+        CodeCellEvent::JumpTargetEncryption
+    ],);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "complete-prefix bounds and source-only negative controls"
 )]
 fn physical_image_is_bounded_and_does_not_invent_unreached_expanded_effects()

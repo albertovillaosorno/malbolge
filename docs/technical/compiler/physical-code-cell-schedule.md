@@ -506,3 +506,21 @@ for a source-code layout certificate. They **do not** establish that the
 physical data value implements a C32 variable, that guest branch conditions
 match source conditions, or that an unvisited CFG edge can be reached. The
 unchanged source-C mutable EOF checksum still lacks that physical linkage.
+
+
+### Off-site XLAT2 before a later physical fetch
+
+A separate three-step, 100-cell source-loaded N15 guest now exercises the
+**other order** of code-cell effects. Reached C0 `i` reads M0=98,
+encrypts source cell C98 without fetching it, then jumps to C99.
+Reached C99 `i` reads M1=97 and transfers to C98. The third real fetch
+loads C98's *encrypted* word 81, not its loader byte 64; the fetch journal
+links that word to `Encryption(0)` with no preceding data store. The target
+executes as an inert `J` and leaves no guest output. If C99 is changed to
+an authentic `v`, the same first XLAT2 still occurs, but the VM halts after
+two steps without ever fetching C98. The verifier records the code-cell
+XLAT2 effect but no invented fetch predecessor or later instruction.
+
+This isolates the missing compiler-relevant ordering (`i` target encrypted
+before subsequent fetched code) using two independently actual guest jumps.
+It does not assert that an unexecuted C branch or phi transfer exists.
