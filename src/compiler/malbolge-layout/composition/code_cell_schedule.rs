@@ -136,8 +136,6 @@ pub enum CodeCellScheduleError {
         /// Zero-based terminal fetch preceding an impossible event.
         event: usize,
     },
-    /// Initial loader-expanded memory word exceeds the target word geometry.
-    InvalidLoadedWord,
     /// A data write supplied a word beyond the profile memory geometry.
     InvalidDataWord {
         /// Zero-based physical event index with the out-of-range word.
@@ -150,6 +148,8 @@ pub enum CodeCellScheduleError {
     },
     /// The original source byte decodes to a loader-forbidden instruction.
     InvalidFirstEvent,
+    /// Initial loader-expanded memory word exceeds the target word geometry.
+    InvalidLoadedWord,
     /// A source cell is not a printable graphical instruction byte.
     InvalidSourceCell,
     /// No printable initial source byte satisfies the complete schedule.

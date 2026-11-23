@@ -100,10 +100,12 @@ pub use code_cell_schedule::{
     admit_loaded_code_cell_schedule, encode_code_cell_schedule,
 };
 pub use code_cell_trace::{
-    SourceCodeCellTrace, SourceCodeCellTraceError, SourceCodeImageCellTrace,
-    SourceCodeImageTrace, SourceCodeImageTraceError,
-    SourceExpandedCodeCellTrace, verify_source_code_cell_trace,
-    verify_source_code_image_trace, verify_source_expanded_code_cell_trace,
+    MAX_EXPANDED_CODE_CELLS, SourceCodeCellTrace, SourceCodeCellTraceError,
+    SourceCodeImageCellTrace, SourceCodeImageTrace, SourceCodeImageTraceError,
+    SourceExpandedCodeBatchError, SourceExpandedCodeCellTrace,
+    verify_source_code_cell_trace, verify_source_code_image_trace,
+    verify_source_expanded_code_cell_trace,
+    verify_source_expanded_code_cells_trace,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

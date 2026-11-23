@@ -30,8 +30,10 @@ pub mod layout;
 
 use layout::{
     CodeCellEvent, CodeCellScheduleError, CodeVisitRequirement,
-    SourceCodeCellTraceError, admit_code_cell_schedule,
+    MAX_EXPANDED_CODE_CELLS, SourceCodeCellTraceError,
+    SourceExpandedCodeBatchError, admit_code_cell_schedule,
     admit_loaded_code_cell_schedule, verify_source_expanded_code_cell_trace,
+    verify_source_expanded_code_cells_trace,
 };
 use malbolge::{
     ProfileDescriptor, ProfileMachine, RunOutcome, Termination,
@@ -220,6 +222,7 @@ fn expanded_checker_rejects_original_source_and_unreached_memory()
 #[expect(
     clippy::panic_in_result_fn,
     clippy::cognitive_complexity,
+    clippy::too_many_lines,
     reason = "source-loaded off-site jump and terminal expanded fetch"
 )]
 fn actual_indirect_jump_encrypts_expanded_word_then_fetches_non_graphical()
@@ -249,13 +252,13 @@ fn actual_indirect_jump_encrypts_expanded_word_then_fetches_non_graphical()
         steps: 3,
     });
     let first = trace.first().ok_or("missing j step")?;
-    let jump = trace.get(1).ok_or("missing i step")?;
+    let jump_step = trace.get(1).ok_or("missing i step")?;
     let bad_fetch = trace.get(2).ok_or("missing terminal fetch")?;
     assert_eq!(first.decoded, Some(b'j'));
-    assert_eq!(jump.decoded, Some(b'i'));
-    assert_eq!(jump.memory_reads.data.map(|read| read.value), Some(63));
+    assert_eq!(jump_step.decoded, Some(b'i'));
+    assert_eq!(jump_step.memory_reads.data.map(|read| read.value), Some(63));
     assert_eq!(
-        jump.memory_delta.encryption.map(|delta| delta.address),
+        jump_step.memory_delta.encryption.map(|delta| delta.address),
         Some(63)
     );
     assert_eq!(bad_fetch.before.registers.code_pointer, 64);
@@ -287,6 +290,94 @@ fn actual_indirect_jump_encrypts_expanded_word_then_fetches_non_graphical()
             CodeCellEvent::JumpTargetEncryption
         ],),
         Err(CodeCellScheduleError::InvalidEncryptionTarget { event: 0 })
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "two-site VM parity and exact rejection of adversarial site sets"
+)]
+fn selected_expanded_sites_share_one_normative_execution() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = b"jioooo"
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(position, opcode)| {
+            encoded(u32::try_from(position).unwrap_or_default(), opcode)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let batch =
+        verify_source_expanded_code_cells_trace(profile, &source, &[], 3, &[
+            63, 64,
+        ])
+        .map_err(|error| format!("two-site expanded image: {error:?}"))?;
+    assert_eq!(batch.len(), 2);
+    for (index, site) in [63, 64].into_iter().enumerate() {
+        let separate = verify_source_expanded_code_cell_trace(
+            profile,
+            &source,
+            &[],
+            3,
+            site,
+        )
+        .map_err(|error| format!("separate M{site}: {error:?}"))?;
+        assert_eq!(batch.get(index), Some(&separate));
+        assert_eq!(separate.site, site);
+    }
+    for bad in [
+        vec![],
+        vec![64, 63],
+        vec![63, 63],
+        vec![0, 63],
+        vec![63, profile.memory_words()],
+        (63..63
+            + u32::try_from(MAX_EXPANDED_CODE_CELLS + 1).unwrap_or_default())
+            .collect::<Vec<_>>(),
+    ] {
+        assert_eq!(
+            verify_source_expanded_code_cells_trace(
+                profile,
+                &source,
+                &[],
+                3,
+                &bad,
+            ),
+            Err(SourceExpandedCodeBatchError::InvalidBound),
+            "invalid site set: {bad:?}"
+        );
+    }
+    assert_eq!(
+        verify_source_expanded_code_cells_trace(profile, &source, &[], 3, &[
+            63, 65
+        ],),
+        Err(SourceExpandedCodeBatchError::Cell {
+            site: 65,
+            error: SourceCodeCellTraceError::MissingEffect,
+        })
+    );
+    assert_eq!(
+        verify_source_expanded_code_cells_trace(profile, &source, &[], 2, &[
+            63, 64
+        ],),
+        Err(SourceExpandedCodeBatchError::Cell {
+            site: 64,
+            error: SourceCodeCellTraceError::MissingEffect,
+        })
+    );
+    let padded = source
+        .iter()
+        .flat_map(|byte| [b'\n', *byte, b'\t'])
+        .collect::<Vec<_>>();
+    assert_eq!(
+        verify_source_expanded_code_cells_trace(profile, &padded, &[], 3, &[
+            63, 64
+        ]),
+        Ok(batch)
     );
     Ok(())
 }

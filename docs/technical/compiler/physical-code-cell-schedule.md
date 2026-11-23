@@ -369,7 +369,19 @@ M63, and C64 then attempts to fetch its still non-graphical word. The new
 trace checker verifies both off-site XLAT2 and the genuine terminal fetch;
 forcing XLAT2 on the non-graphical M64 refuses.
 
-This is a bounded necessary checker for **one requested expanded cell** in
+`verify_source_expanded_code_cells_trace` also verifies a caller-selected,
+strictly increasing set of 1..=128 expanded memory positions in **one**
+source-loaded VM execution. All initial words are captured before the first
+step and every cell's event order and final state is independently checked.
+The singleton `verify_source_expanded_code_cell_trace` now delegates to the
+same batch authority. Duplicate, descending, source-overlapping, out-of-range
+or excessive site sets refuse before execution. Including an untouched site
+or ending the guest trace before that site's first effect refuses the entire
+batch with its exact offending address. The six-cell indirect `i` guest checks
+M63 and M64 together, including raw-source whitespace invariance, and agrees
+with both separate singleton witnesses.
+
+This is a bounded necessary checker for **requested expanded cells** in
 one source-loaded trace of at most 512 steps and 4,096 source bytes. It is
 not a planner that proves proposed guest control or C semantics, and it does
 not claim the original seven-block mutable C23 checksum has been linked.

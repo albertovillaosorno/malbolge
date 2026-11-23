@@ -47,6 +47,10 @@ use super::{
     CodeVisitRequirement, MAX_REVISIT_SOURCE_CELLS, MAX_REVISIT_STEPS,
 };
 
+/// Maximum caller-selected expanded-memory cells per single VM replay.
+/// Prevents unbounded event journals without limiting target memory itself.
+pub const MAX_EXPANDED_CODE_CELLS: usize = 128;
+
 /// Bounded code-site verification refusal, distinct from any C23 linkage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceCodeCellTraceError {
@@ -77,6 +81,44 @@ pub struct SourceCodeCellTrace {
     pub outcome: RunOutcome,
     /// Source-loaded code-cell plan admitted from actual guest effects.
     pub schedule: CodeCellSchedule,
+}
+
+/// One loader-expanded guest cell authenticated by its source-loaded VM.
+///
+/// A non-graphical initial word can become executable after a guest data
+/// write; until that write, no graphical source-byte identity is assumed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceExpandedCodeCellTrace {
+    /// Reached chronological effects, including unchanged physical writes.
+    pub events: Vec<CodeCellEvent>,
+    /// Final memory word independently compared against the phase replay.
+    pub final_word: u32,
+    /// Full-width pre-execution word produced by actual loader expansion.
+    pub initial_word: u32,
+    /// Normative VM termination or a finite step-budget exhaustion.
+    pub outcome: RunOutcome,
+    /// Exact resulting schedule for the loader-expanded memory cell.
+    pub schedule: LoadedCodeCellSchedule,
+    /// Exact expanded-memory position in the guest image.
+    pub site: u32,
+}
+
+/// Bounded multi-site expanded-memory verification refusal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceExpandedCodeBatchError {
+    /// One particular expanded cell failed its actual chronological replay.
+    Cell {
+        /// Underlying source-loaded per-cell verification failure.
+        error: SourceCodeCellTraceError,
+        /// Exact loader-expanded memory address.
+        site: u32,
+    },
+    /// No sites, too many sites, unsorted/duplicate sites or invalid bounds.
+    InvalidBound,
+    /// The normative guest failed within the requested bounded execution.
+    InvalidExecution,
+    /// The original source is not valid for this physical target profile.
+    InvalidSource,
 }
 
 const fn is_active(opcode: u8, profile: &ProfileDescriptor) -> bool {
@@ -269,104 +311,6 @@ pub fn verify_source_code_cell_trace(
     })
 }
 
-/// One loader-expanded guest cell authenticated by its source-loaded VM.
-///
-/// A non-graphical initial word can become executable after a guest data
-/// write; until that write, no graphical source-byte identity is assumed.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SourceExpandedCodeCellTrace {
-    /// Full-width pre-execution word produced by actual loader expansion.
-    pub initial_word: u32,
-    /// Reached chronological effects, including unchanged physical writes.
-    pub events: Vec<CodeCellEvent>,
-    /// Final memory word independently compared against the phase replay.
-    pub final_word: u32,
-    /// Normative VM termination or a finite step-budget exhaustion.
-    pub outcome: RunOutcome,
-    /// Exact resulting schedule for the loader-expanded memory cell.
-    pub schedule: LoadedCodeCellSchedule,
-}
-
-/// Verify an expanded-memory cell, including a guest-created future opcode.
-///
-/// The selected address must be outside the graphical source but inside the
-/// selected profile memory. The normative loader supplies the *actual* initial
-/// full-width word. Every reached data write, jump-target encryption, or fetch
-/// at that address is reconstructed from one real VM trace and replayed in
-/// order; the final word must agree with the VM. An untouched cell refuses.
-/// No source-C CFG, input dependence or unbounded behavior is inferred.
-///
-/// # Errors
-///
-/// Refuses invalid source/geometry/bounds, unsupported execution, a missing
-/// physical effect, stale word versions, or a different actual final word.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "normative profile, source/input, bounded trace and expanded site"
-)]
-pub fn verify_source_expanded_code_cell_trace(
-    profile: &'static ProfileDescriptor,
-    source: &[u8],
-    input: &[u8],
-    steps: usize,
-    site: u32,
-) -> Result<SourceExpandedCodeCellTrace, SourceCodeCellTraceError> {
-    if steps == 0
-        || steps > MAX_REVISIT_STEPS
-        || source.len() > MAX_REVISIT_SOURCE_CELLS
-        || site >= profile.memory_words()
-        || usize::try_from(site).ok().is_none_or(|position| {
-            position
-                < source
-                    .iter()
-                    .filter(|byte| !is_source_whitespace(**byte))
-                    .count()
-        })
-    {
-        return Err(SourceCodeCellTraceError::InvalidBound);
-    }
-    let mut machine =
-        ProfileMachine::from_source(profile, source, input.to_vec())
-            .map_err(|_error| SourceCodeCellTraceError::InvalidSource)?;
-    let initial_word = machine
-        .memory_word(site)
-        .map_err(|_error| SourceCodeCellTraceError::InvalidBound)?;
-    let mut events = Vec::new();
-    let mut failure = None;
-    let outcome = machine
-        .run_traced(steps, &mut |step| {
-            if failure.is_none()
-                && let Err(error) =
-                    append_site_effects(profile, site, step, &mut events)
-            {
-                failure = Some(error);
-            }
-        })
-        .map_err(|_error| SourceCodeCellTraceError::InvalidExecution)?;
-    if let Some(error) = failure {
-        return Err(error);
-    }
-    if events.is_empty() {
-        return Err(SourceCodeCellTraceError::MissingEffect);
-    }
-    let schedule =
-        admit_loaded_code_cell_schedule(profile, site, initial_word, &events)
-            .map_err(SourceCodeCellTraceError::Schedule)?;
-    let final_word = machine
-        .memory_word(site)
-        .map_err(|_error| SourceCodeCellTraceError::InvalidExecution)?;
-    if schedule.final_cell != final_word {
-        return Err(SourceCodeCellTraceError::FinalWordMismatch);
-    }
-    Ok(SourceExpandedCodeCellTrace {
-        initial_word,
-        events,
-        final_word,
-        outcome,
-        schedule,
-    })
-}
-
 /// One source code cell changed, fetched or jump-encrypted by the real guest.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceCodeImageCellTrace {
@@ -546,4 +490,183 @@ pub fn verify_source_code_image_trace(
         source_cells,
         outcome,
     })
+}
+
+/// Verify a strictly increasing set of expanded memory positions in one run.
+///
+/// Every initial full-width word comes from the original source-loaded VM,
+/// before any guest step. Events at each requested site are reconstructed in
+/// real chronological order from the *same* bounded normative VM execution,
+/// then phase-checked against the final actual word. The caller must provide
+/// 1..=128 distinct addresses in increasing order, all strictly beyond the
+/// graphical source and within the profile's guest memory. An untouched site
+/// or inconsistent effect refuses the entire batch. The result retains the
+/// source-independent memory positions, not just their input order.
+///
+/// This authenticates selected physical effects only, not all guest memory
+/// and not arbitrary source-C CFG execution or checksum compilation.
+///
+/// # Errors
+///
+/// Refuses invalid site sets, source or step budgets, VM execution failures,
+/// missing per-site effects and any failed per-site phase/final-word proof.
+#[expect(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "source-loaded profile/input/step proof with exact site selection"
+)]
+pub fn verify_source_expanded_code_cells_trace(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    input: &[u8],
+    steps: usize,
+    sites: &[u32],
+) -> Result<Vec<SourceExpandedCodeCellTrace>, SourceExpandedCodeBatchError> {
+    if steps == 0
+        || steps > MAX_REVISIT_STEPS
+        || source.len() > MAX_REVISIT_SOURCE_CELLS
+        || sites.is_empty()
+        || sites.len() > MAX_EXPANDED_CODE_CELLS
+        || sites
+            .iter()
+            .copied()
+            .zip(sites.iter().copied().skip(1))
+            .any(|(previous, current)| previous >= current)
+    {
+        return Err(SourceExpandedCodeBatchError::InvalidBound);
+    }
+    let source_cells = source
+        .iter()
+        .filter(|byte| !is_source_whitespace(**byte))
+        .count();
+    if sites.iter().any(|&site| {
+        site >= profile.memory_words()
+            || usize::try_from(site)
+                .ok()
+                .is_none_or(|index| index < source_cells)
+    }) {
+        return Err(SourceExpandedCodeBatchError::InvalidBound);
+    }
+    let mut machine =
+        ProfileMachine::from_source(profile, source, input.to_vec())
+            .map_err(|_error| SourceExpandedCodeBatchError::InvalidSource)?;
+    let mut cells = sites
+        .iter()
+        .copied()
+        .map(|site| {
+            let initial_word = machine
+                .memory_word(site)
+                .map_err(|_error| SourceExpandedCodeBatchError::InvalidBound)?;
+            Ok::<_, SourceExpandedCodeBatchError>((
+                site,
+                initial_word,
+                Vec::<CodeCellEvent>::new(),
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut failure = None;
+    let outcome = machine
+        .run_traced(steps, &mut |step| {
+            if failure.is_some() {
+                return;
+            }
+            for (site, _initial_word, events) in &mut cells {
+                if let Err(error) =
+                    append_site_effects(profile, *site, step, events)
+                {
+                    failure = Some(SourceExpandedCodeBatchError::Cell {
+                        site: *site,
+                        error,
+                    });
+                    break;
+                }
+            }
+        })
+        .map_err(|_error| SourceExpandedCodeBatchError::InvalidExecution)?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    cells
+        .into_iter()
+        .map(|(site, initial_word, events)| {
+            let report =
+                |error| SourceExpandedCodeBatchError::Cell { site, error };
+            if events.is_empty() {
+                return Err(report(SourceCodeCellTraceError::MissingEffect));
+            }
+            let schedule = admit_loaded_code_cell_schedule(
+                profile,
+                site,
+                initial_word,
+                &events,
+            )
+            .map_err(|error| {
+                report(SourceCodeCellTraceError::Schedule(error))
+            })?;
+            let final_word = machine.memory_word(site).map_err(|_error| {
+                SourceExpandedCodeBatchError::InvalidExecution
+            })?;
+            if schedule.final_cell != final_word {
+                return Err(report(
+                    SourceCodeCellTraceError::FinalWordMismatch,
+                ));
+            }
+            Ok(SourceExpandedCodeCellTrace {
+                events,
+                final_word,
+                initial_word,
+                outcome,
+                schedule,
+                site,
+            })
+        })
+        .collect()
+}
+
+/// Verify an expanded-memory cell, including a guest-created future opcode.
+///
+/// This is the one-cell specialization of the source-loaded batch checker.
+/// The selected address must be outside the graphical source but inside the
+/// profile memory. The normative VM supplies its exact initial full-width
+/// word, reached data writes, jump encryptions and final word. An untouched
+/// cell refuses. No C23 control or unbounded behavior is inferred.
+///
+/// # Errors
+///
+/// Refuses invalid source/geometry/bounds, unsupported execution, a missing
+/// physical effect, stale word versions or a different actual final word.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "normative profile, source/input, bounded trace and expanded site"
+)]
+pub fn verify_source_expanded_code_cell_trace(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    input: &[u8],
+    steps: usize,
+    site: u32,
+) -> Result<SourceExpandedCodeCellTrace, SourceCodeCellTraceError> {
+    let traces = verify_source_expanded_code_cells_trace(
+        profile,
+        source,
+        input,
+        steps,
+        &[site],
+    )
+    .map_err(|failure| match failure {
+        SourceExpandedCodeBatchError::InvalidBound => {
+            SourceCodeCellTraceError::InvalidBound
+        },
+        SourceExpandedCodeBatchError::InvalidExecution => {
+            SourceCodeCellTraceError::InvalidExecution
+        },
+        SourceExpandedCodeBatchError::InvalidSource => {
+            SourceCodeCellTraceError::InvalidSource
+        },
+        SourceExpandedCodeBatchError::Cell { error, .. } => error,
+    })?;
+    traces
+        .into_iter()
+        .next()
+        .ok_or(SourceCodeCellTraceError::InvalidBound)
 }
