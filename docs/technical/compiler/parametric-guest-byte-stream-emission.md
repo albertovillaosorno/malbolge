@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physically sourced phi-copy dataflow (2026-11-23)
+
+The linked-CFG physical phi transfer gate now requires the *latest*
+source-authenticated SSA word's provenance in the actual guest accumulator
+before accepting each reached snapshot and commit. A matching written word
+alone cannot establish a data path from the declared copy source. The same
+versioned `p`/`*` provenance shadow is used by the stronger source branch
+and output checks, and successful copies mint new SSA versions only after
+this path check. The intentionally narrower copy-only gate still verifies
+word values and ordered physical writes without asserting causality.
+
+A paired seven-step current-N15 VM witness writes EOF into M70 at C0,
+then copies it at C3 and C4 before a real C5 control jump and C8 halt.
+Replacing the inert C1 with a real `*` on independent M71 preserves all
+three identical source/phi words but severs the accumulator's M70 path.
+The older value-only gate admits both, while linked-CFG and source-branch
+checks now refuse the disconnected version with `MissingPhiProvenance`.
+This is a **necessary dataflow condition**, not a proof of exact C arithmetic
+or actual checksum loop linkage. The full source C23 checksum still refuses
+its unlinked seven-block CFG without publishing a guest artifact.
+Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Versioned source-output data provenance (2026-11-23)
 
 The strongest opt-in source CFG output check now authenticates a data path

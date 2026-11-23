@@ -266,6 +266,172 @@ fn real_guest_phi_copies_require_exact_source_words() -> Result<(), String> {
     Ok(())
 }
 
+// Equal-value phi copies can hide a lost physical data dependency. Both
+// guests store EOF at M70 and write the same two phi words, but only one
+// carries M70's guest write through its accumulator to the snapshot.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "paired seven-step normative guest and exact phi site controls"
+)]
+fn real_guest_phi_copy_requires_source_data_provenance() -> Result<(), String> {
+    let trace =
+        |discard_source: bool| -> Result<Vec<ProfileStepTrace>, String> {
+            let mut source = (0..59)
+                .map(|site| graphical(site, b'o'))
+                .collect::<Result<Vec<_>, _>>()?;
+            for (site, opcode) in [
+                (0, b'p'),
+                (
+                    1,
+                    if discard_source {
+                        b'*'
+                    } else {
+                        b'o'
+                    },
+                ),
+                (2, b'j'),
+                (3, b'p'),
+                (4, b'p'),
+                (5, b'i'),
+                (8, b'v'),
+            ] {
+                source[site] = graphical(site, opcode)?;
+            }
+            let profile = current_profile();
+            let loaded =
+                ProfileMachine::from_source(profile, &source, Vec::new())
+                    .map_err(|error| format!("phi origin source: {error:?}"))?;
+            let mut memory = loaded.memory().to_vec();
+            let all_ones = 7_174_453u32;
+            memory[70] = all_ones;
+            memory[71] = profile.eof_word();
+            memory[72] = 100;
+            memory[101] = all_ones;
+            memory[102] = all_ones;
+            memory[103] = 7;
+            let mut machine = ProfileMachine::from_state(
+                profile,
+                memory,
+                Vec::new(),
+                malbolge::ProfileRegisters {
+                    accumulator: profile.eof_word(),
+                    code_pointer: 0,
+                    data_pointer: 70,
+                },
+            )
+            .map_err(|error| format!("phi origin state: {error:?}"))?;
+            let mut steps = Vec::new();
+            let outcome = machine
+                .run_traced(7, &mut |step| steps.push(*step))
+                .map_err(|error| format!("phi origin run: {error:?}"))?;
+            assert_eq!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 7,
+            });
+            assert_eq!(
+                steps.iter().map(|step| step.decoded).collect::<Vec<_>>(),
+                [
+                    Some(b'p'),
+                    Some(if discard_source {
+                        b'*'
+                    } else {
+                        b'o'
+                    }),
+                    Some(b'j'),
+                    Some(b'p'),
+                    Some(b'p'),
+                    Some(b'i'),
+                    Some(b'v'),
+                ]
+            );
+            for (index, destination) in [(0, 70), (3, 101), (4, 102)] {
+                assert_eq!(
+                    steps[index].before.registers.data_pointer,
+                    destination
+                );
+                assert_eq!(
+                    steps[index].after.registers.accumulator,
+                    profile.eof_word(),
+                );
+            }
+            Ok(steps)
+        };
+    let preserved = trace(false)?;
+    let disconnected = trace(true)?;
+    let mut edge = placed_edge();
+    edge.control_address = 2;
+    edge.entry_address = 3;
+    edge.snapshot_sites[0].code_address = 3;
+    edge.commit_sites[0].code_address = 4;
+    edge.pad_exit_address = Some(5);
+    edge.target_address = 8;
+    let edges = [edge];
+    let effects = [initial_store(None)];
+    let frames = [
+        GuestFramePlacement {
+            base: 70,
+            end_exclusive: 71,
+            source_cells: 59,
+        },
+        GuestFramePlacement {
+            base: 101,
+            end_exclusive: 104,
+            source_cells: 59,
+        },
+    ];
+    let check = |steps: &[ProfileStepTrace], strong| {
+        verify_traced_phi_copies_with_transfer_policy(
+            PhiTraceContext {
+                edges: &edges,
+                effects: &effects,
+                frames: &frames,
+            },
+            steps,
+            strong,
+        )
+    };
+    // The copy-only study continues to attest word equality, not causal
+    // SSA copying; the linked CFG gate adds a strict necessary data path.
+    assert_eq!(
+        check(&disconnected, false).map(|proof| proof.copies.len()),
+        Ok(2)
+    );
+    assert_eq!(
+        check(&preserved, true).map(|proof| proof.completed_pads),
+        Ok(1)
+    );
+    assert_eq!(
+        check(&disconnected, true),
+        Err(SourcePhiCopyTraceError::MissingPhiProvenance),
+    );
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 3,
+        control_start: 2,
+    }];
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks, &edges, &effects, &frames, &preserved
+        ),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &edges,
+            &effects,
+            &frames,
+            &disconnected
+        ),
+        Err(SourcePhiCopyTraceError::MissingPhiProvenance),
+    );
+    Ok(())
+}
+
 #[test]
 #[expect(
     clippy::indexing_slicing,

@@ -92,6 +92,8 @@ pub enum SourcePhiCopyTraceError {
     InvalidOutputValue,
     /// Output A has no guest data path from its source-authenticated SSA cell.
     MissingOutputProvenance,
+    /// A physical phi write has no guest data path from its live source cell.
+    MissingPhiProvenance,
     /// A reached branch did not materialize its Boolean before departure.
     MissingBranchCondition,
     /// A copy source had no earlier, actual source-placed guest data write.
@@ -209,11 +211,56 @@ impl SourceAccumulatorProvenance {
         }
         if matches!(step.decoded, Some(b'p' | b'*')) {
             if let Some(address) = sourced_destination {
-                _ = self.accumulator.insert((address, trace_index));
-                _ = self.latest_write.insert(address, trace_index);
+                self.mark_source_write(address, trace_index);
+            } else {
+                let _previous =
+                    self.memory.insert(data, self.accumulator.clone());
             }
-            let _previous = self.memory.insert(data, self.accumulator.clone());
         }
+    }
+
+    fn mark_source_write(&mut self, address: u32, trace_index: usize) {
+        _ = self.accumulator.insert((address, trace_index));
+        _ = self.latest_write.insert(address, trace_index);
+        let _previous = self.memory.insert(address, self.accumulator.clone());
+    }
+
+    fn carries_latest(&self, address: u32) -> bool {
+        self.latest_write.get(&address).is_some_and(|version| {
+            self.accumulator.contains(&(address, *version))
+        })
+    }
+
+    // A phi destination acquires a new SSA identity only if the physical
+    // copy actually carries its source's latest guest-written provenance.
+    // Equal words from an unrelated * or p may satisfy value-only copying,
+    // but cannot authenticate the stronger linked-CFG data path.
+    fn observe_source_step(
+        &mut self,
+        step: &ProfileStepTrace,
+        trace_index: usize,
+        stores: &SourceStoreSites,
+        copies: &PhiCopySites,
+    ) -> Result<(), SourcePhiCopyTraceError> {
+        let code = step.before.registers.code_pointer;
+        let data = step.before.registers.data_pointer;
+        let data_write = matches!(step.decoded, Some(b'p' | b'*'));
+        let source_store = data_write && stores.contains_key(&(code, data));
+        let copy = data_write.then(|| copies.get(&code)).flatten();
+        if source_store && copy.is_some() {
+            return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
+        }
+        self.observe(step, source_store.then_some(data), trace_index);
+        if let Some(copy) = copy {
+            if copy.copy.destination != data {
+                return Err(SourcePhiCopyTraceError::InvalidPhiCopy);
+            }
+            if !self.carries_latest(copy.copy.source) {
+                return Err(SourcePhiCopyTraceError::MissingPhiProvenance);
+            }
+            self.mark_source_write(data, trace_index);
+        }
+        Ok(())
     }
 }
 
@@ -980,15 +1027,7 @@ fn verify_source_output_operand(
     {
         return Err(SourcePhiCopyTraceError::InvalidOutputValue);
     }
-    if !provenance
-        .latest_write
-        .get(&operand.address)
-        .is_some_and(|version| {
-            provenance
-                .accumulator
-                .contains(&(operand.address, *version))
-        })
-    {
+    if !provenance.carries_latest(operand.address) {
         return Err(SourcePhiCopyTraceError::MissingOutputProvenance);
     }
     Ok(())
@@ -1013,30 +1052,26 @@ fn verify_source_branch_choices(
     for (index, previous) in steps.iter().enumerate() {
         let from = previous.before.registers.code_pointer;
         let data = previous.before.registers.data_pointer;
-        let sourced_destination =
-            if matches!(previous.decoded, Some(b'p' | b'*'))
-                && in_frame(data, frames)
+        if matches!(previous.decoded, Some(b'p' | b'*'))
+            && in_frame(data, frames)
+        {
+            if !stores.contains_key(&(from, data))
+                && copies
+                    .get(&from)
+                    .is_none_or(|site| site.copy.destination != data)
             {
-                if !stores.contains_key(&(from, data))
-                    && copies
-                        .get(&from)
-                        .is_none_or(|site| site.copy.destination != data)
-                {
-                    return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
-                }
-                let _old = materialized
-                    .insert(data, previous.after.registers.accumulator);
-                Some(data)
-            } else {
-                None
-            };
+                return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
+            }
+            let _old =
+                materialized.insert(data, previous.after.registers.accumulator);
+        }
         verify_source_output_operand(
             previous,
             effects,
             &materialized,
             &provenance,
         )?;
-        provenance.observe(previous, sourced_destination, index);
+        provenance.observe_source_step(previous, index, &stores, &copies)?;
         let Some(next) = steps.get(index + 1) else {
             continue;
         };
@@ -1172,6 +1207,7 @@ fn verify_traced_phi_copies_with_transfer_policy(
     let copies_by_code = phi_copy_sites(edges)?;
     let stores_by_site = source_store_sites(effects)?;
     let mut progress = PhiTraceProgress::new(edges);
+    let mut provenance = SourceAccumulatorProvenance::default();
     for (trace_index, step) in steps.iter().enumerate() {
         if step.result.is_err() {
             return Err(SourcePhiCopyTraceError::InvalidGuestExecution);
@@ -1213,6 +1249,14 @@ fn verify_traced_phi_copies_with_transfer_policy(
                 (code_address, data_address),
                 step.after.registers.accumulator,
                 &stores_by_site,
+            )?;
+        }
+        if require_transfer {
+            provenance.observe_source_step(
+                step,
+                trace_index,
+                &stores_by_site,
+                &copies_by_code,
             )?;
         }
     }

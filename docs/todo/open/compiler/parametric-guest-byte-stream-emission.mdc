@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A linked physical phi copy must now carry guest data provenance from its
+**latest source SSA write**, not merely produce the same numeric word.
+A paired seven-step N15 guest preserves all values but one variant rotates
+an unrelated M71 between the source Store and phi snapshot; the stronger
+transfer/branch gates reject it while the value-only gate still accepts.
+The complete mutable EOF C23 checksum remains physically unlinked and P2
+open. See the contract and `tests/compiler/source_phi_copy_trace.rs`.
+
 The strongest physical output provenance checker now requires a dependency
 on the **most recent** source U8 SSA write, not an older version of the
 same address. An 11-step real N15 guest stores zero to M70, preserves its
