@@ -31,7 +31,7 @@
 //! declared source cell. The check does not prove that the instruction read
 //! that cell, selected the correct CFG edge or returned source-C results.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, current_profile,
@@ -90,6 +90,8 @@ pub enum SourcePhiCopyTraceError {
     MissingOutputMaterialization,
     /// A real output is not the exact materialized typed U8 source operand.
     InvalidOutputValue,
+    /// Output A has no guest data path from its source-authenticated SSA cell.
+    MissingOutputProvenance,
     /// A reached branch did not materialize its Boolean before departure.
     MissingBranchCondition,
     /// A copy source had no earlier, actual source-placed guest data write.
@@ -167,6 +169,46 @@ struct CopySite {
 
 type PhiCopySites = BTreeMap<u32, CopySite>;
 type SourceStoreSites = BTreeMap<(u32, u32), Option<u32>>;
+
+// Conservative forward data provenance from actual guest source-frame writes.
+// An A value can carry several candidate source cells through `p`, since
+// ternary crazy is not a conventional copy. No value coincidence or loader
+// seed can mint source provenance. This is a necessary dataflow condition,
+// not a proof that an arithmetic result implements its typed C expression.
+#[derive(Default)]
+struct SourceAccumulatorProvenance {
+    accumulator: BTreeSet<u32>,
+    memory: BTreeMap<u32, BTreeSet<u32>>,
+}
+
+impl SourceAccumulatorProvenance {
+    fn observe(
+        &mut self,
+        step: &ProfileStepTrace,
+        sourced_destination: Option<u32>,
+    ) {
+        let data = step.before.registers.data_pointer;
+        match step.decoded {
+            Some(b'/') => self.accumulator.clear(),
+            Some(b'*') => {
+                self.accumulator =
+                    self.memory.get(&data).cloned().unwrap_or_default();
+            },
+            Some(b'p') => {
+                self.accumulator.extend(
+                    self.memory.get(&data).into_iter().flatten().copied(),
+                );
+            },
+            _ => {},
+        }
+        if matches!(step.decoded, Some(b'p' | b'*')) {
+            if let Some(address) = sourced_destination {
+                _ = self.accumulator.insert(address);
+            }
+            let _previous = self.memory.insert(data, self.accumulator.clone());
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 struct PhiTraceContext<'source> {
@@ -899,10 +941,12 @@ fn verify_predecessor_phi_entries(
 
 // A source `<` site is necessary but not enough: the real A word must be
 // equal to the live, guest-written typed U8 operand, not only its low byte.
+// It must also remain physically data-dependent on that source frame cell.
 fn verify_source_output_operand(
     step: &ProfileStepTrace,
     effects: &[GuestCodeOperationEffectSite],
     materialized: &BTreeMap<u32, u32>,
+    accumulator_sources: &BTreeSet<u32>,
 ) -> Result<(), SourcePhiCopyTraceError> {
     if step.decoded != Some(b'<') {
         return Ok(());
@@ -929,6 +973,9 @@ fn verify_source_output_operand(
     {
         return Err(SourcePhiCopyTraceError::InvalidOutputValue);
     }
+    if !accumulator_sources.contains(&operand.address) {
+        return Err(SourcePhiCopyTraceError::MissingOutputProvenance);
+    }
     Ok(())
 }
 
@@ -947,23 +994,34 @@ fn verify_source_branch_choices(
     let stores = source_store_sites(effects)?;
     let copies = phi_copy_sites(edges)?;
     let mut materialized = BTreeMap::new();
+    let mut provenance = SourceAccumulatorProvenance::default();
     for (index, previous) in steps.iter().enumerate() {
         let from = previous.before.registers.code_pointer;
         let data = previous.before.registers.data_pointer;
-        if matches!(previous.decoded, Some(b'p' | b'*'))
-            && in_frame(data, frames)
-        {
-            if !stores.contains_key(&(from, data))
-                && !copies
-                    .get(&from)
-                    .is_some_and(|site| site.copy.destination == data)
+        let sourced_destination =
+            if matches!(previous.decoded, Some(b'p' | b'*'))
+                && in_frame(data, frames)
             {
-                return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
-            }
-            let _old =
-                materialized.insert(data, previous.after.registers.accumulator);
-        }
-        verify_source_output_operand(previous, effects, &materialized)?;
+                if !stores.contains_key(&(from, data))
+                    && copies
+                        .get(&from)
+                        .is_none_or(|site| site.copy.destination != data)
+                {
+                    return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
+                }
+                let _old = materialized
+                    .insert(data, previous.after.registers.accumulator);
+                Some(data)
+            } else {
+                None
+            };
+        verify_source_output_operand(
+            previous,
+            effects,
+            &materialized,
+            &provenance.accumulator,
+        )?;
+        provenance.observe(previous, sourced_destination);
         let Some(next) = steps.get(index + 1) else {
             continue;
         };

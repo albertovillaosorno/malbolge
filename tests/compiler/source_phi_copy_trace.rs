@@ -2018,6 +2018,7 @@ fn real_guest_source_output_requires_current_frame_operand()
         };
     let complete = trace(None)?;
     let other_accumulator = trace(Some(6))?;
+    let same_value_other_source = trace(Some(3))?;
     let matching_byte_wrong_word = trace(Some(771))?;
     let blocks = [GuestCodeBlockPlacement {
         function: 0,
@@ -2056,6 +2057,8 @@ fn real_guest_source_output_requires_current_frame_operand()
     assert_eq!(complete[2].output, Some(1));
     assert_eq!(other_accumulator[1].after.registers.accumulator, 2);
     assert_eq!(other_accumulator[2].output, Some(2));
+    assert_eq!(same_value_other_source[1].after.registers.accumulator, 1);
+    assert_eq!(same_value_other_source[2].output, Some(1));
     assert_eq!(matching_byte_wrong_word[1].after.registers.accumulator, 257);
     assert_eq!(matching_byte_wrong_word[2].output, Some(1));
     assert_eq!(
@@ -2109,6 +2112,26 @@ fn real_guest_source_output_requires_current_frame_operand()
         ordinal: 2,
         ..output
     }];
+    // The second real * writes an unrelated SSA cell, but happens to load
+    // exactly the same word. Numeric output equality is not source dataflow.
+    assert_eq!(
+        verify_source_block_effect_visits(
+            &blocks,
+            &changed,
+            &same_value_other_source
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &[],
+            &changed,
+            &frames,
+            &same_value_other_source
+        ),
+        Err(SourcePhiCopyTraceError::MissingOutputProvenance)
+    );
     assert_eq!(
         verify_source_block_effect_visits(
             &blocks,

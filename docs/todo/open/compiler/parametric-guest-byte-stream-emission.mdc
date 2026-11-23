@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest physical CFG output checker now also verifies a conservative
+**real guest data path** from the authenticated source U8 SSA store into
+output accumulator A. A four-step N15 guest writes M70=1, then reloads
+an unrelated M71=1 before emitting the identical byte: equality-only
+checking accepted it; physical provenance now refuses it. The unchanged
+`*, o, <, v` case remains accepted. This is necessary value provenance,
+not source arithmetic, input-dependent C control or the complete EOF
+checksum. See `tests/compiler/source_phi_copy_trace.rs` and the contract.
+
 The strongest physical CFG verifier now admits a completed path with zero
 observed phi copies when no phi pad was reached, rather than confusing a
 reachable conditional branch's phi-free arm with missing phi work. A real

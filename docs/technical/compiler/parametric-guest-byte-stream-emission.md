@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical output accumulator data provenance (2026-11-23)
+
+The strongest opt-in source CFG verifier now requires a reached `<` not
+only to equal its latest source-placed U8 SSA word, but also to carry an
+actual guest **data path** from that word's authenticated physical write.
+The forward shadow starts empty, mints source-cell provenance only on
+source-placed `p`/`*` frame writes, propagates possible dependencies through
+real `p`/`*` data writes and reads, preserves A across non-data opcodes,
+and clears it at a new `/`. Untouched loader cells and numeric coincidence
+cannot invent a provenance edge. The shadow is deliberately conservative:
+`p` can carry both input dependencies, so this is a necessary condition,
+not a proof of exact C arithmetic or causal byte-stream semantics.
+
+A red-first four-step N15 `*, *, <, v` guest physically writes M70=1,
+then independently writes M71=1 before emitting byte 1. Its declared
+Output operand is M70. Both Store sites and the full-width output value
+match, and the prior equality-only checker accepted this wrong data path.
+The updated gate refuses `MissingOutputProvenance` because the second `*`
+loads A from unrelated M71. The paired `*, o, <, v` guest keeps A from
+M70 and passes. No C23 checksum arithmetic, EOF loop or source-C artifact
+is linked or published. Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Phi-free source control paths in physical CFG verification (2026-11-23)
 
 The strongest opt-in source CFG check no longer demands a reached phi copy
