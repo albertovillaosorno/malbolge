@@ -84,6 +84,8 @@ pub enum SourcePhiCopyTraceError {
     InvalidBlockEffect,
     /// A source-block visit skipped or reordered a required effect cell.
     MissingBlockEffect,
+    /// An effect site executed twice without a new source-block visit.
+    RepeatedBlockEffect,
     /// A reached branch did not materialize its Boolean before departure.
     MissingBranchCondition,
     /// A copy source had no earlier, actual source-placed guest data write.
@@ -695,11 +697,23 @@ fn verify_source_block_entries(
     Ok(())
 }
 
+// A physical store must use the exact source-placed destination and, when
+// source-known, write its literal word rather than merely execute p or *.
+fn source_store_effect_matches(
+    step: &ProfileStepTrace,
+    destination: u32,
+    literal: Option<u32>,
+) -> bool {
+    matches!(step.decoded, Some(b'p' | b'*'))
+        && step.before.registers.data_pointer == destination
+        && literal.is_none_or(|word| step.after.registers.accumulator == word)
+}
+
 // Once a source block is reached, each source-authenticated effect address
-// must physically execute, in canonical operation/effect order, before that
-// visit leaves the block. Setup may loop or revisit earlier cells, but may
-// not skip the sole required site. A reached address alone cannot establish
-// that the decoded instruction realizes the source operation's semantics.
+// must physically execute exactly once, in canonical order, per block visit.
+// Intra-block setup may loop, but cannot repeat source operations. A canonical
+// control-suffix backedge starts a new visit even though it remains within the
+// same block interval. Reached addresses alone cannot prove source semantics.
 fn verify_source_block_effect_visits(
     blocks: &[GuestCodeBlockPlacement],
     effects: &[GuestCodeOperationEffectSite],
@@ -742,51 +756,59 @@ fn verify_source_block_effect_visits(
             continue;
         };
         let visit_start = index;
+        let mut previous = code;
+        index += 1;
         while steps.get(index).is_some_and(|next| {
-            (block.start..block.end_exclusive)
-                .contains(&next.before.registers.code_pointer)
+            let next_code = next.before.registers.code_pointer;
+            (block.start..block.end_exclusive).contains(&next_code)
+                && !is_same_block_source_backedge(block, previous, next_code)
         }) {
+            previous = steps
+                .get(index)
+                .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?
+                .before
+                .registers
+                .code_pointer;
             index += 1;
         }
         let visit = steps
             .get(visit_start..index)
             .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
-        let mut after = 0;
-        for effect in effects.iter().filter(|effect| {
+        let mut required = effects.iter().filter(|effect| {
             (effect.function, effect.block) == (block.function, block.block)
-        }) {
-            let Some(reached) = visit.get(after..).and_then(|remaining| {
-                remaining.iter().position(|reached| {
-                    reached.before.registers.code_pointer == effect.code_address
-                })
-            }) else {
+        });
+        for reached in visit {
+            let site = reached.before.registers.code_pointer;
+            if !effects.iter().any(|effect| {
+                (effect.function, effect.block, effect.code_address)
+                    == (block.function, block.block, site)
+            }) {
+                continue;
+            }
+            let effect = required
+                .next()
+                .ok_or(SourcePhiCopyTraceError::RepeatedBlockEffect)?;
+            if site != effect.code_address {
                 return Err(SourcePhiCopyTraceError::MissingBlockEffect);
-            };
-            let step = visit
-                .get(after + reached)
-                .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
+            }
             let correct_effect = match effect.effect {
                 GuestCodeOperationEffect::Input { .. } => {
-                    step.decoded == Some(b'/')
+                    reached.decoded == Some(b'/')
                 },
                 GuestCodeOperationEffect::Output { .. } => {
-                    step.decoded == Some(b'<')
+                    reached.decoded == Some(b'<')
                 },
                 GuestCodeOperationEffect::Store { destination, literal } => {
-                    matches!(step.decoded, Some(b'p' | b'*'))
-                        && step.before.registers.data_pointer == destination
-                        && literal.is_none_or(|word| {
-                            step.after.registers.accumulator == word
-                        })
+                    source_store_effect_matches(reached, destination, literal)
                 },
                 GuestCodeOperationEffect::Compute => true,
             };
             if !correct_effect {
                 return Err(SourcePhiCopyTraceError::InvalidBlockEffect);
             }
-            after = after
-                .checked_add(reached + 1)
-                .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
+        }
+        if required.next().is_some() {
+            return Err(SourcePhiCopyTraceError::MissingBlockEffect);
         }
     }
     Ok(())

@@ -28,6 +28,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Exact source-effect counts across physical revisits (2026-11-23)
+
+The opt-in strongest source CFG trace gate now partitions physical code
+visits at declared control-suffix self-backedges, not only changes to a
+different block interval. Every reached visit must execute each ordered,
+source-authenticated effect site **exactly once**. Returning to a setup
+position inside the block is not a source iteration: repeating an effect
+site there refuses `RepeatedBlockEffect` rather than borrowing an earlier
+occurrence. This preserves the distinction between a source CFG iteration
+and an untrusted guest instruction loop.
+
+Two real N15 observations isolate the previously admitted gaps. A
+four-step terminating `o, o, o, v` guest executes both declared Compute
+anchors once and passes. A six-step terminating guest executes
+C0, C1, C2, C1, C2, C10, with real indirect jumps at both C2 visits and
+the source site at C1 reached twice without leaving the block. It now
+refuses the duplicate C1 anchor. A separate four-step `o, o, i, o`
+bounded prefix jumps from C2 back to its block's C0 entry, starting an
+incomplete second visit and refusing the missing C1 effect. Only that
+second negative is a **bounded VM prefix**; a full run is still required
+by the public strongest gate. These are operation-site provenance checks,
+not C arithmetic, source return or a complete guest checksum. The
+unchanged C23 source still refuses unlinked physical operations, parallel
+phi writes, branching and EOF loop.
+Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Source CFG self-backedge control authentication (2026-11-23)
 
 The strongest opt-in physical source CFG exit, entry and branch checks now

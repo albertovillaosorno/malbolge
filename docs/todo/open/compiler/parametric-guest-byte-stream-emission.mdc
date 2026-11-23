@@ -41,6 +41,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest physical source CFG effect-order gate now enforces
+**once-per-visit** source operation effect sites, splitting new visits at
+control-suffix self-backedges even when the physical code interval stays
+the same. Real N15 terminating and bounded-prefix traces distinguish a
+valid single visit from an interior-loop duplicate and an incomplete
+second self-edge iteration. The original C23 checksum still cannot link
+physical C operations, phi writes, branching or EOF loop, and published
+guest parity remains unproven. See the P2 contract and
+`tests/compiler/source_phi_copy_trace.rs`.
+
 The strongest source physical CFG gate now treats a real control-suffix
 backjump to the same source block's entry as a source edge, not inert
 intra-block movement. A three-step N15 `p`, `i`, reentry trace rejects

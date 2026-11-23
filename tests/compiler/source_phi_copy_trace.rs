@@ -1946,6 +1946,223 @@ fn real_guest_cannot_skip_source_operation_inside_same_block()
     Ok(())
 }
 
+// An interior setup jump can execute the same canonical operation effect
+// twice without crossing a source CFG edge. Source effect sites are not a
+// license for repeated I/O or arithmetic inside a single block visit.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "frozen real N15 instruction reentry and exact site counts"
+)]
+fn real_guest_repeated_source_effect_needs_a_new_block_visit()
+-> Result<(), String> {
+    let trace = |repeat: bool| -> Result<Vec<ProfileStepTrace>, String> {
+        let mut source = (0..59)
+            .map(|site| graphical(site, b'o'))
+            .collect::<Result<Vec<_>, _>>()?;
+        for (site, opcode) in [
+            (0, b'o'),
+            (1, b'o'),
+            (
+                2,
+                if repeat {
+                    b'i'
+                } else {
+                    b'o'
+                },
+            ),
+            (
+                3,
+                if repeat {
+                    b'o'
+                } else {
+                    b'v'
+                },
+            ),
+            (10, b'v'),
+        ] {
+            source[site] = graphical(site, opcode)?;
+        }
+        let profile = current_profile();
+        let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+            .map_err(|error| format!("repeated effect loader: {error:?}"))?;
+        let mut memory = loaded.memory().to_vec();
+        memory[72] = 0; // First C2 i reaches C1 inside the source block.
+        memory[74] = 9; // Second C2 i reaches C10, which already contains v.
+        let mut machine = ProfileMachine::from_state(
+            profile,
+            memory,
+            Vec::new(),
+            malbolge::ProfileRegisters {
+                accumulator: profile.eof_word(),
+                code_pointer: 0,
+                data_pointer: 70,
+            },
+        )
+        .map_err(|error| format!("repeated effect guest: {error:?}"))?;
+        let mut steps = Vec::new();
+        let outcome = machine
+            .run_traced(8, &mut |step| steps.push(*step))
+            .map_err(|error| {
+                format!(
+                    "repeated effect run: {error:?}; steps: {:?}",
+                    steps
+                        .iter()
+                        .map(|s| (
+                            s.before.registers.code_pointer,
+                            s.decoded,
+                            s.before.registers.data_pointer,
+                            s.after.registers.code_pointer,
+                        ))
+                        .collect::<Vec<_>>()
+                )
+            })?;
+        let expected = if repeat {
+            vec![0, 1, 2, 1, 2, 10]
+        } else {
+            vec![0, 1, 2, 3]
+        };
+        assert_eq!(
+            steps
+                .iter()
+                .map(|step| step.before.registers.code_pointer)
+                .collect::<Vec<_>>(),
+            expected,
+        );
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: if repeat {
+                6
+            } else {
+                4
+            },
+        });
+        Ok(steps)
+    };
+    let blocks = [
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 0,
+            start: 0,
+            end_exclusive: 3,
+            control_start: 2,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 1,
+            start: 3,
+            end_exclusive: 4,
+            control_start: 3,
+        },
+    ];
+    let effects = [
+        GuestCodeOperationEffectSite {
+            function: 0,
+            block: 0,
+            code_address: 0,
+            effect: GuestCodeOperationEffect::Compute,
+            ordinal: 0,
+        },
+        GuestCodeOperationEffectSite {
+            function: 0,
+            block: 0,
+            code_address: 1,
+            effect: GuestCodeOperationEffect::Compute,
+            ordinal: 1,
+        },
+    ];
+    let once = trace(false)?;
+    let repeated = trace(true)?;
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &effects, &once),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &effects, &repeated),
+        Err(SourcePhiCopyTraceError::RepeatedBlockEffect)
+    );
+    Ok(())
+}
+
+// A control-suffix self-backedge starts a fresh source-block iteration even
+// though the VM's code pointer never leaves that block's address interval.
+// A bounded prefix ends at reentered C0, before C1's required effect.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "actual four-step self-modifying N15 guest and fresh-visit check"
+)]
+fn real_guest_self_backedge_rechecks_all_source_effect_sites()
+-> Result<(), String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    source[0] = graphical(0, b'o')?;
+    source[1] = graphical(1, b'o')?;
+    source[2] = graphical(2, b'i')?;
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("iteration loader: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    memory[72] = u32::try_from(memory.len())
+        .map_err(|error| format!("guest capacity: {error:?}"))?
+        - 1;
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("iteration guest: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(4, &mut |step| steps.push(*step))
+        .map_err(|error| format!("iteration run: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::BudgetExhausted { steps: 4 });
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 0],
+    );
+    assert_eq!(steps[3].decoded, Some(b'+'));
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 3,
+        control_start: 2,
+    }];
+    let effects = [
+        GuestCodeOperationEffectSite {
+            function: 0,
+            block: 0,
+            code_address: 0,
+            effect: GuestCodeOperationEffect::Compute,
+            ordinal: 0,
+        },
+        GuestCodeOperationEffectSite {
+            function: 0,
+            block: 0,
+            code_address: 1,
+            effect: GuestCodeOperationEffect::Compute,
+            ordinal: 1,
+        },
+    ];
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &effects, &steps),
+        Err(SourcePhiCopyTraceError::MissingBlockEffect)
+    );
+    Ok(())
+}
+
 // An actual `v` in an earlier source control suffix can halt without
 // traversing the source Return block. All earlier source effects are present,
 // so ordinary block visitation and edge checks alone cannot reject it.
