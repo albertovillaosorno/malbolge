@@ -320,3 +320,36 @@ fn eighth_rotation_requires_the_original_input_write() -> Result<(), String> {
     assert_eq!(vm.output(), []);
     Ok(())
 }
+
+// Necessary, local source-code constraint, not a proof that other linker
+// layouts cannot route around C67. A C48 physical write sees the C44 p result
+// in A, so both candidate M67 effects use the exact source-locked operand.
+#[test]
+fn single_c48_mutation_cannot_restore_a_valid_ninth_rotation_code_site() {
+    let profile = current_profile();
+    let classes = (0u32..=255).chain(once(profile.eof_word()));
+    let mutated = classes
+        .map(|raw| {
+            let saved = scalar_crazy(EXACT_DATA_SEED, raw);
+            let second = scalar_crazy(7_174_404, saved);
+            let changed_c67 = scalar_crazy(125, second);
+            decode_profile_instruction(changed_c67, 67)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(mutated.len(), 257);
+    assert_eq!(
+        mutated.iter().filter(|opcode| opcode.is_none()).count(),
+        256
+    );
+    assert_eq!(
+        mutated
+            .iter()
+            .filter(|opcode| **opcode == Some(b'p'))
+            .count(),
+        1
+    );
+    // One C48 rotation overwrites the fixed pointer source as well, but its
+    // new C67 code word does not decode to any valid guest instruction.
+    assert_eq!(scalar_rotate(125), 9_565_979);
+    assert_eq!(decode_profile_instruction(scalar_rotate(125), 67), None);
+}

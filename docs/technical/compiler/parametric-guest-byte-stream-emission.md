@@ -167,6 +167,14 @@ the correctly signed converter are still unsolved. The regression checks
 each physical M95 rotation and each final pointer reset against an independent
 15-trit scalar rotation oracle, not a host-created memory snapshot.
 
+A separate necessary, **fixed-prefix-only** C48 code mutation census keeps
+source C67=125 as the earlier M126 pointer: using a physical `*` at C48
+would rotate M67 to 9,565,979, invalid when fetched as C67 code. Using `p`
+would make C67 invalid for 256 of the 257 input/EOF classes, with only one
+class producing opcode `p`. Thus neither one-cell C48 mutation supplies a
+uniform ninth-rotation continuation. This does not rule out a relocated
+assembler or a different code/data pointer chain.
+
 ### Width-aware typed shift-result checks (2026-11-23)
 
 The strict opt-in source-computation verifier now interprets integer
