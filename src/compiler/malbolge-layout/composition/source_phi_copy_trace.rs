@@ -37,10 +37,11 @@ use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, current_profile,
 };
 
+use super::source_input_trace::{SourceInputProbe, SourceInputTraceError};
 use super::typed_cfg_adapter::state_relocation::{
     GuestAddressedCfgPlan, GuestCodeBlockPlacement, GuestCodeControlEdge,
     GuestCodeEdgeKind, GuestCodeEffectAnchor, GuestCodeFunctionEntry,
-    GuestCodeOperationAnchor, GuestCodeOperationEffect,
+    GuestCodeInputAnchor, GuestCodeOperationAnchor, GuestCodeOperationEffect,
     GuestCodeOperationEffectSite, GuestCodePhiCopyAnchor,
     GuestCodePhiCopyPlacement, GuestCodeProposals, GuestCodeReturnSite,
     GuestPlacedCellCopy,
@@ -98,6 +99,8 @@ pub enum SourcePhiCopyTraceError {
     MissingComputationOperand,
     /// A source-placed computed value differs from exact typed arithmetic.
     InvalidComputationValue,
+    /// Real source input failed its independent typed store and dataflow gate.
+    InvalidSourceInputResult(SourceInputTraceError),
     /// Strict computation mode cannot interpret this typed operation.
     UnsupportedComputation,
     /// A reached branch did not materialize its Boolean before departure.
@@ -522,7 +525,8 @@ impl SourcePhiCopyProbe<'_> {
     /// # Errors
     ///
     /// Refuses all ordinary CFG/phi errors plus absent source operands,
-    /// unsupported computations and wrong physical result words.
+    /// unsupported computations, wrong physical result words, and input
+    /// effects without genuine source-typed, input-dependent SSA stores.
     pub fn verify_with_source_computations(
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
@@ -700,6 +704,45 @@ impl SourcePhiCopyProbe<'_> {
                 &plan.relocated.state_placements,
                 &steps,
             )?;
+            // The CFG/effect gate alone authenticates the physical `/` site,
+            // not its source-typed result. In particular, raw N15 EOF cannot
+            // stand in for unsigned-byte input, and signed C23 getchar must
+            // physically write both canonical result cells. Reuse the
+            // independent input-state/dataflow witness, source-locked by the
+            // same fully validated anchors, instead of trusting the host's
+            // trace observations or just a matching register word.
+            let input_anchors = plan
+                .operation_effect_sites
+                .iter()
+                .filter_map(|site| {
+                    matches!(
+                        site.effect,
+                        GuestCodeOperationEffect::Input { .. }
+                    )
+                    .then_some(GuestCodeInputAnchor {
+                        block: site.block,
+                        code_address: site.code_address,
+                        function: site.function,
+                        ordinal: site.ordinal,
+                    })
+                })
+                .collect::<Vec<_>>();
+            if !input_anchors.is_empty() {
+                let _input_proof = SourceInputProbe {
+                    anchors: &input_anchors,
+                    canonical: self.canonical,
+                    frame_base: self.frame_base,
+                    input: self.input,
+                    physical_source: self.physical_source,
+                    step_budget: self.step_budget,
+                }
+                .verify_stored_with_effect_anchors(
+                    self.proposals,
+                    self.operation_anchors,
+                    self.effect_anchors,
+                )
+                .map_err(SourcePhiCopyTraceError::InvalidSourceInputResult)?;
+            }
         }
         Ok(proof)
     }

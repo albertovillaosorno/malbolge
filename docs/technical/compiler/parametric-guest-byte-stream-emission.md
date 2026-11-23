@@ -94,6 +94,29 @@ preserving defined negative results and u32 wrapping. The full seven-block
 C23 checksum remains unlinked and no executable source-C guest is published.
 Regression: `tests/compiler/source_computation_trace.rs`.
 
+### Strict CFG input-state composition (2026-11-23)
+
+The strongest `SourcePhiCopyProbe::verify_with_source_computations`
+now composes the existing independent, source-locked input-result store gate
+**when its authenticated physical plan contains a source input effect**.
+That stage already proves each real `/` occurs at the source-required site,
+checks signed C23 two-cell EOF conversion or unsigned-byte input semantics,
+and replays real `p`/`*` stores at the exact effect anchors with guest
+input-dependence. A full CFG trace cannot promote an input opcode alone into
+a source-C value. The narrower CFG-only and phi-copy studies retain their
+explicitly limited contracts.
+
+A red-first current-N15 13-step byte-input/store/return guest previously
+passed the strongest numerical/CFG gate even with **empty input**: raw N15
+EOF was treated as a valid source `ByteInput` event. The strict gate now
+refuses `InvalidSourceInputResult(SourceInputUnreachable)`. The exact same
+source-placed physical bytes still pass the composed gate for byte 0 and
+byte 255, with a genuine input-dependent M55 result write. Source input
+path/stored-result verification is reused, not reimplemented or inferred
+from matching output. This does **not** prove arithmetic operand provenance,
+produce a linked C23 EOF checksum, or publish any guest artifact.
+Regression: `tests/compiler/source_input_cfg_order.rs`.
+
 ### Opt-in source computation result authentication (2026-11-23)
 
 `SourcePhiCopyProbe::verify_with_source_computations` extends the strongest

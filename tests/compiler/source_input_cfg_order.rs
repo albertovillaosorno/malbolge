@@ -2217,3 +2217,88 @@ fn explicit_output_anchors_require_reached_guest_output_site()
     assert_eq!(current_profile().input_instruction(), b'/');
     Ok(())
 }
+
+// The strict source CFG checker must compose the existing input-result
+// verifier. A real `/` at its source site is not enough: unsigned byte input
+// has no source path for EOF, and the reached guest must authenticate the
+// actual SSA store rather than accepting arbitrary rotated/crazy state.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "one pinned physical N15 guest and source-typed input replay"
+)]
+fn complete_cfg_strict_mode_checks_source_input_result_materialization()
+-> Result<(), String> {
+    use super::super::source_phi_copy_trace::{
+        SourcePhiCopyProbe, SourcePhiCopyTraceError,
+    };
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeEffectAnchor,
+        GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+
+    let physical = b"DCBA@?>n~5|3Ex6";
+    let wire = single_byte_input_wire()?;
+    let blocks = [GuestCodeBlockPlacement {
+        block: 0,
+        control_start: 12,
+        end_exclusive: 13,
+        function: 0,
+        start: 0,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operations = [GuestCodeOperationAnchor {
+        block: 0,
+        code_address: 7,
+        function: 0,
+        ordinal: 0,
+    }];
+    let effects = [GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 11,
+        effect_index: 1,
+        function: 0,
+        ordinal: 0,
+    }];
+    for stream in [&[0u8][..], &[255u8, 10][..]] {
+        let probe = SourcePhiCopyProbe {
+            canonical: &wire,
+            effect_anchors: &effects,
+            frame_base: 55,
+            input: stream,
+            operation_anchors: &operations,
+            physical_source: physical,
+            proposals,
+            step_budget: 13,
+        };
+        assert_eq!(
+            probe.verify_with_source_computations(&[]),
+            Ok(super::super::source_phi_copy_trace::SourcePhiCopyProof {
+                completed_pads: 0,
+                copies: vec![],
+            }),
+            "guest must materialize an actual source byte from {stream:?}"
+        );
+    }
+    let at_eof = SourcePhiCopyProbe {
+        canonical: &wire,
+        effect_anchors: &effects,
+        frame_base: 55,
+        input: &[],
+        operation_anchors: &operations,
+        physical_source: physical,
+        proposals,
+        step_budget: 13,
+    };
+    assert_eq!(
+        at_eof.verify_with_source_computations(&[]),
+        Err(SourcePhiCopyTraceError::InvalidSourceInputResult(
+            SourceInputTraceError::SourceInputUnreachable,
+        )),
+        "source ByteInput cannot silently store the raw EOF sentinel"
+    );
+    Ok(())
+}
