@@ -28,6 +28,33 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Combined source output and physical input-store gate (2026-11-23)
+
+The opt-in `verify_output_and_stored_with_effect_anchors` gate now requires
+both source-known byte output at the authenticated physical `<` address and
+input-dependent writes to every source-reserved guest result word at its
+individually anchored physical `p`/`*` instruction site. The two separate
+normative VM replays use the same graphical source, binary input and finite
+step budget; the store replay must agree on termination, input consumption
+and output. Neither source-output equality alone nor matching guest memory
+without a reached source store site can satisfy this combined contract.
+
+A frozen, source-loaded 63-cell N15 guest executes `/` at C13, a genuine
+byte-dependent `p` store into M73 at C17 and `<` at C24 before halting at
+C60. The one-byte typed source function contains `ByteInput` followed by
+`ByteOutput` of that SSA value. NUL, `0xff` and `0x49` pass with exact byte
+output and independently verified store word; extra supplied input is left
+unread. Relocating only the store effect anchor to C16 rejects with
+`UnexpectedGuestStoreSite`. Shifting the physical output from C24 to C23
+preserves the input-dependent state store and byte output, but the combined
+gate rejects `UnexpectedGuestOutput`. Removing C24's output entirely refuses
+`SourceOutputNotProven`; real EOF on the U8 source refuses
+`SourceInputUnreachable`. This extends the real guest witness
+from separated I/O and state obligations to their conjunction, not source
+operand-use authentication, signed C23 EOF conversion, guest arithmetic,
+phi transfer, reusable loops or original mutable checksum publication.
+Regression: `tests/compiler/source_input_cfg_order.rs`.
+
 ### Source-authenticated sparse input/store effects (2026-11-23)
 
 The source-locked physical planner can now bind individual required guest

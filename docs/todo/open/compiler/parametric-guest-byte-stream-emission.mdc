@@ -75,6 +75,17 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 a unified opt-in verifier now requires source-known output
+  from an authenticated reached `<` instruction **and** real input-dependent
+  `p`/`*` stores at source-placed frame effect addresses in the same bounded
+  N15 guest. A frozen 63-cell one-byte input/store/output guest passes NUL,
+  high-byte and `0x49` streams with an exact M73 write from C17 and output
+  from C24. Forged store placement at C16 and physically shifted output at
+  C23 refuse independently despite matching words and bytes. Omitting
+  the required output and treating true EOF as a U8 also refuse. No signed
+  C23 EOF store, full checksum arithmetic or physical CFG/loop linkage is
+  claimed.
+  See `tests/compiler/source_input_cfg_order.rs` and the active contract.
 - On 2026-11-23 source-typed individual effect anchors can reserve setup
   gaps between a real input and its guest result stores without relaxing
   operation order or disjoint CFG code reservations. The opt-in source

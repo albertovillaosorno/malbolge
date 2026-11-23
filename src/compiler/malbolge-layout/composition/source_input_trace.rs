@@ -993,6 +993,24 @@ impl SourceInputProbe<'_> {
     }
 }
 
+// Preserve both source output/value and exact guest output-site checks
+// when the physical state verifier subsequently replays the same program.
+// This is still a necessary-condition gate, not full source dataflow.
+pub(super) fn verify_source_input_site_output_with_effect_anchors(
+    probe: SourceInputProbe<'_>,
+    proposals: GuestCodeProposals<'_>,
+    operation_anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+    let proof = verify_source_input_site_trace(
+        probe,
+        true,
+        Some((proposals, operation_anchors, effect_anchors)),
+        true,
+    )?;
+    verify_source_output_path(probe, proof)
+}
+
 /// Verify a physically halted guest input trace can reach a return in the
 /// authenticated source CFG without any additional source input operation.
 ///

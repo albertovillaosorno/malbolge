@@ -37,7 +37,8 @@ use malbolge::{ProfileMachine, ProfileStepTrace, TraceInput, current_profile};
 
 use super::source_input_trace::{
     SourceInputPrefixProof, SourceInputProbe, SourceInputSiteObservation,
-    SourceInputTraceError, verify_source_input_site_return_compatible,
+    SourceInputTraceError, verify_source_input_site_output_with_effect_anchors,
+    verify_source_input_site_return_compatible,
 };
 use super::typed_cfg_adapter::state_relocation::{
     GuestCodeEffectAnchor, GuestCodeInputSemantics, GuestCodeOperationAnchor,
@@ -455,6 +456,41 @@ impl SourceInputProbe<'_> {
         let prefix =
             self.verify_return_with_operation_anchors(proposals, anchors)?;
         verify_source_input_stored_prefix(self, prefix)
+    }
+
+    /// Require both source-compatible output at its actual guest code site
+    /// and real input-dependent SSA frame writes at their exact effect sites.
+    ///
+    /// Both obligations apply to the same physical source and byte stream;
+    /// two independent normative VM passes must agree on the complete trace
+    /// outcome and output. This is not a proof of physical CFG linkage, guest
+    /// arithmetic, or arbitrary source output-operand dataflow.
+    ///
+    /// # Errors
+    ///
+    /// Refuses unmatched source output, off-site physical output or frame
+    /// writes, missing input dependence, and every return/input error.
+    pub fn verify_output_and_stored_with_effect_anchors(
+        self,
+        proposals: GuestCodeProposals<'_>,
+        operation_anchors: &[GuestCodeOperationAnchor],
+        effect_anchors: &[GuestCodeEffectAnchor],
+    ) -> Result<SourceInputStoredProof, SourceInputTraceError> {
+        let prefix = verify_source_input_site_output_with_effect_anchors(
+            self,
+            proposals,
+            operation_anchors,
+            effect_anchors,
+        )?;
+        let proof = verify_source_input_stored_prefix(self, prefix)?;
+        verify_source_input_store_effect_sites(
+            self,
+            proposals,
+            operation_anchors,
+            effect_anchors,
+            &proof,
+        )?;
+        Ok(proof)
     }
 
     /// Require that each physical input-result write executes at its exact

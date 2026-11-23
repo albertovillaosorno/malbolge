@@ -1095,10 +1095,18 @@ fn two_input_byte_output_wire() -> Result<Vec<u8>, String> {
     canonical_bytes(&module).map_err(|error| format!("canonical: {error:?}"))
 }
 
-// This typed function owns one U8 result and no host-produced output.
-// Its source-backed byte store can be tested against an actual N15 p/p
-// identity rather than only a minimum code reservation.
+// One canonical typed U8 input optionally followed by its byte output.
+// Its source-placed effects can be verified against genuine N15 operations
+// rather than only necessary minimum code reservations.
 fn single_byte_input_wire() -> Result<Vec<u8>, String> {
+    single_byte_program_wire(false)
+}
+
+fn single_byte_input_output_wire() -> Result<Vec<u8>, String> {
+    single_byte_program_wire(true)
+}
+
+fn single_byte_program_wire(with_output: bool) -> Result<Vec<u8>, String> {
     use super::super::typed_cfg_adapter::typed::{
         BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
         FunctionSpec, Instruction, LocatedInstruction, Module, ModuleSpec,
@@ -1110,6 +1118,19 @@ fn single_byte_input_wire() -> Result<Vec<u8>, String> {
         SourcePosition::new(1, 1, 2),
     );
     let byte_type = TypeId::new(0);
+    let mut instructions = vec![LocatedInstruction::new(
+        Instruction::ByteInput {
+            result: ValueId::new(0),
+            type_id: byte_type,
+        },
+        span,
+    )];
+    if with_output {
+        instructions.push(LocatedInstruction::new(
+            Instruction::ByteOutput { value: ValueId::new(0) },
+            span,
+        ));
+    }
     let module = Module::new(ModuleSpec {
         abi_id: String::from("malbolge-c32-v1"),
         format_version:
@@ -1117,13 +1138,7 @@ fn single_byte_input_wire() -> Result<Vec<u8>, String> {
         functions: vec![Function::new(FunctionSpec {
             blocks: vec![BasicBlock::new(BasicBlockSpec {
                 id: BlockId::new(0),
-                instructions: vec![LocatedInstruction::new(
-                    Instruction::ByteInput {
-                        result: ValueId::new(0),
-                        type_id: byte_type,
-                    },
-                    span,
-                )],
+                instructions,
                 phis: Vec::new(),
                 span,
                 terminator: Terminator::Return { value: None },
@@ -1131,15 +1146,27 @@ fn single_byte_input_wire() -> Result<Vec<u8>, String> {
             })],
             entry: BlockId::new(0),
             id: FunctionId::new(0),
-            name: String::from("single_byte_input"),
+            name: String::from(if with_output {
+                "single_byte_input_output"
+            } else {
+                "single_byte_input"
+            }),
             parameters: Vec::new(),
             signature: TypeId::new(1),
             span,
         })],
         globals: Vec::new(),
         proof_obligations: Vec::new(),
-        source_id: String::from("fixtures/single-byte-input.c"),
-        source_sha256: [0x53; 32],
+        source_id: String::from(if with_output {
+            "fixtures/single-byte-input-output.c"
+        } else {
+            "fixtures/single-byte-input.c"
+        }),
+        source_sha256: if with_output {
+            [0x54; 32]
+        } else {
+            [0x53; 32]
+        },
         target_profile: String::from("malbolge-2026"),
         types: vec![
             TypeEntry::new(byte_type, TypeDef::U8),
@@ -1287,6 +1314,189 @@ fn actual_guest_byte_store_requires_its_source_effect_address()
         ),
         Err(SourceInputTraceError::SourceInputUnreachable),
         "unsigned-byte source paths cannot read true EOF",
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one physical guest and two negative placement cases"
+)]
+fn real_guest_byte_store_and_source_output_require_both_effect_sites()
+-> Result<(), String> {
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeEffectAnchor, GuestCodeInputAnchor,
+        GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+    use super::{SourceInputProbe, SourceInputTraceError};
+
+    // Frozen source-loaded N15 guest derived from the independent
+    // byte-exact two-read/reentry generator, with C25/C26 replaced by
+    // graphical no-ops. These suppress the helper's extra read/output.
+    // The original C13 input, C17 exact p store at M73 and C24 echo remain.
+    let physical =
+        b"DCBA@?>=<;:98hx/v-210/p-K+*)ji&%$#\"!~}|{zyxwvutsrqponmlkjihgs%H";
+    let wire = single_byte_input_output_wire()?;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 61,
+        control_start: 60,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operations = [
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 13,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 24,
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    let effects = [GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 17,
+        effect_index: 1,
+        function: 0,
+        ordinal: 0,
+    }];
+    let inputs = [GuestCodeInputAnchor {
+        block: 0,
+        code_address: 13,
+        function: 0,
+        ordinal: 0,
+    }];
+    for stream in [&[0u8][..], &[255, 19][..], &[73, 255][..]] {
+        let probe = SourceInputProbe {
+            anchors: &inputs,
+            canonical: &wire,
+            frame_base: 73,
+            input: stream,
+            physical_source: physical,
+            step_budget: 61,
+        };
+        let proof = probe
+            .verify_output_and_stored_with_effect_anchors(
+                proposals,
+                &operations,
+                &effects,
+            )
+            .map_err(|error| format!("physical byte {stream:?}: {error:?}"))?;
+        let first_byte = *stream.first().ok_or("missing first input byte")?;
+        let cell = proof
+            .stores
+            .first()
+            .and_then(|store| store.cells.first())
+            .ok_or("missing verified guest result word")?;
+        assert_eq!(proof.prefix.bytes_consumed, 1, "one physical read");
+        assert_eq!(proof.prefix.guest_output, [first_byte], "guest echo");
+        assert_eq!(cell.code_address, 17, "reached source store opcode");
+        assert_eq!(cell.address, 73, "source result word");
+        assert_eq!(cell.value, u32::from(first_byte), "guest input word");
+    }
+    let probe = SourceInputProbe {
+        anchors: &inputs,
+        canonical: &wire,
+        frame_base: 73,
+        input: &[37],
+        physical_source: physical,
+        step_budget: 61,
+    };
+    assert_eq!(
+        probe.verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &[GuestCodeEffectAnchor {
+                code_address: 16,
+                ..effects[0]
+            }],
+        ),
+        Err(SourceInputTraceError::UnexpectedGuestStoreSite),
+    );
+    // Source-compatible byte output and even genuine input-dependent
+    // frame storage are insufficient if the reached < instruction has
+    // moved away from the authenticated ByteOutput operation at C24.
+    let mut shifted = physical.to_vec();
+    for (address, opcode) in [(23usize, b'<'), (24, b'o')] {
+        let encoded = (33..=126u8)
+            .find(|byte| {
+                malbolge::decode_profile_instruction(
+                    u32::from(*byte),
+                    u32::try_from(address).unwrap_or(u32::MAX),
+                ) == Some(opcode)
+            })
+            .ok_or("graphical output shift missing")?;
+        *shifted.get_mut(address).ok_or("output address absent")? = encoded;
+    }
+    let shifted_probe = SourceInputProbe {
+        physical_source: &shifted,
+        ..probe
+    };
+    let shifted_store = shifted_probe
+        .verify_stored_with_effect_anchors(proposals, &operations, &effects)
+        .map_err(|error| format!("shifted output kept store: {error:?}"))?;
+    assert_eq!(
+        shifted_store
+            .stores
+            .first()
+            .and_then(|store| store.cells.first())
+            .map(|cell| cell.value),
+        Some(37),
+        "wrong output site must not invalidate real input storage",
+    );
+    assert_eq!(
+        shifted_probe.verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        ),
+        Err(SourceInputTraceError::UnexpectedGuestOutput),
+    );
+    // A physically stored result cannot excuse an omitted source output.
+    // C24 becomes an inert no-op; nothing else about the input or store
+    // provenance changes.
+    let mut silent = physical.to_vec();
+    let no_output = (33..=126u8)
+        .find(|byte| {
+            malbolge::decode_profile_instruction(u32::from(*byte), 24)
+                == Some(b'o')
+        })
+        .ok_or("graphical silent instruction missing")?;
+    *silent.get_mut(24).ok_or("source output cell absent")? = no_output;
+    let silent_probe = SourceInputProbe {
+        physical_source: &silent,
+        ..probe
+    };
+    assert_eq!(
+        silent_probe.verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        ),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+    );
+    // An unsigned source input does not reinterpret a real guest EOF
+    // sentinel as a successful byte even when the physical p path halts.
+    let eof_probe = SourceInputProbe { input: &[], ..probe };
+    assert_eq!(
+        eof_probe.verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        ),
+        Err(SourceInputTraceError::SourceInputUnreachable),
     );
     Ok(())
 }
