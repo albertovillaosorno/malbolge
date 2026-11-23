@@ -63,6 +63,7 @@ mod physical_reentry;
 mod signed_eof_branch_source;
 mod source_input_state_trace;
 mod source_input_trace;
+mod source_phi_copy_trace;
 mod zero_cell_source;
 
 pub use bounded_revisit::{
@@ -192,6 +193,11 @@ pub use signed_eof_branch_source::{
     build_two_input_class_state_with_guarded_third_read_source,
     build_two_input_eof_classified_echo_source,
     build_two_signed_guest_echo_source,
+};
+pub use source_phi_copy_trace::{
+    MAX_SOURCE_PHI_TRACE_CELLS, MAX_SOURCE_PHI_TRACE_STEPS,
+    SourcePhiCopyObservation, SourcePhiCopyProof, SourcePhiCopyTraceError,
+    SourcePhiCopyProbe,
 };
 pub use source_input_state_trace::{
     SourceInputStoreCell, SourceInputStoreObservation, SourceInputStoredProof,
