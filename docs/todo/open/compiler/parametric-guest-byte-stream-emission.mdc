@@ -41,6 +41,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The latest opt-in physical phi-pad transfer check (2026-11-23) now
+requires **each entered pad** to complete its own source-bound snapshot
+and commit sites. A 16-step real N15 guest with two complete pads passes;
+a 14-step guest that completes the first and skips every copy in the
+second reaches the same successor but is refused. The earlier checker
+incorrectly admitted the second path. Source exit/entry and phi ingress
+checks still pass both real paths. This is a bounded verifier repair, not
+physical linkage of the full seven-block C23 EOF checksum, which still
+fails closed before target publication. See the P2 compiler contract and
+`tests/compiler/source_phi_copy_trace.rs`.
+
 Retry one complete, input-dependent checksum with mutable locals,
 guest arithmetic, branching and EOF termination. Repair its first
 real failing stage and rerun that same program before adding more

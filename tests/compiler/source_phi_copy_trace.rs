@@ -33,6 +33,8 @@ use super::super::typed_cfg_adapter::state_relocation::{
 use super::*;
 
 type LinkedPhiState = (GuestCodeControlEdge, [GuestFramePlacement; 1]);
+type PhysicalTwoPadLayout =
+    ([GuestCodeControlEdge; 2], [GuestCodeBlockPlacement; 3]);
 
 fn graphical(site: usize, opcode: u8) -> Result<u8, String> {
     (33..=126u8)
@@ -1749,6 +1751,254 @@ fn real_guest_cannot_skip_source_operation_inside_same_block()
     assert_eq!(
         verify_source_block_effect_visits(&blocks, &reversed, &complete),
         Err(SourcePhiCopyTraceError::MissingBlockEffect)
+    );
+    Ok(())
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "fixed physical code sites"
+)]
+fn physical_two_phi_pad_source(skip: bool) -> Result<Vec<u8>, String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, b'p'),
+        (1, b'j'),
+        (2, b'p'),
+        (3, b'j'),
+        (4, b'p'),
+        (5, b'i'),
+        (
+            11,
+            if skip {
+                b'i'
+            } else {
+                b'j'
+            },
+        ),
+        (12, b'p'),
+        (13, b'p'),
+        (
+            14,
+            if skip {
+                b'j'
+            } else {
+                b'o'
+            },
+        ),
+        (16, b'i'),
+        (19, b'v'),
+    ] {
+        source[site] = graphical(site, opcode)?;
+    }
+    Ok(source)
+}
+
+fn physical_two_phi_pad_memory(
+    skip: bool,
+    source: &[u8],
+) -> Result<Vec<u32>, String> {
+    let loaded =
+        ProfileMachine::from_source(current_profile(), source, Vec::new())
+            .map_err(|error| format!("two-pad loader: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    for address in [70usize, 101, 120, 130, 131] {
+        *memory.get_mut(address).ok_or("missing phi frame")? = 7_174_453;
+    }
+    for (address, value) in [
+        (71, 100),
+        (102, 119),
+        (121, 7),
+        (
+            125,
+            if skip {
+                13
+            } else {
+                129
+            },
+        ),
+        (126, 140),
+        (134, 18),
+        (142, 18),
+    ] {
+        *memory.get_mut(address).ok_or("missing pointer seed")? = value;
+    }
+    Ok(memory)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "fixed normative guest trace"
+)]
+fn physical_two_phi_pad_trace(
+    skip: bool,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let profile = current_profile();
+    let source = physical_two_phi_pad_source(skip)?;
+    let memory = physical_two_phi_pad_memory(skip, &source)?;
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("two-pad state: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(20, &mut |step| steps.push(*step))
+        .map_err(|error| format!("two-pad VM: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: if skip {
+            14
+        } else {
+            16
+        },
+    });
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        if skip {
+            vec![0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 14, 15, 16, 19]
+        } else {
+            vec![0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 19]
+        }
+    );
+    Ok(steps)
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "fixed phi sites in source plan"
+)]
+fn physical_two_phi_pad_layout() -> Result<PhysicalTwoPadLayout, String> {
+    let (first, _frame) = linked_phi_edge()?;
+    let mut second = first.clone();
+    second.predecessor = 1;
+    second.successor = 2;
+    second.control_address = 10;
+    second.entry_address = 11;
+    second.pad_exit_address = Some(16);
+    second.target_address = 19;
+    second.snapshot_sites[0] = GuestCodeCellCopySite {
+        code_address: 12,
+        copy: GuestPlacedCellCopy {
+            destination: 130,
+            source: 120,
+        },
+    };
+    second.commit_sites[0] = GuestCodeCellCopySite {
+        code_address: 13,
+        copy: GuestPlacedCellCopy {
+            destination: 131,
+            source: 130,
+        },
+    };
+    second.snapshots[0] = second.snapshot_sites[0].copy;
+    second.commits[0] = second.commit_sites[0].copy;
+    Ok(([first, second], [
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 0,
+            start: 0,
+            end_exclusive: 2,
+            control_start: 1,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 1,
+            start: 8,
+            end_exclusive: 11,
+            control_start: 10,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 2,
+            start: 19,
+            end_exclusive: 20,
+            control_start: 19,
+        },
+    ]))
+}
+
+// A complete first pad must not authorize a later visited phi pad that jumps
+// across every source-required copy but still reaches its correct successor.
+// Both paths execute on the normative N15 VM with real pointer routing.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "fixed, real VM two-pad trace with checked code positions"
+)]
+fn real_guest_second_phi_pad_cannot_skip_all_its_copies() -> Result<(), String>
+{
+    let skipped = physical_two_phi_pad_trace(true)?;
+    let complete = physical_two_phi_pad_trace(false)?;
+    let (edges, blocks) = physical_two_phi_pad_layout()?;
+    for steps in [&complete, &skipped] {
+        assert_eq!(verify_source_block_exits(&blocks, &edges, steps), Ok(()));
+        assert_eq!(
+            verify_source_block_entries(
+                &blocks,
+                &edges,
+                &[GuestCodeFunctionEntry {
+                    block: 0,
+                    address: 0,
+                    function: 0,
+                }],
+                steps,
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            verify_predecessor_phi_entries(&blocks, &edges, steps),
+            Ok(())
+        );
+    }
+    let frame = [GuestFramePlacement {
+        base: 70,
+        end_exclusive: 151,
+        source_cells: 59,
+    }];
+    let effects = [initial_store(None)];
+    let context = || PhiTraceContext {
+        edges: &edges,
+        effects: &effects,
+        frames: &frame,
+    };
+    let proof = verify_traced_phi_copies_with_transfer_policy(
+        context(),
+        &complete,
+        true,
+    )
+    .map_err(|error| format!("complete two-pad transfer: {error:?}"))?;
+    assert_eq!(proof.completed_pads, 2);
+    assert_eq!(proof.copies.len(), 4);
+    // The deliberately weaker copy-only gate observes one complete pad.
+    assert_eq!(
+        verify_traced_phi_copies_with_transfer_policy(
+            context(),
+            &skipped,
+            false
+        )
+        .map(|observed| observed.completed_pads),
+        Ok(1)
+    );
+    // Strong CFG linkage must account for *every* physically entered pad.
+    assert_eq!(
+        verify_traced_phi_copies_with_transfer_policy(
+            context(),
+            &skipped,
+            true
+        ),
+        Err(SourcePhiCopyTraceError::InvalidPhiOrder)
     );
     Ok(())
 }

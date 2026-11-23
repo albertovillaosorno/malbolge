@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical phi-pad completion on every visit (2026-11-23)
+
+The stronger opt-in physical phi transfer/ingress/CFG gates now account for
+**every entered phi pad** in the normative guest trace, even if no declared
+copy site executes during that visit. Entering a second pad after one valid
+transfer cannot borrow the earlier pad's completion count. The guest must
+perform all required snapshot and commit sites in order exactly once per
+visit before leaving; missing copies or repeated completed copies refuse
+`InvalidPhiOrder`. The original copy-only gate intentionally retains its
+narrower reached-copy claim.
+
+A paired source-loaded N15 witness uses the same two source-positioned phi
+pads. Its 16-step path physically performs both snapshot/commit pairs and
+reaches the second declared successor. Its 14-step path performs the first
+pair, but physically jumps over *both* copy sites in the second pad before
+reaching the identical successor. Block exits, block entries, predecessor
+phi ingress and the older copy-only gate all accepted the second path;
+the stronger copy-transfer gate previously accepted it too. It now refuses,
+while the complete two-pad guest passes. This is still a necessary bounded
+CFG transfer obligation, **not** proof of source arithmetic, branch
+computation, source C23 checksum output or a generated full program. See
+`tests/compiler/source_phi_copy_trace.rs`.
+
 ### Reached source-block effect order and physical opcodes (2026-11-23)
 
 The strongest opt-in physical CFG verifier now checks **every visit** to a

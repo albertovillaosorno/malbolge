@@ -166,7 +166,9 @@ struct PhiTraceContext<'source> {
 
 #[derive(Default)]
 struct PhiTraceProgress {
+    active_pad: Option<usize>,
     completed_pads: usize,
+    completed_visit: bool,
     copies: Vec<SourcePhiCopyObservation>,
     materialized: BTreeMap<u32, u32>,
     pending_transfers: Vec<bool>,
@@ -198,6 +200,29 @@ impl PhiTraceProgress {
             })
         }) {
             return Err(SourcePhiCopyTraceError::InvalidPhiOrder);
+        }
+        Ok(())
+    }
+
+    // A completed copy elsewhere must not authorize a later pad visit that
+    // executes no copies at all. Track every physical pad entry independently
+    // of the partial-copy order already checked by `check_interleaving`.
+    fn check_pad_visit(
+        &mut self,
+        code_address: u32,
+        edges: &[GuestCodeControlEdge],
+    ) -> Result<(), SourcePhiCopyTraceError> {
+        let current = edges.iter().position(|edge| {
+            edge.pad_exit_address.is_some_and(|exit| {
+                (edge.entry_address..=exit).contains(&code_address)
+            })
+        });
+        if current != self.active_pad {
+            if self.active_pad.is_some() && !self.completed_visit {
+                return Err(SourcePhiCopyTraceError::InvalidPhiOrder);
+            }
+            self.active_pad = current;
+            self.completed_visit = false;
         }
         Ok(())
     }
@@ -264,7 +289,11 @@ impl PhiTraceProgress {
             .progress
             .get_mut(site.edge_index)
             .ok_or(SourcePhiCopyTraceError::InvalidSourcePlacement)?;
-        if *progress_at != site.ordinal {
+        if *progress_at != site.ordinal
+            || (require_transfer
+                && (self.active_pad != Some(site.edge_index)
+                    || self.completed_visit))
+        {
             return Err(SourcePhiCopyTraceError::InvalidPhiOrder);
         }
         if !matches!(step.decoded, Some(b'p' | b'*'))
@@ -299,6 +328,7 @@ impl PhiTraceProgress {
         if *progress_at == total {
             *progress_at = 0;
             if require_transfer {
+                self.completed_visit = true;
                 let pending =
                     self.pending_transfers.get_mut(site.edge_index).ok_or(
                         SourcePhiCopyTraceError::InvalidSourcePlacement,
@@ -942,6 +972,7 @@ fn verify_traced_phi_copies_with_transfer_policy(
         }
         if require_transfer {
             progress.check_pending_transfers(step, edges, &copies_by_code)?;
+            progress.check_pad_visit(code_address, edges)?;
         }
         progress.check_interleaving(code_address, edges, &copies_by_code)?;
         if let Some(site) = copies_by_code.get(&code_address) {
@@ -965,7 +996,11 @@ fn verify_traced_phi_copies_with_transfer_policy(
             )?;
         }
     }
-    if progress.progress.iter().any(|at| *at != 0) {
+    if progress.progress.iter().any(|at| *at != 0)
+        || (require_transfer
+            && progress.active_pad.is_some()
+            && !progress.completed_visit)
+    {
         return Err(SourcePhiCopyTraceError::InvalidPhiOrder);
     }
     if require_transfer && progress.pending_transfers.contains(&true) {
