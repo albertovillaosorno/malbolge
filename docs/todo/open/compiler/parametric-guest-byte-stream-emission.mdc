@@ -81,7 +81,9 @@ evidence describe the old priority scheme, not the current phase.
   source-placed Store or phi-copy code/destination pairs are required;
   literal Stores additionally demand the real post-step word, including
   idempotent writes. The existing VM replay is reused, and real N15
-  idempotent-site negatives pass. This is site and literal authentication,
+  idempotent-site negatives pass. A single 61-step real N15 input/store/
+  output guest also passes the combined gate for byte 37, independently of
+  the longer multi-vector regression. This is site and literal authentication,
   not linked C23 arithmetic, phi execution or a checksum guest artifact.
   See `tests/compiler/source_input_store.rs` and the active contract.
 

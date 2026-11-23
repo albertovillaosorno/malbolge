@@ -43,8 +43,10 @@ refuse as code/data aliasing.
 The 5-step real N15 guest with a physical idempotent `p` at C3 targeting
 M57 rejects a missing/foreign site and an incorrect literal value, while
 accepting the exact physical site and literal. The previously established
-63-cell live input/store/output guest remains a separate combined-path
-regression. Frame-wide site admission is **not** a source operation-count
+63-cell live input/store/output guest now also passes an isolated
+61-step combined source-anchored byte-37 read/store/output case. Its original
+multi-vector negative matrix remains a separate, more costly regression.
+Frame-wide site admission is **not** a source operation-count
 journal for non-input stores, a phi value-copy proof, or runtime C32 arithmetic
 and branch verification. The original C23 EOF checksum remains unlinked.
 See `tests/compiler/source_input_store.rs` and the source-state verifier.

@@ -46,6 +46,10 @@ use super::{
 const CHECKSUM_TYPED: &str =
     include_str!("typed-ir/golden/mutable-eof-checksum.hex");
 
+// Real N15 binary-input + actual M73 store + addressed output guest.
+const BYTE_INPUT_STORE_OUTPUT_PHYSICAL: &[u8] =
+    b"DCBA@?>=<;:98hx/v-210/p-K+*)ji&%$#\"!~}|{zyxwvutsrqponmlkjihgs%H";
+
 fn checksum_wire() -> Result<Vec<u8>, String> {
     let hex = CHECKSUM_TYPED
         .trim_end()
@@ -1489,6 +1493,89 @@ fn actual_guest_byte_store_requires_its_source_effect_address()
     Ok(())
 }
 
+// A single independent real-stream witness keeps the new all-frame store
+// path testable without rerunning the full multi-vector negative matrix.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "one real source I/O witness"
+)]
+fn source_combined_frame_write_gate_accepts_one_real_guest_stream()
+-> Result<(), String> {
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeEffectAnchor, GuestCodeInputAnchor,
+        GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+    use super::SourceInputProbe;
+
+    let wire = single_byte_input_output_wire()?;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 61,
+        control_start: 60,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operations = [
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 13,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 24,
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    let effects = [GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 17,
+        effect_index: 1,
+        function: 0,
+        ordinal: 0,
+    }];
+    let inputs = [GuestCodeInputAnchor {
+        block: 0,
+        code_address: 13,
+        function: 0,
+        ordinal: 0,
+    }];
+    let probe = SourceInputProbe {
+        anchors: &inputs,
+        canonical: &wire,
+        frame_base: 73,
+        input: &[37],
+        physical_source: BYTE_INPUT_STORE_OUTPUT_PHYSICAL,
+        step_budget: 61,
+    };
+    let proof = probe
+        .verify_output_and_stored_with_effect_anchors(
+            proposals,
+            &operations,
+            &effects,
+        )
+        .map_err(|error| {
+            format!("real source frame verification: {error:?}")
+        })?;
+    assert_eq!(proof.prefix.bytes_consumed, 1);
+    assert_eq!(proof.prefix.guest_output, [37]);
+    assert_eq!(proof.stores.len(), 1);
+    assert_eq!(proof.frame_writes.len(), 1);
+    let store = proof.frame_writes.first().ok_or("no physical store")?;
+    assert_eq!(
+        (store.code_address, store.address, store.value),
+        (17, 73, 37)
+    );
+    Ok(())
+}
+
 #[test]
 #[expect(
     clippy::cognitive_complexity,
@@ -1508,8 +1595,7 @@ fn real_guest_byte_store_and_source_output_require_both_effect_sites()
     // byte-exact two-read/reentry generator, with C25/C26 replaced by
     // graphical no-ops. These suppress the helper's extra read/output.
     // The original C13 input, C17 exact p store at M73 and C24 echo remain.
-    let physical =
-        b"DCBA@?>=<;:98hx/v-210/p-K+*)ji&%$#\"!~}|{zyxwvutsrqponmlkjihgs%H";
+    let physical = BYTE_INPUT_STORE_OUTPUT_PHYSICAL;
     let wire = single_byte_input_output_wire()?;
     let blocks = [GuestCodeBlockPlacement {
         function: 0,
