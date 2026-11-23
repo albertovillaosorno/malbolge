@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest physical CFG verifier now admits a completed path with zero
+observed phi copies when no phi pad was reached, rather than confusing a
+reachable conditional branch's phi-free arm with missing phi work. A real
+three-step N15 return guest proves the narrow red-first correction; the
+copy-only probe still requires a genuine reached copy. All reached pads
+remain subject to exact copy/exit obligations. This is a verifier false-
+refusal fix, not a linked mutable C23 checksum. See the P2 contract and
+`tests/compiler/source_phi_copy_trace.rs`.
+
 The strongest physical source CFG output check now requires each real `<`
 byte and accumulator word to agree with the live, earlier guest-written U8
 SSA source cell; an unmaterialized operand or different live accumulator

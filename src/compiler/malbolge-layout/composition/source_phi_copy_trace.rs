@@ -398,6 +398,8 @@ impl SourcePhiCopyProbe<'_> {
     /// # Errors
     ///
     /// Refuses an unplaced or early source block exit in the bounded VM trace.
+    /// A terminating path without a reached phi pad is valid if its other
+    /// source block, branch, effect and return obligations are satisfied.
     pub fn verify_with_cfg_phi_copy_anchors(
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
@@ -1151,7 +1153,10 @@ fn verify_traced_phi_copies_with_transfer_policy(
     if require_transfer && progress.pending_transfers.contains(&true) {
         return Err(SourcePhiCopyTraceError::InvalidPhiTransfer);
     }
-    if progress.copies.is_empty() {
+    // A full CFG path can legally avoid all phi-bearing edges. The narrow
+    // copy-only probe still requires an actual copy observation, while the
+    // transfer gates enforce completion for every pad that was entered.
+    if progress.copies.is_empty() && !require_transfer {
         return Err(SourcePhiCopyTraceError::NoReachedPhiCopy);
     }
     Ok(SourcePhiCopyProof {

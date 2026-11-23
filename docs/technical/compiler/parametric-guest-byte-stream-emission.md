@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Phi-free source control paths in physical CFG verification (2026-11-23)
+
+The strongest opt-in source CFG check no longer demands a reached phi copy
+on a physical path that never enters a phi-bearing edge. Its predecessor,
+source-operation, branch, return, and reached-pad checks remain mandatory.
+The narrow `verify`/copy-only study still refuses `NoReachedPhiCopy` when
+there is no actual copy to verify. Exit/ingress/whole-CFG policies instead
+validate **every entered pad** and can return a proof with zero completed
+pads if none was entered. Previously a valid path that returned through an
+entirely phi-free branch could never satisfy the strongest CFG verifier.
+
+A real three-step N15 `o, o, v` guest reaches a source-positioned Return
+control suffix without visiting the separately reserved phi pad. The
+independently checked block exit, entry, effect, return, predecessor-phi,
+and branch gates all pass. The transfer verifier now accepts zero copies,
+while the unchanged copy-only gate rejects the identical genuine trace.
+This corrects a false refusal; it does not link the seven-block C23 checksum,
+prove source-C arithmetic or make a source CFG candidate executable.
+Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Source-operand output equality in physical CFG traces (2026-11-23)
 
 The opt-in strongest source CFG trace gate now checks a reached `<` against

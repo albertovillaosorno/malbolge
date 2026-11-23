@@ -2691,3 +2691,99 @@ fn real_guest_second_phi_pad_cannot_skip_all_its_copies() -> Result<(), String>
     );
     Ok(())
 }
+
+// A real terminating source-block path may select no phi-bearing edge. The
+// strongest CFG gate must still validate block/control provenance without
+// inventing a required phi visit; the copy-only study retains its reached-
+// copy requirement. The unreachable pad remains available on another path.
+#[test]
+fn real_guest_phi_free_return_path_satisfies_cfg_transfer_gate()
+-> Result<(), String> {
+    let mut source = (0..8)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    let halt = source.get_mut(2).ok_or("missing return code cell")?;
+    *halt = graphical(2, b'v')?;
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), &source, Vec::new())
+            .map_err(|error| format!("real return guest: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(4, &mut |step| steps.push(*step))
+        .map_err(|error| format!("real return trace: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 3,
+    });
+    let mut unreachable = placed_edge();
+    unreachable.entry_address = 4;
+    unreachable.pad_exit_address = Some(6);
+    unreachable.snapshot_sites[0].code_address = 4;
+    unreachable.commit_sites[0].code_address = 5;
+    unreachable.target_address = 7;
+    let edges = [unreachable];
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 3,
+        control_start: 2,
+    }];
+    assert_eq!(verify_source_block_exits(&blocks, &edges, &steps), Ok(()));
+    assert_eq!(
+        verify_source_block_entries(
+            &blocks,
+            &edges,
+            &[GuestCodeFunctionEntry {
+                function: 0,
+                block: 0,
+                address: 0,
+            }],
+            &steps,
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &[], &steps),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_return_sites(
+            &blocks,
+            &[GuestCodeReturnSite {
+                function: 0,
+                block: 0,
+                address: 2,
+                value: None,
+            }],
+            &steps,
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_predecessor_phi_entries(&blocks, &edges, &steps),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(&blocks, &edges, &[], &frames(), &steps),
+        Ok(())
+    );
+    let frame = frames();
+    let context = || PhiTraceContext {
+        edges: &edges,
+        effects: &[],
+        frames: &frame,
+    };
+    let proof =
+        verify_traced_phi_copies_with_transfer_policy(context(), &steps, true)
+            .map_err(|error| {
+                format!("unreached phi must not fail CFG: {error:?}")
+            })?;
+    assert_eq!(proof.completed_pads, 0);
+    assert!(proof.copies.is_empty());
+    assert_eq!(
+        verify_traced_phi_copies_with_transfer_policy(context(), &steps, false),
+        Err(SourcePhiCopyTraceError::NoReachedPhiCopy),
+    );
+    Ok(())
+}
