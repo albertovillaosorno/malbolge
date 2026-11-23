@@ -964,7 +964,7 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
                 proposals,
                 &operation_anchors,
             ),
-            Err(SourceInputTraceError::SourceOutputNotProven),
+            Err(SourceInputTraceError::UnexpectedGuestOutput),
         );
     }
     assert_eq!(
@@ -977,8 +977,8 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
             step_budget: 175,
         }
         .verify_output_with_operation_anchors(proposals, &operation_anchors),
-        Err(SourceInputTraceError::UnreachedSourceInput),
-        "source CFG cannot halt before its third loop input",
+        Err(SourceInputTraceError::UnexpectedGuestOutput),
+        "unsourced guest output refuses before checking the missing loop input",
     );
     // The 132-cell guest reads real bytes, but it does not write the
     // source-C32 signed result into both authenticated SSA frame words.
@@ -1019,5 +1019,218 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
         .verify_with_operation_anchors(proposals, &operation_anchors),
         Err(SourceInputTraceError::InvalidSourcePlacement),
     );
+    Ok(())
+}
+
+// One source-typed byte trace has two real inputs and one source-located
+// output. This checks physical effect-site provenance, *not* the missing
+// source SSA stores or a compiled C function.
+fn two_input_byte_output_wire() -> Result<Vec<u8>, String> {
+    use super::super::typed_cfg_adapter::typed::{
+        BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
+        FunctionSpec, Instruction, LocatedInstruction, Module, ModuleSpec,
+        SourcePosition, SourceSpan, Terminator, TypeDef, TypeEntry, TypeId,
+        ValueId, canonical_bytes, validate_module,
+    };
+    let span = |start: u32, end: u32| {
+        SourceSpan::new(
+            SourcePosition::new(start, 1, start + 1),
+            SourcePosition::new(end, 1, end + 1),
+        )
+    };
+    let byte_type = TypeId::new(0);
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version:
+            super::super::typed_cfg_adapter::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions: vec![
+                    LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: ValueId::new(0),
+                            type_id: byte_type,
+                        },
+                        span(0, 1),
+                    ),
+                    LocatedInstruction::new(
+                        Instruction::ByteInput {
+                            result: ValueId::new(1),
+                            type_id: byte_type,
+                        },
+                        span(1, 2),
+                    ),
+                    LocatedInstruction::new(
+                        Instruction::ByteOutput { value: ValueId::new(1) },
+                        span(2, 3),
+                    ),
+                ],
+                phis: Vec::new(),
+                span: span(0, 4),
+                terminator: Terminator::Return { value: None },
+                terminator_span: span(3, 4),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("two_input_byte_output"),
+            parameters: Vec::new(),
+            signature: TypeId::new(1),
+            span: span(0, 4),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/two-input-byte-output.c"),
+        source_sha256: [0x45; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(byte_type, TypeDef::U8),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    });
+    validate_module(&module).map_err(|error| format!("typed: {error:?}"))?;
+    canonical_bytes(&module).map_err(|error| format!("canonical: {error:?}"))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real guest input and output provenance at exact typed addresses"
+)]
+fn explicit_output_anchors_require_reached_guest_output_site()
+-> Result<(), String> {
+    use malbolge::{current_profile, decode_profile_instruction};
+
+    use super::super::typed_cfg_adapter::state_relocation::{
+        GuestCodeBlockPlacement, GuestCodeInputAnchor,
+        GuestCodeOperationAnchor, GuestCodeProposals,
+    };
+    use super::SourceInputProbe;
+
+    let wire = two_input_byte_output_wire()?;
+    let encoded = |operations: &[u8]| -> Result<Vec<u8>, String> {
+        operations
+            .iter()
+            .enumerate()
+            .map(|(address, &opcode)| {
+                (33u8..=126)
+                    .find(|&byte| {
+                        decode_profile_instruction(
+                            u32::from(byte),
+                            address as u32,
+                        ) == Some(opcode)
+                    })
+                    .ok_or_else(|| {
+                        format!("no graphical opcode {opcode} at {address}")
+                    })
+            })
+            .collect()
+    };
+    let correct = encoded(b"/o/o<v")?;
+    let mislocated = encoded(b"/o/<ov")?;
+    let blocks = [GuestCodeBlockPlacement {
+        block: 0,
+        control_start: 5,
+        end_exclusive: 6,
+        function: 0,
+        start: 0,
+    }];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &[],
+    };
+    let operation_anchors = [
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 0,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 2,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 4,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let inputs = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 0,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 2,
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    for stream in [&[0, 0xff][..], &[0xff, 0][..], &[23, 42, 99][..]] {
+        let expected = stream[1];
+        let probe = SourceInputProbe {
+            anchors: &inputs,
+            canonical: &wire,
+            frame_base: 256,
+            input: stream,
+            physical_source: &correct,
+            step_budget: 6,
+        };
+        let proof = probe
+            .verify_output_with_operation_anchors(proposals, &operation_anchors)
+            .map_err(|error| {
+                format!("source-placed guest output: {error:?}")
+            })?;
+        assert_eq!(proof.guest_output, [expected]);
+        assert_eq!(proof.bytes_consumed, 2);
+        assert_eq!(proof.io_events, [
+            SourceInputIoEvent::Input { observation_index: 0 },
+            SourceInputIoEvent::Input { observation_index: 1 },
+            SourceInputIoEvent::Output(expected),
+        ]);
+        let shifted = SourceInputProbe {
+            physical_source: &mislocated,
+            ..probe
+        };
+        assert_eq!(
+            shifted
+                .verify_with_operation_anchors(proposals, &operation_anchors)
+                .map_err(|error| format!("raw I/O compatibility: {error:?}"))?
+                .guest_output,
+            [expected],
+            "raw byte parity does not authenticate output sites",
+        );
+        assert_eq!(
+            shifted.verify_output_with_operation_anchors(
+                proposals,
+                &operation_anchors
+            ),
+            Err(SourceInputTraceError::UnexpectedGuestOutput),
+        );
+    }
+    // An EOF cannot masquerade as a successful byte-typed source input.
+    assert_eq!(
+        SourceInputProbe {
+            anchors: &inputs,
+            canonical: &wire,
+            frame_base: 256,
+            input: &[23],
+            physical_source: &correct,
+            step_budget: 6,
+        }
+        .verify_output_with_operation_anchors(proposals, &operation_anchors),
+        Err(SourceInputTraceError::SourceInputUnreachable),
+    );
+    assert_eq!(current_profile().input_instruction(), b'/');
     Ok(())
 }

@@ -86,6 +86,8 @@ pub enum SourceInputTraceError {
     StepBudgetExhausted,
     /// An executed input instruction had no authenticated source input site.
     UnexpectedGuestInput,
+    /// A physical output opcode was not at a source-placed output effect.
+    UnexpectedGuestOutput,
     /// Physical execution terminated without the source-required halt.
     UnexpectedGuestTermination,
     /// A skipped source input site is mandatory on every possible return path.
@@ -187,15 +189,21 @@ struct SourceInputWalkState {
 type KnownSourceOperator = fn(u32, u32) -> u32;
 type KnownSourceScalar = (u32, Option<u32>);
 type SourceInputSites = BTreeMap<u32, SourceInputSite>;
+
+/// Source-placed input and output code effects, never complete VM operations.
+struct SourceIoSites {
+    inputs: SourceInputSites,
+    outputs: BTreeSet<u32>,
+}
 type ExplicitOperationPlacement<'source> = (
     GuestCodeProposals<'source>,
     &'source [GuestCodeOperationAnchor],
 );
 
-fn authenticate_input_sites(
+fn authenticate_io_sites(
     probe: SourceInputProbe<'_>,
     explicit: Option<ExplicitOperationPlacement<'_>>,
-) -> Result<SourceInputSites, SourceInputTraceError> {
+) -> Result<SourceIoSites, SourceInputTraceError> {
     if probe.physical_source.len() < 2
         || probe.physical_source.len() > MAX_SOURCE_INPUT_TRACE_CELLS
         || !probe
@@ -245,22 +253,33 @@ fn authenticate_input_sites(
     }
     .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
     let mut sites = SourceInputSites::new();
+    let mut outputs = BTreeSet::new();
     for effect_site in plan.operation_effect_sites {
-        if let GuestCodeOperationEffect::Input { destination, semantics } =
-            effect_site.effect
-            && sites
-                .insert(effect_site.code_address, SourceInputSite {
-                    block: effect_site.block,
-                    destination,
-                    function: effect_site.function,
-                    ordinal: effect_site.ordinal,
-                    semantics,
-                })
-                .is_some()
-        {
-            return Err(SourceInputTraceError::MissingSourceAnchor);
+        match effect_site.effect {
+            GuestCodeOperationEffect::Output { .. } => {
+                if !outputs.insert(effect_site.code_address) {
+                    return Err(SourceInputTraceError::InvalidSourcePlacement);
+                }
+            },
+            GuestCodeOperationEffect::Input { destination, semantics } => {
+                if sites
+                    .insert(effect_site.code_address, SourceInputSite {
+                        block: effect_site.block,
+                        destination,
+                        function: effect_site.function,
+                        ordinal: effect_site.ordinal,
+                        semantics,
+                    })
+                    .is_some()
+                {
+                    return Err(SourceInputTraceError::MissingSourceAnchor);
+                }
+            },
+            GuestCodeOperationEffect::Store { .. }
+            | GuestCodeOperationEffect::Compute => {},
         }
     }
+
     if sites.is_empty()
         || sites.len() != probe.anchors.len()
         || probe.anchors.iter().any(|anchor| {
@@ -272,7 +291,7 @@ fn authenticate_input_sites(
     {
         return Err(SourceInputTraceError::MissingSourceAnchor);
     }
-    Ok(sites)
+    Ok(SourceIoSites { inputs: sites, outputs })
 }
 
 fn observe_input_step(
@@ -877,7 +896,7 @@ fn verify_source_return_input_path(
 pub fn verify_source_input_site_prefix(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    verify_source_input_site_trace(probe, false, None)
+    verify_source_input_site_trace(probe, false, None, false)
 }
 
 impl SourceInputProbe<'_> {
@@ -897,7 +916,12 @@ impl SourceInputProbe<'_> {
         proposals: GuestCodeProposals<'_>,
         anchors: &[GuestCodeOperationAnchor],
     ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-        verify_source_input_site_trace(self, false, Some((proposals, anchors)))
+        verify_source_input_site_trace(
+            self,
+            false,
+            Some((proposals, anchors)),
+            false,
+        )
     }
 
     /// Require a source CFG return after the explicitly positioned input
@@ -911,11 +935,18 @@ impl SourceInputProbe<'_> {
         proposals: GuestCodeProposals<'_>,
         anchors: &[GuestCodeOperationAnchor],
     ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-        verify_source_input_site_trace(self, true, Some((proposals, anchors)))
+        verify_source_input_site_trace(
+            self,
+            true,
+            Some((proposals, anchors)),
+            false,
+        )
     }
 
     /// Require a complete source return and matching source-known output
     /// after the physically reached, explicitly placed guest input sites.
+    /// The reached physical output address must be a source-placed output
+    /// effect. This does not prove operand storage or physical control flow.
     /// No unproved source computation or control transition is accepted.
     ///
     /// # Errors
@@ -930,6 +961,7 @@ impl SourceInputProbe<'_> {
             self,
             true,
             Some((proposals, anchors)),
+            true,
         )?;
         verify_source_output_path(self, proof)
     }
@@ -954,7 +986,7 @@ impl SourceInputProbe<'_> {
 pub fn verify_source_input_site_return_compatible(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    verify_source_input_site_trace(probe, true, None)
+    verify_source_input_site_trace(probe, true, None, false)
 }
 
 /// Require the physical guest's complete I/O effect order and output bytes
@@ -1016,12 +1048,51 @@ fn verify_source_output_path(
     Ok(proof)
 }
 
+/// Project one reached physical I/O instruction into source-placed events.
+/// Raw I/O is observable even when the corresponding SSA result stores are
+/// still unproved. The stronger output path can require an addressed source
+/// effect instead of relying on matching output bytes alone.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "physical step, source sites and two I/O journals"
+)]
+fn append_reached_source_io(
+    step: &ProfileStepTrace,
+    trace_index: usize,
+    sites: &SourceIoSites,
+    observations: &mut Vec<SourceInputSiteObservation>,
+    io_events: &mut Vec<SourceInputIoEvent>,
+    require_output_anchors: bool,
+) -> Result<(), SourceInputTraceError> {
+    if step.input.is_some() && step.output.is_some() {
+        return Err(SourceInputTraceError::InvalidGuestExecution);
+    }
+    observe_input_step(step, trace_index, &sites.inputs, observations)?;
+    if step.input.is_some() {
+        let observation_index = observations
+            .len()
+            .checked_sub(1)
+            .and_then(|index| u16::try_from(index).ok())
+            .ok_or(SourceInputTraceError::InvalidProbeBound)?;
+        io_events.push(SourceInputIoEvent::Input { observation_index });
+    } else if let Some(byte) = step.output {
+        if require_output_anchors
+            && !sites.outputs.contains(&step.before.registers.code_pointer)
+        {
+            return Err(SourceInputTraceError::UnexpectedGuestOutput);
+        }
+        io_events.push(SourceInputIoEvent::Output(byte));
+    }
+    Ok(())
+}
+
 fn verify_source_input_site_trace(
     probe: SourceInputProbe<'_>,
     require_source_return: bool,
     explicit: Option<ExplicitOperationPlacement<'_>>,
+    require_output_anchors: bool,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    let sites = authenticate_input_sites(probe, explicit)?;
+    let sites = authenticate_io_sites(probe, explicit)?;
     let mut machine = ProfileMachine::from_source(
         current_profile(),
         probe.physical_source,
@@ -1037,25 +1108,15 @@ fn verify_source_input_site_trace(
             let current = trace_index;
             trace_index = trace_index.saturating_add(1);
             if failed.is_none() {
-                if step.input.is_some() && step.output.is_some() {
-                    failed = Some(SourceInputTraceError::InvalidGuestExecution);
-                } else if let Err(error) =
-                    observe_input_step(step, current, &sites, &mut observations)
-                {
-                    failed = Some(error);
-                } else if step.input.is_some() {
-                    if let Ok(observation_index) =
-                        u16::try_from(observations.len().saturating_sub(1))
-                    {
-                        io_events.push(SourceInputIoEvent::Input {
-                            observation_index,
-                        });
-                    } else {
-                        failed = Some(SourceInputTraceError::InvalidProbeBound);
-                    }
-                } else if let Some(byte) = step.output {
-                    io_events.push(SourceInputIoEvent::Output(byte));
-                }
+                failed = append_reached_source_io(
+                    step,
+                    current,
+                    &sites,
+                    &mut observations,
+                    &mut io_events,
+                    require_output_anchors,
+                )
+                .err();
             }
         })
         .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
@@ -1076,7 +1137,7 @@ fn verify_source_input_site_trace(
     }
     verify_source_cfg_input_order(probe.canonical, &observations)?;
     if require_source_return
-        || sites.keys().any(|address| {
+        || sites.inputs.keys().any(|address| {
             !observations
                 .iter()
                 .any(|entry| entry.code_address == *address)
@@ -1084,7 +1145,7 @@ fn verify_source_input_site_trace(
     {
         verify_source_return_input_path(
             probe.canonical,
-            &sites,
+            &sites.inputs,
             &observations,
         )?;
     }

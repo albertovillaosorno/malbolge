@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Reached output-site provenance for source-placed I/O (2026-11-23)
+
+The explicit-operation `SourceInputProbe` output gate now requires each
+reached physical `<` to run at an authenticated `ByteOutput` effect address
+in the original typed-CFG placement. Matching output bytes and I/O order
+without the addressed effect is no longer sufficient: such a guest refuses
+with `UnexpectedGuestOutput`. This check reuses the source-validated block
+placements and operation anchors, not a caller-provided list of arbitrary
+output addresses. The input-only and return-only gates remain independent.
+
+A six-cell source-loaded N15 witness executes two genuine `/` reads at
+C0 and C2 and outputs the second successful byte at source-placed C4.
+Relocating only that physical output to C3 preserves the input stream,
+output byte and source-compatible read/return path, but the stronger
+output-site gate rejects it. The original 132-cell signed EOF classifier
+also fails this new placement condition: its output is not a source-placed
+checksum `ByteOutput`. These are **necessary** instruction-address checks,
+not proof of real SSA result stores, C23 signed EOF conversion, guest
+arithmetic, physical CFG/phi transfers or the full checksum program.
+The original checksum still refuses before artifact publication.
+Regression: `tests/compiler/source_input_cfg_order.rs`.
+
 ### Source-locked physical operation anchors (2026-11-22)
 
 `GuestCodeOperationAnchor` supplies a source-identified proposed position for

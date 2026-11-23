@@ -75,6 +75,12 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 explicit source-locked output verification also bound reached
+  guest output opcodes to their proposed canonical `ByteOutput` code sites.
+  A real six-step two-input byte guest passes when output executes at C4;
+  moving the identical emitted byte to C3 now refuses. This is a physical
+  I/O-address prerequisite only; the checksum still lacks linked signed
+  input stores, arithmetic, branches and a reusable loop.
 - On 2026-11-23 the complete physical-image trace gained chronological
   `p`/`*` write identities and raw guest input/EOF/output events, including
   idempotent and same-step code/data stores not visible as data deltas.
