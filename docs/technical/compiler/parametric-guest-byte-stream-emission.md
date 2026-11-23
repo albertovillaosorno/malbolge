@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked phi successor-transfer replay (2026-11-23)
+
+The opt-in `SourcePhiCopyProbe::verify_with_linked_phi_copy_anchors`
+checks the final physical `i` instruction of each **reached** phi pad after
+all guest-written snapshots and commits. A completed pad must stay inside
+its own code interval, execute the reserved exit cell and land at the exact
+source-placed successor code address; a missing exit, wrong target or early
+halt refuses. The original copy-only gate still reports its narrower value
+and ordering evidence without silently upgrading it to a control proof.
+
+A frozen seven-step, seeded-state N15 guest executes physical
+`p, j, p, j, p, i, v`, copying M70 to M101 and M101 to M120 before jumping
+from C5 to the successor halt at C8. Source-backed copy site models and the
+normative guest trace agree on the two written words and the reached `i`.
+Changing only the exit into `o` still leaves identical copy values but
+refuses the new transfer gate; jumping to C9 or ending after the commit
+also refuses. This establishes a **bounded, one-edge necessary condition**,
+not proof of predecessor branch selection, complete source arithmetic,
+repeatable CFG execution, or source-C checksum publication. The original
+seven-block C23 checksum still explicitly refuses at unlinked target
+lowering, with no guest artifact. Regression:
+`tests/compiler/source_phi_copy_trace.rs`.
+
 ### Sparse source-locked physical phi-copy sites (2026-11-23)
 
 Source-backed physical CFG placement now optionally binds every snapshot and

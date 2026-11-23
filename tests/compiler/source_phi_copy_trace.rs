@@ -32,6 +32,8 @@ use super::super::typed_cfg_adapter::state_relocation::{
 };
 use super::*;
 
+type LinkedPhiState = (GuestCodeControlEdge, [GuestFramePlacement; 1]);
+
 fn graphical(site: usize, opcode: u8) -> Result<u8, String> {
     (33..=126u8)
         .find(|byte| {
@@ -617,9 +619,7 @@ fn guest_phi_trace_with_setup(
     let actual = steps.iter().map(|step| step.decoded).collect::<Vec<_>>();
     let mut expected =
         vec![Some(b'p'), Some(b'j'), Some(b'p'), Some(gap_opcode)];
-    if !escaped {
-        expected.push(Some(b'p'));
-    }
+    expected.extend((!escaped).then_some(Some(b'p')));
     expected.push(Some(b'v'));
     assert_eq!(actual, expected);
     assert_eq!(steps[2].before.registers.data_pointer, 101);
@@ -655,8 +655,8 @@ fn real_guest_sparse_phi_pad_allows_setup_but_not_foreign_frame_writes()
     )
     .map_err(|error| format!("sparse phi guest: {error:?}"))?;
     if proof.completed_pads != 1
-        || !matches!(proof.copies.as_slice(), [snapshot, commit]
-            if (snapshot.trace_index, commit.trace_index, commit.destination)
+        || !matches!(proof.copies.as_slice(), [snapshot, observed_commit]
+            if (snapshot.trace_index, observed_commit.trace_index, observed_commit.destination)
                 == (2, 4, 120))
     {
         return Err(format!("incorrect sparse phi proof: {proof:?}"));
@@ -735,9 +735,9 @@ fn real_guest_sparse_phi_gap_rejects_idempotent_effect_and_escape()
     // and skips the required C4 commit; output and termination alone must
     // not turn a partial phi copy into a complete authenticated pad.
     let escaped = guest_phi_trace_with_setup(b'i', 4)?;
-    if !matches!(escaped.last(), Some(step)
-        if step.before.registers.code_pointer == 5
-            && step.decoded == Some(b'v'))
+    if !matches!(escaped.last(), Some(halt)
+        if halt.before.registers.code_pointer == 5
+            && halt.decoded == Some(b'v'))
     {
         return Err("physical jump did not escape the phi pad".into());
     }
@@ -750,5 +750,178 @@ fn real_guest_sparse_phi_gap_rejects_idempotent_effect_and_escape()
     {
         return Err("guest escape before final phi commit must refuse".into());
     }
+    Ok(())
+}
+
+// A real N15 pad executes p / j / p / j / p / i before landing on the
+// successor halt. The indirect successor jump is observable as C5 -> C8;
+// copying the correct words without this final transfer is insufficient.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "fixed seven-step guest with isolated seeded N15 data pointers"
+)]
+fn guest_phi_trace_with_successor(
+    exit_opcode: u8,
+    jump_operand: u32,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let mut source = (0..59)
+        .map(|position| graphical(position, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, b'p'),
+        (1, b'j'),
+        (2, b'p'),
+        (3, b'j'),
+        (4, b'p'),
+        (5, exit_opcode),
+        (6, b'v'),
+        (8, b'v'),
+        (9, b'v'),
+    ] {
+        source[site] = graphical(site, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("source-loaded phi guest: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    for address in [70usize, 101, 120] {
+        *memory.get_mut(address).ok_or("missing copy frame")? = 7_174_453;
+    }
+    *memory.get_mut(71).ok_or("missing first pointer seed")? = 100;
+    *memory.get_mut(102).ok_or("missing second pointer seed")? = 119;
+    *memory
+        .get_mut(121)
+        .ok_or("missing successor pointer seed")? = jump_operand;
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("seeded successor guest: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(7, &mut |step| steps.push(*step))
+        .map_err(|error| format!("successor guest run: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 7,
+    });
+    assert_eq!(steps[2].before.registers.data_pointer, 101);
+    assert_eq!(steps[4].before.registers.data_pointer, 120);
+    assert_eq!(steps[5].before.registers.data_pointer, 121);
+    Ok(steps)
+}
+
+fn linked_phi_edge() -> Result<LinkedPhiState, String> {
+    let mut edge = placed_edge();
+    let commit = edge.commit_sites.first_mut().ok_or("missing commit site")?;
+    commit.code_address = 4;
+    commit.copy.destination = 120;
+    edge.commits
+        .first_mut()
+        .ok_or("missing phi commit")?
+        .destination = 120;
+    edge.pad_exit_address = Some(5);
+    edge.target_address = 8;
+    let [first] = frames();
+    Ok((edge, [GuestFramePlacement {
+        end_exclusive: 121,
+        ..first
+    }]))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "fixed normative VM successor instruction assertions"
+)]
+fn real_guest_phi_exit_reaches_source_successor() -> Result<(), String> {
+    let good = guest_phi_trace_with_successor(b'i', 7)?;
+    let (edge, frame) = linked_phi_edge()?;
+    assert_eq!(good.iter().map(|step| step.decoded).collect::<Vec<_>>(), [
+        Some(b'p'),
+        Some(b'j'),
+        Some(b'p'),
+        Some(b'j'),
+        Some(b'p'),
+        Some(b'i'),
+        Some(b'v'),
+    ]);
+    let jump = good.get(5).ok_or("missing phi successor jump")?;
+    let successor = good.get(6).ok_or("missing successor instruction")?;
+    assert_eq!(jump.before.registers.code_pointer, 5);
+    assert_eq!(jump.after.registers.code_pointer, 8);
+    assert_eq!(successor.before.registers.code_pointer, 8);
+    let proof = verify_traced_phi_copies_with_transfer_policy(
+        PhiTraceContext {
+            edges: from_ref(&edge),
+            effects: &[initial_store(None)],
+            frames: &frame,
+        },
+        &good,
+        true,
+    )
+    .map_err(|error| format!("physical phi jump: {error:?}"))?;
+    assert_eq!(proof.completed_pads, 1);
+    assert_eq!(proof.copies.len(), 2);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded guest negative controls assert exact typed refusals"
+)]
+fn real_guest_phi_exit_refuses_unlinked_continuations() -> Result<(), String> {
+    let good = guest_phi_trace_with_successor(b'i', 7)?;
+    let no_jump = guest_phi_trace_with_successor(b'o', 7)?;
+    let (edge, frame) = linked_phi_edge()?;
+    // Physical copy values remain correct in the no-jump negative control.
+    assert!(
+        verify_traced_phi_copies(
+            from_ref(&edge),
+            &[initial_store(None)],
+            &frame,
+            &no_jump,
+        )
+        .is_ok(),
+        "the unchanged copy-only gate should admit equal writes"
+    );
+    let incomplete = good.get(..5).ok_or("missing complete copied prefix")?;
+    for steps in [no_jump.as_slice(), incomplete] {
+        assert_eq!(
+            verify_traced_phi_copies_with_transfer_policy(
+                PhiTraceContext {
+                    edges: from_ref(&edge),
+                    effects: &[initial_store(None)],
+                    frames: &frame,
+                },
+                steps,
+                true,
+            ),
+            Err(SourcePhiCopyTraceError::InvalidPhiTransfer),
+        );
+    }
+    let wrong_successor = guest_phi_trace_with_successor(b'i', 8)?;
+    let jump = wrong_successor.get(5).ok_or("missing wrong jump")?;
+    assert_eq!(jump.after.registers.code_pointer, 9);
+    assert_eq!(
+        verify_traced_phi_copies_with_transfer_policy(
+            PhiTraceContext {
+                edges: from_ref(&edge),
+                effects: &[initial_store(None)],
+                frames: &frame,
+            },
+            &wrong_successor,
+            true,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidPhiTransfer),
+    );
     Ok(())
 }

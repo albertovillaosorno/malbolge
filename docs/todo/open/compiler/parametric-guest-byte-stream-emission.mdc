@@ -75,6 +75,15 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 an opt-in physical phi transfer gate extended
+  source-locked snapshot/commit evidence through each reached pad's reserved
+  successor `i`. A real seven-step seeded N15 guest writes both copies and
+  jumps C5 -> C8; a matching-value non-jump, a C9 jump and a missing exit
+  refuse. The unchanged full mutable C23 checksum still stops at unlinked
+  CFG target lowering with 7 blocks, 19 operations, 4 phi edges and no
+  published artifact. This does not prove predecessor branch selection,
+  arbitrary C arithmetic or a usable EOF loop.
+
 - On 2026-11-23 the combined source I/O/store gate began requiring every
   reached output's own source-placed U8 SSA cell to have an earlier genuine
   frame `p`/`*` write of the exact emitted value. A 61-step real N15 guest

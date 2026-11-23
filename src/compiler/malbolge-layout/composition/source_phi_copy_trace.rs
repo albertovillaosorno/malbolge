@@ -63,6 +63,8 @@ pub enum SourcePhiCopyTraceError {
     InvalidPhiCopy,
     /// A reached phi site was absent, reordered or left mid-transfer.
     InvalidPhiOrder,
+    /// A finished phi pad did not physically jump to its source successor.
+    InvalidPhiTransfer,
     /// Canonical source and proposed code/SSA placement do not agree.
     InvalidSourcePlacement,
     /// A copy source had no earlier, actual source-placed guest data write.
@@ -131,11 +133,19 @@ struct CopySite {
 type PhiCopySites = BTreeMap<u32, CopySite>;
 type SourceStoreSites = BTreeMap<(u32, u32), Option<u32>>;
 
+#[derive(Clone, Copy)]
+struct PhiTraceContext<'source> {
+    edges: &'source [GuestCodeControlEdge],
+    effects: &'source [GuestCodeOperationEffectSite],
+    frames: &'source [GuestFramePlacement],
+}
+
 #[derive(Default)]
 struct PhiTraceProgress {
     completed_pads: usize,
     copies: Vec<SourcePhiCopyObservation>,
     materialized: BTreeMap<u32, u32>,
+    pending_transfers: Vec<bool>,
     progress: Vec<usize>,
 }
 
@@ -168,8 +178,47 @@ impl PhiTraceProgress {
         Ok(())
     }
 
+    fn check_pending_transfers(
+        &mut self,
+        step: &ProfileStepTrace,
+        edges: &[GuestCodeControlEdge],
+        sites: &PhiCopySites,
+    ) -> Result<(), SourcePhiCopyTraceError> {
+        let code = step.before.registers.code_pointer;
+        for (index, pending) in self.pending_transfers.iter_mut().enumerate() {
+            if !*pending {
+                continue;
+            }
+            let edge = edges
+                .get(index)
+                .ok_or(SourcePhiCopyTraceError::InvalidSourcePlacement)?;
+            let exit = edge
+                .pad_exit_address
+                .ok_or(SourcePhiCopyTraceError::InvalidSourcePlacement)?;
+            if code == exit
+                && (step.decoded != Some(b'i')
+                    || step.after.registers.code_pointer != edge.target_address)
+            {
+                return Err(SourcePhiCopyTraceError::InvalidPhiTransfer);
+            }
+            if code == exit {
+                *pending = false;
+                continue;
+            }
+            if !(edge.entry_address..exit).contains(&code)
+                || sites.contains_key(&code)
+            {
+                // Setup may remain inside the pad, but a second copy or
+                // an escape before the reserved exit is not a transfer.
+                return Err(SourcePhiCopyTraceError::InvalidPhiTransfer);
+            }
+        }
+        Ok(())
+    }
+
     fn new(edges: &[GuestCodeControlEdge]) -> Self {
         Self {
+            pending_transfers: vec![false; edges.len()],
             progress: vec![0; edges.len()],
             ..Self::default()
         }
@@ -185,6 +234,7 @@ impl PhiTraceProgress {
         edge: &GuestCodeControlEdge,
         step: &ProfileStepTrace,
         trace_index: usize,
+        require_transfer: bool,
     ) -> Result<(), SourcePhiCopyTraceError> {
         let progress_at = self
             .progress
@@ -224,6 +274,13 @@ impl PhiTraceProgress {
             .ok_or(SourcePhiCopyTraceError::InvalidSourcePlacement)?;
         if *progress_at == total {
             *progress_at = 0;
+            if require_transfer {
+                let pending =
+                    self.pending_transfers.get_mut(site.edge_index).ok_or(
+                        SourcePhiCopyTraceError::InvalidSourcePlacement,
+                    )?;
+                *pending = true;
+            }
             self.completed_pads = self
                 .completed_pads
                 .checked_add(1)
@@ -265,6 +322,25 @@ impl SourcePhiCopyProbe<'_> {
         self.verify_with_phi_copy_anchors(&[])
     }
 
+    /// Also require every reached, completed phi pad to execute its reserved
+    /// `i` code transfer to the source-bound successor block entry.
+    ///
+    /// Setup steps may occur between physical copies and the pad exit, but
+    /// may not escape, repeat a copy or halt before the exact successor jump.
+    /// This does not prove that the predecessor chose the right CFG edge,
+    /// that source arithmetic ran, or that the complete C program is linked.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a missing, wrong or premature physical successor transfer in
+    /// addition to the ordinary source placement and copy errors.
+    pub fn verify_with_linked_phi_copy_anchors(
+        self,
+        phi_anchors: &[GuestCodePhiCopyAnchor],
+    ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+        self.verify_with_transfer_policy(phi_anchors, true)
+    }
+
     /// Verify with source-locked, sparse physical phi snapshot/commit sites.
     ///
     /// Every explicitly anchored pad must name every snapshot and commit;
@@ -278,6 +354,14 @@ impl SourcePhiCopyProbe<'_> {
     pub fn verify_with_phi_copy_anchors(
         self,
         phi_anchors: &[GuestCodePhiCopyAnchor],
+    ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+        self.verify_with_transfer_policy(phi_anchors, false)
+    }
+
+    fn verify_with_transfer_policy(
+        self,
+        phi_anchors: &[GuestCodePhiCopyAnchor],
+        require_transfer: bool,
     ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
         if self.physical_source.len() < 2
             || self.physical_source.len() > MAX_SOURCE_PHI_TRACE_CELLS
@@ -323,11 +407,14 @@ impl SourcePhiCopyProbe<'_> {
         }) {
             return Err(SourcePhiCopyTraceError::InvalidGuestExecution);
         }
-        verify_traced_phi_copies(
-            &plan.control_edges,
-            &plan.operation_effect_sites,
-            &plan.relocated.state_placements,
+        verify_traced_phi_copies_with_transfer_policy(
+            PhiTraceContext {
+                edges: &plan.control_edges,
+                effects: &plan.operation_effect_sites,
+                frames: &plan.relocated.state_placements,
+            },
             &steps,
+            require_transfer,
         )
     }
 }
@@ -383,12 +470,26 @@ fn source_store_sites(
 
 // Trusted callers pass the source-locked plan and the normative VM's trace.
 // Do not accept a mere final memory value or an unexecuted placement proposal.
+#[cfg(test)]
 fn verify_traced_phi_copies(
     edges: &[GuestCodeControlEdge],
     effects: &[GuestCodeOperationEffectSite],
     frames: &[GuestFramePlacement],
     steps: &[ProfileStepTrace],
 ) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+    verify_traced_phi_copies_with_transfer_policy(
+        PhiTraceContext { edges, effects, frames },
+        steps,
+        false,
+    )
+}
+
+fn verify_traced_phi_copies_with_transfer_policy(
+    context: PhiTraceContext<'_>,
+    steps: &[ProfileStepTrace],
+    require_transfer: bool,
+) -> Result<SourcePhiCopyProof, SourcePhiCopyTraceError> {
+    let PhiTraceContext { edges, effects, frames } = context;
     let copies_by_code = phi_copy_sites(edges)?;
     let stores_by_site = source_store_sites(effects)?;
     let mut progress = PhiTraceProgress::new(edges);
@@ -410,12 +511,21 @@ fn verify_traced_phi_copies(
         {
             return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
         }
+        if require_transfer {
+            progress.check_pending_transfers(step, edges, &copies_by_code)?;
+        }
         progress.check_interleaving(code_address, edges, &copies_by_code)?;
         if let Some(site) = copies_by_code.get(&code_address) {
             let edge = edges
                 .get(site.edge_index)
                 .ok_or(SourcePhiCopyTraceError::InvalidSourcePlacement)?;
-            progress.record_copy(*site, edge, step, trace_index)?;
+            progress.record_copy(
+                *site,
+                edge,
+                step,
+                trace_index,
+                require_transfer,
+            )?;
         } else if matches!(step.decoded, Some(b'p' | b'*'))
             && in_frame(data_address, frames)
         {
@@ -428,6 +538,9 @@ fn verify_traced_phi_copies(
     }
     if progress.progress.iter().any(|at| *at != 0) {
         return Err(SourcePhiCopyTraceError::InvalidPhiOrder);
+    }
+    if require_transfer && progress.pending_transfers.contains(&true) {
+        return Err(SourcePhiCopyTraceError::InvalidPhiTransfer);
     }
     if progress.copies.is_empty() {
         return Err(SourcePhiCopyTraceError::NoReachedPhiCopy);
