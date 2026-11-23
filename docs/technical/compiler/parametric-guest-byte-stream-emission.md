@@ -38,7 +38,10 @@ a source-authenticated `Store` effect or edge-local phi snapshot/commit.
 A source literal store must also leave its specified full-width word in the
 real accumulator, including an idempotent write without a memory delta.
 Guest instruction fetches or XLAT2 target accesses into source data frames
-refuse as code/data aliasing.
+refuse as code/data aliasing. A real indirect `i` at C1 whose off-site XLAT2
+target is M73 verifies that a source frame need not be fetched as code to
+trigger this refusal; non-frame M74 remains allowed in the same one-step VM
+trace.
 
 The 5-step real N15 guest with a physical idempotent `p` at C3 targeting
 M57 rejects a missing/foreign site and an incorrect literal value, while

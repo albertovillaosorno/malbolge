@@ -654,3 +654,67 @@ fn real_frame_write_requires_an_attributed_physical_effect_site()
     );
     Ok(())
 }
+
+// A reached indirect jump encrypts its destination even when that cell was
+// not fetched as an instruction. A reserved source frame is data-only.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real indirect VM target"
+)]
+fn real_indirect_target_encryption_must_not_enter_source_frame()
+-> Result<(), String> {
+    let mut source = (0..59)
+        .map(|site| source_cell(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    source[1] = source_cell(1, b'i')?;
+    let loader =
+        ProfileMachine::from_source(current_profile(), &source, vec![])
+            .map_err(|error| error.to_string())?;
+    let mut memory = loader.memory().to_vec();
+    *memory.get_mut(57).ok_or("indirect pointer absent")? = 73;
+    *memory.get_mut(73).ok_or("expanded target absent")? = 33;
+    let registers = malbolge::ProfileRegisters {
+        accumulator: 0,
+        code_pointer: 1,
+        data_pointer: 57,
+    };
+    let mut machine = ProfileMachine::from_state(
+        current_profile(),
+        memory,
+        vec![],
+        registers,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut transition = None;
+    let outcome = machine
+        .run_traced(1, &mut |step| transition = Some(*step))
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, malbolge::RunOutcome::BudgetExhausted { steps: 1 });
+    let step = transition.ok_or("indirect step missing")?;
+    assert_eq!(step.decoded, Some(b'i'));
+    assert_eq!(step.before.registers.code_pointer, 1);
+    assert_eq!(
+        step.memory_reads.encryption.map(|read| read.address),
+        Some(73)
+    );
+    let protected = GuestFramePlacement {
+        base: 73,
+        end_exclusive: 74,
+        source_cells: 59,
+    };
+    assert_eq!(
+        verify_source_frame_write_step(&step, &[protected], &BTreeMap::new()),
+        Err(SourceInputTraceError::InputResultMismatch),
+    );
+    let unrelated = GuestFramePlacement {
+        base: 74,
+        end_exclusive: 75,
+        source_cells: 59,
+    };
+    assert_eq!(
+        verify_source_frame_write_step(&step, &[unrelated], &BTreeMap::new()),
+        Ok(()),
+    );
+    Ok(())
+}

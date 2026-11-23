@@ -85,6 +85,8 @@ evidence describe the old priority scheme, not the current phase.
   output guest also passes the combined gate for byte 37, independently of
   the longer multi-vector regression. This is site and literal authentication,
   not linked C23 arithmetic, phi execution or a checksum guest artifact.
+  A separate real indirect `i` trace refuses an off-site XLAT2 target in
+  reserved M73 while leaving an unrelated frame cell admissible.
   See `tests/compiler/source_input_store.rs` and the active contract.
 
 - On 2026-11-23 the source-authenticated input-store verifier began
