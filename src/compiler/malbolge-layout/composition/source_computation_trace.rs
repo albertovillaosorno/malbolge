@@ -98,6 +98,24 @@ const fn signed(bits: u32, width: u32) -> i32 {
     bits.wrapping_shl(shift).cast_signed().wrapping_shr(shift)
 }
 
+// Signed values are accepted only if the exact mathematical value fits the
+// source scalar. A matched low-width guest word cannot authorize C23 UB.
+fn signed_result_bits(
+    result: i64,
+    width: u32,
+) -> Result<u32, SourcePhiCopyTraceError> {
+    use SourcePhiCopyTraceError::InvalidComputationValue;
+    let bound = 1i64
+        .checked_shl(width.saturating_sub(1))
+        .ok_or(InvalidComputationValue)?;
+    let minimum = bound.checked_neg().ok_or(InvalidComputationValue)?;
+    if !(minimum..bound).contains(&result) {
+        return Err(InvalidComputationValue);
+    }
+    u32::try_from(result & i64::from(bit_mask(width)))
+        .map_err(|_error| InvalidComputationValue)
+}
+
 // C23 signed overflow is undefined, not a two's-complement wrapped result.
 // Use i64 so multiplication of any two i32 operands is representable before
 // checking the exact signed source-type range.
@@ -129,15 +147,65 @@ fn checked_signed_arithmetic(
         | BinaryOp::Xor => return Err(UnsupportedComputation),
     }
     .ok_or(InvalidComputationValue)?;
-    let bound = 1i64
-        .checked_shl(width.saturating_sub(1))
-        .ok_or(InvalidComputationValue)?;
-    let minimum = bound.checked_neg().ok_or(InvalidComputationValue)?;
-    if !(minimum..bound).contains(&result) {
-        return Err(InvalidComputationValue);
+    signed_result_bits(result, width)
+}
+
+// Division by zero and the signed minimum/-1 overflow are undefined source
+// behavior. Even for small signed types the checked quotient must fit the
+// original width before accepting a physical guest result.
+fn checked_integer_division(
+    operation: BinaryOp,
+    lhs: u32,
+    rhs: u32,
+    kind: TernaryCfgScalarKind,
+) -> Result<u32, SourcePhiCopyTraceError> {
+    use SourcePhiCopyTraceError::{
+        InvalidComputationValue, UnsupportedComputation,
+    };
+    let width = scalar_bits(kind);
+    let signed_kind = matches!(
+        kind,
+        TernaryCfgScalarKind::I8
+            | TernaryCfgScalarKind::I16
+            | TernaryCfgScalarKind::I32
+    );
+    match operation {
+        BinaryOp::DivideSigned | BinaryOp::RemainderSigned if signed_kind => {
+            let left = signed(lhs, width);
+            let right = signed(rhs, width);
+            let result = if operation == BinaryOp::DivideSigned {
+                left.checked_div(right)
+            } else {
+                left.checked_rem(right)
+            }
+            .ok_or(InvalidComputationValue)?;
+            signed_result_bits(i64::from(result), width)
+        },
+        BinaryOp::DivideUnsigned | BinaryOp::RemainderUnsigned
+            if !signed_kind && kind != TernaryCfgScalarKind::Bool =>
+        {
+            if operation == BinaryOp::DivideUnsigned {
+                lhs.checked_div(rhs)
+            } else {
+                lhs.checked_rem(rhs)
+            }
+            .ok_or(InvalidComputationValue)
+        },
+        BinaryOp::Add
+        | BinaryOp::And
+        | BinaryOp::DivideSigned
+        | BinaryOp::DivideUnsigned
+        | BinaryOp::RemainderSigned
+        | BinaryOp::RemainderUnsigned
+        | BinaryOp::DivideFloat
+        | BinaryOp::Multiply
+        | BinaryOp::Or
+        | BinaryOp::ShiftLeft
+        | BinaryOp::ShiftRightArithmetic
+        | BinaryOp::ShiftRightLogical
+        | BinaryOp::Subtract
+        | BinaryOp::Xor => Err(UnsupportedComputation),
     }
-    u32::try_from(result & i64::from(bit_mask(width)))
-        .map_err(|_error| InvalidComputationValue)
 }
 
 #[expect(
@@ -181,11 +249,16 @@ fn evaluate(
                 BinaryOp::Or => lhs | rhs,
                 BinaryOp::Subtract => lhs.wrapping_sub(rhs),
                 BinaryOp::Xor => lhs ^ rhs,
-                BinaryOp::DivideFloat
-                | BinaryOp::DivideSigned
+                BinaryOp::DivideSigned
                 | BinaryOp::DivideUnsigned
                 | BinaryOp::RemainderSigned
-                | BinaryOp::RemainderUnsigned
+                | BinaryOp::RemainderUnsigned => checked_integer_division(
+                    operation,
+                    lhs,
+                    rhs,
+                    result.type_kind,
+                )?,
+                BinaryOp::DivideFloat
                 | BinaryOp::ShiftLeft
                 | BinaryOp::ShiftRightArithmetic
                 | BinaryOp::ShiftRightLogical => {

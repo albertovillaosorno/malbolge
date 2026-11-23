@@ -209,6 +209,16 @@ fn real_guest_computed_result_requires_correct_typed_operation()
             &frame,
             &correct,
         ),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue)
+    );
+    assert_eq!(
+        verify_source_computation_values(
+            &operations(computation(BinaryOp::DivideFloat)),
+            &placed,
+            &[],
+            &frame,
+            &correct,
+        ),
         Err(SourcePhiCopyTraceError::UnsupportedComputation)
     );
     Ok(())
@@ -437,6 +447,7 @@ fn real_guest_signed_overflow_must_not_pass_numeric_result_check()
 // full-width matrix verifies the same bounded interpreter at both C32 cells.
 #[test]
 #[expect(
+    clippy::cognitive_complexity,
     clippy::too_many_lines,
     reason = "one full-width signed/unsigned boundary matrix"
 )]
@@ -531,4 +542,134 @@ fn checked_signed_arithmetic_preserves_c32_and_i16_boundaries() {
         computed(TernaryCfgScalarKind::I16, BinaryOp::Subtract, 0x8000, 1),
         invalid
     );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::U32, BinaryOp::DivideUnsigned, 9, 2),
+        Ok(4)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::U32, BinaryOp::RemainderUnsigned, 9, 2),
+        Ok(1)
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::DivideSigned,
+            0xffff_fff9,
+            3
+        ),
+        Ok(0xffff_fffe)
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::RemainderSigned,
+            0xffff_fff9,
+            3
+        ),
+        Ok(0xffff_ffff)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::U32, BinaryOp::DivideUnsigned, 9, 0),
+        invalid
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I32, BinaryOp::DivideSigned, 9, 0),
+        invalid
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::RemainderSigned,
+            0x8000_0000,
+            0xffff_ffff
+        ),
+        invalid
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::DivideSigned,
+            0x8000_0000,
+            0xffff_ffff
+        ),
+        invalid
+    );
+}
+
+// Distinguish actual source-defined integer division from a numeric guest
+// coincidence, and preserve the explicit C23 trap/undefined boundaries.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one bounded real VM division/remainder witness family"
+)]
+fn real_guest_division_and_remainder_require_defined_c23_results()
+-> Result<(), String> {
+    let result = |operation, kind, seeds| -> Result<_, String> {
+        let steps = traced_three_stores_with_seeds(seeds)?;
+        let input = |address| GuestPlacedOperand {
+            address,
+            type_kind: kind,
+            value: address.saturating_sub(70),
+            words: 1,
+        };
+        let sites = operations(GuestCodeComputation::Binary {
+            operation,
+            left: input(70),
+            right: input(71),
+            result: input(72),
+        });
+        Ok(verify_source_computation_values(
+            &sites,
+            &effects(),
+            &[],
+            &frames(),
+            &steps,
+        ))
+    };
+    assert_eq!(
+        result(BinaryOp::DivideUnsigned, TernaryCfgScalarKind::U8, [
+            18, 6, 9
+        ])?,
+        Ok(())
+    );
+    assert_eq!(
+        result(BinaryOp::RemainderUnsigned, TernaryCfgScalarKind::U8, [
+            21, 9, 3
+        ])?,
+        Ok(())
+    );
+    assert_eq!(
+        result(BinaryOp::DivideSigned, TernaryCfgScalarKind::I8, [
+            747, 9, 762
+        ])?,
+        Ok(())
+    );
+    assert_eq!(
+        result(BinaryOp::RemainderSigned, TernaryCfgScalarKind::I8, [
+            747, 9, 765
+        ])?,
+        Ok(())
+    );
+    assert_eq!(
+        result(BinaryOp::RemainderSigned, TernaryCfgScalarKind::I8, [
+            747, 9, 762
+        ])?,
+        Err(SourcePhiCopyTraceError::InvalidComputationValue)
+    );
+    let undefined = Err(SourcePhiCopyTraceError::InvalidComputationValue);
+    assert_eq!(
+        result(BinaryOp::DivideUnsigned, TernaryCfgScalarKind::U8, [
+            18, 0, 0
+        ])?,
+        undefined
+    );
+    assert_eq!(
+        result(BinaryOp::DivideSigned, TernaryCfgScalarKind::I8, [
+            384, 765, 384
+        ])?,
+        undefined
+    );
+    Ok(())
 }

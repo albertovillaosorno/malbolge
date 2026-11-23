@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The opt-in exact source-computation result gate now interprets typed integer
+signed/unsigned division and remainder from prior authenticated guest frame
+writes. Real N15 VM red-first positives and negatives plus C32 controls
+require exact quotient/remainder, refuse zero divisors and signed `MIN / -1`,
+and retain unsupported floating operations. This remains a numerical result
+check, not physical guest arithmetic causality or executable C23 EOF control;
+the original P2 checksum still refuses before artifact publication. See the
+technical compiler contract and `tests/compiler/source_computation_trace.rs`.
+
 The strongest opt-in source computation value checker now refuses signed
 8-, 16- and 32-bit overflow in `Add`, `Subtract` and `Multiply` instead of
 accepting a physically wrapped guest word. Red-first four-step N15 arithmetic

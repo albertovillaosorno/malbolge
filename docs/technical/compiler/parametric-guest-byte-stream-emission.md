@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Defined integer division and remainder result checks (2026-11-23)
+
+The strongest opt-in numerical source-computation verifier now accepts
+signed and unsigned integer `Divide`/`Remainder` only when every source
+operand was physically written and the guest result equals exact typed
+arithmetic. Unsigned quotient/remainder use the declared scalar width;
+signed operations truncate quotient toward zero and retain the dividend's
+remainder sign. Division by zero and signed minimum / -1 refuse with
+`InvalidComputationValue` rather than accepting a coincident guest word.
+Mismatched signedness and unsupported floating division still refuse.
+
+Red-first actual N15 four-step guests show the old unsupported valid 6/2
+result, and now accept finite positive quotient/remainder and negative
+signed paths, reject an incorrect signed remainder, zero divisor and narrow
+signed overflow. Independent two-word C32 controls check the same rules,
+including signed `INT_MIN / -1`. Physical guest arithmetic dependence,
+source-C loop branching, signed EOF conversion and complete mutable checksum
+publication are **not** provided by this necessary numeric gate.
+Regression: `tests/compiler/source_computation_trace.rs`.
+
 ### Signed source arithmetic overflow refusal (2026-11-23)
 
 The strongest opt-in source-computation result checker no longer accepts
