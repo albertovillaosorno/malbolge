@@ -33,6 +33,8 @@ use super::super::typed_cfg_adapter::state_relocation::{
 use super::*;
 
 type LinkedPhiState = (GuestCodeControlEdge, [GuestFramePlacement; 1]);
+type PhysicalBooleanLayout =
+    ([GuestCodeBlockPlacement; 3], [GuestCodeControlEdge; 2]);
 type PhysicalTwoPadLayout =
     ([GuestCodeControlEdge; 2], [GuestCodeBlockPlacement; 3]);
 
@@ -1630,6 +1632,178 @@ fn real_guest_branch_arm_requires_prior_source_boolean_write()
     assert_eq!(
         verify_source_branch_choices(&blocks, &edges, &[], &frames, &true_run),
         Err(SourcePhiCopyTraceError::UnexpectedFrameEffect)
+    );
+    Ok(())
+}
+
+// Two real p effects construct a conditional code-pointer word from the
+// just-written source Boolean: M71=0 maps 0/1 to distinct trits, then M72=6
+// maps those to exact 6/7 code words. A source-independent jump can select
+// the same block and Boolean but cannot satisfy control provenance.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "fixed 7-step N15 dependent branch with inspected p/j/i effects"
+)]
+fn physical_boolean_dependent_branch(
+    seed: u32,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, b'*'),
+        (1, b'p'),
+        (2, b'p'),
+        (3, b'j'),
+        (4, b'i'),
+        (7, b'v'),
+        (8, b'v'),
+    ] {
+        source[site] = graphical(site, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("dependent branch source load: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    *memory.get_mut(70).ok_or("missing Boolean store cell")? = seed;
+    *memory.get_mut(71).ok_or("missing first crazy source")? = 0;
+    *memory.get_mut(72).ok_or("missing second crazy source")? = 6;
+    *memory.get_mut(73).ok_or("missing j pointer source")? = 71;
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("dependent branch guest: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(7, &mut |step| steps.push(*step))
+        .map_err(|error| format!("dependent branch VM: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 6,
+    });
+    assert_eq!(steps.iter().map(|step| step.decoded).collect::<Vec<_>>(), [
+        Some(b'*'),
+        Some(b'p'),
+        Some(b'p'),
+        Some(b'j'),
+        Some(b'i'),
+        Some(b'v')
+    ]);
+    assert_eq!(
+        steps[4].after.registers.code_pointer,
+        if seed == 3 {
+            8
+        } else {
+            7
+        }
+    );
+    assert_eq!(steps[0].after.registers.accumulator, u32::from(seed == 3));
+    Ok(steps)
+}
+
+fn physical_boolean_dependent_layout() -> PhysicalBooleanLayout {
+    let blocks = [
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 0,
+            start: 0,
+            end_exclusive: 5,
+            control_start: 3,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 1,
+            start: 7,
+            end_exclusive: 8,
+            control_start: 7,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 2,
+            start: 8,
+            end_exclusive: 9,
+            control_start: 8,
+        },
+    ];
+    let mut edges = physical_boolean_edges();
+    edges[0].control_address = 3;
+    edges[0].entry_address = 7;
+    edges[0].target_address = 7;
+    edges[1].control_address = 3;
+    edges[1].entry_address = 8;
+    edges[1].target_address = 8;
+    (blocks, edges)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded real-N15 branch controls"
+)]
+fn real_guest_boolean_control_requires_latest_source_data_path()
+-> Result<(), String> {
+    let (blocks, edges) = physical_boolean_dependent_layout();
+    let effects = [initial_store(None)];
+    let frame = [GuestFramePlacement {
+        base: 70,
+        end_exclusive: 71,
+        source_cells: 59,
+    }];
+    for seed in [0, 3] {
+        let dependent = physical_boolean_dependent_branch(seed)?;
+        assert_eq!(
+            verify_source_block_exits(&blocks, &edges, &dependent),
+            Ok(())
+        );
+        assert_eq!(
+            verify_source_branch_choices_with_control(
+                SourceBranchTraceContext {
+                    blocks: &blocks,
+                    edges: &edges,
+                    effects: &effects,
+                    frames: &frame,
+                },
+                &dependent,
+                true,
+            ),
+            Ok(())
+        );
+    }
+    // Source-independent C1 i still chooses the correct arm: the old
+    // Boolean-value checker cannot distinguish its seeded pointer.
+    let independent = physical_source_boolean_branch(0, 2)?;
+    let independent_blocks = physical_boolean_blocks();
+    let independent_edges = physical_boolean_edges();
+    assert_eq!(
+        verify_source_branch_choices(
+            &independent_blocks,
+            &independent_edges,
+            &effects,
+            &frame,
+            &independent,
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices_with_control(
+            SourceBranchTraceContext {
+                blocks: &independent_blocks,
+                edges: &independent_edges,
+                effects: &effects,
+                frames: &frame,
+            },
+            &independent,
+            true,
+        ),
+        Err(SourcePhiCopyTraceError::MissingBranchControlProvenance)
     );
     Ok(())
 }

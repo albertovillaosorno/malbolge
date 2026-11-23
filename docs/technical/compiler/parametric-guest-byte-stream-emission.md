@@ -28,6 +28,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Opt-in physical Boolean-to-control dependency (2026-11-23)
+
+The strongest source computation plus physical CFG verifier now requires
+reached conditional edges to carry the **latest guest-written Boolean SSA
+version** into their actual code-pointer selection. Its trace-local token
+tracks real `p`/`*` data writes and both pointer operations: `j` derives `D`
+from `M[D]`, and `i` derives `C` from `M[D]`. Earlier writes at the same SSA
+address cannot authenticate a later version. Ordinary CFG arm-value checks
+remain separately available; the new necessary condition applies only to the
+opt-in `verify_with_source_computations` gate.
+
+A real N15 six-step `*, p, p, j, i, v` guest maps source Boolean zero and
+one to separate C7/C8 halts through two physical crazy writes and the
+indirect jump. Both traced arms pass the stricter control-data-path test.
+An independent three-step `*, i, v` guest writes the same Boolean and
+selects its numerically correct arm using a loader-seeded pointer: the
+existing value-only gate accepted it, but the strict gate now refuses
+`MissingBranchControlProvenance`. The test uses finite source-loaded memory
+and a seeded Boolean; it does not prove that a guest computed the Boolean
+from a C expression. The check can conservatively reject valid optimized
+control that relies on untracked mutation or eliminated operands. Neither
+physical C23 conditional lowering nor the original seven-block mutable EOF
+checksum is linked. The full checksum still refuses target publication,
+with its three bounded pipeline tests passing only that explicit refusal.
+Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Strict computation operand-data provenance (2026-11-23)
 
 The opt-in `SourcePhiCopyProbe::verify_with_source_computations` now

@@ -108,6 +108,8 @@ pub enum SourcePhiCopyTraceError {
     UnsupportedComputation,
     /// A reached branch did not materialize its Boolean before departure.
     MissingBranchCondition,
+    /// The actual guest control target has no path from its live Boolean.
+    MissingBranchControlProvenance,
     /// A copy source had no earlier, actual source-placed guest data write.
     MissingSourceMaterialization,
     /// No physical source-placed phi snapshot or commit was reached.
@@ -185,6 +187,21 @@ struct CopySite {
 type PhiCopySites = BTreeMap<u32, CopySite>;
 type SourceStoreSites = BTreeMap<(u32, u32), Option<u32>>;
 
+#[derive(Clone, Copy)]
+struct SourceBranchTraceContext<'source> {
+    blocks: &'source [GuestCodeBlockPlacement],
+    edges: &'source [GuestCodeControlEdge],
+    effects: &'source [GuestCodeOperationEffectSite],
+    frames: &'source [GuestFramePlacement],
+}
+
+#[derive(Clone, Copy)]
+struct SourceBranchValueTrace<'source> {
+    materialized: &'source BTreeMap<u32, u32>,
+    provenance: &'source SourceAccumulatorProvenance,
+    require_control_provenance: bool,
+}
+
 // Conservative forward data provenance from actual guest source-frame writes.
 // A token identifies the *specific physical write*, not only its address:
 // an older stored dependency cannot authenticate a subsequently overwritten
@@ -197,8 +214,10 @@ type SourceWriteOrigin = (u32, usize);
 #[derive(Default)]
 struct SourceAccumulatorProvenance {
     accumulator: BTreeSet<SourceWriteOrigin>,
-    memory: BTreeMap<u32, BTreeSet<SourceWriteOrigin>>,
+    code_pointer: BTreeSet<SourceWriteOrigin>,
+    data_pointer: BTreeSet<SourceWriteOrigin>,
     latest_write: BTreeMap<u32, usize>,
+    memory: BTreeMap<u32, BTreeSet<SourceWriteOrigin>>,
 }
 
 impl SourceAccumulatorProvenance {
@@ -217,6 +236,19 @@ impl SourceAccumulatorProvenance {
             },
             Some(b'p') => {
                 self.accumulator.extend(
+                    self.memory.get(&data).into_iter().flatten().copied(),
+                );
+            },
+            // Real j/i read M[D], not A. A source Boolean can influence
+            // either the selected pointer address or its stored word.
+            Some(b'j') => {
+                self.data_pointer.extend(
+                    self.memory.get(&data).into_iter().flatten().copied(),
+                );
+            },
+            Some(b'i') => {
+                self.code_pointer = self.data_pointer.clone();
+                self.code_pointer.extend(
                     self.memory.get(&data).into_iter().flatten().copied(),
                 );
             },
@@ -255,6 +287,12 @@ impl SourceAccumulatorProvenance {
     fn carries_latest(&self, address: u32) -> bool {
         self.latest_write.get(&address).is_some_and(|version| {
             self.accumulator.contains(&(address, *version))
+        })
+    }
+
+    fn code_carries_latest(&self, address: u32) -> bool {
+        self.latest_write.get(&address).is_some_and(|version| {
+            self.code_pointer.contains(&(address, *version))
         })
     }
 
@@ -821,12 +859,15 @@ impl SourcePhiCopyProbe<'_> {
             PhiTransferPolicy::AllEdges
                 | PhiTransferPolicy::AllEdgesWithComputations
         ) {
-            verify_source_branch_choices(
-                &plan.code_blocks,
-                &plan.control_edges,
-                &plan.operation_effect_sites,
-                &plan.relocated.state_placements,
+            verify_source_branch_choices_with_control(
+                SourceBranchTraceContext {
+                    blocks: &plan.code_blocks,
+                    edges: &plan.control_edges,
+                    effects: &plan.operation_effect_sites,
+                    frames: &plan.relocated.state_placements,
+                },
                 &steps,
+                policy == PhiTransferPolicy::AllEdgesWithComputations,
             )?;
         }
         if policy == PhiTransferPolicy::AllEdgesWithComputations {
@@ -1266,6 +1307,11 @@ fn verify_source_output_operand(
 // likewise match the exact most recent physical U8 operand word and the guest
 // accumulator. The source frame/phi gate checks write sites and values first.
 // Loader-seeded state is no proof of a source computation or operand read.
+#[cfg(test)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "compatibility wrapper for existing bounded branch tests"
+)]
 fn verify_source_branch_choices(
     blocks: &[GuestCodeBlockPlacement],
     edges: &[GuestCodeControlEdge],
@@ -1273,6 +1319,104 @@ fn verify_source_branch_choices(
     frames: &[GuestFramePlacement],
     steps: &[ProfileStepTrace],
 ) -> Result<(), SourcePhiCopyTraceError> {
+    verify_source_branch_choices_with_control(
+        SourceBranchTraceContext {
+            blocks,
+            edges,
+            effects,
+            frames,
+        },
+        steps,
+        false,
+    )
+}
+
+// In the strongest source-computation mode, equality of a source Boolean
+// and its selected edge is not enough: the VM's actual C must carry a data
+// path from the latest authenticated Boolean store, through a real j/i
+// pointer read. This remains conservative and does not certify correct C
+// predicate arithmetic or both outcomes for arbitrary inputs.
+// The physical source block exit already has a verified target. Evaluate
+// its one source-authenticated branch arm separately from the guest trace
+// walk so absent Boolean values, wrong values and missing pointer paths
+// remain distinct refusals.
+fn verify_source_selected_arm(
+    block: &GuestCodeBlockPlacement,
+    to: u32,
+    edges: &[GuestCodeControlEdge],
+    evidence: SourceBranchValueTrace<'_>,
+) -> Result<(), SourcePhiCopyTraceError> {
+    let SourceBranchValueTrace {
+        materialized,
+        provenance,
+        require_control_provenance,
+    } = evidence;
+    let selected = edges.iter().filter(|edge| {
+        (edge.function, edge.predecessor, edge.entry_address)
+            == (block.function, block.block, to)
+    });
+    let mut saw_missing = false;
+    let mut saw_invalid = false;
+    let mut saw_missing_control = false;
+    let mut matches_arm = false;
+    for edge in selected {
+        let expected = match edge.kind {
+            GuestCodeEdgeKind::Jump => {
+                matches_arm = true;
+                break;
+            },
+            GuestCodeEdgeKind::WhenFalse => 0,
+            GuestCodeEdgeKind::WhenTrue => 1,
+        };
+        let Some(condition) = edge.condition else {
+            return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
+        };
+        if condition.words != 1
+            || condition.type_kind != TernaryCfgScalarKind::Bool
+        {
+            return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
+        }
+        match materialized.get(&condition.address) {
+            Some(&value)
+                if value == expected
+                    && require_control_provenance
+                    && !provenance.code_carries_latest(condition.address) =>
+            {
+                saw_missing_control = true;
+            },
+            Some(&value) if value == expected => {
+                matches_arm = true;
+                break;
+            },
+            Some(&_value) => saw_invalid = true,
+            None => saw_missing = true,
+        }
+    }
+    if !matches_arm {
+        return Err(if saw_invalid {
+            SourcePhiCopyTraceError::InvalidBranchSelection
+        } else if saw_missing {
+            SourcePhiCopyTraceError::MissingBranchCondition
+        } else if saw_missing_control {
+            SourcePhiCopyTraceError::MissingBranchControlProvenance
+        } else {
+            SourcePhiCopyTraceError::InvalidControlTransfer
+        });
+    }
+    Ok(())
+}
+
+fn verify_source_branch_choices_with_control(
+    context: SourceBranchTraceContext<'_>,
+    steps: &[ProfileStepTrace],
+    require_control_provenance: bool,
+) -> Result<(), SourcePhiCopyTraceError> {
+    let SourceBranchTraceContext {
+        blocks,
+        edges,
+        effects,
+        frames,
+    } = context;
     let stores = source_store_sites(effects)?;
     let copies = phi_copy_sites(edges)?;
     let mut materialized = BTreeMap::new();
@@ -1300,7 +1444,8 @@ fn verify_source_branch_choices(
             &provenance,
         )?;
         provenance.observe_source_step(previous, index, &stores, &copies)?;
-        let Some(next) = steps.get(index + 1) else {
+        let Some(next) = index.checked_add(1).and_then(|at| steps.get(at))
+        else {
             continue;
         };
         let to = next.before.registers.code_pointer;
@@ -1315,48 +1460,11 @@ fn verify_source_branch_choices(
         {
             continue;
         }
-        let selected = edges.iter().filter(|edge| {
-            (edge.function, edge.predecessor, edge.entry_address)
-                == (block.function, block.block, to)
-        });
-        let mut saw_missing = false;
-        let mut saw_invalid = false;
-        let mut matches_arm = false;
-        for edge in selected {
-            let expected = match edge.kind {
-                GuestCodeEdgeKind::Jump => {
-                    matches_arm = true;
-                    break;
-                },
-                GuestCodeEdgeKind::WhenFalse => 0,
-                GuestCodeEdgeKind::WhenTrue => 1,
-            };
-            let Some(condition) = edge.condition else {
-                return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
-            };
-            if condition.words != 1
-                || condition.type_kind != TernaryCfgScalarKind::Bool
-            {
-                return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
-            }
-            match materialized.get(&condition.address) {
-                Some(&value) if value == expected => {
-                    matches_arm = true;
-                    break;
-                },
-                Some(&_value) => saw_invalid = true,
-                None => saw_missing = true,
-            }
-        }
-        if !matches_arm {
-            return Err(if saw_invalid {
-                SourcePhiCopyTraceError::InvalidBranchSelection
-            } else if saw_missing {
-                SourcePhiCopyTraceError::MissingBranchCondition
-            } else {
-                SourcePhiCopyTraceError::InvalidControlTransfer
-            });
-        }
+        verify_source_selected_arm(block, to, edges, SourceBranchValueTrace {
+            materialized: &materialized,
+            provenance: &provenance,
+            require_control_provenance,
+        })?;
     }
     Ok(())
 }
