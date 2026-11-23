@@ -338,3 +338,125 @@ fn source_loaded_rotated_operands_admit_signed_eof_conversion() {
         "an extra rotation must invalidate the exact C23 conversion"
     );
 }
+
+// An algebraically proven pair of p operands is not itself a code image.
+// Execute representative single-read N15 /,p,p,<,v traces with those cells.
+// The preceding scalar test already exhausts all 257 algebraic outcomes.
+// *explicitly seeded* beyond the graphical source. This isolates the exact
+// missing physical constant-placement and data-pointer setup obligations:
+// it does not claim that the C frontend can emit those operands or the loop.
+#[test]
+fn seeded_one_read_c23_output_executes_real_crazy_writes_for_byte_and_eof()
+-> Result<(), String> {
+    use malbolge::{
+        ProfileMachine, ProfileRegisters, RunOutcome, Termination, TraceInput,
+        decode_profile_instruction,
+    };
+
+    let profile = current_profile();
+    let [first, second] = admit_c23_signed_output_word_plan(
+        profile,
+        CURRENT_C23_SIGNED_OUTPUT_WORDS,
+    )
+    .map_err(|error| format!("unproved C23 operands: {error:?}"))?
+    .operands();
+    let operations = [b'/', b'p', b'p', b'<', b'v'];
+    let source = operations
+        .iter()
+        .enumerate()
+        .map(|(at, &opcode)| {
+            (33..=126u8)
+                .find(|byte| {
+                    decode_profile_instruction(
+                        u32::from(*byte),
+                        u32::try_from(at).unwrap_or(u32::MAX),
+                    ) == Some(opcode)
+                })
+                .ok_or_else(|| format!("missing graphical opcode at {at}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("graphical source: {error:?}"))?;
+    // No data operand is a graphical byte or derived from the actual loader.
+    // A future source-linked emitter must build and place BOTH of these words.
+    assert!(first > 126 && second > 126);
+    let mut seeded = loaded.memory().to_vec();
+    *seeded.get_mut(100).ok_or("missing first target word")? = first;
+    *seeded.get_mut(101).ok_or("missing second target word")? = second;
+    let registers = ProfileRegisters {
+        accumulator: profile.eof_word(),
+        code_pointer: 0,
+        data_pointer: 99,
+    };
+    for value in [0, 1, 0x7b, 0x80, 0xff, 256u32] {
+        let (input, expected, observed_input) = if value == 256 {
+            (Vec::new(), 255u8, TraceInput::EndOfInput)
+        } else {
+            let byte = u8::try_from(value).map_err(|e| e.to_string())?;
+            (vec![byte], byte, TraceInput::Byte(byte))
+        };
+        let mut machine = ProfileMachine::from_state(
+            profile,
+            seeded.clone(),
+            input.clone(),
+            registers,
+        )
+        .map_err(|error| format!("seeded VM: {error:?}"))?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(5, &mut |step| trace.push(*step))
+            .map_err(|error| format!("VM transition: {error:?}"))?;
+        assert_eq!(
+            outcome,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 5,
+            },
+            "input class {value}"
+        );
+        assert_eq!(trace.len(), 5);
+        assert_eq!(trace[0].input, Some(observed_input));
+        assert_eq!(trace[0].before.registers.data_pointer, 99);
+        assert_eq!(
+            trace[0].after.registers.accumulator,
+            if value == 256 {
+                profile.eof_word()
+            } else {
+                value
+            }
+        );
+        assert_eq!(trace[1].decoded, Some(b'p'));
+        assert_eq!(trace[1].before.registers.data_pointer, 100);
+        assert_eq!(
+            trace[1].memory_reads.data.map(|read| read.value),
+            Some(first)
+        );
+        let intermediate = scalar_crazy(
+            first,
+            if value == 256 {
+                profile.eof_word()
+            } else {
+                value
+            },
+            profile.word_trits(),
+        );
+        assert_eq!(trace[1].after.registers.accumulator, intermediate);
+        assert_eq!(machine.memory_word(100), Ok(intermediate));
+        assert_eq!(trace[2].decoded, Some(b'p'));
+        assert_eq!(trace[2].before.registers.data_pointer, 101);
+        assert_eq!(
+            trace[2].memory_reads.data.map(|read| read.value),
+            Some(second)
+        );
+        let converted =
+            scalar_crazy(second, intermediate, profile.word_trits());
+        assert_eq!(trace[2].after.registers.accumulator, converted);
+        assert_eq!(machine.memory_word(101), Ok(converted));
+        assert_eq!(trace[3].decoded, Some(b'<'));
+        assert_eq!(trace[3].output, Some(expected));
+        assert_eq!(trace[4].decoded, Some(b'v'));
+        assert_eq!(machine.output(), &[expected], "input class {value}");
+        assert_eq!(machine.input_consumed(), input.len(), "one real read");
+    }
+    Ok(())
+}

@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### One-read signed-EOF output with seeded guest data (2026-11-23)
+
+The already proven exact N15 two-crazy operands `[87844, 2551]` now
+execute in the **normative guest VM**, not just the scalar algebraic oracle.
+A five-step positional `/, p, p, <, v` graphical source consumes exactly
+one physical signed input, reads and writes M100 and M101 in order, and
+emits the C23-converted output on six independent guest runs (NUL, one,
+ASCII, high-bit, `0xff`, and real EOF). Its two writes are independently
+checked against the frozen 15-trit crazy table; the existing exhaustive
+scalar test still checks all 256 byte values and signed EOF. This validates
+that the VM's data-pointer increment and actual crazy/output operations can
+realize the arithmetic prerequisite without a second `getchar`.
+
+**This is not source-loadable C23 code:** the data words are deliberately
+injected into `ProfileMachine::from_state`, and the initial D register is
+also seeded. Both operand words exceed graphical source bytes, so a real
+linker must materialize their values in guest memory, construct their
+addresses from loader-valid code and prove source-C operation provenance.
+The original mutable EOF checksum still refuses before backend publication:
+this test does not implement its seven-block loop, 43-word frame, phi copies,
+conditional branches or data-dependent arithmetic. Regression:
+`tests/compiler_eof_byte_conversion.rs`.
+
 ### Opt-in physical Boolean-to-control dependency (2026-11-23)
 
 The strongest source computation plus physical CFG verifier now requires
