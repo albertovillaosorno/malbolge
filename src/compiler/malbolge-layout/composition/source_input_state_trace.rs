@@ -187,6 +187,25 @@ pub struct SourceInputStoredProof {
     pub frame_writes: Vec<SourceInputStoreCell>,
 }
 
+// Reconcile the most recent source definition of each reserved frame word.
+// Keep width/address validation separate from the completion-state loop.
+fn record_expected_cells(
+    words: &mut BTreeMap<u32, u32>,
+    pending: &PendingInputStore,
+) -> Result<(), SourceInputTraceError> {
+    for (offset, expected) in pending.expected.iter().enumerate() {
+        let offset = u32::try_from(offset)
+            .map_err(|_error| SourceInputTraceError::InputResultMismatch)?;
+        let address = pending
+            .input
+            .destination
+            .cell_address(offset)
+            .ok_or(SourceInputTraceError::InputResultMismatch)?;
+        let _previous = words.insert(address, *expected);
+    }
+    Ok(())
+}
+
 struct StoreTracker {
     error: Option<SourceInputTraceError>,
     influence: GuestInfluence,
@@ -210,17 +229,7 @@ impl StoreTracker {
         let mut stores = Vec::new();
         let mut last_expected = BTreeMap::new();
         for pending in self.pending {
-            for (offset, expected) in pending.expected.iter().enumerate() {
-                let offset = u32::try_from(offset).map_err(|_error| {
-                    SourceInputTraceError::InputResultMismatch
-                })?;
-                let address = pending
-                    .input
-                    .destination
-                    .cell_address(offset)
-                    .ok_or(SourceInputTraceError::InputResultMismatch)?;
-                let _previous = last_expected.insert(address, *expected);
-            }
+            record_expected_cells(&mut last_expected, &pending)?;
             if let Some(completed) = pending.completed {
                 stores.push(completed);
             } else if pending.writes.iter().any(Option::is_none) {
