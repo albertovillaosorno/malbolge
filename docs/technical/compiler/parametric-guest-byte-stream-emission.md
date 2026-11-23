@@ -52,9 +52,18 @@ CFG reservations. The stricter output/return check **rejects** the same
 physical helper: its marker output is not the source checksum, and its
 byte-byte path halts before the next required source loop input.
 
+The explicit-placement path now also supports the existing input-result
+state checker. It requires a source-compatible return, then independently
+replays the same original guest to demand genuine input-dependent `p`/`*`
+writes to **both** allocated C23 result cells. The 132-cell branch fails
+with `MissingInputResultStore` for empty, NUL and `ff` first reads. This
+rejects the tempting but false inference that a real signed input opcode
+by itself materializes a C32 source local. Its read-only and output-only
+checks remain available independently of this stronger state gate.
+
 This is an input-site and code-placement **necessary-condition witness**,
-not guest code synthesis, typed C32 input storage, arithmetic, phi writes,
-reusable loop control, or a whole-program translation certificate. The
+not guest code synthesis, successful typed C32 input storage, arithmetic,
+phi writes, reusable loop control, or a whole-program translation certificate. The
 original `mutable_eof_checksum.c` continues to refuse before publication.
 Regression sources: `tests/compiler/source_dynamic_checksum.rs` and
 `tests/compiler/source_input_cfg_order.rs`.

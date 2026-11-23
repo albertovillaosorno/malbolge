@@ -39,7 +39,9 @@ use super::source_input_trace::{
     SourceInputPrefixProof, SourceInputProbe, SourceInputSiteObservation,
     SourceInputTraceError, verify_source_input_site_return_compatible,
 };
-use super::typed_cfg_adapter::state_relocation::GuestCodeInputSemantics;
+use super::typed_cfg_adapter::state_relocation::{
+    GuestCodeInputSemantics, GuestCodeOperationAnchor, GuestCodeProposals,
+};
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
 
 struct PendingInputStore {
@@ -426,6 +428,33 @@ pub fn verify_source_input_site_stored_results(
     probe: SourceInputProbe<'_>,
 ) -> Result<SourceInputStoredProof, SourceInputTraceError> {
     let prefix = verify_source_input_site_return_compatible(probe)?;
+    verify_source_input_stored_prefix(probe, prefix)
+}
+
+impl SourceInputProbe<'_> {
+    /// Check full-width physical C23 input-result stores after source-placed
+    /// input effects and a source-compatible return. Input opcode placement
+    /// alone cannot stand in for actually written SSA frame cells.
+    ///
+    /// # Errors
+    ///
+    /// Rejects every source-return/placement refusal, missing actual p/*
+    /// writes, wrong signed C32 values or unverified data dependence.
+    pub fn verify_stored_with_operation_anchors(
+        self,
+        proposals: GuestCodeProposals<'_>,
+        anchors: &[GuestCodeOperationAnchor],
+    ) -> Result<SourceInputStoredProof, SourceInputTraceError> {
+        let prefix =
+            self.verify_return_with_operation_anchors(proposals, anchors)?;
+        verify_source_input_stored_prefix(self, prefix)
+    }
+}
+
+fn verify_source_input_stored_prefix(
+    probe: SourceInputProbe<'_>,
+    prefix: SourceInputPrefixProof,
+) -> Result<SourceInputStoredProof, SourceInputTraceError> {
     let mut machine = ProfileMachine::from_source(
         current_profile(),
         probe.physical_source,

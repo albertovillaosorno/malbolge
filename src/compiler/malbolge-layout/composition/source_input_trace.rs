@@ -900,6 +900,20 @@ impl SourceInputProbe<'_> {
         verify_source_input_site_trace(self, false, Some((proposals, anchors)))
     }
 
+    /// Require a source CFG return after the explicitly positioned input
+    /// effects, without inventing further unread byte/EOF operations.
+    ///
+    /// # Errors
+    ///
+    /// Refuses physical input, source placement or return-path mismatches.
+    pub fn verify_return_with_operation_anchors(
+        self,
+        proposals: GuestCodeProposals<'_>,
+        anchors: &[GuestCodeOperationAnchor],
+    ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+        verify_source_input_site_trace(self, true, Some((proposals, anchors)))
+    }
+
     /// Require a complete source return and matching source-known output
     /// after the physically reached, explicitly placed guest input sites.
     /// No unproved source computation or control transition is accepted.

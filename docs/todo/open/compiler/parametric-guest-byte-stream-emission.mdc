@@ -83,7 +83,9 @@ evidence describe the old priority scheme, not the current phase.
   Distinct source/physical positions, operation order and disjoint blocks/phi
   pads are checked; duplicated, impossible and non-source anchors refuse.
   Source-output verification independently rejects the same candidate for
-  wrong output and early loop termination. The original checksum remains
+  wrong output and early loop termination. A separate replay of physical
+  signed-C32 input storage refuses missing actual guest writes to both SSA
+  result cells on EOF, NUL and high-byte prefixes. The original checksum remains
   explicitly unlinked; no C artifact is published. See
   `tests/compiler/source_dynamic_checksum.rs`,
   `tests/compiler/source_input_cfg_order.rs` and the active P2 contract.

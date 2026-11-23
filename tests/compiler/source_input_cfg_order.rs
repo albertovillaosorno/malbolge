@@ -980,6 +980,26 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
         Err(SourceInputTraceError::UnreachedSourceInput),
         "source CFG cannot halt before its third loop input",
     );
+    // The 132-cell guest reads real bytes, but it does not write the
+    // source-C32 signed result into both authenticated SSA frame words.
+    // Passing the input-placement and source-return gates is insufficient.
+    for input in [&[][..], &[0][..], &[255][..]] {
+        assert_eq!(
+            SourceInputProbe {
+                anchors: &read_sites,
+                canonical: &wire,
+                frame_base: 256,
+                input,
+                physical_source: &physical,
+                step_budget: 175,
+            }
+            .verify_stored_with_operation_anchors(
+                proposals,
+                &operation_anchors,
+            ),
+            Err(SourceInputTraceError::MissingInputResultStore),
+        );
+    }
     let changed = [
         GuestCodeInputAnchor {
             code_address: 52,
