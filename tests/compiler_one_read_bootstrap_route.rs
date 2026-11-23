@@ -41,7 +41,7 @@ const LATE_READ: usize = 66;
 const LATE_POINTER: usize = 67;
 const SOURCE_DATA_WORD: u32 = 97;
 const INITIAL_SOURCE_DATA: u32 = 7_174_404;
-const INPUT_CLASSES: &[(Option<u8>, &[u8])] = &[
+const INPUT_CLASSES: &[InputCase] = &[
     (None, &[]),
     (Some(0), &[0]),
     (Some(1), &[1, 222]),
@@ -49,16 +49,20 @@ const INPUT_CLASSES: &[(Option<u8>, &[u8])] = &[
     (Some(255), &[255]),
 ];
 
+type InputCase = (Option<u8>, &'static [u8]);
+
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::integer_division_remainder_used,
+    clippy::indexing_slicing,
+    clippy::as_conversions,
     reason = "independent fixed 15-trit ternary digit oracle"
 )]
 fn scalar_crazy(mut left: u32, mut right: u32) -> u32 {
     const TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
     let mut result = 0;
     let mut place = 1;
-    for _ in 0..15 {
+    for _ in 0u8..15 {
         result += TABLE[(left % 3) as usize][(right % 3) as usize] * place;
         left /= 3;
         right /= 3;
@@ -70,6 +74,7 @@ fn scalar_crazy(mut left: u32, mut right: u32) -> u32 {
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::integer_division_remainder_used,
+    clippy::integer_division,
     reason = "independent fifteen-trit cyclic rotation oracle"
 )]
 const fn scalar_rotate(word: u32) -> u32 {
@@ -86,6 +91,10 @@ fn encoded(position: usize, opcode: u8) -> Result<u8, String> {
         .ok_or_else(|| format!("no graphical opcode {opcode} at C{position}"))
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "fixed 91-byte source with frozen in-range instruction sites"
+)]
 fn one_read_source(save_input: bool) -> Result<Vec<u8>, String> {
     let profile = current_profile();
     let mut source =
@@ -110,6 +119,7 @@ fn one_read_source(save_input: bool) -> Result<Vec<u8>, String> {
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     clippy::cognitive_complexity,
+    clippy::too_many_lines,
     reason = "five finite normative guest traces and exact step assertions"
 )]
 fn one_signed_input_reaches_late_indirect_pointer_after_nine_rotations()
@@ -169,7 +179,7 @@ fn one_signed_input_reaches_late_indirect_pointer_after_nine_rotations()
             .count();
         assert_eq!(rotates, 9);
         let operand =
-            (0..9).fold(INITIAL_SOURCE_DATA, |word, _| scalar_rotate(word));
+            (0u8..9).fold(INITIAL_SOURCE_DATA, |word, _| scalar_rotate(word));
         assert_eq!(operand, 7_138_732);
         assert_eq!(vm.memory_word(95), Ok(operand));
         assert_eq!(vm.memory_word(96), Ok(121));
@@ -195,9 +205,12 @@ fn one_signed_input_reaches_late_indirect_pointer_after_nine_rotations()
     let mut control = ProfileMachine::from_source(profile, &no_save, vec![1])
         .map_err(|error| error.to_string())?;
     let mut control_trace = Vec::new();
-    let _ = control
+    let control_result = control
         .run_traced(LATE_POINTER + 1, &mut |step| control_trace.push(*step))
         .map_err(|error| error.to_string())?;
+    assert_eq!(control_result, RunOutcome::BudgetExhausted {
+        steps: LATE_POINTER + 1,
+    });
     assert_eq!(control_trace[INPUT_WRITE].decoded, Some(b'o'));
     assert_eq!(
         control_trace[LATE_POINTER]
