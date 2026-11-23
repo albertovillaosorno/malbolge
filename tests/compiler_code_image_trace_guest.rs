@@ -30,7 +30,8 @@ pub mod layout;
 
 use layout::{
     CodeCellEvent, CodeVisitRequirement, SourceCodeImageTraceError,
-    SourcePhysicalDataRead, SourcePhysicalImageTraceError,
+    SourcePhysicalCodeFetch, SourcePhysicalDataRead,
+    SourcePhysicalImageTraceError, SourcePhysicalWordEffect,
     build_byte_exact_input_store_source, verify_source_code_cell_trace,
     verify_source_code_image_trace, verify_source_expanded_code_cells_trace,
     verify_source_physical_image_trace,
@@ -51,6 +52,7 @@ const INDIRECT_DATA_READS: [SourcePhysicalDataRead; 4] = [
         code_address: 0,
         data_address: 0,
         last_data_write_step: None,
+        last_word_effect: None,
         opcode: b'j',
         trace_index: 0,
         value: 40,
@@ -59,6 +61,7 @@ const INDIRECT_DATA_READS: [SourcePhysicalDataRead; 4] = [
         code_address: 1,
         data_address: 41,
         last_data_write_step: None,
+        last_word_effect: None,
         opcode: b'p',
         trace_index: 1,
         value: 7_174_467,
@@ -67,6 +70,7 @@ const INDIRECT_DATA_READS: [SourcePhysicalDataRead; 4] = [
         code_address: 2,
         data_address: 42,
         last_data_write_step: None,
+        last_word_effect: None,
         opcode: b'j',
         trace_index: 2,
         value: 40,
@@ -75,6 +79,9 @@ const INDIRECT_DATA_READS: [SourcePhysicalDataRead; 4] = [
         code_address: 3,
         data_address: 41,
         last_data_write_step: Some(1),
+        last_word_effect: Some(SourcePhysicalWordEffect::DataWrite {
+            trace_index: 1,
+        }),
         opcode: b'i',
         trace_index: 3,
         value: 7_174_480,
@@ -476,6 +483,139 @@ fn physical_image_discovers_indirect_jump_and_unexecutable_expanded_cell()
         complete.source,
         verify_source_code_image_trace(profile, source, &[], 5)
             .map_err(|error| format!("indirect jump source: {error:?}"))?
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real code-data alias and exact fetch-before-encryption ordering"
+)]
+fn physical_fetches_retain_data_write_and_xlat2_provenance()
+-> Result<(), String> {
+    let profile = current_profile();
+    let alias =
+        verify_source_physical_image_trace(profile, DYNAMIC_INPUT, &[], 81)
+            .map_err(|error| format!("source-code alias image: {error:?}"))?;
+    assert_eq!(alias.code_fetches.len(), 81);
+    assert_eq!(alias.code_fetches[79], SourcePhysicalCodeFetch {
+        code_address: 79,
+        last_data_write_step: Some(57),
+        last_word_effect: Some(SourcePhysicalWordEffect::DataWrite {
+            trace_index: 57,
+        }),
+        trace_index: 79,
+        value: 38,
+    });
+    assert_eq!(
+        decode_profile_instruction(alias.code_fetches[79].value, 79),
+        Some(b'/'),
+        "later instruction must decode physically changed source word",
+    );
+
+    let repeated =
+        verify_source_physical_image_trace(profile, FOUR_READS, &[], 83)
+            .map_err(|error| format!("repeated code-fetch image: {error:?}"))?;
+    assert_eq!(repeated.code_fetches.len(), 83);
+    assert!(
+        repeated
+            .code_fetches
+            .iter()
+            .enumerate()
+            .all(|(step, fetch)| { fetch.trace_index == step })
+    );
+    let reads = repeated
+        .code_fetches
+        .iter()
+        .filter(|fetch| fetch.code_address == 47)
+        .collect::<Vec<_>>();
+    assert_eq!(reads.len(), 7);
+    assert_eq!(reads[0].last_word_effect, None);
+    for pair in reads.windows(2) {
+        let before = pair[0];
+        let after = pair[1];
+        assert_eq!(after.last_data_write_step, None);
+        assert_eq!(
+            after.last_word_effect,
+            Some(SourcePhysicalWordEffect::Encryption {
+                trace_index: before.trace_index,
+            }),
+            "C47 is re-fetched after its own latest XLAT2",
+        );
+    }
+    let jumps = repeated
+        .code_fetches
+        .iter()
+        .filter(|fetch| fetch.code_address == 49)
+        .collect::<Vec<_>>();
+    assert_eq!(jumps.len(), 7);
+    assert!(
+        jumps.iter().all(|fetch| {
+            fetch.last_word_effect.is_none()
+                && fetch.value == u32::from(FOUR_READS[49])
+        }),
+        "repeated i never encrypts its fetched C49 instruction"
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real source and expanded terminal fetch evidence"
+)]
+fn physical_fetches_include_terminal_non_graphical_read_after_data_write()
+-> Result<(), String> {
+    // Keep C56 j/C57 * and all preceding code identical, but rotate an
+    // initially loader-valid source word at C79 into a non-graphical value.
+    let profile = current_profile();
+    let mut non_graphical = DYNAMIC_INPUT.to_vec();
+    let original = (33..=126u8)
+        .find(|byte| {
+            byte % 3 != 0
+                && b"oijp*/<v".contains(
+                    &decode_profile_instruction(u32::from(*byte), 79)
+                        .unwrap_or_default(),
+                )
+        })
+        .ok_or("no source-valid non-graphical rotation at C79")?;
+    non_graphical[79] = original;
+    let rewritten =
+        verify_source_physical_image_trace(profile, &non_graphical, &[], 81)
+            .map_err(|error| format!("code/data terminal alias: {error:?}"))?;
+    assert_eq!(rewritten.source.outcome, RunOutcome::Terminated {
+        reason: malbolge::Termination::NonGraphicalCell,
+        steps: 80,
+    });
+    assert_eq!(rewritten.code_fetches.len(), 80);
+    assert!(rewritten.code_fetches.last().is_some_and(|fetch| {
+        fetch.code_address == 79
+            && fetch.trace_index == 79
+            && fetch.value > 126
+            && fetch.last_data_write_step == Some(57)
+            && fetch.last_word_effect
+                == Some(SourcePhysicalWordEffect::DataWrite { trace_index: 57 })
+    }));
+
+    let source = b"(=&_@?>=<;:987C";
+    let trace =
+        verify_source_physical_image_trace(current_profile(), source, &[], 5)
+            .map_err(|error| format!("terminal fetch image: {error:?}"))?;
+    assert_eq!(trace.code_fetches.len(), 5);
+    assert_eq!(
+        trace.code_fetches.last().map(|fetch| (
+            fetch.code_address,
+            fetch.trace_index,
+            fetch.last_word_effect,
+        )),
+        Some((7_174_481, 4, None))
+    );
+    assert!(
+        trace
+            .code_fetches
+            .last()
+            .is_some_and(|fetch| fetch.value > 126)
     );
     Ok(())
 }

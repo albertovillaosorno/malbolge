@@ -472,3 +472,37 @@ read and no premature data-write site. These are observed physical
 read-after-write relationships, **not** C23 typed variable identities,
 source-SSA control edges or an executable C checksum loop.
 EOF normalization, source branches and mutable checksum linkage remain open.
+
+## Physical Fetch Versions and Last-Effect Provenance (2026-11-23)
+
+The same one-pass `verify_source_physical_image_trace` also records every
+actual code fetch in `code_fetches`, alongside its already ordered `data_reads`.
+Each entry carries the step, exact physical address/word, last prior `p`/`*`
+data-store step and last prior word effect (`DataWrite` or `Encryption`). The
+new effect tag distinguishes a direct data-store predecessor from a later
+self-encryption or off-site `i`-target XLAT2. The last data-store index is
+retained separately: XLAT2 does not erase its history, but it may change the
+word that a later fetch or operand read actually sees. The collector records
+even idempotent stores/encryptions in temporal order. It takes the executed
+instruction's operand and code word from the normative VM, never a proposed
+or simulated C state. A code fetch and data read precede their own step's
+write; a same-step alias stores first and encrypts afterward. Terminal
+non-graphical fetches are retained without inventing a subsequent XLAT2.
+
+The real 81-cell N15 alias guest has C57 `*` writing source C79, which is
+later fetched at step 79 with physical word 38 (`/`) and an authenticated
+last effect `DataWrite(57)`. A source-valid mutation at C79 instead rotates
+into a non-graphical word: its genuine step-79 terminal fetch retains the
+same prior data-write identity, with no fictitious post-halt encryption.
+The 120-cell source with a genuine repeated read site C47 proves seven
+fetched instruction versions, each after its predecessor's XLAT2. Seven
+reached C49 `i` fetches, by contrast, remain unchanged because `i` encrypts
+its destination, not necessarily its own code word. The expanded indirect
+jump's C3 `i` data read separately records C1's earlier physical store.
+
+The complete-prefix bounds remain 512 steps, 4,096 raw source bytes and 128
+expanded effect sites. These read/write temporal facts are necessary input
+for a source-code layout certificate. They **do not** establish that the
+physical data value implements a C32 variable, that guest branch conditions
+match source conditions, or that an unvisited CFG edge can be reached. The
+unchanged source-C mutable EOF checksum still lacks that physical linkage.

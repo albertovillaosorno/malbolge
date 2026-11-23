@@ -358,6 +358,25 @@ pub enum SourceCodeImageTraceError {
     },
 }
 
+/// The most recent reached guest effect on a physical operand word.
+///
+/// Even an idempotent write is an effect. A data write followed by XLAT2 in
+/// the same step leaves encryption as the latest effect; this is deliberately
+/// distinct from the last *data* writer and does not imply source-C ownership.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourcePhysicalWordEffect {
+    /// Reached `p` or `*` store, including one that left the word unchanged.
+    DataWrite {
+        /// Zero-based guest instruction that physically performed the store.
+        trace_index: usize,
+    },
+    /// Post-instruction XLAT2, including idempotent encryption.
+    Encryption {
+        /// Zero-based guest instruction that applied the encryption.
+        trace_index: usize,
+    },
+}
+
 /// A real decoded guest instruction's data operand and preceding p/* store.
 ///
 /// `last_data_write_step` is the last reached guest `p` or `*` store at the
@@ -371,11 +390,32 @@ pub struct SourcePhysicalDataRead {
     pub data_address: u32,
     /// Earlier write-step index, including idempotent physical stores.
     pub last_data_write_step: Option<usize>,
+    /// Last physical effect, which may supersede a prior data store via XLAT2.
+    pub last_word_effect: Option<SourcePhysicalWordEffect>,
     /// Reached, position-decoded data-operand opcode.
     pub opcode: u8,
     /// Zero-based executed step index in the finite actual VM prefix.
     pub trace_index: usize,
     /// Actual physical word read by this guest instruction.
+    pub value: u32,
+}
+
+/// One physically fetched guest word and the latest prior writing effect.
+///
+/// This includes fetched non-graphical cells that terminate modern execution.
+/// Its `last_word_effect` precedes this fetch's own XLAT2; an `i` may instead
+/// encrypt its *target*, leaving its own fetched word unchanged.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourcePhysicalCodeFetch {
+    /// Executed physical code address (equal to the fetch-read address).
+    pub code_address: u32,
+    /// Last prior physical `p`/`*` write at this address, if any.
+    pub last_data_write_step: Option<usize>,
+    /// Last prior data write or XLAT2 effect, including idempotent effects.
+    pub last_word_effect: Option<SourcePhysicalWordEffect>,
+    /// Zero-based step at which the VM fetched this word.
+    pub trace_index: usize,
+    /// Exact word read by the VM, before any step-local mutation.
     pub value: u32,
 }
 
@@ -387,6 +427,9 @@ pub struct SourcePhysicalDataRead {
 /// the separate operand-read journal.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourcePhysicalImageTrace {
+    /// Every reached instruction fetch, including terminal non-graphical
+    /// reads.
+    pub code_fetches: Vec<SourcePhysicalCodeFetch>,
     /// Actual data-operand reads, in reached guest execution order.
     pub data_reads: Vec<SourcePhysicalDataRead>,
     /// All reached loader-expanded physical sites, in increasing order.
@@ -419,9 +462,11 @@ struct ExpandedPhysicalJournal {
 
 /// Source and expanded event accumulators for one bounded guest execution.
 struct PhysicalImageJournals {
+    code_fetches: Vec<SourcePhysicalCodeFetch>,
     data_reads: Vec<SourcePhysicalDataRead>,
     expanded: BTreeMap<u32, ExpandedPhysicalJournal>,
     last_data_write_steps: BTreeMap<u32, usize>,
+    last_word_effects: BTreeMap<u32, SourcePhysicalWordEffect>,
     source: BTreeMap<u32, Vec<CodeCellEvent>>,
     source_cells: usize,
 }
@@ -577,6 +622,34 @@ fn initial_effect_word(step: &ProfileStepTrace, site: u32) -> Option<u32> {
     .map(|read| read.value)
 }
 
+/// Read the code word before this step's data write or self-encryption.
+fn record_physical_code_fetch(
+    step: &ProfileStepTrace,
+    trace_index: usize,
+    journals: &mut PhysicalImageJournals,
+) -> Result<(), SourcePhysicalImageTraceError> {
+    use SourceCodeImageTraceError as SourceError;
+    use SourcePhysicalImageTraceError as PhysicalError;
+    let read = step
+        .memory_reads
+        .fetch
+        .ok_or(PhysicalError::Source(SourceError::InvalidExecution))?;
+    journals.code_fetches.push(SourcePhysicalCodeFetch {
+        code_address: read.address,
+        last_data_write_step: journals
+            .last_data_write_steps
+            .get(&read.address)
+            .copied(),
+        last_word_effect: journals
+            .last_word_effects
+            .get(&read.address)
+            .copied(),
+        trace_index,
+        value: read.value,
+    });
+    Ok(())
+}
+
 /// Record one source-independent data-operand read, before its own write.
 fn record_physical_operand_read(
     step: &ProfileStepTrace,
@@ -597,6 +670,10 @@ fn record_physical_operand_read(
                 .last_data_write_steps
                 .get(&read.address)
                 .copied(),
+            last_word_effect: journals
+                .last_word_effects
+                .get(&read.address)
+                .copied(),
             opcode,
             trace_index,
             value: read.value,
@@ -605,9 +682,44 @@ fn record_physical_operand_read(
             let _previous = journals
                 .last_data_write_steps
                 .insert(read.address, trace_index);
+            let _previous = journals
+                .last_word_effects
+                .insert(read.address, SourcePhysicalWordEffect::DataWrite {
+                    trace_index,
+                });
         }
     }
     Ok(())
+}
+
+/// Recover the real post-instruction XLAT2 destination, including cases
+/// where encryption was idempotent or was applied to an aliased data store.
+fn committed_encryption_site(
+    step: &ProfileStepTrace,
+) -> Result<Option<u32>, SourcePhysicalImageTraceError> {
+    use SourceCodeImageTraceError as SourceError;
+    use SourcePhysicalImageTraceError as PhysicalError;
+    if step.decoded.is_none()
+        || step.decoded == Some(b'v')
+        || !matches!(step.result, Ok(StepOutcome::Continued))
+    {
+        return Ok(None);
+    }
+    // Changed-value deltas are not a complete effect ledger: the VM omits
+    // both idempotent XLAT2 and the encryption read on p/* same-site writes.
+    let site = step
+        .memory_delta
+        .encryption
+        .map(|effect| effect.address)
+        .or_else(|| step.memory_reads.encryption.map(|read| read.address))
+        .or_else(|| {
+            matches!(step.decoded, Some(b'p' | b'*'))
+                .then_some(step.memory_reads.data)
+                .flatten()
+                .map(|read| read.address)
+        })
+        .ok_or(PhysicalError::Source(SourceError::InvalidExecution))?;
+    Ok(Some(site))
 }
 
 /// Record all distinct physical effects of one reached normative VM step.
@@ -624,6 +736,7 @@ fn append_physical_step_effects(
     if step.result.is_err() {
         return Err(PhysicalError::Source(SourceError::InvalidExecution));
     }
+    record_physical_code_fetch(step, trace_index, journals)?;
     record_physical_operand_read(step, trace_index, journals)?;
     let mut seen = Vec::with_capacity(4);
     for site in affected_code_sites(step).into_iter().flatten() {
@@ -666,6 +779,11 @@ fn append_physical_step_effects(
         };
         append_site_effects(profile, site, step, &mut journal.events)
             .map_err(|error| PhysicalError::ExpandedCell { site, error })?;
+    }
+    if let Some(site) = committed_encryption_site(step)? {
+        let _previous = journals
+            .last_word_effects
+            .insert(site, SourcePhysicalWordEffect::Encryption { trace_index });
     }
     Ok(())
 }
@@ -713,9 +831,11 @@ pub fn verify_source_physical_image_trace(
             |_error| PhysicalError::Source(SourceError::InvalidSource),
         )?;
     let mut journals = PhysicalImageJournals {
+        code_fetches: Vec::new(),
         data_reads: Vec::new(),
         expanded: BTreeMap::new(),
         last_data_write_steps: BTreeMap::new(),
+        last_word_effects: BTreeMap::new(),
         source: BTreeMap::new(),
         source_cells,
     };
@@ -814,6 +934,7 @@ pub fn verify_source_physical_image_trace(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SourcePhysicalImageTrace {
+        code_fetches: journals.code_fetches,
         data_reads: journals.data_reads,
         expanded,
         source: SourceCodeImageTrace {
