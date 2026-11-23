@@ -41,6 +41,18 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest physical output provenance checker now requires a dependency
+on the **most recent** source U8 SSA write, not an older version of the
+same address. An 11-step real N15 guest stores zero to M70, preserves its
+first provenance through two physical `p` writes, stores zero to M70 a
+second time, then reloads the obsolete copy and outputs zero. The previous
+checker accepted it; source-write version tracking refuses it. A paired
+11-step guest retaining the new accumulator passes. The full mutable EOF
+checksum was reattempted and still refuses the unlinked seven-block CFG,
+without a published guest artifact. This is an opt-in finite verifier
+repair, not C arithmetic, dynamic branch linkage or P2 completion. See
+the contract and `tests/compiler/source_phi_copy_trace.rs`.
+
 The strongest physical CFG output checker now also verifies a conservative
 **real guest data path** from the authenticated source U8 SSA store into
 output accumulator A. A four-step N15 guest writes M70=1, then reloads

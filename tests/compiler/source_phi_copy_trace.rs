@@ -2172,6 +2172,164 @@ fn real_guest_source_output_requires_current_frame_operand()
     Ok(())
 }
 
+// A second legitimate source-cell write supersedes the provenance of its
+// prior version. Even if an old off-frame copy still emits the same byte,
+// it does not establish a data path from the currently materialized SSA word.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "eleven real N15 guest steps and exact source version chronology"
+)]
+fn real_guest_output_rejects_stale_source_write_provenance()
+-> Result<(), String> {
+    let trace = |restore_old: bool| -> Result<Vec<ProfileStepTrace>, String> {
+        let mut source = (0..59)
+            .map(|site| graphical(site, b'o'))
+            .collect::<Result<Vec<_>, _>>()?;
+        for (site, opcode) in [
+            (0, b'*'),
+            (1, b'j'),
+            (2, b'p'),
+            (3, b'p'),
+            (4, b'j'),
+            (5, b'*'),
+            (6, b'j'),
+            (7, b'o'),
+            (
+                8,
+                if restore_old {
+                    b'*'
+                } else {
+                    b'o'
+                },
+            ),
+            (9, b'<'),
+            (10, b'v'),
+        ] {
+            source[site] = graphical(site, opcode)?;
+        }
+        let profile = current_profile();
+        let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+            .map_err(|error| format!("source-version loader: {error:?}"))?;
+        let mut memory = loaded.memory().to_vec();
+        memory[70] = 0;
+        memory[71] = 74;
+        memory[75] = 0;
+        memory[76] = 0;
+        memory[77] = 69;
+        let mut machine = ProfileMachine::from_state(
+            profile,
+            memory,
+            Vec::new(),
+            malbolge::ProfileRegisters {
+                accumulator: profile.eof_word(),
+                code_pointer: 0,
+                data_pointer: 70,
+            },
+        )
+        .map_err(|error| format!("source-version VM: {error:?}"))?;
+        let mut steps = Vec::new();
+        let outcome = machine
+            .run_traced(11, &mut |step| steps.push(*step))
+            .map_err(|error| format!("source-version replay: {error:?}"))?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 11,
+        });
+        assert_eq!(
+            steps[8].decoded,
+            Some(if restore_old {
+                b'*'
+            } else {
+                b'o'
+            })
+        );
+        assert_eq!(steps[9].output, Some(0));
+        Ok(steps)
+    };
+    let stale = trace(true)?;
+    let fresh = trace(false)?;
+    assert_eq!(
+        stale.iter().map(|step| step.decoded).collect::<Vec<_>>(),
+        vec![
+            Some(b'*'),
+            Some(b'j'),
+            Some(b'p'),
+            Some(b'p'),
+            Some(b'j'),
+            Some(b'*'),
+            Some(b'j'),
+            Some(b'o'),
+            Some(b'*'),
+            Some(b'<'),
+            Some(b'v'),
+        ],
+    );
+    // p at C2/C3 carries provenance of the first M70 write into M76.
+    // A later * really overwrites M70 with the same zero. A * at C8
+    // reloads the old path, while an o at C8 preserves the fresh A path.
+    for steps in [&stale, &fresh] {
+        assert_eq!(steps[3].after.registers.accumulator, 0);
+        assert_eq!(steps[5].before.registers.data_pointer, 70);
+        assert_eq!(steps[8].before.registers.data_pointer, 76);
+    }
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 11,
+        control_start: 10,
+    }];
+    let effects = [
+        initial_store(Some(0)),
+        GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: 5,
+            effect: GuestCodeOperationEffect::Store {
+                destination: 70,
+                literal: Some(0),
+            },
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: 9,
+            effect: GuestCodeOperationEffect::Output {
+                source: GuestPlacedOperand {
+                    address: 70,
+                    type_kind: TernaryCfgScalarKind::U8,
+                    value: 0,
+                    words: 1,
+                },
+            },
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let frames = [GuestFramePlacement {
+        base: 70,
+        end_exclusive: 71,
+        source_cells: 59,
+    }];
+    for steps in [&stale, &fresh] {
+        assert_eq!(
+            verify_source_block_effect_visits(&blocks, &effects, steps),
+            Ok(())
+        );
+    }
+    assert_eq!(
+        verify_source_branch_choices(&blocks, &[], &effects, &frames, &fresh),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(&blocks, &[], &effects, &frames, &stale),
+        Err(SourcePhiCopyTraceError::MissingOutputProvenance)
+    );
+    Ok(())
+}
+
 // An interior setup jump can execute the same canonical operation effect
 // twice without crossing a source CFG edge. Source effect sites are not a
 // license for repeated I/O or arithmetic inside a single block visit.

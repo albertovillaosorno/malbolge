@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Versioned source-output data provenance (2026-11-23)
+
+The strongest opt-in source CFG output check now authenticates a data path
+from the **latest physical write** to its source U8 SSA operand. Source
+provenance is tagged with the actual bounded VM trace index, not only the
+cell address. A later source-authorized write supersedes the prior version
+for output verification, even if both versions have the same numeric value.
+The forward shadow still conservatively propagates possible dependencies
+through physical `p`/`*` and cannot prove exact arithmetic or control.
+
+A red-first real 11-step N15 guest writes zero into source M70 at C0,
+propagates that first version through two `p` operations to M76, rewrites
+M70 with zero at C5, then reloads M76 with `*` at C8 and emits zero at
+C9. Both source Stores and Output, full-width values and guest I/O match.
+The address-only shadow incorrectly accepted this obsolete dependency;
+versioned provenance refuses `MissingOutputProvenance`. The paired real
+guest uses `o` at C8 to retain the *new* C5 accumulator and passes at
+identical source sites, with the same output byte. This is a bounded
+physical-output necessary condition, not an executable C23 checksum. The
+unchanged full mutable EOF checksum still fails closed at the seven-block
+source CFG target linker without publishing a `.malbolge` artifact.
+Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Physical output accumulator data provenance (2026-11-23)
 
 The strongest opt-in source CFG verifier now requires a reached `<` not

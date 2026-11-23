@@ -171,14 +171,19 @@ type PhiCopySites = BTreeMap<u32, CopySite>;
 type SourceStoreSites = BTreeMap<(u32, u32), Option<u32>>;
 
 // Conservative forward data provenance from actual guest source-frame writes.
-// An A value can carry several candidate source cells through `p`, since
-// ternary crazy is not a conventional copy. No value coincidence or loader
-// seed can mint source provenance. This is a necessary dataflow condition,
-// not a proof that an arithmetic result implements its typed C expression.
+// A token identifies the *specific physical write*, not only its address:
+// an older stored dependency cannot authenticate a subsequently overwritten
+// SSA cell, even when both versions happen to hold the same word. `p` may
+// carry multiple candidate versions because crazy is not a conventional copy.
+// No value coincidence or loader seed can mint provenance. This remains a
+// necessary condition, not a proof of typed C arithmetic.
+type SourceWriteOrigin = (u32, usize);
+
 #[derive(Default)]
 struct SourceAccumulatorProvenance {
-    accumulator: BTreeSet<u32>,
-    memory: BTreeMap<u32, BTreeSet<u32>>,
+    accumulator: BTreeSet<SourceWriteOrigin>,
+    memory: BTreeMap<u32, BTreeSet<SourceWriteOrigin>>,
+    latest_write: BTreeMap<u32, usize>,
 }
 
 impl SourceAccumulatorProvenance {
@@ -186,6 +191,7 @@ impl SourceAccumulatorProvenance {
         &mut self,
         step: &ProfileStepTrace,
         sourced_destination: Option<u32>,
+        trace_index: usize,
     ) {
         let data = step.before.registers.data_pointer;
         match step.decoded {
@@ -203,7 +209,8 @@ impl SourceAccumulatorProvenance {
         }
         if matches!(step.decoded, Some(b'p' | b'*')) {
             if let Some(address) = sourced_destination {
-                _ = self.accumulator.insert(address);
+                _ = self.accumulator.insert((address, trace_index));
+                _ = self.latest_write.insert(address, trace_index);
             }
             let _previous = self.memory.insert(data, self.accumulator.clone());
         }
@@ -946,7 +953,7 @@ fn verify_source_output_operand(
     step: &ProfileStepTrace,
     effects: &[GuestCodeOperationEffectSite],
     materialized: &BTreeMap<u32, u32>,
-    accumulator_sources: &BTreeSet<u32>,
+    provenance: &SourceAccumulatorProvenance,
 ) -> Result<(), SourcePhiCopyTraceError> {
     if step.decoded != Some(b'<') {
         return Ok(());
@@ -973,7 +980,15 @@ fn verify_source_output_operand(
     {
         return Err(SourcePhiCopyTraceError::InvalidOutputValue);
     }
-    if !accumulator_sources.contains(&operand.address) {
+    if !provenance
+        .latest_write
+        .get(&operand.address)
+        .is_some_and(|version| {
+            provenance
+                .accumulator
+                .contains(&(operand.address, *version))
+        })
+    {
         return Err(SourcePhiCopyTraceError::MissingOutputProvenance);
     }
     Ok(())
@@ -1019,9 +1034,9 @@ fn verify_source_branch_choices(
             previous,
             effects,
             &materialized,
-            &provenance.accumulator,
+            &provenance,
         )?;
-        provenance.observe(previous, sourced_destination);
+        provenance.observe(previous, sourced_destination, index);
         let Some(next) = steps.get(index + 1) else {
             continue;
         };
