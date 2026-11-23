@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Signed source arithmetic overflow refusal (2026-11-23)
+
+The strongest opt-in source-computation result checker no longer accepts
+numerically wrapped signed `Add`, `Subtract` or `Multiply` as though C23
+signed overflow were defined. Earlier source-placed VM stores must carry
+canonical typed operands, and the computed signed value must fit its original
+8-, 16- or 32-bit type before its guest result word can be accepted. Unsigned
+addition retains its exact modulo-width behavior. This repair does **not**
+materialize the arithmetic or establish causal guest operand reads.
+
+A red-first real four-step N15 `*, *, *, v` guest physically stores i8
+`127`, `1` and `128`. Its earlier strict checker accepted the wrapped result
+of `127 + 1`; the corrected checker refuses `InvalidComputationValue`.
+Independent real VM inputs also distinguish defined `126 + 1`, signed
+subtraction/multiplication overflow, and valid unsigned `255 + 1 -> 0`.
+Canonical two-cell C32 and i16 boundary checks reject signed overflow while
+preserving defined negative results and u32 wrapping. The full seven-block
+C23 checksum remains unlinked and no executable source-C guest is published.
+Regression: `tests/compiler/source_computation_trace.rs`.
+
 ### Opt-in source computation result authentication (2026-11-23)
 
 `SourcePhiCopyProbe::verify_with_source_computations` extends the strongest

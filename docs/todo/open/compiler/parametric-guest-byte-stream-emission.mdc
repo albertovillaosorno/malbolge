@@ -41,6 +41,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest opt-in source computation value checker now refuses signed
+8-, 16- and 32-bit overflow in `Add`, `Subtract` and `Multiply` instead of
+accepting a physically wrapped guest word. Red-first four-step N15 arithmetic
+results and independent full-width controls distinguish defined negative
+results and unsigned wrapping from C23 undefined signed overflow. This only
+repairs a numerical verifier condition: actual guest operand dependence,
+signed EOF conversion, physical control linkage and the original complete
+mutable C23 EOF checksum remain unimplemented. See the P2 contract and
+`tests/compiler/source_computation_trace.rs`.
+
 The strongest source-locked physical CFG/phi checker has a new **opt-in exact
 computation-result** policy. Real four-step N15 traces accept a typed XOR
 result of 1 ^ 2 = 3, refuse a physically written 2 or a forged AND result,

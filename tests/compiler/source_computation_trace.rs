@@ -344,3 +344,191 @@ fn typed_c32_checksum_operations_preserve_full_width() {
     };
     assert_eq!(evaluate(cast, &journal), Ok(254));
 }
+
+// C23 signed arithmetic overflow is undefined source behavior, even when
+// the guest physically writes the corresponding low-width wrapped bits.
+// These are real four-step N15 guest executions, not fabricated VM traces.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one bounded real guest signed/unsigned overflow matrix"
+)]
+fn real_guest_signed_overflow_must_not_pass_numeric_result_check()
+-> Result<(), String> {
+    let typed = |address, type_kind| GuestPlacedOperand {
+        address,
+        type_kind,
+        value: address.saturating_sub(70),
+        words: 1,
+    };
+    let computation = |operation, type_kind| GuestCodeComputation::Binary {
+        operation,
+        left: typed(70, type_kind),
+        right: typed(71, type_kind),
+        result: typed(72, type_kind),
+    };
+    let placed = effects();
+    let frame = frames();
+    let signed_kind = TernaryCfgScalarKind::I8;
+    // * rotates 3*x into x for all these small N15 words.
+    // 127 + 1 -> 128: the physical low-byte result matches modulo 256,
+    // but evaluating this as a signed i8 computation would be undefined.
+    let add_overflow = traced_three_stores_with_seeds([381, 3, 384])?;
+    assert_eq!(
+        verify_source_computation_values(
+            &operations(computation(BinaryOp::Add, signed_kind)),
+            &placed,
+            &[],
+            &frame,
+            &add_overflow,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue)
+    );
+    let defined_add = traced_three_stores_with_seeds([378, 3, 381])?;
+    assert_eq!(
+        verify_source_computation_values(
+            &operations(computation(BinaryOp::Add, signed_kind)),
+            &placed,
+            &[],
+            &frame,
+            &defined_add,
+        ),
+        Ok(())
+    );
+    let sub_overflow = traced_three_stores_with_seeds([384, 3, 381])?;
+    assert_eq!(
+        verify_source_computation_values(
+            &operations(computation(BinaryOp::Subtract, signed_kind)),
+            &placed,
+            &[],
+            &frame,
+            &sub_overflow,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue)
+    );
+    let mul_overflow = traced_three_stores_with_seeds([384, 6, 0])?;
+    assert_eq!(
+        verify_source_computation_values(
+            &operations(computation(BinaryOp::Multiply, signed_kind)),
+            &placed,
+            &[],
+            &frame,
+            &mul_overflow,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue)
+    );
+    // Unsigned arithmetic is defined modulo 2^8: 255 + 1 -> 0.
+    let unsigned_wrap = traced_three_stores_with_seeds([765, 3, 0])?;
+    assert_eq!(
+        verify_source_computation_values(
+            &operations(computation(BinaryOp::Add, TernaryCfgScalarKind::U8,)),
+            &placed,
+            &[],
+            &frame,
+            &unsigned_wrap,
+        ),
+        Ok(())
+    );
+    Ok(())
+}
+
+// The physical overflow witness above tests signed i8; this deterministic
+// full-width matrix verifies the same bounded interpreter at both C32 cells.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one full-width signed/unsigned boundary matrix"
+)]
+fn checked_signed_arithmetic_preserves_c32_and_i16_boundaries() {
+    let computed = |kind, operation, lhs, rhs| {
+        let mut journal = BTreeMap::new();
+        let width = scalar_bits(kind);
+        let words = if width == 32 {
+            2
+        } else {
+            1
+        };
+        let placed = |address, value| GuestPlacedOperand {
+            address,
+            type_kind: kind,
+            value,
+            words,
+        };
+        let src = if words == 2 {
+            [encode_i32_cells(lhs), encode_i32_cells(rhs)]
+        } else {
+            [[lhs, 0], [rhs, 0]]
+        };
+        for (index, cells) in src.into_iter().enumerate() {
+            let address = 70u32.saturating_add(
+                u32::try_from(index)
+                    .unwrap_or(u32::MAX)
+                    .saturating_mul(words),
+            );
+            for (offset, word) in cells
+                .into_iter()
+                .take(usize::try_from(words).unwrap_or(usize::MAX))
+                .enumerate()
+            {
+                _ = journal.insert(
+                    address.saturating_add(
+                        u32::try_from(offset).unwrap_or(u32::MAX),
+                    ),
+                    word,
+                );
+            }
+        }
+        evaluate(
+            GuestCodeComputation::Binary {
+                operation,
+                left: placed(70, 0),
+                right: placed(70u32.saturating_add(words), 1),
+                result: placed(
+                    70u32.saturating_add(words.saturating_mul(2)),
+                    2,
+                ),
+            },
+            &journal,
+        )
+    };
+    let invalid = Err(SourcePhiCopyTraceError::InvalidComputationValue);
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I32, BinaryOp::Add, 0x7fff_ffff, 1),
+        invalid
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::Subtract,
+            0x8000_0000,
+            1
+        ),
+        invalid
+    );
+    assert_eq!(
+        computed(
+            TernaryCfgScalarKind::I32,
+            BinaryOp::Multiply,
+            0x4000_0000,
+            2
+        ),
+        invalid
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I32, BinaryOp::Add, 0xffff_fffe, 1),
+        Ok(0xffff_ffff)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::U32, BinaryOp::Add, 0xffff_ffff, 1),
+        Ok(0)
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I16, BinaryOp::Add, 0x7fff, 1),
+        invalid
+    );
+    assert_eq!(
+        computed(TernaryCfgScalarKind::I16, BinaryOp::Subtract, 0x8000, 1),
+        invalid
+    );
+}

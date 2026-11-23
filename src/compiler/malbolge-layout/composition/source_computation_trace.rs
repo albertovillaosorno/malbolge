@@ -98,6 +98,48 @@ const fn signed(bits: u32, width: u32) -> i32 {
     bits.wrapping_shl(shift).cast_signed().wrapping_shr(shift)
 }
 
+// C23 signed overflow is undefined, not a two's-complement wrapped result.
+// Use i64 so multiplication of any two i32 operands is representable before
+// checking the exact signed source-type range.
+fn checked_signed_arithmetic(
+    operation: BinaryOp,
+    lhs: u32,
+    rhs: u32,
+    width: u32,
+) -> Result<u32, SourcePhiCopyTraceError> {
+    use SourcePhiCopyTraceError::{
+        InvalidComputationValue, UnsupportedComputation,
+    };
+    let left = i64::from(signed(lhs, width));
+    let right = i64::from(signed(rhs, width));
+    let result = match operation {
+        BinaryOp::Add => left.checked_add(right),
+        BinaryOp::Multiply => left.checked_mul(right),
+        BinaryOp::Subtract => left.checked_sub(right),
+        BinaryOp::And
+        | BinaryOp::DivideFloat
+        | BinaryOp::DivideSigned
+        | BinaryOp::DivideUnsigned
+        | BinaryOp::Or
+        | BinaryOp::RemainderSigned
+        | BinaryOp::RemainderUnsigned
+        | BinaryOp::ShiftLeft
+        | BinaryOp::ShiftRightArithmetic
+        | BinaryOp::ShiftRightLogical
+        | BinaryOp::Xor => return Err(UnsupportedComputation),
+    }
+    .ok_or(InvalidComputationValue)?;
+    let bound = 1i64
+        .checked_shl(width.saturating_sub(1))
+        .ok_or(InvalidComputationValue)?;
+    let minimum = bound.checked_neg().ok_or(InvalidComputationValue)?;
+    if !(minimum..bound).contains(&result) {
+        return Err(InvalidComputationValue);
+    }
+    u32::try_from(result & i64::from(bit_mask(width)))
+        .map_err(|_error| InvalidComputationValue)
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "exhaustive typed operations share one closed result interpreter"
@@ -121,7 +163,18 @@ fn evaluate(
             }
             let lhs = read_scalar(left, written)?;
             let rhs = read_scalar(right, written)?;
+            let width = scalar_bits(result.type_kind);
             let computed = match operation {
+                BinaryOp::Add | BinaryOp::Multiply | BinaryOp::Subtract
+                    if matches!(
+                        result.type_kind,
+                        TernaryCfgScalarKind::I8
+                            | TernaryCfgScalarKind::I16
+                            | TernaryCfgScalarKind::I32
+                    ) =>
+                {
+                    checked_signed_arithmetic(operation, lhs, rhs, width)?
+                },
                 BinaryOp::Add => lhs.wrapping_add(rhs),
                 BinaryOp::And => lhs & rhs,
                 BinaryOp::Multiply => lhs.wrapping_mul(rhs),
