@@ -44,7 +44,9 @@ from C5 to the successor halt at C8. Source-backed copy site models and the
 normative guest trace agree on the two written words and the reached `i`.
 Changing only the exit into `o` still leaves identical copy values but
 refuses the new transfer gate; jumping to C9 or ending after the commit
-also refuses. This establishes a **bounded, one-edge necessary condition**,
+also refuses. A second eight-step N15 trace inserts `o` at C5 after the
+commit, then takes the reserved C6 `i` to C8: the gate accepts harmless
+pad-local setup but refuses a jump at C5 that bypasses the declared exit. This establishes a **bounded, one-edge necessary condition**,
 not proof of predecessor branch selection, complete source arithmetic,
 repeatable CFG execution, or source-C checksum publication. The original
 seven-block C23 checksum still explicitly refuses at unlinked target

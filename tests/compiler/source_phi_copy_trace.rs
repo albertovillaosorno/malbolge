@@ -758,13 +758,12 @@ fn real_guest_sparse_phi_gap_rejects_idempotent_effect_and_escape()
 // copying the correct words without this final transfer is insufficient.
 #[expect(
     clippy::indexing_slicing,
-    clippy::panic_in_result_fn,
-    reason = "fixed seven-step guest with isolated seeded N15 data pointers"
+    reason = "fixed graphical guest code sites"
 )]
-fn guest_phi_trace_with_successor(
+fn guest_phi_source_with_successor_at(
+    exit_address: u32,
     exit_opcode: u8,
-    jump_operand: u32,
-) -> Result<Vec<ProfileStepTrace>, String> {
+) -> Result<Vec<u8>, String> {
     let mut source = (0..59)
         .map(|position| graphical(position, b'o'))
         .collect::<Result<Vec<_>, _>>()?;
@@ -774,13 +773,42 @@ fn guest_phi_trace_with_successor(
         (2, b'p'),
         (3, b'j'),
         (4, b'p'),
-        (5, exit_opcode),
-        (6, b'v'),
+        (
+            5,
+            if exit_address == 5 {
+                exit_opcode
+            } else {
+                b'o'
+            },
+        ),
+        (
+            6,
+            if exit_address == 6 {
+                exit_opcode
+            } else {
+                b'v'
+            },
+        ),
+        (7, b'v'),
         (8, b'v'),
         (9, b'v'),
     ] {
         source[site] = graphical(site, opcode)?;
     }
+    Ok(source)
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "fixed seeded real guest trace and normative pointer assertions"
+)]
+fn guest_phi_trace_with_successor_at(
+    exit_address: u32,
+    exit_opcode: u8,
+    jump_operand: u32,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let source = guest_phi_source_with_successor_at(exit_address, exit_opcode)?;
     let profile = current_profile();
     let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
         .map_err(|error| format!("source-loaded phi guest: {error:?}"))?;
@@ -790,8 +818,12 @@ fn guest_phi_trace_with_successor(
     }
     *memory.get_mut(71).ok_or("missing first pointer seed")? = 100;
     *memory.get_mut(102).ok_or("missing second pointer seed")? = 119;
+    let pointer_cell = usize::try_from(exit_address)
+        .ok()
+        .and_then(|offset| offset.checked_add(116))
+        .ok_or("invalid successor pointer")?;
     *memory
-        .get_mut(121)
+        .get_mut(pointer_cell)
         .ok_or("missing successor pointer seed")? = jump_operand;
     let mut machine = ProfileMachine::from_state(
         profile,
@@ -805,17 +837,28 @@ fn guest_phi_trace_with_successor(
     )
     .map_err(|error| format!("seeded successor guest: {error:?}"))?;
     let mut steps = Vec::new();
+    let steps_expected = usize::try_from(exit_address)
+        .ok()
+        .and_then(|step| step.checked_add(2))
+        .ok_or("invalid exit address")?;
     let outcome = machine
-        .run_traced(7, &mut |step| steps.push(*step))
+        .run_traced(steps_expected, &mut |step| steps.push(*step))
         .map_err(|error| format!("successor guest run: {error:?}"))?;
     assert_eq!(outcome, RunOutcome::Terminated {
         reason: Termination::HaltInstruction,
-        steps: 7,
+        steps: steps_expected,
     });
     assert_eq!(steps[2].before.registers.data_pointer, 101);
     assert_eq!(steps[4].before.registers.data_pointer, 120);
     assert_eq!(steps[5].before.registers.data_pointer, 121);
     Ok(steps)
+}
+
+fn guest_phi_trace_with_successor(
+    exit_opcode: u8,
+    jump_operand: u32,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    guest_phi_trace_with_successor_at(5, exit_opcode, jump_operand)
 }
 
 fn linked_phi_edge() -> Result<LinkedPhiState, String> {
@@ -921,6 +964,50 @@ fn real_guest_phi_exit_refuses_unlinked_continuations() -> Result<(), String> {
             &wrong_successor,
             true,
         ),
+        Err(SourcePhiCopyTraceError::InvalidPhiTransfer),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real bounded successor jump and early-exit negative controls"
+)]
+fn real_guest_phi_transfer_allows_post_commit_setup() -> Result<(), String> {
+    let good = guest_phi_trace_with_successor_at(6, b'i', 7)?;
+    let (mut edge, frame) = linked_phi_edge()?;
+    edge.pad_exit_address = Some(6);
+    let setup = good.get(5).ok_or("missing post-commit setup")?;
+    let jump = good.get(6).ok_or("missing reserved successor exit")?;
+    assert_eq!(setup.decoded, Some(b'o'));
+    assert_eq!(jump.decoded, Some(b'i'));
+    assert_eq!(jump.before.registers.code_pointer, 6);
+    assert_eq!(jump.after.registers.code_pointer, 8);
+    let check = |steps: &[ProfileStepTrace]| {
+        verify_traced_phi_copies_with_transfer_policy(
+            PhiTraceContext {
+                edges: from_ref(&edge),
+                effects: &[initial_store(None)],
+                frames: &frame,
+            },
+            steps,
+            true,
+        )
+    };
+    let proof = check(&good)
+        .map_err(|error| format!("post-commit setup: {error:?}"))?;
+    assert_eq!(proof.completed_pads, 1);
+    // Exact writes followed by a jump one cell too early do not prove the
+    // source-reserved exit, even when the target block is otherwise right.
+    let early = guest_phi_trace_with_successor_at(5, b'i', 7)?;
+    assert_eq!(
+        check(&early),
+        Err(SourcePhiCopyTraceError::InvalidPhiTransfer),
+    );
+    let missing = guest_phi_trace_with_successor_at(6, b'o', 7)?;
+    assert_eq!(
+        check(&missing),
         Err(SourcePhiCopyTraceError::InvalidPhiTransfer),
     );
     Ok(())

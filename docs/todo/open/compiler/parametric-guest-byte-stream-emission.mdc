@@ -79,7 +79,8 @@ evidence describe the old priority scheme, not the current phase.
   source-locked snapshot/commit evidence through each reached pad's reserved
   successor `i`. A real seven-step seeded N15 guest writes both copies and
   jumps C5 -> C8; a matching-value non-jump, a C9 jump and a missing exit
-  refuse. The unchanged full mutable C23 checksum still stops at unlinked
+  refuse. An eight-step guest accepts post-commit setup before C6 -> C8,
+  but refuses an early C5 -> C8 that skips the reserved exit. The unchanged full mutable C23 checksum still stops at unlinked
   CFG target lowering with 7 blocks, 19 operations, 4 phi edges and no
   published artifact. This does not prove predecessor branch selection,
   arbitrary C arithmetic or a usable EOF loop.
