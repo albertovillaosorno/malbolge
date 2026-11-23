@@ -570,3 +570,87 @@ fn complete_frame_journal_accepts_reverse_c23_word_order()
     assert_eq!(verify_complete_frame_write_journal(&proof), Ok(()));
     Ok(())
 }
+
+// Real instruction traces, not synthetic memory deltas: the frame-site gate
+// must inspect p/* execution even when the data write is idempotent.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real guest frame site assertions"
+)]
+fn real_frame_write_requires_an_attributed_physical_effect_site()
+-> Result<(), String> {
+    let encode = |site: usize, opcode: u8| source_cell(site, opcode);
+    let mut source = (0..59)
+        .map(|site| encode(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in
+        [(0, b'j'), (1, b'p'), (2, b'j'), (3, b'p'), (4, b'v')]
+    {
+        source[site] = encode(site, opcode)?;
+    }
+    for (site, byte) in [(41, 40), (42, 56), (57, 60)] {
+        source[site] = byte;
+    }
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), &source, vec![])
+            .map_err(|error| error.to_string())?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(5, &mut |step| steps.push(*step))
+        .map_err(|error| error.to_string())?;
+    assert_eq!(outcome, malbolge::RunOutcome::Terminated {
+        reason: malbolge::Termination::HaltInstruction,
+        steps: 5,
+    });
+    let frame = GuestFramePlacement {
+        base: 57,
+        end_exclusive: 58,
+        source_cells: 59,
+    };
+    let idempotent = steps.get(3).ok_or("missing guest p step")?;
+    assert_eq!(idempotent.decoded, Some(b'p'));
+    assert_eq!(idempotent.before.registers.data_pointer, 57);
+    assert!(idempotent.memory_delta.data.is_none());
+    assert_eq!(
+        verify_source_frame_write_step(idempotent, &[frame], &BTreeMap::new()),
+        Err(SourceInputTraceError::UnexpectedGuestStoreSite),
+    );
+    assert_eq!(
+        verify_source_frame_write_step(
+            idempotent,
+            &[frame],
+            &BTreeMap::from([((3, 57), None)]),
+        ),
+        Ok(()),
+    );
+    let actual = idempotent.after.registers.accumulator;
+    assert_eq!(actual, 60);
+    assert_eq!(
+        verify_source_frame_write_step(
+            idempotent,
+            &[frame],
+            &BTreeMap::from([((3, 57), Some(actual))]),
+        ),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_frame_write_step(
+            idempotent,
+            &[frame],
+            &BTreeMap::from([((3, 57), Some(actual + 1))]),
+        ),
+        Err(SourceInputTraceError::InputResultMismatch),
+    );
+    // An address match alone is insufficient: the executing code site is
+    // also an authenticated typed operation effect.
+    assert_eq!(
+        verify_source_frame_write_step(
+            idempotent,
+            &[frame],
+            &BTreeMap::from([((1, 57), None)]),
+        ),
+        Err(SourceInputTraceError::UnexpectedGuestStoreSite),
+    );
+    Ok(())
+}

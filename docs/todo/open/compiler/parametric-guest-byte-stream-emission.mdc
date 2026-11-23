@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the combined physical source input/output/store gate began
+  checking every reached `p`/`*` destination in **all** source-owned SSA
+  frames and phi scratch, not only completed input-result cells. Exact
+  source-placed Store or phi-copy code/destination pairs are required;
+  literal Stores additionally demand the real post-step word, including
+  idempotent writes. The existing VM replay is reused, and real N15
+  idempotent-site negatives pass. This is site and literal authentication,
+  not linked C23 arithmetic, phi execution or a checksum guest artifact.
+  See `tests/compiler/source_input_store.rs` and the active contract.
+
 - On 2026-11-23 the source-authenticated input-store verifier began
   reconciling every reached physical frame write with the exact completed
   source store-event journal, including repeats at an already-authorized

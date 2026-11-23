@@ -46,7 +46,9 @@ use super::typed_cfg_adapter::state_relocation::{
     GuestCodeOperationEffect, GuestCodeProposals,
     bind_source_locked_cfg_code_targets_with_effect_anchors,
 };
-use super::typed_cfg_adapter::state_storage::encode_i32_cells;
+use super::typed_cfg_adapter::state_storage::{
+    GuestFramePlacement, encode_i32_cells,
+};
 
 struct PendingInputStore {
     completed: Option<SourceInputStoreObservation>,
@@ -537,13 +539,15 @@ impl SourceInputProbe<'_> {
             operation_anchors,
             effect_anchors,
         )?;
-        let proof = verify_source_input_stored_prefix(self, prefix)?;
+        let (proof, steps) =
+            verify_source_input_stored_prefix_with_steps(self, prefix)?;
         verify_source_input_store_effect_sites(
             self,
             proposals,
             operation_anchors,
             effect_anchors,
             &proof,
+            &steps,
         )?;
         Ok(proof)
     }
@@ -571,13 +575,15 @@ impl SourceInputProbe<'_> {
             operation_anchors,
             effect_anchors,
         )?;
-        let proof = verify_source_input_stored_prefix(self, prefix)?;
+        let (proof, steps) =
+            verify_source_input_stored_prefix_with_steps(self, prefix)?;
         verify_source_input_store_effect_sites(
             self,
             proposals,
             operation_anchors,
             effect_anchors,
             &proof,
+            &steps,
         )?;
         Ok(proof)
     }
@@ -592,6 +598,7 @@ fn verify_source_input_store_effect_sites(
     operation_anchors: &[GuestCodeOperationAnchor],
     effect_anchors: &[GuestCodeEffectAnchor],
     proof: &SourceInputStoredProof,
+    steps: &[ProfileStepTrace],
 ) -> Result<(), SourceInputTraceError> {
     let source_cells = u32::try_from(probe.physical_source.len())
         .map_err(|_error| SourceInputTraceError::InvalidProbeBound)?;
@@ -606,7 +613,7 @@ fn verify_source_input_store_effect_sites(
     .map_err(|_error| SourceInputTraceError::InvalidSourcePlacement)?;
     let mut effects = BTreeMap::new();
     let mut allowed_frame_writes = BTreeSet::new();
-    for site in plan.operation_effect_sites {
+    for site in &plan.operation_effect_sites {
         if let GuestCodeOperationEffect::Store { destination, .. } = site.effect
         {
             let key = (site.function, site.block, site.ordinal, destination);
@@ -646,6 +653,98 @@ fn verify_source_input_store_effect_sites(
     // source effect, even when that second write leaves the word unchanged.
     // Keep the more specific wrong-site diagnostic above for foreign writes.
     verify_complete_frame_write_journal(proof)?;
+    verify_source_frame_write_sites(&plan, steps)
+}
+
+// Only the physically reached p/* site can perform a source-frame store.
+// Include all SSA and phi scratch cells, not merely input-result destinations.
+// Even unchanged writes are effects and must be attributed to source code.
+fn verify_source_frame_write_step(
+    step: &ProfileStepTrace,
+    frames: &[GuestFramePlacement],
+    allowed: &BTreeMap<(u32, u32), Option<u32>>,
+) -> Result<(), SourceInputTraceError> {
+    if step.result.is_err() {
+        return Ok(());
+    }
+    let is_frame_cell = |address| {
+        frames
+            .iter()
+            .any(|frame| frame.base <= address && address < frame.end_exclusive)
+    };
+    let code_address = step.before.registers.code_pointer;
+    // A source frame is data-only: even a no-op XLAT2 target cannot stand
+    // in for a typed state write, nor can a fetched frame cell become code.
+    if is_frame_cell(code_address)
+        || step
+            .memory_reads
+            .encryption
+            .is_some_and(|read| is_frame_cell(read.address))
+        || step
+            .memory_delta
+            .encryption
+            .is_some_and(|write| is_frame_cell(write.address))
+    {
+        return Err(SourceInputTraceError::InputResultMismatch);
+    }
+    if matches!(step.decoded, Some(b'p' | b'*')) {
+        let data_address = step.before.registers.data_pointer;
+        if is_frame_cell(data_address) {
+            let literal = allowed
+                .get(&(code_address, data_address))
+                .ok_or(SourceInputTraceError::UnexpectedGuestStoreSite)?;
+            // Actual p/* leaves the written word in A even when the memory
+            // delta is empty because this particular write was idempotent.
+            if literal.is_some_and(|expected| {
+                expected != step.after.registers.accumulator
+            }) {
+                return Err(SourceInputTraceError::InputResultMismatch);
+            }
+        }
+    }
+    Ok(())
+}
+
+// The proposal can authorize only source operations and edge-local two-phase
+// phi copy cells. It cannot add a new permission for a setup instruction to
+// overwrite an unrelated local, even when the final I/O still looks right.
+fn verify_source_frame_write_sites(
+    plan: &super::typed_cfg_adapter::state_relocation::GuestAddressedCfgPlan,
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourceInputTraceError> {
+    let mut allowed = BTreeMap::new();
+    for site in &plan.operation_effect_sites {
+        if let GuestCodeOperationEffect::Store { destination, literal } =
+            site.effect
+        {
+            if allowed
+                .insert((site.code_address, destination), literal)
+                .is_some()
+            {
+                return Err(SourceInputTraceError::InvalidSourcePlacement);
+            }
+        }
+    }
+    for edge in &plan.control_edges {
+        for site in edge.snapshot_sites.iter().chain(&edge.commit_sites) {
+            if allowed
+                .insert((site.code_address, site.copy.destination), None)
+                .is_some()
+            {
+                return Err(SourceInputTraceError::InvalidSourcePlacement);
+            }
+        }
+    }
+    // These are the original normative VM steps of the input-store replay.
+    // The replay's outcome, input consumption and output were already checked
+    // against the independent source I/O run before admission.
+    for step in steps {
+        verify_source_frame_write_step(
+            step,
+            &plan.relocated.state_placements,
+            &allowed,
+        )?;
+    }
     Ok(())
 }
 
@@ -672,6 +771,17 @@ fn verify_source_input_stored_prefix(
     probe: SourceInputProbe<'_>,
     prefix: SourceInputPrefixProof,
 ) -> Result<SourceInputStoredProof, SourceInputTraceError> {
+    verify_source_input_stored_prefix_with_steps(probe, prefix)
+        .map(|(proof, _steps)| proof)
+}
+
+fn verify_source_input_stored_prefix_with_steps(
+    probe: SourceInputProbe<'_>,
+    prefix: SourceInputPrefixProof,
+) -> Result<
+    (SourceInputStoredProof, Vec<ProfileStepTrace>),
+    SourceInputTraceError,
+> {
     let mut machine = ProfileMachine::from_source(
         current_profile(),
         probe.physical_source,
@@ -679,8 +789,12 @@ fn verify_source_input_stored_prefix(
     )
     .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
     let mut tracker = StoreTracker::from_machine(&machine, &prefix)?;
+    let mut physical_steps = Vec::new();
     let outcome = machine
-        .run_traced(probe.step_budget, &mut |step| tracker.step(step))
+        .run_traced(probe.step_budget, &mut |step| {
+            tracker.step(step);
+            physical_steps.push(*step);
+        })
         .map_err(|_error| SourceInputTraceError::InvalidGuestExecution)?;
     if outcome != prefix.outcome
         || machine.input_consumed() != prefix.bytes_consumed
@@ -689,11 +803,14 @@ fn verify_source_input_stored_prefix(
         return Err(SourceInputTraceError::InvalidGuestExecution);
     }
     let frame_writes = std::mem::take(&mut tracker.frame_writes);
-    Ok(SourceInputStoredProof {
-        prefix,
-        stores: tracker.complete()?,
-        frame_writes,
-    })
+    Ok((
+        SourceInputStoredProof {
+            prefix,
+            stores: tracker.complete()?,
+            frame_writes,
+        },
+        physical_steps,
+    ))
 }
 
 #[cfg(test)]

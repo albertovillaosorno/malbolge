@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-wide physical frame-store site checks (2026-11-23)
+
+The opt-in combined source input/output/store verifier now reuses the already
+captured normative VM input-store trace to inspect **every** reached `p`/`*`
+whose destination belongs to any source-reserved SSA frame or phi scratch
+cell. Such a write must occur at the exact `(code address, data address)` of
+a source-authenticated `Store` effect or edge-local phi snapshot/commit.
+A source literal store must also leave its specified full-width word in the
+real accumulator, including an idempotent write without a memory delta.
+Guest instruction fetches or XLAT2 target accesses into source data frames
+refuse as code/data aliasing.
+
+The 5-step real N15 guest with a physical idempotent `p` at C3 targeting
+M57 rejects a missing/foreign site and an incorrect literal value, while
+accepting the exact physical site and literal. The previously established
+63-cell live input/store/output guest remains a separate combined-path
+regression. Frame-wide site admission is **not** a source operation-count
+journal for non-input stores, a phi value-copy proof, or runtime C32 arithmetic
+and branch verification. The original C23 EOF checksum remains unlinked.
+See `tests/compiler/source_input_store.rs` and the source-state verifier.
+
 ### Complete source input-store effect chronology (2026-11-23)
 
 The opt-in physical source input-store gate now checks **exactly one**
