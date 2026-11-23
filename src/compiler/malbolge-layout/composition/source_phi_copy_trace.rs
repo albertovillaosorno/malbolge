@@ -77,6 +77,10 @@ pub enum SourcePhiCopyTraceError {
     InvalidPhiTransfer,
     /// Canonical source and proposed code/SSA placement do not agree.
     InvalidSourcePlacement,
+    /// A source-block visit used an incompatible physical effect opcode.
+    InvalidBlockEffect,
+    /// A source-block visit skipped or reordered a required effect cell.
+    MissingBlockEffect,
     /// A reached branch did not materialize its Boolean before departure.
     MissingBranchCondition,
     /// A copy source had no earlier, actual source-placed guest data write.
@@ -473,6 +477,11 @@ impl SourcePhiCopyProbe<'_> {
                 &plan.function_entries,
                 &steps,
             )?;
+            verify_source_block_effect_visits(
+                &plan.code_blocks,
+                &plan.operation_effect_sites,
+                &steps,
+            )?;
         }
         if matches!(
             policy,
@@ -625,6 +634,77 @@ fn verify_source_block_entries(
             })
         {
             return Err(SourcePhiCopyTraceError::InvalidBlockEntry);
+        }
+    }
+    Ok(())
+}
+
+// Once a source block is reached, each source-authenticated effect address
+// must physically execute, in canonical operation/effect order, before that
+// visit leaves the block. Setup may loop or revisit earlier cells, but may
+// not skip the sole required site. A reached address alone cannot establish
+// that the decoded instruction realizes the source operation's semantics.
+fn verify_source_block_effect_visits(
+    blocks: &[GuestCodeBlockPlacement],
+    effects: &[GuestCodeOperationEffectSite],
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourcePhiCopyTraceError> {
+    let mut index = 0;
+    while let Some(step) = steps.get(index) {
+        let code = step.before.registers.code_pointer;
+        let Some(block) = blocks
+            .iter()
+            .find(|block| (block.start..block.end_exclusive).contains(&code))
+        else {
+            index += 1;
+            continue;
+        };
+        let visit_start = index;
+        while steps.get(index).is_some_and(|next| {
+            (block.start..block.end_exclusive)
+                .contains(&next.before.registers.code_pointer)
+        }) {
+            index += 1;
+        }
+        let visit = steps
+            .get(visit_start..index)
+            .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
+        let mut after = 0;
+        for effect in effects.iter().filter(|effect| {
+            (effect.function, effect.block) == (block.function, block.block)
+        }) {
+            let Some(reached) = visit.get(after..).and_then(|remaining| {
+                remaining.iter().position(|reached| {
+                    reached.before.registers.code_pointer == effect.code_address
+                })
+            }) else {
+                return Err(SourcePhiCopyTraceError::MissingBlockEffect);
+            };
+            let step = visit
+                .get(after + reached)
+                .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
+            let correct_effect = match effect.effect {
+                GuestCodeOperationEffect::Input { .. } => {
+                    step.decoded == Some(b'/')
+                },
+                GuestCodeOperationEffect::Output { .. } => {
+                    step.decoded == Some(b'<')
+                },
+                GuestCodeOperationEffect::Store { destination, literal } => {
+                    matches!(step.decoded, Some(b'p' | b'*'))
+                        && step.before.registers.data_pointer == destination
+                        && literal.is_none_or(|word| {
+                            step.after.registers.accumulator == word
+                        })
+                },
+                GuestCodeOperationEffect::Compute => true,
+            };
+            if !correct_effect {
+                return Err(SourcePhiCopyTraceError::InvalidBlockEffect);
+            }
+            after = after
+                .checked_add(reached + 1)
+                .ok_or(SourcePhiCopyTraceError::InvalidGuestExecution)?;
         }
     }
     Ok(())

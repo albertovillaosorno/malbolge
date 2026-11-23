@@ -75,6 +75,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the strongest opt-in source CFG guest gate also began
+  requiring every source operation-effect address to execute in order on
+  each reached block visit. A real five-step N15 `p, o, o, o, v` source
+  reaches both required sites, while a real four-step `p, i, o, v` jumps
+  over one with otherwise correct block exit and successor entry. The
+  gate also rejects fake input/output/store opcodes, wrong Store data
+  destinations and literal values, but does not prove Compute semantics
+  or full C23 condition/loop arithmetic. The original checksum remains
+  unlinked. See `tests/compiler/source_phi_copy_trace.rs`.
+
 - On 2026-11-23 the strongest source-locked CFG gate also began checking
   each **entry** into a reserved source block. Real three-step N15 false/
   true branch guests enter only from their canonical predecessor control;

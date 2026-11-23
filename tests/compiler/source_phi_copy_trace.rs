@@ -27,7 +27,9 @@
 
 use std::slice::from_ref;
 
-use super::super::typed_cfg_adapter::state_relocation::GuestCodeCellCopySite;
+use super::super::typed_cfg_adapter::state_relocation::{
+    GuestCodeCellCopySite, GuestPlacedOperand,
+};
 use super::*;
 
 type LinkedPhiState = (GuestCodeControlEdge, [GuestFramePlacement; 1]);
@@ -1356,14 +1358,12 @@ fn physical_boolean_edges() -> [GuestCodeControlEdge; 2] {
     false_edge.pad_exit_address = None;
     false_edge.target_address = 2;
     false_edge.kind = GuestCodeEdgeKind::WhenFalse;
-    false_edge.condition = Some(
-        super::super::typed_cfg_adapter::state_relocation::GuestPlacedOperand {
-            address: 70,
-            type_kind: TernaryCfgScalarKind::Bool,
-            value: 0,
-            words: 1,
-        },
-    );
+    false_edge.condition = Some(GuestPlacedOperand {
+        address: 70,
+        type_kind: TernaryCfgScalarKind::Bool,
+        value: 0,
+        words: 1,
+    });
     let mut true_edge = false_edge.clone();
     true_edge.kind = GuestCodeEdgeKind::WhenTrue;
     true_edge.entry_address = 4;
@@ -1562,6 +1562,193 @@ fn real_guest_source_block_entries_require_own_predecessors()
             &pad_run
         ),
         Err(SourcePhiCopyTraceError::InvalidBlockEntry)
+    );
+    Ok(())
+}
+
+// The source-block control suffix can be reached by a real intra-block `i`
+// that skips a prior mandatory operation site. Source-block exit and entry
+// checks alone cannot distinguish that execution from a complete visit.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "fixed N15 op-site skip and normative step assertions"
+)]
+fn physical_source_effect_skip(
+    skip: bool,
+    store_opcode: u8,
+) -> Result<Vec<ProfileStepTrace>, String> {
+    let mut source = (0..59)
+        .map(|site| graphical(site, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (site, opcode) in [
+        (0, store_opcode),
+        (
+            1,
+            if skip {
+                b'i'
+            } else {
+                b'o'
+            },
+        ),
+        (2, b'o'),
+        (3, b'o'),
+        (4, b'v'),
+    ] {
+        source[site] = graphical(site, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("effect skip loader: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    *memory.get_mut(70).ok_or("missing source data")? = 7_174_453;
+    *memory.get_mut(71).ok_or("missing skip pointer")? = 2;
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("effect skip VM: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(6, &mut |step| steps.push(*step))
+        .map_err(|error| format!("effect skip run: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: if skip {
+            4
+        } else {
+            5
+        },
+    });
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        if skip {
+            vec![0, 1, 3, 4]
+        } else {
+            vec![0, 1, 2, 3, 4]
+        },
+    );
+    Ok(steps)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "physical CFG op skip and source-order refusals"
+)]
+fn real_guest_cannot_skip_source_operation_inside_same_block()
+-> Result<(), String> {
+    let complete = physical_source_effect_skip(false, b'p')?;
+    let skipped = physical_source_effect_skip(true, b'p')?;
+    let wrong_store = physical_source_effect_skip(false, b'o')?;
+    let blocks = [
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 0,
+            start: 0,
+            end_exclusive: 4,
+            control_start: 3,
+        },
+        GuestCodeBlockPlacement {
+            function: 0,
+            block: 1,
+            start: 4,
+            end_exclusive: 5,
+            control_start: 4,
+        },
+    ];
+    let mut edge = placed_edge();
+    edge.snapshot_sites.clear();
+    edge.commit_sites.clear();
+    edge.snapshots.clear();
+    edge.commits.clear();
+    edge.control_address = 3;
+    edge.entry_address = 4;
+    edge.pad_exit_address = None;
+    edge.target_address = 4;
+    let entry = [GuestCodeFunctionEntry {
+        function: 0,
+        block: 0,
+        address: 0,
+    }];
+    let effects = [initial_store(None), GuestCodeOperationEffectSite {
+        block: 0,
+        code_address: 2,
+        effect: GuestCodeOperationEffect::Compute,
+        function: 0,
+        ordinal: 1,
+    }];
+    for steps in [&complete, &skipped] {
+        assert_eq!(
+            verify_source_block_exits(&blocks, from_ref(&edge), steps),
+            Ok(())
+        );
+        assert_eq!(
+            verify_source_block_entries(
+                &blocks,
+                from_ref(&edge),
+                &entry,
+                steps
+            ),
+            Ok(())
+        );
+    }
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &effects, &complete),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &effects, &skipped),
+        Err(SourcePhiCopyTraceError::MissingBlockEffect)
+    );
+    // A matching code address alone cannot claim a frame Store when the
+    // physical guest executed o there, nor can a p to M70 prove a write to M71.
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &effects, &wrong_store),
+        Err(SourcePhiCopyTraceError::InvalidBlockEffect)
+    );
+    let mut wrong_destination = effects;
+    wrong_destination[0] = initial_store(None);
+    wrong_destination[0].effect = GuestCodeOperationEffect::Store {
+        destination: 71,
+        literal: None,
+    };
+    assert_eq!(
+        verify_source_block_effect_visits(
+            &blocks,
+            &wrong_destination,
+            &complete
+        ),
+        Err(SourcePhiCopyTraceError::InvalidBlockEffect)
+    );
+    let mut wrong_output = effects;
+    wrong_output[1].effect = GuestCodeOperationEffect::Output {
+        source: GuestPlacedOperand {
+            address: 70,
+            type_kind: TernaryCfgScalarKind::U8,
+            value: 1,
+            words: 1,
+        },
+    };
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &wrong_output, &complete),
+        Err(SourcePhiCopyTraceError::InvalidBlockEffect)
+    );
+    // Even if every site appears somewhere in the visit, the source order
+    // of their first required effects is itself a verifier obligation.
+    let reversed = [effects[1], effects[0]];
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &reversed, &complete),
+        Err(SourcePhiCopyTraceError::MissingBlockEffect)
     );
     Ok(())
 }

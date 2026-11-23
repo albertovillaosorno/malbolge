@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Reached source-block effect order and physical opcodes (2026-11-23)
+
+The strongest opt-in physical CFG verifier now checks **every visit** to a
+source-reserved code block against its canonical operation-effect sites.
+All required sites must actually execute, in source order, before the
+block exits or halts. Setup loops are allowed between sites, but a real
+intra-block jump that skips one source effect must refuse even if its later
+block exit and successor entry are correctly placed. Repeated visits must
+satisfy the same obligations independently.
+
+A reached effect site must also decode as a real `/` input, `<` output, or
+`p`/`*` Store with the exact destination guest cell and any source-locked
+literal word. The generic Compute site remains an **occurrence-only** check;
+this verifier does not authenticate C arithmetic, register dependence,
+input conversion, operand reads or whole-program output parity. On a real
+N15 guest, a complete five-step `p, o, o, o, v` block visit passes; a real
+four-step `p, i, o, v` trace skips its required C2 site despite matching
+control exits and refuses. A guest `o` forged as a Store, a wrong Store
+address, a wrongly labeled output opcode and reversed source effect order
+also refuse. The original C23 EOF checksum remains unlinked and cannot
+publish guest code. Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Source-locked physical CFG block ingress (2026-11-23)
 
 The opt-in `SourcePhiCopyProbe::verify_with_cfg_phi_copy_anchors` also
