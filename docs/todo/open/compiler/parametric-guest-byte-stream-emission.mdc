@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest physical source CFG output check now requires each real `<`
+byte and accumulator word to agree with the live, earlier guest-written U8
+SSA source cell; an unmaterialized operand or different live accumulator
+refuses even when the physical output site is correct. Real four-step N15
+positive/negative witnesses establish the bounded necessity, not guest
+arithmetic, dynamic C branch or the complete mutable EOF checksum. See
+`tests/compiler/source_phi_copy_trace.rs` and the P2 contract.
+
 The strongest physical source CFG effect-order gate now enforces
 **once-per-visit** source operation effect sites, splitting new visits at
 control-suffix self-backedges even when the physical code interval stays

@@ -1946,6 +1946,209 @@ fn real_guest_cannot_skip_source_operation_inside_same_block()
     Ok(())
 }
 
+// A source-located output still needs the exact live guest-written U8 operand.
+// The real VM can emit a plausible byte from A without first materializing
+// the named SSA cell, or after a different source store changes A.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one bounded VM positive and three source-output counterexamples"
+)]
+fn real_guest_source_output_requires_current_frame_operand()
+-> Result<(), String> {
+    let trace =
+        |second_word: Option<u32>| -> Result<Vec<ProfileStepTrace>, String> {
+            let mut source = (0..59)
+                .map(|site| graphical(site, b'o'))
+                .collect::<Result<Vec<_>, _>>()?;
+            for (site, opcode) in [
+                (0, b'*'),
+                (
+                    1,
+                    if second_word.is_some() {
+                        b'*'
+                    } else {
+                        b'o'
+                    },
+                ),
+                (2, b'<'),
+                (3, b'v'),
+            ] {
+                source[site] = graphical(site, opcode)?;
+            }
+            let profile = current_profile();
+            let loaded =
+                ProfileMachine::from_source(profile, &source, Vec::new())
+                    .map_err(|error| {
+                        format!("output operand loader: {error:?}")
+                    })?;
+            let mut memory = loaded.memory().to_vec();
+            memory[70] = 3;
+            memory[71] = second_word.unwrap_or(6);
+            let mut machine = ProfileMachine::from_state(
+                profile,
+                memory,
+                Vec::new(),
+                malbolge::ProfileRegisters {
+                    accumulator: profile.eof_word(),
+                    code_pointer: 0,
+                    data_pointer: 70,
+                },
+            )
+            .map_err(|error| format!("output operand VM: {error:?}"))?;
+            let mut steps = Vec::new();
+            let outcome = machine
+                .run_traced(4, &mut |step| steps.push(*step))
+                .map_err(|error| format!("output operand run: {error:?}"))?;
+            assert_eq!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 4,
+            });
+            assert_eq!(
+                steps.iter().map(|step| step.decoded).collect::<Vec<_>>(),
+                if second_word.is_some() {
+                    vec![Some(b'*'), Some(b'*'), Some(b'<'), Some(b'v')]
+                } else {
+                    vec![Some(b'*'), Some(b'o'), Some(b'<'), Some(b'v')]
+                }
+            );
+            Ok(steps)
+        };
+    let complete = trace(None)?;
+    let other_accumulator = trace(Some(6))?;
+    let matching_byte_wrong_word = trace(Some(771))?;
+    let blocks = [GuestCodeBlockPlacement {
+        function: 0,
+        block: 0,
+        start: 0,
+        end_exclusive: 4,
+        control_start: 3,
+    }];
+    let stored = GuestCodeOperationEffectSite {
+        block: 0,
+        code_address: 0,
+        effect: GuestCodeOperationEffect::Store {
+            destination: 70,
+            literal: None,
+        },
+        function: 0,
+        ordinal: 0,
+    };
+    let output = GuestCodeOperationEffectSite {
+        block: 0,
+        code_address: 2,
+        effect: GuestCodeOperationEffect::Output {
+            source: GuestPlacedOperand {
+                address: 70,
+                type_kind: TernaryCfgScalarKind::U8,
+                value: 0,
+                words: 1,
+            },
+        },
+        function: 0,
+        ordinal: 1,
+    };
+    let effects = [stored, output];
+    let frames = frames();
+    assert_eq!(complete[0].after.registers.accumulator, 1);
+    assert_eq!(complete[2].output, Some(1));
+    assert_eq!(other_accumulator[1].after.registers.accumulator, 2);
+    assert_eq!(other_accumulator[2].output, Some(2));
+    assert_eq!(matching_byte_wrong_word[1].after.registers.accumulator, 257);
+    assert_eq!(matching_byte_wrong_word[2].output, Some(1));
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &effects, &complete),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &[],
+            &effects,
+            &frames,
+            &complete
+        ),
+        Ok(())
+    );
+    let mut never_stored = effects;
+    never_stored[1].effect = GuestCodeOperationEffect::Output {
+        source: GuestPlacedOperand {
+            address: 71,
+            type_kind: TernaryCfgScalarKind::U8,
+            value: 1,
+            words: 1,
+        },
+    };
+    assert_eq!(
+        verify_source_block_effect_visits(&blocks, &never_stored, &complete),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &[],
+            &never_stored,
+            &frames,
+            &complete
+        ),
+        Err(SourcePhiCopyTraceError::MissingOutputMaterialization)
+    );
+    let extra_store = GuestCodeOperationEffectSite {
+        block: 0,
+        code_address: 1,
+        effect: GuestCodeOperationEffect::Store {
+            destination: 71,
+            literal: None,
+        },
+        function: 0,
+        ordinal: 1,
+    };
+    let changed = [stored, extra_store, GuestCodeOperationEffectSite {
+        ordinal: 2,
+        ..output
+    }];
+    assert_eq!(
+        verify_source_block_effect_visits(
+            &blocks,
+            &changed,
+            &other_accumulator
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &[],
+            &changed,
+            &frames,
+            &other_accumulator
+        ),
+        Err(SourcePhiCopyTraceError::InvalidOutputValue)
+    );
+    // The actual byte can agree while the full physical A word is wrong.
+    assert_eq!(
+        verify_source_block_effect_visits(
+            &blocks,
+            &changed,
+            &matching_byte_wrong_word
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_branch_choices(
+            &blocks,
+            &[],
+            &changed,
+            &frames,
+            &matching_byte_wrong_word
+        ),
+        Err(SourcePhiCopyTraceError::InvalidOutputValue)
+    );
+    Ok(())
+}
+
 // An interior setup jump can execute the same canonical operation effect
 // twice without crossing a source CFG edge. Source effect sites are not a
 // license for repeated I/O or arithmetic inside a single block visit.

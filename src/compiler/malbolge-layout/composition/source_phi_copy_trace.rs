@@ -86,6 +86,10 @@ pub enum SourcePhiCopyTraceError {
     MissingBlockEffect,
     /// An effect site executed twice without a new source-block visit.
     RepeatedBlockEffect,
+    /// A reached output operand has no earlier guest-authenticated frame write.
+    MissingOutputMaterialization,
+    /// A real output is not the exact materialized typed U8 source operand.
+    InvalidOutputValue,
     /// A reached branch did not materialize its Boolean before departure.
     MissingBranchCondition,
     /// A copy source had no earlier, actual source-placed guest data write.
@@ -891,11 +895,46 @@ fn verify_predecessor_phi_entries(
     Ok(())
 }
 
+// A source `<` site is necessary but not enough: the real A word must be
+// equal to the live, guest-written typed U8 operand, not only its low byte.
+fn verify_source_output_operand(
+    step: &ProfileStepTrace,
+    effects: &[GuestCodeOperationEffectSite],
+    materialized: &BTreeMap<u32, u32>,
+) -> Result<(), SourcePhiCopyTraceError> {
+    if step.decoded != Some(b'<') {
+        return Ok(());
+    }
+    let code = step.before.registers.code_pointer;
+    let source_operand = effects
+        .iter()
+        .filter(|effect| effect.code_address == code)
+        .find_map(|effect| match effect.effect {
+            GuestCodeOperationEffect::Output { source } => Some(source),
+            GuestCodeOperationEffect::Input { .. }
+            | GuestCodeOperationEffect::Store { .. }
+            | GuestCodeOperationEffect::Compute => None,
+        });
+    let Some(operand) = source_operand else {
+        // The preceding source effect-visit check rejects unplaced I/O.
+        return Ok(());
+    };
+    let value = materialized
+        .get(&operand.address)
+        .ok_or(SourcePhiCopyTraceError::MissingOutputMaterialization)?;
+    if step.before.registers.accumulator != *value
+        || u8::try_from(*value).ok() != step.output
+    {
+        return Err(SourcePhiCopyTraceError::InvalidOutputValue);
+    }
+    Ok(())
+}
+
 // A reached conditional edge must agree with the most recent *physical*
-// write of its source-authenticated Boolean SSA cell. The source frame gate
-// checks every such write's site and literal before this function is called.
-// Loader-seeded values are not evidence of a source computation, and the
-// actual source expression that produced the Boolean is not proved here.
+// write of its source-authenticated Boolean SSA cell. A source output must
+// likewise match the exact most recent physical U8 operand word and the guest
+// accumulator. The source frame/phi gate checks write sites and values first.
+// Loader-seeded state is no proof of a source computation or operand read.
 fn verify_source_branch_choices(
     blocks: &[GuestCodeBlockPlacement],
     edges: &[GuestCodeControlEdge],
@@ -922,6 +961,7 @@ fn verify_source_branch_choices(
             let _old =
                 materialized.insert(data, previous.after.registers.accumulator);
         }
+        verify_source_output_operand(previous, effects, &materialized)?;
         let Some(next) = steps.get(index + 1) else {
             continue;
         };

@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-operand output equality in physical CFG traces (2026-11-23)
+
+The opt-in strongest source CFG trace gate now checks a reached `<` against
+both the exact current 15-trit accumulator and the previously guest-written
+value of its source-authenticated U8 SSA operand. Earlier source-placed
+`p`/`*` writes and independently checked phi copies supply the temporal
+frame journal; loader-seeded cells and unplaced writes cannot satisfy it.
+The value must be representable as U8, not merely congruent modulo 256.
+A real N15 four-step `*, o, <, v` guest rotates M70=3 into the word 1 and
+outputs 1, passing the physical source store/output checks. Pointing the
+same source Output at unwritten M71 refuses `MissingOutputMaterialization`.
+Replacing C1 with a second `*` rotates M71=6 to 2; the resulting real
+output 2 is source-placed and both stores execute, yet the declared output
+operand still holds 1. It now refuses `InvalidOutputValue`. With
+M71=771 instead, C1 produces word 257: the actual output byte is again 1,
+but the full accumulator fails the same operand-equality gate. This proves
+physical value equality, not how the accumulator loaded the operand or
+whether source-C arithmetic and branches are correct. The complete C23
+checksum still refuses before target publication. Regression:
+`tests/compiler/source_phi_copy_trace.rs`.
+
 ### Exact source-effect counts across physical revisits (2026-11-23)
 
 The opt-in strongest source CFG trace gate now partitions physical code
