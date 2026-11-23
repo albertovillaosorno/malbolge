@@ -661,13 +661,16 @@ fn verify_source_input_store_effect_sites(
     verify_source_frame_write_sites(&plan, steps, require_output_operand)
 }
 
+// Source-placed physical code/destination pair and optional exact literal.
+type SourceFrameWriteSites = BTreeMap<(u32, u32), Option<u32>>;
+
 // Only the physically reached p/* site can perform a source-frame store.
 // Include all SSA and phi scratch cells, not merely input-result destinations.
 // Even unchanged writes are effects and must be attributed to source code.
 fn verify_source_frame_write_step(
     step: &ProfileStepTrace,
     frames: &[GuestFramePlacement],
-    allowed: &BTreeMap<(u32, u32), Option<u32>>,
+    allowed: &SourceFrameWriteSites,
 ) -> Result<(), SourceInputTraceError> {
     if step.result.is_err() {
         return Ok(());
@@ -710,6 +713,44 @@ fn verify_source_frame_write_step(
     Ok(())
 }
 
+// Output-byte coincidence is not evidence that the addressed SSA value was
+// physically present. Preserve the last real source-placed write chronology.
+fn verify_source_output_operand_step(
+    step: &ProfileStepTrace,
+    output_operands: &BTreeMap<u32, u32>,
+    latest_source_writes: &BTreeMap<u32, u32>,
+) -> Result<(), SourceInputTraceError> {
+    let Some(byte) = step.output else {
+        return Ok(());
+    };
+    let operand = output_operands
+        .get(&step.before.registers.code_pointer)
+        .ok_or(SourceInputTraceError::UnexpectedGuestOutput)?;
+    if latest_source_writes.get(operand) != Some(&u32::from(byte)) {
+        return Err(SourceInputTraceError::SourceOutputNotProven);
+    }
+    Ok(())
+}
+
+// Phi copies are authorized only at the edge-local source placement, never
+// by a matching value written from another guest code location.
+fn authorize_source_phi_writes(
+    plan: &super::typed_cfg_adapter::state_relocation::GuestAddressedCfgPlan,
+    allowed: &mut SourceFrameWriteSites,
+) -> Result<(), SourceInputTraceError> {
+    for edge in &plan.control_edges {
+        for site in edge.snapshot_sites.iter().chain(&edge.commit_sites) {
+            if allowed
+                .insert((site.code_address, site.copy.destination), None)
+                .is_some()
+            {
+                return Err(SourceInputTraceError::InvalidSourcePlacement);
+            }
+        }
+    }
+    Ok(())
+}
+
 // The proposal can authorize only source operations and edge-local two-phase
 // phi copy cells. It cannot add a new permission for a setup instruction to
 // overwrite an unrelated local, even when the final I/O still looks right.
@@ -742,16 +783,7 @@ fn verify_source_frame_write_sites(
             | GuestCodeOperationEffect::Compute => {},
         }
     }
-    for edge in &plan.control_edges {
-        for site in edge.snapshot_sites.iter().chain(&edge.commit_sites) {
-            if allowed
-                .insert((site.code_address, site.copy.destination), None)
-                .is_some()
-            {
-                return Err(SourceInputTraceError::InvalidSourcePlacement);
-            }
-        }
-    }
+    authorize_source_phi_writes(plan, &mut allowed)?;
     // A physically emitted byte may match the C oracle accidentally, or
     // from an unrelated SSA cell. Require its own source-reserved U8 operand
     // to have been materialized by an earlier real p/* or phi-copy write.
@@ -768,13 +800,12 @@ fn verify_source_frame_write_sites(
             continue;
         }
         let code_address = step.before.registers.code_pointer;
-        if let Some(byte) = step.output.filter(|_byte| require_output_operand) {
-            let operand = output_operands
-                .get(&code_address)
-                .ok_or(SourceInputTraceError::UnexpectedGuestOutput)?;
-            if latest_source_writes.get(operand) != Some(&u32::from(byte)) {
-                return Err(SourceInputTraceError::SourceOutputNotProven);
-            }
+        if require_output_operand {
+            verify_source_output_operand_step(
+                step,
+                &output_operands,
+                &latest_source_writes,
+            )?;
         }
         if matches!(step.decoded, Some(b'p' | b'*')) {
             let address = step.before.registers.data_pointer;
