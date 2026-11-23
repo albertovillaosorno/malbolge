@@ -39,12 +39,13 @@ use malbolge::{
 
 use super::source_input_trace::{SourceInputProbe, SourceInputTraceError};
 use super::typed_cfg_adapter::state_relocation::{
-    GuestAddressedCfgPlan, GuestCodeBlockPlacement, GuestCodeControlEdge,
-    GuestCodeEdgeKind, GuestCodeEffectAnchor, GuestCodeFunctionEntry,
-    GuestCodeInputAnchor, GuestCodeOperationAnchor, GuestCodeOperationEffect,
-    GuestCodeOperationEffectSite, GuestCodePhiCopyAnchor,
-    GuestCodePhiCopyPlacement, GuestCodeProposals, GuestCodeReturnSite,
-    GuestPlacedCellCopy,
+    GuestAddressedCfgPlan, GuestCodeBlockPlacement, GuestCodeComputation,
+    GuestCodeControlEdge, GuestCodeEdgeKind, GuestCodeEffectAnchor,
+    GuestCodeFunctionEntry, GuestCodeInputAnchor, GuestCodeOperationAnchor,
+    GuestCodeOperationEffect, GuestCodeOperationEffectSite,
+    GuestCodeOperationSite, GuestCodePhiCopyAnchor, GuestCodePhiCopyPlacement,
+    GuestCodeProposals, GuestCodeReturnSite, GuestPlacedCellCopy,
+    GuestPlacedOperand as PlacedComputationOperand,
     bind_source_locked_cfg_code_targets_with_phi_copy_anchors,
 };
 use super::typed_cfg_adapter::state_storage::GuestFramePlacement;
@@ -99,6 +100,8 @@ pub enum SourcePhiCopyTraceError {
     MissingComputationOperand,
     /// A source-placed computed value differs from exact typed arithmetic.
     InvalidComputationValue,
+    /// A computed guest result has no physical data path from a live operand.
+    MissingComputationProvenance,
     /// Real source input failed its independent typed store and dataflow gate.
     InvalidSourceInputResult(SourceInputTraceError),
     /// Strict computation mode cannot interpret this typed operation.
@@ -229,6 +232,20 @@ impl SourceAccumulatorProvenance {
         }
     }
 
+    // Read the actual dependency that the reached data opcode can carry,
+    // before minting the result SSA token. A loader-seeded word is empty.
+    fn data_write_sources(
+        &self,
+        step: &ProfileStepTrace,
+    ) -> BTreeSet<SourceWriteOrigin> {
+        let data = step.before.registers.data_pointer;
+        let mut sources = self.memory.get(&data).cloned().unwrap_or_default();
+        if step.decoded == Some(b'p') {
+            sources.extend(self.accumulator.iter().copied());
+        }
+        sources
+    }
+
     fn mark_source_write(&mut self, address: u32, trace_index: usize) {
         _ = self.accumulator.insert((address, trace_index));
         _ = self.latest_write.insert(address, trace_index);
@@ -272,6 +289,121 @@ impl SourceAccumulatorProvenance {
         }
         Ok(())
     }
+}
+
+type SourceOperationId = (u32, u32, u32);
+
+fn computation_operands(
+    computation: GuestCodeComputation,
+) -> ([PlacedComputationOperand; 2], usize) {
+    match computation {
+        GuestCodeComputation::Binary { left, right, .. }
+        | GuestCodeComputation::Compare { left, right, .. } => {
+            ([left, right], 2)
+        },
+        GuestCodeComputation::Cast { source, .. } => ([source, source], 1),
+    }
+}
+
+// Numerical equality cannot prove that the guest computed from the source
+// operands. Require each *latest* source SSA word to reach at least one real
+// result write via p/* data flow. This deliberately does not infer control
+// dependence, prove the mathematical operation, or authorize optimizations
+// that legitimately eliminate an operand (which need a separate proof).
+fn verify_source_computation_provenance(
+    operations: &[GuestCodeOperationSite],
+    effects: &[GuestCodeOperationEffectSite],
+    edges: &[GuestCodeControlEdge],
+    steps: &[ProfileStepTrace],
+) -> Result<(), SourcePhiCopyTraceError> {
+    use SourcePhiCopyTraceError::{
+        InvalidSourcePlacement, MissingComputationOperand,
+        MissingComputationProvenance,
+    };
+    let computations: BTreeMap<SourceOperationId, GuestCodeComputation> =
+        operations
+            .iter()
+            .filter_map(|site| {
+                site.computation.map(|computation| {
+                    ((site.function, site.block, site.ordinal), computation)
+                })
+            })
+            .collect();
+    if computations.is_empty() {
+        return Ok(());
+    }
+    let stores = source_store_sites(effects)?;
+    let copies = phi_copy_sites(edges)?;
+    let sites = effects
+        .iter()
+        .filter_map(|site| {
+            matches!(site.effect, GuestCodeOperationEffect::Store { .. })
+                .then_some((site.code_address, site))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut last_effect = BTreeMap::<SourceOperationId, u32>::new();
+    for site in effects {
+        let key = (site.function, site.block, site.ordinal);
+        if computations.contains_key(&key) {
+            let previous = last_effect.entry(key).or_insert(site.code_address);
+            *previous = (*previous).max(site.code_address);
+        }
+    }
+    let mut provenance = SourceAccumulatorProvenance::default();
+    let mut pending = BTreeMap::<
+        SourceOperationId,
+        (BTreeSet<SourceWriteOrigin>, BTreeSet<SourceWriteOrigin>),
+    >::new();
+    for (index, step) in steps.iter().enumerate() {
+        let code = step.before.registers.code_pointer;
+        let destination = step.before.registers.data_pointer;
+        if matches!(step.decoded, Some(b'p' | b'*')) {
+            if let Some(site) = sites.get(&code) {
+                let key = (site.function, site.block, site.ordinal);
+                if let Some(&computation) = computations.get(&key) {
+                    let carried = provenance.data_write_sources(step);
+                    if !pending.contains_key(&key) {
+                        let (operands, count) =
+                            computation_operands(computation);
+                        let mut required = BTreeSet::new();
+                        for operand in operands.iter().take(count) {
+                            for offset in 0..operand.words {
+                                let address = operand
+                                    .address
+                                    .checked_add(offset)
+                                    .ok_or(InvalidSourcePlacement)?;
+                                let version = *provenance
+                                    .latest_write
+                                    .get(&address)
+                                    .ok_or(MissingComputationOperand)?;
+                                _ = required.insert((address, version));
+                            }
+                        }
+                        drop(pending.insert(key, (required, BTreeSet::new())));
+                    }
+                    let (required, observed) =
+                        pending.get_mut(&key).ok_or(InvalidSourcePlacement)?;
+                    observed.extend(carried);
+                    if last_effect.get(&key) == Some(&code) {
+                        if !required.is_subset(observed) {
+                            return Err(MissingComputationProvenance);
+                        }
+                        drop(pending.remove(&key));
+                    }
+                }
+                // The exact result destination was already established by
+                // the source-locked physical effect/word verifier.
+                if !stores.contains_key(&(code, destination)) {
+                    return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
+                }
+            }
+        }
+        provenance.observe_source_step(step, index, &stores, &copies)?;
+    }
+    if !pending.is_empty() {
+        return Err(SourcePhiCopyTraceError::MissingBlockEffect);
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -518,9 +650,10 @@ impl SourcePhiCopyProbe<'_> {
 
     /// Apply exact typed arithmetic to earlier source-authenticated frame
     /// cells and require each real guest result store to match its computed
-    /// word. This strict opt-in extends the strongest CFG/phi checks; it does
-    /// not prove the physical guest used the operands to compute that word.
-    /// Unsupported source operations refuse instead of being guessed.
+    /// word. This strict opt-in also requires a conservative guest data
+    /// path from every latest source operand write to the result effects.
+    /// Dependency plus numeric equality cannot prove that guest opcodes
+    /// performed the typed arithmetic. Unsupported operations refuse.
     ///
     /// # Errors
     ///
@@ -702,6 +835,12 @@ impl SourcePhiCopyProbe<'_> {
                 &plan.operation_effect_sites,
                 &plan.control_edges,
                 &plan.relocated.state_placements,
+                &steps,
+            )?;
+            verify_source_computation_provenance(
+                &plan.operation_sites,
+                &plan.operation_effect_sites,
+                &plan.control_edges,
                 &steps,
             )?;
             // The CFG/effect gate alone authenticates the physical `/` site,

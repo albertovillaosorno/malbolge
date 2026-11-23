@@ -3188,3 +3188,251 @@ fn real_guest_entered_phi_pad_without_copies_refuses_cfg_transfer()
     );
     Ok(())
 }
+
+// A real three-step N15 computation witness. After the source-authenticated
+// C0 rotate writes 1 at M70, a second * at M71 independently rotates 3 -> 1;
+// a p at the same site instead consumes the first write through accumulator A.
+// Both are physical guest stores, but only the p has source-operand data flow.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "three executed guest steps with fixed source and SSA cells"
+)]
+fn cast_dependency_guest(second: u8) -> Result<Vec<ProfileStepTrace>, String> {
+    let mut source = (0..59)
+        .map(|at| graphical(at, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (at, opcode) in [(0, b'*'), (1, second), (2, b'v')] {
+        source[at] = graphical(at, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("source: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    for address in [70usize, 71] {
+        *memory.get_mut(address).ok_or("seed absent")? = 3;
+    }
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("seeded VM: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(3, &mut |step| steps.push(*step))
+        .map_err(|error| format!("guest run: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 3,
+    });
+    assert_eq!(steps[0].after.registers.accumulator, 1);
+    Ok(steps)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact real-VM dependency and numeric result comparisons"
+)]
+fn computation_requires_actual_latest_operand_data_path() -> Result<(), String>
+{
+    use super::super::source_computation_trace as computation_trace;
+    use super::super::typed_cfg_adapter::typed::CastOp;
+
+    let operand = |address| GuestPlacedOperand {
+        address,
+        type_kind: TernaryCfgScalarKind::U8,
+        value: address,
+        words: 1,
+    };
+    let operations = [GuestCodeOperationSite {
+        block: 0,
+        computation: Some(GuestCodeComputation::Cast {
+            operation: CastOp::IntegerBitcast,
+            source: operand(70),
+            result: operand(71),
+        }),
+        start: 1,
+        end_exclusive: 2,
+        function: 0,
+        ordinal: 1,
+    }];
+    let effects = [70u32, 71].map(|destination| GuestCodeOperationEffectSite {
+        block: 0,
+        code_address: destination - 70,
+        effect: GuestCodeOperationEffect::Store {
+            destination,
+            literal: None,
+        },
+        function: 0,
+        ordinal: destination - 70,
+    });
+    let frames = [GuestFramePlacement {
+        base: 70,
+        end_exclusive: 72,
+        source_cells: 59,
+    }];
+    // This fake cast produces an *exactly correct* numeric result (1) from
+    // unrelated loader cells. The old numeric gate cannot detect the spoof.
+    let unrelated = cast_dependency_guest(b'*')?;
+    assert_eq!(unrelated[1].after.registers.accumulator, 1);
+    assert_eq!(
+        computation_trace::verify_source_computation_values(
+            &operations,
+            &effects,
+            &[],
+            &frames,
+            &unrelated,
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        verify_source_computation_provenance(
+            &operations,
+            &effects,
+            &[],
+            &unrelated,
+        ),
+        Err(SourcePhiCopyTraceError::MissingComputationProvenance),
+    );
+
+    // A real p at C1 genuinely carries the source-placed C0 value via A.
+    // This is a *dependency-only* positive: the p result is not the U8 cast
+    // value, so numeric verification still independently refuses it.
+    let dependent = cast_dependency_guest(b'p')?;
+    assert_eq!(
+        verify_source_computation_provenance(
+            &operations,
+            &effects,
+            &[],
+            &dependent,
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        computation_trace::verify_source_computation_values(
+            &operations,
+            &effects,
+            &[],
+            &frames,
+            &dependent,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidComputationValue),
+    );
+    Ok(())
+}
+
+// The old typed numeric gate accepted XOR(1, 2) = 3 after three unrelated
+// loader-seeded rotations. Neither source operand reaches the result opcode.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "four fixed N15 VM steps authenticate the literal counterexample"
+)]
+fn binary_computation_requires_both_source_operands() -> Result<(), String> {
+    use super::super::source_computation_trace as computation_trace;
+    use super::super::typed_cfg_adapter::typed::BinaryOp;
+
+    let mut source = (0..59)
+        .map(|at| graphical(at, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (at, opcode) in [(0, b'*'), (1, b'*'), (2, b'*'), (3, b'v')] {
+        source[at] = graphical(at, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("source: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    for (address, seed) in [(70usize, 3), (71, 6), (72, 9)] {
+        *memory.get_mut(address).ok_or("seed absent")? = seed;
+    }
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("seeded VM: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(4, &mut |step| steps.push(*step))
+        .map_err(|error| format!("guest run: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 4,
+    });
+    assert_eq!(
+        steps
+            .iter()
+            .take(3)
+            .map(|step| step.after.registers.accumulator)
+            .collect::<Vec<_>>(),
+        [1, 2, 3],
+    );
+    let operand = |address| GuestPlacedOperand {
+        address,
+        type_kind: TernaryCfgScalarKind::U8,
+        value: address,
+        words: 1,
+    };
+    let operations = [GuestCodeOperationSite {
+        block: 0,
+        computation: Some(GuestCodeComputation::Binary {
+            operation: BinaryOp::Xor,
+            left: operand(70),
+            right: operand(71),
+            result: operand(72),
+        }),
+        start: 2,
+        end_exclusive: 3,
+        function: 0,
+        ordinal: 2,
+    }];
+    let effects =
+        [70u32, 71, 72].map(|destination| GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: destination - 70,
+            effect: GuestCodeOperationEffect::Store {
+                destination,
+                literal: None,
+            },
+            function: 0,
+            ordinal: destination - 70,
+        });
+    let frames = [GuestFramePlacement {
+        base: 70,
+        end_exclusive: 73,
+        source_cells: 59,
+    }];
+    assert_eq!(
+        computation_trace::verify_source_computation_values(
+            &operations,
+            &effects,
+            &[],
+            &frames,
+            &steps,
+        ),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_computation_provenance(
+            &operations,
+            &effects,
+            &[],
+            &steps,
+        ),
+        Err(SourcePhiCopyTraceError::MissingComputationProvenance),
+    );
+    Ok(())
+}

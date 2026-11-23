@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Strict computation operand-data provenance (2026-11-23)
+
+The opt-in `SourcePhiCopyProbe::verify_with_source_computations` now
+requires a physical `p`/`*` data path from **each latest source SSA operand
+word** into the reached result stores, in addition to exact typed numeric
+agreement, block/phi linkage and the input-result store check. A trace-local
+token names a particular guest frame write, not merely its address or word
+value. Both operands of a binary operation, every word of a C32 operand, and
+the single source of a cast must appear in the union of actual data inputs to
+the result `p`/`*` writes. Guest loader seeds or an obsolete equal-valued SSA
+write cannot create those tokens. A missing data path refuses as
+`MissingComputationProvenance`.
+
+A three-step N15 cast witness writes byte 1 at M70, then writes
+the same byte 1 at M71 by rotating unrelated M71 data. Exact source numeric
+replay accepts that forged identity; the new provenance check rejects it.
+Replacing the second real `*` with a real `p` carries the latest M70 write
+through A and passes the dependency check, but separately fails the numeric
+cast gate. A four-step real N15 guest also writes 1, 2 and their exact
+XOR result 3 through three independent rotations: typed numeric replay
+accepts but the two-operand source data-path gate rejects. Both checks are
+required and neither fabricates target execution.
+This is a conservative **necessary data-dependency test**: it can reject
+legitimate operand-eliding optimizations without additional proof and does not
+prove the correct guest arithmetic, dynamic C branching, or that a complete
+C23 EOF checksum is linked. The original seven-block checksum still refuses
+publication. Regression: `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Width-aware typed shift-result checks (2026-11-23)
 
 The strict opt-in source-computation verifier now interprets integer

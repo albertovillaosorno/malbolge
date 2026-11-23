@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The strongest opt-in physical computation gate now requires each latest
+source-SSA operand word to flow through actual guest `p`/`*` data effects
+into its typed result. A real three-step N15 cast counterfeit is numerically
+correct yet has no operand data path and now refuses; a data-dependent `p`
+passes only that separate necessary condition, not the numeric cast test.
+This does not synthesize arithmetic, link source-C branches or compile the
+seven-block mutable EOF checksum; P2 remains open. See the contract and
+`tests/compiler/source_phi_copy_trace.rs`.
+
 A bounded extension of the frozen 91-cell signed-first-read pointer
 route permits real `p`/`*` writes at C38/C39/C40/C42 alongside `o`/`j`.
 All 256 finite combinations miss the lossless M102 store address on NUL;
