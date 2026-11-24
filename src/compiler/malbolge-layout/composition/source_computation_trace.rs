@@ -397,83 +397,97 @@ fn evaluate(
             operation,
             source,
             result,
-        } => {
-            let bits = read_scalar(source, written)?;
-            let width = scalar_bits(result.type_kind);
-            let source_width = scalar_bits(source.type_kind);
-            let source_is_signed = matches!(
-                source.type_kind,
-                TernaryCfgScalarKind::I8
-                    | TernaryCfgScalarKind::I16
-                    | TernaryCfgScalarKind::I32
-            );
-            let result_is_signed = matches!(
-                result.type_kind,
-                TernaryCfgScalarKind::I8
-                    | TernaryCfgScalarKind::I16
-                    | TernaryCfgScalarKind::I32
-            );
-            let value = match operation {
-                CastOp::IntegerBitcast
-                    if source.type_kind != TernaryCfgScalarKind::Bool
-                        && result.type_kind != TernaryCfgScalarKind::Bool
-                        && source_width == width =>
-                {
-                    bits
-                },
-                CastOp::Truncate
-                    if source.type_kind != TernaryCfgScalarKind::Bool
-                        && result.type_kind != TernaryCfgScalarKind::Bool
-                        && source_width > width =>
-                {
-                    bits & bit_mask(width)
-                },
-                CastOp::ZeroExtend
-                    if !source_is_signed
-                        && result.type_kind != TernaryCfgScalarKind::Bool
-                        && source_width < width =>
-                {
-                    bits
-                },
-                CastOp::SignExtend
-                    if source_is_signed
-                        && result.type_kind != TernaryCfgScalarKind::Bool
-                        && source_width < width =>
-                {
-                    signed(bits, source_width).cast_unsigned() & bit_mask(width)
-                },
-                CastOp::IntegerToBool
-                    if source.type_kind != TernaryCfgScalarKind::Bool
-                        && result.type_kind == TernaryCfgScalarKind::Bool =>
-                {
-                    u32::from(bits != 0)
-                },
-                CastOp::BoolToSigned
-                    if source.type_kind == TernaryCfgScalarKind::Bool
-                        && result_is_signed =>
-                {
-                    bits
-                },
-                CastOp::Bitcast
-                | CastOp::BoolToSigned
-                | CastOp::FloatToBool
-                | CastOp::FloatToFloat
-                | CastOp::FloatToSigned
-                | CastOp::FloatToUnsigned
-                | CastOp::IntegerBitcast
-                | CastOp::IntegerToBool
-                | CastOp::IntegerToPointer
-                | CastOp::PointerToBool
-                | CastOp::PointerToInteger
-                | CastOp::SignExtend
-                | CastOp::SignedToFloat
-                | CastOp::Truncate
-                | CastOp::UnsignedToFloat
-                | CastOp::ZeroExtend => return Err(UnsupportedComputation),
-            };
-            Ok(value)
-        },
+        } => evaluate_cast(operation, source, result, written),
     }
+}
+
+// The checked cast opcode and original scalar widths are part of the
+// authenticated source-C semantics; a matching guest word alone is not.
+#[expect(
+    clippy::too_many_lines,
+    reason = "closed typed C cast vocabulary and exact source width checks"
+)]
+fn evaluate_cast(
+    operation: CastOp,
+    source: GuestPlacedOperand,
+    result: GuestPlacedOperand,
+    written: &BTreeMap<u32, u32>,
+) -> Result<u32, SourcePhiCopyTraceError> {
+    use SourcePhiCopyTraceError::UnsupportedComputation;
+    let bits = read_scalar(source, written)?;
+    let width = scalar_bits(result.type_kind);
+    let source_width = scalar_bits(source.type_kind);
+    let source_is_signed = matches!(
+        source.type_kind,
+        TernaryCfgScalarKind::I8
+            | TernaryCfgScalarKind::I16
+            | TernaryCfgScalarKind::I32
+    );
+    let result_is_signed = matches!(
+        result.type_kind,
+        TernaryCfgScalarKind::I8
+            | TernaryCfgScalarKind::I16
+            | TernaryCfgScalarKind::I32
+    );
+    let value = match operation {
+        CastOp::IntegerBitcast
+            if source.type_kind != TernaryCfgScalarKind::Bool
+                && result.type_kind != TernaryCfgScalarKind::Bool
+                && source_width == width =>
+        {
+            bits
+        },
+        CastOp::Truncate
+            if source.type_kind != TernaryCfgScalarKind::Bool
+                && result.type_kind != TernaryCfgScalarKind::Bool
+                && source_width > width =>
+        {
+            bits & bit_mask(width)
+        },
+        CastOp::ZeroExtend
+            if !source_is_signed
+                && result.type_kind != TernaryCfgScalarKind::Bool
+                && source_width < width =>
+        {
+            bits
+        },
+        CastOp::SignExtend
+            if source_is_signed
+                && result.type_kind != TernaryCfgScalarKind::Bool
+                && source_width < width =>
+        {
+            signed(bits, source_width).cast_unsigned() & bit_mask(width)
+        },
+        CastOp::IntegerToBool
+            if source.type_kind != TernaryCfgScalarKind::Bool
+                && result.type_kind == TernaryCfgScalarKind::Bool =>
+        {
+            u32::from(bits != 0)
+        },
+        CastOp::BoolToSigned
+            if source.type_kind == TernaryCfgScalarKind::Bool
+                && result_is_signed =>
+        {
+            bits
+        },
+        CastOp::Bitcast
+        | CastOp::BoolToSigned
+        | CastOp::FloatToBool
+        | CastOp::FloatToFloat
+        | CastOp::FloatToSigned
+        | CastOp::FloatToUnsigned
+        | CastOp::IntegerBitcast
+        | CastOp::IntegerToBool
+        | CastOp::IntegerToPointer
+        | CastOp::PointerToBool
+        | CastOp::PointerToInteger
+        | CastOp::SignExtend
+        | CastOp::SignedToFloat
+        | CastOp::Truncate
+        | CastOp::UnsignedToFloat
+        | CastOp::ZeroExtend => return Err(UnsupportedComputation),
+    };
+    Ok(value)
 }
 
 fn expected_word(
