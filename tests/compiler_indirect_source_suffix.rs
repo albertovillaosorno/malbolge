@@ -1526,15 +1526,17 @@ fn fourth_cumulative_plan(suffix: &[u8]) -> IndirectSourceSuffixPlan {
     plan.source[110] = 117;
     assert_eq!(
         layout::admit_c23_probe_graphical_source(&plan.source),
-        Ok(())
+        Ok(()),
+        "entire fourth-fold source must be loader legal"
     );
     assert_eq!(
         plan.source[118],
-        graphical(118, b'<').expect("saved output")
+        graphical(118, b'<').expect("saved output"),
+        "C118 must become a real encrypted relocation operand"
     );
-    assert_eq!(plan.source[124], 126);
-    assert_eq!(plan.source[127], 100);
-    assert_eq!(plan.source[134], 58);
+    assert_eq!(plan.source[124], 126, "protected M124 pointer");
+    assert_eq!(plan.source[127], 100, "protected M127 pointer");
+    assert_eq!(plan.source[134], 58, "protected M134 pointer");
     plan
 }
 
@@ -1614,7 +1616,9 @@ fn fourth_input_updates_the_same_three_input_fold_and_reaches_a_real_halt() {
 #[expect(
     clippy::expect_used,
     clippy::indexing_slicing,
-    reason = "physical instruction provenance requires exact trace sites"
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "fixed guest trace asserts ordered physical transitions"
 )]
 fn fourth_cumulative_store_consumes_an_encrypted_pointer_and_prior_guest_state()
 {
@@ -1732,7 +1736,9 @@ fn fourth_cumulative_fold_fails_when_guest_input_or_relocation_is_removed() {
 #[expect(
     clippy::expect_used,
     clippy::indexing_slicing,
-    reason = "bounded fourth-state preservation across encrypted return"
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "fixed guest trace and fourth-input return census"
 )]
 fn fourth_cumulative_state_survives_a_real_indirect_return_to_encrypted_code() {
     let plan = fourth_cumulative_plan(FOUR_INPUT_CUMULATIVE_RETURN_SUFFIX);
