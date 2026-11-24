@@ -147,10 +147,11 @@ pub use live_input_encoded_store::{
     LiveInputEncodedStoreError, LiveInputEncodedStoreSource,
     LiveInputReentrySource, LiveInputThenZeroSource,
     LiveTwoInputEncodedStoreSource, LongSourceInputBootstrapSource,
-    build_live_input_injective_store_source, build_live_input_reentry_source,
-    build_live_input_then_zero_source,
+    LongSourceTwoInputBootstrapSource, build_live_input_injective_store_source,
+    build_live_input_reentry_source, build_live_input_then_zero_source,
     build_live_two_input_injective_store_source,
     build_long_source_input_bootstrap_source,
+    build_long_source_two_input_bootstrap_source,
 };
 pub use loader_rotation_source::{
     RepeatedLoaderRotationError, build_c23_seed_nine_rotated_operand_source,

@@ -28,29 +28,46 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
-### Long-source N15 expanded-data input bootstrap (2026-11-24)
+### Loader-valid expanded-data input continuation (2026-11-24)
 
-After rerunning the original seven-block C23 mutable checksum, the full
-compiler still refuses the absent physical CFG. An independent longer-source
-experiment now starts from **256 graphical Malbolge cells** (rather than the
-previous 62-cell zero-pair source). At C0 `j` uses a real source byte to
-select M41, C1 `p` mutates that *source* word into a full N15 pointer, and
-C2/C3 `j` genuinely revisit the written value before relocating to expanded
-loader memory. The executed C37 `/` and C38 `p` then retain one raw byte or
-EOF in a high data cell. A separate 15-trit scalar crazy oracle checks the
-stored values and exhaustively proves 257 distinct encodings and reversible
-inputs. Nine representative real VM cases check the exact halt, physical
-source mutation, I/O site and input cursor; a changed source tail is a
-negative control. The loader-derived `p` operand has ternary ones in all
-positions, making its raw input encoding injective.
+The original seven-block C23 mutable checksum still refuses physical CFG
+linkage and publishes no artifact. The first 256-cell high-pointer experiment
+was **not source-admissible**: byte 35 at code position 41 does not decode to
+an allowed N15 source instruction. Its source-level scalar pointer and loader
+oracles were not normative guest execution. The prior acceptance claim is
+superseded by this red-first loader admission finding.
 
-This bypasses a prior **source-length** restriction on the first high-pointer
-relocation; it does not map the data cell into the checksum's 43-word C23 SSA
-frame, normalize signed EOF to two canonical cells, preserve a reusable
-register contract, link control/phi effects, or publish the original program.
-The experimental source halts at C39. Code beyond that halt is not executed;
-its 256-cell physical reservation is not evidence of a working guest loop.
-See `tests/compiler_long_source_input_bootstrap.rs`.
+A corrected **261-cell graphical source** reuses the high-pointer bootstrap
+with a loader-valid source initial word 92 at C41. C0 relocates D there,
+C1 genuinely writes M41=7,174,454, C18 uses the valid M58=40 operand to
+return D to M41, and C19 reads the modified pointer to reach expanded data.
+The valid two-cell source tail is 62/62 at C259/C260. C37 executes a true
+input and C38 stores the all-ones-seeded, reversible raw input encoding at
+M7,174,473. C39 halts. The independent scalar 15-trit oracle proves all 257
+N15 byte/EOF words are distinct and invertible; nine complete normative
+N15 VM executions verify source admission, mutation, exact 40-step halt,
+input consumption and data writes. The prior 256-cell fixture is replaced
+rather than left as a false positive.
+
+A second independently verified source variant instead executes C39 as a
+real forward code jump, reading untouched loader M7,174,474=62. It lands at
+C63 and skips mutated C41 and source operand C58. After three no-ops,
+C66 reads a second actual byte/EOF and C67 stores a second reversible
+input encoding at M7,174,479. C68 halts at 46 instructions. Five real
+binary/EOF N15 guest streams verify both physical writes, actual read
+sites, the jump operand and target, exact halt, preserved first word and
+unread input suffix. The second store uses the same injective seed but a
+separate memory cell; 257 independent scalar raw-word classes are covered
+at each position. The source and both data addresses are loader-derived,
+not host-seeded VM overrides.
+
+This is a bounded data/control continuation and a correction of an invalid
+source artifact. It does **not** normalize raw EOF to the signed two-word
+C23 result, link the checksum's 43-cell SSA frame and seven source blocks,
+implement arithmetic/phi transfers, prove a reusable loop, or justify
+publishing the original checksum. See the paired tests
+in tests/compiler_long_source_input_bootstrap.rs and
+tests/compiler_long_source_two_input_bootstrap.rs.
 
 ### Source-authenticated two-read branch halt and replay (2026-11-24)
 

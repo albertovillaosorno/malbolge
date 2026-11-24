@@ -150,15 +150,17 @@ pub struct LiveInputReentrySource {
     pub store_initial_word: u32,
 }
 
-/// Fixed 256-cell physical source reaching expanded memory without assuming
+/// Fixed 261-cell physical source reaching expanded memory without assuming
 /// that its initial `j` can directly read an expanded loader word.
 ///
 /// The first `j` selects source M41, a `p` overwrites that cell with a
 /// high-value pointer, and two genuine `j` operations reread the new value.
-/// The temporary code cell is never fetched: the active prefix halts at C39.
-/// An input at C37 then writes an invertibly encoded raw input to expanded
-/// memory at C38. The resulting word is not signed C23 `getchar` or a linked
-/// checksum block; following code and its mutation hazards remain unproved.
+/// C18 reads M58=40 and C19 reads the source-written M41.
+/// The temporary source cell is never fetched: this prefix halts at C39.
+/// Input at C37 writes an encoded raw input to expanded memory at C38.
+/// then writes an invertibly encoded raw input to expanded memory at C38. The
+/// resulting word is not signed C23 `getchar` or a linked checksum block;
+/// following code and its mutation hazards remain unproved.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LongSourceInputBootstrapSource {
     /// Expanded data word physically written by C38.
@@ -169,9 +171,9 @@ pub struct LongSourceInputBootstrapSource {
     pub high_pointer_word: u32,
     /// Actual `/` guest code address.
     pub input_code_address: u32,
-    /// Source cell overwritten by C1 and reread by C3.
+    /// Source cell overwritten by C1 and reread by C19.
     pub modified_source_address: u32,
-    /// Original source word forcing C2 to revisit the modified cell.
+    /// Original source word forcing C18 to revisit the modified cell.
     pub return_source_address: u32,
     /// Entire loader-valid source, including unreachable reserve cells.
     pub source: Vec<u8>,
@@ -179,14 +181,15 @@ pub struct LongSourceInputBootstrapSource {
     pub store_code_address: u32,
 }
 
-/// Construct a real 256-cell source-backed high-pointer bootstrap.
+/// Construct a real 261-cell source-backed high-pointer bootstrap.
 ///
-/// C0 `j` selects M41, C1 `p` turns its graphical source byte 35 into a
-/// full-width pointer, C2 `j` reads the source-backed return value M42=40,
-/// and C3 `j` consumes the *rewritten* M41. This brings D to high expanded
-/// memory without requiring the initial source to have fewer than 127 cells.
-/// C4..C36 are genuine `o`, C37 `/` reads one real byte/EOF, C38 `p` writes
-/// that raw value using a loader-derived all-ones operand and C39 `v` halts.
+/// C0 relocates D to M41. C1 writes a full-width pointer there using its
+/// initially valid source byte 92. C2..C17 advance over valid code cells.
+/// C18 reads the authentic source operand M58=40 to return D to M41, and
+/// C19 reads the rewritten pointer to relocate D into expanded memory.
+/// C20..C36 are no-ops, C37 reads a byte or EOF, C38 writes its reversible
+/// input encoding using a loader-derived all-ones word, and C39 halts.
+/// The C41/M58 source cells and both tail words are loader-admitted.
 /// Both initial source mutation and input encoding are real guest effects;
 /// no source-C operation, signed EOF conversion or control edge is linked.
 ///
@@ -200,15 +203,15 @@ pub fn build_long_source_input_bootstrap_source(
     if profile != current_profile() {
         return Err(UnsupportedProfile);
     }
-    const SOURCE_CELLS: usize = 256;
+    const SOURCE_CELLS: usize = 261;
     const TEMPORARY: usize = 41;
-    const RETURN: usize = TEMPORARY + 1;
+    const RETURN: usize = 58;
     const INPUT: usize = 37;
     const STORE: usize = INPUT + 1;
     let mut source = Vec::with_capacity(SOURCE_CELLS);
     for code in 0..SOURCE_CELLS {
         let opcode = match code {
-            0 | 2 | 3 => LinearOpcode::RelocateDataPointer,
+            0 | 18 | 19 => LinearOpcode::RelocateDataPointer,
             1 | STORE => LinearOpcode::CrazyData,
             INPUT => LinearOpcode::InputWord,
             39 => LinearOpcode::Halt,
@@ -219,14 +222,23 @@ pub fn build_long_source_input_bootstrap_source(
                 .map_err(|_error| NoLoadableSeed)?,
         );
     }
-    source[TEMPORARY] = 35;
+    source[TEMPORARY] = 92;
     source[RETURN] = 40;
-    source[254] = 54;
-    source[255] = 54;
+    source[259] = 62;
+    source[260] = 62;
     // The first pointer must select the exact source cell that C1 writes;
     // the second pointer must return there before the third `j` executes.
     if usize::from(source[0]).saturating_add(1) != TEMPORARY
         || usize::from(source[RETURN]).saturating_add(1) != TEMPORARY
+        || [(TEMPORARY, 92), (RETURN, 40), (259, 62), (260, 62)]
+            .iter()
+            .any(|&(address, byte)| {
+                unique_graphical_cell(
+                    profile,
+                    LinearOpcode::SkippedDataByte { byte },
+                    address,
+                ) != Ok(u8::try_from(byte).unwrap_or_default())
+            })
     {
         return Err(NoLoadableSeed);
     }
@@ -237,7 +249,7 @@ pub fn build_long_source_input_bootstrap_source(
     );
     let data_address = high_pointer_word
         .checked_add(
-            u32::try_from(STORE.saturating_sub(3))
+            u32::try_from(STORE.saturating_sub(19))
                 .map_err(|_error| NoLoadableSeed)?,
         )
         .ok_or(NoLoadableSeed)?;
@@ -269,6 +281,119 @@ pub fn build_long_source_input_bootstrap_source(
         source,
         store_code_address: u32::try_from(STORE)
             .map_err(|_error| NoLoadableSeed)?,
+    })
+}
+
+/// Long-source N15 bootstrap retaining two disjoint input observations.
+///
+/// C39 i consumes untouched expanded loader operand 62, jumping over C41,
+/// which was overwritten with a non-graphical data pointer by the first p.
+/// C63 resumes code after the source mutation, with a second input and p.
+/// This is finite physical continuation, not signed C23 or a reusable loop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LongSourceTwoInputBootstrapSource {
+    /// Expanded first store address.
+    pub first_data_address: u32,
+    /// Loader seed used by the first input encoding.
+    pub first_initial_data_word: u32,
+    /// Reached first input code position.
+    pub first_input_code_address: u32,
+    /// Reached first store code position.
+    pub first_store_code_address: u32,
+    /// Forward-jump code position.
+    pub jump_code_address: u32,
+    /// Source cell changed to the high pointer, never fetched.
+    pub modified_source_address: u32,
+    /// Destination code cell after the forward jump.
+    pub resume_code_address: u32,
+    /// Expanded, disjoint second store address.
+    pub second_data_address: u32,
+    /// Loader seed used by the second input encoding.
+    pub second_initial_data_word: u32,
+    /// Reached second input code position.
+    pub second_input_code_address: u32,
+    /// Reached second store code position.
+    pub second_store_code_address: u32,
+    /// Reached final halt code position.
+    pub halt_code_address: u32,
+    /// Full 261-cell graphical source, including skipped cell C41.
+    pub source: Vec<u8>,
+}
+
+/// Build source-backed expanded memory writes from two real input reads.
+///
+/// The genuine i at C39 consumes loader M[first+1]=62, landing at C63.
+/// Three no-ops, input C66 and p C67 make the second write at first+6.
+/// Both input data seeds are the loader-derived ternary all-ones word.
+///
+/// # Errors
+///
+/// Rejects a noncanonical profile, non-graphical encoding, or loader drift.
+pub fn build_long_source_two_input_bootstrap_source(
+    profile: &ProfileDescriptor,
+) -> Result<LongSourceTwoInputBootstrapSource, LiveInputEncodedStoreError> {
+    use LiveInputEncodedStoreError::NoLoadableSeed;
+    const JUMP: usize = 39;
+    const RESUME: usize = 63;
+    const SECOND_INPUT: usize = 66;
+    const SECOND_STORE: usize = 67;
+    const HALT: usize = 68;
+    let first = build_long_source_input_bootstrap_source(profile)?;
+    let mut source = first.source;
+    for (address, opcode) in [
+        (JUMP, LinearOpcode::JumpForward { target: 63 }),
+        (SECOND_INPUT, LinearOpcode::InputWord),
+        (SECOND_STORE, LinearOpcode::CrazyData),
+        (HALT, LinearOpcode::Halt),
+    ] {
+        source[address] = unique_graphical_cell(profile, opcode, address)
+            .map_err(|_error| NoLoadableSeed)?;
+    }
+    let operand_address =
+        first.data_address.checked_add(1).ok_or(NoLoadableSeed)?;
+    let operand = unwritten_loader_word(
+        &source,
+        usize::try_from(operand_address).map_err(|_error| NoLoadableSeed)?,
+        profile,
+    )
+    .map_err(|_error| NoLoadableSeed)?;
+    if operand != u32::try_from(RESUME - 1).map_err(|_error| NoLoadableSeed)? {
+        return Err(NoLoadableSeed);
+    }
+    let second_data_address =
+        first.data_address.checked_add(6).ok_or(NoLoadableSeed)?;
+    if second_data_address >= profile.memory_words() {
+        return Err(NoLoadableSeed);
+    }
+    let second_initial_data_word = unwritten_loader_word(
+        &source,
+        usize::try_from(second_data_address)
+            .map_err(|_error| NoLoadableSeed)?,
+        profile,
+    )
+    .map_err(|_error| NoLoadableSeed)?;
+    if second_initial_data_word != first.initial_data_word {
+        return Err(NoLoadableSeed);
+    }
+    Ok(LongSourceTwoInputBootstrapSource {
+        first_data_address: first.data_address,
+        first_initial_data_word: first.initial_data_word,
+        first_input_code_address: first.input_code_address,
+        first_store_code_address: first.store_code_address,
+        jump_code_address: u32::try_from(JUMP)
+            .map_err(|_error| NoLoadableSeed)?,
+        modified_source_address: first.modified_source_address,
+        resume_code_address: u32::try_from(RESUME)
+            .map_err(|_error| NoLoadableSeed)?,
+        second_data_address,
+        second_initial_data_word,
+        second_input_code_address: u32::try_from(SECOND_INPUT)
+            .map_err(|_error| NoLoadableSeed)?,
+        second_store_code_address: u32::try_from(SECOND_STORE)
+            .map_err(|_error| NoLoadableSeed)?,
+        halt_code_address: u32::try_from(HALT)
+            .map_err(|_error| NoLoadableSeed)?,
+        source,
     })
 }
 
