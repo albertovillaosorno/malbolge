@@ -447,45 +447,158 @@ fn observe_input_step(
 
 // Exact source scalar facts constrain only feasible input paths, never guest
 // arithmetic or emitted bytes. Unknown operations do not select a branch.
-fn known_source_cast(
+// Preserve exact signed source representations. Narrow signed values are
+// stored as their original bit patterns; widening sign-extends *that* width.
+// The 32-bit result is a source fact, not a guest computation.
+const fn source_sign_extend(bits: u32, width: u32) -> u32 {
+    let shift = 32u32.saturating_sub(width);
+    bits.wrapping_shl(shift)
+        .cast_signed()
+        .wrapping_shr(shift)
+        .cast_unsigned()
+}
+
+fn known_source_materialize(
     operation: &TernaryOperation,
-    known: &BTreeMap<u32, u32>,
 ) -> Option<KnownSourceScalar> {
     if let TernaryOperation::MaterializeI32 { result, scalar, .. }
     | TernaryOperation::MaterializeU32 { result, scalar, .. } = *operation
     {
         Some((result, Some(scalar.bits())))
+    } else if let TernaryOperation::MaterializeI16 { result, scalar, .. }
+    | TernaryOperation::MaterializeU16 { result, scalar, .. } =
+        *operation
+    {
+        Some((result, Some(u32::from(scalar.bits()))))
+    } else if let TernaryOperation::MaterializeI8 { result, scalar, .. }
+    | TernaryOperation::MaterializeU8 { result, scalar, .. } =
+        *operation
+    {
+        Some((result, Some(u32::from(scalar.bits()))))
     } else if let TernaryOperation::MaterializeBool { result, value, .. } =
         *operation
     {
         Some((result, Some(u32::from(value))))
-    } else if let TernaryOperation::MaterializeU8 { result, scalar, .. } =
-        *operation
-    {
-        Some((result, Some(u32::from(scalar.bits()))))
-    } else if let TernaryOperation::BitcastI32ToI32 { result, value, .. }
+    } else {
+        None
+    }
+}
+
+fn known_source_same_bits(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
+    if let TernaryOperation::BitcastI8ToI8 { result, value, .. }
+    | TernaryOperation::BitcastI8ToU8 { result, value, .. }
+    | TernaryOperation::BitcastU8ToI8 { result, value, .. }
+    | TernaryOperation::BitcastU8ToU8 { result, value, .. }
+    | TernaryOperation::BitcastI16ToI16 { result, value, .. }
+    | TernaryOperation::BitcastI16ToU16 { result, value, .. }
+    | TernaryOperation::BitcastU16ToI16 { result, value, .. }
+    | TernaryOperation::BitcastU16ToU16 { result, value, .. }
+    | TernaryOperation::BitcastI32ToI32 { result, value, .. }
     | TernaryOperation::BitcastI32ToU32 { result, value, .. }
     | TernaryOperation::BitcastU32ToI32 { result, value, .. }
     | TernaryOperation::BitcastU32ToU32 { result, value, .. }
+    | TernaryOperation::BoolToI8 { result, value, .. }
+    | TernaryOperation::BoolToI16 { result, value, .. }
     | TernaryOperation::BoolToI32 { result, value, .. }
-    | TernaryOperation::ZeroExtendU8ToU32 {
+    | TernaryOperation::ZeroExtendU8ToU16 { result, value, .. }
+    | TernaryOperation::ZeroExtendU8ToU32 { result, value, .. }
+    | TernaryOperation::ZeroExtendU16ToU32 { result, value, .. } = *operation
+    {
+        Some((result, known.get(&value).copied()))
+    } else {
+        None
+    }
+}
+
+fn known_source_truncate(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
+    if let TernaryOperation::TruncateI16ToI8 { result, value, .. }
+    | TernaryOperation::TruncateI16ToU8 { result, value, .. }
+    | TernaryOperation::TruncateI32ToI8 { result, value, .. }
+    | TernaryOperation::TruncateI32ToU8 { result, value, .. }
+    | TernaryOperation::TruncateU16ToI8 { result, value, .. }
+    | TernaryOperation::TruncateU16ToU8 { result, value, .. }
+    | TernaryOperation::TruncateU32ToI8 { result, value, .. }
+    | TernaryOperation::TruncateU32ToU8 { result, value, .. } = *operation
+    {
+        Some((result, known.get(&value).map(|bits| bits & 0xff)))
+    } else if let TernaryOperation::TruncateI32ToI16 { result, value, .. }
+    | TernaryOperation::TruncateI32ToU16 { result, value, .. }
+    | TernaryOperation::TruncateU32ToI16 { result, value, .. }
+    | TernaryOperation::TruncateU32ToU16 { result, value, .. } =
+        *operation
+    {
+        Some((result, known.get(&value).map(|bits| bits & 0xffff)))
+    } else {
+        None
+    }
+}
+
+fn known_source_sign_extend(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
+    if let TernaryOperation::SignExtendI8ToI16 { result, value, .. } =
+        *operation
+    {
+        Some((
+            result,
+            known
+                .get(&value)
+                .map(|bits| source_sign_extend(*bits, 8) & 0xffff),
+        ))
+    } else if let TernaryOperation::SignExtendI8ToI32 {
         result, value, ..
     } = *operation
     {
-        Some((result, known.get(&value).copied()))
-    } else if let TernaryOperation::TruncateI32ToU8 { result, value, .. }
-    | TernaryOperation::TruncateU32ToU8 { result, value, .. } =
-        *operation
+        Some((
+            result,
+            known.get(&value).map(|bits| source_sign_extend(*bits, 8)),
+        ))
+    } else if let TernaryOperation::SignExtendI16ToI32 {
+        result, value, ..
+    } = *operation
     {
-        Some((result, known.get(&value).map(|bits| bits & 0xff)))
-    } else if let TernaryOperation::U8ToBool { result, value, .. }
+        Some((
+            result,
+            known.get(&value).map(|bits| source_sign_extend(*bits, 16)),
+        ))
+    } else {
+        None
+    }
+}
+
+fn known_source_nonzero(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
+    if let TernaryOperation::I8ToBool { result, value, .. }
+    | TernaryOperation::I16ToBool { result, value, .. }
     | TernaryOperation::I32ToBool { result, value, .. }
+    | TernaryOperation::U8ToBool { result, value, .. }
+    | TernaryOperation::U16ToBool { result, value, .. }
     | TernaryOperation::U32ToBool { result, value, .. } = *operation
     {
         Some((result, known.get(&value).map(|bits| u32::from(*bits != 0))))
     } else {
         None
     }
+}
+
+fn known_source_cast(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
+    known_source_materialize(operation)
+        .or_else(|| known_source_same_bits(operation, known))
+        .or_else(|| known_source_truncate(operation, known))
+        .or_else(|| known_source_sign_extend(operation, known))
+        .or_else(|| known_source_nonzero(operation, known))
 }
 
 fn apply_known_binary(

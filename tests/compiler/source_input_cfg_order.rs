@@ -2308,6 +2308,510 @@ fn source_known_c23_casts_preserve_zero_and_truncate_eof() {
     }
 }
 
+// The source path must preserve signed narrow values through widening.
+// Comparing a source i8 promoted to i32 with -1 must recognize that both
+// real EOF and byte 255 map to -1, while byte 128 maps to -128. This is a
+// typed C path check; the guest arithmetic still needs a physical linker.
+#[test]
+fn source_known_signed_byte_promotions_select_the_exact_c23_arm() {
+    let span = dummy_span();
+    let function = TernaryCfgFunction {
+        blocks: vec![
+            TernaryCfgBlock {
+                id: 0,
+                operations: vec![
+                    TernaryOperation::GetcharI32 { result: 0, span },
+                    TernaryOperation::TruncateI32ToI8 {
+                        result: 1,
+                        value: 0,
+                        span,
+                    },
+                    TernaryOperation::SignExtendI8ToI16 {
+                        result: 2,
+                        value: 1,
+                        span,
+                    },
+                    TernaryOperation::SignExtendI16ToI32 {
+                        result: 3,
+                        value: 2,
+                        span,
+                    },
+                    TernaryOperation::MaterializeI32 {
+                        result: 4,
+                        scalar: TernaryI32Scalar::from_bits(u32::MAX),
+                        span,
+                    },
+                    TernaryOperation::EqualI32 {
+                        left: 3,
+                        result: 5,
+                        right: 4,
+                        span,
+                    },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Branch {
+                    condition: 5,
+                    false_target: 1,
+                    span,
+                    true_target: 2,
+                },
+            },
+            TernaryCfgBlock {
+                id: 1,
+                operations: vec![
+                    TernaryOperation::MaterializeU8 {
+                        result: 6,
+                        scalar: TernaryU8Scalar::from_bits(0),
+                        span,
+                    },
+                    TernaryOperation::ByteOutput { value: 6, span },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Return(
+                    TernaryOperation::ReturnVoid { span },
+                ),
+            },
+            TernaryCfgBlock {
+                id: 2,
+                operations: vec![
+                    TernaryOperation::MaterializeU8 {
+                        result: 7,
+                        scalar: TernaryU8Scalar::from_bits(1),
+                        span,
+                    },
+                    TernaryOperation::ByteOutput { value: 7, span },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Return(
+                    TernaryOperation::ReturnVoid { span },
+                ),
+            },
+        ],
+        entry: 0,
+        id: 0,
+        name: "signed_narrow_c23_promotion".to_owned(),
+        span,
+    };
+    for input in (u8::MIN..=u8::MAX)
+        .map(TraceInput::Byte)
+        .chain(std::iter::once(TraceInput::EndOfInput))
+    {
+        let observation = SourceInputSiteObservation {
+            input,
+            raw_accumulator: match input {
+                TraceInput::Byte(byte) => u32::from(byte),
+                TraceInput::EndOfInput => 14_348_906,
+            },
+            ..observed(0, 0)
+        };
+        let expected = u8::from(matches!(
+            input,
+            TraceInput::Byte(255) | TraceInput::EndOfInput
+        ));
+        assert_eq!(
+            source_path_matches_input_observables(
+                &function,
+                &[&observation],
+                &[expected],
+                128,
+            ),
+            Ok(true),
+            "narrow C23 input {input:?}",
+        );
+        assert_eq!(
+            source_path_matches_input_observables(
+                &function,
+                &[&observation],
+                &[1 - expected],
+                128,
+            ),
+            Ok(false),
+            "forged narrow C23 output for {input:?}",
+        );
+    }
+}
+
+// Every typed narrow cast must retain source-known bits, including signed
+// values with a set sign bit. A missing operand must clear a reused SSA slot.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "typed narrow casts and unknown-value controls"
+)]
+fn source_known_narrow_casts_preserve_signedness_and_invalidate_unknowns() {
+    use std::collections::BTreeMap;
+
+    use super::super::typed_cfg_adapter::ternary::TernaryU16Scalar;
+    use super::advance_known_source_scalar;
+
+    let span = dummy_span();
+    let mut known = BTreeMap::from([
+        (0, 0xffff_8081), // signed i32
+        (1, 0x8081),      // signed/unsigned i16 bits
+        (2, 0x81),        // signed/unsigned i8 bits
+        (3, 1),           // true
+        (4, 0),           // false
+    ]);
+    let cases = [
+        (
+            TernaryOperation::MaterializeI8 {
+                result: 100,
+                scalar: TernaryU8Scalar::from_bits(0x81),
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::MaterializeU8 {
+                result: 100,
+                scalar: TernaryU8Scalar::from_bits(0x81),
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::MaterializeI16 {
+                result: 100,
+                scalar: TernaryU16Scalar::from_bits(0x8081),
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::MaterializeU16 {
+                result: 100,
+                scalar: TernaryU16Scalar::from_bits(0x8081),
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::BitcastI8ToI8 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::BitcastI8ToU8 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::BitcastU8ToI8 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::BitcastU8ToU8 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::BitcastI16ToI16 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::BitcastI16ToU16 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::BitcastU16ToI16 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::BitcastU16ToU16 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::TruncateI16ToI8 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateI16ToU8 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateI32ToI8 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateI32ToU8 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateU16ToI8 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateU16ToU8 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateU32ToI8 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateU32ToU8 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::TruncateI32ToI16 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::TruncateI32ToU16 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::TruncateU32ToI16 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::TruncateU32ToU16 {
+                result: 100,
+                value: 0,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::SignExtendI8ToI16 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0xff81,
+        ),
+        (
+            TernaryOperation::SignExtendI8ToI32 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0xffff_ff81,
+        ),
+        (
+            TernaryOperation::SignExtendI16ToI32 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0xffff_8081,
+        ),
+        (
+            TernaryOperation::ZeroExtendU8ToU16 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::ZeroExtendU8ToU32 {
+                result: 100,
+                value: 2,
+                span,
+            },
+            0x81,
+        ),
+        (
+            TernaryOperation::ZeroExtendU16ToU32 {
+                result: 100,
+                value: 1,
+                span,
+            },
+            0x8081,
+        ),
+        (
+            TernaryOperation::BoolToI8 {
+                result: 100,
+                value: 3,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::BoolToI16 {
+                result: 100,
+                value: 3,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::BoolToI32 {
+                result: 100,
+                value: 3,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::I8ToBool {
+                result: 100,
+                value: 2,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::I16ToBool {
+                result: 100,
+                value: 1,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::I32ToBool {
+                result: 100,
+                value: 0,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::U8ToBool {
+                result: 100,
+                value: 2,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::U16ToBool {
+                result: 100,
+                value: 1,
+                span,
+            },
+            1,
+        ),
+        (
+            TernaryOperation::U32ToBool {
+                result: 100,
+                value: 0,
+                span,
+            },
+            1,
+        ),
+    ];
+    for (operation, expected) in cases {
+        assert!(advance_known_source_scalar(&operation, &mut known));
+        assert_eq!(known.get(&100).copied(), Some(expected), "{operation:?}");
+    }
+    for operation in [
+        TernaryOperation::TruncateU32ToU8 {
+            result: 100,
+            value: 999,
+            span,
+        },
+        TernaryOperation::SignExtendI16ToI32 {
+            result: 100,
+            value: 999,
+            span,
+        },
+        TernaryOperation::ZeroExtendU8ToU32 {
+            result: 100,
+            value: 999,
+            span,
+        },
+        TernaryOperation::I16ToBool {
+            result: 100,
+            value: 999,
+            span,
+        },
+        TernaryOperation::BitcastI8ToU8 {
+            result: 100,
+            value: 999,
+            span,
+        },
+    ] {
+        let _old = known.insert(100, 0xdead_beef);
+        assert!(advance_known_source_scalar(&operation, &mut known));
+        assert_eq!(known.get(&100), None, "stale source value {operation:?}");
+    }
+    assert!(advance_known_source_scalar(
+        &TernaryOperation::BoolToI8 {
+            result: 101,
+            value: 4,
+            span
+        },
+        &mut known,
+    ));
+    assert_eq!(known.get(&101), Some(&0));
+}
+
 #[test]
 fn source_known_equality_selects_only_the_matching_input_arm() {
     let mut function = guarded_inequality_fixture();

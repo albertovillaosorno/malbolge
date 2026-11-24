@@ -28,6 +28,24 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-known narrow C23 scalar casts (2026-11-24)
+
+The bounded source-CFG return checker now preserves exact typed `i8`/`u8`
+and `i16`/`u16` bit patterns through materialization, bitcasts, truncation,
+zero/sign extension, Boolean casts and nonzero tests. Narrow signed values
+are **sign-extended at their source width**; unknown input-derived scalars
+invalidate prior source facts rather than silently authorizing an output.
+A red-first 257-class signed-byte path test now rejects a forged branch
+output after `getchar()` narrows to `i8` and widens through `i16` to `i32`.
+The entire source-input CFG regression suite passes with this change.
+
+This check concerns only a source-known *necessary* branch/output condition
+on canonical typed-IR semantics, not implementation-defined arbitrary C
+conversions, executed guest casts, memory writes, source lowering or complete
+P2 checksum compilation. The unchanged whole-source C23 EOF checksum still
+fails closed at target lowering with seven blocks, nineteen operations,
+four phi edges and six phi moves; no physical guest artifact is published.
+
 ### Signed and unsigned C32 quotient/remainder in finite source paths
 
 The source-locked branch/output walk now interprets known C32 quotient and
