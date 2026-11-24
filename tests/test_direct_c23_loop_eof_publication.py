@@ -135,6 +135,119 @@ class DirectC23LoopEofPublicationTests(unittest.TestCase):
                     self.assertEqual(executed.returncode, 0, executed.stderr)
                     self.assertEqual(executed.stdout, expected[data])
 
+    def test_direct_input_in_nested_for_while_and_do_cannot_lose_eof(self) -> None:
+        """Exercise original C23 signed EOF through three loop AST shapes."""
+        for loop_kind in ("for", "while", "do"):
+            with (
+                self.subTest(loop=loop_kind),
+                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw,
+            ):
+                folder = Path(raw)
+                before = (
+                    "    for (unsigned i = 0U; i < 2U; ++i) {\n"
+                    if loop_kind == "for"
+                    else "    unsigned i = 0U;\n"
+                    + (
+                        "    while (i < 2U) {\n"
+                        if loop_kind == "while"
+                        else "    do {\n"
+                    )
+                )
+                increment = "" if loop_kind == "for" else "        ++i;\n"
+                after = "    } while (i < 2U);\n" if loop_kind == "do" else "    }\n"
+                source = folder / "nested-direct.c"
+                _ = source.write_text(
+                    "#include <stdio.h>\nvoid emit(void) {\n"
+                    + before
+                    + "        if (i < 2U) { putchar(getchar()); }\n"
+                    + increment
+                    + after
+                    + "}\n",
+                    encoding="utf-8",
+                )
+                wrapper = folder / "main.c"
+                _ = wrapper.write_text(
+                    f'#include "{source}"\nint main(void) {{ emit(); return 0; }}\n',
+                    encoding="utf-8",
+                )
+                env = os.environ.copy()
+                lib = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+                env["LD_LIBRARY_PATH"] = os.pathsep.join(
+                    part for part in (lib, env.get("LD_LIBRARY_PATH", "")) if part
+                )
+                for optimization in ("-O0", "-O2"):
+                    native = folder / f"native-{optimization[2:]}"
+                    built = subprocess.run(
+                        [
+                            str(CLANG),
+                            "-std=c23",
+                            optimization,
+                            "-Wall",
+                            "-Wextra",
+                            "-Werror",
+                            "-fsanitize=undefined",
+                            "-fno-sanitize-recover=all",
+                            str(wrapper),
+                            "-o",
+                            str(native),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=15,
+                        env=env,
+                    )
+                    self.assertEqual(built.returncode, 0, built.stderr)
+                    for data in SAMPLES:
+                        expected = bytes(
+                            data[index] if index < len(data) else 255
+                            for index in range(2)
+                        )
+                        run = subprocess.run(
+                            [str(native)],
+                            input=data,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        self.assertEqual(run.returncode, 0, run.stderr)
+                        self.assertEqual(run.stdout, expected)
+                target = folder / "guest.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--capsule",
+                        "--max-wall-seconds",
+                        "60",
+                        "--output",
+                        str(target),
+                        str(source),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=70,
+                )
+                if compiled.returncode != 0:
+                    self.assertIn(b"Unsupported", compiled.stderr)
+                    self.assertFalse(target.exists(), "refusal published a guest")
+                    continue
+                self.assertTrue(target.is_file())
+                for data in SAMPLES:
+                    expected = bytes(
+                        data[index] if index < len(data) else 255 for index in range(2)
+                    )
+                    guest = subprocess.run(
+                        [str(VM), str(target), "--input-stdin", "--max-steps", "1000"],
+                        input=data,
+                        capture_output=True,
+                        check=False,
+                        timeout=20,
+                    )
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    self.assertEqual(guest.stdout, expected)
+
 
 if __name__ == "__main__":
     _ = unittest.main()
