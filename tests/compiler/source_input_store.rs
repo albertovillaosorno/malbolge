@@ -317,8 +317,8 @@ fn matching_constant_writes_are_not_input_stores()
         Some(SourceInputTraceError::InputResultUnrelatedToInput)
     );
 
-    // C23's successful-byte high word may correctly be fixed zero. At
-    // least one constituent write must nevertheless depend on *this* read.
+    // C23's successful-byte high word may correctly be fixed zero, but
+    // the low word must genuinely depend on this physical read.
     let mut mixed = synthetic_tracker(input)?;
     mixed.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
     mixed.observe_data_write(257, 55, 55, &BTreeSet::new());
@@ -332,6 +332,32 @@ fn matching_constant_writes_are_not_input_stores()
         Some(SourceInputTraceError::InputResultUnrelatedToInput),
         "a different physical getchar cannot authenticate this SSA store"
     );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "signed finite getchar must authenticate its low-byte result"
+)]
+fn c23_finite_low_word_cannot_borrow_high_word_dependence()
+-> Result<(), SourceInputTraceError> {
+    let input = input_observation(TraceInput::Byte(37), signed_c23(), 2);
+    let mut forged = synthetic_tracker(input)?;
+    let _low_seed = forged.words.insert(256, 37);
+    forged.observe_data_write(256, 54, 54, &BTreeSet::new());
+    forged.observe_data_write(257, 55, 55, &BTreeSet::from([0]));
+    assert_eq!(
+        forged.complete().err(),
+        Some(SourceInputTraceError::InputResultUnrelatedToInput),
+        "C23 low byte may not borrow an unrelated high-word data path",
+    );
+
+    let mut valid = synthetic_tracker(input)?;
+    let _valid_low_seed = valid.words.insert(256, 37);
+    valid.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
+    valid.observe_data_write(257, 55, 55, &BTreeSet::new());
+    assert_eq!(valid.complete()?.len(), 1);
     Ok(())
 }
 

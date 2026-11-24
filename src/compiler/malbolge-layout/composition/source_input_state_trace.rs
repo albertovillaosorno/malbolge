@@ -356,14 +356,13 @@ impl StoreTracker {
                 })
                 .collect::<Option<Vec<_>>>();
             if let Some(cells) = completed_cells {
-                // A successful getchar has a constant high C23 word of
-                // zero, so only one word need carry this read. At EOF both
-                // words encode -1 and must be causally tied to the actual
-                // EOF observation: an unrelated constant high-word rotate
-                // cannot authenticate a signed source input result.
+                // For successful getchar, the low byte must depend on the
+                // input even when the high C23 word is constant zero.
+                // At signed EOF both words must depend on the real read;
+                // an unrelated constant is not input materialization.
                 let dependent = match store.input.input {
                     TraceInput::Byte(_) => {
-                        store.write_dependent.iter().any(|value| *value)
+                        store.write_dependent.first().copied().unwrap_or(false)
                     },
                     TraceInput::EndOfInput => {
                         store.write_dependent.iter().all(|value| *value)

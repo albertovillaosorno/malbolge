@@ -54,7 +54,16 @@ the ninth rotation and then a correct EOF loop. The complete seven-block
 C23 checksum still fails closed without a target artifact. Regression:
 `tests/test_c23_loader_seed_rotation_bound.py`.
 
-### Signed EOF input-store causality for both C23 words (2026-11-23)
+### Signed C23 input-store word causality (2026-11-23)
+
+A follow-on finite-byte regression also refuses an unrelated successful
+`getchar` **low** result even if the guest writes the numerically correct
+constant-zero high word through an input-dependent operation. The first C23
+word must depend on its own input in every case; the high word may stay
+constant only for successful bytes. A red-first synthetic store-accounting
+case previously accepted this swapped dependence and now rejects it, while
+normal input-dependent low/constant-high behavior still passes. This added
+check does not by itself prove a complete physical source-C read/return.
 
 The opt-in physical input-store verifier now refuses a **numerically correct**
 signed C23 EOF store unless the real EOF input affects both C32 result words.
