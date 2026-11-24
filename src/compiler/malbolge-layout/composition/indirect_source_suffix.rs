@@ -45,7 +45,8 @@ use malbolge::{
 
 use super::admit_c23_probe_graphical_source;
 use super::source_input_trace::{
-    SourceInputPrefixProof, SourceInputProbe, SourceInputTraceError,
+    SourceBranchLanding, SourceInputPrefixProof, SourceInputProbe,
+    SourceInputTraceError, verify_source_branch_landing,
 };
 use super::typed_cfg_adapter::state_relocation::{
     GuestCodeOperationAnchor, GuestCodeProposals,
@@ -546,6 +547,37 @@ impl SourceWrittenIndirectGuestVerifier {
     ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
     {
         self.verify_source_bound_with_return(probe, true)
+    }
+
+    /// Bind one known source-C conditional to the actually selected guest
+    /// indirect destination, following an exact source input/return path.
+    ///
+    /// The typed source predicate is recomputed only from source-known scalar
+    /// operations in the same finite CFG walk as the real input sequence.
+    /// Unknown or conflicting return paths refuse. Pointer input ancestry,
+    /// the source return path and the physical guest transition are verified
+    /// separately before comparing arms. This does not prove that the guest
+    /// computed the typed predicate or executed the other source operations.
+    ///
+    /// # Errors
+    ///
+    /// Refuses invalid branch identity, source-unknown predicate, incorrect
+    /// physical arm, or any source-return or guest pointer proof failure.
+    pub fn verify_source_return_branch_bound(
+        &self,
+        probe: &SourceBoundIndirectGuestProbe<'_>,
+        branch: SourceBranchLanding,
+    ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
+    {
+        let joined = self.verify_source_return_bound(probe)?;
+        verify_source_branch_landing(
+            probe.source_input.canonical,
+            &joined.source_input.observations,
+            branch,
+            joined.guest_pointer.landing_address(),
+        )
+        .map_err(SourceBoundIndirectGuestError::SourceInput)?;
+        Ok(joined)
     }
 
     #[expect(

@@ -97,6 +97,10 @@ pub enum SourceInputTraceError {
     UnexpectedGuestTermination,
     /// A skipped source input site is mandatory on every possible return path.
     UnreachedSourceInput,
+    /// Requested source branch is not a unique bound conditional/landing.
+    InvalidBranchBinding,
+    /// Real guest landing disagrees with a source-known branch direction.
+    SourceBranchMismatch,
 }
 
 /// An actual input step and its *raw* profile accumulator, before C23 casting.
@@ -172,6 +176,25 @@ pub struct SourceInputPrefixProof {
     pub outcome: RunOutcome,
 }
 
+/// One exact source conditional is bound to a physical guest indirect arm.
+///
+/// `after_inputs` is the number of observed source input operations before
+/// this branch, distinguishing later iterations of the same source block.
+/// A source-unknown condition cannot authenticate a guest destination.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceBranchLanding {
+    /// Number of reached input observations before the branch.
+    pub after_inputs: usize,
+    /// Canonical source basic block containing the conditional terminator.
+    pub block: u32,
+    /// Physical destination for the source false successor.
+    pub false_landing: u32,
+    /// Canonical function containing the conditional terminator.
+    pub function: u32,
+    /// Physical destination for the source true successor.
+    pub true_landing: u32,
+}
+
 /// Source-locked C23 input sites and physical execution input for one probe.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceInputProbe<'source> {
@@ -211,11 +234,34 @@ struct SourceInputSite {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct SourceInputWalkState {
     block: u32,
+    // None: target branch not reached; Some(false): not source-proven.
+    branch_match: Option<bool>,
     consumed: usize,
-    known: BTreeMap<u32, u32>,
     io_count: usize,
+    known: BTreeMap<u32, u32>,
     operation: usize,
     output_count: usize,
+}
+
+impl SourceInputWalkState {
+    fn entry(block: u32) -> Self {
+        Self {
+            block,
+            branch_match: None,
+            consumed: 0,
+            io_count: 0,
+            known: BTreeMap::new(),
+            operation: 0,
+            output_count: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SourceBranchObligation {
+    after_inputs: usize,
+    block: u32,
+    expected_true: bool,
 }
 
 type KnownSourceOperator = fn(u32, u32) -> u32;
@@ -652,6 +698,7 @@ fn source_successor_state(
         io_count: current.io_count,
         operation: 0,
         output_count: current.output_count,
+        branch_match: current.branch_match,
     })
 }
 
@@ -747,28 +794,50 @@ fn advance_source_input_operation(
     Some(next)
 }
 
+// Track one exact source branch occurrence in the same CFG walk that must
+// consume the entire physical input trace and reach a source return. A second
+// occurrence before a new read is not the nominated single physical transfer.
 fn source_terminator_successors(
     function: &TernaryCfgFunction,
     current: &SourceInputWalkState,
     terminator: TernaryCfgTerminator,
+    expected_branch: Option<SourceBranchObligation>,
 ) -> Vec<SourceInputWalkState> {
-    let targets = match terminator {
+    let (targets, branch_match) = match terminator {
         TernaryCfgTerminator::Branch {
             condition,
             false_target,
             true_target,
             ..
-        } => match current.known.get(&condition) {
-            Some(0) => vec![false_target],
-            Some(_) => vec![true_target],
-            None => vec![false_target, true_target],
+        } => {
+            let truth = current.known.get(&condition).map(|value| *value != 0);
+            let targets = match truth {
+                Some(false) => vec![false_target],
+                Some(true) => vec![true_target],
+                None => vec![false_target, true_target],
+            };
+            let match_result = expected_branch.and_then(|branch| {
+                (current.block == branch.block
+                    && current.consumed == branch.after_inputs)
+                    .then(|| {
+                        current.branch_match.is_none()
+                            && truth == Some(branch.expected_true)
+                    })
+            });
+            (targets, match_result)
         },
-        TernaryCfgTerminator::Jump { target, .. } => vec![target],
-        TernaryCfgTerminator::Return(_) => Vec::new(),
+        TernaryCfgTerminator::Jump { target, .. } => (vec![target], None),
+        TernaryCfgTerminator::Return(_) => (Vec::new(), None),
     };
     targets
         .into_iter()
-        .filter_map(|target| source_successor_state(function, current, target))
+        .filter_map(|target| {
+            let mut next = source_successor_state(function, current, target)?;
+            if let Some(matches) = branch_match {
+                next.branch_match = Some(matches);
+            }
+            Some(next)
+        })
         .collect()
 }
 
@@ -835,15 +904,37 @@ fn source_path_matches_input_walk(
     expected_io: Option<&[SourceInputIoEvent]>,
     expected_sites: Option<&[SourceOutputSiteObservation]>,
 ) -> Result<bool, SourceInputTraceError> {
-    let mut pending = VecDeque::from([SourceInputWalkState {
-        block: function.entry,
-        consumed: 0,
-        known: BTreeMap::new(),
-        io_count: 0,
-        operation: 0,
-        output_count: 0,
-    }]);
+    source_path_matches_input_walk_with_branch(
+        function,
+        observations,
+        max_states,
+        require_return,
+        expected_output,
+        expected_io,
+        expected_sites,
+        None,
+    )
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "finite source path includes separate I/O and branch obligations"
+)]
+fn source_path_matches_input_walk_with_branch(
+    function: &TernaryCfgFunction,
+    observations: &[&SourceInputSiteObservation],
+    max_states: usize,
+    require_return: bool,
+    expected_output: Option<&[u8]>,
+    expected_io: Option<&[SourceInputIoEvent]>,
+    expected_sites: Option<&[SourceOutputSiteObservation]>,
+    expected_branch: Option<SourceBranchObligation>,
+) -> Result<bool, SourceInputTraceError> {
+    let mut pending =
+        VecDeque::from([SourceInputWalkState::entry(function.entry)]);
     let mut visited = BTreeSet::new();
+    let mut matching_return = false;
+    let mut incompatible_return = false;
     while let Some(state) = pending.pop_front() {
         if !require_return && state.consumed == observations.len() {
             return Ok(true);
@@ -876,23 +967,98 @@ fn source_path_matches_input_walk(
                 pending.push_back(next);
             }
         } else {
-            if matches!(block.terminator, TernaryCfgTerminator::Return(_))
-                && state.consumed == observations.len()
-                && expected_output
-                    .is_none_or(|bytes| state.output_count == bytes.len())
-                && expected_io
-                    .is_none_or(|events| state.io_count == events.len())
-            {
+            let completed_return =
+                matches!(block.terminator, TernaryCfgTerminator::Return(_))
+                    && state.consumed == observations.len()
+                    && expected_output
+                        .is_none_or(|bytes| state.output_count == bytes.len())
+                    && expected_io
+                        .is_none_or(|events| state.io_count == events.len());
+            if completed_return && expected_branch.is_none() {
                 return Ok(true);
+            }
+            if completed_return {
+                matching_return |= state.branch_match == Some(true);
+                incompatible_return |= state.branch_match != Some(true);
             }
             pending.extend(source_terminator_successors(
                 function,
                 &state,
                 block.terminator,
+                expected_branch,
             ));
         }
     }
-    Ok(false)
+    Ok(expected_branch.is_some() && matching_return && !incompatible_return)
+}
+
+// Re-derive the exact C conditional from the canonical typed IR. Accept a
+// physical landing only when every complete input-compatible source return
+// reaches the nominated branch once with a known, agreeing truth value.
+// This is source/guest control parity for one finite arm, not guest C storage,
+// predicate computation, or an executable source backedge.
+pub(super) fn verify_source_branch_landing(
+    canonical: &[u8],
+    observations: &[SourceInputSiteObservation],
+    binding: SourceBranchLanding,
+    physical_landing: u32,
+) -> Result<(), SourceInputTraceError> {
+    use SourceInputTraceError::{
+        InvalidBranchBinding, InvalidSourcePlacement, SourceBranchMismatch,
+    };
+    if binding.after_inputs == 0
+        || binding.after_inputs > observations.len()
+        || binding.false_landing == binding.true_landing
+    {
+        return Err(InvalidBranchBinding);
+    }
+    let expected_true = if physical_landing == binding.false_landing {
+        false
+    } else if physical_landing == binding.true_landing {
+        true
+    } else {
+        return Err(SourceBranchMismatch);
+    };
+    let cfg = lower_canonical_dynamic_cfg(canonical)
+        .map_err(|_error| InvalidSourcePlacement)?;
+    let function = cfg
+        .functions
+        .iter()
+        .find(|candidate| candidate.id == binding.function)
+        .ok_or(InvalidBranchBinding)?;
+    let source_branch = function
+        .blocks
+        .iter()
+        .find(|block| block.id == binding.block)
+        .ok_or(InvalidBranchBinding)?;
+    if !matches!(
+        source_branch.terminator,
+        TernaryCfgTerminator::Branch { .. }
+    ) || observations
+        .iter()
+        .any(|observation| observation.function != binding.function)
+    {
+        return Err(InvalidBranchBinding);
+    }
+    let observed = observations.iter().collect::<Vec<_>>();
+    if source_path_matches_input_walk_with_branch(
+        function,
+        &observed,
+        MAX_SOURCE_INPUT_CFG_SEARCH_STATES,
+        true,
+        None,
+        None,
+        None,
+        Some(SourceBranchObligation {
+            after_inputs: binding.after_inputs,
+            block: binding.block,
+            expected_true,
+        }),
+    )? {
+        Ok(())
+    } else {
+        Err(SourceBranchMismatch)
+    }
 }
 
 fn verify_source_cfg_input_order(

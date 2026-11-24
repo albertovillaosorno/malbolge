@@ -192,6 +192,83 @@ fn checksum_cfg_skipped_loop_input_requires_real_source_return()
     Ok(())
 }
 
+// The real checksum guards its first getchar in block 1. A high successful
+// byte (including 255) is *not* signed C EOF. These are source-only
+// branch expectations; the separate N15 test checks physical pointer arms.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "frozen 257-class C23 source branch evidence"
+)]
+fn checksum_source_first_eof_guard_is_exact_for_all_byte_classes()
+-> Result<(), String> {
+    use super::{SourceBranchLanding, verify_source_branch_landing};
+
+    let wire = checksum_wire()?;
+    let branch = SourceBranchLanding {
+        after_inputs: 1,
+        block: 1,
+        false_landing: 126,
+        function: 0,
+        true_landing: 45,
+    };
+    let first_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..observed(0, 1)
+    };
+    assert_eq!(
+        verify_source_branch_landing(&wire, &[first_eof], branch, 126),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_branch_landing(&wire, &[first_eof], branch, 45),
+        Err(SourceInputTraceError::SourceBranchMismatch),
+    );
+    let second_eof = SourceInputSiteObservation {
+        input: TraceInput::EndOfInput,
+        raw_accumulator: 14_348_906,
+        ..observed(5, 2)
+    };
+    for byte in u8::MIN..=u8::MAX {
+        let first = SourceInputSiteObservation {
+            input: TraceInput::Byte(byte),
+            raw_accumulator: u32::from(byte),
+            ..observed(0, 1)
+        };
+        assert_eq!(
+            verify_source_branch_landing(
+                &wire,
+                &[first, second_eof],
+                branch,
+                45
+            ),
+            Ok(()),
+            "source C23 successful byte {byte}",
+        );
+        assert_eq!(
+            verify_source_branch_landing(
+                &wire,
+                &[first, second_eof],
+                branch,
+                126
+            ),
+            Err(SourceInputTraceError::SourceBranchMismatch),
+            "source C23 successful byte {byte} incorrectly treated as EOF",
+        );
+    }
+    assert_eq!(
+        verify_source_branch_landing(
+            &wire,
+            &[first_eof],
+            SourceBranchLanding { block: 0, ..branch },
+            126,
+        ),
+        Err(SourceInputTraceError::InvalidBranchBinding),
+    );
+    Ok(())
+}
+
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
@@ -375,6 +452,48 @@ fn source_known_inequality_discriminates_high_byte_and_true_eof() {
         ),
         Ok(false)
     );
+}
+
+#[test]
+fn source_branch_arm_requires_a_known_guard_and_the_exact_input_occurrence() {
+    use super::{
+        SourceBranchObligation, source_path_matches_input_walk_with_branch,
+    };
+
+    let known = guarded_inequality_fixture();
+    let first = SourceInputSiteObservation {
+        input: TraceInput::Byte(255),
+        raw_accumulator: 255,
+        ..observed(0, 0)
+    };
+    let second = observed(2, 0);
+    let returns = [&first, &second];
+    let proof =
+        |function: &TernaryCfgFunction, block, after_inputs, true_arm| {
+            source_path_matches_input_walk_with_branch(
+                function,
+                &returns,
+                128,
+                true,
+                None,
+                None,
+                None,
+                Some(SourceBranchObligation {
+                    after_inputs,
+                    block,
+                    expected_true: true_arm,
+                }),
+            )
+        };
+    assert_eq!(proof(&known, 0, 1, true), Ok(true));
+    assert_eq!(proof(&known, 0, 1, false), Ok(false));
+    assert_eq!(proof(&known, 0, 2, true), Ok(false));
+    assert_eq!(proof(&known, 1, 1, true), Ok(false));
+    // The source branch's input-dependent predicate is no longer defined:
+    // matching one plausible CFG successor is not a proof of its truth.
+    let mut unknown = known.clone();
+    let _removed = unknown.blocks[0].operations.pop();
+    assert_eq!(proof(&unknown, 0, 1, true), Ok(false));
 }
 
 #[test]
@@ -848,7 +967,7 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
         GuestCodeBlockPlacement, GuestCodeEdgeKind, GuestCodeEdgePadPlacement,
         GuestCodeInputAnchor, GuestCodeOperationAnchor, GuestCodeProposals,
     };
-    use super::SourceInputProbe;
+    use super::{SourceBranchLanding, SourceInputProbe};
 
     let wire = checksum_wire()?;
     let physical = signed_source::build_guarded_signed_eof_second_read_source(
@@ -937,11 +1056,25 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
         function: 0,
         ordinal: 2,
     }];
+    // The real first getchar guards a typed source branch. These two
+    // physical destinations have independent runtime pointer provenance.
+    let source_first_guard = SourceBranchLanding {
+        after_inputs: 1,
+        block: 1,
+        false_landing: 126,
+        function: 0,
+        true_landing: 45,
+    };
     for (input, expected, steps) in [
         (&[][..], vec![(53, TraceInput::EndOfInput)], 119),
         (
             &[0][..],
             vec![(53, TraceInput::Byte(0)), (101, TraceInput::EndOfInput)],
+            175,
+        ),
+        (
+            &[255][..],
+            vec![(53, TraceInput::Byte(255)), (101, TraceInput::EndOfInput)],
             175,
         ),
         (
@@ -1019,6 +1152,64 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
                 source_return.map_err(|error| format!("{error:?}"))?,
                 joined,
             );
+        }
+        let source_branch = pointer_verifier
+            .verify_source_return_branch_bound(&requested, source_first_guard);
+        if input.len() >= 2 {
+            assert_eq!(
+                source_branch,
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::UnreachedSourceInput,
+                )),
+            );
+        } else {
+            assert_eq!(
+                source_branch.map_err(|error| format!("{error:?}"))?,
+                joined,
+            );
+            for (wrong, expected) in [
+                (
+                    SourceBranchLanding {
+                        false_landing: 45,
+                        true_landing: 126,
+                        ..source_first_guard
+                    },
+                    SourceInputTraceError::SourceBranchMismatch,
+                ),
+                (
+                    SourceBranchLanding {
+                        after_inputs: 2,
+                        ..source_first_guard
+                    },
+                    if input.is_empty() {
+                        SourceInputTraceError::InvalidBranchBinding
+                    } else {
+                        SourceInputTraceError::SourceBranchMismatch
+                    },
+                ),
+                (
+                    SourceBranchLanding {
+                        block: 5,
+                        ..source_first_guard
+                    },
+                    SourceInputTraceError::InvalidBranchBinding,
+                ),
+                (
+                    SourceBranchLanding {
+                        false_landing: 45,
+                        true_landing: 45,
+                        ..source_first_guard
+                    },
+                    SourceInputTraceError::InvalidBranchBinding,
+                ),
+            ] {
+                assert_eq!(
+                    pointer_verifier
+                        .verify_source_return_branch_bound(&requested, wrong),
+                    Err(BoundError::SourceInput(expected)),
+                    "forged typed branch {wrong:?}",
+                );
+            }
         }
         // The second C23 getchar is a real input on non-EOF paths, but
         // cannot be borrowed as an ancestor of this earlier pointer.

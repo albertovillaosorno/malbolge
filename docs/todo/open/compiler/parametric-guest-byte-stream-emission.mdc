@@ -41,6 +41,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The new source-return-bound physical verifier binds the frozen original
+C23 checksum's **block-1 `current != EOF`** guard after its first `getchar`
+to the *actual* C114 `i` guest arm: C45 for a successful byte, C126 for
+true EOF. Source-known scalar execution, the complete observed input/return
+CFG path and independent C53/C82/M143 pointer lineage must agree. An
+independent source-only 257-class check distinguishes byte 255 from EOF;
+actual guest EOF/NUL/high-byte returns pass, swapped arms, forged source
+condition locations, wrong occurrences and premature loop exits refuse.
+This is **one bounded necessary source/physical arm agreement**, not C23
+signed storage, runtime comparison arithmetic, phi/backedge, guest loop or
+whole-program checksum. The full checksum still refuses publication.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 The source-loaded physical verifier now attaches **specific reached guest
 input sites** to guest-written pointer provenance. The first-read classifier
 binds C53 to M143; the two-read classifier instead binds C63 to its own

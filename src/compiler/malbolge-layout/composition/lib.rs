@@ -227,8 +227,8 @@ pub use source_input_state_trace::{
 };
 pub use source_input_trace::{
     MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS,
-    SourceInputIoEvent, SourceInputPrefixProof, SourceInputProbe,
-    SourceInputSiteObservation, SourceInputTraceError,
+    SourceBranchLanding, SourceInputIoEvent, SourceInputPrefixProof,
+    SourceInputProbe, SourceInputSiteObservation, SourceInputTraceError,
     SourceOutputSiteObservation, verify_source_input_site_output_compatible,
     verify_source_input_site_prefix,
     verify_source_input_site_return_compatible,

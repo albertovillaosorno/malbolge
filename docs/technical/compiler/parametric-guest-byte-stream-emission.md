@@ -28,6 +28,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### A source-known EOF condition selects the real guest arm (2026-11-24)
+
+An opt-in `verify_source_return_branch_bound` now checks the canonical
+checksum's **block-1 `current != EOF`** branch after its first C23 input,
+against the actual C114 guest `i` destination fed by the C82 input-derived
+M143 pointer. Source-known predicate evaluation, complete input/return CFG
+walk and independent normative physical pointer replay must all agree.
+Finite EOF/NUL/255-to-EOF cases pass, swapped arm and forged source branch
+bindings refuse, and the original checksum still refuses when two
+successful bytes precede a missing required third read. A source-only
+257-class guard census checks every byte against true EOF.
+
+This proves one necessary physical control-arm agreement, not guest-executed
+C23 comparison, signed frame data, general CFG/phi/backedge linkage or
+checksum output. No whole-C23 checksum artifact has been published.
+
 ### Source-typed C input now binds a physical guest pointer (2026-11-24)
 
 A joined proof composes the source-locked C23 input/CFG-prefix verifier with
@@ -41,16 +57,19 @@ source anchor, guest source image or physical target refuses. See
 `docs/technical/compiler/source-indirect-guest-suffix.md` and
 `tests/compiler/source_input_cfg_order.rs`.
 
-This proves only a necessary source-to-guest input-control ancestry condition,
-**not** source-C predicate parity, signed frame storage, arithmetic, phi
-copies, a live loop or compiled checksum output. P2 remains open.
+The input-only gate proves necessary source-to-guest input-control ancestry;
+it does **not** prove source-C predicate parity. The stronger, separately
+opted-in check above covers *one source-known conditional* but still not
+signed frame storage, arithmetic, phi copies, a live loop or compiled
+checksum output. P2 remains open.
 
 The stricter `verify_source_return_bound` alternative additionally requires
 the observed physical reads to permit a completed source CFG return. It
 accepts the EOF and NUL-then-EOF controls while rejecting a guest that halts
 after two successful bytes (`00 00` or `ff 00 2c`) when C23 still needs
-a third read. This is an input-path completeness check, not physical loop linkage or output
-parity; the full checksum remains unsupported and unpublished.
+a third read. This is an input-path completeness check, not physical
+loop linkage or output parity; the full checksum remains unsupported
+and unpublished.
 
 ### Guest pointer proofs bind the specific input read (2026-11-24)
 

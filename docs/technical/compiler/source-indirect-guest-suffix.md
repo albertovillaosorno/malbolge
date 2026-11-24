@@ -6,6 +6,36 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## One source-known EOF guard bound to a physical guest arm (2026-11-24)
+
+`verify_source_return_branch_bound` now adds a conservative **source/guest
+arm parity** requirement to the previously joined source input/return and
+physical indirect-pointer proof. It rederives the canonical C23 predicate
+from source-known operations in the **same bounded CFG walk** and requires
+an exact nominated `(function, block, after_inputs)` conditional. The real
+indirect destination must match the source condition's true or false arm.
+Any complete matching-input source return path with a missing, unknown,
+repeated or incompatible nominated branch fails closed; search exhaustion
+is an error, not evidence of a match.
+
+For the unchanged seven-block mutable checksum, the first C23 `getchar`
+in block 0 feeds the source `current != EOF` guard in **block 1** after
+one input observation. The two source-conditioned guest destinations are
+C45 for a successful byte and C126 for true EOF. This authenticates the
+actual N15 guest C53 `/` -> C82 `p` write to M143 -> C114 `i`, including
+EOF, NUL and high-byte 255 followed by EOF. All 256 byte classes and EOF
+pass the *source-known* branch-direction check; physical positive tests
+replay those three representative guest inputs. Swapped arm mappings,
+wrong guard block, wrong read occurrence, source-unknown conditions and
+guest halts before the C23 source's required next read refuse. The
+previous 257-class physical pointer census remains a separate test.
+
+This is **one finite source-known branch direction**, not general C
+branch computation in Malbolge. It still does not show a guest-produced
+C32 signed frame value, physical comparison arithmetic, all source CFG
+edges, live backedges/phi copies or checksum output. The guest emits
+class markers and the full C23 checksum remains unlinked and unpublished.
+
 ## Source-typed input to physical indirect pointer (2026-11-24)
 
 `SourceWrittenIndirectGuestVerifier::verify_source_bound` now joins two
@@ -44,8 +74,9 @@ prefix. With the same original checksum and M143 pointer, empty input and a
 NUL byte followed by EOF satisfy this extra *source input-order* obligation.
 On input `00 00` or `ff 00 2c`, the physical guest reads two bytes and
 halts before the C23 loop's mandatory next read. The strict checker refuses
-this incomplete source path with `UnreachedSourceInput`. Its initial pointer proof still succeeds; a pointer
-ancestor alone cannot turn an incomplete C loop into a published target.
+this incomplete source path with `UnreachedSourceInput`. Its initial
+pointer proof still succeeds; a pointer ancestor alone cannot turn an
+incomplete C loop into a published target.
 Even the strict gate does not check physical arithmetic, signed frame words,
 source branch parity, phi transfers, emitted checksum or loop backedge.
 
