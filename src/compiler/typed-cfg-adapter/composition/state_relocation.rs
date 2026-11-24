@@ -2056,6 +2056,37 @@ pub fn plan_source_locked_cfg_with_input_anchors(
     frame_base: u32,
     anchors: &[GuestCodeInputAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    plan_source_locked_cfg_with_input_and_effect_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        anchors,
+        &[],
+    )
+}
+
+/// Reserve source-typed input reads and their separate physical word effects.
+///
+/// A signed C23 input has a real `/` and two independently addressed result
+/// stores; setup instructions may separate all three. Every effect identity
+/// is derived from the canonical source operation, and its fixed position
+/// must remain in its source block after the associated input anchor.
+/// All other blocks and predecessor phi pads are packed with deterministic
+/// minimum reservations. This is a placement *proposal*: no guest opcodes,
+/// signed conversion, value writes, or CFG runtime effects are emitted.
+///
+/// # Errors
+///
+/// Rejects unknown, duplicate, conflicting or out-of-order source effects;
+/// effects without a pinned source input block; and insufficient guest code
+/// space or incompatible frame relocation.
+pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    anchors: &[GuestCodeInputAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let relocated =
         relocate_source_locked_cfg(canonical, source_cells, frame_base)
             .map_err(GuestCodePlacementError::TypedCfg)?;
@@ -2089,6 +2120,24 @@ pub fn plan_source_locked_cfg_with_input_anchors(
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
     }
+    let mut anchored_effects = BTreeMap::new();
+    for anchor in effect_anchors {
+        if !input_sites.contains_key(&(anchor.function, anchor.block))
+            || anchored_effects
+                .insert(
+                    (
+                        anchor.function,
+                        anchor.block,
+                        anchor.ordinal,
+                        anchor.effect_index,
+                    ),
+                    anchor.code_address,
+                )
+                .is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
     let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
     for block in &relocated.operation_blocks {
         let Some(sites) = input_sites.get(&(block.function, block.block))
@@ -2113,18 +2162,37 @@ pub fn plan_source_locked_cfg_with_input_anchors(
         for (ordinal, instruction) in block.instructions.iter().enumerate() {
             let ordinal = u32::try_from(ordinal)
                 .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
-            if let Some(&site) = sites.get(&ordinal) {
-                if site < next {
+            let effects = required_operation_effects(instruction)?;
+            for effect_index in 0..effects.len() {
+                let effect_index =
+                    u32::try_from(effect_index).map_err(|_| {
+                        GuestCodePlacementError::InvalidCodePlacement
+                    })?;
+                let from_input = (effect_index == 0)
+                    .then(|| sites.get(&ordinal))
+                    .flatten()
+                    .copied();
+                let from_effect = anchored_effects
+                    .get(&(block.function, block.block, ordinal, effect_index))
+                    .copied();
+                if from_input.is_some()
+                    && from_effect.is_some()
+                    && from_input != from_effect
+                {
                     return Err(GuestCodePlacementError::InvalidCodePlacement);
                 }
-                next = site;
+                if let Some(site) = from_input.or(from_effect) {
+                    if site < next {
+                        return Err(
+                            GuestCodePlacementError::InvalidCodePlacement,
+                        );
+                    }
+                    next = site;
+                }
+                next = next
+                    .checked_add(1)
+                    .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
             }
-            next = next
-                .checked_add(
-                    minimum_operation_cells(instruction)
-                        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?,
-                )
-                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         }
         let control_start = next;
         let end_exclusive = control_start
@@ -2228,7 +2296,7 @@ pub fn plan_source_locked_cfg_with_input_anchors(
             ordinal: anchor.ordinal,
         })
         .collect::<Vec<_>>();
-    bind_source_locked_cfg_code_targets_with_operation_anchors(
+    bind_source_locked_cfg_code_targets_with_effect_anchors(
         canonical,
         source_cells,
         frame_base,
@@ -2237,6 +2305,7 @@ pub fn plan_source_locked_cfg_with_input_anchors(
             edge_pads: &pads,
         },
         &operation_anchors,
+        effect_anchors,
     )
 }
 

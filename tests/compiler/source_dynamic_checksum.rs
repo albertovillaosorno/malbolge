@@ -2251,6 +2251,260 @@ fn original_two_getchars_accept_a_real_guest_setup_gap() {
     }
 }
 
+// Source-locked C23 input operations owe *three* distinct effects each:
+// real '/', a low-word store and a high-word store. These positions are
+// unverified code reservations, not claims of executable signed conversion.
+#[test]
+fn original_c23_two_reads_reserve_sparse_signed_word_effects() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeInputAnchor, GuestCodeOperationEffect,
+        GuestCodePlacementError,
+        plan_source_locked_cfg_with_input_and_effect_anchors,
+    };
+
+    let original =
+        include_bytes!("c-frontend/accepted/discarded_getchar_two.c");
+    let normalized =
+        include_bytes!("c-frontend/golden/discarded_getchar_two.json");
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(normalized, Some(original))
+            .expect("authentic original two-getchar C23 source");
+    assert_eq!(mode, FrontendGuestMode::DiscardedGetchar);
+    let inputs = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 0,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 20,
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    let sites = [
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 7,
+            effect_index: 1,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 9,
+            effect_index: 2,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 27,
+            effect_index: 1,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 29,
+            effect_index: 2,
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    let plan = plan_source_locked_cfg_with_input_and_effect_anchors(
+        &wire, 36, 128, &inputs, &sites,
+    )
+    .expect("original C23 read and distinct signed result word sites");
+    assert_eq!(plan.code_blocks.len(), 1);
+    assert_eq!(
+        (
+            plan.code_blocks[0].start,
+            plan.code_blocks[0].control_start,
+            plan.code_blocks[0].end_exclusive
+        ),
+        (0, 30, 31),
+    );
+    assert_eq!(
+        plan.operation_effect_sites
+            .iter()
+            .map(|site| site.code_address)
+            .collect::<Vec<_>>(),
+        [0, 7, 9, 20, 27, 29],
+    );
+    assert_eq!(
+        plan.operation_effect_sites
+            .iter()
+            .filter(|site| matches!(
+                site.effect,
+                GuestCodeOperationEffect::Input { .. }
+            ))
+            .count(),
+        2,
+    );
+    assert_eq!(
+        plan.operation_effect_sites
+            .iter()
+            .filter_map(|site| match site.effect {
+                GuestCodeOperationEffect::Store {
+                    destination,
+                    literal: None,
+                } => Some(destination),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [128, 129, 130, 131],
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_and_effect_anchors(
+            &wire, 30, 128, &inputs, &sites,
+        ),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+    );
+    let mut forged = sites;
+    forged[1].code_address = 6;
+    assert_eq!(
+        plan_source_locked_cfg_with_input_and_effect_anchors(
+            &wire, 36, 128, &inputs, &forged,
+        ),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+    );
+    forged = sites;
+    forged[1].effect_index = 3;
+    assert_eq!(
+        plan_source_locked_cfg_with_input_and_effect_anchors(
+            &wire, 36, 128, &inputs, &forged,
+        ),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+    );
+    forged = sites;
+    forged[0].effect_index = 0;
+    assert_eq!(
+        plan_source_locked_cfg_with_input_and_effect_anchors(
+            &wire, 36, 128, &inputs, &forged,
+        ),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+        "effect-index zero cannot relocate the authenticated read",
+    );
+    let mut repeated = sites.to_vec();
+    repeated.push(sites[0]);
+    assert_eq!(
+        plan_source_locked_cfg_with_input_and_effect_anchors(
+            &wire, 36, 128, &inputs, &repeated,
+        ),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+        "one source-word effect may have only one physical site",
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_and_effect_anchors(
+            &wire,
+            36,
+            128,
+            &[],
+            &sites,
+        ),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+    );
+}
+
+// Pin both source-C23 signed input results in the actual mutable checksum
+// graph. This is still an unlinked proposal: the guest has to *execute*
+// all four stores and the phi/control graph before publication.
+#[test]
+fn original_checksum_sparse_c23_effects_keep_phi_pads_disjoint() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeInputAnchor, GuestCodeOperationEffect,
+        plan_source_locked_cfg_with_input_and_effect_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 checksum");
+    let inputs = [
+        GuestCodeInputAnchor {
+            block: 0,
+            code_address: 37,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeInputAnchor {
+            block: 5,
+            code_address: 66,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let effects = [
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 40,
+            effect_index: 1,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 42,
+            effect_index: 2,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 5,
+            code_address: 69,
+            effect_index: 1,
+            function: 0,
+            ordinal: 2,
+        },
+        GuestCodeEffectAnchor {
+            block: 5,
+            code_address: 71,
+            effect_index: 2,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let plan = plan_source_locked_cfg_with_input_and_effect_anchors(
+        &wire, 91, 128, &inputs, &effects,
+    )
+    .expect("seven-block C23 read/store effect reservations with phi pads");
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.edge_pads.len(), 4);
+    assert_eq!(
+        plan.operation_effect_sites
+            .iter()
+            .filter_map(|site| {
+                (matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+                    || matches!(
+                        site.effect,
+                        GuestCodeOperationEffect::Store { .. }
+                    ) && [40, 42, 69, 71].contains(&site.code_address))
+                .then_some((site.block, site.code_address))
+            })
+            .collect::<Vec<_>>(),
+        [(0, 37), (0, 40), (0, 42), (5, 66), (5, 69), (5, 71)],
+    );
+    let reservations = plan
+        .code_blocks
+        .iter()
+        .map(|block| (block.start, block.end_exclusive))
+        .chain(
+            plan.edge_pads
+                .iter()
+                .map(|pad| (pad.start, pad.end_exclusive)),
+        )
+        .collect::<Vec<_>>();
+    for (index, &(start, end)) in reservations.iter().enumerate() {
+        assert!(start < end && end <= 91, "bounded guest code interval");
+        for &(other_start, other_end) in reservations.iter().skip(index + 1) {
+            assert!(
+                end <= other_start || other_end <= start,
+                "source frame, code and phi pads must never alias"
+            );
+        }
+    }
+}
+
 #[test]
 fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
     use super::typed_cfg_adapter::state_relocation::{

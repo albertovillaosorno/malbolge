@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-typed signed input per-word effect reservations (2026-11-23)
+
+The source-locked automatic code planner also accepts distinct sparse
+**effect anchors within** each authenticated C23 `getchar`. A read and its
+signed low/high destination stores may each require physical setup before
+the next effect. A new opt-in input-plus-effect placement derives canonical
+word identities from the original typed C, reserves these code gaps, and
+uses the existing strict effect binder to reject mismatched read sites,
+duplicates, wrong effect indices, overlaps and insufficient capacity.
+
+Red-first tests verify both original-C23 `getchar` results in one block,
+then the **original seven-block mutable EOF-checksum CFG** with two pinned
+read sites and four proposed signed-store positions. All seven source
+blocks and four phi pads remain disjoint inside the 91-cell code budget.
+These are still *code-cell reservations*, not physical N15 instructions:
+no signed-EOF result has been materialized at those four proposed writes,
+no source phi edge has been executed and the complete checksum continues
+to fail closed before guest publication. See
+`plan_source_locked_cfg_with_input_and_effect_anchors` and the corresponding
+`tests/compiler/source_dynamic_checksum.rs` regressions.
+
 ### Source-locked same-block input setup gaps (2026-11-23)
 
 The canonical typed-CFG input planner now preserves two real `/` sites in
