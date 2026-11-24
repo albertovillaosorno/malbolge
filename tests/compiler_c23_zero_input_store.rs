@@ -528,3 +528,208 @@ fn raw_pointer_builder_matches_independent_guest_and_refuses_old_profile() {
         Err(layout::ZeroCellSourceError::UnsupportedProfile),
     );
 }
+
+fn raw_pointer_eof_marker_source() -> Vec<u8> {
+    let mut source = raw_input_pointer_select_source();
+    for (site, instruction) in [
+        (48usize, b'j'),
+        (49, b'j'),
+        (50, b'o'),
+        (51, b'o'),
+        (52, b'o'),
+        (53, b'*'),
+        (54, b'<'),
+        (55, b'v'),
+    ] {
+        source[site] = graphical(site, instruction);
+    }
+    source
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "56-step physical EOF marker and bounded binary witnesses"
+)]
+fn physical_raw_pointer_recovers_eof_only_marker_without_losing_saved_raw()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = raw_pointer_eof_marker_source();
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    let prepared = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for (input, expected_output) in [
+        (vec![], 106u8),
+        (vec![0], 176),
+        (vec![1], 18),
+        (vec![2], 36),
+        (vec![4], 176),
+        (vec![23], 176),
+        (vec![24], 176),
+        (vec![34], 145),
+        (vec![39], 176),
+        (vec![47], 18),
+        (vec![48], 176),
+        (vec![49], 18),
+        (vec![106], 132),
+        (vec![125], 18),
+        (vec![255], 133),
+    ] {
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = guest
+            .run_traced(56, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            outcome,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 56,
+            },
+            "input {input:?}"
+        );
+        assert_eq!(trace[48].decoded, Some(b'j'));
+        assert_eq!(trace[49].decoded, Some(b'j'));
+        for position in 50..=52 {
+            assert_eq!(trace[position].decoded, Some(b'o'));
+        }
+        assert_eq!(trace[53].decoded, Some(b'*'));
+        assert_eq!(trace[54].decoded, Some(b'<'));
+        assert_eq!(trace[55].decoded, Some(b'v'));
+        assert_eq!(guest.output(), [expected_output]);
+        assert_eq!(expected_output == 106, input.is_empty());
+        let raw = input
+            .first()
+            .map_or(profile.eof_word(), |byte| u32::from(*byte));
+        assert_eq!(guest.memory_word(LOW), Ok(raw));
+        assert_eq!(guest.memory_word(HIGH), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "physical negative control proves raw EOF low byte is not a marker"
+)]
+fn skipping_selected_rotate_misclassifies_successful_byte_106_as_eof()
+-> Result<(), String> {
+    let profile = current_profile();
+    let full = raw_pointer_eof_marker_source();
+    let mut without_rotation = full.clone();
+    without_rotation[53] = graphical(53, b'o');
+    for (source, byte_output) in [(full, 132), (without_rotation, 106)] {
+        let mut byte_guest =
+            ProfileMachine::from_source(profile, &source, vec![106])
+                .map_err(|error| error.to_string())?;
+        assert_eq!(
+            byte_guest.run(56).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 56,
+            },
+        );
+        assert_eq!(byte_guest.output(), [byte_output]);
+        assert_eq!(byte_guest.memory_word(LOW), Ok(106));
+        assert_eq!(byte_guest.memory_word(HIGH), Ok(0));
+        let mut eof_guest =
+            ProfileMachine::from_source(profile, &source, Vec::new())
+                .map_err(|error| error.to_string())?;
+        assert_eq!(
+            eof_guest.run(56).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 56,
+            },
+        );
+        assert_eq!(eof_guest.output(), [106]);
+    }
+    Ok(())
+}
+
+#[test]
+fn eof_marker_builder_matches_independent_layout_and_refuses_old_profile() {
+    let plan = layout::build_adjacent_c32_zero_c37_raw_eof_marker_source(
+        current_profile(),
+    )
+    .expect("current N15 graphical source supports real EOF-only marker");
+    assert_eq!(
+        plan.raw_pointer.raw_pair.zero_pair.source,
+        raw_pointer_eof_marker_source()
+    );
+    assert_eq!(plan.raw_pointer.input_pointer_code_address, 47);
+    assert_eq!(plan.marker_rotate_code_address, 53);
+    assert_eq!(plan.marker_output_code_address, 54);
+    assert_eq!(plan.halt_code_address, 55);
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_raw_eof_marker_source(
+            historical_profile(),
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+}
+
+/// Exact acceptance witness for every successful byte and raw N15 EOF.
+/// Run explicitly: each source-loaded N15 memory image has 14,348,907 words.
+#[test]
+#[ignore = "257 N15 images, 56 steps each; opt-in physical acceptance witness"]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::arithmetic_side_effects,
+    reason = "257 real N15 images and exact output sentinel"
+)]
+fn exhaustive_real_vm_raw_pair_preserved_with_eof_only_marker()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = raw_pointer_eof_marker_source();
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    let prepared = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let mut finite_markers = BTreeSet::new();
+    for raw in (0..=255u32).chain([profile.eof_word()]) {
+        let input = if raw == profile.eof_word() {
+            Vec::new()
+        } else {
+            vec![u8::try_from(raw).map_err(|error| error.to_string())?]
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(
+            vm.run(56).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 56,
+            },
+            "raw {raw}"
+        );
+        assert_eq!(vm.memory_word(LOW), Ok(raw), "raw {raw}");
+        assert_eq!(vm.memory_word(HIGH), Ok(0), "raw {raw}");
+        assert_eq!(vm.output().len(), 1, "raw {raw}");
+        assert_eq!(vm.input_consumed(), input.len(), "raw {raw}");
+        let marker = vm.output()[0];
+        if raw == profile.eof_word() {
+            assert_eq!(marker, 0x6a, "EOF marker");
+        } else {
+            assert_ne!(marker, 0x6a, "false EOF for raw {raw}");
+            _ = finite_markers.insert(marker);
+        }
+    }
+    assert!(!finite_markers.is_empty());
+    assert!(!finite_markers.contains(&0x6a));
+    Ok(())
+}

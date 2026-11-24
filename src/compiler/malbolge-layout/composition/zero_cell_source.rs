@@ -184,6 +184,25 @@ pub struct AdjacentC32ZeroC37RawPointerSource {
     pub raw_pair: AdjacentC32ZeroC37RawInputPairSource,
 }
 
+/// One reached EOF-only byte marker after preserving the source-loaded raw
+/// pair.
+///
+/// Two extra pointer jumps, three inert data advances and one actual rotate
+/// produce an output marker of `0x6a` only on genuine N15 EOF. The input's
+/// original low cell and adjacent zero high cell survive all 257 classes.
+/// This is a byte observation, not a conditional code jump or signed C23 EOF.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37RawEofMarkerSource {
+    /// Reached input-selected rotate/data-write site.
+    pub marker_rotate_code_address: u32,
+    /// Reached output site after the selected data write.
+    pub marker_output_code_address: u32,
+    /// Reached halt after emitting one class-dependent byte.
+    pub halt_code_address: u32,
+    /// Previous physical raw-input pointer source and its saved original pair.
+    pub raw_pointer: AdjacentC32ZeroC37RawPointerSource,
+}
+
 /// N15 byte/EOF input written into a real adjacent two-word physical region.
 ///
 /// The low word holds the raw unsigned byte (or unnormalized profile EOF),
@@ -891,6 +910,54 @@ pub fn build_adjacent_c32_zero_c37_raw_pointer_source(
         input_pointer_code_address: 47,
         halt_code_address: 48,
         raw_pair,
+    })
+}
+
+/// Recover an EOF-only *output marker* from the raw pointer source.
+///
+/// C48/C49 reenter the loader and source shadow via two genuine `j` reads.
+/// C50..C52 advance the data pointer without modifying either physical input
+/// word. C53 `*` reads and rotates the selected data operand; C54 `<` emits
+/// its low byte and C55 halts. The original low and high words survive all
+/// 256 successful bytes and true EOF. The independently verified class marker
+/// is `0x6a` for EOF and never `0x6a` for a successful byte; successful
+/// bytes are *not* echoed and their different values may alias each other.
+/// The output is an experimental physical observation, **not** C23 signed
+/// EOF conversion, a predicate, a code-pointer branch or a C23 checksum.
+///
+/// # Errors
+///
+/// Rejects a noncurrent target profile or missing graphical code sites.
+pub fn build_adjacent_c32_zero_c37_raw_eof_marker_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37RawEofMarkerSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut raw_pointer =
+        build_adjacent_c32_zero_c37_raw_pointer_source(profile)?;
+    for (site, operation) in [
+        (48usize, LinearOpcode::RelocateDataPointer),
+        (49, LinearOpcode::RelocateDataPointer),
+        (50, LinearOpcode::NoOperation),
+        (51, LinearOpcode::NoOperation),
+        (52, LinearOpcode::NoOperation),
+        (53, LinearOpcode::RotateData),
+        (54, LinearOpcode::OutputByte),
+        (55, LinearOpcode::Halt),
+    ] {
+        *raw_pointer
+            .raw_pair
+            .zero_pair
+            .source
+            .get_mut(site)
+            .ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37RawEofMarkerSource {
+        marker_rotate_code_address: 53,
+        marker_output_code_address: 54,
+        halt_code_address: 55,
+        raw_pointer,
     })
 }
 

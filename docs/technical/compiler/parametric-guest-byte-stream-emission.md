@@ -28,6 +28,40 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-loaded lossless input with an EOF-only physical output marker (2026-11-23)
+
+The compiler now exposes
+`build_adjacent_c32_zero_c37_raw_eof_marker_source` for a 56-step graphical
+N15 guest continuing the **same** C14 high-zero / C17 low-zero initializer,
+C37 real `/` and C43 lossless raw input store. C47 `j` selects exactly D0
+on true EOF or D1..D256 for a successful byte. C48/C49 execute two more
+actual pointer jumps, C50..C52 advance without changing the original data
+pair, C53 `*` rotates the physically selected operand, C54 `<` emits its
+low byte, and C55 halts. Unlike the naive C48 `*`, the delayed selected write
+never violates the VM's code-cell self-encryption rule. The output is **0x6a
+for actual N15 EOF and never 0x6a for a successful byte**; successful-byte
+outputs need not be unique and are not echoes of the input. The original
+raw 15-trit input word at D7,174,417 and adjacent high zero survive all
+classes. EOF remains raw 14,348,906, not a signed C23 `-1` pair.
+
+The independent source constructor is compared against a separately patched
+canonical graphical source in `tests/compiler_c23_zero_input_store.rs`. The
+normative VM checks the reached C48..C55 instructions, exact output bytes,
+raw-data preservation and read count on 15 adversarial input streams.
+An opt-in (`--ignored`) exhaustive 257-class **actual normative VM** test
+also passes, including all 256 successful byte inputs and true EOF with the
+same 56-step halt, a noncolliding marker, and preserved original low/high
+words. A real one-opcode negative control replaces C53 `*` with inert `o`:
+then successful input byte 106 emits the same 0x6a as EOF, proving the new
+physical rotation is necessary to separate these two boundary cases.
+
+This is a real **data-dependent physical observation**, not source-C23 signed
+`getchar` conversion or executable source-C control flow. C54 currently
+outputs an experimental marker rather than performing a branch, and no
+verified target code-pointer `i`, C32 signed upper word, checksum arithmetic,
+phi copy/loop or complete seven-block checksum linkage is created. P2 remains
+open; the original whole-program gate still fails closed without an artifact.
+
 ### Authentic raw EOF-dependent data-pointer selection (2026-11-23)
 
 A 49-step extension (`build_adjacent_c32_zero_c37_raw_pointer_source`)
