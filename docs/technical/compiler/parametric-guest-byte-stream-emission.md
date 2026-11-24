@@ -28,6 +28,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Joint source branch and guest I/O path validation (2026-11-24)
+
+An opt-in verifier now requires a source-known conditional's physical
+input-derived `i` arm and the normative guest's **complete ordered I/O**
+to agree with one and the same source-C return path. The unchanged C23
+checksum source accepts synthetic correct EOF/byte cases with their exact
+final checksum, rejecting wrong arm, reordered output, marker and source
+output-effect forgeries. On the actual 132-cell N15 classifier, correct
+source first-guard/guest arm chronology still passes, but its `0x1e` and
+`0x9a` output markers now explicitly fail the stricter source I/O gate.
+A second successful byte still requires the missing C loop read. This
+is necessary path agreement, not guest checksum arithmetic or publication;
+P2 remains open. See `source-indirect-guest-suffix.md` and
+`tests/compiler/source_input_cfg_order.rs`.
+
 ### The source guard also respects guest input chronology (2026-11-24)
 
 `verify_source_return_branch_ordered` strengthens the direction-only proof

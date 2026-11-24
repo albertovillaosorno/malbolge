@@ -1003,6 +1003,51 @@ pub(super) fn verify_source_branch_landing(
     binding: SourceBranchLanding,
     physical_landing: u32,
 ) -> Result<(), SourceInputTraceError> {
+    verify_source_branch_landing_with_io(
+        canonical,
+        SourceBranchInputEvidence {
+            observations,
+            receipt: None,
+        },
+        binding,
+        physical_landing,
+    )
+}
+
+// A source return that independently proves a branch and an output is not
+// enough: the two witnesses must agree on one *same* path, including I/O
+// order. Unknown source outputs or paths with conflicting arm choices refuse.
+pub(super) fn verify_source_branch_io_landing(
+    canonical: &[u8],
+    proof: &SourceInputPrefixProof,
+    binding: SourceBranchLanding,
+    physical_landing: u32,
+) -> Result<(), SourceInputTraceError> {
+    verify_source_branch_landing_with_io(
+        canonical,
+        SourceBranchInputEvidence {
+            observations: &proof.observations,
+            receipt: Some(proof),
+        },
+        binding,
+        physical_landing,
+    )
+}
+
+// Keep the complete VM receipt attached to the observations it authenticates;
+// source-only branch callers intentionally leave I/O obligations absent.
+struct SourceBranchInputEvidence<'source> {
+    observations: &'source [SourceInputSiteObservation],
+    receipt: Option<&'source SourceInputPrefixProof>,
+}
+
+fn verify_source_branch_landing_with_io(
+    canonical: &[u8],
+    evidence: SourceBranchInputEvidence<'_>,
+    binding: SourceBranchLanding,
+    physical_landing: u32,
+) -> Result<(), SourceInputTraceError> {
+    let SourceBranchInputEvidence { observations, receipt } = evidence;
     use SourceInputTraceError::{
         InvalidBranchBinding, InvalidSourcePlacement, SourceBranchMismatch,
     };
@@ -1026,15 +1071,10 @@ pub(super) fn verify_source_branch_landing(
         .iter()
         .find(|candidate| candidate.id == binding.function)
         .ok_or(InvalidBranchBinding)?;
-    let source_branch = function
-        .blocks
-        .iter()
-        .find(|block| block.id == binding.block)
-        .ok_or(InvalidBranchBinding)?;
-    if !matches!(
-        source_branch.terminator,
-        TernaryCfgTerminator::Branch { .. }
-    ) || observations
+    if !function.blocks.iter().any(|block| {
+        block.id == binding.block
+            && matches!(block.terminator, TernaryCfgTerminator::Branch { .. })
+    }) || observations
         .iter()
         .any(|observation| observation.function != binding.function)
     {
@@ -1046,9 +1086,12 @@ pub(super) fn verify_source_branch_landing(
         &observed,
         MAX_SOURCE_INPUT_CFG_SEARCH_STATES,
         true,
-        None,
-        None,
-        None,
+        receipt.map(|receipt| receipt.guest_output.as_slice()),
+        receipt.map(|receipt| receipt.io_events.as_slice()),
+        receipt.and_then(|receipt| {
+            (!receipt.output_sites.is_empty())
+                .then_some(receipt.output_sites.as_slice())
+        }),
         Some(SourceBranchObligation {
             after_inputs: binding.after_inputs,
             block: binding.block,
@@ -1056,6 +1099,8 @@ pub(super) fn verify_source_branch_landing(
         }),
     )? {
         Ok(())
+    } else if receipt.is_some() {
+        Err(SourceInputTraceError::SourceOutputNotProven)
     } else {
         Err(SourceBranchMismatch)
     }

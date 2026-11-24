@@ -46,7 +46,8 @@ use malbolge::{
 use super::admit_c23_probe_graphical_source;
 use super::source_input_trace::{
     SourceBranchLanding, SourceInputPrefixProof, SourceInputProbe,
-    SourceInputTraceError, verify_source_branch_landing,
+    SourceInputTraceError, verify_source_branch_io_landing,
+    verify_source_branch_landing,
 };
 use super::typed_cfg_adapter::state_relocation::{
     GuestCodeOperationAnchor, GuestCodeProposals,
@@ -615,6 +616,38 @@ impl SourceWrittenIndirectGuestVerifier {
         if read_count != branch.after_inputs {
             return Err(SourceBoundIndirectGuestError::OutOfOrderGuestBranch);
         }
+        Ok(joined)
+    }
+
+    /// Require the source-known conditional *and* the actual complete I/O
+    /// stream to coexist on one bounded source-C return path, alongside the
+    /// reached guest pointer and its input/control chronology.
+    ///
+    /// The previous ordered method intentionally admits prefix experiments
+    /// whose marker output is unrelated to the C program. This stricter
+    /// verifier cannot: source-known output values and effect order must
+    /// agree with the very same path that selects the physical branch arm.
+    /// It still does not prove full-width guest locals or source arithmetic
+    /// was executed by the target, and it must not publish a program alone.
+    ///
+    /// # Errors
+    ///
+    /// Refuses each source/guest direction and chronology failure, plus
+    /// unknown, reordered or mismatched source-visible output effects.
+    pub fn verify_source_return_branch_io_ordered(
+        &self,
+        probe: &SourceBoundIndirectGuestProbe<'_>,
+        branch: SourceBranchLanding,
+    ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
+    {
+        let joined = self.verify_source_return_branch_ordered(probe, branch)?;
+        verify_source_branch_io_landing(
+            probe.source_input.canonical,
+            &joined.source_input,
+            branch,
+            joined.guest_pointer.landing_address(),
+        )
+        .map_err(SourceBoundIndirectGuestError::SourceInput)?;
         Ok(joined)
     }
 

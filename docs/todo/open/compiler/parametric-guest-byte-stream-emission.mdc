@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The source/guest bridge now has a stricter opt-in **single-path branch
+plus complete I/O** check. Source-only correct EOF/one-byte checksum
+returns pass and wrong output, reordered I/O, swapped arm and wrong
+output source identity refuse. Actual classifier-marker guests still
+pass their narrower input-bound C114 branch proof but **fail the combined
+source-checksum output check**; two successful bytes fail the source
+return before that point. No guest C23 arithmetic, phi/backedge or checksum
+has been linked or published. Evidence: source-indirect-guest-suffix.
+
 The stricter input/branch chronology gate now checks the exact
 **normative VM transfer step 114** against preceding input trace steps:
 C53 reads at step 53; C101's second read occurs **later at step 171** on

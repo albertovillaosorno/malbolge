@@ -6,6 +6,37 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Source branch and complete I/O must agree on one path (2026-11-24)
+
+The stricter opt-in `verify_source_return_branch_io_ordered` first replays
+both source input and guest-written pointer, verifies complete source return,
+source-known branch arm, and exact physical read-before-transfer ordering.
+It then checks **the same bounded source CFG walk** against the actual
+normative guest output bytes and ordered input/output events. An independent
+branch-matching source path and a different output-matching source path are
+not interchangeable. If output-site identities were authenticated in the
+source prefix receipt, the joint walk also requires those same identities.
+The older direction/chronology methods remain usable for deliberately
+partial physical control experiments without claiming source output parity.
+
+A source-only positive for the original C23 checksum admits true first
+EOF with one final zero byte, as well as successful NUL, odd and high-byte
+reads followed by EOF and their known checksum output. Swapped arms, a
+premature output, wrong output value and wrong source output ordinal refuse.
+These are **synthetic source-walk controls**, not real checksum guest runs.
+On the actual 132-cell guest, empty input and one byte followed by EOF
+still pass the earlier reached C114 `i` branch/chronology gate, but the
+joint gate rejects its `0x1e`/`0x9a` class markers: those bytes are not
+the source checksum and the physical guest's output chronology does not
+implement the C23 output after EOF. Streams with two successful bytes
+continue to fail the earlier complete-return gate because the C loop
+requires another read. No complete C23 checksum artifact is published.
+
+This is a necessary **joint finite source control/I/O check**, not proof
+that the guest calculated the source predicate, C32 arithmetic, signed
+SSA locals or backedge/phi updates. The physical prefix must separately
+bind output effect code cells and operand provenance before publication.
+
 ## Physical input/branch execution chronology (2026-11-24)
 
 A stricter opt-in `verify_source_return_branch_ordered` builds on the

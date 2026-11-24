@@ -36,11 +36,12 @@ use super::super::typed_cfg_adapter::ternary::{
     TernarySourcePosition, TernarySourceSpan,
 };
 use super::{
-    GuestCodeInputSemantics, GuestPlacedOperand, SourceInputIoEvent,
-    SourceInputSiteObservation, SourceInputTraceError,
-    SourceOutputSiteObservation, source_path_matches_input_observables,
-    source_path_matches_input_prefix, source_path_matches_input_trace,
-    source_path_matches_input_walk, verify_source_cfg_input_order,
+    GuestCodeInputSemantics, GuestPlacedOperand, SourceBranchLanding,
+    SourceInputIoEvent, SourceInputPrefixProof, SourceInputSiteObservation,
+    SourceInputTraceError, SourceOutputSiteObservation,
+    source_path_matches_input_observables, source_path_matches_input_prefix,
+    source_path_matches_input_trace, source_path_matches_input_walk,
+    verify_source_branch_io_landing, verify_source_cfg_input_order,
 };
 
 const CHECKSUM_TYPED: &str =
@@ -815,7 +816,207 @@ fn complete_checksum_source_paths_require_exact_output_bytes()
     Ok(())
 }
 
-// Deliberately unknown target arithmetic must not be promoted into a known
+// The unchanged original C23 checksum gives a source-only positive control;
+// none of these synthetic receipts pretends to be a normative guest VM run.
+fn checksum_guard_binding() -> SourceBranchLanding {
+    SourceBranchLanding {
+        after_inputs: 1,
+        block: 1,
+        false_landing: 126,
+        function: 0,
+        true_landing: 45,
+    }
+}
+
+fn synthetic_checksum_receipt(
+    observations: Vec<SourceInputSiteObservation>,
+    output: u8,
+    output_sites: Vec<SourceOutputSiteObservation>,
+) -> SourceInputPrefixProof {
+    let input_events =
+        observations.iter().enumerate().filter_map(|(index, _)| {
+            u16::try_from(index).ok().map(|observation_index| {
+                SourceInputIoEvent::Input { observation_index }
+            })
+        });
+    SourceInputPrefixProof {
+        bytes_consumed: observations
+            .iter()
+            .filter(|site| matches!(site.input, TraceInput::Byte(_)))
+            .count(),
+        guest_output: vec![output],
+        io_events: input_events
+            .chain(std::iter::once(SourceInputIoEvent::Output(output)))
+            .collect(),
+        output_sites,
+        observations,
+        outcome: malbolge::RunOutcome::Terminated {
+            reason: malbolge::Termination::HaltInstruction,
+            steps: 1,
+        },
+    }
+}
+
+fn checksum_source_output_identity(wire: &[u8]) -> Result<(u32, u32), String> {
+    let cfg = lower_canonical_dynamic_cfg(wire)
+        .map_err(|error| format!("{error:?}"))?;
+    let function = cfg.functions.first().ok_or("missing checksum function")?;
+    function
+        .blocks
+        .iter()
+        .find_map(|block| {
+            block
+                .operations
+                .iter()
+                .position(|operation| {
+                    matches!(operation, TernaryOperation::ByteOutput { .. })
+                })
+                .and_then(|source_ordinal| {
+                    u32::try_from(source_ordinal)
+                        .ok()
+                        .map(|ordinal| (block.id, ordinal))
+                })
+        })
+        .ok_or_else(|| "missing source checksum output".to_owned())
+}
+
+fn byte_then_eof_checksum_receipt(
+    first: u8,
+    output_identity: (u32, u32),
+) -> SourceInputPrefixProof {
+    let checksum = first.wrapping_add(3);
+    synthetic_checksum_receipt(
+        vec![
+            SourceInputSiteObservation {
+                input: TraceInput::Byte(first),
+                raw_accumulator: u32::from(first),
+                ..observed(0, 1)
+            },
+            SourceInputSiteObservation {
+                input: TraceInput::EndOfInput,
+                raw_accumulator: 14_348_906,
+                ..observed(5, 2)
+            },
+        ],
+        checksum,
+        vec![SourceOutputSiteObservation {
+            block: output_identity.0,
+            byte: checksum,
+            code_address: 128,
+            function: 0,
+            ordinal: output_identity.1,
+            trace_index: 3,
+        }],
+    )
+}
+
+// Both the first EOF and the exact final output must agree on one return.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "complete source guard and I/O path obligations"
+)]
+fn checksum_first_eof_guard_and_output_share_a_source_return()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let proof = synthetic_checksum_receipt(
+        vec![SourceInputSiteObservation {
+            input: TraceInput::EndOfInput,
+            raw_accumulator: 14_348_906,
+            ..observed(0, 1)
+        }],
+        0,
+        Vec::new(),
+    );
+    let branch = checksum_guard_binding();
+    assert_eq!(
+        verify_source_branch_io_landing(&wire, &proof, branch, 126),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_branch_io_landing(&wire, &proof, branch, 45),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+    );
+    let mut malformed = proof;
+    malformed.io_events.reverse();
+    assert_eq!(
+        verify_source_branch_io_landing(&wire, &malformed, branch, 126),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+    );
+    malformed.io_events = vec![
+        SourceInputIoEvent::Input { observation_index: 0 },
+        SourceInputIoEvent::Output(30),
+    ];
+    malformed.guest_output = vec![30];
+    assert_eq!(
+        verify_source_branch_io_landing(&wire, &malformed, branch, 126),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "known checksum and branch truth across byte/EOF paths"
+)]
+fn checksum_first_byte_guard_and_output_share_a_source_return()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let output_identity = checksum_source_output_identity(&wire)?;
+    let branch = checksum_guard_binding();
+    for first in [0u8, 1, 254, 255] {
+        let proof = byte_then_eof_checksum_receipt(first, output_identity);
+        assert_eq!(
+            verify_source_branch_io_landing(&wire, &proof, branch, 45),
+            Ok(()),
+            "first byte {first} followed by actual EOF",
+        );
+        assert_eq!(
+            verify_source_branch_io_landing(&wire, &proof, branch, 126),
+            Err(SourceInputTraceError::SourceOutputNotProven),
+            "a successful first byte cannot select the EOF arm",
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source identity and exact physical I/O chronology"
+)]
+fn checksum_source_output_identity_and_eof_order_cannot_be_forged()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let output_identity = checksum_source_output_identity(&wire)?;
+    let branch = checksum_guard_binding();
+    let mut proof = byte_then_eof_checksum_receipt(1, output_identity);
+    let output_site = proof
+        .output_sites
+        .first_mut()
+        .ok_or("missing synthetic source output site")?;
+    output_site.ordinal = output_identity.1.saturating_add(1);
+    assert_eq!(
+        verify_source_branch_io_landing(&wire, &proof, branch, 45),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+        "the same byte from a different source output is not interchangeable",
+    );
+    proof
+        .output_sites
+        .first_mut()
+        .ok_or("missing synthetic source output site")?
+        .ordinal = output_identity.1;
+    proof.io_events.swap(1, 2);
+    assert_eq!(
+        verify_source_branch_io_landing(&wire, &proof, branch, 45),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+        "the C checksum output must follow the final EOF read",
+    );
+    Ok(())
+}
+
+// Deliberately unknown source arithmetic must not be promoted into a known
 // source byte merely because a guest happened to emit that particular byte.
 #[test]
 fn unknown_source_arithmetic_cannot_certify_guest_output() {
@@ -1255,6 +1456,27 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
                 ))
             },
             "guest branch input chronology for {input:?}",
+        );
+        // A correct input-dependent arm does not justify the physical class
+        // marker as the checksum's source ByteOutput. Require both effects
+        // on a *single* source return path to expose that real C gap.
+        assert_eq!(
+            pointer_verifier
+                .verify_source_return_branch_io_ordered(
+                    &requested,
+                    source_first_guard,
+                )
+                .map(|_proof| ()),
+            if input.len() <= 1 {
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::SourceOutputNotProven,
+                ))
+            } else {
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::UnreachedSourceInput,
+                ))
+            },
+            "class markers are not the C23 checksum for {input:?}",
         );
         if input.len() == 1 {
             assert_eq!(joined.source_input().observations[1].trace_index, 171);
