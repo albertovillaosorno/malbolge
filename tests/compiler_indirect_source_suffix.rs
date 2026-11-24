@@ -2623,8 +2623,8 @@ fn source_written_indirect_branch_proves_guest_input_pointer_for_all_classes() {
             45
         };
         let proof = verifier
-            .verify(&input, 114, 143, &[45, 126], 180)
-            .expect("reached N15 computed EOF/byte branch with genuine input");
+            .verify_from_input_site(&input, 53, 114, 143, &[45, 126], 180)
+            .expect("first input physically supplies its own EOF branch");
         assert_eq!(proof.source(), source);
         assert_eq!(proof.input(), input);
         assert_eq!(
@@ -2637,6 +2637,7 @@ fn source_written_indirect_branch_proves_guest_input_pointer_for_all_classes() {
         );
         assert_eq!(proof.transfer_step(), 114);
         assert_eq!(proof.pointer_write_step(), 82);
+        assert_eq!(proof.pointer_input_steps(), &[53]);
         assert_eq!(proof.pointer_word(), expected_landing - 1);
         assert_eq!(proof.landing_address(), expected_landing);
         assert_eq!(proof.input_consumed(), usize::from(!eof));
@@ -2685,6 +2686,104 @@ fn source_written_indirect_branch_proves_guest_input_pointer_for_all_classes() {
             })
         );
     }
+}
+
+/// The second real input, not an earlier echo or a source-loadable constant,
+/// must appear in the physical dataflow that supplies the indirect pointer.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::cognitive_complexity,
+    reason = "bounded source-specific guest trace witness"
+)]
+fn source_written_indirect_branch_reports_actual_second_input_lineage() {
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .expect("source-loaded two-read EOF classifier");
+    let verifier =
+        layout::SourceWrittenIndirectGuestVerifier::new(profile, &source)
+            .expect("single pristine source-expanded image");
+    let cases = [
+        vec![],
+        vec![0],
+        vec![255],
+        vec![0, 255],
+        vec![255, 0],
+        vec![0x80, 0x7f, 3],
+    ];
+    for input in cases
+        .into_iter()
+        .chain((0..=255u8).map(|second| vec![0xa7, second]))
+    {
+        let eof = input.len() < 2;
+        let proof = verifier
+            .verify_from_input_site(&input, 63, 114, 143, &[45, 126], 180)
+            .expect("second read physically supplies its own EOF branch");
+        assert_eq!(
+            proof.landing_address(),
+            if eof {
+                126
+            } else {
+                45
+            }
+        );
+        assert_eq!(proof.input_consumed(), input.len().min(2));
+        assert_eq!(proof.transfer_step(), 114);
+        assert_eq!(
+            proof.steps(),
+            if eof {
+                119
+            } else {
+                175
+            }
+        );
+        let first = input.first().copied().unwrap_or(106);
+        assert_eq!(proof.output(), &[
+            first,
+            if eof {
+                30
+            } else {
+                154
+            }
+        ]);
+        assert_eq!(proof.pointer_input_steps(), &[63]);
+        assert!(matches!(proof.trace().get(63), Some(step)
+            if step.before.registers.code_pointer == 63
+                && step.decoded == Some(b'/')
+                && step.input.is_some()));
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    reason = "reject wrong input source and unreached input provenance"
+)]
+fn source_written_indirect_branch_refuses_wrong_input_origin() {
+    use layout::SourceWrittenIndirectGuestError as Refusal;
+    let profile = current_profile();
+    let source =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .expect("source-loaded two-read EOF classifier");
+    let verifier =
+        layout::SourceWrittenIndirectGuestVerifier::new(profile, &source)
+            .expect("one source image for positive and negative controls");
+    assert_eq!(
+        verifier.verify_from_input_site(
+            &[0xa7, 0xff],
+            53,
+            114,
+            143,
+            &[45, 126],
+            180
+        ),
+        Err(Refusal::MissingRequiredInputProvenance),
+    );
+    assert_eq!(
+        verifier.verify_from_input_site(&[], 101, 114, 143, &[45, 126], 180),
+        Err(Refusal::MissingRequiredInputProvenance),
+    );
 }
 
 #[test]

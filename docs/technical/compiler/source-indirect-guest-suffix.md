@@ -6,6 +6,37 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Input-site-bound guest pointer provenance (2026-11-24)
+
+The physical guest-written indirect verifier no longer reduces every input
+origin to one Boolean taint. Its opaque proof now retains the exact **trace
+indices** of genuine input transitions that can feed the final pointer word.
+A bounded `p` combines its accumulator and data-operand origins, `*` uses
+its data-operand origins, and a later `/` replaces the accumulator origin
+with that specific read (including a reached EOF). Guest stores replace
+rather than append stale memory origins. The earlier requirement that the
+pointer's latest physical version comes from a real `p`/`*` still holds;
+post-store self-encryption of that pointer invalidates the candidate.
+
+`SourceWrittenIndirectGuestVerifier::verify_from_input_site` additionally
+refuses a claimed source input site unless a *reached* input instruction at
+that exact code address contributes to the reached indirect pointer. This
+makes a source-C CFG linker capable of distinguishing two distinct live
+`getchar` sites rather than borrowing an unrelated successful VM path.
+The proof remains **possible physical dataflow**, not proof that every bit of
+that read affects a branch or that a C23 predicate is equivalent.
+
+The fixed 132-cell first-input classifier's 257 byte/EOF runs now require
+origin C53. The existing two-read classifier's 256 second-byte classes,
+truncated EOF and trailing-input controls require origin C63 instead; the
+first read at C53 does *not* contribute to its final M143 pointer. Both
+physical branches still execute reached C114 `i`, select C45/C126, emit
+the checked guest outputs and halt in 175/119 steps. Claiming C53 as the
+second-read pointer's origin or claiming an unreached C101 `/` now refuses
+with `MissingRequiredInputProvenance`. Tested in
+`tests/compiler_indirect_source_suffix.rs`. This is not source-C signed EOF
+conversion, an unbounded loop or whole-checksum publication.
+
 ## Exact problem
 
 In the current 15-trit profile, Malbolge `i` reads `M[D]` as its new

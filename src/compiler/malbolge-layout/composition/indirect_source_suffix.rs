@@ -36,7 +36,7 @@
 //! actual landing, leaf opcodes and halt. Source-C semantics, general CFG
 //! linkage and unbounded input behavior remain independent obligations.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileStepTrace, RunOutcome,
@@ -223,6 +223,8 @@ pub enum SourceWrittenIndirectGuestError {
     MissingIndirectTransfer,
     /// The pointer lacks a conservative data path from an actual input read.
     MissingInputProvenance,
+    /// No pointer lineage originates at the caller-required guest input site.
+    MissingRequiredInputProvenance,
     /// The nominated code site executed `i` more than once.
     RepeatedIndirectTransfer,
     /// The guest-computed destination is not in the declared finite set.
@@ -240,6 +242,7 @@ pub struct SourceWrittenIndirectGuestProof {
     input_consumed: usize,
     landing_address: u32,
     output: Vec<u8>,
+    pointer_input_steps: Vec<usize>,
     pointer_word: u32,
     pointer_write_step: usize,
     source: Vec<u8>,
@@ -271,6 +274,14 @@ impl SourceWrittenIndirectGuestProof {
     #[must_use]
     pub fn output(&self) -> &[u8] {
         &self.output
+    }
+
+    /// Trace indices of genuine guest input instructions with a physical
+    /// dataflow path to the final indirect-pointer word. Includes EOF reads.
+    /// This conservative lineage is not a proof of source-C branch truth.
+    #[must_use]
+    pub fn pointer_input_steps(&self) -> &[usize] {
+        &self.pointer_input_steps
     }
 
     /// Full-width word actually read by the reached indirect instruction.
@@ -409,6 +420,49 @@ impl SourceWrittenIndirectGuestVerifier {
             },
             vm,
         )
+    }
+
+    /// Prove that a particular reached guest `/` supplies the branch pointer.
+    ///
+    /// The code site, not the ordinal input byte, is the source identity:
+    /// the same instruction can read EOF on an exhausted stream. This
+    /// verifies physical lineage only; source-C predicate equivalence must
+    /// still be checked separately against every admitted input class.
+    ///
+    /// # Errors
+    ///
+    /// Refuses any ordinary physical proof failure, or a branch whose final
+    /// pointer has no dataflow path from the required actual input site.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "explicit guest read and indirect branch binding"
+    )]
+    pub fn verify_from_input_site(
+        &self,
+        input: &[u8],
+        input_code_cell: u32,
+        indirect_code_cell: u32,
+        pointer_cell: u32,
+        allowed_landings: &[u32],
+        step_budget: usize,
+    ) -> SourceWrittenIndirectGuestResult {
+        let proof = self.verify(
+            input,
+            indirect_code_cell,
+            pointer_cell,
+            allowed_landings,
+            step_budget,
+        )?;
+        if proof.pointer_input_steps().iter().any(|index| {
+            proof.trace().get(*index).is_some_and(|step| {
+                step.before.registers.code_pointer == input_code_cell
+                    && step.input.is_some()
+            })
+        }) {
+            Ok(proof)
+        } else {
+            Err(SourceWrittenIndirectGuestError::MissingRequiredInputProvenance)
+        }
     }
 }
 
@@ -850,37 +904,45 @@ fn verify_source_written_indirect_with_machine(
         return Err(UnexpectedLanding);
     }
 
-    // Boolean influence is intentionally conservative: it proves the guest
-    // pointer has a *physical* path from a reached input, not that C's tested
-    // predicate is numerically correct on any unexamined input. The latest
-    // write must be a reached p/*, not a loader seed or XLAT2 alone.
-    let mut tainted_memory = BTreeSet::<u32>::new();
-    let mut accumulator_tainted = false;
+    // A set of actual input-transition indices, rather than a Boolean, lets
+    // a source-C linker distinguish the input read that feeds this branch.
+    // This is a *possible physical dataflow* claim; exact source-C predicate
+    // equivalence remains an independent obligation. The final pointer
+    // version must be a reached p/* write, not a loader seed or XLAT2 alone.
+    let mut input_lineage_by_word = BTreeMap::<u32, BTreeSet<usize>>::new();
+    let mut accumulator_lineage = BTreeSet::<usize>::new();
     let mut last_pointer_write = None;
     for (index, step) in trace.iter().take(transfer_step).enumerate() {
-        let data_tainted =
-            tainted_memory.contains(&step.before.registers.data_pointer);
-        let next_accumulator_tainted = match step.decoded {
-            Some(b'/') => true,
-            Some(b'p') => accumulator_tainted || data_tainted,
-            Some(b'*') => data_tainted,
-            _ => accumulator_tainted,
+        let address = step.before.registers.data_pointer;
+        let data_lineage = input_lineage_by_word
+            .get(&address)
+            .cloned()
+            .unwrap_or_default();
+        let next_accumulator_lineage = match step.decoded {
+            Some(b'/') if step.input.is_some() => BTreeSet::from([index]),
+            Some(b'/') => return Err(InvalidGuestExecution),
+            Some(b'p') => {
+                accumulator_lineage.union(&data_lineage).copied().collect()
+            },
+            Some(b'*') => data_lineage,
+            _ => accumulator_lineage,
         };
         // The VM reports only *changed-value* memory deltas. An actual
         // p/* writing the same word still counts as a physical write and
-        // must propagate input lineage. Its genuine data read and updated
-        // accumulator are present even when memory_delta.data is None.
+        // propagates input lineage even when memory_delta.data is None.
         if matches!(step.decoded, Some(b'p' | b'*')) {
-            if step.memory_reads.data.is_none_or(|operand| {
-                operand.address != step.before.registers.data_pointer
-            }) {
+            if step
+                .memory_reads
+                .data
+                .is_none_or(|operand| operand.address != address)
+            {
                 return Err(InvalidGuestExecution);
             }
-            let address = step.before.registers.data_pointer;
-            if next_accumulator_tainted {
-                let _newly_tainted = tainted_memory.insert(address);
+            if next_accumulator_lineage.is_empty() {
+                let _previous = input_lineage_by_word.remove(&address);
             } else {
-                let _previously_tainted = tainted_memory.remove(&address);
+                let _previous = input_lineage_by_word
+                    .insert(address, next_accumulator_lineage.clone());
             }
             if address == probe.pointer_cell {
                 last_pointer_write = Some(index);
@@ -888,30 +950,33 @@ fn verify_source_written_indirect_with_machine(
         } else if step.memory_delta.data.is_some() {
             return Err(InvalidGuestExecution);
         }
-        // Any later off-site XLAT2 mutation of the pointer cell changes
-        // its physical version. The prior guest store is no longer its
-        // final source, even when that encrypted word remains graphical.
+        // XLAT2 preserves mathematical ancestry of a data word but cannot
+        // certify that an earlier guest store remains the pointer's *final*
+        // write. Refuse an encrypted pointer until a fresh p/* writes it.
         if step
             .memory_delta
             .encryption
             .is_some_and(|effect| effect.address == probe.pointer_cell)
         {
             last_pointer_write = None;
-            let _previously_tainted =
-                tainted_memory.remove(&probe.pointer_cell);
+            let _previous = input_lineage_by_word.remove(&probe.pointer_cell);
         }
-        accumulator_tainted = next_accumulator_tainted;
+        accumulator_lineage = next_accumulator_lineage;
     }
     let pointer_write_step =
         last_pointer_write.ok_or(MissingGuestPointerWrite)?;
-    if !tainted_memory.contains(&probe.pointer_cell) {
-        return Err(MissingInputProvenance);
-    }
+    let pointer_input_steps = input_lineage_by_word
+        .remove(&probe.pointer_cell)
+        .filter(|origins| !origins.is_empty())
+        .ok_or(MissingInputProvenance)?
+        .into_iter()
+        .collect();
     Ok(SourceWrittenIndirectGuestProof {
         input: probe.input.to_vec(),
         input_consumed: vm.input_consumed(),
         landing_address: transfer.after.registers.code_pointer,
         output: vm.output().to_vec(),
+        pointer_input_steps,
         pointer_word: read.value,
         pointer_write_step,
         source: probe.source.to_vec(),

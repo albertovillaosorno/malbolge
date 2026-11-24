@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The source-loaded physical verifier now attaches **specific reached guest
+input sites** to guest-written pointer provenance. The first-read classifier
+binds C53 to M143; the two-read classifier instead binds C63 to its own
+second-word EOF/byte M143 pointer. A wrong first-read site and an unreached
+third-read site refuse; all 256 second-byte classes and truncated EOF take
+real C114 `i` control to the authentic C45/C126 arms. This is bounded
+physical guest proof, not a source-C `getchar` CFG linker or checksum loop.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 The bounded physical verifier now authenticates a **guest-written**
 indirect input/EOF pointer (not merely a graphical source pointer): real
 C82 `p` writes M143 and C114 `i` branches to C45 or C126, with 257
