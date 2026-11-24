@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Fourth input performs an observable guest computation (2026-11-24)
+
+The graphical 135-cell indirect suffix now ends `...jojp<i` instead of
+`...jojpv`. The reached fourth raw input is folded with encrypted C40
+via a real C132 `p`, output at C133 `<`, and returned through the
+source-protected C134 `i` into encrypted code at C59 and an authentic
+C82 `v` halt. For `03 04 05 06`, output `03 31 05 3a 4d` has a fifth,
+**fourth-input-dependent** byte, and the guest halts after 137 steps.
+All 257 fourth-byte/EOF classes, 768 prior-byte marginal cases, five
+truncation/extra-byte controls and three negative source mutations check
+the physical state and independent ternary oracle. The result is
+meaningful guest computation and encrypted-code control composition,
+not a source-C `getchar()`/EOF loop, signed conversion, source-typed
+arithmetic, fourth cumulative M106 fold or published C23 checksum.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md` and
+`tests/compiler_indirect_source_suffix.rs`.
+
 ### Real encrypted-code control return after three guest inputs (2026-11-24)
 
 A source-admitted terminal `i` now extends the genuine 135-cell three-input

@@ -48,6 +48,9 @@ const THREE_INPUT_FOLD_RETURN_SUFFIX: &[u8] = b"/<oooojpp<*i";
 // This second linear window reads a fourth word after the saved M106 fold,
 // then legally rewrites an already executed and encrypted source code cell.
 const FOUR_INPUT_CODE_ALIAS_SUFFIX: &[u8] = b"/<oooojpp<*/jojpv";
+// A protected C134 i follows a fourth-input-dependent output and returns
+// through previously encrypted code to the reached C82 v.
+const FOUR_INPUT_COMPUTED_RETURN_SUFFIX: &[u8] = b"/<oooojpp<*/jojp<i";
 
 fn graphical(position: u32, opcode: u8) -> Option<u8> {
     (33..=126u8).find(|byte| {
@@ -1237,5 +1240,259 @@ fn terminal_return_pointer_census_identifies_noncomputing_fourth_reads() {
             assert_eq!(vm.output(), expected, "operand={word} stdin={input:?}");
             assert_eq!(vm.memory_word(106), Ok(58));
         }
+    }
+}
+
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "C134 is a protected graphical source word in the frozen guest"
+)]
+fn fourth_fold_return_plan() -> IndirectSourceSuffixPlan {
+    let original = saved_fold_source();
+    assert_eq!(
+        decode_profile_instruction(u32::from(original[134]), 134),
+        Some(b'i'),
+        "protected source M134 must execute as i"
+    );
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        111,
+        117,
+        117,
+        FOUR_INPUT_COMPUTED_RETURN_SUFFIX,
+        &protected,
+    )
+    .expect("source-loaded fourth-input computed return")
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::cognitive_complexity,
+    reason = "all 257 fourth-input classes run the normative physical guest"
+)]
+fn fourth_input_computation_is_output_and_valid_halt_for_every_byte_and_eof() {
+    let original = saved_fold_source();
+    let plan = fourth_fold_return_plan();
+    assert_eq!((plan.pointer_word, plan.landing_address), (116, 117));
+    assert_eq!(plan.source.len(), original.len());
+    for at in [40usize, 42, 54, 110, 124, 127, 134] {
+        assert_eq!(plan.source[at], original[at]);
+    }
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&plan.source),
+        Ok(())
+    );
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("strictly admitted original N15 source");
+    let twice = scalar_crazy(scalar_crazy(121, 3), 4);
+    let thrice = scalar_crazy(twice, scalar_crazy(57, 5));
+    for fourth in (0..=255u32).chain(once(profile.eof_word())) {
+        let mut input = vec![3, 4, 5];
+        if fourth != profile.eof_word() {
+            input.push(u8::try_from(fourth).expect("binary byte"));
+        }
+        let mut vm =
+            pristine.fork_with_input(input.clone()).expect("stdin fork");
+        assert_eq!(
+            vm.run(150),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 137,
+            }),
+            "fourth={fourth}"
+        );
+        let fourth_result = scalar_crazy(63, fourth);
+        assert_eq!(vm.input_consumed(), input.len());
+        assert_eq!(vm.memory_word(106), Ok(thrice));
+        assert_eq!(vm.memory_word(40), Ok(fourth_result));
+        assert_eq!(vm.output(), [
+            3,
+            u8::try_from(twice % 256).expect("second fold byte"),
+            5,
+            u8::try_from(thrice % 256).expect("third fold byte"),
+            u8::try_from(fourth_result % 256).expect("fourth result byte"),
+        ]);
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    reason = "trace sites are frozen by source and actual VM execution"
+)]
+fn fourth_computed_output_returns_through_source_protected_indirect_code() {
+    use malbolge::encrypt_profile_cell;
+    let plan = fourth_fold_return_plan();
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), &plan.source, vec![
+            3, 4, 5, 6,
+        ])
+        .expect("strict N15 source");
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(150, &mut |step| trace.push(*step)),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 137,
+        })
+    );
+    assert_eq!(encrypt_profile_cell(u32::from(plan.source[42])), Some(58));
+    assert_eq!(
+        trace[42].memory_delta.encryption.map(|write| write.after),
+        Some(58)
+    );
+    assert_eq!(trace[106].before.registers.code_pointer, 128);
+    assert_eq!(trace[106].decoded, Some(b'/'));
+    assert_eq!(trace[106].input, Some(TraceInput::Byte(6)));
+    assert_eq!(trace[110].before.registers.code_pointer, 132);
+    assert_eq!(trace[110].decoded, Some(b'p'));
+    assert_eq!(
+        trace[110]
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value)),
+        Some((40, 63))
+    );
+    assert_eq!(trace[110].after.registers.accumulator, scalar_crazy(63, 6));
+    assert_eq!(trace[111].before.registers.code_pointer, 133);
+    assert_eq!(trace[111].decoded, Some(b'<'));
+    assert_eq!(trace[111].output, Some(77));
+    assert_eq!(trace[112].before.registers.code_pointer, 134);
+    assert_eq!(trace[112].decoded, Some(b'i'));
+    assert_eq!(
+        trace[112]
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value)),
+        Some((42, 58))
+    );
+    assert_eq!(trace[112].after.registers.code_pointer, 59);
+    assert_eq!(trace[113].before.registers.code_pointer, 59);
+    assert_eq!(trace[136].before.registers.code_pointer, 82);
+    assert_eq!(trace[136].decoded, Some(b'v'));
+    assert_eq!(trace[82].before.registers.code_pointer, 82);
+    assert_eq!(trace[82].decoded, Some(b'/'));
+    assert_eq!(vm.output(), [3, 49, 5, 58, 77]);
+    assert_eq!(vm.memory_word(40), Ok(scalar_crazy(63, 6)));
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::integer_division_remainder_used,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "finite independently justified prior-input marginals and EOF"
+)]
+fn fourth_computed_return_keeps_all_previous_input_dependencies() {
+    let plan = fourth_fold_return_plan();
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("source-backed immutable candidate");
+    for vary in 0..3usize {
+        for byte in 0..=255u8 {
+            let mut input = vec![3, 4, 5, 128];
+            input[vary] = byte;
+            let mut vm =
+                pristine.fork_with_input(input.clone()).expect("input fork");
+            let first = u32::from(input[0]);
+            let second = u32::from(input[1]);
+            let third = u32::from(input[2]);
+            let twice = scalar_crazy(scalar_crazy(121, first), second);
+            let thrice = scalar_crazy(twice, scalar_crazy(57, third));
+            let fourth = scalar_crazy(63, 128);
+            assert_eq!(
+                vm.run(150),
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 137,
+                }),
+                "vary={vary} byte={byte}"
+            );
+            assert_eq!(vm.input_consumed(), 4);
+            assert_eq!(vm.memory_word(106), Ok(thrice));
+            assert_eq!(vm.memory_word(40), Ok(fourth));
+            assert_eq!(vm.output(), [
+                u8::try_from(first).expect("first input byte"),
+                u8::try_from(twice % 256).expect("two-input fold byte"),
+                u8::try_from(third % 256).expect("third byte"),
+                u8::try_from(thrice % 256).expect("three-input fold byte"),
+                u8::try_from(fourth % 256).expect("fourth byte"),
+            ]);
+        }
+    }
+    for input in [vec![], vec![0], vec![255], vec![0, 255], vec![
+        3, 4, 5, 6, 7,
+    ]] {
+        let raw = |index| {
+            input
+                .get(index)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        };
+        let twice = scalar_crazy(scalar_crazy(121, raw(0)), raw(1));
+        let thrice = scalar_crazy(twice, scalar_crazy(57, raw(2)));
+        let fourth = scalar_crazy(63, raw(3));
+        let mut vm =
+            pristine.fork_with_input(input.clone()).expect("input fork");
+        assert_eq!(
+            vm.run(150),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 137,
+            }),
+            "stdin={input:?}"
+        );
+        assert_eq!(vm.input_consumed(), input.len().min(4));
+        assert_eq!(vm.memory_word(106), Ok(thrice));
+        assert_eq!(vm.memory_word(40), Ok(fourth));
+        assert_eq!(vm.output(), [
+            u8::try_from(raw(0) % 256).expect("first input low"),
+            u8::try_from(twice % 256).expect("second fold low"),
+            u8::try_from(raw(2) % 256).expect("third input low"),
+            u8::try_from(thrice % 256).expect("third fold low"),
+            u8::try_from(fourth % 256).expect("fourth low"),
+        ]);
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "finite source graphical negative opcode controls"
+)]
+fn fourth_computed_return_requires_reached_input_store_and_output() {
+    let plan = fourth_fold_return_plan();
+    for changed in [128usize, 132, 133] {
+        let mut source = plan.source.clone();
+        source[changed] =
+            graphical(u32::try_from(changed).expect("source site"), b'o')
+                .expect("source no-op");
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), &source, vec![
+                3, 4, 5, 6,
+            ])
+            .expect("graphical mutation");
+        let outcome = vm.run(150);
+        assert!(
+            outcome
+                != Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 137,
+                })
+                || vm.output() != [3, 49, 5, 58, 77]
+                || vm.memory_word(40) != Ok(scalar_crazy(63, 6)),
+            "altered C{changed} forged real fourth computation"
+        );
     }
 }

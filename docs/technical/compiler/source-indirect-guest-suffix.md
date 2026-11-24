@@ -145,6 +145,44 @@ cell has executed. This is a bounded state-lifetime witness, not a
 repeatable guest loop, source local, C23 arithmetic, signed EOF dispatch
 or executable mutable checksum.
 
+## Fourth-input computed output and encrypted-code return (2026-11-24)
+
+The same 135-cell source can combine the fourth-input code-alias store
+**and** a fifth observable output with a valid nonlinear halt. The
+18-opcode suffix `/<oooojpp<*/jojp<i` at C117..C134 preserves original
+M124=126, M127=100 and M134=58, including a protected C134 that already
+source-decodes as `i`. The first three real reads still build the M106
+fold; C128 then reads the fourth byte or raw N15 EOF. Reached C129/C131
+`j` instructions follow M110=52 and previously encrypted M54=39; reached
+C132 `p` combines the actual fourth input with encrypted M40=63 to store
+`crazy(63, fourth)` at M40. Crucially, reached C133 `<` now **emits** its
+low byte, rather than halting without exposing the computation.
+
+The preserved C134 source word 58 decodes as `i` in its own source
+position. After C133, D=42; C134 reads **previously encrypted** M42=58
+(original graphical C42=120, reached as a no-op), indirectly returns to
+C59 and traverses earlier encrypted code to an authentic C82 `v` at
+step **137**. For stdin `03 04 05 06`, normative output is
+`03 31 05 3a 4d` and M40=7,174,477. The fifth byte `4d` is the low byte
+of this real fourth-input-dependent computation, not a host projection.
+
+One graphical 135-cell source passes a 257-class fourth-input/true-EOF
+sweep, 256 cases in **each** of the first three prior-byte marginals,
+five empty/truncated/extra-input controls and a physical trace of the
+C42 encryption, C128 input, C132 write, C133 output, C134 pointer read,
+C59 reentry and C82 halt. Changed C128, C132 and C133 source opcodes
+cannot preserve the same output, state and 137-step halt. The source,
+stdin and normative VM have independent scalar 15-trit crazy oracles;
+the maximum is 150 VM steps per case. Exact tests are in
+`tests/compiler_indirect_source_suffix.rs`.
+
+This is a genuine **fourth dynamic input computation reaching observable
+output through protected-source indirect reentry**. It does not extend
+M106 with the fourth input, implement C23 signed EOF conversion, link a
+source-language branch or loop, or compile the seven-block mutable C23
+checksum. In particular, an output of the raw N15 EOF image is **not** a
+C23 `getchar()` EOF condition. P2 remains open.
+
 ## Terminal indirect return through already encrypted code (2026-11-24)
 
 The source-loaded 135-cell three-input fold now has a *nonlinear* terminal

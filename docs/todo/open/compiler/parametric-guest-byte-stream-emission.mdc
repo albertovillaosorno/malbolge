@@ -41,6 +41,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A source-loaded 135-cell guest now computes and **outputs** a result from
+a fourth real input: reached C132 `p` stores `crazy(63, fourth)` after
+reading previously encrypted C40, C133 `<` emits its low byte, and the
+source-protected C134 `i` returns through encrypted C59..C82 to a real
+`v` halt at step 137. A 257-class fourth byte/EOF sweep, all three
+256-class prior-byte marginals, five truncated/extra-input controls,
+physical traces and changed-opcode negatives verify the composed path.
+This is **not** a C23 checksum, live fourth cumulative M106 fold, signed
+EOF conversion, executable source-C branch, or loop. Original P2 source
+still refuses publication. Evidence:
+`docs/technical/compiler/source-indirect-guest-suffix.md`.
+
+
 A 135-cell source-loaded three-input fold now completes a genuine indirect
 return through previously encrypted C67..C82: terminal C128 `i` reads
 source-valid M109=66, reaches an earlier encrypted C82 `v`, and halts in
