@@ -38,8 +38,12 @@ selects the physical C45/C126 continuation. All 256 second-byte classes,
 truncated EOF and extra bytes use real N15 guest halts; forged first-input
 C53 and unreached C101 provenance refuse. The new exact-origin API also
 rejects an extraneous first-read C53 in the claimed set for the C63 branch.
-The origin set is conservative physical dataflow, not C predicate equivalence. No C23 local state,
-checksum computation or loop has been linked. Evidence:
+The stronger `verify_from_input_transitions` API additionally binds each
+origin to a specific normative trace index **and** physical code address.
+Wrong occurrence indices and false addresses now refuse, and future repeated
+reads of one loop site cannot be hidden by a deduplicated address set. This
+remains conservative physical dataflow, not C predicate equivalence. No C23
+local state, checksum computation or loop has been linked. Evidence:
 `docs/technical/compiler/source-indirect-guest-suffix.md` and
 `tests/compiler_indirect_source_suffix.rs`.
 

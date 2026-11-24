@@ -30,6 +30,18 @@ sets also refuse. No source-C linker can borrow an unrelated successful VM
 input path. This remains **possible physical dataflow**, not proof that every
 bit of each read affects a branch or that a C23 predicate is equivalent.
 
+The optional `verify_from_input_transitions` gate additionally checks the
+**exact set of `(trace_index, code_address)` pairs** against actual reached
+`/` transitions in the final pointer's ancestry. It rejects duplicates,
+out-of-budget indices, missing or surplus transitions, and mismatched
+addresses even when a claimed address is a genuine but unrelated input
+instruction. Unlike the site-set gate, the transition-set gate will not
+silently merge multiple guest reads at the same code position. The current
+first-/second-input controls prove positive first C53 and second C63
+occurrences, their EOF cases, and false-index/address refusals. No test yet
+proves a *repeated physical input site* in a linked guest loop; this gate
+supports that eventual matching contract without asserting it exists.
+
 The fixed 132-cell first-input classifier's 257 byte/EOF runs now require
 origin C53. The existing two-read classifier's 256 second-byte classes,
 truncated EOF and trailing-input controls require origin C63 instead; the

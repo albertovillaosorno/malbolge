@@ -2942,3 +2942,92 @@ fn source_written_indirect_branch_refuses_unwritten_and_wrong_targets() {
         Err(Refusal::MissingGuestPointerWrite)
     );
 }
+
+/// Exact trace-occurrence binding must not collapse two reads of the same
+/// instruction into one claimed site when a future guest loop revisits `/`.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "real guest EOF controls and forged transition claims"
+)]
+fn source_written_indirect_branch_requires_exact_input_transition_origins() {
+    use layout::SourceWrittenIndirectGuestError as Refusal;
+    let profile = current_profile();
+    let first = layout::build_signed_eof_branch_source(profile)
+        .expect("source-loaded first-read classifier");
+    let first_verifier =
+        layout::SourceWrittenIndirectGuestVerifier::new(profile, &first)
+            .expect("authenticated graphical source");
+    for input in [&[][..], &[0][..], &[255, 0][..]] {
+        let proof = first_verifier
+            .verify_from_input_transitions(
+                input,
+                &[(53, 53)],
+                114,
+                143,
+                &[45, 126],
+                180,
+            )
+            .expect("real first-input instruction and trace occurrence");
+        assert_eq!(proof.pointer_input_steps(), &[53]);
+        assert_eq!(proof.trace()[53].before.registers.code_pointer, 53);
+    }
+
+    let second =
+        layout::build_second_input_eof_classified_first_echo_source(profile)
+            .expect("source-loaded two-read classifier");
+    let second_verifier =
+        layout::SourceWrittenIndirectGuestVerifier::new(profile, &second)
+            .expect("authenticated graphical source");
+    for input in [&[][..], &[0][..], &[0, 255, 3][..]] {
+        let proof = second_verifier
+            .verify_from_input_transitions(
+                input,
+                &[(63, 63)],
+                114,
+                143,
+                &[45, 126],
+                180,
+            )
+            .expect("real second-input instruction and trace occurrence");
+        assert_eq!(proof.pointer_input_steps(), &[63]);
+        assert_eq!(proof.trace()[63].before.registers.code_pointer, 63);
+    }
+    for origins in [
+        &[(53, 53)][..],
+        &[(63, 53)][..],
+        &[(53, 63)][..],
+        &[(53, 53), (63, 63)][..],
+    ] {
+        assert_eq!(
+            second_verifier.verify_from_input_transitions(
+                &[0, 255],
+                origins,
+                114,
+                143,
+                &[45, 126],
+                180,
+            ),
+            Err(Refusal::MissingRequiredInputProvenance),
+        );
+    }
+    for origins in [
+        &[][..],
+        &[(63, 63), (63, 63)][..],
+        &[(180, 63)][..],
+        &[(63, 14_348_907)][..],
+    ] {
+        assert_eq!(
+            second_verifier.verify_from_input_transitions(
+                &[0, 255],
+                origins,
+                114,
+                143,
+                &[45, 126],
+                180,
+            ),
+            Err(Refusal::InvalidBound),
+        );
+    }
+}

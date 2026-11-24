@@ -481,7 +481,7 @@ impl SourceWrittenIndirectGuestVerifier {
         step_budget: usize,
     ) -> SourceWrittenIndirectGuestResult {
         use SourceWrittenIndirectGuestError::{
-            InvalidBound, InvalidGuestExecution, MissingRequiredInputProvenance,
+            InvalidBound, MissingRequiredInputProvenance,
         };
         let expected =
             input_code_cells.iter().copied().collect::<BTreeSet<_>>();
@@ -501,21 +501,86 @@ impl SourceWrittenIndirectGuestVerifier {
             allowed_landings,
             step_budget,
         )?;
-        let observed = proof
-            .pointer_input_steps()
-            .iter()
-            .map(|index| {
-                proof.trace().get(*index).and_then(|step| {
-                    step.input.map(|_input| step.before.registers.code_pointer)
-                })
-            })
-            .collect::<Option<BTreeSet<_>>>()
-            .ok_or(InvalidGuestExecution)?;
+        let observed = authenticated_pointer_input_origins(&proof)?
+            .into_iter()
+            .map(|(_index, code_address)| code_address)
+            .collect::<BTreeSet<_>>();
         if observed != expected {
             return Err(MissingRequiredInputProvenance);
         }
         Ok(proof)
     }
+
+    /// Bind the complete pointer ancestry to exact guest input transitions.
+    ///
+    /// Each `(trace_index, code_cell)` pair must identify an actual reached
+    /// `/`, including reads that observe EOF. Unlike address-only site sets,
+    /// this distinguishes repeated reads at one code site across loop trips.
+    /// This finite physical proof does not authenticate source-C loop counts
+    /// or condition equivalence; a CFG verifier must provide those separately.
+    ///
+    /// # Errors
+    ///
+    /// Refuses duplicate/out-of-bound claims, failed guest execution, and
+    /// missing or unexpected input transition origins for the final pointer.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "exact guest transition and physical branch geometry"
+    )]
+    pub fn verify_from_input_transitions(
+        &self,
+        input: &[u8],
+        input_transitions: &[(usize, u32)],
+        indirect_code_cell: u32,
+        pointer_cell: u32,
+        allowed_landings: &[u32],
+        step_budget: usize,
+    ) -> SourceWrittenIndirectGuestResult {
+        use SourceWrittenIndirectGuestError::{
+            InvalidBound, MissingRequiredInputProvenance,
+        };
+        let expected =
+            input_transitions.iter().copied().collect::<BTreeSet<_>>();
+        if expected.is_empty()
+            || expected.len() != input_transitions.len()
+            || expected.len() > step_budget
+            || expected.iter().any(|(index, code_cell)| {
+                *index >= step_budget
+                    || *code_cell >= current_profile().memory_words()
+            })
+        {
+            return Err(InvalidBound);
+        }
+        let proof = self.verify(
+            input,
+            indirect_code_cell,
+            pointer_cell,
+            allowed_landings,
+            step_budget,
+        )?;
+        if authenticated_pointer_input_origins(&proof)? != expected {
+            return Err(MissingRequiredInputProvenance);
+        }
+        Ok(proof)
+    }
+}
+
+/// Reconstruct exact physical input transition identities from VM evidence.
+/// A boolean taint or a code address alone cannot identify repeated reads.
+fn authenticated_pointer_input_origins(
+    proof: &SourceWrittenIndirectGuestProof,
+) -> Result<BTreeSet<(usize, u32)>, SourceWrittenIndirectGuestError> {
+    proof
+        .pointer_input_steps()
+        .iter()
+        .map(|index| {
+            proof.trace().get(*index).and_then(|step| {
+                (step.decoded == Some(b'/') && step.input.is_some())
+                    .then_some((*index, step.before.registers.code_pointer))
+            })
+        })
+        .collect::<Option<BTreeSet<_>>>()
+        .ok_or(SourceWrittenIndirectGuestError::InvalidGuestExecution)
 }
 
 /// Place one finite, fallthrough guest leaf behind a graphical `i` operand.
