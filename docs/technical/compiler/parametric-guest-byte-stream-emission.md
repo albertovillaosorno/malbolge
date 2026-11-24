@@ -28,6 +28,35 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Authentic delayed third-input output through finite code reuse (2026-11-24)
+
+The frozen complete C23 mutable EOF checksum still refuses publication at
+unlinked physical CFG state, branch and phi operations. A separate
+loader-authenticated 261-cell N15 source uses the existing twelve-backedge
+input guest and changes
+**only C67**, from the second raw-input `p` store to graphical byte 95. It
+initially decodes as `o`; twelve true visits under XLAT2 decode inert on
+all but the **ninth**, which becomes actual `<` at VM step index 92. The
+third guest `/` at C66, reached on step index 73, supplies the accumulator;
+the intervening source-code revisits do not replace it. The guest emits
+exactly that third raw byte, or the raw N15 EOF byte projection **106** if
+fewer than three bytes were available. It still reads five genuine inputs
+(including EOF) at step indices 37, 43, 73, 96 and 103, executes twelve
+real C68 -> C63 indirect backward jumps, and halts at the self-encrypted
+C65 `v` after 115 steps. The first loader-seeded encoded store remains;
+the original C67 second store is intentionally absent.
+
+Six binary/EOF streams run through the normative N15 VM with exact output,
+input cursor, physical read/output sites, repeated XLAT2 code-cell fetches,
+independent ternary first-store values and genuine halt checks. The unmodified
+source is a negative control: all twelve jumps remain but it produces no
+output. `build_long_source_delayed_input_echo_source` proposes the changed
+source via the bounded code-visit encoder; the actual execution comes only
+from the normative VM in `tests/compiler_long_source_delayed_input_echo.rs`.
+This closes a **finite physical delayed-input-to-output path** without
+reusable source-C loop semantics, signed EOF conversion, general arithmetic,
+phi transfers or any checksum artifact. P2 remains open.
+
 ### Authentic finite input backedge under source self-encryption (2026-11-24)
 
 The full seven-block C23 mutable checksum was reattempted unchanged and

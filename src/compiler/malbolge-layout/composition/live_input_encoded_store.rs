@@ -483,6 +483,67 @@ pub fn build_long_source_finite_input_loop_source(
     })
 }
 
+/// One raw input emitted after eight genuine physical code backedges.
+///
+/// This variation replaces the original second `p` at C67 with a self-
+/// encrypting no-op that decodes as `<` only on its ninth visit. The third
+/// actual `/` at C66 supplies the accumulator that C67 later outputs. The
+/// first input still has a real encoded store at C38; the original second
+/// input store is deliberately absent. Twelve code backedges and the final
+/// C65 `v` remain independent of input/EOF and do not model a C23 loop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LongSourceDelayedInputEchoSource {
+    /// Source-backed first raw-input store at C38.
+    pub first_data_address: u32,
+    /// Loader-derived operand for the first raw-input store.
+    pub initial_data_word: u32,
+    /// Source cell C67, which outputs on its ninth visit.
+    pub output_code_address: u32,
+    /// Source cell C66, where the third raw input is read on a later visit.
+    pub repeated_input_code_address: u32,
+    /// Full loader-admitted graphical guest source.
+    pub source: Vec<u8>,
+}
+
+/// Emit a delayed third raw input word through authentic mutable guest code.
+///
+/// Physical C67 visits decode as inert for eight traversals, then as output,
+/// and then inert again. The output consumes the accumulator set by the third
+/// genuine input, at C66 step 73, even though several intervening no-op
+/// traversals occur. EOF follows N15 raw input semantics and projects to a
+/// byte; there is no C signed EOF conversion or source-C loop linkage.
+///
+/// # Errors
+///
+/// Rejects a noncanonical profile, invalid source geometry, or an unencodable
+/// exact XLAT2 visit schedule.
+pub fn build_long_source_delayed_input_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<LongSourceDelayedInputEchoSource, LiveInputEncodedStoreError> {
+    use LiveInputEncodedStoreError::NoLoadableSeed;
+    const OUTPUT: usize = 67;
+    let baseline = build_long_source_finite_input_loop_source(profile)?;
+    let mut source = baseline.source;
+    let mut visits = [CodeVisitRequirement::Inert; 12];
+    visits[0] = CodeVisitRequirement::Decoded(b'o');
+    visits[8] = CodeVisitRequirement::Decoded(profile.output_instruction());
+    let encoded = encode_code_visits(
+        profile,
+        u32::try_from(OUTPUT).map_err(|_error| NoLoadableSeed)?,
+        &visits,
+    )
+    .map_err(|_error| NoLoadableSeed)?;
+    *source.get_mut(OUTPUT).ok_or(NoLoadableSeed)? = encoded;
+    Ok(LongSourceDelayedInputEchoSource {
+        first_data_address: baseline.first_data_address,
+        initial_data_word: baseline.initial_data_word,
+        output_code_address: u32::try_from(OUTPUT)
+            .map_err(|_error| NoLoadableSeed)?,
+        repeated_input_code_address: 66,
+        source,
+    })
+}
+
 /// Predicate for lossless raw 0..255 and EOF in a single guest crazy word.
 ///
 /// Five low seed trits must be one. Since successful input values occupy
