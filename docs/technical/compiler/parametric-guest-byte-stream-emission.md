@@ -28,6 +28,29 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Real first input-dependent zero-low overwrite (2026-11-23)
+
+A real 43-step graphical N15 source now continues the original first C23
+checksum prefix: C14 writes adjacent high zero, C17 writes low zero, and C37
+performs `/`. C39 executes `p` on a virgin source-loader word at M7,174,439,
+C40 performs a real `j` through M7,174,440 to the previously written low
+word at M7,174,417, and C41 performs a **second input-dependent data write**
+to that word while preserving the adjacent high zero. C42 halts. The
+construction is available as
+`build_adjacent_c32_zero_c37_input_low_fold_source`; the independent frozen
+source and normative 43-step guest traces are checked by
+`tests/compiler_c23_zero_input_store.rs`, including EOF, NUL, 0xff and an
+unread suffix.
+
+An independent exhaustive 257-class scalar oracle establishes that the low
+word has **only 40 distinct images**, though true EOF is distinct from
+all successful-byte images. This is a real physical input-dependent state
+update and reuse of the original C32 zero initializer, **not** a C23
+signed `getchar` result, complete two-word input SSA store, or dynamic EOF
+branch/loop. The original seven-block mutable checksum still refuses guest
+artifact publication. A correct, full-width 257-state store and subsequent
+source-C arithmetic/control linkage remain necessary.
+
 ### High-first adjacent C32 constant initialization reservations (2026-11-23)
 
 The unchanged complete source-C23 EOF-checksum compilation was retried through

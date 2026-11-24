@@ -126,6 +126,27 @@ pub struct AdjacentC32ZeroSource {
     pub zero_low_code_address: u32,
 }
 
+/// A genuine read-derived low-cell fold after two adjacent zero writes.
+///
+/// The first input is raw N15: the low result has only 40 distinct images
+/// over 256 bytes and EOF, and cannot represent a signed C23 local. The
+/// physical pointer reentry reaches the original low cell, not a host value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37InputFoldSource {
+    /// Reached input-dependent scratch `p` instruction.
+    pub encoded_store_code_address: u32,
+    /// Virgin, source-loader-provided input scratch operand.
+    pub encoded_data_address: u32,
+    /// Reached physical halt after the returned low-cell write.
+    pub halt_code_address: u32,
+    /// Reached input-dependent low-cell `p` instruction.
+    pub low_fold_code_address: u32,
+    /// Reached `j` returning D to the initialized lower C32 word.
+    pub reentry_code_address: u32,
+    /// Source-loaded initializer and executable 43-cell instruction prefix.
+    pub zero_pair: AdjacentC32ZeroSource,
+}
+
 /// N15 byte/EOF input written into a real adjacent two-word physical region.
 ///
 /// The low word holds the raw unsigned byte (or unnormalized profile EOF),
@@ -655,6 +676,64 @@ pub fn build_adjacent_c32_zero_then_c37_input_source(
     }
     candidate.input_code_address = Some(37);
     Ok(candidate)
+}
+
+/// Continue the source-loaded C14/C17 zero initializer and C37 `/` through
+/// a real input-dependent scratch store, data-pointer reentry and low write.
+///
+/// C38 advances to M7,174,439, whose untouched loader word is 37. C39 `p`
+/// mixes the raw signed input and stores its result there. C40 `j` follows
+/// virgin M7,174,440=7,174,416 back to the original zero low cell. C41 `p`
+/// physically overwrites that cell while preserving its adjacent zero high
+/// word; C42 halts. The input's source-C value is **not** materialized:
+/// the resulting low word has only 40 images for all 257 input/EOF classes.
+/// This is one real stateful physical prefix, not signed input conversion,
+/// executable source arithmetic, a loop, or the C23 checksum artifact.
+///
+/// # Errors
+///
+/// Rejects noncurrent profiles, changed loader operands or missing encodings.
+pub fn build_adjacent_c32_zero_c37_input_low_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37InputFoldSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    const INPUT_SCRATCH: usize = 7_174_439;
+    const REENTRY_OPERAND: usize = INPUT_SCRATCH + 1;
+    const EXPECTED_LOW: u32 = 7_174_417;
+    let mut zero_pair = build_adjacent_c32_zero_then_c37_input_source(profile)?;
+    if zero_pair.source.len() != 62
+        || zero_pair.input_code_address != Some(37)
+        || zero_pair.zero_low_address != EXPECTED_LOW
+        || zero_pair.zero_high_address != EXPECTED_LOW + 1
+        || unwritten_loader_word(&zero_pair.source, INPUT_SCRATCH, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != 37
+        || unwritten_loader_word(&zero_pair.source, REENTRY_OPERAND, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != EXPECTED_LOW - 1
+    {
+        return Err(NoLoadableZero);
+    }
+    for (site, operation) in [
+        (38usize, LinearOpcode::NoOperation),
+        (39, LinearOpcode::CrazyData),
+        (40, LinearOpcode::RelocateDataPointer),
+        (41, LinearOpcode::CrazyData),
+        (42, LinearOpcode::Halt),
+    ] {
+        *zero_pair.source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37InputFoldSource {
+        encoded_store_code_address: 39,
+        encoded_data_address: u32::try_from(INPUT_SCRATCH)
+            .map_err(|_error| NoLoadableZero)?,
+        halt_code_address: 42,
+        low_fold_code_address: 41,
+        reentry_code_address: 40,
+        zero_pair,
+    })
 }
 
 /// Build one real input-driven `[raw_input, 0]` adjacent data pair.
