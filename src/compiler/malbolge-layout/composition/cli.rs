@@ -4106,8 +4106,13 @@ fn verify_signed_second_echo(
             .ok_or("signed second echo invalid first conversion")?;
         let converted = checked_signed_echo_crazy(121, intermediate)
             .ok_or("signed second echo invalid second conversion")?;
+        // The loader itself performs two fixed `p` operations before the
+        // signed reads. Neither may be mistaken for one of the two later
+        // C23 conversion writes at C77 and C78.
         if conversions
             != [
+                (2, 94, Some(157), 0, 7_174_489),
+                (6, 158, Some(157), 7_174_489, 36),
                 (77, 95, Some(7_138_732), raw, intermediate),
                 (78, 96, Some(121), intermediate, converted),
             ]

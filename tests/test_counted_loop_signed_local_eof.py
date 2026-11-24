@@ -42,8 +42,30 @@ VM: Final = ROOT / ".cache/rust/target/debug/malbolge"
 VECTORS: Final = (b"", b"\x00", b"\xff", b"\x01\x80", b"\x00\xff\x81")
 
 
-def source_for_trips(trips: int) -> str:
-    """Keep original C source geometry required by the pinned frontend."""
+def source_for_trips(trips: int, topology: str = "for") -> str:
+    """Generate full native-C loops, including nested local EOF scopes."""
+    if topology != "for":
+        prefix = {
+            "for-nested": (f"    for (unsigned i = 0U; i < {trips}U; ++i) {{\n"),
+            "while-nested": f"    unsigned i = 0U;\n    while (i < {trips}U) {{\n",
+            "do-nested": "    unsigned i = 0U;\n    do {\n",
+        }[topology]
+        update = "" if topology == "for-nested" else "        ++i;\n"
+        suffix = (
+            f"    }} while (i < {trips}U);\n" if topology == "do-nested" else "    }\n"
+        )
+        return (
+            "#include <stdio.h>\n"
+            "void emit(void) {\n"
+            + prefix
+            + f"        if (i < {trips}U) {{\n"
+            + "            int current = getchar();\n"
+            + "            putchar(current);\n"
+            + "        }\n"
+            + update
+            + suffix
+            + "}\n"
+        )
     return (
         "#include <stdio.h>\n"
         "void emit(void) {\n"
@@ -65,14 +87,22 @@ class CountedLoopSignedLocalEofTests(unittest.TestCase):
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
             part for part in (llvm_lib, env.get("LD_LIBRARY_PATH", "")) if part
         )
-        for trips in (1, 2):
+        for trips, topology in (
+            (1, "for"),
+            (2, "for"),
+            (2, "for-nested"),
+            (2, "while-nested"),
+            (2, "do-nested"),
+        ):
             with (
-                self.subTest(trips=trips),
+                self.subTest(trips=trips, topology=topology),
                 tempfile.TemporaryDirectory(dir=ROOT / ".temp") as raw,
             ):
                 folder = Path(raw)
                 source = folder / "signed-loop-local.c"
-                _ = source.write_text(source_for_trips(trips), encoding="utf-8")
+                _ = source.write_text(
+                    source_for_trips(trips, topology), encoding="utf-8"
+                )
                 wrapper = folder / "main.c"
                 _ = wrapper.write_text(
                     f'#include "{source}"\nint main(void) {{ emit(); return 0; }}\n',
