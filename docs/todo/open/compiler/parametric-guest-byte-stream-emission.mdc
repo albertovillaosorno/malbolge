@@ -41,6 +41,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The 135-cell source-loaded two-input fold now has a real third-input
+continuation using an encrypted output opcode as a later `j` pointer.
+Two reached `p` operations incorporate the third input into the prior
+M106 state, emit a fourth byte and halt in 107 normative N15 steps.
+A 257-class third-input/EOF sweep and binary VM traces check the physical
+code/data dependency; the extended candidate placer preserves protected
+source words that also execute as code. This is **not** signed C23 EOF,
+checksum arithmetic, loop control or linked source SSA/phi. The complete
+seven-block checksum still refuses publication. Evidence:
+`tests/compiler_indirect_source_suffix.rs` and the owning compiler contract.
+
 The same real two-input source now has a bounded encrypted-code reentry:
 C63/C64 `j` and C65/C67 `i` enter C35 after both input stores/outputs.
 On a second visit, C45 `p` writes physical instruction C49 from the

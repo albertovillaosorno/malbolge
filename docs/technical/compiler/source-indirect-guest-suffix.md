@@ -21,12 +21,13 @@ pointer data, and future code cells must also remain disjoint from patches.
 - It accepts an already source-admitted N15 graphical program and one
   source-resident, candidate pointer-cell position.
 - It explores a finite code window in increasing landing-address order,
-  with a bounded terminal straight-line suffix of `o`, `/`, `<` and final
-  `v`. No jump, crazy, rotate or recursive branch is placed in this leaf.
+  with a bounded linear suffix of `o`, `/`, `<`, `j`, `p`, `*` and terminal
+  `v`. No recursive branch or `i` may occur inside the suffix.
 - It requires `landing - 1` to be a printable graphical source byte **and**
-  decode to a valid opcode at the exact pointer-cell position. It refuses
-  protected and out-of-bounds code positions and re-admits the entire
-  patched graphical source.
+  decode to a valid opcode at the exact pointer-cell position. Protected
+  source words inside a suffix may be *executed* only if their unchanged
+  bytes already decode to the requested instruction; all other overlaps
+  refuse. It re-admits the entire patched graphical source.
 - It returns only a candidate source, operand word and target address. It
   never asserts that an `i` is reachable, points D to that word, or executes
   an unmodified, unencrypted code leaf. The caller must independently prove
@@ -76,14 +77,50 @@ source-valid landing is selected when the first is protected, and mutations
 to the actual pointer cell or landed input opcode remove the third-read
 witness. The guest paths are not inferred from the scalar oracle.
 
+## Stateful third-input continuation (2026-11-24)
+
+A further complete physical experiment extends the **same** already reached
+C94 indirect jump with the 12-opcode suffix `/<oooojpp<*v` at C117..C128.
+The planner now allows an existing protected source word to serve as a later
+code instruction **without modifying the original word**. The original
+M124=126 (`p`) and M127=100 (`*`) are preserved, as is M134=58 used in
+first-input setup. Both original input reads and the C87 fold still execute.
+
+On entry at C117, the real third `/` loads a byte or N15 EOF. C118 `<`
+emits it, then encrypts its **original source byte 75 to word 104**. At
+C123, a physical `j` loads that already encrypted M118=104, sets D=105,
+and enters the old C124 `p` at M105=57. That reached crazy operation
+writes `crazy(57, third)` into M105; C125 `p` uses the *previously stored*
+first/second fold M106 to compute
+`crazy(crazy(crazy(121, first), second), crazy(57, third))`.
+C126 `<` emits this third-input-dependent fold and C128 `v` halts.
+
+The normative N15 VM terminates in **107 steps**, with exactly three real
+reads and four outputs. For input `03 04 05`, output is `03 31 05 3a`;
+M105 and M106 contain the two actual computed words. Nine independent
+empty/truncated/NUL/high-byte/suffix traces and a 257-case third-input/EOF
+sweep match a separate fifteen-trit scalar oracle. Mutating the encrypted
+pointer site C118 or either C123/C125 operation breaks the witness; the
+planner refuses an attempted overwrite of protected C124. The guest trace,
+not the scalar formula, proves the reached code, pointer read, memory writes
+and halt. See `tests/compiler_indirect_source_suffix.rs`.
+
+The crucial composition mechanism is **code-to-data reuse**: an earlier
+reached instruction's post-encryption byte becomes a later relocation
+operand. Requiring all source-resident operands to be globally inert would
+miss this valid path. Such a source alias is legal only with separately
+verified read/write phases and positional guest semantics; the planner
+alone does **not** validate these dynamic facts.
+
 ## What is still missing
 
-This is a successful **physical continuation placement** of a bounded
+This is successful **physical continuation placement** of a bounded
 source-loaded computation, not source-C input-loop lowering. `crazy` of
-two raw N15 input words is not C23 unsigned XOR/add or signed `getchar()`
-normalization. The suffix is a linear guest I/O leaf, not a phi pad, loop
-backedge, variable-layout branch or final checksum. Its source-level
-operation and data dependencies remain unlinked to the original C program.
+three raw N15 input words is not C23 unsigned XOR/add or signed `getchar()`
+normalization. The extended suffix is a linear guest data/I/O segment,
+not a phi pad, loop backedge, variable-layout branch or final checksum.
+Its source-level operation and data dependencies remain unlinked to the
+original C program.
 
 The next P2 linker must prove the complete source-locked operation graph:
 source SSA frame writes, typed arithmetic, parallel predecessor copies,
@@ -95,7 +132,8 @@ retire any of those obligations.
 ## Reproduction
 
 ```sh
-.dependencies/rust/1.98.1/bin/cargo.bin test --test compiler_indirect_source_suffix
+.dependencies/rust/1.98.1/bin/cargo.bin test --test \
+  compiler_indirect_source_suffix
 .dependencies/python/3.14.7/bin/python3.14 -B -m unittest \
   tests.test_eof_checksum_pipeline -v
 ```

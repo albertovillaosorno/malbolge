@@ -38,6 +38,11 @@ use malbolge::{
     decode_profile_instruction, historical_profile,
 };
 
+// The suffix is a 12-cell linear source window, but it is not a pure I/O
+// leaf: its reached j reads the *encrypted* earlier output instruction, and
+// two reached p operations update the earlier guest-computed state.
+const THREE_INPUT_FOLD_SUFFIX: &[u8] = b"/<oooojpp<*v";
+
 fn graphical(position: u32, opcode: u8) -> Option<u8> {
     (33..=126u8).find(|byte| {
         decode_profile_instruction(u32::from(*byte), position) == Some(opcode)
@@ -435,4 +440,223 @@ fn saved_fold_continuation_depends_on_the_source_pointer_and_input_opcode() {
     );
     assert_eq!(no_read_vm.input_consumed(), 2);
     assert_ne!(no_read_vm.output().last(), Some(&5));
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "physical three-input state fold and encryption witness"
+)]
+fn source_loaded_indirect_suffix_updates_saved_state_from_real_third_input() {
+    use malbolge::encrypt_profile_cell;
+    let original = saved_fold_source();
+    let plan = open_suffix(&original, THREE_INPUT_FOLD_SUFFIX);
+    assert_eq!((plan.pointer_word, plan.landing_address), (116, 117));
+    assert_eq!(plan.source.len(), original.len());
+    // C124 and C127 are essential first/two-input pointer words. The
+    // suffix executes their pre-existing p/* code without rewriting them.
+    for protected in [124usize, 127, 134] {
+        assert_eq!(plan.source[protected], original[protected]);
+    }
+    for at in
+        (0..135).filter(|at| ![111, 117, 118, 123, 125, 126, 128].contains(at))
+    {
+        assert_eq!(plan.source[at], original[at]);
+    }
+    assert_eq!(plan.source[118], 75);
+    assert_eq!(encrypt_profile_cell(75), Some(104));
+    assert_eq!(plan.source[124], 126);
+    assert_eq!(plan.source[127], 100);
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&plan.source),
+        Ok(())
+    );
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("fully source-admitted 135-cell guest");
+    assert_eq!(pristine.memory_word(105), Ok(57));
+    assert_eq!(pristine.memory_word(106), Ok(121));
+    for input in [
+        vec![],
+        vec![0],
+        vec![0, 0],
+        vec![3, 4, 5],
+        vec![255, 0, 128, 1],
+        vec![3, 4, 5, 6],
+        vec![0, 255, 0],
+        vec![128, 127, 255],
+        vec![255, 255, 255],
+    ] {
+        let raw = |index| {
+            input
+                .get(index)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        };
+        let first = raw(0);
+        let second = raw(1);
+        let third = raw(2);
+        let folded_twice = scalar_crazy(scalar_crazy(121, first), second);
+        let seeded_third = scalar_crazy(57, third);
+        let folded_thrice = scalar_crazy(folded_twice, seeded_third);
+        let low = |value: u32| u8::try_from(value % 256).expect("low byte");
+        let mut vm = pristine
+            .fork_with_input(input.clone())
+            .expect("isolated VM state");
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(110, &mut |step| trace.push(*step)),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 107,
+            }),
+            "stdin={input:?}"
+        );
+        assert_eq!(vm.input_consumed(), input.len().min(3));
+        assert_eq!(vm.output(), &[
+            low(first),
+            low(folded_twice),
+            low(third),
+            low(folded_thrice)
+        ]);
+        assert_eq!(vm.memory_word(105), Ok(seeded_third));
+        assert_eq!(vm.memory_word(106), Ok(folded_thrice));
+        assert_eq!(trace[94].decoded, Some(b'i'));
+        assert_eq!(trace[94].after.registers.code_pointer, 117);
+        assert_eq!(
+            trace[95].input,
+            Some(input.get(2).map_or(TraceInput::EndOfInput, |byte| {
+                TraceInput::Byte(*byte)
+            }))
+        );
+        assert_eq!(trace[96].before.registers.code_pointer, 118);
+        assert_eq!(trace[96].output, Some(low(third)));
+        assert_eq!(
+            trace[96].memory_delta.encryption.map(|change| change.after),
+            Some(104)
+        );
+        assert_eq!(trace[101].decoded, Some(b'j'));
+        assert_eq!(
+            trace[101]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((118, 104))
+        );
+        assert_eq!(trace[101].after.registers.data_pointer, 105);
+        for (step, at, read, result) in [
+            (102, 124, (105, 57), seeded_third),
+            (103, 125, (106, folded_twice), folded_thrice),
+        ] {
+            assert_eq!(trace[step].before.registers.code_pointer, at);
+            assert_eq!(trace[step].decoded, Some(b'p'));
+            assert_eq!(
+                trace[step]
+                    .memory_reads
+                    .data
+                    .map(|word| (word.address, word.value)),
+                Some(read)
+            );
+            assert_eq!(trace[step].after.registers.accumulator, result);
+        }
+        assert_eq!(trace[104].output, Some(low(folded_thrice)));
+        assert_eq!(trace[105].decoded, Some(b'*'));
+        assert_eq!(trace[106].decoded, Some(b'v'));
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::integer_division_remainder_used,
+    reason = "257 third-input/EOF classes and independent fold oracle"
+)]
+fn all_third_input_classes_reach_the_earlier_guest_fold_again() {
+    let plan = open_suffix(&saved_fold_source(), THREE_INPUT_FOLD_SUFFIX);
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("source-loaded fold");
+    let folded_twice = scalar_crazy(scalar_crazy(121, 3), 4);
+    for third in (0..=255u32).chain(once(profile.eof_word())) {
+        let mut input = vec![3, 4];
+        if third != profile.eof_word() {
+            input.push(u8::try_from(third).expect("byte"));
+        }
+        let mut vm = pristine.fork_with_input(input).expect("VM fork");
+        assert_eq!(
+            vm.run(110),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 107,
+            }),
+            "third={third}"
+        );
+        let expected = scalar_crazy(folded_twice, scalar_crazy(57, third));
+        assert_eq!(vm.memory_word(106), Ok(expected));
+        assert_eq!(vm.output(), &[
+            3,
+            u8::try_from(folded_twice % 256).expect("fold low"),
+            u8::try_from(third % 256).expect("third low"),
+            u8::try_from(expected % 256).expect("three-input low"),
+        ]);
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "pinned data-alias and code/data dependency negative controls"
+)]
+fn three_input_fold_requires_encrypted_pointer_and_two_real_data_writes() {
+    use IndirectSourceSuffixError::{InvalidSuffix, NoSourceLoadablePointer};
+    let original = saved_fold_source();
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let plan = open_suffix(&original, THREE_INPUT_FOLD_SUFFIX);
+    let invalid_suffix = plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        111,
+        117,
+        117,
+        b"/<oooojip<*v",
+        &protected,
+    );
+    assert_eq!(invalid_suffix, Err(InvalidSuffix));
+    // Executing protected M124 as anything other than its original p is
+    // impossible without overwriting a live original pointer operand.
+    let protected_conflict = plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        111,
+        117,
+        117,
+        b"/<oooojop<*v",
+        &protected,
+    );
+    assert_eq!(protected_conflict, Err(NoSourceLoadablePointer));
+    for altered_site in [118usize, 123, 125] {
+        let mut mutated = plan.source.clone();
+        mutated[altered_site] =
+            graphical(u32::try_from(altered_site).expect("code index"), b'o')
+                .expect("no-op source encoding");
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), &mutated, vec![
+                3, 4, 5,
+            ])
+            .expect("changed source remains graphical");
+        let result = vm.run(110);
+        assert!(
+            result
+                != Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 107,
+                })
+                || vm.output() != [3, 49, 5, 58],
+            "site C{altered_site} mutation forged the guest-dependent fold"
+        );
+    }
 }

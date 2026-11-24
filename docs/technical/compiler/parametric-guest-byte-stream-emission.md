@@ -28,6 +28,26 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Three-input guest fold reuses encrypted code as a pointer (2026-11-24)
+
+The original complete seven-block C23 mutable EOF checksum still refuses
+publication. A separate genuine 135-cell N15 source now reads three runtime
+inputs, retains the first/second crazy fold in M106, then uses its **earlier
+encrypted output instruction C118** as data: the reached C123 `j` reads
+M118=104 and places D at 105. The physical C124 and C125 `p` instructions
+combine the third input with the previously saved fold and overwrite M106.
+C126 emits the new result and C128 halts in 107 normative VM steps. Nine
+independent binary/EOF streams and all 257 third-input/EOF classes match a
+separate fifteen-trit oracle; changed-code negative controls fail.
+
+The bounded suffix placer now supports linear `j`/`p`/`*` data operations
+and preserves byte-exact protected source words even when those operands
+later execute as code. This is guest ternary arithmetic and phase-sensitive
+code/data reuse, **not** C23 unsigned checksum arithmetic, signed EOF
+normalization, a repeatable loop or source-locked CFG/phi linkage. Evidence:
+`docs/technical/compiler/source-indirect-guest-suffix.md` and
+`tests/compiler_indirect_source_suffix.rs`. P2 remains open.
+
 ### Second input folds a saved first guest word before a valid halt (2026-11-24)
 
 A new source-valid 135-cell N15 program executes two real guest inputs and

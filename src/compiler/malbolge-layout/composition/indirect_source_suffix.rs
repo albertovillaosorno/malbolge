@@ -16,7 +16,7 @@
 //     preceding self-modification preserves the leaf or pointer value.
 // - Allows:
 //   - Inputs: already-admitted source, pointer-cell position, open code range,
-//     protected cells and a terminal I/O/no-op instruction sequence.
+//     protected cells and a terminal linear data/I/O instruction sequence.
 //   - Outputs: a deterministic graphical candidate and exact landing address.
 //   - Side effects: owned allocation only; no VM or host I/O.
 // - Split-When:
@@ -52,8 +52,7 @@ pub enum IndirectSourceSuffixError {
     InvalidSource,
     /// The pointer site, landing window or protected positions are invalid.
     InvalidPlacement,
-    /// Only a bounded straight-line I/O/no-op leaf ending in a halt is
-    /// admitted.
+    /// Only a bounded linear data/I/O leaf ending in a halt is admitted.
     InvalidSuffix,
     /// An instruction in the requested leaf lacks graphical positional code.
     MissingGraphicalEncoding,
@@ -78,10 +77,14 @@ pub struct IndirectSourceSuffixPlan {
 /// Place one finite, fallthrough guest leaf behind a graphical `i` operand.
 ///
 /// The returned candidate changes only `pointer_cell` and the chosen suffix
-/// window. All `protected` cells must stay unchanged; the caller must list
-/// any dynamically read/written source cells and all already-reached code.
+/// window. All `protected` cells stay **byte-for-byte unchanged**, including
+/// any protected cell inside the suffix: such an overlap is allowed only if
+/// the original byte already decodes to the requested opcode. The caller must
+/// list all dynamically read/written source cells and already-reached code.
 /// `landing_from..=landing_through` is a finite, nonempty code window.
-/// Each leaf may contain `o`, `/` or `<`, followed by exactly one final `v`.
+/// The leaf may use linear `o`, `/`, `<`, `j`, `p`, `*`, followed by
+/// exactly one final `v`. Data-pointer moves and writes have no source-time
+/// correctness claim; normative VM traces must prove their effects.
 /// The first admissible landing address is chosen, reproducibly. The caller
 /// must **separately** prove the real guest's D points to the pointer cell at
 /// a reached `i`, no intervening write changes it, and the leaf was not
@@ -122,9 +125,9 @@ pub fn plan_source_loaded_indirect_suffix(
     if suffix.is_empty()
         || suffix.len() > MAX_SUFFIX_CELLS
         || suffix.last() != Some(&b'v')
-        || !suffix[..suffix.len() - 1]
-            .iter()
-            .all(|opcode| matches!(opcode, b'o' | b'/' | b'<'))
+        || !suffix[..suffix.len() - 1].iter().all(|opcode| {
+            matches!(opcode, b'o' | b'/' | b'<' | b'j' | b'p' | b'*')
+        })
     {
         return Err(InvalidSuffix);
     }
@@ -161,16 +164,25 @@ pub fn plan_source_loaded_indirect_suffix(
         if !pointer_opcode.is_some_and(|op| LOADABLE_OPCODES.contains(&op)) {
             continue;
         }
-        if (landing..landing + suffix.len())
-            .any(|position| protected.contains(&position))
-        {
-            continue;
-        }
         let mut patched = source.to_vec();
         patched[pointer_cell] = pointer_word;
         let mut encodable = true;
+        let mut missing_encoding = false;
         for (offset, opcode) in suffix.iter().copied().enumerate() {
             let position = landing + offset;
+            let is_protected = protected.contains(&position);
+            if is_protected
+                && decode_profile_instruction(
+                    u32::from(source[position]),
+                    u32::try_from(position).unwrap_or(u32::MAX),
+                ) != Some(opcode)
+            {
+                encodable = false;
+                break;
+            }
+            if is_protected {
+                continue;
+            }
             let Some(graphical) = (33..=126u8).find(|byte| {
                 decode_profile_instruction(
                     u32::from(*byte),
@@ -178,12 +190,16 @@ pub fn plan_source_loaded_indirect_suffix(
                 ) == Some(opcode)
             }) else {
                 encodable = false;
+                missing_encoding = true;
                 break;
             };
             patched[position] = graphical;
         }
         if !encodable {
-            return Err(MissingGraphicalEncoding);
+            if missing_encoding {
+                return Err(MissingGraphicalEncoding);
+            }
+            continue;
         }
         if admit_c23_probe_graphical_source(&patched).is_err() {
             return Err(InvalidSource);
