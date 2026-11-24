@@ -634,17 +634,29 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
         let Some(loop_body) = by_id.get(&declaration.parent) else {
             continue;
         };
-        let Some(owner) = by_id.get(&loop_body.parent) else {
-            continue;
-        };
+        // A signed local can be declared in an if/switch or another brace
+        // nested inside the loop rather than in its immediate body. Follow
+        // actual Clang parents to the enclosing control/function boundary;
+        // a direct-parent check would miss this observable EOF output.
+        let mut ancestor_id = loop_body.parent;
+        let enclosed_by_control = (0..MAX_NESTED_LOCAL_DEPTH).any(|_| {
+            let Some(ancestor) = by_id.get(&ancestor_id) else {
+                return false;
+            };
+            ancestor_id = ancestor.parent;
+            matches!(
+                ancestor.kind.as_str(),
+                "for-statement"
+                    | "while-statement"
+                    | "do-statement"
+                    | "function-declaration"
+            )
+        });
         if local.kind == "variable-declaration"
             && local.type_name.as_deref() == Some("i32")
             && declaration.kind == "declaration-statement"
             && loop_body.kind == "compound-statement"
-            && (matches!(
-                owner.kind.as_str(),
-                "for-statement" | "while-statement" | "do-statement"
-            ) || owner.kind == "function-declaration")
+            && enclosed_by_control
             && let Some(reference) = local.reference.as_deref()
         {
             let _ = signed_inputs.insert((loop_body.id, reference));

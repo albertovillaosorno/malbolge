@@ -190,3 +190,32 @@ fn signed_local_output_in_each_loop_kind_refuses_byte_only_projection() {
         &serde_json::to_vec(&altered).unwrap()
     ));
 }
+
+#[test]
+fn signed_loop_local_nested_in_an_inner_scope_stays_eof_sensitive() {
+    const LOOP_JSON: &[u8] = include_bytes!(
+        "c-frontend/golden/unsigned_conditional_live_input.json"
+    );
+    // Move the real i32 initializer and its three guarded outputs into an
+    // extra nested scope. No synthetic tree is admissible as source C;
+    // this test only proves the conservative parent-walk refusal.
+    for inner_kind in ["if-statement", "switch-statement", "compound-statement"]
+    {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(LOOP_JSON).unwrap();
+        let nodes = value["nodes"].as_array_mut().unwrap();
+        let body_index =
+            nodes.iter().position(|node| node["id"] == 13).unwrap();
+        let mut wrapper = nodes[body_index].clone();
+        wrapper["kind"] = serde_json::json!(inner_kind);
+        wrapper["id"] = serde_json::json!(41);
+        wrapper["parent"] = serde_json::json!(3);
+        nodes[body_index]["parent"] = serde_json::json!(41);
+        nodes.insert(body_index, wrapper);
+        let encoded = serde_json::to_vec(&value).unwrap();
+        assert!(
+            echo::is_unchecked_counter_loop_signed_eof_output(&encoded),
+            "signed loop local inside {inner_kind} evaded EOF refusal"
+        );
+    }
+}
