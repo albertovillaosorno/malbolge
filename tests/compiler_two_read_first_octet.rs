@@ -35,8 +35,9 @@ use malbolge::{
 
 #[test]
 #[expect(
+    clippy::cognitive_complexity,
     clippy::expect_used,
-    reason = "frozen physical guest and exhaustive VM outcomes must be valid"
+    reason = "exhaustive physical EOF path checks all independent VM effects"
 )]
 fn every_first_byte_survives_true_second_eof_branch() {
     let profile = current_profile();
@@ -75,12 +76,12 @@ fn every_first_byte_survives_true_second_eof_branch() {
             [(53, TraceInput::Byte(first)), (63, TraceInput::EndOfInput),],
             "first byte {first}",
         );
-        assert_eq!(outputs, [(54, first), (128, 30)], "first byte {first}",);
+        assert_eq!(outputs, [(54, first), (128, 30)], "first byte {first}");
         assert_eq!(machine.output(), [first, 30], "first byte {first}");
         assert_eq!(machine.input_consumed(), 1, "first byte {first}");
     }
     assert_eq!(loaded.input_consumed(), 0);
-    assert!(loaded.output().is_empty());
+    assert_eq!(loaded.output(), []);
 }
 
 #[test]
@@ -124,10 +125,10 @@ fn every_first_byte_survives_successful_second_read_branch() {
             [(53, TraceInput::Byte(first)), (63, TraceInput::Byte(0x7c))],
             "first byte {first}",
         );
-        assert_eq!(outputs, [(54, first), (57, 154)], "first byte {first}",);
+        assert_eq!(outputs, [(54, first), (57, 154)], "first byte {first}");
         assert_eq!(machine.output(), [first, 154], "first byte {first}");
         assert_eq!(machine.input_consumed(), 2, "first byte {first}");
     }
     assert_eq!(loaded.input_consumed(), 0);
-    assert!(loaded.output().is_empty());
+    assert_eq!(loaded.output(), []);
 }
