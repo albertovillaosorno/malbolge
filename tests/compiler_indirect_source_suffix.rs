@@ -56,6 +56,9 @@ const FOUR_INPUT_COMPUTED_RETURN_SUFFIX: &[u8] = b"/<oooojpp<*/jojp<i";
 const FOUR_INPUT_CUMULATIVE_SUFFIX: &[u8] = b"/<oooojpp<*/jjopv";
 // The terminal i keeps that folded state and enters previously encrypted code.
 const FOUR_INPUT_CUMULATIVE_RETURN_SUFFIX: &[u8] = b"/<oooojpp<*/jjopi";
+// A repaired two-jump prefix allows the protected tail to end in a v after
+// C133 emits the actual fourth cumulative fold.
+const FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX: &[u8] = b"/<oooojpp<*/jjop<i";
 
 fn graphical(position: u32, opcode: u8) -> Option<u8> {
     (33..=126u8).find(|byte| {
@@ -1806,4 +1809,297 @@ fn fourth_cumulative_state_survives_a_real_indirect_return_to_encrypted_code() {
     assert_eq!(trace[138].before.registers.code_pointer, 82);
     assert_eq!(trace[138].decoded, Some(b'v'));
     assert_eq!(vm.memory_word(106), Ok(scalar_crazy(58, 6)));
+}
+
+// The already executed C59 j encrypts to M59=104. C60 j uses that physical
+// value to reach M105, and C61 j reads the original source M105=57. This
+// counterbalances the changed C134 source word: its v encoding (41) sends
+// the earlier C58 j through M42 instead of the previous M134=58 route.
+// The later C83 j then follows M79=94 and rejoins the original C84 path.
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "frozen source-admitted fourth-fold continuation geometry"
+)]
+fn fourth_cumulative_output_plan() -> IndirectSourceSuffixPlan {
+    let mut plan = fourth_cumulative_plan(FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX);
+    for (at, instruction) in [(60u32, b'j'), (61, b'j'), (134, b'v')] {
+        plan.source[usize::try_from(at).expect("physical source position")] =
+            graphical(at, instruction).expect("graphical encoded instruction");
+    }
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&plan.source),
+        Ok(()),
+        "the complete rerouted source must independently pass the loader"
+    );
+    plan
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::integer_division_remainder_used,
+    reason = "exhaustive finite fourth byte/EOF sweep and independent oracle"
+)]
+fn fourth_cumulative_fold_emits_the_real_fifth_byte_for_every_input_class() {
+    let plan = fourth_cumulative_output_plan();
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("strict source-loaded guest");
+    let verify = |input: Vec<u8>| {
+        let raw = |at| {
+            input
+                .get(at)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        };
+        let (fold, prefix) =
+            fourth_fold_expected(raw(0), raw(1), raw(2), raw(3));
+        let output = [
+            prefix[0],
+            prefix[1],
+            prefix[2],
+            prefix[3],
+            u8::try_from(fold % 256).expect("low cumulative fold"),
+        ];
+        let mut vm = pristine
+            .fork_with_input(input.clone())
+            .expect("isolated stdin");
+        assert_eq!(
+            vm.run(130),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 113,
+            }),
+            "stdin={input:?}"
+        );
+        assert_eq!(vm.input_consumed(), input.len().min(4));
+        assert_eq!(vm.memory_word(106), Ok(fold), "stdin={input:?}");
+        assert_eq!(vm.output(), output, "stdin={input:?}");
+    };
+    for fourth in 0..=255u8 {
+        verify(vec![3, 4, 5, fourth]);
+    }
+    for input in [vec![], vec![0], vec![255], vec![3, 4], vec![3, 4, 5], vec![
+        3, 4, 5, 6, 7,
+    ]] {
+        verify(input);
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    reason = "all 768 prior-byte marginal classes have real guest output"
+)]
+fn fourth_cumulative_fifth_output_preserves_all_prior_input_dependencies() {
+    let plan = fourth_cumulative_output_plan();
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("strict graphical source");
+    for vary in 0..3usize {
+        for byte in 0..=255u8 {
+            let mut input = vec![3, 4, 5, 0x80];
+            input[vary] = byte;
+            let (fold, prefix) = fourth_fold_expected(
+                u32::from(input[0]),
+                u32::from(input[1]),
+                u32::from(input[2]),
+                u32::from(input[3]),
+            );
+            let mut vm = pristine
+                .fork_with_input(input.clone())
+                .expect("isolated guest");
+            assert_eq!(
+                vm.run(130),
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 113,
+                }),
+                "vary={vary} byte={byte}"
+            );
+            assert_eq!(vm.input_consumed(), 4);
+            assert_eq!(vm.memory_word(106), Ok(fold));
+            assert_eq!(
+                vm.output(),
+                [
+                    prefix[0],
+                    prefix[1],
+                    prefix[2],
+                    prefix[3],
+                    u8::try_from(fold % 256).expect("low fold")
+                ],
+                "vary={vary} byte={byte}"
+            );
+        }
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "physical trace of two-jump repair and reached cumulative output"
+)]
+fn fourth_cumulative_output_rejoins_the_source_route_and_halts_at_c134() {
+    use malbolge::encrypt_profile_cell;
+    let plan = fourth_cumulative_output_plan();
+    let pristine = saved_fold_source();
+    for at in (0..135usize).filter(|at| {
+        ![
+            60, 61, 110, 111, 117, 118, 119, 120, 121, 122, 123, 125, 126, 128,
+            129, 130, 131, 132, 133, 134,
+        ]
+        .contains(at)
+    }) {
+        assert_eq!(plan.source[at], pristine[at], "C{at} modified");
+    }
+    assert_eq!(plan.source.len(), 135);
+    assert_eq!(plan.source[134], 41);
+    assert_eq!(encrypt_profile_cell(u32::from(plan.source[59])), Some(104));
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), &plan.source, vec![
+            3, 4, 5, 6,
+        ])
+        .expect("final source-loaded guest");
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(130, &mut |step| trace.push(*step)),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 113,
+        })
+    );
+    for (index, code, address, value, next_data) in [
+        (58usize, 58u32, 134u32, 41u32, 42u32),
+        (59, 59, 42, 58, 59),
+        (60, 60, 59, 104, 105),
+        (61, 61, 105, 57, 58),
+        (83, 83, 79, 94, 95),
+        (107, 129, 110, 117, 118),
+        (108, 130, 118, 104, 105),
+    ] {
+        let step = &trace[index];
+        assert_eq!(step.before.registers.code_pointer, code);
+        assert_eq!(step.decoded, Some(b'j'));
+        assert_eq!(
+            step.memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((address, value))
+        );
+        assert_eq!(step.after.registers.data_pointer, next_data);
+    }
+    assert_eq!(trace[110].before.registers.code_pointer, 132);
+    assert_eq!(trace[110].decoded, Some(b'p'));
+    assert_eq!(
+        trace[110].memory_delta.data.map(|write| (
+            write.address,
+            write.before,
+            write.after
+        )),
+        Some((106, 58, scalar_crazy(58, 6)))
+    );
+    assert_eq!(trace[111].before.registers.code_pointer, 133);
+    assert_eq!(trace[111].decoded, Some(b'<'));
+    assert_eq!(trace[111].output, Some(83));
+    assert_eq!(trace[112].before.registers.code_pointer, 134);
+    assert_eq!(trace[112].decoded, Some(b'v'));
+    assert_eq!(trace.iter().filter(|step| step.input.is_some()).count(), 4);
+    assert_eq!(trace.iter().filter(|step| step.output.is_some()).count(), 5);
+    assert_eq!(vm.output(), [3, 49, 5, 58, 83]);
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "one-byte source mutations must not counterfeit computed output"
+)]
+fn fourth_cumulative_output_refuses_removed_reentry_and_fold_operations() {
+    let plan = fourth_cumulative_output_plan();
+    let expected = scalar_crazy(58, 6);
+    for changed in [60usize, 61, 110, 128, 132, 133, 134] {
+        let mut source = plan.source.clone();
+        source[changed] = if changed == 110 {
+            52
+        } else if changed == 134 {
+            graphical(134, b'i').expect("original source indirect")
+        } else {
+            graphical(u32::try_from(changed).expect("code cell"), b'o')
+                .expect("source-loadable no-op")
+        };
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), &source, vec![
+                3, 4, 5, 6,
+            ])
+            .expect("the mutated code remains source-loadable");
+        let outcome = vm.run(170);
+        assert!(
+            outcome
+                != Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 113,
+                })
+                || vm.memory_word(106) != Ok(expected)
+                || vm.input_consumed() != 4
+                || vm.output() != [3, 49, 5, 58, 83],
+            "C{changed} mutation forged a live cumulative fifth output"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    reason = "frozen seeded cross-input guest matrix with exact trit oracle"
+)]
+fn fourth_cumulative_fifth_output_survives_seeded_cross_input_streams() {
+    // Freeze this 128-stream LCG before testing. Marginal byte sweeps alone
+    // do not exercise simultaneous variations in all four saved words.
+    let plan = fourth_cumulative_output_plan();
+    let pristine =
+        ProfileMachine::from_source(current_profile(), &plan.source, vec![])
+            .expect("strict source");
+    let mut seed = 0x4f07_ba23u32;
+    for case in 0usize..128 {
+        let mut input = Vec::new();
+        for _ in 0u8..4 {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            input.push(u8::try_from(seed >> 24u32).expect("upper byte"));
+        }
+        let (fold, prefix) = fourth_fold_expected(
+            u32::from(input[0]),
+            u32::from(input[1]),
+            u32::from(input[2]),
+            u32::from(input[3]),
+        );
+        let mut vm = pristine.fork_with_input(input.clone()).expect("fork");
+        assert_eq!(
+            vm.run(130),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 113,
+            }),
+            "case={case} input={input:?}",
+        );
+        assert_eq!(vm.input_consumed(), 4);
+        assert_eq!(vm.memory_word(106), Ok(fold));
+        assert_eq!(
+            vm.output(),
+            [
+                prefix[0],
+                prefix[1],
+                prefix[2],
+                prefix[3],
+                u8::try_from(fold % 256).expect("fourfold low byte"),
+            ],
+            "case={case} input={input:?}",
+        );
+    }
 }

@@ -41,6 +41,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The same source-admitted four-input M106 `crazy` fold now **emits its own
+fifth computed byte**: an early C60/C61 encrypted-code reentry repair
+permits C133 `<` and a true C134 `v` halt in 113 normative N15 steps.
+Input `03 04 05 06` emits `03 31 05 3a 53`, with M106=7,174,483.
+The independent oracle and actual VM agree for 257 fourth-input/EOF
+classes, 768 earlier-byte marginals, six truncated/extra controls and
+128 frozen-seed cross-input vectors; exact control/data traces and seven
+source-valid mutations check the repaired physical route. The unchanged
+complete C23 EOF checksum again refuses its unlinked CFG with **no guest
+publication**. This is ternary guest accumulation and I/O, not source-C
+arithmetic, signed EOF, conditional control or a loop. P2 stays open.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 A distinct 135-cell N15 guest now incorporates the fourth raw input into
 the **existing M106 cumulative state**: C129/C130 `j` follow real
 source M110=117 and encrypted C118=104, C132 `p` folds the previous

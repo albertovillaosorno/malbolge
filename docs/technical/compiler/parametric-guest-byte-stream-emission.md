@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Fourth cumulative guest fold emits its own fifth byte (2026-11-24)
+
+The previously unobservable fourth cumulative M106 update now has a
+source-valid output and true halt. A 135-cell guest adds C60/C61 `j`
+rerouting through encrypted C59 and existing M105, compensating for a
+source-valid C134 `v` replacement that otherwise breaks an earlier C58
+pointer. The original three-input fold survives, and C132 `p` folds a
+real fourth input into M106. Reached C133 `<` outputs its low byte,
+followed by C134 `v` at **113** normative N15 steps. Input `03 04 05 06`
+emits `03 31 05 3a 53`, storing M106=7,174,483.
+
+The independent trit oracle, all 257 fourth byte/EOF classes, all 768
+prior-byte marginals, six length/EOF controls, 128 frozen-seed cross-input
+streams, exact guest trace and seven altered-source negatives authenticate
+this **finite** physical computation and output. The original C23 checksum
+was attempted again and still refuses its unlinked seven-block CFG without
+publishing a guest target. No C23 signed EOF, arithmetic, dynamic source
+branch, phi or guest loop has been linked. Evidence:
+`docs/technical/compiler/source-indirect-guest-suffix.md` and
+`tests/compiler_indirect_source_suffix.rs`.
+
 ### Fourth guest input now accumulates into M106 (2026-11-24)
 
 Another strict 135-cell N15 source uses `/<oooojpp<*/jjopv` and a

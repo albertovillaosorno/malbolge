@@ -219,6 +219,50 @@ not C23 XOR/add, signed `getchar()`/EOF dispatch, a dynamic branch, a
 loop or a source-compiled checksum. The full C23 checksum still refuses
 target publication; see `tests/compiler_indirect_source_suffix.rs`.
 
+## Fourth cumulative fold reaches its own fifth output (2026-11-24)
+
+A revised source-admitted **135-cell** guest now emits the actual low byte
+of the fourth-input update to **the same cumulative M106**. The unchanged
+C128 `/`, C129/C130 `j`, C131 `o` and C132 `p` sequence reads the fourth
+raw N15 input and combines it with the previous three-input M106 state.
+C133 is now `<`, emitting the new accumulator, and C134 is a true `v`
+halt. The five bytes for input `03 04 05 06` are `03 31 05 3a 53`;
+M106 becomes **7,174,483** and the VM halts in **113** steps.
+
+The first direct attempt, retaining protected C134 `i`, did emit `53` but
+failed at `InvalidEncryptionTarget`: C127 `*` had already rotated M108=103
+to 4,783,003, which the terminal `i` read as an unusable code target.
+Simply changing C134 to its source-valid `v` encoding, **41**, redirected
+the earlier C58 `j` through M42=58 rather than the original M134=58,
+losing the later input effects. A two-cell, source-valid repair changes
+C60/C61 from `o` to `j`: the reached C60 reads the **encrypted C59=104**
+and relocates D to M105; C61 reads the original M105=57 and continues
+with D=58. C82's second input is then reached with D=78 rather than 98,
+but C83 reads previously encrypted M79=94, rejoins the original chain at
+C84 with D=95, and retains the same M106 fold. The source is re-admitted
+after **all** three changes, not trusted solely on the suffix planner's
+initial protected-word admission.
+
+A separate fifteen-trit digit-table oracle now checks the fifth output:
+`crazy(crazy(crazy(crazy(121, a), b), crazy(57, c)), d) % 256`.
+The normative N15 VM checks all 257 fourth-byte/true-EOF classes, each
+of the other three 256-byte marginals (768 cases), six empty/truncated/
+extra-input controls, and 128 cross-input streams from a frozen
+`0x4f07ba23` LCG seed. Every case consumes at most four real inputs,
+retains the exact M106 word, emits its five expected bytes and ends at
+the same real C134 `v` within a **130-step** per-run ceiling. A physical
+trace authenticates both early redirects, the later encrypted pointer,
+the cumulative write and fifth output. Seven source-valid opcode/operand
+mutations fail to preserve the entire five-output, state and 113-step
+witness. Tests: `tests/compiler_indirect_source_suffix.rs`.
+
+This closes the **specific fourth-input observable cumulative-fold gap**
+without claiming a generic source-C linker. Raw profile EOF is not a
+signed C23 `getchar()` EOF check; the fold is ternary `crazy`, not C23
+checksum XOR/add. No source-language conditional, loop, phi transfer or
+published seven-block C23 checksum follows from these finite tests.
+P2 remains open.
+
 ## Terminal indirect return through already encrypted code (2026-11-24)
 
 The source-loaded 135-cell three-input fold now has a *nonlinear* terminal
@@ -282,9 +326,9 @@ The finite census and real guest checks are in
 
 ## What is still missing
 
-This is successful **physical continuation placement** of a bounded
-source-loaded computation, not source-C input-loop lowering. `crazy` of
-three raw N15 input words is not C23 unsigned XOR/add or signed `getchar()`
+This proves a bounded **physical continuation and cumulative output**
+inside a source-loaded guest, not source-C input-loop lowering. `crazy` of
+four raw N15 input words is not C23 unsigned XOR/add or signed `getchar()`
 normalization. The extended suffix is a linear guest data/I/O segment,
 not a phi pad, loop backedge, variable-layout branch or final checksum.
 Its source-level operation and data dependencies remain unlinked to the
