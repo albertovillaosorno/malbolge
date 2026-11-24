@@ -151,8 +151,12 @@ pub use indirect_source_suffix::{
     IndirectSourceSuffixError, IndirectSourceSuffixGuestError,
     IndirectSourceSuffixGuestProbe, IndirectSourceSuffixGuestProof,
     IndirectSourceSuffixPlan, MAX_INDIRECT_SUFFIX_PROOF_INPUT,
-    MAX_INDIRECT_SUFFIX_PROOF_STEPS, plan_source_loaded_indirect_suffix,
+    MAX_INDIRECT_SUFFIX_PROOF_STEPS, SourceWrittenIndirectGuestError,
+    SourceWrittenIndirectGuestProbe, SourceWrittenIndirectGuestProof,
+    SourceWrittenIndirectGuestResult, SourceWrittenIndirectGuestVerifier,
+    plan_source_loaded_indirect_suffix,
     verify_source_loaded_indirect_suffix_guest,
+    verify_source_written_indirect_guest,
 };
 pub use live_input_encoded_store::{
     LiveInputEncodedStoreError, LiveInputEncodedStoreSource,

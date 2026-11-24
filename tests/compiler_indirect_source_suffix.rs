@@ -2591,3 +2591,219 @@ fn physical_indirect_proof_rejects_planned_but_unread_pointer_cell() {
         Err(IndirectSourceSuffixGuestError::InvalidIndirectTransfer)
     );
 }
+
+/// An actual EOF classifier writes a full-width indirect target to expanded
+/// guest memory. Its C114 i then branches on the *input-derived* word, not a
+/// positionally placed constant pointer borrowed from a graphical source.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "finite 257-class source-loaded EOF branch and trace receipt"
+)]
+fn source_written_indirect_branch_proves_guest_input_pointer_for_all_classes() {
+    let profile = current_profile();
+    let source = layout::build_signed_eof_branch_source(profile)
+        .expect("original 132-cell strict graphical signed-EOF branch");
+    assert_eq!(source.len(), 132);
+    let verifier =
+        layout::SourceWrittenIndirectGuestVerifier::new(profile, &source)
+            .expect("one authenticated source and expanded N15 memory image");
+    assert_eq!(verifier.source(), source);
+    let inputs = once(vec![])
+        .chain((0..=255u8).map(|byte| vec![byte]))
+        .chain([vec![3, 4, 5], vec![255, 0, 0]]);
+    for input in inputs {
+        let eof = input.is_empty();
+        let expected_landing = if eof {
+            126
+        } else {
+            45
+        };
+        let proof = verifier
+            .verify(&input, 114, 143, &[45, 126], 180)
+            .expect("reached N15 computed EOF/byte branch with genuine input");
+        assert_eq!(proof.source(), source);
+        assert_eq!(proof.input(), input);
+        assert_eq!(
+            proof.steps(),
+            if eof {
+                119
+            } else {
+                175
+            }
+        );
+        assert_eq!(proof.transfer_step(), 114);
+        assert_eq!(proof.pointer_write_step(), 82);
+        assert_eq!(proof.pointer_word(), expected_landing - 1);
+        assert_eq!(proof.landing_address(), expected_landing);
+        assert_eq!(proof.input_consumed(), usize::from(!eof));
+        assert_eq!(
+            proof.output(),
+            if eof {
+                &[30][..]
+            } else {
+                &[154][..]
+            }
+        );
+        assert_eq!(proof.trace().len(), proof.steps());
+        let write = proof.trace()[proof.pointer_write_step()];
+        assert_eq!(write.decoded, Some(b'p'));
+        assert_eq!(write.before.registers.data_pointer, 143);
+        assert_eq!(write.after.registers.accumulator, expected_landing - 1);
+        assert_eq!(
+            write
+                .memory_delta
+                .data
+                .map(|delta| (delta.address, delta.after)),
+            (!eof).then_some((143, expected_landing - 1)),
+            "idempotent EOF p still writes even with no changed-value delta"
+        );
+        let transfer = proof.trace()[proof.transfer_step()];
+        assert_eq!(transfer.decoded, Some(b'i'));
+        assert_eq!(
+            transfer
+                .memory_reads
+                .data
+                .map(|word| (word.address, word.value)),
+            Some((143, expected_landing - 1))
+        );
+        assert_eq!(transfer.after.registers.code_pointer, expected_landing);
+        assert_eq!(
+            proof
+                .trace()
+                .last()
+                .map(
+                    |last| (last.before.registers.code_pointer, last.decoded,)
+                ),
+            Some(if eof {
+                (129, Some(b'v'))
+            } else {
+                (104, Some(b'v'))
+            })
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    reason = "source-authenticated dynamic branch refusal boundaries"
+)]
+fn source_written_indirect_branch_refuses_unwritten_and_wrong_targets() {
+    use layout::{
+        SourceWrittenIndirectGuestError as Refusal,
+        SourceWrittenIndirectGuestProbe, verify_source_written_indirect_guest,
+    };
+    let profile = current_profile();
+    let source = layout::build_signed_eof_branch_source(profile)
+        .expect("strict signed-EOF physical source");
+    let valid = SourceWrittenIndirectGuestProbe {
+        source: &source,
+        input: &[3],
+        indirect_code_cell: 114,
+        pointer_cell: 143,
+        allowed_landings: &[45, 126],
+        step_budget: 180,
+    };
+    assert_eq!(
+        verify_source_written_indirect_guest(
+            profile,
+            SourceWrittenIndirectGuestProbe {
+                pointer_cell: 142,
+                ..valid
+            }
+        ),
+        Err(Refusal::InvalidIndirectTransfer)
+    );
+    assert_eq!(
+        verify_source_written_indirect_guest(
+            profile,
+            SourceWrittenIndirectGuestProbe {
+                indirect_code_cell: 94,
+                ..valid
+            }
+        ),
+        Err(Refusal::MissingIndirectTransfer)
+    );
+    assert_eq!(
+        verify_source_written_indirect_guest(
+            profile,
+            SourceWrittenIndirectGuestProbe {
+                allowed_landings: &[126],
+                ..valid
+            }
+        ),
+        Err(Refusal::UnexpectedLanding)
+    );
+    assert_eq!(
+        verify_source_written_indirect_guest(
+            profile,
+            SourceWrittenIndirectGuestProbe {
+                input: &[],
+                allowed_landings: &[45],
+                ..valid
+            }
+        ),
+        Err(Refusal::UnexpectedLanding)
+    );
+    assert_eq!(
+        verify_source_written_indirect_guest(
+            profile,
+            SourceWrittenIndirectGuestProbe {
+                step_budget: 114,
+                ..valid
+            }
+        ),
+        Err(Refusal::InvalidGuestExecution)
+    );
+    assert_eq!(
+        verify_source_written_indirect_guest(historical_profile(), valid),
+        Err(Refusal::InvalidSource)
+    );
+    assert_eq!(
+        verify_source_written_indirect_guest(
+            profile,
+            SourceWrittenIndirectGuestProbe {
+                allowed_landings: &[],
+                ..valid
+            }
+        ),
+        Err(Refusal::InvalidBound)
+    );
+    let verifier =
+        layout::SourceWrittenIndirectGuestVerifier::new(profile, &source)
+            .expect("source validity checked once");
+    assert_eq!(
+        verifier.verify(
+            &vec![0; layout::MAX_INDIRECT_SUFFIX_PROOF_INPUT + 1],
+            114,
+            143,
+            &[45, 126],
+            180
+        ),
+        Err(Refusal::InvalidBound),
+    );
+    assert_eq!(
+        verifier.verify(&[3], 114, 143, &[45, 126], 0),
+        Err(Refusal::InvalidBound),
+    );
+    // A real source-resident `i` and a successful guest halt cannot be
+    // confused with a previously guest-*written* pointer cell.
+    let original = saved_fold_source();
+    let plan = open_suffix(&original, b"/<v");
+    assert_eq!(
+        verify_source_written_indirect_guest(
+            profile,
+            SourceWrittenIndirectGuestProbe {
+                source: &plan.source,
+                input: &[3, 4, 5],
+                indirect_code_cell: 94,
+                pointer_cell: 111,
+                allowed_landings: &[117],
+                step_budget: 110,
+            }
+        ),
+        Err(Refusal::MissingGuestPointerWrite)
+    );
+}

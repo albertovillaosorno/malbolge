@@ -41,6 +41,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The bounded physical verifier now authenticates a **guest-written**
+indirect input/EOF pointer (not merely a graphical source pointer): real
+C82 `p` writes M143 and C114 `i` branches to C45 or C126, with 257
+byte/EOF classes and two trailing-input streams checked through actual
+N15 halts. A reusable pristine source image avoids repeating the loader
+expansion; every run forks fresh memory. Idempotent `p` writes are counted
+from real decoded transitions even without a changed-value delta. Opaque
+proofs and negative controls reject constant source pointers, false sites,
+wrong destinations, unsupported profiles and inadequate bounds. No C23
+source-typed branch, checksum arithmetic, phi, backedge or whole checksum
+has been linked; the full original C23 program still fails closed.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 The same source-admitted four-input M106 `crazy` fold now **emits its own
 fifth computed byte**: an early C60/C61 encrypted-code reentry repair
 permits C133 `<` and a true C134 `v` halt in 113 normative N15 steps.

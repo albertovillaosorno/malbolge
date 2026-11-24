@@ -505,3 +505,396 @@ pub fn verify_source_loaded_indirect_suffix_guest(
         trace,
     })
 }
+
+/// One untrusted, source-loaded, *guest-written* indirect-control witness.
+///
+/// Unlike a source-resident suffix pointer, `pointer_cell` may be in
+/// loader-expanded memory. The pointer must be derived through real guest
+/// data writes after an input instruction, not a constant placed by the host.
+/// The allowed destinations are finite physical sites, not source-C branches.
+#[derive(Clone, Copy, Debug)]
+pub struct SourceWrittenIndirectGuestProbe<'source> {
+    /// Complete graphical source used by the normative loader.
+    pub source: &'source [u8],
+    /// Complete finite input stream; EOF is represented by exhaustion.
+    pub input: &'source [u8],
+    /// Exactly one reached `i` at this code site must select the destination.
+    pub indirect_code_cell: u32,
+    /// Guest-memory address that the reached `i` must read.
+    pub pointer_cell: u32,
+    /// Explicit finite set of permitted actual successor code addresses.
+    pub allowed_landings: &'source [u32],
+    /// Positive finite bound on the normative run, including the real halt.
+    pub step_budget: usize,
+}
+
+/// Why a guest-written, input-derived branch cannot be authenticated.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceWrittenIndirectGuestError {
+    /// Source, input, target geometry or finite budgets are invalid.
+    InvalidBound,
+    /// No graphical, loader-admitted N15 source was supplied.
+    InvalidSource,
+    /// The actual VM failed, stopped prematurely or did not genuinely halt.
+    InvalidGuestExecution,
+    /// No reached indirect instruction exists at the nominated code site.
+    MissingIndirectTransfer,
+    /// The nominated code site executed `i` more than once.
+    RepeatedIndirectTransfer,
+    /// The reached instruction read a different data cell or jumped wrongly.
+    InvalidIndirectTransfer,
+    /// No earlier guest `p` or `*` wrote the live pointer cell.
+    MissingGuestPointerWrite,
+    /// The pointer lacks a conservative data path from an actual input read.
+    MissingInputProvenance,
+    /// The guest-computed destination is not in the declared finite set.
+    UnexpectedLanding,
+}
+
+/// Opaque finite normative proof of a guest-written indirect control transfer.
+///
+/// The source and stdin remain attached to the proof so it cannot be used as
+/// an unqualified success token for another binary or input. Input provenance
+/// is a necessary physical dataflow condition, **not** source-C branch truth.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceWrittenIndirectGuestProof {
+    source: Vec<u8>,
+    input: Vec<u8>,
+    input_consumed: usize,
+    output: Vec<u8>,
+    landing_address: u32,
+    pointer_word: u32,
+    pointer_write_step: usize,
+    transfer_step: usize,
+    steps: usize,
+    trace: Vec<ProfileStepTrace>,
+}
+
+impl SourceWrittenIndirectGuestProof {
+    /// Exact original graphical source authenticated by the normative loader.
+    #[must_use]
+    pub fn source(&self) -> &[u8] {
+        &self.source
+    }
+
+    /// Exact finite input authenticated by the normative run.
+    #[must_use]
+    pub fn input(&self) -> &[u8] {
+        &self.input
+    }
+
+    /// Actual count of bytes consumed by reached input instructions.
+    #[must_use]
+    pub const fn input_consumed(&self) -> usize {
+        self.input_consumed
+    }
+
+    /// Actual guest output, not a simulated source-C result.
+    #[must_use]
+    pub fn output(&self) -> &[u8] {
+        &self.output
+    }
+
+    /// Actual first code address after the source-nominated `i`.
+    #[must_use]
+    pub const fn landing_address(&self) -> u32 {
+        self.landing_address
+    }
+
+    /// Full-width word actually read by the reached indirect instruction.
+    #[must_use]
+    pub const fn pointer_word(&self) -> u32 {
+        self.pointer_word
+    }
+
+    /// Index of the latest reached p/* write, including idempotent writes.
+    #[must_use]
+    pub const fn pointer_write_step(&self) -> usize {
+        self.pointer_write_step
+    }
+
+    /// Index of the single authenticated indirect instruction.
+    #[must_use]
+    pub const fn transfer_step(&self) -> usize {
+        self.transfer_step
+    }
+
+    /// Complete normative transition count, including real `v` halt.
+    #[must_use]
+    pub const fn steps(&self) -> usize {
+        self.steps
+    }
+
+    /// Exact reached physical code, data, encryption, register and I/O events.
+    #[must_use]
+    pub fn trace(&self) -> &[ProfileStepTrace] {
+        &self.trace
+    }
+}
+
+/// One finite authenticated guest-written indirect execution result.
+///
+/// A concrete alias keeps the public verifier signature within the pinned
+/// 80-column Rust formatter profile without hiding its explicit error type.
+pub type SourceWrittenIndirectGuestResult =
+    Result<SourceWrittenIndirectGuestProof, SourceWrittenIndirectGuestError>;
+
+/// Reusable pristine N15 source for a finite guest-written branch corpus.
+///
+/// Construction authenticates the graphical source *once*, including its
+/// full loader expansion. Every `verify` call forks fresh, isolated VM state
+/// before input replay; no earlier run can lend its memory or I/O to another.
+#[derive(Debug)]
+pub struct SourceWrittenIndirectGuestVerifier {
+    source: Vec<u8>,
+    pristine: ProfileMachine,
+}
+
+impl SourceWrittenIndirectGuestVerifier {
+    /// Load and authenticate one current-profile graphical source.
+    ///
+    /// # Errors
+    ///
+    /// Refuses noncanonical profiles, malformed source or failed VM loading.
+    pub fn new(
+        profile: &ProfileDescriptor,
+        source: &[u8],
+    ) -> Result<Self, SourceWrittenIndirectGuestError> {
+        use SourceWrittenIndirectGuestError::{
+            InvalidGuestExecution, InvalidSource,
+        };
+        if profile != current_profile()
+            || !(2..=MAX_SOURCE_CELLS).contains(&source.len())
+            || admit_c23_probe_graphical_source(source).is_err()
+        {
+            return Err(InvalidSource);
+        }
+        let pristine =
+            ProfileMachine::from_source(current_profile(), source, Vec::new())
+                .map_err(|_error| InvalidGuestExecution)?;
+        Ok(Self {
+            source: source.to_vec(),
+            pristine,
+        })
+    }
+
+    /// Original admitted graphical source shared by all isolated guest runs.
+    #[must_use]
+    pub fn source(&self) -> &[u8] {
+        &self.source
+    }
+
+    /// Authenticate one input stream from a fresh copy of this source.
+    ///
+    /// # Errors
+    ///
+    /// Refuses invalid budgets, failed guest execution, missing input-derived
+    /// pointer writes, and wrong physical indirect successors.
+    pub fn verify(
+        &self,
+        input: &[u8],
+        indirect_code_cell: u32,
+        pointer_cell: u32,
+        allowed_landings: &[u32],
+        step_budget: usize,
+    ) -> SourceWrittenIndirectGuestResult {
+        if input.len() > MAX_INDIRECT_SUFFIX_PROOF_INPUT
+            || step_budget == 0
+            || step_budget > MAX_INDIRECT_SUFFIX_PROOF_STEPS
+            || usize::try_from(indirect_code_cell)
+                .map_or(true, |site| site >= self.source.len())
+            || pointer_cell >= current_profile().memory_words()
+            || allowed_landings.is_empty()
+            || allowed_landings.len() > 8
+            || allowed_landings
+                .iter()
+                .any(|site| *site >= current_profile().memory_words())
+        {
+            return Err(SourceWrittenIndirectGuestError::InvalidBound);
+        }
+        let vm = self.pristine.fork_with_input(input.to_vec()).map_err(
+            |_error| SourceWrittenIndirectGuestError::InvalidGuestExecution,
+        )?;
+        verify_source_written_indirect_with_machine(
+            current_profile(),
+            SourceWrittenIndirectGuestProbe {
+                source: &self.source,
+                input,
+                indirect_code_cell,
+                pointer_cell,
+                allowed_landings,
+                step_budget,
+            },
+            vm,
+        )
+    }
+}
+
+/// Authenticate a real input-dependent, guest-written N15 indirect pointer.
+///
+/// Source admission and a completed VM halt are checked independently of
+/// caller-proposed destinations. At the reached `i`, the full-width operand
+/// must come from a prior guest data write with a conservative path back to
+/// an executed `/`. All earlier `p`/`*` data writes are tracked by address;
+/// an unrelated, numerically equal constant pointer is not sufficient.
+/// Exact source-C condition and all-input branch parity remain separate.
+///
+/// # Errors
+///
+/// Rejects invalid geometry, nonhalt, absent/repeated transfer, a different
+/// physical operand, a constant pointer, missing input dataflow or any landing
+/// outside the explicit finite destination set.
+pub fn verify_source_written_indirect_guest(
+    profile: &ProfileDescriptor,
+    probe: SourceWrittenIndirectGuestProbe<'_>,
+) -> Result<SourceWrittenIndirectGuestProof, SourceWrittenIndirectGuestError> {
+    SourceWrittenIndirectGuestVerifier::new(profile, probe.source)?.verify(
+        probe.input,
+        probe.indirect_code_cell,
+        probe.pointer_cell,
+        probe.allowed_landings,
+        probe.step_budget,
+    )
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "source-authenticated complete normative trace and guest dataflow"
+)]
+fn verify_source_written_indirect_with_machine(
+    profile: &ProfileDescriptor,
+    probe: SourceWrittenIndirectGuestProbe<'_>,
+    mut vm: ProfileMachine,
+) -> Result<SourceWrittenIndirectGuestProof, SourceWrittenIndirectGuestError> {
+    use SourceWrittenIndirectGuestError::{
+        InvalidBound, InvalidGuestExecution, InvalidIndirectTransfer,
+        InvalidSource, MissingGuestPointerWrite, MissingIndirectTransfer,
+        MissingInputProvenance, RepeatedIndirectTransfer, UnexpectedLanding,
+    };
+    if profile != current_profile() {
+        return Err(InvalidSource);
+    }
+    if !(2..=MAX_SOURCE_CELLS).contains(&probe.source.len())
+        || admit_c23_probe_graphical_source(probe.source).is_err()
+    {
+        return Err(InvalidSource);
+    }
+    if probe.step_budget == 0
+        || probe.step_budget > MAX_INDIRECT_SUFFIX_PROOF_STEPS
+        || probe.input.len() > MAX_INDIRECT_SUFFIX_PROOF_INPUT
+        || usize::try_from(probe.indirect_code_cell)
+            .map_or(true, |at| at >= probe.source.len())
+        || probe.pointer_cell >= profile.memory_words()
+        || probe.allowed_landings.is_empty()
+        || probe.allowed_landings.len() > 8
+        || probe
+            .allowed_landings
+            .iter()
+            .any(|at| *at >= profile.memory_words())
+    {
+        return Err(InvalidBound);
+    }
+    let mut trace = Vec::new();
+    let RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps,
+    } = vm
+        .run_traced(probe.step_budget, &mut |step| trace.push(*step))
+        .map_err(|_error| InvalidGuestExecution)?
+    else {
+        return Err(InvalidGuestExecution);
+    };
+    if trace.len() != steps
+        || trace.last().is_none_or(|last| {
+            last.after.termination != Some(Termination::HaltInstruction)
+                || last.after.input_consumed != vm.input_consumed()
+                || last.after.output_len != vm.output().len()
+        })
+    {
+        return Err(InvalidGuestExecution);
+    }
+    let mut transfers = trace.iter().enumerate().filter(|(_index, step)| {
+        step.before.registers.code_pointer == probe.indirect_code_cell
+            && step.decoded == Some(b'i')
+    });
+    let Some((transfer_step, transfer)) = transfers.next() else {
+        return Err(MissingIndirectTransfer);
+    };
+    if transfers.next().is_some() {
+        return Err(RepeatedIndirectTransfer);
+    }
+    let Some(read) = transfer.memory_reads.data else {
+        return Err(InvalidIndirectTransfer);
+    };
+    if transfer.before.registers.data_pointer != probe.pointer_cell
+        || read.address != probe.pointer_cell
+        || transfer.after.registers.code_pointer
+            != read.value.wrapping_add(1) % profile.memory_words()
+    {
+        return Err(InvalidIndirectTransfer);
+    }
+    if !probe
+        .allowed_landings
+        .contains(&transfer.after.registers.code_pointer)
+    {
+        return Err(UnexpectedLanding);
+    }
+
+    // Boolean influence is intentionally conservative: it proves the guest
+    // pointer has a *physical* path from a reached input, not that C's tested
+    // predicate is numerically correct on any unexamined input. The latest
+    // write must be a reached p/*, not a loader seed or XLAT2 alone.
+    let mut tainted_memory = std::collections::BTreeSet::<u32>::new();
+    let mut accumulator_tainted = false;
+    let mut last_pointer_write = None;
+    for (index, step) in trace.iter().take(transfer_step).enumerate() {
+        let data_tainted =
+            tainted_memory.contains(&step.before.registers.data_pointer);
+        let next_accumulator_tainted = match step.decoded {
+            Some(b'/') => true,
+            Some(b'p') => accumulator_tainted || data_tainted,
+            Some(b'*') => data_tainted,
+            _ => accumulator_tainted,
+        };
+        // The VM reports only *changed-value* memory deltas. An actual
+        // p/* writing the same word still counts as a physical write and
+        // must propagate input lineage. Its genuine data read and updated
+        // accumulator are present even when memory_delta.data is None.
+        if matches!(step.decoded, Some(b'p' | b'*')) {
+            if step.memory_reads.data.is_none_or(|read| {
+                read.address != step.before.registers.data_pointer
+            }) {
+                return Err(InvalidGuestExecution);
+            }
+            let address = step.before.registers.data_pointer;
+            if next_accumulator_tainted {
+                let _ = tainted_memory.insert(address);
+            } else {
+                let _ = tainted_memory.remove(&address);
+            }
+            if address == probe.pointer_cell {
+                last_pointer_write = Some(index);
+            }
+        } else if step.memory_delta.data.is_some() {
+            return Err(InvalidGuestExecution);
+        }
+        accumulator_tainted = next_accumulator_tainted;
+    }
+    let pointer_write_step =
+        last_pointer_write.ok_or(MissingGuestPointerWrite)?;
+    if !tainted_memory.contains(&probe.pointer_cell) {
+        return Err(MissingInputProvenance);
+    }
+    Ok(SourceWrittenIndirectGuestProof {
+        source: probe.source.to_vec(),
+        input: probe.input.to_vec(),
+        input_consumed: vm.input_consumed(),
+        output: vm.output().to_vec(),
+        landing_address: transfer.after.registers.code_pointer,
+        pointer_word: read.value,
+        pointer_write_step,
+        transfer_step,
+        steps,
+        trace,
+    })
+}

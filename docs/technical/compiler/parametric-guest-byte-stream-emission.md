@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Guest-written signed-input EOF branch is physically verified (2026-11-24)
+
+A reusable source-authenticated verifier now accepts *full-width guest-written*
+indirect pointers, beyond the prior graphical source-resident suffix case.
+The existing strict 132-cell N15 signed-EOF classifier writes its actual
+input-derived C45/C126 pointer to M143 at C82, and C114 `i` reads it to
+choose the real successful-byte or EOF arm. All 256 byte classes and true
+EOF, plus two trailing-input controls, execute the correct normative path
+and true halt. An idempotent EOF `p` is retained as a real write even when
+the VM reports no changed-value memory delta. The opaque proof records
+input, source, actual pointer/write, destination, output and the full trace.
+This is finite *physical input-dependent control*, not a linkage of the
+original C23 signed comparison, arithmetic or seven-block checksum CFG.
+The original complete checksum continues to refuse guest publication.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md` and
+`tests/compiler_indirect_source_suffix.rs`.
+
 ### Fourth cumulative guest fold emits its own fifth byte (2026-11-24)
 
 The previously unobservable fourth cumulative M106 update now has a

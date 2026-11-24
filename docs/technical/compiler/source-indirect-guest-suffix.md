@@ -424,3 +424,63 @@ C134 `v`. Three source-graphical altered-code candidates cannot borrow
 the original proof. This verifies finite *physical effect provenance*,
 not signed C23 EOF, a source-C mutable loop, or publication of the
 unchanged seven-block checksum.
+
+## Source-loaded, guest-written indirect branch witness (2026-11-24)
+
+The suffix planner's pointer is a protected graphical source word. That
+contract cannot prove the other P2 control case: a reached `p` produces a
+**full-width, input-dependent pointer in loader-expanded memory**, and a
+subsequent `i` reads that live word to select a physical code destination.
+The new `verify_source_written_indirect_guest` entry point validates this
+second case without assuming that a candidate target was reached. It checks:
+
+- One canonical, strictly source-admitted N15 program and a bounded normative
+  VM run ending with a real `v`; no simulated C output or synthetic guest
+  transitions are used.
+- Exactly one reached nominated `i`, its actual data-pointer position, the
+  memory word read and the resulting code pointer, against an explicit set
+  of at most eight admitted physical successor addresses.
+- A prior reached `p` or `*` at the pointer address, with a conservative
+  input-taint path through real `/`, accumulator updates and prior guest
+  memory writes. A source-only constant pointer or an input-independent
+  overwrite cannot count as this computed-pointer witness.
+- The exact input stream, output, consumed byte count, latest pointer-writing
+  transition, indirect transition and all normative physical steps. The
+  proof fields are private with immutable accessors.
+
+The VM's data-write delta is intentionally *changed-value only*. It omits
+idempotent `p` stores. This verifier reconstructs the reached `p`/`*` write
+from the decoded opcode, live data pointer and actual data read, even when
+the resulting value equals the previous word. Without this distinction the
+true-EOF branch would falsely fail `MissingGuestPointerWrite`.
+
+A reusable `SourceWrittenIndirectGuestVerifier` loads each graphical source
+and its 15-trit memory image once. Each finite input uses a **fresh copy**
+of the pristine VM; failed/earlier streams never donate state to later runs.
+Bounds are 4,096 source cells, 4,096 input bytes and 4,096 guest steps per
+run. Oversized requests refuse before cloning the source memory.
+
+The complete 132-cell N15 byte/EOF guest from
+`build_signed_eof_branch_source` is a physical positive control. Real C53
+`/` consumes one signed guest input; reached C82 `p` writes M143=44 for
+all 256 successful byte classes or M143=125 on true EOF. C114 `i` then
+reads that *written* word and transfers to C45 or C126. The successful-byte
+path halts at C104 in 175 steps and emits byte 154; EOF halts at C129 in
+119 steps and emits byte 30. Two extra nonempty streams preserve the
+first-input selection and leave trailing input unread. Each test checks
+source, pointer, all events and exact full-width branch state. Negative
+controls reject an unrelated M142 pointer, absent `i`, incorrect arm,
+incomplete guest run, other target profile, empty destinations, oversize
+input, zero steps and an authentic but **never guest-written** source
+pointer. The entire 257-class sweep replays the normative VM and produces
+opaque per-input physical evidence, not an inferred branch from source
+position alone.
+
+This new gate is **not** a C23 EOF conversion: the two marker outputs are
+fixed class values, and input-taint tracking establishes only necessary
+physical dependence, not agreement with a typed C comparison. The seven-block
+mutable C23 checksum is still **unlinked and unpublished**. The next linker
+must bind the source SSA condition, signed EOF, selected control arm,
+mutable checksum frame, source phi transfers and loop backedge to physical
+effects and independently checked C23 output. The bounded N15 classifier
+alone satisfies none of those whole-program obligations.
