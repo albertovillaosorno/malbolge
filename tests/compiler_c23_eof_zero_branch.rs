@@ -182,6 +182,24 @@ fn source_loaded_eof_zero_has_no_six_cell_data_pointer_reentry()
     Ok(())
 }
 
+fn loader_seeds_at_length(length: u32, tail: [u8; 2]) -> [u32; 4] {
+    let mut older = u32::from(tail[0]);
+    let mut previous = u32::from(tail[1]);
+    let mut selected = [0; 4];
+    for address in length..=128 {
+        let next = independent_crazy(older, previous);
+        for (index, selected_address) in [86, 126, 127, 128].iter().enumerate()
+        {
+            if address == *selected_address {
+                selected[index] = next;
+            }
+        }
+        older = previous;
+        previous = next;
+    }
+    selected
+}
+
 /// The exact 62-byte source's loader recurrence is keyed by C60 and C61.
 /// All earlier source cells are fixed. A replacement must preserve the four
 /// live loader seeds used by the physical raw/EOF pair and its return path.
@@ -204,32 +222,14 @@ fn only_source_valid_eof_seed_tail_keeps_output_before_code_jump()
             .source;
     assert_eq!(source.len(), 62);
     assert_eq!(&source[60..], b"'%");
-    let seeds = |tail: [u8; 2]| {
-        let mut older = u32::from(tail[0]);
-        let mut previous = u32::from(tail[1]);
-        let mut selected = [0; 4];
-        for address in 62u32..=128 {
-            let next = independent_crazy(older, previous);
-            for (index, selected_address) in
-                [86, 126, 127, 128].iter().enumerate()
-            {
-                if address == *selected_address {
-                    selected[index] = next;
-                }
-            }
-            older = previous;
-            previous = next;
-        }
-        selected
-    };
-    let original = seeds([source[60], source[61]]);
+    let original = loader_seeds_at_length(62, [source[60], source[61]]);
     assert_eq!(original, [RAW_LOW - 1, RAW_LOW - 1, 37, RAW_LOW - 1]);
     let mut equivalent = Vec::new();
     let mut admitted = Vec::new();
     for first in 33u8..=126 {
         for second in 33u8..=126 {
             let tail = [first, second];
-            if seeds(tail) != original {
+            if loader_seeds_at_length(62, tail) != original {
                 continue;
             }
             equivalent.push(tail);
@@ -255,4 +255,55 @@ fn only_source_valid_eof_seed_tail_keeps_output_before_code_jump()
         Some(b'i'),
     );
     Ok(())
+}
+
+/// A direct source extension cannot retain the original four loader words
+/// simply by moving the two graphical recurrence seed bytes to the new tail.
+/// A longer source must redesign the operand/bootstrap geometry instead.
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "exhaustive 24 source lengths by 94 squared graphical seed pairs"
+)]
+fn extending_original_eof_source_cannot_preserve_its_loader_seeds() {
+    let required = [RAW_LOW - 1, RAW_LOW - 1, 37, RAW_LOW - 1];
+    for length in 63u32..=86 {
+        let mut equivalent = 0usize;
+        let mut admitted = 0usize;
+        for first in 33u8..=126 {
+            for second in 33u8..=126 {
+                if loader_seeds_at_length(length, [first, second]) != required {
+                    continue;
+                }
+                equivalent += 1;
+                let tail_one = malbolge::decode_profile_instruction(
+                    u32::from(first),
+                    length - 2,
+                );
+                let tail_two = malbolge::decode_profile_instruction(
+                    u32::from(second),
+                    length - 1,
+                );
+                if tail_one.is_some_and(|op| b"oijp*/<v".contains(&op))
+                    && tail_two.is_some_and(|op| b"oijp*/<v".contains(&op))
+                {
+                    admitted += 1;
+                }
+            }
+        }
+        assert_eq!(
+            equivalent,
+            if length % 2 == 0 {
+                20
+            } else {
+                0
+            },
+            "length {length} seed-equivalence classes"
+        );
+        assert_eq!(admitted, 0, "length {length} graphical source");
+    }
+    // At lengths 87 and above, M86 itself would be printable source code;
+    // it cannot equal the fixed 7,174,416 data pointer needed by this layout.
+    assert!(required[0] > u32::from(u8::MAX));
 }

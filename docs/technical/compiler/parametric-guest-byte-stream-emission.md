@@ -77,6 +77,16 @@ source-admission** result, not a prohibition on other loader layouts,
 reallocated operands, code-cell revisits or longer guest programs.
 See `only_source_valid_eof_seed_tail_keeps_output_before_code_jump`.
 
+The follow-up `extending_original_eof_source_cannot_preserve_its_loader_seeds`
+checks every 63- through 86-cell source length and every printable pair
+at its new tail (24 x 8,836 pairs). Odd lengths have **no** pair preserving
+all four loader words. Each even length has 20 such pairs, but none has
+both bytes decoding to a source-admitted instruction at the new positions.
+At lengths 87 and above, M86 itself would be a graphical source cell, not
+the mandatory 7,174,416 pointer. Therefore, simply growing this original
+code envelope cannot preserve its four exact physical loader seeds. This
+is not a negative result for a **relocated** loader or different data cells.
+
 ### Source-loaded lossless input with an EOF-only physical output marker (2026-11-23)
 
 The compiler now exposes
