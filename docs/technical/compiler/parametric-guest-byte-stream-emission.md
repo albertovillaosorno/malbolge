@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Sparse automatic source-phi pad reservations (2026-11-23)
+
+The source-locked CFG planner now accepts **source-identified sparse phi
+snapshot and commit anchors** without requiring the caller to hand-place
+all seven source blocks and predecessor-specific landing pads. An anchored
+pad starts at its first actual proposed copy, preserves the source-derived
+snapshot-before-commit order through all exact copy indices, and reserves a
+final successor-transfer cell. It is protected before first-fit placement
+of other CFG blocks or phi pads. The existing independent binder still
+rederives every phi source, destination and width from the original typed
+C23 checksum. Unanchored edges retain compact deterministic pads.
+
+The red-first regression pins all eight C23 backedge snapshot/commit sites
+at C90, C97, C105, C114, C123, C131, C140 and C150. The automatic plan
+now reserves C90..C151 for the 5-to-1 pad while keeping all seven typed
+blocks and all four phi pads disjoint in a 256-cell hypothetical source.
+A second regression composes that pad with C37/C66 signed input, four
+word stores and C60/C75/C201/C224 source control obligations. Missing,
+duplicate, reordered, forged or colliding anchors refuse. No Malbolge
+source bytes at those sites are authenticated or emitted, and no executable
+EOF loop exists; the original full C23 program still refuses publication.
+This is a placement capability only, not P2 acceptance. See
+`tests/compiler/source_dynamic_checksum.rs`.
+
 ### Sparse source control-suffix reservations (2026-11-23)
 
 The source-typed automatic CFG code planner also accepts explicit physical

@@ -2044,6 +2044,82 @@ fn first_fit_phi_pad(
     Ok(())
 }
 
+// Source-locked sparse copy sites reserve their entire physical phi pad
+// before first-fit placement of otherwise unanchored blocks. The pad begins
+// at the first snapshot and ends after one successor-transfer reservation;
+// the existing independent binder rechecks exact copy order and operands.
+fn reserve_source_phi_pads(
+    blocks: &[GuestPlacedBlock],
+    anchors: &[GuestCodePhiCopyAnchor],
+    source_cells: u32,
+) -> Result<EdgePadPlacements, GuestCodePlacementError> {
+    let mut by_edge = source_phi_site_anchors(anchors)?;
+    let mut pinned = EdgePadPlacements::new();
+    for block in blocks {
+        let mut reserve = |kind, edge: &GuestPlacedControlEdge| {
+            let key = (block.function, block.block, kind, edge.successor);
+            let Some(sites) = by_edge.remove(&key) else {
+                return Ok(());
+            };
+            let total = edge
+                .snapshots
+                .len()
+                .checked_add(edge.commits.len())
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            if total == 0 || sites.len() != total {
+                return Err(GuestCodePlacementError::InvalidCodePlacement);
+            }
+            let mut first = None;
+            let mut previous = None;
+            for ordinal in 0..total {
+                let index = u32::try_from(ordinal).map_err(|_| {
+                    GuestCodePlacementError::InvalidCodePlacement
+                })?;
+                let address = *sites
+                    .get(&index)
+                    .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+                if previous.is_some_and(|prior| prior >= address) {
+                    return Err(GuestCodePlacementError::InvalidCodePlacement);
+                }
+                _ = first.get_or_insert(address);
+                previous = Some(address);
+            }
+            let start =
+                first.ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let end_exclusive = previous
+                .and_then(|last| last.checked_add(2))
+                .filter(|end| *end <= source_cells)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let pad = GuestCodeEdgePadPlacement {
+                end_exclusive,
+                function: block.function,
+                kind,
+                predecessor: block.block,
+                start,
+                successor: edge.successor,
+            };
+            if pinned.insert(key, pad).is_some() {
+                return Err(GuestCodePlacementError::InvalidCodePlacement);
+            }
+            Ok(())
+        };
+        match &block.control {
+            GuestPlacedControl::Branch { when_false, when_true } => {
+                reserve(GuestCodeEdgeKind::WhenFalse, when_false)?;
+                reserve(GuestCodeEdgeKind::WhenTrue, when_true)?;
+            },
+            GuestPlacedControl::Jump { edge } => {
+                reserve(GuestCodeEdgeKind::Jump, edge)?;
+            },
+            GuestPlacedControl::Return => {},
+        }
+    }
+    if !by_edge.is_empty() {
+        return Err(GuestCodePlacementError::InvalidCodePlacement);
+    }
+    Ok(pinned)
+}
+
 /// Reserve exact source-typed input code sites inside otherwise minimal,
 /// disjoint code blocks and predecessor-specific phi landing pads.
 ///
@@ -2117,6 +2193,7 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
         &operations,
         effect_anchors,
         &[],
+        &[],
         true,
     )
 }
@@ -2150,6 +2227,7 @@ pub fn plan_source_locked_cfg_with_operation_and_effect_anchors(
         frame_base,
         anchors,
         effect_anchors,
+        &[],
         &[],
         false,
     )
@@ -2185,6 +2263,41 @@ pub fn plan_source_locked_cfg_with_operation_effect_and_control_anchors(
         anchors,
         effect_anchors,
         controls,
+        &[],
+        false,
+    )
+}
+
+/// Automatically reserve exact source-typed operation, control and sparse
+/// predecessor-specific phi-copy sites without caller-authored block pads.
+/// Every anchored phi edge requires its complete source-derived snapshot and
+/// commit list. Unanchored edges retain minimum first-fit pads, and fixed
+/// pads are protected from unanchored block placement.
+///
+/// No proposed opcode, copy or control transfer is trusted without the
+/// independent target VM/layout checker; this is still a code-space plan.
+///
+/// # Errors
+///
+/// Refuses incomplete, duplicate, non-monotone or foreign phi-copy anchors,
+/// code/pad collisions and ordinary typed CFG placement errors.
+pub fn plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+    controls: &[GuestCodeControlAnchor],
+    phi_anchors: &[GuestCodePhiCopyAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    plan_source_locked_cfg_with_general_effect_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        anchors,
+        effect_anchors,
+        controls,
+        phi_anchors,
         false,
     )
 }
@@ -2196,6 +2309,7 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     anchors: &[GuestCodeOperationAnchor],
     effect_anchors: &[GuestCodeEffectAnchor],
     controls: &[GuestCodeControlAnchor],
+    phi_anchors: &[GuestCodePhiCopyAnchor],
     inputs_only: bool,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let relocated =
@@ -2365,6 +2479,20 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
         }
         reserved.push((block.start, block.end_exclusive));
     }
+    let pinned_pads = reserve_source_phi_pads(
+        &relocated.operation_blocks,
+        phi_anchors,
+        source_cells,
+    )?;
+    for pad in pinned_pads.values() {
+        if reserved
+            .iter()
+            .any(|&(start, end)| pad.start < end && start < pad.end_exclusive)
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+        reserved.push((pad.start, pad.end_exclusive));
+    }
     let mut blocks = Vec::with_capacity(relocated.operation_blocks.len());
     for block in &relocated.operation_blocks {
         let key = (block.function, block.block);
@@ -2401,15 +2529,21 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     let mut pads = Vec::new();
     for block in &relocated.operation_blocks {
         let mut reserve = |kind, edge: &GuestPlacedControlEdge| {
-            first_fit_phi_pad(
-                edge,
-                block.function,
-                block.block,
-                kind,
-                &mut reserved,
-                source_cells,
-                &mut pads,
-            )
+            let key = (block.function, block.block, kind, edge.successor);
+            if let Some(&pad) = pinned_pads.get(&key) {
+                pads.push(pad);
+                Ok(())
+            } else {
+                first_fit_phi_pad(
+                    edge,
+                    block.function,
+                    block.block,
+                    kind,
+                    &mut reserved,
+                    source_cells,
+                    &mut pads,
+                )
+            }
         };
         match &block.control {
             GuestPlacedControl::Branch { when_false, when_true } => {
@@ -2431,16 +2565,19 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     if used < source_locked_cfg_minimum_code_cells(canonical)? {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
-    bind_source_locked_cfg_code_targets_with_effect_anchors(
-        canonical,
-        source_cells,
-        frame_base,
-        GuestCodeProposals {
-            code_blocks: &blocks,
-            edge_pads: &pads,
+    bind_source_locked_cfg_code_targets_with_phi_copy_anchors(
+        GuestCodePhiCopyPlacement {
+            canonical,
+            source_cells,
+            frame_base,
+            proposals: GuestCodeProposals {
+                code_blocks: &blocks,
+                edge_pads: &pads,
+            },
+            operation_anchors: anchors,
+            effect_anchors,
+            phi_anchors,
         },
-        anchors,
-        effect_anchors,
     )
 }
 

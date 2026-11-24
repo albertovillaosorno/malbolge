@@ -2806,6 +2806,277 @@ fn original_checksum_pins_sparse_control_sites_after_data_effects() {
     );
 }
 
+// An automatic source-locked layout must not silently move a witnessed
+// snapshot/commit sequence after placing unrelated source blocks first.
+// The code locations are proposals, not executed guest phi writes.
+#[test]
+fn original_checksum_auto_reserves_sparse_backedge_phi_copy_sites() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEdgeKind, GuestCodePhiCopyAnchor, GuestCodePlacementError,
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 checksum");
+    let positions = [90, 97, 105, 114, 123, 131, 140, 150];
+    let phi = positions
+        .into_iter()
+        .enumerate()
+        .map(|(copy_index, code_address)| GuestCodePhiCopyAnchor {
+            code_address,
+            copy_index: u32::try_from(copy_index).expect("eight phi copies"),
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        })
+        .collect::<Vec<_>>();
+    let bind = |phi: &[GuestCodePhiCopyAnchor]| {
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            phi,
+        )
+    };
+    let plan =
+        bind(&phi).expect("source-locked sparse backedge pad reservation");
+    let pad = plan
+        .edge_pads
+        .iter()
+        .find(|pad| (pad.function, pad.predecessor, pad.successor) == (0, 5, 1))
+        .expect("source checksum backedge pad");
+    assert_eq!((pad.start, pad.end_exclusive), (90, 152));
+    let edge = plan
+        .control_edges
+        .iter()
+        .find(|edge| {
+            (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+        })
+        .expect("source checksum backedge");
+    assert_eq!(
+        edge.snapshot_sites
+            .iter()
+            .chain(&edge.commit_sites)
+            .map(|site| site.code_address)
+            .collect::<Vec<_>>(),
+        positions,
+    );
+    assert_eq!(edge.pad_exit_address, Some(151));
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.edge_pads.len(), 4);
+    let mut intervals = plan
+        .code_blocks
+        .iter()
+        .map(|block| (block.start, block.end_exclusive))
+        .chain(
+            plan.edge_pads
+                .iter()
+                .map(|pad| (pad.start, pad.end_exclusive)),
+        )
+        .collect::<Vec<_>>();
+    intervals.sort_unstable();
+    for pair in intervals.windows(2) {
+        assert!(
+            pair[0].1 <= pair[1].0,
+            "unanchored source blocks must not hide the pinned phi pad"
+        );
+    }
+    let refused = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let mut invalid = phi.clone();
+    assert!(invalid.pop().is_some());
+    assert_eq!(bind(&invalid), refused, "incomplete copies must refuse");
+    invalid = phi.clone();
+    invalid.push(phi[0]);
+    assert_eq!(bind(&invalid), refused, "duplicate copies must refuse");
+    for bad in [
+        GuestCodePhiCopyAnchor { copy_index: 9, ..phi[0] },
+        GuestCodePhiCopyAnchor { predecessor: 4, ..phi[0] },
+        GuestCodePhiCopyAnchor {
+            kind: GuestCodeEdgeKind::WhenTrue,
+            ..phi[0]
+        },
+        GuestCodePhiCopyAnchor { function: 5, ..phi[0] },
+        GuestCodePhiCopyAnchor {
+            code_address: 151,
+            ..phi[0]
+        },
+        GuestCodePhiCopyAnchor {
+            code_address: 255,
+            ..phi[0]
+        },
+    ] {
+        let mut changed = phi.clone();
+        changed[0] = bad;
+        assert_eq!(bind(&changed), refused, "forged source phi {bad:?}");
+    }
+    let mut shuffled = phi.clone();
+    shuffled.reverse();
+    assert_eq!(bind(&shuffled), Ok(plan));
+}
+
+// Exact source read/store, return and phi-pad reservations must compose:
+// reserving one independently observed edge can never alias an input block.
+#[test]
+fn original_checksum_auto_phi_pad_composes_with_signed_input_and_control_sites()
+{
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeControlAnchor, GuestCodeEdgeKind, GuestCodeEffectAnchor,
+        GuestCodeOperationAnchor, GuestCodePhiCopyAnchor,
+        GuestCodePlacementError,
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors,
+    };
+
+    let wire = source_locked_checksum_wire()
+        .expect("source-authenticated C23 EOF loop");
+    let operations = [
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            code_address: 37,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            code_address: 66,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 3,
+            ordinal: 0,
+            code_address: 180,
+        },
+    ];
+    let effects = [
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 1,
+            code_address: 40,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 2,
+            code_address: 42,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 1,
+            code_address: 69,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 2,
+            code_address: 71,
+        },
+    ];
+    let controls = [
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 0,
+            code_address: 60,
+        },
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 5,
+            code_address: 75,
+        },
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 3,
+            code_address: 201,
+        },
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 6,
+            code_address: 224,
+        },
+    ];
+    let addresses = [90, 97, 105, 114, 123, 131, 140, 150];
+    let phi = addresses
+        .into_iter()
+        .enumerate()
+        .map(|(copy_index, code_address)| GuestCodePhiCopyAnchor {
+            code_address,
+            copy_index: u32::try_from(copy_index)
+                .expect("backedge phi copy ordinal"),
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        })
+        .collect::<Vec<_>>();
+    let plan =
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
+            &wire,
+            256,
+            512,
+            &operations,
+            &effects,
+            &controls,
+            &phi,
+        )
+        .expect(
+            "all source-locked site classes fit one deterministic geometry",
+        );
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.edge_pads.len(), 4);
+    assert_eq!(plan.return_sites[0].address, 224);
+    assert_eq!(
+        plan.operation_effect_sites
+            .iter()
+            .filter(|effect| {
+                [37, 40, 42, 66, 69, 71].contains(&effect.code_address)
+            })
+            .count(),
+        6,
+    );
+    let backedge = plan
+        .control_edges
+        .iter()
+        .find(|edge| {
+            (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+        })
+        .expect("source backedge");
+    assert_eq!(backedge.entry_address, 90);
+    assert_eq!(backedge.pad_exit_address, Some(151));
+    assert_eq!(
+        backedge
+            .snapshot_sites
+            .iter()
+            .chain(&backedge.commit_sites)
+            .map(|copy| copy.code_address)
+            .collect::<Vec<_>>(),
+        addresses,
+    );
+    let mut conflicting = operations;
+    conflicting[2].code_address = 120;
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
+            &wire,
+            256,
+            512,
+            &conflicting,
+            &effects,
+            &controls,
+            &phi,
+        ),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+        "source block cannot run in the reserved backedge phi pad",
+    );
+}
+
 #[test]
 fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
     use super::typed_cfg_adapter::state_relocation::{
