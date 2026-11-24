@@ -353,3 +353,144 @@ fn single_c48_mutation_cannot_restore_a_valid_ninth_rotation_code_site() {
     assert_eq!(scalar_rotate(125), 9_565_979);
     assert_eq!(decode_profile_instruction(scalar_rotate(125), 67), None);
 }
+
+/// A different source-loaded, single-read route bypasses the lossy M127
+/// scratch and applies two identical M71/M72=121 crazy operands. The guest
+/// output is exact for finite bytes, while real EOF remains non-C23.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "six independent normative N15 paths and source/word chronology"
+)]
+fn first_input_double_crazy_echoes_all_bytes_but_not_c23_eof()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_c23_first_input_two_crazy_byte_echo_source(profile)
+            .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..91), Some(b"Iy".as_slice()));
+    layout::admit_c23_probe_graphical_source(&source)
+        .map_err(|error| format!("{error:?}"))?;
+    for (position, value) in [
+        (64usize, 70u8),
+        (65, 69),
+        (66, 68),
+        (67, 67),
+        (68, 65),
+        (69, 64),
+        (70, 63),
+        (71, 121),
+        (72, 121),
+    ] {
+        assert_eq!(source[position], value);
+        assert!(
+            decode_profile_instruction(u32::from(value), position as u32)
+                .is_some_and(|opcode| b"oijp*/<v".contains(&opcode)),
+            "source must remain loader-valid at position {position}",
+        );
+    }
+    let all_inputs = (0u32..=255).chain(once(profile.eof_word()));
+    let results = all_inputs
+        .map(|raw| {
+            scalar_crazy(EXACT_DATA_SEED, scalar_crazy(EXACT_DATA_SEED, raw))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(results.len(), 257);
+    assert_eq!(results.iter().copied().collect::<BTreeSet<_>>().len(), 257);
+    for value in 0u32..=255 {
+        assert_eq!(
+            results[usize::try_from(value).map_err(|e| e.to_string())?],
+            value
+        );
+    }
+    assert_eq!(results[256], 7_174_574);
+    assert_eq!(
+        results[256] % 256,
+        174,
+        "true EOF must not masquerade as C23 0xff"
+    );
+
+    for first in [None, Some(0), Some(1), Some(128), Some(174), Some(255)] {
+        let stdin = first.map_or_else(Vec::new, |byte| vec![byte]);
+        let mut vm = ProfileMachine::from_source(profile, &source, stdin)
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(53, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 53,
+            },
+        );
+        assert_eq!(trace.len(), 53);
+        assert_eq!(trace[37].decoded, Some(b'/'));
+        assert_eq!(
+            trace[37].input,
+            Some(first.map_or(TraceInput::EndOfInput, TraceInput::Byte)),
+        );
+        assert_eq!(trace[42].decoded, Some(b'j'));
+        assert_eq!(
+            trace[42]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((67, 67)),
+        );
+        for (index, (address, value)) in [
+            (68u32, 65u32),
+            (66, 68),
+            (69, 64),
+            (65, 69),
+            (70, 63),
+            (64, 70),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let step = &trace[43 + index];
+            assert_eq!(step.decoded, Some(b'j'));
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((*address, *value)),
+            );
+        }
+        let raw = first.map_or(profile.eof_word(), u32::from);
+        let middle = scalar_crazy(EXACT_DATA_SEED, raw);
+        let restored = scalar_crazy(EXACT_DATA_SEED, middle);
+        assert_eq!(trace[49].decoded, Some(b'p'));
+        assert_eq!(
+            trace[49].memory_delta.data.map(|write| (
+                write.address,
+                write.before,
+                write.after
+            )),
+            Some((71, EXACT_DATA_SEED, middle)),
+        );
+        assert_eq!(trace[50].decoded, Some(b'p'));
+        assert_eq!(
+            trace[50].memory_delta.data.map(|write| (
+                write.address,
+                write.before,
+                write.after
+            )),
+            Some((72, EXACT_DATA_SEED, restored)),
+        );
+        assert_eq!(trace[51].decoded, Some(b'<'));
+        assert_eq!(trace[51].output, Some((restored % 256) as u8));
+        assert_eq!(trace[52].decoded, Some(b'v'));
+        assert_eq!(vm.output(), [first.unwrap_or(174)]);
+        assert_eq!(vm.memory_word(71), Ok(middle));
+        assert_eq!(vm.memory_word(72), Ok(restored));
+        assert_eq!(vm.memory_word(95), Ok(4_281_052));
+        assert_eq!(vm.memory_word(96), Ok(121));
+        assert_eq!(vm.input_consumed(), usize::from(first.is_some()));
+    }
+    Ok(())
+}

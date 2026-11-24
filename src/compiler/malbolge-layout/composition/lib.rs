@@ -125,6 +125,7 @@ pub use eof_c23_conversion_source::{
     C23OperandProbeSourceError, admit_c23_probe_graphical_source,
     build_c23_five_rotated_signed_crazy_source,
     build_c23_first_input_saved_eight_rotations_source,
+    build_c23_first_input_two_crazy_byte_echo_source,
     build_c23_first_input_lossless_store_source,
     build_c23_nine_rotated_indirect_crazy_output_source,
     build_c23_nine_rotated_indirect_halt_probe_source,

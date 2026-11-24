@@ -175,6 +175,33 @@ class producing opcode `p`. Thus neither one-cell C48 mutation supplies a
 uniform ninth-rotation continuation. This does not rule out a relocated
 assembler or a different code/data pointer chain.
 
+### Source-loaded first-read two-crazy byte roundtrip (2026-11-23)
+
+A different **one-read, source-valid** 91-cell N15 continuation now produces
+the exact original output byte for every finite input, without the existing
+second `getchar` and without host-produced guest output. Five genuine M95
+rotations still precede C37 `/`. The source-preserving C42 `j` reads the
+graphical C67=67 pointer, and six real C43..C48 `j` operations follow
+M68=65, M66=68, M69=64, M65=69, M70=63 and M64=70 to reach the
+unexecuted, loader-valid source words M71=M72=121. C49/C50 execute two
+actual `p` writes. The 15-trit crazy involution
+`crazy(121, crazy(121, byte))` recovers **all 256 finite bytes**; C51
+outputs the result and C52 halts.
+
+The independent scalar oracle checks 257 distinct full-width final words:
+bytes 0..255 recover themselves, while the true signed EOF word recovers
+**7,174,574** and emits **0xae**, not C23's required **0xff**.
+Six independent normative N15 guest traces (EOF, NUL, 1, 128, 174 and 255)
+terminate after 53 steps, authenticate the exact two M71/M72 data writes,
+the pointer chain, the single input attempt, the output and the untouched
+M95/M96 operands. The route is a positive physical byte echo, **not** a
+signed C23 `getchar` conversion: the EOF output aliases the finite byte
+174 at the low-byte output boundary, although their full words differ.
+The original seven-block mutable EOF checksum still refuses physical
+linkage and never publishes a target artifact. See
+`build_c23_first_input_two_crazy_byte_echo_source` and
+`tests/compiler_c23_first_read_indirect_store.rs`.
+
 ### Width-aware typed shift-result checks (2026-11-23)
 
 The strict opt-in source-computation verifier now interprets integer

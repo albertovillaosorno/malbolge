@@ -464,6 +464,62 @@ pub fn build_c23_first_input_saved_eight_rotations_source(
     Ok(source)
 }
 
+/// Echo the **first** successful byte with two loader-authentic crazy writes.
+///
+/// Five real M95 rotations precede the one signed `/` at C37. C42 uses
+/// source C67=67 to select D=M68. Six genuine `j` operations at C43..C48
+/// traverse source-authenticated pointer words M68=65, M66=68, M69=64,
+/// M65=69, M70=63, M64=70, ending at D=M71. The unvisited graphical source
+/// words M71=M72=121 are both valid at their own instruction phases.
+/// C49 and C50 physically execute `p` on these words, applying the same
+/// ternary involution twice; C51 emits the resulting accumulator and C52
+/// halts. The input is not substituted or precomputed by the compiler.
+///
+/// All 256 finite byte inputs echo exactly. At real signed EOF the guest
+/// emits 0xae (174), **not** the C23 conversion byte 0xff; that is deliberate
+/// evidence that this is neither a signed C23 `getchar` conversion nor a
+/// stateful EOF-loop/C checksum. No source-C output is published.
+///
+/// # Errors
+///
+/// Rejects noncanonical profile and source-invalid cells. This candidate
+/// must be replayed by the normative VM to prove its physical writes/output.
+pub fn build_c23_first_input_two_crazy_byte_echo_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source = build_c23_first_input_lossless_store_source(profile)?;
+    // The values are BOTH data pointers and valid graphical source cells.
+    // Every patched source position is beyond the last executed C52 cell.
+    for (position, byte) in [
+        (64, 70u8),
+        (65, 69),
+        (66, 68),
+        (67, 67),
+        (68, 65),
+        (69, 64),
+        (70, 63),
+        (71, 121),
+        (72, 121),
+    ] {
+        *source.get_mut(position).ok_or(
+            C23OperandProbeSourceError::InvalidPosition { position },
+        )? = byte;
+    }
+    for position in 43..=48 {
+        set(&mut source, position, b'j')?;
+    }
+    for (position, opcode) in [
+        (49, b'p'),
+        (50, b'p'),
+        (51, profile.output_instruction()),
+        (52, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
 /// Convert and emit the second signed input, then fold it into guest state.
 ///
 /// The genuine C66 input and C77/C78 crazy operations leave the fully
