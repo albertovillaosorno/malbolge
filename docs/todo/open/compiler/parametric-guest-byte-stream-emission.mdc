@@ -42,8 +42,11 @@ a compiler capability gap, not a reason to return to N+1.
 ## Current P2 delivery focus
 
 The source/guest bridge now has a stricter opt-in **single-path branch
-plus complete I/O** check. Source-only correct EOF/one-byte checksum
-returns pass and wrong output, reordered I/O, swapped arm and wrong
+plus complete I/O** check. Its physical guest branch now binds to
+an exact full-I/O event cut, including any output before the conditional,
+rather than just counting preceding input reads. Source-only correct EOF
+and one-byte checksum returns pass; wrong output, reordered I/O, swapped arm
+and wrong
 output source identity refuse. Actual classifier-marker guests still
 pass their narrower input-bound C114 branch proof but **fail the combined
 source-checksum output check**; two successful bytes fail the source

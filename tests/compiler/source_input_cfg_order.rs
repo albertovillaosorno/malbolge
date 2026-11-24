@@ -481,6 +481,7 @@ fn source_branch_arm_requires_a_known_guard_and_the_exact_input_occurrence() {
                 None,
                 Some(SourceBranchObligation {
                     after_inputs,
+                    io_before_transfer: None,
                     block,
                     expected_true: true_arm,
                 }),
@@ -495,6 +496,68 @@ fn source_branch_arm_requires_a_known_guard_and_the_exact_input_occurrence() {
     let mut unknown = known.clone();
     let _removed = unknown.blocks[0].operations.pop();
     assert_eq!(proof(&unknown, 0, 1, true), Ok(false));
+}
+
+// A valid source branch may follow an output effect. The full-I/O cut gate
+// must admit that ordering while rejecting the same final bytes if the guest
+// transfers before the source's preceding output has occurred.
+#[test]
+fn source_branch_io_cut_can_follow_output_on_one_known_path() {
+    use super::{
+        SourceBranchObligation, source_path_matches_input_walk_with_branch,
+    };
+
+    let span = dummy_span();
+    let mut function = guarded_inequality_fixture();
+    function.blocks[0].operations.extend([
+        TernaryOperation::BitcastI32ToU32 {
+            result: 5,
+            value: 0,
+            span,
+        },
+        TernaryOperation::TruncateU32ToU8 {
+            result: 6,
+            value: 5,
+            span,
+        },
+        TernaryOperation::ByteOutput { value: 6, span },
+    ]);
+    let first = observed(0, 0);
+    let second = observed(2, 0);
+    let observations = [&first, &second];
+    let correct = [
+        SourceInputIoEvent::Input { observation_index: 0 },
+        SourceInputIoEvent::Output(3),
+        SourceInputIoEvent::Input { observation_index: 1 },
+    ];
+    let reordered = [correct[0], correct[2], correct[1]];
+    for (cut, events, expected) in [
+        (2, &correct[..], true),
+        (0, &correct[..], false),
+        (1, &correct[..], false),
+        (3, &correct[..], false),
+        (2, &reordered[..], false),
+    ] {
+        assert_eq!(
+            source_path_matches_input_walk_with_branch(
+                &function,
+                &observations,
+                128,
+                true,
+                Some(&[3]),
+                Some(events),
+                None,
+                Some(SourceBranchObligation {
+                    after_inputs: 1,
+                    io_before_transfer: Some(cut),
+                    block: 0,
+                    expected_true: true,
+                }),
+            ),
+            Ok(expected),
+            "source output and physical branch cut {cut}; events {events:?}",
+        );
+    }
 }
 
 #[test]
@@ -930,17 +993,29 @@ fn checksum_first_eof_guard_and_output_share_a_source_return()
     );
     let branch = checksum_guard_binding();
     assert_eq!(
-        verify_source_branch_io_landing(&wire, &proof, branch, 126),
+        verify_source_branch_io_landing(&wire, &proof, branch, 126, 1),
         Ok(()),
     );
     assert_eq!(
-        verify_source_branch_io_landing(&wire, &proof, branch, 45),
+        verify_source_branch_io_landing(&wire, &proof, branch, 45, 1),
         Err(SourceInputTraceError::SourceOutputNotProven),
     );
+    // Correct output bytes cannot certify a branch executed before its
+    // source input, or after an early guest output. This check binds the
+    // physical transfer to its exact cut in the complete I/O timeline.
+    for wrong_cut in [0, 2, 3] {
+        assert_eq!(
+            verify_source_branch_io_landing(
+                &wire, &proof, branch, 126, wrong_cut,
+            ),
+            Err(SourceInputTraceError::SourceOutputNotProven),
+            "physical transfer after {wrong_cut} I/O events",
+        );
+    }
     let mut malformed = proof;
     malformed.io_events.reverse();
     assert_eq!(
-        verify_source_branch_io_landing(&wire, &malformed, branch, 126),
+        verify_source_branch_io_landing(&wire, &malformed, branch, 126, 1),
         Err(SourceInputTraceError::SourceOutputNotProven),
     );
     malformed.io_events = vec![
@@ -949,7 +1024,7 @@ fn checksum_first_eof_guard_and_output_share_a_source_return()
     ];
     malformed.guest_output = vec![30];
     assert_eq!(
-        verify_source_branch_io_landing(&wire, &malformed, branch, 126),
+        verify_source_branch_io_landing(&wire, &malformed, branch, 126, 1),
         Err(SourceInputTraceError::SourceOutputNotProven),
     );
     Ok(())
@@ -968,12 +1043,12 @@ fn checksum_first_byte_guard_and_output_share_a_source_return()
     for first in [0u8, 1, 254, 255] {
         let proof = byte_then_eof_checksum_receipt(first, output_identity);
         assert_eq!(
-            verify_source_branch_io_landing(&wire, &proof, branch, 45),
+            verify_source_branch_io_landing(&wire, &proof, branch, 45, 1),
             Ok(()),
             "first byte {first} followed by actual EOF",
         );
         assert_eq!(
-            verify_source_branch_io_landing(&wire, &proof, branch, 126),
+            verify_source_branch_io_landing(&wire, &proof, branch, 126, 1),
             Err(SourceInputTraceError::SourceOutputNotProven),
             "a successful first byte cannot select the EOF arm",
         );
@@ -998,7 +1073,7 @@ fn checksum_source_output_identity_and_eof_order_cannot_be_forged()
         .ok_or("missing synthetic source output site")?;
     output_site.ordinal = output_identity.1.saturating_add(1);
     assert_eq!(
-        verify_source_branch_io_landing(&wire, &proof, branch, 45),
+        verify_source_branch_io_landing(&wire, &proof, branch, 45, 1),
         Err(SourceInputTraceError::SourceOutputNotProven),
         "the same byte from a different source output is not interchangeable",
     );
@@ -1009,7 +1084,7 @@ fn checksum_source_output_identity_and_eof_order_cannot_be_forged()
         .ordinal = output_identity.1;
     proof.io_events.swap(1, 2);
     assert_eq!(
-        verify_source_branch_io_landing(&wire, &proof, branch, 45),
+        verify_source_branch_io_landing(&wire, &proof, branch, 45, 1),
         Err(SourceInputTraceError::SourceOutputNotProven),
         "the C checksum output must follow the final EOF read",
     );
@@ -1457,6 +1532,18 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
             },
             "guest branch input chronology for {input:?}",
         );
+        // The reached C114 guest branch, like the source first guard,
+        // occurs after exactly one read and before any output. Source/guest
+        // chronology is necessary, but the later class-marker bytes still
+        // cannot satisfy the C checksum's complete I/O contract.
+        let early_io = joined
+            .guest_pointer()
+            .trace()
+            .iter()
+            .take(joined.guest_pointer().transfer_step())
+            .filter(|step| step.input.is_some() || step.output.is_some())
+            .count();
+        assert_eq!(early_io, 1, "real pre-transfer guest I/O cut");
         // A correct input-dependent arm does not justify the physical class
         // marker as the checksum's source ByteOutput. Require both effects
         // on a *single* source return path to expose that real C gap.

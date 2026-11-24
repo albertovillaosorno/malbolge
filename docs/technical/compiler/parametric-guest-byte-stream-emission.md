@@ -32,7 +32,11 @@ or hundreds of individual documentation pages.
 
 An opt-in verifier now requires a source-known conditional's physical
 input-derived `i` arm and the normative guest's **complete ordered I/O**
-to agree with one and the same source-C return path. The unchanged C23
+to agree with one and the same source-C return path. The physical
+`i` must also occupy the source branch's exact **full-I/O event cut**,
+including outputs before the branch, not just the number of prior reads.
+A synthetic source-output-before-branch positive and wrong-cut controls
+pin that distinction without claiming source compilation. The unchanged C23
 checksum source accepts synthetic correct EOF/byte cases with their exact
 final checksum, rejecting wrong arm, reordered output, marker and source
 output-effect forgeries. On the actual 132-cell N15 classifier, correct

@@ -641,11 +641,25 @@ impl SourceWrittenIndirectGuestVerifier {
     ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
     {
         let joined = self.verify_source_return_branch_ordered(probe, branch)?;
+        // The source conditional and physical `i` must occupy the same
+        // cut in the *complete* I/O stream, not just the input subsequence.
+        // An output emitted early by the guest cannot borrow a later source
+        // ByteOutput even when the final bytes happen to match.
+        let before_transfer = joined
+            .guest_pointer
+            .trace()
+            .get(..joined.guest_pointer.transfer_step())
+            .ok_or(SourceBoundIndirectGuestError::InconsistentGuestTrace)?;
+        let io_before_transfer = before_transfer
+            .iter()
+            .filter(|step| step.input.is_some() || step.output.is_some())
+            .count();
         verify_source_branch_io_landing(
             probe.source_input.canonical,
             &joined.source_input,
             branch,
             joined.guest_pointer.landing_address(),
+            io_before_transfer,
         )
         .map_err(SourceBoundIndirectGuestError::SourceInput)?;
         Ok(joined)

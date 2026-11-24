@@ -12,10 +12,20 @@ The stricter opt-in `verify_source_return_branch_io_ordered` first replays
 both source input and guest-written pointer, verifies complete source return,
 source-known branch arm, and exact physical read-before-transfer ordering.
 It then checks **the same bounded source CFG walk** against the actual
-normative guest output bytes and ordered input/output events. An independent
-branch-matching source path and a different output-matching source path are
-not interchangeable. If output-site identities were authenticated in the
-source prefix receipt, the joint walk also requires those same identities.
+normative guest output bytes and ordered input/output events. The exact
+physical transfer step also fixes a **cut in the full I/O timeline**: the
+source conditional must occur after the same number of total input *and*
+output events. Checking only the number of earlier reads could mistakenly
+accept a guest `i` that executes before a required source output, or after
+an extra early output, when the final bytes happen to agree. The existing
+C114 classifier executes after exactly one I/O event (the first C53 read).
+Synthetic source-only controls independently prove a legal conditional after
+one read **and one prior output**, rejecting cuts before that output even
+with identical final bytes. This still does not prove source operations ran
+in the guest. An independent branch-matching source path and a different
+output-matching source path are not interchangeable. If output-site
+identities were authenticated in the source prefix receipt, the joint walk
+also requires those same identities.
 The older direction/chronology methods remain usable for deliberately
 partial physical control experiments without claiming source output parity.
 

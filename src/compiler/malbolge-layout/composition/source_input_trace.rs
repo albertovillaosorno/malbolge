@@ -260,6 +260,7 @@ impl SourceInputWalkState {
 #[derive(Clone, Copy)]
 struct SourceBranchObligation {
     after_inputs: usize,
+    io_before_transfer: Option<usize>,
     block: u32,
     expected_true: bool,
 }
@@ -822,6 +823,9 @@ fn source_terminator_successors(
                     .then(|| {
                         current.branch_match.is_none()
                             && truth == Some(branch.expected_true)
+                            && branch
+                                .io_before_transfer
+                                .is_none_or(|count| current.io_count == count)
                     })
             });
             (targets, match_result)
@@ -1008,6 +1012,7 @@ pub(super) fn verify_source_branch_landing(
         SourceBranchInputEvidence {
             observations,
             receipt: None,
+            io_before_transfer: None,
         },
         binding,
         physical_landing,
@@ -1022,12 +1027,14 @@ pub(super) fn verify_source_branch_io_landing(
     proof: &SourceInputPrefixProof,
     binding: SourceBranchLanding,
     physical_landing: u32,
+    io_before_transfer: usize,
 ) -> Result<(), SourceInputTraceError> {
     verify_source_branch_landing_with_io(
         canonical,
         SourceBranchInputEvidence {
             observations: &proof.observations,
             receipt: Some(proof),
+            io_before_transfer: Some(io_before_transfer),
         },
         binding,
         physical_landing,
@@ -1039,6 +1046,7 @@ pub(super) fn verify_source_branch_io_landing(
 struct SourceBranchInputEvidence<'source> {
     observations: &'source [SourceInputSiteObservation],
     receipt: Option<&'source SourceInputPrefixProof>,
+    io_before_transfer: Option<usize>,
 }
 
 fn verify_source_branch_landing_with_io(
@@ -1047,7 +1055,11 @@ fn verify_source_branch_landing_with_io(
     binding: SourceBranchLanding,
     physical_landing: u32,
 ) -> Result<(), SourceInputTraceError> {
-    let SourceBranchInputEvidence { observations, receipt } = evidence;
+    let SourceBranchInputEvidence {
+        observations,
+        receipt,
+        io_before_transfer,
+    } = evidence;
     use SourceInputTraceError::{
         InvalidBranchBinding, InvalidSourcePlacement, SourceBranchMismatch,
     };
@@ -1094,6 +1106,7 @@ fn verify_source_branch_landing_with_io(
         }),
         Some(SourceBranchObligation {
             after_inputs: binding.after_inputs,
+            io_before_transfer,
             block: binding.block,
             expected_true,
         }),
