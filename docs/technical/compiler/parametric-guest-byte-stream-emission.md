@@ -62,6 +62,28 @@ verified target code-pointer `i`, C32 signed upper word, checksum arithmetic,
 phi copy/loop or complete seven-block checksum linkage is created. P2 remains
 open; the original whole-program gate still fails closed without an artifact.
 
+### Input-preserving full-word EOF-zero data effect (2026-11-23)
+
+The original C14/C17 adjacent-zero initializer, C37 real input and C43
+lossless raw-input store now extend through a reached C54 crazy operation.
+C47 still selects the data pointer from the physical input; C48/C49 return
+through real loader operands and C53 rotates the input-selected word. C54
+then physically reads its next data operand and writes a **full 15-trit
+word equal to zero exactly on true N15 EOF**, not merely a unique marker
+byte. C55 emits its low byte and C56 halts in 57 normative VM steps.
+All successful inputs produce a nonzero full word and a nonzero output byte.
+The original low input word and adjacent high zero remain untouched.
+
+`build_adjacent_c32_zero_c37_raw_eof_zero_source` checks the exact current
+profile and graphical source geometry. Its source matches an independently
+patched original; a separate 15-trit ternary oracle checks the actual data
+read and accumulator result. Twelve representative binary/EOF VM streams,
+a missing-`p` negative control and the explicit opt-in 257-case exhaustive
+normative VM gate live in `tests/compiler_c23_zero_input_store.rs`. This
+establishes a physical **zero-if-EOF data value**, not normalized signed C23
+`getchar`, guest `i` code branching, an unbounded loop or publication of the
+complete seven-block mutable checksum. P2 remains open.
+
 ### Authentic raw EOF-dependent data-pointer selection (2026-11-23)
 
 A 49-step extension (`build_adjacent_c32_zero_c37_raw_pointer_source`)

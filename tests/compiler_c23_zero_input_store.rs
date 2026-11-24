@@ -733,3 +733,209 @@ fn exhaustive_real_vm_raw_pair_preserved_with_eof_only_marker()
     assert!(!finite_markers.contains(&0x6a));
     Ok(())
 }
+
+fn raw_pointer_eof_zero_source() -> Vec<u8> {
+    let mut source = raw_pointer_eof_marker_source();
+    for (site, opcode) in [(54, b'p'), (55, b'<'), (56, b'v')] {
+        source[site] = graphical(site, opcode);
+    }
+    source
+}
+
+#[test]
+fn physical_raw_pair_produces_true_eof_zero_word_without_destroying_input()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = raw_pointer_eof_zero_source();
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    let prepared = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![34],
+        vec![37],
+        vec![53],
+        vec![59],
+        vec![123],
+        vec![127],
+        vec![255],
+        vec![255, 9],
+    ] {
+        let raw = input.first().map_or(profile.eof_word(), |b| u32::from(*b));
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(57, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 57,
+            },
+            "input {input:?}",
+        );
+        assert_eq!(trace[53].decoded, Some(b'*'));
+        assert_eq!(trace[54].decoded, Some(b'p'));
+        assert_eq!(trace[55].decoded, Some(b'<'));
+        assert_eq!(trace[56].decoded, Some(b'v'));
+        let predicate = trace[54].after.registers.accumulator;
+        let data_word = trace[54]
+            .memory_reads
+            .data
+            .ok_or("C54 must read a physical data operand")?;
+        assert_eq!(
+            predicate,
+            scalar_crazy(
+                data_word.value,
+                trace[53].after.registers.accumulator
+            ),
+            "independent ternary oracle for input {input:?}",
+        );
+        assert_eq!(predicate == 0, input.is_empty(), "input {input:?}");
+        let store_address = trace[54].before.registers.data_pointer;
+        assert_eq!(
+            trace[54].memory_reads.data.map(|read| read.address),
+            Some(store_address),
+            "input {input:?}",
+        );
+        assert_eq!(guest.memory_word(store_address), Ok(predicate));
+        if !input.is_empty() {
+            assert_eq!(
+                trace[54].memory_delta.data.map(|write| write.after),
+                Some(predicate),
+                "input {input:?}",
+            );
+        }
+        assert_eq!(guest.output(), [
+            u8::try_from(predicate % 256).map_err(|error| error.to_string())?
+        ]);
+        assert_eq!(guest.output()[0] == 0, input.is_empty());
+        assert_eq!(guest.memory_word(LOW), Ok(raw));
+        assert_eq!(guest.memory_word(HIGH), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+    }
+    Ok(())
+}
+
+#[test]
+fn eof_zero_builder_matches_independent_source_and_rejects_classic_profile() {
+    let plan = layout::build_adjacent_c32_zero_c37_raw_eof_zero_source(
+        current_profile(),
+    )
+    .expect("source-loaded N15 EOF-zero predicate");
+    assert_eq!(
+        plan.raw_pointer.raw_pair.zero_pair.source,
+        raw_pointer_eof_zero_source()
+    );
+    assert_eq!(plan.rotate_code_address, 53);
+    assert_eq!(plan.zero_store_code_address, 54);
+    assert_eq!(plan.output_code_address, 55);
+    assert_eq!(plan.halt_code_address, 56);
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_raw_eof_zero_source(
+            historical_profile(),
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile)
+    );
+}
+
+#[test]
+fn removing_real_eof_zero_store_exposes_raw_eof_low_byte() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = raw_pointer_eof_zero_source();
+    let mut missing_store = source.clone();
+    missing_store[54] = graphical(54, b'o');
+    for (candidate, expected) in [(source, 0u8), (missing_store, 106u8)] {
+        let mut guest =
+            ProfileMachine::from_source(profile, &candidate, Vec::new())
+                .map_err(|error| error.to_string())?;
+        assert_eq!(
+            guest.run(57).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 57,
+            },
+        );
+        assert_eq!(guest.output(), [expected]);
+        assert_eq!(guest.memory_word(LOW), Ok(profile.eof_word()));
+        assert_eq!(guest.memory_word(HIGH), Ok(0));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "257 N15 images, 57 steps each; opt-in physical acceptance witness"]
+fn exhaustive_real_vm_preserves_raw_and_eof_zero() -> Result<(), String> {
+    let profile = current_profile();
+    let source = raw_pointer_eof_zero_source();
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    let prepared = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for raw in (0..=255u32).chain([profile.eof_word()]) {
+        let input = if raw == profile.eof_word() {
+            Vec::new()
+        } else {
+            vec![u8::try_from(raw).map_err(|error| error.to_string())?]
+        };
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(57, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 57,
+            },
+            "raw {raw}"
+        );
+        assert_eq!(trace[54].decoded, Some(b'p'), "raw {raw}");
+        let predicate = trace[54].after.registers.accumulator;
+        let data_word = trace[54]
+            .memory_reads
+            .data
+            .ok_or("C54 must read a physical data operand")?;
+        assert_eq!(
+            predicate,
+            scalar_crazy(
+                data_word.value,
+                trace[53].after.registers.accumulator
+            ),
+            "independent ternary oracle for raw {raw}",
+        );
+        assert_eq!(predicate == 0, raw == profile.eof_word(), "raw {raw}");
+        assert_eq!(guest.output().len(), 1, "raw {raw}");
+        assert_eq!(
+            guest.output()[0] == 0,
+            raw == profile.eof_word(),
+            "raw {raw}"
+        );
+        let store_address = trace[54].before.registers.data_pointer;
+        assert_eq!(
+            trace[54].memory_reads.data.map(|read| read.address),
+            Some(store_address),
+            "raw {raw}",
+        );
+        assert_eq!(guest.memory_word(store_address), Ok(predicate));
+        assert_eq!(guest.memory_word(LOW), Ok(raw), "raw {raw}");
+        assert_eq!(guest.memory_word(HIGH), Ok(0), "raw {raw}");
+        assert_eq!(guest.input_consumed(), input.len(), "raw {raw}");
+    }
+    Ok(())
+}

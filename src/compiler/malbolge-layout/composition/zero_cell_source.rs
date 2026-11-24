@@ -203,6 +203,28 @@ pub struct AdjacentC32ZeroC37RawEofMarkerSource {
     pub raw_pointer: AdjacentC32ZeroC37RawPointerSource,
 }
 
+/// A reached, input-preserving full-word EOF-zero predicate.
+///
+/// The final `p` consumes the source-loader operand after an input-selected
+/// physical `*` and writes exactly zero only for true N15 EOF. All 256 byte
+/// inputs yield a nonzero full word and a nonzero low output byte. Neither
+/// raw input storage nor the adjacent high zero is overwritten. This is a
+/// truth-valued experimental scratch effect, not signed C23 normalization,
+/// a code-pointer branch, or the complete source-C checksum.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37RawEofZeroSource {
+    /// Reached input-selected rotation producing the class word.
+    pub rotate_code_address: u32,
+    /// Reached `p` writing zero exactly when input is EOF.
+    pub zero_store_code_address: u32,
+    /// Reached output of the predicate's low byte.
+    pub output_code_address: u32,
+    /// Reached halt after the predicate output.
+    pub halt_code_address: u32,
+    /// Source-loaded original raw and adjacent high-zero word.
+    pub raw_pointer: AdjacentC32ZeroC37RawPointerSource,
+}
+
 /// N15 byte/EOF input written into a real adjacent two-word physical region.
 ///
 /// The low word holds the raw unsigned byte (or unnormalized profile EOF),
@@ -958,6 +980,49 @@ pub fn build_adjacent_c32_zero_c37_raw_eof_marker_source(
         marker_output_code_address: 54,
         halt_code_address: 55,
         raw_pointer,
+    })
+}
+
+/// Extend the raw-input-preserving EOF marker to a stored zero predicate.
+///
+/// The same C48/C49 loader returns and C53 input-selected `*` remain
+/// executable. C54 `p` consumes the **next actual data word** after the
+/// selected rotation. For each successful byte it writes one of nine nonzero
+/// full words; true EOF reads the physical M127 zero and folds the rotated
+/// all-twos word into exact zero. C55 outputs the low byte and C56 halts.
+/// No physical raw input or adjacent zero cell is overwritten. The output is
+/// zero exactly for EOF, not a canonical C23 integer or guest CFG branch.
+///
+/// # Errors
+///
+/// Refuses noncurrent profiles and any unencodable fixed source site.
+pub fn build_adjacent_c32_zero_c37_raw_eof_zero_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37RawEofZeroSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut marker =
+        build_adjacent_c32_zero_c37_raw_eof_marker_source(profile)?;
+    for (site, operation) in [
+        (54usize, LinearOpcode::CrazyData),
+        (55, LinearOpcode::OutputByte),
+        (56, LinearOpcode::Halt),
+    ] {
+        *marker
+            .raw_pointer
+            .raw_pair
+            .zero_pair
+            .source
+            .get_mut(site)
+            .ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37RawEofZeroSource {
+        rotate_code_address: 53,
+        zero_store_code_address: 54,
+        output_code_address: 55,
+        halt_code_address: 56,
+        raw_pointer: marker.raw_pointer,
     })
 }
 
