@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A second 135-cell guest suffix reads a **fourth** real word and uses
+code/data phase reuse to update already executed M40 with
+`crazy(63, fourth)`. All 257 fourth-byte/EOF classes terminate in 112
+normative N15 steps. Its M106 three-input fold and outputs remain
+unchanged: this is bounded scratch storage **not** a fourth cumulative
+checksum fold, source-C phi/backedge or signed EOF conversion. Evidence:
+`docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 The 135-cell source-loaded two-input fold now has a real third-input
 continuation using an encrypted output opcode as a later `j` pointer.
 Two reached `p` operations incorporate the third input into the prior

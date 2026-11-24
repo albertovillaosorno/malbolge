@@ -42,6 +42,9 @@ use malbolge::{
 // leaf: its reached j reads the *encrypted* earlier output instruction, and
 // two reached p operations update the earlier guest-computed state.
 const THREE_INPUT_FOLD_SUFFIX: &[u8] = b"/<oooojpp<*v";
+// This second linear window reads a fourth word after the saved M106 fold,
+// then legally rewrites an already executed and encrypted source code cell.
+const FOUR_INPUT_CODE_ALIAS_SUFFIX: &[u8] = b"/<oooojpp<*/jojpv";
 
 fn graphical(position: u32, opcode: u8) -> Option<u8> {
     (33..=126u8).find(|byte| {
@@ -710,6 +713,175 @@ fn three_input_fold_requires_encrypted_pointer_and_two_real_data_writes() {
                 })
                 || vm.output() != [3, 49, 5, 58],
             "site C{altered_site} mutation forged the guest-dependent fold"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    reason = "independent 257-class fourth-input source-code write oracle"
+)]
+fn all_fourth_input_classes_rewrite_only_the_finished_code_alias() {
+    let original = saved_fold_source();
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let plan = plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        111,
+        117,
+        117,
+        FOUR_INPUT_CODE_ALIAS_SUFFIX,
+        &protected,
+    )
+    .expect("protected 17-opcode source continuation");
+    assert_eq!(plan.source.len(), original.len());
+    assert_eq!((plan.pointer_word, plan.landing_address), (116, 117));
+    for position in [40usize, 54, 110, 124, 127, 134] {
+        assert_eq!(plan.source[position], original[position]);
+    }
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("strict N15 source loader");
+    assert_eq!(pristine.memory_word(40), Ok(122));
+    assert_eq!(pristine.memory_word(54), Ok(108));
+    assert_eq!(pristine.memory_word(110), Ok(52));
+    let twice = scalar_crazy(scalar_crazy(121, 3), 4);
+    let thrice = scalar_crazy(twice, scalar_crazy(57, 5));
+    for fourth in (0..=255u32).chain(once(profile.eof_word())) {
+        let mut input = vec![3, 4, 5];
+        if fourth != profile.eof_word() {
+            input.push(u8::try_from(fourth).expect("byte input"));
+        }
+        let mut vm = pristine.fork_with_input(input.clone()).expect("VM fork");
+        assert_eq!(
+            vm.run(120),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 112,
+            }),
+            "fourth={fourth}"
+        );
+        assert_eq!(vm.input_consumed(), input.len());
+        assert_eq!(vm.output(), &[
+            3,
+            u8::try_from(twice % 256).expect("low fold"),
+            5,
+            u8::try_from(thrice % 256).expect("low fold"),
+        ]);
+        assert_eq!(vm.memory_word(105), Ok(scalar_crazy(57, 5)));
+        assert_eq!(vm.memory_word(106), Ok(thrice));
+        assert_eq!(
+            vm.memory_word(40),
+            Ok(scalar_crazy(63, fourth)),
+            "fourth={fourth}"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    reason = "encrypted-code data provenance and negative mutations"
+)]
+fn fourth_input_code_rewrite_follows_real_encrypted_operands() {
+    use malbolge::encrypt_profile_cell;
+    let original = saved_fold_source();
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let plan = plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        111,
+        117,
+        117,
+        FOUR_INPUT_CODE_ALIAS_SUFFIX,
+        &protected,
+    )
+    .expect("source-admitted data alias");
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), &plan.source, vec![
+            3, 4, 5, 6,
+        ])
+        .expect("normative source loader");
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(120, &mut |step| trace.push(*step)),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 112,
+        })
+    );
+    assert_eq!(encrypt_profile_cell(122), Some(63));
+    assert_eq!(encrypt_profile_cell(108), Some(39));
+    for (step, after) in [(40, 63), (54, 39)] {
+        assert_eq!(
+            trace[usize::try_from(step).expect("step")]
+                .before
+                .registers
+                .code_pointer,
+            step
+        );
+        assert_eq!(
+            trace[usize::try_from(step).expect("step")]
+                .memory_delta
+                .encryption
+                .map(|write| write.after),
+            Some(after),
+        );
+    }
+    assert_eq!(trace[106].decoded, Some(b'/'));
+    assert_eq!(trace[106].input, Some(TraceInput::Byte(6)));
+    for (index, code, address, value, new_data_pointer) in
+        [(107, 129, 110, 52, 53), (109, 131, 54, 39, 40)]
+    {
+        assert_eq!(trace[index].before.registers.code_pointer, code);
+        assert_eq!(trace[index].decoded, Some(b'j'));
+        assert_eq!(
+            trace[index]
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((address, value))
+        );
+        assert_eq!(trace[index].after.registers.data_pointer, new_data_pointer);
+    }
+    assert_eq!(trace[110].decoded, Some(b'p'));
+    assert_eq!(
+        trace[110]
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value)),
+        Some((40, 63))
+    );
+    assert_eq!(trace[110].after.registers.accumulator, scalar_crazy(63, 6));
+    assert_eq!(vm.memory_word(40), Ok(scalar_crazy(63, 6)));
+    assert_eq!(trace[111].decoded, Some(b'v'));
+    // The prior M106 fold is not extended to four words; this separate
+    // source-code scratch write is intentionally not a C23 checksum.
+    assert_eq!(vm.memory_word(106), Ok(58));
+    for altered_code in [128usize, 131, 132] {
+        let mut changed = plan.source.clone();
+        changed[altered_code] =
+            graphical(u32::try_from(altered_code).expect("code site"), b'o')
+                .expect("source-valid no-op mutation");
+        let mut mutant =
+            ProfileMachine::from_source(current_profile(), &changed, vec![
+                3, 4, 5, 6,
+            ])
+            .expect("mutation is graphical");
+        let outcome = mutant.run(120);
+        assert!(
+            outcome
+                != Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 112,
+                })
+                || mutant.memory_word(40) != Ok(scalar_crazy(63, 6)),
+            "mutation at C{altered_code} preserved an unearned fourth store"
         );
     }
 }

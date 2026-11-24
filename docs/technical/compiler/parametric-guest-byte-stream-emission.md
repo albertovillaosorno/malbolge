@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Fourth guest read safely rewrites finished code as data (2026-11-24)
+
+The same genuine 135-cell graphical N15 source admits an alternative
+17-opcode continuation at C117..C133. After preserving all three earlier
+input effects and their cumulative fold at M106, a real fourth `/` at
+C128 reads byte/EOF. Reached `j` instructions at C129 and C131 use
+M110=52 and earlier encrypted M54=39 to point D to M40. A reached C132
+`p` then folds the **actual earlier encrypted C40 value 63** with the
+fourth input, stores the result into finished code cell M40 and halts
+at C133 in 112 steps. All 257 fourth-input/EOF classes match a separate
+trit oracle; a traced binary case and negative opcode mutations pin the
+read/write ordering. M106 and its output are **not** updated by the fourth
+input; this proves only late guest scratch state liveness, not C23 source
+storage, a repeatable loop or the original checksum. Evidence:
+`docs/technical/compiler/source-indirect-guest-suffix.md` and
+`tests/compiler_indirect_source_suffix.rs`.
+
 ### Three-input guest fold reuses encrypted code as a pointer (2026-11-24)
 
 The original complete seven-block C23 mutable EOF checksum still refuses

@@ -116,6 +116,35 @@ miss this valid path. Such a source alias is legal only with separately
 verified read/write phases and positional guest semantics; the planner
 alone does **not** validate these dynamic facts.
 
+## Fourth input stores through previously executed source code (2026-11-24)
+
+A second **17-opcode**, protected-source continuation uses
+`/<oooojpp<*/jojpv` at C117..C133. It preserves the original M124=126,
+M127=100, M134=58 and all previously executed code bytes. The first
+three genuine reads and their M106 fold remain unchanged. C128 now reads
+a **fourth** signed N15 input word, and a reached C129 `j` reads source
+M110=52 to relocate D to M53; C130 `o` advances to M54. An earlier
+executed C54 no-op encrypted its original 108 to 39, so C131 `j` sets
+D=40. Previously executed C40 likewise encrypted 122 to 63, and the
+reached C132 `p` reads this **actual** M40=63 before writing
+`crazy(63, fourth)` back into M40. C133 `v` halts in **112 steps**.
+
+All 256 fourth-input bytes plus true EOF run to the same halt under the
+normative N15 VM; the independent trit oracle checks exact M40 contents,
+three previously saved input effects, output, and read consumption.
+Detailed trace assertions verify both earlier encryptions, each reached
+`j` data read, the final reached `p`, and the halt. Independent mutations
+of C128, C131 and C132 cannot preserve the same four-input storage
+witness. No source byte is initially replaced at M40 or M54; this is
+**time-ordered code-to-data reuse**, not an arbitrary storage alias.
+
+The observable output remains the first, two-input fold, third and
+three-input fold bytes. The fourth input is **not output or incorporated
+into M106**; its effect is a late physical write to M40 after that code
+cell has executed. This is a bounded state-lifetime witness, not a
+repeatable guest loop, source local, C23 arithmetic, signed EOF dispatch
+or executable mutable checksum.
+
 ## What is still missing
 
 This is successful **physical continuation placement** of a bounded
