@@ -12806,3 +12806,9 @@ EOF through one backedge, with expected shifted output bytes `00 80 f8` and
 interleaved I/O sites. A wrong third byte, reordered effects, missing EOF,
 early EOF or invalid shift count cannot satisfy one complete source return.
 This is still a source-path constraint, **not a guest-executed loop**.
+
+The companion pinned Clang 22.1.8 C23 UBSan oracle compiles an equivalent
+unsigned shift/EOF loop independently at `-O0` and `-O2`. It checks empty,
+NUL, high-byte, `ff`, mixed and all-256-byte streams against an independently
+masked binary result. These are native controls for the source-path arithmetic,
+not proof of a linked or running Malbolge guest loop.
