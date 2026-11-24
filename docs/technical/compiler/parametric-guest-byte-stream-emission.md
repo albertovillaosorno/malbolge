@@ -28,6 +28,35 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-function entry before the first physical operation (2026-11-23)
+
+A complete C23 EOF-checksum compile was retried through the pinned frontend
+and target adapter. It still refuses at the same unlinked seven-block CFG:
+19 typed operations, four phi edges, 43 guest-state cells and a 71-cell
+minimum code bound; no guest artifact was published. The first byte-exact
+physical source entry is therefore **not** proved by this change.
+
+The sparse source-CFG planner now has an optional *function entry anchor*
+checked against the canonical function's actual entry block. Previously a
+first `getchar` pinned at C37 forced the compiler to infer the minimum prefix
+near C35, even when the target's real program counter begins at C0. The
+new source-locked reservation can begin the entry block at C0, leave
+C0..C33 for unverified initial guest setup, reserve the entry literal's
+first write at C34, then preserve the signed `/` at C37, its word writes
+at C40/C42 and the second read/word writes at C66/C69/C71. The block's
+control remains pinned at C60. This plan composes with the original
+checksum backedge's separate phi-pad entry C80, eight ordered copies at
+C90..C150 and successor transfer C170, plus all seven original blocks and
+four predecessor-owned phi pads. No host-side branch is selected.
+
+Unanchored callers retain their previous placement. Duplicate, foreign,
+non-entry, late and out-of-source function entry proposals fail closed, as
+do source-block and phi-pad collisions. This closes an **address reservation**
+gap only: the proposed C0 instruction, literal writes, full-width arithmetic,
+physical branches, signed EOF and loop have not been linked or verified as
+Malbolge. The original five-vector P2 guest parity gate remains open.
+Regression: `tests/compiler/source_dynamic_checksum.rs`.
+
 ### Source-owned phi pad entry setup reservations (2026-11-23)
 
 The source-locked CFG planner now accepts a proposed **phi-pad entry site**

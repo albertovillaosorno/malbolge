@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A source-checked function-entry anchor now permits the actual C23 checksum's
+entry block to reserve C0 without moving its independently proposed first
+input at C37 or the loop backedge's sparse phi writes at C90..C150. This
+fixes a first-operation setup reservation gap, not physical guest entry,
+SSA writes or EOF loop execution. The original compiler still refuses the
+unlinked seven-block checksum and publishes no target. See the technical
+compiler contract and `tests/compiler/source_dynamic_checksum.rs`.
+
 A single genuinely source-loaded 91-cell guest now carries its lone C37
 signed input through a C38 physical M97 crazy write, nine independent
 C23 operand rotations and a reached C67 `j` based on that earlier write.

@@ -4844,3 +4844,230 @@ fn original_checksum_phi_entry_anchor_reserves_pre_snapshot_guest_setup() {
     }];
     assert_eq!(bind(&occupied, &copies, &[entry], &[exit]), refusal);
 }
+
+// Real Malbolge execution starts at C0. Sparse input/effect anchors alone
+// must not silently move the canonical C function entry to a later cell.
+// This remains a code reservation, never evidence of a reached C23 loop.
+#[test]
+fn original_checksum_can_pin_function_entry_before_sparse_input_setup() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeControlAnchor, GuestCodeEdgeKind, GuestCodeEffectAnchor,
+        GuestCodeFunctionEntryAnchor, GuestCodeFunctionEntryPlacement,
+        GuestCodeOperationAnchor, GuestCodePhiCopyAnchor,
+        GuestCodePhiEntryAnchor, GuestCodePhiExitAnchor,
+        GuestCodePlacementError,
+        plan_source_locked_cfg_with_function_entry_anchors,
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("unchanged C23 checksum");
+    let operations = [
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 34,
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeOperationAnchor {
+            block: 0,
+            code_address: 37,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeOperationAnchor {
+            block: 5,
+            code_address: 66,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let effects = [
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 40,
+            effect_index: 1,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 0,
+            code_address: 42,
+            effect_index: 2,
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeEffectAnchor {
+            block: 5,
+            code_address: 69,
+            effect_index: 1,
+            function: 0,
+            ordinal: 2,
+        },
+        GuestCodeEffectAnchor {
+            block: 5,
+            code_address: 71,
+            effect_index: 2,
+            function: 0,
+            ordinal: 2,
+        },
+    ];
+    let controls = [
+        GuestCodeControlAnchor {
+            block: 0,
+            code_address: 60,
+            function: 0,
+        },
+        GuestCodeControlAnchor {
+            block: 5,
+            code_address: 75,
+            function: 0,
+        },
+    ];
+    let entry = GuestCodeFunctionEntryAnchor {
+        block: 0,
+        code_address: 0,
+        function: 0,
+    };
+    let bind = |entries: &[GuestCodeFunctionEntryAnchor]| {
+        plan_source_locked_cfg_with_function_entry_anchors(
+            GuestCodeFunctionEntryPlacement {
+                canonical: &wire,
+                source_cells: 256,
+                frame_base: 512,
+                operation_anchors: &operations,
+                effect_anchors: &effects,
+                control_anchors: &controls,
+                phi_anchors: &[],
+                phi_entries: &[],
+                phi_exits: &[],
+                function_entries: entries,
+            },
+        )
+    };
+    let unpinned =
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
+            &wire,
+            256,
+            512,
+            &operations,
+            &effects,
+            &controls,
+            &[],
+        )
+        .expect("existing sparse sites preserve their legacy start");
+    assert_ne!(unpinned.function_entries[0].address, 0);
+
+    let plan = bind(&[entry]).expect("real C0 source entry precedes C37 input");
+    assert_eq!(plan.function_entries[0].address, 0);
+    let first = &plan.code_blocks[0];
+    assert_eq!((first.start, first.control_start), (0, 60));
+    assert!(plan.operation_effect_sites.iter().any(|effect| {
+        (effect.block, effect.ordinal, effect.code_address) == (0, 0, 34)
+    }));
+    assert_eq!(plan.operation_effect_sites
+        .iter()
+        .filter(|site| [37, 40, 42, 66, 69, 71].contains(&site.code_address))
+        .count(), 6);
+    assert_eq!(plan.edge_pads.len(), 4);
+    assert_eq!(plan.control_edges.len(), 8);
+    // The C0 function entry also composes with an independently placed,
+    // predecessor-owned loop backedge. No fake source branch is selected.
+    let positions = [90, 97, 105, 114, 123, 131, 140, 150];
+    let phi = positions
+        .into_iter()
+        .enumerate()
+        .map(|(copy_index, code_address)| GuestCodePhiCopyAnchor {
+            code_address,
+            copy_index: u32::try_from(copy_index).expect("eight copies"),
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        })
+        .collect::<Vec<_>>();
+    let phi_entry = GuestCodePhiEntryAnchor {
+        code_address: 80,
+        function: 0,
+        kind: GuestCodeEdgeKind::Jump,
+        predecessor: 5,
+        successor: 1,
+    };
+    let phi_exit = GuestCodePhiExitAnchor {
+        code_address: 170,
+        function: 0,
+        kind: GuestCodeEdgeKind::Jump,
+        predecessor: 5,
+        successor: 1,
+    };
+    let complete = plan_source_locked_cfg_with_function_entry_anchors(
+        GuestCodeFunctionEntryPlacement {
+            canonical: &wire,
+            source_cells: 256,
+            frame_base: 512,
+            operation_anchors: &operations,
+            effect_anchors: &effects,
+            control_anchors: &controls,
+            phi_anchors: &phi,
+            phi_entries: &[phi_entry],
+            phi_exits: &[phi_exit],
+            function_entries: &[entry],
+        },
+    )
+    .expect("entry, reads, stores and loop backedge fit disjoint code");
+    assert_eq!(complete.function_entries[0].address, 0);
+    let backedge = complete
+        .control_edges
+        .iter()
+        .find(|edge| {
+            (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+        })
+        .expect("canonical checksum loop header");
+    assert_eq!(
+        (backedge.entry_address, backedge.pad_exit_address),
+        (80, Some(170))
+    );
+    assert_eq!(
+        backedge
+            .snapshot_sites
+            .iter()
+            .chain(&backedge.commit_sites)
+            .map(|site| site.code_address)
+            .collect::<Vec<_>>(),
+        positions,
+    );
+    assert_eq!(complete.edge_pads.len(), 4);
+    assert_eq!(complete.control_edges.len(), 8);
+    let mut intervals = complete
+        .code_blocks
+        .iter()
+        .map(|block| (block.start, block.end_exclusive))
+        .chain(
+            complete
+                .edge_pads
+                .iter()
+                .map(|pad| (pad.start, pad.end_exclusive)),
+        )
+        .collect::<Vec<_>>();
+    intervals.sort_unstable();
+    assert!(intervals.windows(2).all(|pair| pair[0].1 <= pair[1].0));
+    assert_eq!(bind(&[]), Ok(unpinned));
+    let rejected = Err(GuestCodePlacementError::InvalidCodePlacement);
+    assert_eq!(bind(&[entry, entry]), rejected);
+    for bad in [
+        GuestCodeFunctionEntryAnchor { block: 5, ..entry },
+        GuestCodeFunctionEntryAnchor { function: 3, ..entry },
+        GuestCodeFunctionEntryAnchor {
+            code_address: 38,
+            ..entry
+        },
+        GuestCodeFunctionEntryAnchor {
+            code_address: 256,
+            ..entry
+        },
+    ] {
+        assert_eq!(bind(&[bad]), rejected, "invalid function entry {bad:?}");
+    }
+    let mut reversed = [entry, entry];
+    reversed[1].function = 17;
+    assert_eq!(bind(&reversed), rejected);
+}

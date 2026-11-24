@@ -566,6 +566,49 @@ pub struct GuestCodeFunctionEntry {
     pub function: u32,
 }
 
+/// An exact entry instruction for a canonical source function.
+///
+/// Unlike an operation anchor, this reserves the physical function entry
+/// *before* any setup needed for its first typed operation. It does not
+/// establish that an executable Malbolge instruction reaches that address.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeFunctionEntryAnchor {
+    /// Canonical source entry block, not an arbitrary reachable block.
+    pub block: u32,
+    /// Proposed first guest code address of the function entry.
+    pub code_address: u32,
+    /// Canonical source function identity.
+    pub function: u32,
+}
+
+/// Complete sparse code-placement request with optional function entries.
+///
+/// Every address is a proposal. Original typed source rederives all operation,
+/// control, phi and entry identities before accepting the reservation.
+#[derive(Clone, Copy, Debug)]
+pub struct GuestCodeFunctionEntryPlacement<'source> {
+    /// Exact canonical typed source wire.
+    pub canonical: &'source [u8],
+    /// Anchored locations of each source block's terminating control.
+    pub control_anchors: &'source [GuestCodeControlAnchor],
+    /// Source-identified per-operation physical write and I/O sites.
+    pub effect_anchors: &'source [GuestCodeEffectAnchor],
+    /// First word of the disjoint SSA data frame.
+    pub frame_base: u32,
+    /// Exact canonical function-entry positions, when known.
+    pub function_entries: &'source [GuestCodeFunctionEntryAnchor],
+    /// Physical operation first-effect sites.
+    pub operation_anchors: &'source [GuestCodeOperationAnchor],
+    /// Snapshot/commit site proposals for predecessor-specific phi edges.
+    pub phi_anchors: &'source [GuestCodePhiCopyAnchor],
+    /// Optional physical entry sites before the first phi snapshot.
+    pub phi_entries: &'source [GuestCodePhiEntryAnchor],
+    /// Optional physical transfer sites after the last phi commit.
+    pub phi_exits: &'source [GuestCodePhiExitAnchor],
+    /// Physical source-cell count (not a verified target byte image).
+    pub source_cells: u32,
+}
+
 /// One source return's proposed physical control entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GuestCodeReturnSite {
@@ -2282,6 +2325,7 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
         &[],
         &[],
         &[],
+        &[],
         true,
     )
 }
@@ -2315,6 +2359,7 @@ pub fn plan_source_locked_cfg_with_operation_and_effect_anchors(
         frame_base,
         anchors,
         effect_anchors,
+        &[],
         &[],
         &[],
         &[],
@@ -2356,6 +2401,7 @@ pub fn plan_source_locked_cfg_with_operation_effect_and_control_anchors(
         &[],
         &[],
         &[],
+        &[],
         false,
     )
 }
@@ -2390,6 +2436,7 @@ pub fn plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
         effect_anchors,
         controls,
         phi_anchors,
+        &[],
         &[],
         &[],
         false,
@@ -2433,6 +2480,7 @@ pub fn plan_source_locked_cfg_with_phi_exit_anchors(
         phi_anchors,
         &[],
         exits,
+        &[],
         false,
     )
 }
@@ -2472,6 +2520,38 @@ pub fn plan_source_locked_cfg_with_phi_boundary_anchors(
         phi_anchors,
         entries,
         exits,
+        &[],
+        false,
+    )
+}
+
+/// Reserve real function entry code addresses before sparsely located input,
+/// computation, control and phi effects. An entry anchor is source-checked
+/// against the canonical function's actual entry block, not merely a valid
+/// block elsewhere in its CFG. Earlier setup cells stay inside that block;
+/// anchored effects cannot be moved backwards to fit the proposed entry.
+///
+/// This is a physical code *reservation* only. It does not prove reachability,
+/// decoded guest opcodes, C23 arithmetic, branch behavior or EOF termination.
+///
+/// # Errors
+///
+/// Refuses foreign, duplicate, non-entry, late or overlapping function entry
+/// anchors and all previously checked sparse operation/phi placement errors.
+pub fn plan_source_locked_cfg_with_function_entry_anchors(
+    request: GuestCodeFunctionEntryPlacement<'_>,
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    plan_source_locked_cfg_with_general_effect_anchors(
+        request.canonical,
+        request.source_cells,
+        request.frame_base,
+        request.operation_anchors,
+        request.effect_anchors,
+        request.control_anchors,
+        request.phi_anchors,
+        request.phi_entries,
+        request.phi_exits,
+        request.function_entries,
         false,
     )
 }
@@ -2486,6 +2566,7 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     phi_anchors: &[GuestCodePhiCopyAnchor],
     entries: &[GuestCodePhiEntryAnchor],
     exits: &[GuestCodePhiExitAnchor],
+    function_entries: &[GuestCodeFunctionEntryAnchor],
     inputs_only: bool,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let relocated =
@@ -2553,11 +2634,22 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
     }
+    let mut function_sites = BTreeMap::new();
+    for entry in function_entries {
+        let key = (entry.function, entry.block);
+        if !relocated.prelink.cfg.functions.iter().any(|function| {
+            function.id == entry.function && function.entry == entry.block
+        }) || function_sites.insert(key, entry.code_address).is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
     let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
     for block in &relocated.operation_blocks {
         let key = (block.function, block.block);
         let sites = operation_sites.get(&key);
         let control_site = control_sites.get(&key).copied();
+        let function_entry = function_sites.get(&key).copied();
         // A reached source-word store may be known before its preceding
         // input or computation opcode has been located. Recover the minimum
         // canonical prefix from whichever source-ordered effect was anchored
@@ -2579,10 +2671,15 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
             .into_iter()
             .chain(first_effect)
             .min_by_key(|&(ordinal, index, _)| (ordinal, index));
-        if first_site.is_none() && control_site.is_none() {
+        if first_site.is_none()
+            && control_site.is_none()
+            && function_entry.is_none()
+        {
             continue;
         }
-        let start = if let Some((ordinal, effect_index, address)) = first_site {
+        let start = if let Some(address) = function_entry {
+            address
+        } else if let Some((ordinal, effect_index, address)) = first_site {
             let ordinal = usize::try_from(ordinal)
                 .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
             let earlier = block
