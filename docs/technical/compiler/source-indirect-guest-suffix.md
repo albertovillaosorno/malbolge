@@ -6,6 +6,16 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Exact source arithmetic remains distinct from guest computation
+
+A source-known product can now justify a finite C32 branch and source byte
+output in the joined source-path verifier. Unsigned multiplication wraps,
+while signed addition, subtraction and multiplication are known only if the
+exact C result does not overflow. Separate 257-case first-input/EOF sweeps
+pin selected branches, the preceding output, and the full-I/O cut; signed
+overflow cases refuse source branch proof. These are **source-only** walks,
+not guest arithmetic, source SSA materialization, or a compiled checksum.
+
 ## Zero-read source branch occurrence (2026-11-24)
 
 The source-branch verifier now admits a conditional at **input ordinal zero**,

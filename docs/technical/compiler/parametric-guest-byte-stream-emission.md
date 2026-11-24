@@ -28,6 +28,18 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-checked arithmetic at a selected guest branch (2026-11-24)
+
+The finite source branch/output checker now evaluates source-known unsigned
+32-bit multiplication with C wrapping, and checked signed 32-bit addition,
+subtraction and multiplication. The source-only 257-class byte/EOF sweep
+binds one product's truncated output, comparison arm and exact input/output
+ordering to a single return path; wrong arms, bytes and transfer cuts refuse.
+A separate signed sweep preserves EOF=-1, while signed multiplication,
+subtraction and addition overflow cannot authenticate branch direction.
+This expands the source path's necessary-condition semantics, **not** guest
+execution of those arithmetic operations, mutable C locals or full P2 linking.
+
 ### Physical output addresses require authenticated source effects (2026-11-24)
 
 An additional opt-in source/guest verifier now checks every physically

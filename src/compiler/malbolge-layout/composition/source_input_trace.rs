@@ -266,6 +266,7 @@ struct SourceBranchObligation {
 }
 
 type KnownSourceOperator = fn(u32, u32) -> u32;
+type KnownSignedSourceOperator = fn(i32, i32) -> Option<i32>;
 type KnownSourceScalar = (u32, Option<u32>);
 type SourceInputSites = BTreeMap<u32, SourceInputSite>;
 
@@ -499,6 +500,22 @@ fn apply_known_binary(
         .map(|(lhs, rhs)| apply(*lhs, *rhs))
 }
 
+fn apply_known_signed_binary(
+    known: &BTreeMap<u32, u32>,
+    left: u32,
+    right: u32,
+    apply: KnownSignedSourceOperator,
+) -> Option<u32> {
+    known
+        .get(&left)
+        .zip(known.get(&right))
+        .and_then(|(lhs, rhs)| {
+            let lhs = i32::from_ne_bytes(lhs.to_ne_bytes());
+            let rhs = i32::from_ne_bytes(rhs.to_ne_bytes());
+            apply(lhs, rhs).map(|value| u32::from_ne_bytes(value.to_ne_bytes()))
+        })
+}
+
 fn known_source_binary(
     operation: &TernaryOperation,
     known: &BTreeMap<u32, u32>,
@@ -532,12 +549,30 @@ fn known_source_binary(
                     u32::from(lhs != rhs)
                 }),
             )
+        } else if let TernaryOperation::AddI32 { left, result, right, .. } =
+            *operation
+        {
+            (
+                result,
+                apply_known_signed_binary(known, left, right, i32::checked_add),
+            )
         } else if let TernaryOperation::AddU32 { left, result, right, .. } =
             *operation
         {
             (
                 result,
                 apply_known_binary(known, left, right, u32::wrapping_add),
+            )
+        } else if let TernaryOperation::SubtractI32 {
+            left,
+            result,
+            right,
+            ..
+        } = *operation
+        {
+            (
+                result,
+                apply_known_signed_binary(known, left, right, i32::checked_sub),
             )
         } else if let TernaryOperation::SubtractU32 {
             left,
@@ -549,6 +584,28 @@ fn known_source_binary(
             (
                 result,
                 apply_known_binary(known, left, right, u32::wrapping_sub),
+            )
+        } else if let TernaryOperation::MultiplyI32 {
+            left,
+            result,
+            right,
+            ..
+        } = *operation
+        {
+            (
+                result,
+                apply_known_signed_binary(known, left, right, i32::checked_mul),
+            )
+        } else if let TernaryOperation::MultiplyU32 {
+            left,
+            result,
+            right,
+            ..
+        } = *operation
+        {
+            (
+                result,
+                apply_known_binary(known, left, right, u32::wrapping_mul),
             )
         } else if let TernaryOperation::AndI32 { left, result, right, .. }
         | TernaryOperation::AndU32 { left, result, right, .. } =
@@ -1347,12 +1404,13 @@ pub fn verify_source_input_site_return_compatible(
 /// to agree with one source-known CFG path after the observed input reads.
 ///
 /// The input/return checker runs first against the actual normative VM. Only
-/// exact source-known constants, casts, unsigned wrapping addition/subtraction,
-/// comparisons, bitwise operations and parallel phi assignments can justify
-/// output here. Unknown byte scalars fail closed; no host-produced checksum
-/// is substituted for a guest output, and output-before-read is not accepted
-/// as output-after-read. This is a necessary finite I/O check,
-/// *not* target arithmetic, state writes, jump or full C translation proof.
+/// exact source-known constants, casts, unsigned wrapping arithmetic,
+/// defined signed add/subtract/multiply, comparisons, bitwise operations
+/// and parallel phi assignments can justify output here. Unknown byte scalars
+/// fail closed; no host-produced checksum is substituted for a guest output,
+/// and output-before-read is not accepted as output-after-read. This is a
+/// necessary finite I/O check, *not* target arithmetic, state writes, jump or
+/// full C translation proof.
 ///
 /// # Errors
 ///
