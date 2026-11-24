@@ -79,8 +79,16 @@ class PipelineError(Exception):
     """One stage could not establish the supported compiler contract."""
 
 
-def source_digest(path: Path) -> str:
-    """Hash one stable regular source inode without trusting an initial path stat."""
+@dataclass(frozen=True, slots=True)
+class SourceFingerprint:
+    """Content and stable inode metadata from one checked source acquisition."""
+
+    sha256: str
+    identity: tuple[int, int, int, int, int]
+
+
+def source_fingerprint(path: Path) -> SourceFingerprint:
+    """Pin original source bytes and file identity across all compiler stages."""
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_BINARY", 0)
     try:
@@ -118,7 +126,7 @@ def source_digest(path: Path) -> str:
         or total != before.st_size
     ):
         raise PipelineError("source changed during acquisition")
-    return digest.hexdigest()
+    return SourceFingerprint(digest.hexdigest(), identity(after))
 
 
 def strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -409,11 +417,11 @@ def compile_source(arguments: Arguments) -> None:
         else None
     )
     source = Path(arguments.source)
-    expected = source_digest(source)
+    expected = source_fingerprint(source)
     _ = remaining_seconds(deadline)
     normalized = run_frontend(arguments, deadline)
-    admit_source_identity(normalized, arguments.source_id, expected)
-    if source_digest(source) != expected:
+    admit_source_identity(normalized, arguments.source_id, expected.sha256)
+    if source_fingerprint(source) != expected:
         raise PipelineError("source changed during frontend compilation")
     target = Path(arguments.output)
     try:
@@ -485,7 +493,7 @@ def compile_source(arguments: Arguments) -> None:
             ) from error
         # The stage sync is still part of guest compilation. Check the source
         # again afterward, immediately before exposing the verified artifact.
-        if source_digest(source) != expected:
+        if source_fingerprint(source) != expected:
             raise PipelineError("source changed during guest compilation")
         _ = remaining_seconds(deadline)
         try:

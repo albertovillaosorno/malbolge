@@ -47,10 +47,16 @@ FRONTEND = textwrap.dedent("""\
     #!/usr/bin/env python3
     import hashlib
     import json
+    import os
     from pathlib import Path
     import sys
 
-    source = Path(sys.argv[-1]).read_bytes()
+    path = Path(sys.argv[-1])
+    source = path.read_bytes()
+    if os.environ.get('COMPILER_TEST_MODE') == 'frontend-replace-source-same-content':
+        replacement = path.with_name('frontend-replacement.c')
+        replacement.write_bytes(source)
+        os.replace(replacement, path)
     print(json.dumps({
         'source': {
             'id': sys.argv[sys.argv.index('--source-id') + 1],
@@ -72,6 +78,15 @@ ADAPTER = textwrap.dedent("""\
     mode = os.environ.get('COMPILER_TEST_MODE')
     if mode == 'mutate-source':
         source.write_bytes(b'void noop(void) { ; }\\n')
+    if mode == 'replace-source-same-content':
+        replacement = source.with_name('replacement.c')
+        replacement.write_bytes(source.read_bytes())
+        os.replace(replacement, source)
+    if mode == 'rewrite-source-same-content':
+        original = source.read_bytes()
+        source.write_bytes(original)
+        current = source.stat()
+        os.utime(source, ns=(current.st_atime_ns, current.st_mtime_ns + 2_000_000_000))
     if mode == 'occupy-target':
         target.write_bytes(b'concurrent-target')
     if mode == 'symlink-stage':
@@ -213,6 +228,37 @@ class SourceBoundPublicationTests(unittest.TestCase):
         self.assertIn(b"injected sync failure", completed.stderr)
         # The already-created link must not be deleted after a sync failure.
         self.assertEqual(self.target.read_bytes(), b"verified-guest")
+        self.assert_no_staging_leftovers()
+
+    def test_frontend_same_content_inode_swap_rejects_before_adapter(self) -> None:
+        original = self.source.read_bytes()
+        previous = self.source.stat()
+        completed = self.run_driver("frontend-replace-source-same-content")
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertNotEqual(self.source.stat().st_ino, previous.st_ino)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"source changed during frontend compilation", completed.stderr)
+        self.assertFalse(self.target.exists())
+        self.assert_no_staging_leftovers()
+
+    def test_same_content_inode_swap_rejects_before_publication(self) -> None:
+        original = self.source.read_bytes()
+        previous = self.source.stat()
+        completed = self.run_driver("replace-source-same-content")
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertNotEqual(self.source.stat().st_ino, previous.st_ino)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"source changed during guest compilation", completed.stderr)
+        self.assertFalse(self.target.exists())
+        self.assert_no_staging_leftovers()
+
+    def test_same_content_rewrite_rejects_before_publication(self) -> None:
+        original = self.source.read_bytes()
+        completed = self.run_driver("rewrite-source-same-content")
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"source changed during guest compilation", completed.stderr)
+        self.assertFalse(self.target.exists())
         self.assert_no_staging_leftovers()
 
     def test_source_changed_during_adapter_rejects_without_publication(self) -> None:
