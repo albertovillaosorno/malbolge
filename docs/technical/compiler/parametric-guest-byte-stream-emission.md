@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two independent stored raw inputs and physical outputs (2026-11-24)
+
+The first-store program now has a source-loaded continuation in the **same
+91-cell N15 source**. The first C37 `/`, C43/M126 first saved word, C49/M132
+restoration and C50 first output remain physically unchanged. C54 `/`
+performs a second independent signed input attempt, C55 `p` stores its raw
+class injectively at disjoint loader M138=121, and C61 `p` restores its
+successful byte using untouched loader M144=121. C62 `<` emits the second
+byte and C63 `v` halts after exactly 64 guest transitions, preserving both
+M126 and M138. Twelve real VM traces include empty, truncated, binary, high
+byte, swapped inputs and an unread suffix. A separate exhaustive scalar
+census verifies that each physical first-stage word independently retains
+all 257 input/EOF classes; mutations of the second `/` or either second
+`p` break the second output without altering the first output.
+
+The source is *unconditional*: two EOF attempts emit two raw N15 low bytes
+174. It does not test EOF before reading again, convert it to signed C23,
+perform source-C arithmetic, or link the checksum loop. Implementation:
+`build_c23_two_inputs_saved_and_echoed_source`; independent regression:
+`tests/compiler_c23_two_saved_echo_guest.rs`. This extends physical
+compositional input/state/output reachability, not C23 compiler publication.
+
 ### First input retained across its physical output (2026-11-24)
 
 The unchanged full seven-block C23 mutable EOF checksum still refuses

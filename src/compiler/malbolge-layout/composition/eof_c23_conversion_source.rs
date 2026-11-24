@@ -447,6 +447,42 @@ pub fn build_c23_first_input_saved_and_echoed_source(
     Ok(source)
 }
 
+/// Preserve and emit two independently stored raw guest inputs in one source.
+///
+/// The first C37 read, C43/M126 injective store, C49/M132 restoration, and
+/// C50 byte output remain the same as the one-input witness. The continuation
+/// advances D to M137, reads a **second** real input at C54, writes an
+/// independent 257-class representation at C55/M138, then advances five
+/// further data cells to untouched loader M144=121. C61 `p` restores each
+/// second successful byte for C62 `<`, and C63 `v` halts after 64 steps.
+/// Neither later `p` overwrites the original first saved guest input at M126.
+/// The two missing-input observations are raw N15 EOF and emit 174, not C23
+/// 255; this source is no dynamic EOF loop, checksum, or compiler CFG link.
+///
+/// # Errors
+///
+/// Refuses unsupported N15 profiles and unavailable graphical code sites.
+/// The returned source requires independent normative VM path validation.
+pub fn build_c23_two_inputs_saved_and_echoed_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source = build_c23_first_input_saved_and_echoed_source(profile)?;
+    for position in 51..=63 {
+        set(&mut source, position, b'o')?;
+    }
+    for (position, opcode) in [
+        (54, profile.input_instruction()),
+        (55, b'p'),
+        (61, b'p'),
+        (62, profile.output_instruction()),
+        (63, b'v'),
+    ] {
+        set(&mut source, position, opcode)?;
+    }
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
 /// Extend a first-read lossless store across the eighth real Iy rotation.
 ///
 /// The first signed `/` at C37 feeds a physical C43 `p` write to M126.

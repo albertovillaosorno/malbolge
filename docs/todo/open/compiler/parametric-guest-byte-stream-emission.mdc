@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A second continuation of the same 91-cell source now performs two genuine
+raw N15 input reads at C37/C54, injectively stores both into disjoint M126
+and M138, restores and emits both from M132/M144, and halts at step 64.
+Twelve normative traces, an independent 257-class scalar census, and three
+second-input negative controls authenticate these effects. The full C23
+source checksum still has neither a signed EOF guard nor executable loop.
+See `tests/compiler_c23_two_saved_echo_guest.rs` and the compiler contract.
+
 A 91-cell source-loaded N15 helper now retains its genuine C37 input at
 M126 and emits the same successful byte after an independent C49 physical
 crazy write at M132; ten guest traces verify the 52-step halt, actual stores
