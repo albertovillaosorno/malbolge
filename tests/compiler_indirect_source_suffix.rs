@@ -42,6 +42,9 @@ use malbolge::{
 // leaf: its reached j reads the *encrypted* earlier output instruction, and
 // two reached p operations update the earlier guest-computed state.
 const THREE_INPUT_FOLD_SUFFIX: &[u8] = b"/<oooojpp<*v";
+// A terminal indirect transfer revisits actually encrypted previous code
+// and returns to an earlier reached v, without faking a new guest output.
+const THREE_INPUT_FOLD_RETURN_SUFFIX: &[u8] = b"/<oooojpp<*i";
 // This second linear window reads a fourth word after the saved M106 fold,
 // then legally rewrites an already executed and encrypted source code cell.
 const FOUR_INPUT_CODE_ALIAS_SUFFIX: &[u8] = b"/<oooojpp<*/jojpv";
@@ -883,5 +886,267 @@ fn fourth_input_code_rewrite_follows_real_encrypted_operands() {
                 || mutant.memory_word(40) != Ok(scalar_crazy(63, 6)),
             "mutation at C{altered_code} preserved an unearned fourth store"
         );
+    }
+}
+
+// The terminal C128 i reads virgin source M109=66, transfers into earlier
+// encrypted instructions, and eventually executes a *real* encrypted C82 v.
+// This is control composition, not a source-C loop, EOF test or checksum.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "frozen 135-cell source has a valid M109 operand"
+)]
+fn saved_fold_return_plan() -> IndirectSourceSuffixPlan {
+    let mut source = saved_fold_source();
+    source[109] = 66;
+    assert_eq!(
+        decode_profile_instruction(66, 109),
+        Some(b'v'),
+        "indirect operand must be valid code at source position 109"
+    );
+    open_suffix(&source, THREE_INPUT_FOLD_RETURN_SUFFIX)
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    reason = "real encrypted guest control return with full VM state checks"
+)]
+fn source_loaded_fold_indirectly_returns_to_earlier_encrypted_halt() {
+    let original = saved_fold_source();
+    let plan = saved_fold_return_plan();
+    assert_eq!((plan.pointer_word, plan.landing_address), (116, 117));
+    assert_eq!(plan.source.len(), 135);
+    assert_eq!(plan.source[109], 66);
+    for protected in [40usize, 54, 109, 110, 124, 127, 134] {
+        assert_eq!(
+            plan.source[protected],
+            if protected == 109 {
+                66
+            } else {
+                original[protected]
+            }
+        );
+    }
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), &plan.source, vec![
+            3, 4, 5,
+        ])
+        .expect("fully graphical 135-cell N15 source");
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(140, &mut |step| trace.push(*step)),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 123,
+        })
+    );
+    let twice = scalar_crazy(scalar_crazy(121, 3), 4);
+    let thrice = scalar_crazy(twice, scalar_crazy(57, 5));
+    assert_eq!(vm.input_consumed(), 3);
+    assert_eq!(vm.output(), [3, 49, 5, 58]);
+    assert_eq!(vm.memory_word(105), Ok(scalar_crazy(57, 5)));
+    assert_eq!(vm.memory_word(106), Ok(thrice));
+    assert_eq!(trace[106].before.registers.code_pointer, 128);
+    assert_eq!(trace[106].decoded, Some(b'i'));
+    assert_eq!(
+        trace[106]
+            .memory_reads
+            .data
+            .map(|word| (word.address, word.value)),
+        Some((109, 66))
+    );
+    assert_eq!(trace[106].after.registers.code_pointer, 67);
+    assert_eq!(trace[107].before.registers.code_pointer, 67);
+    assert_eq!(trace[122].before.registers.code_pointer, 82);
+    assert_eq!(trace[122].decoded, Some(b'v'));
+    // This terminal v is reached only after C82 was executed, encrypted
+    // and used as code again: it is not an extra source-level v fixture.
+    let first_c82 = trace
+        .iter()
+        .position(|step| step.before.registers.code_pointer == 82)
+        .expect("first C82 instruction");
+    assert!(first_c82 < 106);
+    assert_eq!(trace[first_c82].decoded, Some(b'/'));
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::integer_division_remainder_used,
+    reason = "257 real third-input classes through indirect guest reentry"
+)]
+fn terminal_guest_reentry_preserves_all_third_input_classes() {
+    let plan = saved_fold_return_plan();
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("one admitted source, independent stdin forks");
+    let twice = scalar_crazy(scalar_crazy(121, 3), 4);
+    for third in (0..=255u32).chain(once(profile.eof_word())) {
+        let mut input = vec![3, 4];
+        if third != profile.eof_word() {
+            input.push(u8::try_from(third).expect("byte"));
+        }
+        let mut vm = pristine.fork_with_input(input.clone()).expect("VM fork");
+        assert_eq!(
+            vm.run(140),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 123,
+            }),
+            "third={third}"
+        );
+        let expected = scalar_crazy(twice, scalar_crazy(57, third));
+        assert_eq!(vm.input_consumed(), input.len());
+        assert_eq!(vm.memory_word(106), Ok(expected));
+        assert_eq!(
+            vm.output(),
+            [
+                3,
+                u8::try_from(twice % 256).expect("low byte"),
+                u8::try_from(third % 256).expect("third byte"),
+                u8::try_from(expected % 256).expect("fold byte"),
+            ],
+            "third={third}"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "two authentic source-controlled indirect transfer negatives"
+)]
+fn terminal_indirect_return_requires_its_encrypted_data_operand() {
+    let plan = saved_fold_return_plan();
+    let mut no_return = plan.source.clone();
+    no_return[128] = graphical(128, b'v').expect("source-valid halt");
+    let mut direct =
+        ProfileMachine::from_source(current_profile(), &no_return, vec![
+            3, 4, 5,
+        ])
+        .expect("changed source is still valid");
+    assert_eq!(
+        direct.run(140),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 107,
+        })
+    );
+    let mut old_data = plan.source;
+    old_data[109] = saved_fold_source()[109];
+    let mut missing =
+        ProfileMachine::from_source(current_profile(), &old_data, vec![
+            3, 4, 5,
+        ])
+        .expect("changed source is still valid");
+    assert_ne!(
+        missing.run(140),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 123,
+        }),
+        "terminal i cannot claim a halt from the old pointer"
+    );
+    assert_eq!(
+        plan_source_loaded_indirect_suffix(
+            current_profile(),
+            &saved_fold_source(),
+            111,
+            117,
+            117,
+            b"/<ioojpp<*i",
+            &(0..111).collect::<Vec<_>>()
+        ),
+        Err(IndirectSourceSuffixError::InvalidSuffix),
+        "interior i is not a linear suffix"
+    );
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::integer_division_remainder_used,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "two 256-class marginals and truncated EOF reads checked in guest"
+)]
+fn terminal_return_preserves_live_first_and_second_fold_inputs() {
+    let plan = saved_fold_return_plan();
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("source-valid terminal indirect return");
+    for vary_first in [true, false] {
+        for byte in 0..=255u8 {
+            let first = if vary_first {
+                byte
+            } else {
+                3
+            };
+            let second = if vary_first {
+                4
+            } else {
+                byte
+            };
+            let input = vec![first, second, 128];
+            let mut vm =
+                pristine.fork_with_input(input.clone()).expect("VM fork");
+            assert_eq!(
+                vm.run(140),
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 123,
+                }),
+                "vary_first={vary_first} byte={byte}"
+            );
+            let twice = scalar_crazy(
+                scalar_crazy(121, u32::from(first)),
+                u32::from(second),
+            );
+            let thrice = scalar_crazy(twice, scalar_crazy(57, 128));
+            assert_eq!(vm.input_consumed(), input.len());
+            assert_eq!(vm.memory_word(106), Ok(thrice));
+            assert_eq!(
+                vm.output(),
+                [
+                    first,
+                    u8::try_from(twice % 256).expect("low second fold"),
+                    128,
+                    u8::try_from(thrice % 256).expect("low third fold"),
+                ],
+                "vary_first={vary_first} byte={byte}"
+            );
+        }
+    }
+    // EOF is a *missing read*, not a forged 257th stdin byte. A suffix
+    // following true EOF must still reach the same physical encrypted halt.
+    for input in [vec![], vec![0], vec![255], vec![0, 255]] {
+        let raw = |index| {
+            input
+                .get(index)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        };
+        let twice = scalar_crazy(scalar_crazy(121, raw(0)), raw(1));
+        let thrice = scalar_crazy(twice, scalar_crazy(57, raw(2)));
+        let mut vm = pristine.fork_with_input(input.clone()).expect("VM fork");
+        assert_eq!(
+            vm.run(140),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 123,
+            }),
+            "input={input:?}"
+        );
+        assert_eq!(vm.input_consumed(), input.len());
+        assert_eq!(vm.memory_word(106), Ok(thrice));
+        assert_eq!(vm.output(), [
+            u8::try_from(raw(0) % 256).expect("first low"),
+            u8::try_from(twice % 256).expect("second low"),
+            u8::try_from(raw(2) % 256).expect("third low"),
+            u8::try_from(thrice % 256).expect("third fold low"),
+        ]);
     }
 }

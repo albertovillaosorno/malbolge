@@ -145,6 +145,46 @@ cell has executed. This is a bounded state-lifetime witness, not a
 repeatable guest loop, source local, C23 arithmetic, signed EOF dispatch
 or executable mutable checksum.
 
+## Terminal indirect return through already encrypted code (2026-11-24)
+
+The source-loaded 135-cell three-input fold now has a *nonlinear* terminal
+continuation. The earlier C94 `i` still reaches the admitted 12-opcode
+C117..C128 window, and its C123/C124/C125 data path still updates M105 and
+M106 from three **real** input reads. Instead of ending in a fresh C128 `v`,
+the new candidate ends in a reached C128 `i`. Its D points at M109=66, a
+previously protected, graphical source word (`v` at its own code position).
+The actual `i` reads that value, transfers C128 -> C67 and traverses prior
+**encrypted** instructions before halting on a real C82 `v` at guest step
+123. C82 was earlier reached as `/` and encrypted; the later `v` is neither
+an inserted source halt nor simulated host control.
+
+For `03 04 05`, the normative N15 VM consumes three input bytes, emits
+`03 31 05 3a`, retains the genuine third-input fold in M106, and halts in
+123 steps. A separate fifteen-trit crazy oracle agrees with all 257
+third-input/EOF classes, 256 first-input variants, 256 second-input
+variants, and four empty/truncated EOF vectors. Every case completes at
+the same genuine `v` and consumes precisely the supplied bytes. A complete
+trace confirms C128's operand read `(M109, 66)`, C67 reentry, the earlier
+C82 input instruction, and the eventual C82 halt. Replacing terminal `i`
+with `v` terminates at 107 steps; replacing the protected M109 operand
+cannot retain the 123-step path. The leaf placer now admits a terminal
+`i` only as an **unverified candidate**; a terminal source word is not
+itself evidence of safe guest control, nor does the planner certify the
+transferred path.
+
+This is a constructive *control-return* contract for one bounded already
+executed physical prefix. It is **not** a fourth read, a reusable loop,
+a signed C23 EOF conversion, a variable source branch, SSA/phi placement,
+or a C23 checksum. The unchanged seven-block checksum still refuses guest
+publication. Reproduction:
+
+```sh
+.dependencies/rust/1.98.1/bin/cargo.bin test --release --test \
+  compiler_indirect_source_suffix
+.dependencies/python/3.14.7/bin/python3.14 -B -m unittest \
+  tests.test_eof_checksum_pipeline -v
+```
+
 ## What is still missing
 
 This is successful **physical continuation placement** of a bounded

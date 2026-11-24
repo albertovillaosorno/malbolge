@@ -16,7 +16,7 @@
 //     preceding self-modification preserves the leaf or pointer value.
 // - Allows:
 //   - Inputs: already-admitted source, pointer-cell position, open code range,
-//     protected cells and a terminal linear data/I/O instruction sequence.
+//     protected cells and a linear data/I/O/control suffix.
 //   - Outputs: a deterministic graphical candidate and exact landing address.
 //   - Side effects: owned allocation only; no VM or host I/O.
 // - Split-When:
@@ -52,7 +52,8 @@ pub enum IndirectSourceSuffixError {
     InvalidSource,
     /// The pointer site, landing window or protected positions are invalid.
     InvalidPlacement,
-    /// Only a bounded linear data/I/O leaf ending in a halt is admitted.
+    /// Only a bounded linear leaf ending in a halt or indirect transfer is
+    /// admitted.
     InvalidSuffix,
     /// An instruction in the requested leaf lacks graphical positional code.
     MissingGraphicalEncoding,
@@ -83,8 +84,11 @@ pub struct IndirectSourceSuffixPlan {
 /// list all dynamically read/written source cells and already-reached code.
 /// `landing_from..=landing_through` is a finite, nonempty code window.
 /// The leaf may use linear `o`, `/`, `<`, `j`, `p`, `*`, followed by
-/// exactly one final `v`. Data-pointer moves and writes have no source-time
-/// correctness claim; normative VM traces must prove their effects.
+/// exactly one final `v` or `i`. A terminal `i` is an actual control
+/// transfer, not an assumed halt: the caller must separately prove its
+/// reached operand, destination, any replayed encrypted code, and eventual
+/// termination on every admitted input. Data-pointer moves and writes have
+/// no source-time correctness claim; normative VM traces prove their effects.
 /// The first admissible landing address is chosen, reproducibly. The caller
 /// must **separately** prove the real guest's D points to the pointer cell at
 /// a reached `i`, no intervening write changes it, and the leaf was not
@@ -124,7 +128,9 @@ pub fn plan_source_loaded_indirect_suffix(
     }
     if suffix.is_empty()
         || suffix.len() > MAX_SUFFIX_CELLS
-        || suffix.last() != Some(&b'v')
+        || !suffix
+            .last()
+            .is_some_and(|opcode| *opcode == b'v' || *opcode == b'i')
         || !suffix[..suffix.len() - 1].iter().all(|opcode| {
             matches!(opcode, b'o' | b'/' | b'<' | b'j' | b'p' | b'*')
         })

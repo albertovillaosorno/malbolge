@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Real encrypted-code control return after three guest inputs (2026-11-24)
+
+A source-admitted terminal `i` now extends the genuine 135-cell three-input
+N15 fold: C128 physically reads untouched source/data M109=66 and returns
+via already encrypted C67..C82 to a real C82 `v` at **123 guest steps**.
+The previous input-dependent M105/M106 crazy computation and all four
+outputs survive. The normative interpreter and independent fifteen-trit
+oracle agree for all 257 third-byte/EOF classes, 256 first-byte cases,
+256 second-byte cases and four truncated streams. Source and control
+mutations reject counterfeit reentry. The indirect suffix planner now
+permits **terminal** `i` as a candidate with a mandatory separate guest
+control proof; interior `i` remains refused. This is finite physical
+code/data reentry, not a reusable checksum loop or C23 control flow.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md` and
+`tests/compiler_indirect_source_suffix.rs`. The complete C23 checksum
+continues to fail closed without an emitted guest artifact.
+
 ### Fourth guest read safely rewrites finished code as data (2026-11-24)
 
 The same genuine 135-cell graphical N15 source admits an alternative

@@ -41,6 +41,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A 135-cell source-loaded three-input fold now completes a genuine indirect
+return through previously encrypted C67..C82: terminal C128 `i` reads
+source-valid M109=66, reaches an earlier encrypted C82 `v`, and halts in
+123 normative N15 steps. A 257-case third-byte/EOF sweep, both 256-case
+prior-byte marginals and truncated EOF controls check its exact three
+reads, four outputs, M106 fold and real halt. The terminal-`i` placement
+extension is only a source-valid candidate; real guest replay authenticates
+control. It is **not** linked source-C CFG, signed EOF normalization or the
+complete seven-block C23 checksum. P2 remains open; evidence:
+`docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 A second 135-cell guest suffix reads a **fourth** real word and uses
 code/data phase reuse to update already executed M40 with
 `crazy(63, fourth)`. All 257 fourth-byte/EOF classes terminate in 112
