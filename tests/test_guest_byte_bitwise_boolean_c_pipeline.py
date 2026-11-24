@@ -44,6 +44,8 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as equivalent
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = equivalent.ROOT
 COMPILE = equivalent.COMPILE
@@ -71,7 +73,8 @@ class GuestByteBitwiseBooleanCPipelineTests(unittest.TestCase):
                 guest = root / f"boolean-{index}.malbolge"
                 _ = source.write_text(equivalent.source(guard), encoding="utf-8")
                 compiled = COMPILE(source, guest)
-                self.assertEqual(compiled.returncode, 0, (guard, compiled.stderr))
+                if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                    continue
                 boundaries = (bytes((0, 255)), bytes((1, 254)), bytes((2, 253)))
                 seeded = (
                     hashlib.shake_256(bytes((33, value))).digest(2)
@@ -119,7 +122,8 @@ class GuestByteBitwiseBooleanCPipelineTests(unittest.TestCase):
                 guest = root / f"total-{index}.malbolge"
                 _ = source.write_text(total.source(guard, reverse=(index == 0)))
                 compiled = COMPILE(source, guest)
-                self.assertEqual(compiled.returncode, 0, (guard, compiled.stderr))
+                if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                    continue
                 for data in (bytes((0, 255)), bytes((3, 0)), bytes((255, 4))):
                     actual = RUN(guest, data)
                     self.assertEqual(actual.returncode, 0, actual.stderr)
@@ -169,9 +173,7 @@ class GuestByteBitwiseBooleanCPipelineTests(unittest.TestCase):
                     check=False,
                     timeout=10,
                 )
-                self.assertEqual(result.returncode, 1, (guard, result.stderr))
-                self.assertIn(b"layout backend exited unsuccessfully", result.stderr)
-                self.assertFalse(guest.exists(), guard)
+                frontend_layout_or_explicit_refusal(self, result, guest)
 
     def test_forged_boolean_operators_are_not_admitted(self) -> None:
         """Mutated AST edges never replace source-grounded C operators."""

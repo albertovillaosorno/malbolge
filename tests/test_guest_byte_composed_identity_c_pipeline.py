@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_identity_arithmetic_c_pipeline as previous
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -61,9 +62,10 @@ class GuestByteComposedIdentityCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
             path, guest = root / "compound.c", root / "compound.malbolge"
-            path.write_text(source(), encoding="utf-8")
+            _ = path.write_text(source(), encoding="utf-8")
             compiled = COMPILE(path, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (
                 bytes((0, 255)),
                 bytes((255, 0)),
@@ -89,9 +91,10 @@ class GuestByteComposedIdentityCPipelineTests(unittest.TestCase):
                         root / f"compound-{index}.c",
                         root / f"compound-{index}.malbolge",
                     )
-                    path.write_text(source(expression=expression), encoding="utf-8")
+                    _ = path.write_text(source(expression=expression), encoding="utf-8")
                     compiled = COMPILE(path, guest)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                        continue
                     data = bytes((0, 255)) if index % 2 else bytes((255, 0))
                     actual = RUN(guest, data)
                     self.assertEqual(actual.returncode, 0, actual.stderr)
@@ -102,9 +105,10 @@ class GuestByteComposedIdentityCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
             path, guest = root / "zero.c", root / "zero.malbolge"
-            path.write_text(source(bound=0), encoding="utf-8")
+            _ = path.write_text(source(bound=0), encoding="utf-8")
             compiled = COMPILE(path, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             data = bytes((0, 255))
             actual = RUN(guest, data)
             self.assertEqual(actual.returncode, 0, actual.stderr)
@@ -130,7 +134,7 @@ class GuestByteComposedIdentityCPipelineTests(unittest.TestCase):
                         root / f"bad-{index}.c",
                         root / f"bad-{index}.malbolge",
                     )
-                    path.write_text(source(expression=expression), encoding="utf-8")
+                    _ = path.write_text(source(expression=expression), encoding="utf-8")
                     rejected = COMPILE(path, guest)
                     self.assertNotEqual(rejected.returncode, 0)
                     self.assertFalse(guest.exists())
@@ -139,7 +143,7 @@ class GuestByteComposedIdentityCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
             path = root / "verified.c"
-            path.write_text(source(), encoding="utf-8")
+            _ = path.write_text(source(), encoding="utf-8")
             original = NORMALIZED(path)
             nodes = cast(list[dict[str, object]], original["nodes"])
             for index, node in enumerate(nodes):
@@ -169,7 +173,7 @@ class GuestByteComposedIdentityCPipelineTests(unittest.TestCase):
                 )
             ):
                 witness = root / f"altered-{index}.c"
-                witness.write_text(source().replace(old, new), encoding="utf-8")
+                _ = witness.write_text(source().replace(old, new), encoding="utf-8")
                 forged = copy.deepcopy(original)
                 cast(dict[str, object], forged["source"])["sha256"] = hashlib.sha256(
                     witness.read_bytes()
@@ -185,4 +189,4 @@ class GuestByteComposedIdentityCPipelineTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

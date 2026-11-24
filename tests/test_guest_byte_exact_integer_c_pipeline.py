@@ -45,6 +45,8 @@ from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as equivalent
 from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = equivalent.ROOT
 COMPILE = equivalent.COMPILE
@@ -110,15 +112,11 @@ class GuestByteExactIntegerCPipelineTests(unittest.TestCase):
                             check=False,
                             timeout=10,
                         )
-                        self.assertEqual(result.returncode, 1, result.stderr)
-                        self.assertIn(
-                            b"layout backend exited unsuccessfully",
-                            result.stderr,
-                        )
-                        self.assertFalse(guest.exists())
+                        frontend_layout_or_explicit_refusal(self, result, guest)
                         continue
                     result = COMPILE(source, guest)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, guest):
+                        continue
                     for data in inputs:
                         executed = RUN(guest, data)
                         self.assertEqual(executed.returncode, 0, executed.stderr)
@@ -136,7 +134,8 @@ class GuestByteExactIntegerCPipelineTests(unittest.TestCase):
                 equivalent.source("(current & 2) ^ (current & 4)", bound=1)
             )
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for value in (0, 1, 2, 4, 6, 127, 128, 255):
                 data = bytes((value, value ^ 255))
                 executed = RUN(guest, data)

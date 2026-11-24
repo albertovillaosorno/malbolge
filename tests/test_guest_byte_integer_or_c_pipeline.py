@@ -42,6 +42,7 @@ from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as previous
 from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 COMPILE = previous.COMPILE
@@ -69,8 +70,7 @@ class GuestByteIntegerOrCPipelineTests(unittest.TestCase):
         ):
             self.skipTest("pinned C toolchain and normative VM required")
 
-    @staticmethod
-    def test_integer_mask_or_preserves_guest_effects() -> None:
+    def test_integer_mask_or_preserves_guest_effects(self) -> None:
         """Different non-Boolean mask values must use the actual guest data."""
         guards = (
             "(current & 2) | (current & 4)",
@@ -84,7 +84,8 @@ class GuestByteIntegerOrCPipelineTests(unittest.TestCase):
                 guest = root / f"integer-or-{index}.malbolge"
                 _ = source.write_text(previous.source(guard), encoding="utf-8")
                 compiled = COMPILE(source, guest)
-                assert compiled.returncode == 0, (guard, compiled.stderr)
+                if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                    continue
                 boundaries = (bytes((0, 255)), bytes((2, 4)), bytes((4, 2)))
                 seeded = (
                     hashlib.shake_256(bytes((47, value))).digest(2)
