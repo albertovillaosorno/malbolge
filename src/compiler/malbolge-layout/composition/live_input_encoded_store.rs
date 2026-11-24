@@ -150,6 +150,128 @@ pub struct LiveInputReentrySource {
     pub store_initial_word: u32,
 }
 
+/// Fixed 256-cell physical source reaching expanded memory without assuming
+/// that its initial `j` can directly read an expanded loader word.
+///
+/// The first `j` selects source M41, a `p` overwrites that cell with a
+/// high-value pointer, and two genuine `j` operations reread the new value.
+/// The temporary code cell is never fetched: the active prefix halts at C39.
+/// An input at C37 then writes an invertibly encoded raw input to expanded
+/// memory at C38. The resulting word is not signed C23 `getchar` or a linked
+/// checksum block; following code and its mutation hazards remain unproved.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LongSourceInputBootstrapSource {
+    /// Expanded data word physically written by C38.
+    pub data_address: u32,
+    /// Genuine `p` operand loaded by the normative memory recurrence.
+    pub initial_data_word: u32,
+    /// High pointer written into a source cell by C1.
+    pub high_pointer_word: u32,
+    /// Actual `/` guest code address.
+    pub input_code_address: u32,
+    /// Source cell overwritten by C1 and reread by C3.
+    pub modified_source_address: u32,
+    /// Original source word forcing C2 to revisit the modified cell.
+    pub return_source_address: u32,
+    /// Entire loader-valid source, including unreachable reserve cells.
+    pub source: Vec<u8>,
+    /// Reached, input-dependent `p` source address.
+    pub store_code_address: u32,
+}
+
+/// Construct a real 256-cell source-backed high-pointer bootstrap.
+///
+/// C0 `j` selects M41, C1 `p` turns its graphical source byte 35 into a
+/// full-width pointer, C2 `j` reads the source-backed return value M42=40,
+/// and C3 `j` consumes the *rewritten* M41. This brings D to high expanded
+/// memory without requiring the initial source to have fewer than 127 cells.
+/// C4..C36 are genuine `o`, C37 `/` reads one real byte/EOF, C38 `p` writes
+/// that raw value using a loader-derived all-ones operand and C39 `v` halts.
+/// Both initial source mutation and input encoding are real guest effects;
+/// no source-C operation, signed EOF conversion or control edge is linked.
+///
+/// # Errors
+///
+/// Refuses a noncurrent target or drifted graphical/loader geometry.
+pub fn build_long_source_input_bootstrap_source(
+    profile: &ProfileDescriptor,
+) -> Result<LongSourceInputBootstrapSource, LiveInputEncodedStoreError> {
+    use LiveInputEncodedStoreError::{NoLoadableSeed, UnsupportedProfile};
+    if profile != current_profile() {
+        return Err(UnsupportedProfile);
+    }
+    const SOURCE_CELLS: usize = 256;
+    const TEMPORARY: usize = 41;
+    const RETURN: usize = TEMPORARY + 1;
+    const INPUT: usize = 37;
+    const STORE: usize = INPUT + 1;
+    let mut source = Vec::with_capacity(SOURCE_CELLS);
+    for code in 0..SOURCE_CELLS {
+        let opcode = match code {
+            0 | 2 | 3 => LinearOpcode::RelocateDataPointer,
+            1 | STORE => LinearOpcode::CrazyData,
+            INPUT => LinearOpcode::InputWord,
+            39 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        };
+        source.push(
+            unique_graphical_cell(profile, opcode, code)
+                .map_err(|_error| NoLoadableSeed)?,
+        );
+    }
+    source[TEMPORARY] = 35;
+    source[RETURN] = 40;
+    source[254] = 54;
+    source[255] = 54;
+    // The first pointer must select the exact source cell that C1 writes;
+    // the second pointer must return there before the third `j` executes.
+    if usize::from(source[0]).saturating_add(1) != TEMPORARY
+        || usize::from(source[RETURN]).saturating_add(1) != TEMPORARY
+    {
+        return Err(NoLoadableSeed);
+    }
+    let high_pointer_word = malbolge::profile_crazy(
+        u32::from(source[TEMPORARY]),
+        0,
+        profile.word_trits(),
+    );
+    let data_address = high_pointer_word
+        .checked_add(
+            u32::try_from(STORE.saturating_sub(3))
+                .map_err(|_error| NoLoadableSeed)?,
+        )
+        .ok_or(NoLoadableSeed)?;
+    if usize::try_from(data_address).unwrap_or(0) < SOURCE_CELLS
+        || data_address >= profile.memory_words()
+    {
+        return Err(NoLoadableSeed);
+    }
+    let initial_data_word = unwritten_loader_word(
+        &source,
+        usize::try_from(data_address).map_err(|_error| NoLoadableSeed)?,
+        profile,
+    )
+    .map_err(|_error| NoLoadableSeed)?;
+    if initial_data_word != malbolge::profile_crazy(0, 0, profile.word_trits())
+    {
+        return Err(NoLoadableSeed);
+    }
+    Ok(LongSourceInputBootstrapSource {
+        data_address,
+        high_pointer_word,
+        initial_data_word,
+        input_code_address: u32::try_from(INPUT)
+            .map_err(|_error| NoLoadableSeed)?,
+        modified_source_address: u32::try_from(TEMPORARY)
+            .map_err(|_error| NoLoadableSeed)?,
+        return_source_address: u32::try_from(RETURN)
+            .map_err(|_error| NoLoadableSeed)?,
+        source,
+        store_code_address: u32::try_from(STORE)
+            .map_err(|_error| NoLoadableSeed)?,
+    })
+}
+
 /// Predicate for lossless raw 0..255 and EOF in a single guest crazy word.
 ///
 /// Five low seed trits must be one. Since successful input values occupy

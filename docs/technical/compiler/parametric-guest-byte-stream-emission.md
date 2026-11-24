@@ -28,6 +28,30 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Long-source N15 expanded-data input bootstrap (2026-11-24)
+
+After rerunning the original seven-block C23 mutable checksum, the full
+compiler still refuses the absent physical CFG. An independent longer-source
+experiment now starts from **256 graphical Malbolge cells** (rather than the
+previous 62-cell zero-pair source). At C0 `j` uses a real source byte to
+select M41, C1 `p` mutates that *source* word into a full N15 pointer, and
+C2/C3 `j` genuinely revisit the written value before relocating to expanded
+loader memory. The executed C37 `/` and C38 `p` then retain one raw byte or
+EOF in a high data cell. A separate 15-trit scalar crazy oracle checks the
+stored values and exhaustively proves 257 distinct encodings and reversible
+inputs. Nine representative real VM cases check the exact halt, physical
+source mutation, I/O site and input cursor; a changed source tail is a
+negative control. The loader-derived `p` operand has ternary ones in all
+positions, making its raw input encoding injective.
+
+This bypasses a prior **source-length** restriction on the first high-pointer
+relocation; it does not map the data cell into the checksum's 43-word C23 SSA
+frame, normalize signed EOF to two canonical cells, preserve a reusable
+register contract, link control/phi effects, or publish the original program.
+The experimental source halts at C39. Code beyond that halt is not executed;
+its 256-cell physical reservation is not evidence of a working guest loop.
+See `tests/compiler_long_source_input_bootstrap.rs`.
+
 ### Source-authenticated two-read branch halt and replay (2026-11-24)
 
 The final publisher checks an actual decoded `v` halt reason, not just a
