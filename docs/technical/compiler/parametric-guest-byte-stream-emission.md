@@ -28,6 +28,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-typed cast destination category (2026-11-24)
+
+The opt-in numerical source-computation verifier now refuses physically
+matching extended integer results when the *destination* signedness violates
+the authenticated typed cast. `SignExtend` requires signed source and signed
+result; `ZeroExtend` requires non-Boolean unsigned source and unsigned result.
+Previously a real guest storing integer one could authorize either wrong
+result type, and a Boolean source could be silently zero-extended. A new
+four-step normative N15 store trace accepts valid signed/unsigned extension
+and rejects all three invalid types even when every guest value matches.
+Three mirrored compiler targets pass 51 focused cases. This is a necessary
+source-type gate, not proof of physical operand causality or general C23
+code generation; the original seven-block mutable EOF checksum still refuses
+publication with its unlinked physical CFG. Evidence:
+`tests/compiler/source_computation_trace.rs`.
+
 ### Two-read EOF-selected encrypted instruction fetch (2026-11-24)
 
 The source-authentic 91-cell two-input guest now has a second, strictly

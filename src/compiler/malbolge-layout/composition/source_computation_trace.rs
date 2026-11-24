@@ -446,15 +446,15 @@ fn evaluate_cast(
         },
         CastOp::ZeroExtend
             if !source_is_signed
+                && source.type_kind != TernaryCfgScalarKind::Bool
+                && !result_is_signed
                 && result.type_kind != TernaryCfgScalarKind::Bool
                 && source_width < width =>
         {
             bits
         },
         CastOp::SignExtend
-            if source_is_signed
-                && result.type_kind != TernaryCfgScalarKind::Bool
-                && source_width < width =>
+            if source_is_signed && result_is_signed && source_width < width =>
         {
             signed(bits, source_width).cast_unsigned() & bit_mask(width)
         },

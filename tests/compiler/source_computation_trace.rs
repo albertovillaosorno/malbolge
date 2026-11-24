@@ -389,6 +389,10 @@ fn typed_casts_refuse_invalid_signedness_and_bool_truncation() {
     let checks = [
         (CastOp::SignExtend, U8, I16, 128, invalid),
         (CastOp::ZeroExtend, I8, U16, 128, invalid),
+        // A matching low word cannot change the destination type category.
+        (CastOp::SignExtend, I8, U16, 1, invalid),
+        (CastOp::ZeroExtend, U8, I16, 1, invalid),
+        (CastOp::ZeroExtend, Bool, U16, 1, invalid),
         (CastOp::Truncate, U8, Bool, 2, invalid),
         (CastOp::BoolToSigned, Bool, U16, 1, invalid),
         (CastOp::IntegerToBool, Bool, Bool, 1, invalid),
@@ -406,6 +410,48 @@ fn typed_casts_refuse_invalid_signedness_and_bool_truncation() {
     for (operation, source, result, value, expected) in checks {
         assert_eq!(input(operation, source, result, value), expected);
     }
+}
+
+// These casts are numerically identical on source value one, so the
+// physically rotated guest result alone cannot authenticate the typed opcode.
+// The source IR admits sign-extension only to signed destinations and
+// zero-extension only between non-Boolean unsigned integer types.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "one real guest validates the destination-category cast gate"
+)]
+fn real_guest_cast_extension_requires_correct_destination_category()
+-> Result<(), String> {
+    let trace = traced_three_stores_with_seeds([3, 3, 3])?;
+    let typed = |address, type_kind| GuestPlacedOperand {
+        address,
+        type_kind,
+        value: address.saturating_sub(70),
+        words: 1,
+    };
+    let check = |operation, source_kind, destination_kind| {
+        let sites = operations(GuestCodeComputation::Cast {
+            operation,
+            source: typed(71, source_kind),
+            result: typed(72, destination_kind),
+        });
+        verify_source_computation_values(
+            &sites,
+            &effects(),
+            &[],
+            &frames(),
+            &trace,
+        )
+    };
+    use TernaryCfgScalarKind::{Bool, I8, I16, U8, U16};
+    let unsupported = Err(SourcePhiCopyTraceError::UnsupportedComputation);
+    assert_eq!(check(CastOp::SignExtend, I8, U16), unsupported);
+    assert_eq!(check(CastOp::ZeroExtend, U8, I16), unsupported);
+    assert_eq!(check(CastOp::ZeroExtend, Bool, U16), unsupported);
+    assert_eq!(check(CastOp::SignExtend, I8, I16), Ok(()));
+    assert_eq!(check(CastOp::ZeroExtend, U8, U16), Ok(()));
+    Ok(())
 }
 
 #[test]
