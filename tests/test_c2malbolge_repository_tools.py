@@ -129,13 +129,17 @@ class RepositoryToolCompilerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
             root = Path(temporary)
             source, target = root / "not-in-the-repo.c", root / "result.malbolge"
-            _ = source.write_bytes(SOURCE)
+            program = (
+                b"#include <stdio.h>\n"
+                b"void emit(void) { putchar(0); return; }\n"
+            )
+            _ = source.write_bytes(program)
             command = self._command(source, target, "--capsule")
             compiled = subprocess.run(
                 command, capture_output=True, check=False, timeout=120
             )
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
-            self.assertGreater(target.stat().st_size, len(SOURCE))
+            self.assertGreater(target.stat().st_size, len(program))
             executed = subprocess.run(
                 [str(vm), str(target), "--report-steps"],
                 capture_output=True,
@@ -143,7 +147,7 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                 timeout=30,
             )
             self.assertEqual(executed.returncode, 0, executed.stderr)
-            self.assertEqual(executed.stdout, b"")
+            self.assertEqual(executed.stdout, b"\x00")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
 
             original_artifact = target.read_bytes()
@@ -242,19 +246,26 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:27\n")
 
             nested = root / "nested.c"
-            rejected = root / "nested.malbolge"
+            nested_target = root / "nested.malbolge"
             _ = nested.write_bytes(
                 b"#include <stdio.h>\nvoid emit(void) { putchar(((65))); }\n"
             )
-            refused = subprocess.run(
-                self._command(nested, rejected, "--capsule"),
+            nested_compiled = subprocess.run(
+                self._command(nested, nested_target, "--capsule"),
                 capture_output=True,
                 check=False,
                 timeout=120,
             )
-            self.assertNotEqual(refused.returncode, 0)
-            self.assertIn(b"normalized frontend rejected", refused.stderr)
-            self.assertFalse(rejected.exists())
+            self.assertEqual(nested_compiled.returncode, 0, nested_compiled.stderr)
+            nested_guest = subprocess.run(
+                [str(vm), str(nested_target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(nested_guest.returncode, 0, nested_guest.stderr)
+            self.assertEqual(nested_guest.stdout, b"A")
+            self.assertEqual(nested_guest.stderr, b"malbolge-steps-v1:31\n")
 
     def test_repository_mode_inert_statements_between_output_calls(self) -> None:
         vm = self._real_binaries()
@@ -514,16 +525,16 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                         executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
                     )
 
-    def test_unwitnessed_or_mixed_c_literals_do_not_publish(self) -> None:
-        _ = self._real_binaries()
+    def test_mixed_c_literals_require_real_guest_or_strict_refusal(self) -> None:
+        vm = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
             root = Path(temporary)
-            for index, statements in enumerate(
+            for index, (statements, expected, steps) in enumerate(
                 (
-                    "putchar(1);",
-                    "putchar(23); putchar(23);",
-                    "putchar(23); putchar(65);",
-                    "putchar(-1);",
+                    ("putchar(1);", b"\x01", 21),
+                    ("putchar(23); putchar(23);", b"\x17\x17", None),
+                    ("putchar(23); putchar(65);", b"\x17A", 27),
+                    ("putchar(-1);", b"\xff", 41),
                 )
             ):
                 with self.subTest(source=statements):
@@ -539,11 +550,33 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                         check=False,
                         timeout=120,
                     )
-                    self.assertNotEqual(compiled.returncode, 0)
-                    self.assertFalse(target.exists())
-                    self.assertTrue(compiled.stderr)
+                    if steps is None and compiled.returncode != 0:
+                        self.assertIn(
+                            b"layout backend exited unsuccessfully", compiled.stderr
+                        )
+                        self.assertFalse(target.exists())
+                        continue
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    actual = subprocess.run(
+                        [str(vm), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(actual.returncode, 0, actual.stderr)
+                    self.assertEqual(actual.stdout, expected)
+                    if steps is None:
+                        self.assertRegex(
+                            actual.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+                    else:
+                        self.assertEqual(
+                            actual.stderr,
+                            f"malbolge-steps-v1:{steps}\n".encode(),
+                        )
 
-    def test_native_zero_output_emits_real_nul_and_unwitnessed_nonzero_refuses(
+    def test_native_zero_and_one_outputs_execute_in_real_guest(
         self,
     ) -> None:
         vm = self._real_binaries()
@@ -571,22 +604,27 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertEqual(executed.stdout, b"\x00")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
 
-            bad = directory / "not-supported.c"
-            rejected_target = directory / "not-supported.malbolge"
-            _ = bad.write_bytes(
+            one_source = directory / "one.c"
+            one_target = directory / "one.malbolge"
+            _ = one_source.write_bytes(
                 b"#include <stdio.h>\nvoid emit(void) { putchar(1); return; }\n"
             )
-            rejected = subprocess.run(
-                self._command(bad, rejected_target, "--capsule"),
+            one_compiled = subprocess.run(
+                self._command(one_source, one_target, "--capsule"),
                 capture_output=True,
                 check=False,
                 timeout=120,
             )
-            self.assertNotEqual(rejected.returncode, 0)
-            # A canonical nonzero byte passes C/IR admission, but this
-            # byte/count pair has no independently verified guest layout.
-            self.assertIn(b"layout backend exited unsuccessfully", rejected.stderr)
-            self.assertFalse(rejected_target.exists())
+            self.assertEqual(one_compiled.returncode, 0, one_compiled.stderr)
+            nonzero = subprocess.run(
+                [str(vm), str(one_target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(nonzero.returncode, 0, nonzero.stderr)
+            self.assertEqual(nonzero.stdout, b"\x01")
+            self.assertEqual(nonzero.stderr, b"malbolge-steps-v1:21\n")
 
 
 if __name__ == "__main__":
