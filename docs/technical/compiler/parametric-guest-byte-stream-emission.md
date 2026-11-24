@@ -43,8 +43,9 @@ or a complete C23 mutable checksum.
 The two-read branch and signed-second-echo replay now occur once at their
 final publication gates, instead of repeating the same VM and full-memory
 reconstruction during candidate construction. An independent exhaustive
-256-first-byte regression checks the actual second-EOF path without adding
-that expensive matrix to every publication. The original seven-block mutable C23
+512 first-byte/branch regression paths check both second-EOF and successful
+second-read control over all 256 first octets, without adding that expensive
+matrix to every publication. The original seven-block mutable C23
 EOF checksum still refuses physical linkage and publishes no guest artifact.
 
 ### Published second-read EOF branch verifies every byte (2026-11-24)
