@@ -41,6 +41,13 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A second readback probe proves why the unchanged `Iy` source cannot
+simply fall through from C63 to re-read the first saved word: C67 must be
+literal 125 for the earlier M126 store, but decodes as an indirect `i`,
+selecting the invalid expanded C121 instruction. Three normative guest
+traces fail with exact `InvalidEncryptionTarget`, not a falsely attributed
+source-C continuation. Relocate guest control instead of repurposing C67.
+
 The two-crazy single-input path cannot be turned into a C23 EOF conversion
 by changing only its second static operand: a complete 1,024-candidate
 ternary seed census finds 14 variants echoing all 256 successful bytes, but

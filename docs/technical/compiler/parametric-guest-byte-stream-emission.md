@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Post-output first-state reentry needs relocated guest control
+
+The two-saved-input guest halts at C63 by design. A separate source-valid
+continuation replaces C63..C66 with four no-ops and attempts to use the
+unchanged C67 cell to return to the first saved word M126. The early C42
+pointer setup **requires** source M67=125, however, so fetching that cell
+as code decodes `i`, not `j`. At reached C67, D=M150=121; the attempted
+indirect control selects invalid expanded C121=7,174,404 and fails with the
+normative VM's exact `InvalidEncryptionTarget` error, rather than quietly
+reading M126. Three binary/EOF traces verify the same refusal after both
+legitimate output effects. `tests/compiler_c23_two_saved_echo_guest.rs`
+contains this negative guest control.
+
+This is only a *local* reentry failure for unchanged source C67 and the
+specific C63..C66 fallthrough, not proof that all relocated control routes
+are impossible. The next linker must provide a different source-valid
+control site or modify the bootstrap pointer chain while retaining true
+first-input storage and its original input/EOF identity.
+
 ### Static second-crazy operand cannot normalize C23 EOF (2026-11-24)
 
 A finite, independent 15-trit algebraic census now rules out the simplest

@@ -31,8 +31,8 @@ use std::collections::BTreeSet;
 use std::iter::once;
 
 use malbolge::{
-    ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
-    decode_profile_instruction, historical_profile,
+    ProfileMachine, ProfileMachineError, RunOutcome, Termination, TraceInput,
+    current_profile, decode_profile_instruction, historical_profile,
 };
 
 #[expect(
@@ -248,5 +248,69 @@ fn independent_inputs_keep_separate_physical_stores_and_outputs() {
         );
         assert_eq!(vm.output().first(), Some(&3));
         assert_ne!(vm.output().get(1), Some(&255));
+    }
+}
+
+// The source C67=125 is an early C42 data-pointer operand; it must remain
+// unchanged for the original real M126 store. At its code phase C67 decodes
+// to `i`, not `j`. A naive four-no-op fallthrough after the two outputs
+// therefore enters an expanded, invalid code target instead of jumping back
+// to read M126. This is a local branch-linkage refusal, not an impossibility
+// theorem about source-C EOF or an alternate program layout.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "bounded real source-loader indirect continuation failure"
+)]
+fn first_state_cannot_be_reentered_via_unchanged_c67_control() {
+    let profile = current_profile();
+    let mut source =
+        layout::build_c23_two_inputs_saved_and_echoed_source(profile)
+            .expect("already proven two-input source");
+    for position in 63..=66 {
+        source[position] = source_encoding(
+            u32::try_from(position).expect("bounded code site"),
+            b'o',
+        )
+        .expect("graphical no-op");
+    }
+    assert_eq!(source[67], 125);
+    assert_eq!(decode_profile_instruction(125, 67), Some(b'i'));
+    assert_eq!(decode_profile_instruction(157, 122), None);
+    layout::admit_c23_probe_graphical_source(&source)
+        .expect("modified source remains loader-valid");
+    for stdin in [vec![], vec![3, 4], vec![255, 0]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, &source, stdin.clone())
+                .expect("valid graphical VM source");
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(80, &mut |step| trace.push(*step)),
+            Err(ProfileMachineError::InvalidEncryptionTarget {
+                pointer: 121,
+                value: 7_174_404,
+            })
+        );
+        assert_eq!(vm.input_consumed(), stdin.len().min(2));
+        assert_eq!(trace.last().map(|step| step.decoded), Some(Some(b'i')));
+        assert_eq!(
+            trace.last().map(|step| step.before.registers.code_pointer),
+            Some(67)
+        );
+        assert_eq!(
+            trace
+                .last()
+                .and_then(|step| step.memory_reads.data)
+                .map(|read| (read.address, read.value)),
+            Some((150, 121))
+        );
+        let expected = stdin
+            .iter()
+            .map(|byte| *byte)
+            .chain(std::iter::repeat_n(174u8, 2))
+            .take(2)
+            .collect::<Vec<_>>();
+        assert_eq!(vm.output(), expected);
     }
 }
