@@ -185,6 +185,27 @@ publication. Reproduction:
   tests.test_eof_checksum_pipeline -v
 ```
 
+### Fixed-pointer reentry census: extra reads are not computation
+
+A separate finite census fixes the source, original three inputs
+`03 04 05`, and a fourth byte `06`, and varies only the terminal `i`'s
+preloaded M109 operand over all 94 graphical byte values (33..126).
+Eight source-valid values survive strict loading. Under a **180-step**
+normative N15 budget, six halt on a real `v`, and three execute a fourth
+actual `/` after the C128 `i`. This classifies this exact operand grammar,
+not all possible guest code layouts or C control programs.
+
+Two fourth-reading valid-halt paths (M109=83 and M109=118) run for 156
+and 161 VM steps respectively, reaching the fourth `/` at encrypted C126.
+With the first three inputs frozen, a five-stream EOF, `00`, `06`, `ff`
+and trailing-input check verifies byte consumption and preservation of
+M106. The first path emits only the four earlier bytes; the second adds
+a **constant** byte `c5` (197). Neither emitted suffix changes with the
+fourth input in this bounded control family. A fourth `getchar` effect
+alone is not a computed checksum, even when a valid guest halt follows.
+The finite census and real guest checks are in
+`tests/compiler_indirect_source_suffix.rs`.
+
 ## What is still missing
 
 This is successful **physical continuation placement** of a bounded

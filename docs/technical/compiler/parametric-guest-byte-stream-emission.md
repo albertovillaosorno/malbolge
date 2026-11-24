@@ -45,6 +45,13 @@ Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md` and
 `tests/compiler_indirect_source_suffix.rs`. The complete C23 checksum
 continues to fail closed without an emitted guest artifact.
 
+A bounded C128 indirect-target census checks all 94 graphical M109
+operand candidates: eight source-valid, six eventual guest halts, and
+three additional fourth guest reads under 180 steps. Two valid-halt
+fourth-read variants produce output **independent** of the fourth input
+across five EOF/binary streams. They do not implement mutable C input
+processing, arithmetic or a checksum. See the physical-suffix evidence.
+
 ### Fourth guest read safely rewrites finished code as data (2026-11-24)
 
 The same genuine 135-cell graphical N15 source admits an alternative

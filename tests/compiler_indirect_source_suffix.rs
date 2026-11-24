@@ -1150,3 +1150,92 @@ fn terminal_return_preserves_live_first_and_second_fold_inputs() {
         ]);
     }
 }
+
+// The complete bounded source-code operand census prevents a fourth raw
+// input attempt from being mistaken for a live fourth-input computation.
+// Freeze C109=33..126, stdin 03 04 05 06, max 180 real N15 steps.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "94 finite source pointers and actual VM I/O classification"
+)]
+fn terminal_return_pointer_census_identifies_noncomputing_fourth_reads() {
+    let baseline =
+        open_suffix(&saved_fold_source(), THREE_INPUT_FOLD_RETURN_SUFFIX);
+    let mut admissible = 0usize;
+    let mut halts = 0usize;
+    let mut fourth_read = 0usize;
+    for word in 33..=126u8 {
+        let mut source = baseline.source.clone();
+        source[109] = word;
+        if layout::admit_c23_probe_graphical_source(&source).is_err() {
+            continue;
+        }
+        admissible += 1;
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), &source, vec![
+                3, 4, 5, 6,
+            ])
+            .expect("source-valid candidate");
+        let mut trace = Vec::new();
+        let outcome = vm.run_traced(180, &mut |step| trace.push(*step));
+        assert_eq!(trace[106].before.registers.code_pointer, 128);
+        assert_eq!(trace[106].decoded, Some(b'i'));
+        let reads = trace.iter().filter(|step| step.input.is_some()).count();
+        if reads == 4 {
+            fourth_read += 1;
+        }
+        if matches!(
+            outcome,
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            })
+        ) {
+            halts += 1;
+        }
+    }
+    assert_eq!((admissible, fourth_read, halts), (8, 3, 6));
+    // These two source-valid indirect paths reach another real / and v,
+    // but the fourth input is overwritten before any dependent output.
+    for (word, steps, expected) in [
+        (83u8, 156, vec![3, 49, 5, 58]),
+        (118, 161, vec![3, 49, 5, 58, 197]),
+    ] {
+        let mut source = baseline.source.clone();
+        source[109] = word;
+        for input in [
+            vec![3, 4, 5],
+            vec![3, 4, 5, 0],
+            vec![3, 4, 5, 6],
+            vec![3, 4, 5, 255],
+            vec![3, 4, 5, 6, 7],
+        ] {
+            let mut vm = ProfileMachine::from_source(
+                current_profile(),
+                &source,
+                input.clone(),
+            )
+            .expect("strict N15 loader");
+            let mut trace = Vec::new();
+            assert_eq!(
+                vm.run_traced(180, &mut |step| trace.push(*step)),
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps,
+                }),
+                "operand={word}, stdin={input:?}"
+            );
+            let reads = trace
+                .iter()
+                .filter(|step| step.input.is_some())
+                .collect::<Vec<_>>();
+            assert_eq!(reads.len(), 4);
+            assert_eq!(reads[3].before.registers.code_pointer, 126);
+            assert_eq!(vm.input_consumed(), input.len().min(4));
+            assert_eq!(vm.output(), expected, "operand={word} stdin={input:?}");
+            assert_eq!(vm.memory_word(106), Ok(58));
+        }
+    }
+}
