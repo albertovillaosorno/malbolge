@@ -345,6 +345,26 @@ fn evaluate(
             let lhs = read_scalar(left, written)?;
             let rhs = read_scalar(right, written)?;
             let width = scalar_bits(left.type_kind);
+            // C23 comparisons must use their source-typed signedness.
+            // Reinterpreting U8 0xff as signed -1, for example, could
+            // numerically certify the wrong physical branch predicate.
+            let signed_kind = matches!(
+                left.type_kind,
+                TernaryCfgScalarKind::I8
+                    | TernaryCfgScalarKind::I16
+                    | TernaryCfgScalarKind::I32
+            );
+            if (matches!(
+                operation,
+                CompareOp::LessSigned | CompareOp::LessSignedEqual
+            ) && !signed_kind)
+                || (matches!(
+                    operation,
+                    CompareOp::LessUnsigned | CompareOp::LessUnsignedEqual
+                ) && signed_kind)
+            {
+                return Err(UnsupportedComputation);
+            }
             let comparison = match operation {
                 CompareOp::Equal => lhs == rhs,
                 CompareOp::NotEqual => lhs != rhs,

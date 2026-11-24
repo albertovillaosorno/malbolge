@@ -438,6 +438,138 @@ fn real_guest_zero_result_cannot_authenticate_bool_truncate_of_two()
     Ok(())
 }
 
+// Equality is bitwise regardless of signedness; ordering is not. A forged
+// typed comparison must not reinterpret a U8 0xff as negative, or a signed
+// I8 -1 as unsigned 255, to justify an otherwise coincident guest store.
+#[test]
+fn typed_comparisons_require_consistent_ordering_signedness() {
+    let compare = |operation, kind, left, right| {
+        let source = |address| GuestPlacedOperand {
+            address,
+            type_kind: kind,
+            words: 1,
+            value: address.saturating_sub(70),
+        };
+        let result = GuestPlacedOperand {
+            address: 72,
+            type_kind: Bool,
+            words: 1,
+            value: 2,
+        };
+        let written = BTreeMap::from([(70, left), (71, right)]);
+        evaluate(
+            GuestCodeComputation::Compare {
+                operation,
+                left: source(70),
+                right: source(71),
+                result,
+            },
+            &written,
+        )
+    };
+    use TernaryCfgScalarKind::{Bool, I8, U8};
+    let unsupported = Err(SourcePhiCopyTraceError::UnsupportedComputation);
+    assert_eq!(compare(CompareOp::LessSigned, U8, 255, 1), unsupported);
+    assert_eq!(compare(CompareOp::LessSignedEqual, U8, 255, 1), unsupported);
+    assert_eq!(compare(CompareOp::LessUnsigned, I8, 255, 1), unsupported);
+    assert_eq!(
+        compare(CompareOp::LessUnsignedEqual, I8, 255, 1),
+        unsupported
+    );
+    assert_eq!(compare(CompareOp::LessSigned, Bool, 1, 0), unsupported);
+    assert_eq!(compare(CompareOp::LessSignedEqual, Bool, 1, 0), unsupported);
+    assert_eq!(compare(CompareOp::LessUnsigned, U8, 255, 1), Ok(0));
+    assert_eq!(compare(CompareOp::LessUnsignedEqual, U8, 1, 255), Ok(1));
+    assert_eq!(compare(CompareOp::LessSigned, I8, 255, 1), Ok(1));
+    assert_eq!(compare(CompareOp::LessSignedEqual, I8, 255, 255), Ok(1));
+    assert_eq!(compare(CompareOp::LessUnsigned, Bool, 0, 1), Ok(1));
+    assert_eq!(compare(CompareOp::Equal, I8, 255, 255), Ok(1));
+    assert_eq!(compare(CompareOp::NotEqual, U8, 255, 1), Ok(1));
+}
+
+#[test]
+fn real_guest_signed_and_unsigned_ordering_use_source_width()
+-> Result<(), String> {
+    // Four physical stores are NOT fabricated: the VM rotates 765 ->
+    // 255, 3 -> 1, and 0/3 -> 0/1, then genuinely halts at C3.
+    // U8 255 < 1 is false; I8 -1 < 1 is true. A forged ordering opcode
+    // must not justify the opposite observed guest Boolean result.
+    let actual_true = traced_three_stores_with_seeds([765, 3, 3])?;
+    let actual_false = traced_three_stores_with_seeds([765, 3, 0])?;
+    for (steps, expected) in [(&actual_true, 1), (&actual_false, 0)] {
+        assert_eq!(
+            steps
+                .iter()
+                .take(3)
+                .map(|step| step.after.registers.accumulator)
+                .collect::<Vec<_>>(),
+            vec![255, 1, expected]
+        );
+    }
+    let compare = |operation, kind| {
+        let source = |address| GuestPlacedOperand {
+            address,
+            type_kind: kind,
+            value: address.saturating_sub(70),
+            words: 1,
+        };
+        operations(GuestCodeComputation::Compare {
+            operation,
+            left: source(70),
+            right: source(71),
+            result: GuestPlacedOperand {
+                address: 72,
+                type_kind: TernaryCfgScalarKind::Bool,
+                value: 2,
+                words: 1,
+            },
+        })
+    };
+    let check = |operation, kind, steps: &[ProfileStepTrace]| {
+        verify_source_computation_values(
+            &compare(operation, kind),
+            &effects(),
+            &[],
+            &frames(),
+            steps,
+        )
+    };
+    let invalid = Err(SourcePhiCopyTraceError::UnsupportedComputation);
+    assert_eq!(
+        check(
+            CompareOp::LessSigned,
+            TernaryCfgScalarKind::U8,
+            &actual_true
+        ),
+        invalid
+    );
+    assert_eq!(
+        check(
+            CompareOp::LessUnsigned,
+            TernaryCfgScalarKind::U8,
+            &actual_false
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        check(
+            CompareOp::LessUnsigned,
+            TernaryCfgScalarKind::I8,
+            &actual_false
+        ),
+        invalid
+    );
+    assert_eq!(
+        check(
+            CompareOp::LessSigned,
+            TernaryCfgScalarKind::I8,
+            &actual_true
+        ),
+        Ok(())
+    );
+    Ok(())
+}
+
 // C23 signed arithmetic overflow is undefined source behavior, even when
 // the guest physically writes the corresponding low-width wrapped bits.
 // These are real four-step N15 guest executions, not fabricated VM traces.
