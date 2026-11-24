@@ -60,6 +60,27 @@ The next repair must give **both** outcomes valid, source-backed control
 sites and implement a repeatable EOF loop, without replacing the complete
 original seven-block checksum with a fixed probe.
 
+### Bounded local source-suffix halt search (2026-11-24)
+
+A strictly local mutation census tested eight position-sensitive opcodes
+on each of the eight formerly inert code sites C51..C53/C56..C60 in the
+above two-input EOF-fetch guest: **64** source-loadable N15 candidates.
+For concrete streams `03 04` and `03` (second physical read = EOF), only
+**14** preserve both original input cursors and both initial outputs.
+All 14 still terminate by **non-graphical code fetch** after 82 finite or
+93 EOF steps; none reaches `v`. A separate two-site census at (C56,C60)
+and (C57,C60), 128 candidates, finds just **two** variants preserving
+both output prefixes, neither a valid halt. The slower two-cell regression
+is opt-in to avoid charging every ordinary test run for expanded N15
+loader setup.
+
+These are exact *two-stream, fixed-location, bounded-grammar* negatives,
+not a proof about all guest-control relocation. The immutable C23 checksum
+continues to refuse unlinked physical control and phi state. See
+`one_cell_eof_halt_census_finds_no_source_valid_repair` and
+`two_cell_eof_halt_census_near_rotation_finds_no_repair` in the two-input
+Rust test.
+
 ### Post-output first-state reentry needs relocated guest control
 
 The two-saved-input guest halts at C63 by design. A separate source-valid

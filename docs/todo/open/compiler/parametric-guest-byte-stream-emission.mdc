@@ -51,6 +51,13 @@ on non-graphical code, not a valid C23 halt or loop. Source-C checksum,
 signed EOF, physical phi and arithmetic remain unlinked. Evidence:
 `tests/compiler_c23_two_saved_echo_guest.rs` and the compiler contract.
 
+An additional finite local repair search tried 64 single-cell opcodes
+at C51..C53/C56..C60 and 128 two-cell combinations near C56/C57/C60.
+Only 14 and two variants, respectively, preserved both output prefixes
+for `03 04` and `03` with EOF; all still ended on non-graphical code,
+not a valid `v` halt. Source relocation outside this narrow grammar remains
+open; exact reproducible regressions are in the two-input Rust test.
+
 A second readback probe proves why the unchanged `Iy` source cannot
 simply fall through from C63 to re-read the first saved word: C67 must be
 literal 125 for the earlier M126 store, but decodes as an indirect `i`,

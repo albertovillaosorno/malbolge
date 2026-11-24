@@ -639,3 +639,152 @@ fn changing_reentry_jumps_refuses_the_eof_code_path() {
         assert_eq!(vm.output().get(..2), Some([3, 174].as_slice()));
     }
 }
+
+// A source-valid one-cell suffix rewrite is insufficient to turn the
+// independently established EOF-selected C49 fetch into a legitimate halt.
+// This is a *finite* 64-candidate census under only the two sample streams
+// [03,04] and [03,EOF], not a complete control-linker impossibility proof.
+#[test]
+#[expect(
+    clippy::expect_used,
+    reason = "bounded position-encoded N15 guest census"
+)]
+fn one_cell_eof_halt_census_finds_no_source_valid_repair() {
+    let profile = current_profile();
+    let original = layout::build_c23_two_inputs_eof_fetch_probe_source(profile)
+        .expect("source-locked EOF fetch");
+    let mut fully_preserved = 0;
+    let mut enumerated = 0;
+    for position in [51u32, 52, 53, 56, 57, 58, 59, 60] {
+        for opcode in [b'o', b'j', b'i', b'p', b'*', b'<', b'/', b'v'] {
+            enumerated += 1;
+            let encoded = source_encoding(position, opcode)
+                .expect("N15 positional graphical opcode");
+            let mut candidate = original.clone();
+            let site =
+                usize::try_from(position).expect("bounded code position");
+            *candidate.get_mut(site).expect("source code site") = encoded;
+            let mut finite =
+                ProfileMachine::from_source(profile, &candidate, vec![3, 4])
+                    .expect("N15 source loads");
+            let finite_result = finite.run(110);
+            if finite.output().get(..2) != Some([3, 4].as_slice())
+                || finite.input_consumed() != 2
+            {
+                continue;
+            }
+            let mut eof =
+                ProfileMachine::from_source(profile, &candidate, vec![3])
+                    .expect("N15 source loads with EOF");
+            let eof_result = eof.run(120);
+            if eof.output().get(..2) != Some([3, 174].as_slice())
+                || eof.input_consumed() != 1
+            {
+                continue;
+            }
+            fully_preserved += 1;
+            assert_eq!(
+                finite_result,
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::NonGraphicalCell,
+                    steps: 82,
+                }),
+                "finite: C{position} opcode {}",
+                char::from(opcode)
+            );
+            assert_eq!(
+                eof_result,
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::NonGraphicalCell,
+                    steps: 93,
+                }),
+                "EOF: C{position} opcode {}",
+                char::from(opcode)
+            );
+            assert_eq!(eof.output(), [3, 174, 32]);
+        }
+    }
+    assert_eq!(enumerated, 64);
+    assert_eq!(fully_preserved, 14);
+}
+
+// This is a slower 128-candidate bounded negative, run explicitly as an
+// additional physical-repair experiment, not on every unrelated test run.
+#[test]
+#[ignore = "128 N15 source pairs; run on demand"]
+#[expect(
+    clippy::expect_used,
+    reason = "bounded positional source variants"
+)]
+fn two_cell_eof_halt_census_near_rotation_finds_no_repair() {
+    let profile = current_profile();
+    let original = layout::build_c23_two_inputs_eof_fetch_probe_source(profile)
+        .expect("source-locked EOF fetch");
+    let mut fully_preserved = 0;
+    let mut enumerated = 0;
+    for (first, second) in [(56u32, 60u32), (57, 60)] {
+        for first_opcode in [b'o', b'j', b'i', b'p', b'*', b'<', b'/', b'v'] {
+            for second_opcode in
+                [b'o', b'j', b'i', b'p', b'*', b'<', b'/', b'v']
+            {
+                enumerated += 1;
+                let mut candidate = original.clone();
+                for (site, opcode) in
+                    [(first, first_opcode), (second, second_opcode)]
+                {
+                    let source_site =
+                        usize::try_from(site).expect("small code site");
+                    *candidate
+                        .get_mut(source_site)
+                        .expect("source code site") =
+                        source_encoding(site, opcode)
+                            .expect("graphical encoding");
+                }
+                let mut finite =
+                    ProfileMachine::from_source(profile, &candidate, vec![
+                        3, 4,
+                    ])
+                    .expect("source loads");
+                let finite_result = finite.run(120);
+                if finite.output().get(..2) != Some([3, 4].as_slice())
+                    || finite.input_consumed() != 2
+                {
+                    continue;
+                }
+                let mut eof =
+                    ProfileMachine::from_source(profile, &candidate, vec![3])
+                        .expect("source loads");
+                let eof_result = eof.run(120);
+                if eof.output().get(..2) != Some([3, 174].as_slice())
+                    || eof.input_consumed() != 1
+                {
+                    continue;
+                }
+                fully_preserved += 1;
+                assert_eq!(
+                    finite_result,
+                    Ok(RunOutcome::Terminated {
+                        reason: Termination::NonGraphicalCell,
+                        steps: 82,
+                    }),
+                    "C{first}:{} C{second}:{} finite",
+                    char::from(first_opcode),
+                    char::from(second_opcode)
+                );
+                assert_eq!(
+                    eof_result,
+                    Ok(RunOutcome::Terminated {
+                        reason: Termination::NonGraphicalCell,
+                        steps: 93,
+                    }),
+                    "C{first}:{} C{second}:{} EOF",
+                    char::from(first_opcode),
+                    char::from(second_opcode)
+                );
+                assert_eq!(eof.output(), [3, 174, 32]);
+            }
+        }
+    }
+    assert_eq!(enumerated, 128);
+    assert_eq!(fully_preserved, 2);
+}
