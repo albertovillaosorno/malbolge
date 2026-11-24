@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-word effects without explicit operation anchors (2026-11-23)
+
+The general source-locked CFG auto planner can now reserve exact **word
+store effects** before the physical start of their source instruction has
+been identified. From the earliest source-ordered effect anchor, it derives
+the minimum preceding typed-operation and within-operation effect prefix.
+The existing strict binder rechecks every complete source operation, effect
+index, destination and source-block interval; separately anchored controls
+and phi pads remain disjoint. The narrower input-only API still requires
+its explicit input operation anchor.
+
+A red-first regression of the original seven-block C23 EOF checksum now
+places four signed result-word sites at C40/C42 and C69/C71 and two
+arithmetic result-word sites at C180/C190 with **no operation anchors**.
+Both genuine C23 reads and the earlier literal/computation operations are
+retained in the plan, while unknown effect indices and reversed word sites
+refuse. The earlier unnecessary `InvalidCodePlacement` refusal is repaired.
+These positions remain hypothetical reservations, not executable Malbolge
+stores or a linked EOF branch. The complete C23 checksum still refuses
+publication; P2 remains open. Regression:
+`tests/compiler/source_dynamic_checksum.rs`.
+
 ### Sparse automatic source-phi pad reservations (2026-11-23)
 
 The source-locked CFG planner now accepts **source-identified sparse phi

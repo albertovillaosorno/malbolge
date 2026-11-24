@@ -2200,9 +2200,9 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
 
 /// Automatically reserve source-locked, sparsely anchored operations from
 /// **any** typed CFG block, including literals before the first real input
-/// and arithmetic in blocks without input. The first anchored instruction
-/// fixes that block's minimum prefix, while subsequent effect anchors may
-/// leave code cells for operand setup between source-ordered operations.
+/// and arithmetic in blocks without input. The earliest anchored operation
+/// or individual effect fixes that block's minimum canonical prefix, while
+/// later effect anchors may leave setup cells between source-ordered effects.
 /// Other source blocks and predecessor-specific phi pads remain disjoint.
 ///
 /// All source instructions, write widths and control edges are independently
@@ -2348,7 +2348,8 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     }
     let mut anchored_effects = BTreeMap::new();
     for anchor in effect_anchors {
-        if !operation_sites.contains_key(&(anchor.function, anchor.block))
+        if (inputs_only
+            && !operation_sites.contains_key(&(anchor.function, anchor.block)))
             || anchored_effects
                 .insert(
                     (
@@ -2381,25 +2382,59 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
         let key = (block.function, block.block);
         let sites = operation_sites.get(&key);
         let control_site = control_sites.get(&key).copied();
-        if sites.is_none() && control_site.is_none() {
-            continue;
-        }
-        let start = if let Some(sites) = sites {
-            let (&first_ordinal, &first_address) = sites
+        // A reached source-word store may be known before its preceding
+        // input or computation opcode has been located. Recover the minimum
+        // canonical prefix from whichever source-ordered effect was anchored
+        // first, whether or not its operation has an explicit start site.
+        let first_operation = sites.and_then(|sites| {
+            sites
                 .iter()
                 .next()
+                .map(|(&ordinal, &address)| (ordinal, 0u32, address))
+        });
+        let first_effect = anchored_effects
+            .iter()
+            .filter(|((function, id, ..), _)| (*function, *id) == key)
+            .map(|((_, _, ordinal, index), &address)| {
+                (*ordinal, *index, address)
+            })
+            .min_by_key(|&(ordinal, index, _)| (ordinal, index));
+        let first_site = first_operation
+            .into_iter()
+            .chain(first_effect)
+            .min_by_key(|&(ordinal, index, _)| (ordinal, index));
+        if first_site.is_none() && control_site.is_none() {
+            continue;
+        }
+        let start = if let Some((ordinal, effect_index, address)) = first_site {
+            let ordinal = usize::try_from(ordinal)
+                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+            let earlier = block
+                .instructions
+                .get(..ordinal)
                 .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-            let prefix = block.instructions[..usize::try_from(first_ordinal)
-                .map_err(|_| {
-                GuestCodePlacementError::InvalidCodePlacement
-            })?]
+            let prefix = earlier
                 .iter()
                 .try_fold(0u32, |cells, instruction| {
                     cells.checked_add(minimum_operation_cells(instruction)?)
                 })
                 .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-            first_address
-                .checked_sub(prefix)
+            let operation = block
+                .instructions
+                .get(ordinal)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            if effect_index
+                >= minimum_operation_cells(operation)
+                    .ok_or(GuestCodePlacementError::InvalidCodePlacement)?
+            {
+                return Err(GuestCodePlacementError::InvalidCodePlacement);
+            }
+            address
+                .checked_sub(
+                    prefix
+                        .checked_add(effect_index)
+                        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?,
+                )
                 .ok_or(GuestCodePlacementError::InvalidCodePlacement)?
         } else {
             let minimum = block

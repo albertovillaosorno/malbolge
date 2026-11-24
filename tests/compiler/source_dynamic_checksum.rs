@@ -4241,3 +4241,128 @@ fn source_checksum_sparse_phi_copy_anchors_preserve_exact_two_phase_edges() {
     reverse[1].code_address = 337;
     assert_eq!(bind(&reverse), refuses);
 }
+
+// A physical trace can reveal the first signed result-store positions before
+// its earlier input opcode has been linked. General source-CFG placement must
+// honor those complete, source-typed effects without inventing an input site.
+// The narrower input-only planner still demands the explicit input anchor.
+#[test]
+fn original_checksum_auto_places_signed_stores_without_input_op_anchors() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeOperationEffect,
+        GuestCodePlacementError,
+        plan_source_locked_cfg_with_operation_and_effect_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 checksum");
+    let effects = [
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 1,
+            code_address: 40,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 2,
+            code_address: 42,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 1,
+            code_address: 69,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 2,
+            code_address: 71,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 3,
+            ordinal: 0,
+            effect_index: 0,
+            code_address: 180,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 3,
+            ordinal: 0,
+            effect_index: 1,
+            code_address: 190,
+        },
+    ];
+    let plan = plan_source_locked_cfg_with_operation_and_effect_anchors(
+        &wire,
+        256,
+        512,
+        &[],
+        &effects,
+    )
+    .expect("typed stores alone should reserve earlier source read effects");
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.edge_pads.len(), 4);
+    for anchor in effects {
+        assert!(plan.operation_effect_sites.iter().any(|site| {
+            (site.function, site.block, site.ordinal, site.code_address)
+                == (
+                    anchor.function,
+                    anchor.block,
+                    anchor.ordinal,
+                    anchor.code_address,
+                )
+                && matches!(site.effect, GuestCodeOperationEffect::Store { .. })
+        }));
+    }
+    let first = plan
+        .operation_effect_sites
+        .iter()
+        .find(|site| {
+            site.block == 0
+                && site.ordinal == 1
+                && matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+        })
+        .expect("unanchored earlier signed input effect");
+    assert!(first.code_address < 40);
+    assert_eq!(plan.function_entries[0].address, plan.code_blocks[0].start);
+
+    let arithmetic = plan.operation_sites.iter().find(|site| {
+        site.block == 3 && site.ordinal == 0 && site.computation.is_some()
+    });
+    assert_eq!(arithmetic.map(|site| site.start), Some(180));
+
+    let invalid = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let mut unknown = effects;
+    unknown[0].effect_index = 3;
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_and_effect_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &unknown,
+        ),
+        invalid,
+        "a source read has exactly three effects",
+    );
+    unknown = effects;
+    unknown[1].code_address = 39;
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_and_effect_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &unknown,
+        ),
+        invalid,
+        "signed store effects retain physical source order",
+    );
+}
