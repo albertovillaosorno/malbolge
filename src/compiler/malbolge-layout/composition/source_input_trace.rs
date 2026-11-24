@@ -818,15 +818,19 @@ fn source_terminator_successors(
                 None => vec![false_target, true_target],
             };
             let match_result = expected_branch.and_then(|branch| {
-                (current.block == branch.block
-                    && current.consumed == branch.after_inputs)
-                    .then(|| {
-                        current.branch_match.is_none()
-                            && truth == Some(branch.expected_true)
-                            && branch
-                                .io_before_transfer
-                                .is_none_or(|count| current.io_count == count)
-                    })
+                // A source CFG backedge can revisit the same block. Select
+                // the exact input occurrence of this physical transfer;
+                // neither block identity nor the read count is sufficient.
+                let at_source_block = current.block == branch.block;
+                let at_input_occurrence =
+                    current.consumed == branch.after_inputs;
+                (at_source_block && at_input_occurrence).then(|| {
+                    current.branch_match.is_none()
+                        && truth == Some(branch.expected_true)
+                        && branch
+                            .io_before_transfer
+                            .is_none_or(|count| current.io_count == count)
+                })
             });
             (targets, match_result)
         },
