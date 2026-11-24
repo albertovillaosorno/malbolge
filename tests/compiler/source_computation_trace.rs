@@ -360,18 +360,19 @@ fn typed_c32_checksum_operations_preserve_full_width() {
 // tests nonzero, and sign extension depends on the *source* signedness.
 #[test]
 fn typed_casts_refuse_invalid_signedness_and_bool_truncation() {
+    use TernaryCfgScalarKind::{Bool, I8, I16, U8, U16};
     let input = |operation, source_type, result_type, value| {
         let source = GuestPlacedOperand {
             address: 70,
             type_kind: source_type,
-            words: 1,
             value: 0,
+            words: 1,
         };
         let result = GuestPlacedOperand {
             address: 72,
             type_kind: result_type,
-            words: 1,
             value: 1,
+            words: 1,
         };
         let mut written = BTreeMap::new();
         let _old = written.insert(70, value);
@@ -384,29 +385,34 @@ fn typed_casts_refuse_invalid_signedness_and_bool_truncation() {
             &written,
         )
     };
-    use TernaryCfgScalarKind::{Bool, I8, I16, U8, U16};
     let invalid = Err(SourcePhiCopyTraceError::UnsupportedComputation);
-    // These incorrect conversions used to return a plausible guest word.
-    assert_eq!(input(CastOp::SignExtend, U8, I16, 128), invalid);
-    assert_eq!(input(CastOp::ZeroExtend, I8, U16, 128), invalid);
-    assert_eq!(input(CastOp::Truncate, U8, Bool, 2), invalid);
-    assert_eq!(input(CastOp::BoolToSigned, Bool, U16, 1), invalid);
-    assert_eq!(input(CastOp::IntegerToBool, Bool, Bool, 1), invalid);
-    assert_eq!(input(CastOp::IntegerBitcast, Bool, Bool, 1), invalid);
-    assert_eq!(input(CastOp::Truncate, U8, U8, 2), invalid);
-    assert_eq!(input(CastOp::SignExtend, I8, I8, 128), invalid);
-    assert_eq!(input(CastOp::ZeroExtend, U8, U8, 128), invalid);
-
-    // Valid conversions retain the exact source-width sign and C truth.
-    assert_eq!(input(CastOp::SignExtend, I8, I16, 128), Ok(0xff80));
-    assert_eq!(input(CastOp::ZeroExtend, U8, U16, 128), Ok(128));
-    assert_eq!(input(CastOp::Truncate, U16, U8, 0x102), Ok(2));
-    assert_eq!(input(CastOp::IntegerToBool, U8, Bool, 2), Ok(1));
-    assert_eq!(input(CastOp::BoolToSigned, Bool, I16, 1), Ok(1));
-    assert_eq!(input(CastOp::IntegerBitcast, U8, I8, 255), Ok(255));
+    let checks = [
+        (CastOp::SignExtend, U8, I16, 128, invalid),
+        (CastOp::ZeroExtend, I8, U16, 128, invalid),
+        (CastOp::Truncate, U8, Bool, 2, invalid),
+        (CastOp::BoolToSigned, Bool, U16, 1, invalid),
+        (CastOp::IntegerToBool, Bool, Bool, 1, invalid),
+        (CastOp::IntegerBitcast, Bool, Bool, 1, invalid),
+        (CastOp::Truncate, U8, U8, 2, invalid),
+        (CastOp::SignExtend, I8, I8, 128, invalid),
+        (CastOp::ZeroExtend, U8, U8, 128, invalid),
+        (CastOp::SignExtend, I8, I16, 128, Ok(0xff80)),
+        (CastOp::ZeroExtend, U8, U16, 128, Ok(128)),
+        (CastOp::Truncate, U16, U8, 0x102, Ok(2)),
+        (CastOp::IntegerToBool, U8, Bool, 2, Ok(1)),
+        (CastOp::BoolToSigned, Bool, I16, 1, Ok(1)),
+        (CastOp::IntegerBitcast, U8, I8, 255, Ok(255)),
+    ];
+    for (operation, source, result, value, expected) in checks {
+        assert_eq!(input(operation, source, result, value), expected);
+    }
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "strict assertions over a normative four-step N15 guest trace"
+)]
 fn real_guest_zero_result_cannot_authenticate_bool_truncate_of_two()
 -> Result<(), String> {
     // The real N15 guest stores 1, 2, 0 in M70..M72. Truncating the
@@ -443,18 +449,19 @@ fn real_guest_zero_result_cannot_authenticate_bool_truncate_of_two()
 // I8 -1 as unsigned 255, to justify an otherwise coincident guest store.
 #[test]
 fn typed_comparisons_require_consistent_ordering_signedness() {
+    use TernaryCfgScalarKind::{Bool, I8, U8};
     let compare = |operation, kind, left, right| {
         let source = |address| GuestPlacedOperand {
             address,
             type_kind: kind,
-            words: 1,
             value: address.saturating_sub(70),
+            words: 1,
         };
         let result = GuestPlacedOperand {
             address: 72,
             type_kind: Bool,
-            words: 1,
             value: 2,
+            words: 1,
         };
         let written = BTreeMap::from([(70, left), (71, right)]);
         evaluate(
@@ -467,27 +474,33 @@ fn typed_comparisons_require_consistent_ordering_signedness() {
             &written,
         )
     };
-    use TernaryCfgScalarKind::{Bool, I8, U8};
     let unsupported = Err(SourcePhiCopyTraceError::UnsupportedComputation);
-    assert_eq!(compare(CompareOp::LessSigned, U8, 255, 1), unsupported);
-    assert_eq!(compare(CompareOp::LessSignedEqual, U8, 255, 1), unsupported);
-    assert_eq!(compare(CompareOp::LessUnsigned, I8, 255, 1), unsupported);
-    assert_eq!(
-        compare(CompareOp::LessUnsignedEqual, I8, 255, 1),
-        unsupported
-    );
-    assert_eq!(compare(CompareOp::LessSigned, Bool, 1, 0), unsupported);
-    assert_eq!(compare(CompareOp::LessSignedEqual, Bool, 1, 0), unsupported);
-    assert_eq!(compare(CompareOp::LessUnsigned, U8, 255, 1), Ok(0));
-    assert_eq!(compare(CompareOp::LessUnsignedEqual, U8, 1, 255), Ok(1));
-    assert_eq!(compare(CompareOp::LessSigned, I8, 255, 1), Ok(1));
-    assert_eq!(compare(CompareOp::LessSignedEqual, I8, 255, 255), Ok(1));
-    assert_eq!(compare(CompareOp::LessUnsigned, Bool, 0, 1), Ok(1));
-    assert_eq!(compare(CompareOp::Equal, I8, 255, 255), Ok(1));
-    assert_eq!(compare(CompareOp::NotEqual, U8, 255, 1), Ok(1));
+    let checks = [
+        (CompareOp::LessSigned, U8, 255, 1, unsupported),
+        (CompareOp::LessSignedEqual, U8, 255, 1, unsupported),
+        (CompareOp::LessUnsigned, I8, 255, 1, unsupported),
+        (CompareOp::LessUnsignedEqual, I8, 255, 1, unsupported),
+        (CompareOp::LessSigned, Bool, 1, 0, unsupported),
+        (CompareOp::LessSignedEqual, Bool, 1, 0, unsupported),
+        (CompareOp::LessUnsigned, U8, 255, 1, Ok(0)),
+        (CompareOp::LessUnsignedEqual, U8, 1, 255, Ok(1)),
+        (CompareOp::LessSigned, I8, 255, 1, Ok(1)),
+        (CompareOp::LessSignedEqual, I8, 255, 255, Ok(1)),
+        (CompareOp::LessUnsigned, Bool, 0, 1, Ok(1)),
+        (CompareOp::Equal, I8, 255, 255, Ok(1)),
+        (CompareOp::NotEqual, U8, 255, 1, Ok(1)),
+    ];
+    for (operation, kind, lhs, rhs, expected) in checks {
+        assert_eq!(compare(operation, kind, lhs, rhs), expected);
+    }
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "strict assertions over a normative four-step N15 guest trace"
+)]
 fn real_guest_signed_and_unsigned_ordering_use_source_width()
 -> Result<(), String> {
     // Four physical stores are NOT fabricated: the VM rotates 765 ->
@@ -604,6 +617,10 @@ fn typed_boolean_arithmetic_requires_explicit_integer_promotion() {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "strict assertions over a normative four-step N15 guest trace"
+)]
 fn real_guest_one_bit_wrapped_add_is_not_c_boolean_add() -> Result<(), String> {
     let trace = traced_three_stores_with_seeds([3, 3, 0])?;
     assert_eq!(
@@ -679,6 +696,10 @@ fn typed_results_require_canonical_guest_word_count() {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "strict assertions over a normative four-step N15 guest trace"
+)]
 fn real_guest_byte_result_cannot_claim_two_c32_words() -> Result<(), String> {
     // These three stores are genuine N15 rotations with values 1, 2, 3.
     // A forged U8 result placement requiring two words previously passed
