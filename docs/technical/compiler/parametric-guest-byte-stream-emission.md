@@ -28,6 +28,36 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Lossless raw input into the original initialized C32 pair (2026-11-23)
+
+A stronger, independently verified 45-step graphical N15 source now continues
+**the same** C14 high-zero / C17 low-zero initializer into C37 `/` and a
+**lossless raw N15 input write to the original low cell**. This is not the
+earlier separate raw-pair initializer and does not replace the memory image.
+The compiler exposes
+`build_adjacent_c32_zero_c37_raw_input_pair_source` and validates its
+loader operands and the fixed current-profile code/encryption geometry.
+
+The source first revisits the low zero cell with genuine C18..C20 jumps;
+C21 `p` primes the low word to ternary all-ones. C22 `j`, sequential no-ops,
+and C36 `j` through the actually encrypted C14 prepare the C37 input to
+reach the previously source-written all-ones M126. C39 `p` performs the first
+invertible data write, C40..C42 `j` return to the original low cell, and C43
+`p` physically decodes and writes its **exact raw 15-trit input word**.
+C44 halts. The adjacent high word remains zero throughout. The independent
+oracle verifies all 256 byte values and the distinct N15 EOF word through
+the two-crazy involution, with representative 45-step normative VM traces,
+loader/classic-encryption checks, unread-suffix coverage and a negative
+priming-mutation witness in `tests/compiler_c23_zero_input_store.rs`.
+
+This removes the lossy 40-image limitation of the earlier low-cell fold for
+successful bytes. **It still cannot be admitted as a signed C23 `getchar()`
+store:** N15 raw EOF is 14,348,906 instead of C23 -1, the upper C32 word
+remains zero rather than sign-extended, and no source-C checksum arithmetic,
+phi transfer, conditional/loop backedge, or full guest publication is linked.
+The next physical gap is EOF-safe C23 conversion and a complete typed store
+without breaking the authentic pointer and loader history.
+
 ### Real first input-dependent zero-low overwrite (2026-11-23)
 
 A real 43-step graphical N15 source now continues the original first C23

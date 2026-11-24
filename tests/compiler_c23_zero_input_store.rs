@@ -224,3 +224,198 @@ fn source_loaded_fold_builder_matches_independent_physical_oracle() {
         Err(layout::ZeroCellSourceError::UnsupportedProfile),
     );
 }
+
+// The original source-loaded zero initializer writes the trit-wise ones
+// word at M126 and a zero return pointer at M127. A real data-path search
+// found a route to reuse those existing values rather than accepting the
+// lossy M7,174,439 scratch fold above.
+fn full_raw_input_pair_source() -> Vec<u8> {
+    let mut source = patched_source();
+    for (site, operation) in [
+        (18usize, b'j'),
+        (19, b'j'),
+        (20, b'j'),
+        (21, b'p'),
+        (22, b'j'),
+        (36, b'j'),
+        (37, b'/'),
+        (38, b'o'),
+        (39, b'p'),
+        (40, b'j'),
+        (41, b'j'),
+        (42, b'j'),
+        (43, b'p'),
+        (44, b'v'),
+    ] {
+        source[site] = graphical(site, operation);
+    }
+    source
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "all 257 input/EOF inverse maps and real 45-step physical routes"
+)]
+fn guest_recovers_every_raw_input_after_original_zero_pair()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = full_raw_input_pair_source();
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    let ones = 7_174_453;
+    for raw in (0..=255u32).chain([profile.eof_word()]) {
+        assert_eq!(scalar_crazy(ones, scalar_crazy(ones, raw)), raw);
+    }
+    let prepared = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    assert_eq!(prepared.memory_word(LOW), Ok(37));
+    assert_eq!(prepared.memory_word(HIGH), Ok(7_174_416));
+    assert_eq!(prepared.memory_word(126), Ok(7_174_416));
+    for input in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![127],
+        vec![128],
+        vec![255],
+        vec![255, 4],
+    ] {
+        let raw = input
+            .first()
+            .map_or(profile.eof_word(), |byte| u32::from(*byte));
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = vm
+            .run_traced(45, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 45,
+        });
+        assert_eq!(trace.len(), 45);
+        assert_eq!(
+            trace[14].memory_delta.data.map(|w| (w.address, w.after)),
+            Some((HIGH, 0))
+        );
+        assert_eq!(
+            trace[17].memory_delta.data.map(|w| (w.address, w.after)),
+            Some((LOW, 0))
+        );
+        assert_eq!(trace[21].decoded, Some(b'p'));
+        assert_eq!(trace[21].before.registers.data_pointer, LOW);
+        assert_eq!(trace[21].memory_reads.data.map(|r| r.value), Some(0));
+        assert_eq!(trace[21].after.registers.accumulator, ones);
+        assert_eq!(trace[36].decoded, Some(b'j'));
+        assert_eq!(
+            trace[36].memory_reads.data.map(|r| (r.address, r.value)),
+            Some((14, 123))
+        );
+        assert_eq!(trace[36].after.registers.data_pointer, 124);
+        assert_eq!(trace[37].decoded, Some(b'/'));
+        assert_eq!(
+            trace[37].input,
+            Some(
+                input
+                    .first()
+                    .map_or(TraceInput::EndOfInput, |b| TraceInput::Byte(*b))
+            )
+        );
+        assert_eq!(trace[38].decoded, Some(b'o'));
+        assert_eq!(trace[39].decoded, Some(b'p'));
+        assert_eq!(
+            trace[39].memory_reads.data.map(|r| (r.address, r.value)),
+            Some((126, ones))
+        );
+        let encoded = scalar_crazy(ones, raw);
+        assert_eq!(trace[39].after.registers.accumulator, encoded);
+        for (step, operand_address, operand_value, target) in
+            [(40, 127, 0, 1), (41, 1, 85, 86), (42, 86, LOW - 1, LOW)]
+        {
+            assert_eq!(trace[step].decoded, Some(b'j'));
+            assert_eq!(
+                trace[step].memory_reads.data.map(|r| (r.address, r.value)),
+                Some((operand_address, operand_value))
+            );
+            assert_eq!(trace[step].after.registers.data_pointer, target);
+        }
+        assert_eq!(trace[43].decoded, Some(b'p'));
+        assert_eq!(
+            trace[43].memory_reads.data.map(|r| (r.address, r.value)),
+            Some((LOW, ones))
+        );
+        assert_eq!(trace[43].after.registers.accumulator, raw);
+        assert_eq!(trace[44].decoded, Some(b'v'));
+        assert_eq!(vm.memory_word(LOW), Ok(raw));
+        assert_eq!(vm.memory_word(HIGH), Ok(0));
+        assert_eq!(vm.memory_word(126), Ok(encoded));
+        assert_eq!(vm.input_consumed(), usize::from(!input.is_empty()));
+        assert!(vm.output().is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn raw_input_pair_builder_matches_independently_encoded_guest() {
+    let plan = layout::build_adjacent_c32_zero_c37_raw_input_pair_source(
+        current_profile(),
+    )
+    .expect("current N15 source has a loader-backed reversible raw input");
+    assert_eq!(plan.zero_pair.source, full_raw_input_pair_source());
+    assert_eq!(plan.zero_pair.source.len(), 62);
+    assert_eq!(plan.zero_pair.input_code_address, Some(37));
+    assert_eq!(plan.zero_pair.zero_high_code_address, 14);
+    assert_eq!(plan.zero_pair.zero_low_code_address, 17);
+    assert_eq!(plan.zero_pair.zero_low_address, LOW);
+    assert_eq!(plan.zero_pair.zero_high_address, HIGH);
+    assert_eq!(plan.low_prime_code_address, 21);
+    assert_eq!(plan.encoded_store_code_address, 39);
+    assert_eq!(plan.encoded_data_address, 126);
+    assert_eq!(plan.return_code_addresses, [40, 41, 42]);
+    assert_eq!(plan.low_store_code_address, 43);
+    assert_eq!(plan.halt_code_address, 44);
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_raw_input_pair_source(
+            historical_profile(),
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "one-code-cell physical negative control with authentic input"
+)]
+fn skipping_real_preinput_one_priming_loses_raw_byte_two() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = full_raw_input_pair_source();
+    let mut removed = source.clone();
+    removed[21] = graphical(21, b'o');
+    for (physical, expected) in [(source, 2u32), (removed, 0)] {
+        let mut guest =
+            ProfileMachine::from_source(profile, &physical, vec![2])
+                .map_err(|error| error.to_string())?;
+        assert_eq!(
+            guest.run(45).map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 45,
+            },
+        );
+        assert_eq!(guest.memory_word(LOW), Ok(expected));
+        assert_eq!(guest.memory_word(HIGH), Ok(0));
+    }
+    Ok(())
+}

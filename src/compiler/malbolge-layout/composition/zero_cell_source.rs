@@ -147,6 +147,29 @@ pub struct AdjacentC32ZeroC37InputFoldSource {
     pub zero_pair: AdjacentC32ZeroSource,
 }
 
+/// Source-loaded zero initialization followed by a **lossless raw** N15 read.
+///
+/// All successful bytes are written exactly to the original C32 low cell;
+/// raw N15 EOF remains a distinct *non-C23* word. The high cell stays zero,
+/// so the EOF case is not a canonical signed 32-bit `getchar()` value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37RawInputPairSource {
+    /// First reached `p` that encodes input via the trit-wise ones seed.
+    pub encoded_store_code_address: u32,
+    /// Source-loader-backed scratch at M126, after its physical primer write.
+    pub encoded_data_address: u32,
+    /// Final reached halt following the two data writes.
+    pub halt_code_address: u32,
+    /// Reached low-cell priming `p` before reading the input.
+    pub low_prime_code_address: u32,
+    /// Reached second `p` that inverts the encoding into the raw low word.
+    pub low_store_code_address: u32,
+    /// Three genuine pointer returns to the low cell after encoded input.
+    pub return_code_addresses: [u32; 3],
+    /// Original source-loaded physically written two-word zero initializer.
+    pub zero_pair: AdjacentC32ZeroSource,
+}
+
 /// N15 byte/EOF input written into a real adjacent two-word physical region.
 ///
 /// The low word holds the raw unsigned byte (or unnormalized profile EOF),
@@ -732,6 +755,87 @@ pub fn build_adjacent_c32_zero_c37_input_low_fold_source(
         halt_code_address: 42,
         low_fold_code_address: 41,
         reentry_code_address: 40,
+        zero_pair,
+    })
+}
+
+/// Continue the **same** C14/C17 zero pair through a real C37 raw-input
+/// read, two invertible ternary `p` operations and a low-cell overwrite.
+///
+/// C18..C20 reenter the original low word through the already encrypted C1
+/// and loader M86, and C21 primes that zero with all trits one. C22 returns
+/// D to C1; C23..C35 advance to C14, whose actual post-execution encryption
+/// gives `123`. C36 `j` enters D124; C37 `/` and C38 `o` reach M126, whose
+/// original C10 crazy wrote the trit-wise ones word. C39 `p` encodes the
+/// raw input injectively, then C40..C42 reenter the original low cell and
+/// C43 `p` decodes exactly to the raw input with the high word still zero.
+/// C44 halts. Actual guest paths must be VM-checked; this builder only emits.
+///
+/// Raw EOF=14,348,906 remains **not** signed C23 -1 and the pair must not
+/// be published as a signed C32 local. This is one finite input and not a
+/// general linker, conditional branch, source-C arithmetic or EOF loop.
+///
+/// # Errors
+///
+/// Rejects unsupported target profiles, drifted seed geometry, or a
+/// missing graphical encoding for any actual source instruction.
+pub fn build_adjacent_c32_zero_c37_raw_input_pair_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37RawInputPairSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut zero_pair = build_adjacent_c32_zero_then_c37_input_source(profile)?;
+    const LOW: u32 = 7_174_417;
+    const ONES: u32 = 7_174_453;
+    const ENCODED: u32 = 126;
+    if zero_pair.source.len() != 62
+        || zero_pair.input_code_address != Some(37)
+        || zero_pair.zero_low_address != LOW
+        || zero_pair.zero_high_address != LOW + 1
+        || zero_pair.scratch_data_address != ENCODED
+        || zero_pair.scratch_initial_words != [7_174_416, 37, 7_174_416]
+        || profile_crazy(
+            zero_pair.scratch_initial_words[0],
+            0,
+            profile.word_trits(),
+        ) != ONES
+        || encrypt_profile_cell(u32::from(
+            *zero_pair.source.get(1).ok_or(NoLoadableZero)?,
+        )) != Some(85)
+        || encrypt_profile_cell(u32::from(
+            *zero_pair.source.get(14).ok_or(NoLoadableZero)?,
+        )) != Some(123)
+        || unwritten_loader_word(&zero_pair.source, 86, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != LOW - 1
+    {
+        return Err(NoLoadableZero);
+    }
+    for (site, operation) in [
+        (18usize, LinearOpcode::RelocateDataPointer),
+        (19, LinearOpcode::RelocateDataPointer),
+        (20, LinearOpcode::RelocateDataPointer),
+        (21, LinearOpcode::CrazyData),
+        (22, LinearOpcode::RelocateDataPointer),
+        (36, LinearOpcode::RelocateDataPointer),
+        (38, LinearOpcode::NoOperation),
+        (39, LinearOpcode::CrazyData),
+        (40, LinearOpcode::RelocateDataPointer),
+        (41, LinearOpcode::RelocateDataPointer),
+        (42, LinearOpcode::RelocateDataPointer),
+        (43, LinearOpcode::CrazyData),
+        (44, LinearOpcode::Halt),
+    ] {
+        *zero_pair.source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37RawInputPairSource {
+        encoded_store_code_address: 39,
+        encoded_data_address: ENCODED,
+        halt_code_address: 44,
+        low_prime_code_address: 21,
+        low_store_code_address: 43,
+        return_code_addresses: [40, 41, 42],
         zero_pair,
     })
 }
