@@ -6,6 +6,25 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Physical input/branch execution chronology (2026-11-24)
+
+A stricter opt-in `verify_source_return_branch_ordered` builds on the
+source-known direction and complete-return gate. It counts **actual input
+trace indices before the reached indirect-transfer step**, requiring exactly
+the source guard's declared `after_inputs` reads. The input address is not
+its execution timestamp: on successful-byte runs the second C23 `getchar`
+has code cell **C101** but executes at normative VM step **171**. The
+first input executes at step 53; reached C114 `i` executes at step **114**,
+so the first source guard is genuinely between the two reads. An arbitrary
+hypothetical read at step 101 would instead be counted before C114 and
+invalidate the same source-guard timing claim.
+
+Actual EOF, NUL-then-EOF and high-byte-255-then-EOF guests pass this
+chronology and branch-direction gate. The original checksum with two
+successful bytes still fails the independent full source-return check.
+This is **necessary guest input/control order**, not a guest C23 comparison,
+C32 storage, executable source backedge, correct output or full checksum.
+
 ## One source-known EOF guard bound to a physical guest arm (2026-11-24)
 
 `verify_source_return_branch_bound` now adds a conservative **source/guest

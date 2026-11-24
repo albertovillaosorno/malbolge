@@ -28,6 +28,18 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### The source guard also respects guest input chronology (2026-11-24)
+
+`verify_source_return_branch_ordered` strengthens the direction-only proof
+by counting authenticated physical `/` transitions **before the actual
+indirect transfer step**. For the original checksum's first C23 guard,
+C53 reads at trace step 53, C114 `i` transfers at step 114 and the
+successful-byte second read at code cell C101 executes only at **step 171**.
+The strict finite EOF/NUL/255 controls pass. A hypothetical second read at
+step 101 instead of 171 would fail the one-read guard ordering requirement.
+Physical code addresses must not be confused with trace time. This remains
+necessary control ordering, not a complete translated source CFG.
+
 ### A source-known EOF condition selects the real guest arm (2026-11-24)
 
 An opt-in `verify_source_return_branch_bound` now checks the canonical

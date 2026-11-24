@@ -387,6 +387,8 @@ pub enum SourceBoundIndirectGuestError {
     GuestPointer(SourceWrittenIndirectGuestError),
     /// Two independent normative VM replays do not describe the same run.
     InconsistentGuestTrace,
+    /// The reached guest transfer crosses an extra physical input read.
+    OutOfOrderGuestBranch,
 }
 
 /// Opaque joined proof of source-identified inputs and a guest-written branch.
@@ -577,6 +579,42 @@ impl SourceWrittenIndirectGuestVerifier {
             joined.guest_pointer.landing_address(),
         )
         .map_err(SourceBoundIndirectGuestError::SourceInput)?;
+        Ok(joined)
+    }
+
+    /// Additionally place the actual guest `i` **between** the input reads
+    /// before and after the nominated source conditional.
+    ///
+    /// The direction-only binding above deliberately does not infer guest
+    /// execution ordering. For a branch after `N` source input operations,
+    /// exactly `N` authenticated `/` transitions must precede the physical
+    /// indirect transfer. A later read before the guest branch fails even
+    /// when its pointer selects the direction predicted by source C. This is
+    /// necessary physical input/control ordering, not proof that the guest
+    /// computes the signed predicate or implements the full source CFG.
+    ///
+    /// # Errors
+    ///
+    /// Refuses the direction/source-return verifier's failures, or a reached
+    /// physical `i` separated from its source branch by another input read.
+    pub fn verify_source_return_branch_ordered(
+        &self,
+        probe: &SourceBoundIndirectGuestProbe<'_>,
+        branch: SourceBranchLanding,
+    ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
+    {
+        let joined = self.verify_source_return_branch_bound(probe, branch)?;
+        let read_count = source_read_count_before_guest_transfer(
+            joined
+                .source_input
+                .observations
+                .iter()
+                .map(|read| read.trace_index),
+            joined.guest_pointer.transfer_step(),
+        );
+        if read_count != branch.after_inputs {
+            return Err(SourceBoundIndirectGuestError::OutOfOrderGuestBranch);
+        }
         Ok(joined)
     }
 
@@ -805,6 +843,19 @@ impl SourceWrittenIndirectGuestVerifier {
         }
         Ok(proof)
     }
+}
+
+// Count actual normative VM input transitions before (not at or after)
+// the nominated indirect instruction. Source block ordinals and physical
+// code addresses cannot be substituted for chronological trace indices.
+pub(super) fn source_read_count_before_guest_transfer(
+    read_steps: impl IntoIterator<Item = usize>,
+    transfer_step: usize,
+) -> usize {
+    read_steps
+        .into_iter()
+        .filter(|read| *read < transfer_step)
+        .count()
 }
 
 /// Reconstruct exact physical input transition identities from VM evidence.

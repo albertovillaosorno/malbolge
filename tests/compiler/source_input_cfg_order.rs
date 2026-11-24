@@ -497,6 +497,31 @@ fn source_branch_arm_requires_a_known_guard_and_the_exact_input_occurrence() {
 }
 
 #[test]
+fn source_guest_branch_chronology_uses_vm_trace_steps_not_code_addresses() {
+    use super::super::indirect_source_suffix as suffix;
+
+    // Reached C53 is at step 53, but reached C101 occurs on the
+    // indirect-selected arm at trace step 171. A guest branch at step 114
+    // is therefore after exactly one input, not two.
+    assert_eq!(
+        suffix::source_read_count_before_guest_transfer([53, 171], 114),
+        1,
+    );
+    assert_eq!(
+        suffix::source_read_count_before_guest_transfer([53, 101], 114),
+        2,
+    );
+    assert_eq!(
+        suffix::source_read_count_before_guest_transfer([53, 171], 172),
+        2,
+    );
+    assert_eq!(
+        suffix::source_read_count_before_guest_transfer([53, 114], 114),
+        1,
+    );
+}
+
+#[test]
 fn exhausted_source_path_search_is_not_an_unreachable_path_proof() {
     let function = guarded_inequality_fixture();
     let first = observed(0, 0);
@@ -1210,6 +1235,29 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
                     "forged typed branch {wrong:?}",
                 );
             }
+        }
+        // Source branch sequencing is checked using actual transition
+        // indexes, not the C101 code address. The second read executes at
+        // trace step 171, *after* the C114 indirect transfer at step 114.
+        // Both EOF and successful-byte cases respect first-guard ordering.
+        assert_eq!(
+            pointer_verifier
+                .verify_source_return_branch_ordered(
+                    &requested,
+                    source_first_guard,
+                )
+                .map(|_proof| ()),
+            if input.len() <= 1 {
+                Ok(())
+            } else {
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::UnreachedSourceInput,
+                ))
+            },
+            "guest branch input chronology for {input:?}",
+        );
+        if input.len() == 1 {
+            assert_eq!(joined.source_input().observations[1].trace_index, 171);
         }
         // The second C23 getchar is a real input on non-EOF paths, but
         // cannot be borrowed as an ancestor of this earlier pointer.

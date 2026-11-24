@@ -41,6 +41,14 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The stricter input/branch chronology gate now checks the exact
+**normative VM transfer step 114** against preceding input trace steps:
+C53 reads at step 53; C101's second read occurs **later at step 171** on
+the selected arm, not at code address 101's numeric value. EOF/NUL/255
+finite tests pass the first-source-guard ordering requirement. A forged
+second read at trace step 101 would fail; full C23 state/output/loop still
+cannot publish. Evidence: source-indirect-guest-suffix technical contract.
+
 The new source-return-bound physical verifier binds the frozen original
 C23 checksum's **block-1 `current != EOF`** guard after its first `getchar`
 to the *actual* C114 `i` guest arm: C45 for a successful byte, C126 for
