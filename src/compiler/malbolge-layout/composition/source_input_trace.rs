@@ -681,67 +681,110 @@ fn known_source_binary(
     Some((result, derived))
 }
 
+// A checked binary result of `None` is source-unknown when an operand is
+// unknown, but is *undefined* when all required operands are known and the
+// checked C23 operation fails. Division by a known zero is undefined even
+// if the dividend has not yet become source-known.
+fn source_binary_is_undefined(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+    derived: Option<u32>,
+) -> bool {
+    let (left, right, division) = match *operation {
+        TernaryOperation::AddI32 { left, right, .. }
+        | TernaryOperation::SubtractI32 { left, right, .. }
+        | TernaryOperation::MultiplyI32 { left, right, .. } => {
+            (left, right, false)
+        },
+        TernaryOperation::DivideI32 { left, right, .. }
+        | TernaryOperation::DivideU32 { left, right, .. }
+        | TernaryOperation::RemainderI32 { left, right, .. }
+        | TernaryOperation::RemainderU32 { left, right, .. } => {
+            (left, right, true)
+        },
+        _ => return false,
+    };
+    (division && known.get(&right) == Some(&0))
+        || (derived.is_none()
+            && known.contains_key(&left)
+            && known.contains_key(&right))
+}
+
 // Source-only knowledge must never turn C shift UB or a platform-specific
 // signed right shift into a made-up guest output or a definite branch arm.
-fn known_signed_left_shift(left: i32, right: i32) -> Option<i32> {
-    let count = u32::try_from(right).ok().filter(|count| *count < 32u32)?;
+fn known_signed_left_shift(left: i32, count: u32) -> Option<i32> {
+    (count < 32u32).then_some(())?;
     (left >= 0i32)
         .then_some(())
         .and_then(|()| i64::from(left).checked_shl(count))
         .and_then(|bits| i32::try_from(bits).ok())
 }
 
-fn known_signed_right_shift(left: i32, right: i32) -> Option<i32> {
-    let count = u32::try_from(right).ok()?;
+fn known_signed_right_shift(left: i32, count: u32) -> Option<i32> {
     (left >= 0i32).then_some(())?;
     left.checked_shr(count)
 }
 
+// `None` means that an operation is not a shift. Within a recognized shift,
+// `Ok(None)` means insufficient source knowledge (or implementation-defined
+// signed-right behavior). `Err(())` means the reached C23 shift is undefined
+// and therefore cannot certify *any* complete source return, even if its
+// resulting SSA value is never used by a later byte effect.
 fn known_source_shift(
     operation: &TernaryOperation,
     known: &BTreeMap<u32, u32>,
-) -> Option<KnownSourceScalar> {
-    let (result, derived) = match *operation {
-        TernaryOperation::ShiftLeftU32 { left, result, right, .. } => (
-            result,
-            known
-                .get(&left)
-                .zip(known.get(&right))
-                .and_then(|(lhs, rhs)| lhs.checked_shl(*rhs)),
-        ),
-        TernaryOperation::ShiftRightLogicalU32 {
+) -> Option<(u32, Result<Option<u32>, ()>)> {
+    let (left, result, right) = match *operation {
+        TernaryOperation::ShiftLeftU32 { left, result, right, .. }
+        | TernaryOperation::ShiftRightLogicalU32 {
             left, result, right, ..
-        } => (
-            result,
-            known
-                .get(&left)
-                .zip(known.get(&right))
-                .and_then(|(lhs, rhs)| lhs.checked_shr(*rhs)),
-        ),
-        TernaryOperation::ShiftLeftI32 { left, result, right, .. } => (
-            result,
-            apply_known_signed_binary(
-                known,
-                left,
-                right,
-                known_signed_left_shift,
-            ),
-        ),
-        TernaryOperation::ShiftRightArithmeticI32 {
+        }
+        | TernaryOperation::ShiftLeftI32 { left, result, right, .. }
+        | TernaryOperation::ShiftRightArithmeticI32 {
             left,
             result,
             right,
             ..
-        } => (
-            result,
-            apply_known_signed_binary(
-                known,
-                left,
-                right,
-                known_signed_right_shift,
-            ),
-        ),
+        } => (left, result, right),
         _ => return None,
+    };
+    let left_bits = known.get(&left).copied();
+    let count = known.get(&right).copied();
+    // C shifts with negative counts or counts >= the promoted operand width
+    // are undefined, independently of whether the left operand is known.
+    if count.is_some_and(|value| value >= 32) {
+        return Some((result, Err(())));
+    }
+    let derived = match *operation {
+        TernaryOperation::ShiftLeftU32 { .. } => {
+            Ok(left_bits.zip(count).map(|(lhs, rhs)| lhs << rhs))
+        },
+        TernaryOperation::ShiftRightLogicalU32 { .. } => {
+            Ok(left_bits.zip(count).map(|(lhs, rhs)| lhs >> rhs))
+        },
+        TernaryOperation::ShiftLeftI32 { .. } => {
+            let signed =
+                left_bits.map(|bits| i32::from_ne_bytes(bits.to_ne_bytes()));
+            if signed.is_some_and(|value| value < 0) {
+                Err(())
+            } else if let Some((lhs, rhs)) = signed.zip(count) {
+                known_signed_left_shift(lhs, rhs)
+                    .map(|value| u32::from_ne_bytes(value.to_ne_bytes()))
+                    .map(Some)
+                    .ok_or(())
+            } else {
+                Ok(None)
+            }
+        },
+        TernaryOperation::ShiftRightArithmeticI32 { .. } => {
+            let signed =
+                left_bits.map(|bits| i32::from_ne_bytes(bits.to_ne_bytes()));
+            Ok(signed.zip(count).and_then(|(lhs, rhs)| {
+                known_signed_right_shift(lhs, rhs)
+                    .map(|value| u32::from_ne_bytes(value.to_ne_bytes()))
+            }))
+        },
+        _ => unreachable!("recognized shift variant"),
     };
     Some((result, derived))
 }
@@ -811,24 +854,37 @@ fn known_source_threshold(
     Some((result, derived))
 }
 
+// `false` marks executed undefined C23 arithmetic, not unknown SSA.
+// No source return can be certified through such an operation.
 fn advance_known_source_scalar(
     operation: &TernaryOperation,
     known: &mut BTreeMap<u32, u32>,
-) {
-    // Only total, exact C operations can make a guard source-known.
-    // Unmodeled arithmetic retains unknown values, not host-computed output.
-    let Some((result, derived)) = known_source_cast(operation, known)
+) -> bool {
+    let tracked = known_source_cast(operation, known)
         .or_else(|| known_source_binary(operation, known))
-        .or_else(|| known_source_shift(operation, known))
-        .or_else(|| known_source_threshold(operation, known))
-    else {
-        return;
+        .or_else(|| known_source_threshold(operation, known));
+    let (result, derived) = if let Some(scalar) = tracked {
+        if source_binary_is_undefined(operation, known, scalar.1) {
+            let _old = known.remove(&scalar.0);
+            return false;
+        }
+        scalar
+    } else if let Some((result, shifted)) = known_source_shift(operation, known)
+    {
+        let Ok(derived) = shifted else {
+            let _old = known.remove(&result);
+            return false;
+        };
+        (result, derived)
+    } else {
+        return true;
     };
     if let Some(derived_value) = derived {
         let _old = known.insert(result, derived_value);
     } else {
         let _old = known.remove(&result);
     }
+    true
 }
 
 fn source_successor_state(
@@ -956,8 +1012,8 @@ fn advance_source_input_operation(
                 &mut next, current, value, expected,
             )?;
         }
-    } else {
-        advance_known_source_scalar(operation, &mut next.known);
+    } else if !advance_known_source_scalar(operation, &mut next.known) {
+        return None;
     }
     Some(next)
 }

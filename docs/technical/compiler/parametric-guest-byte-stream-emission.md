@@ -12823,3 +12823,31 @@ count 32 and a signed left shift whose positive result exceeds `INT_MAX`.
 Both source programs must trap at `-O0` and `-O2` without stdout; this
 corroborates refusal of undefined source-known shift values, not a guest
 execution guarantee.
+
+### Reached C23 undefined arithmetic cannot justify a source return (2026-11-24)
+
+A red-first complete-return regression found that an invalid C32 shift could
+be discarded and a later unrelated byte output still matched. The source
+walker now distinguishes a **known undefined operation** from an unknown
+scalar result. Invalid signed and unsigned shift counts, negative signed
+left operands and signed-left overflow reject the entire reached path,
+even when the shifted SSA result is unused. A negative signed right shift
+remains implementation-defined and source-unknown, not misclassified as UB.
+
+The same fail-closed rule now applies to known signed add/subtract/multiply
+overflow, zero divisors for signed/unsigned divide and remainder, and
+`INT_MIN / -1` quotient/remainder. Unknown operands remain unknown unless
+an already-known zero divisor or invalid shift count suffices to prove UB;
+valid unsigned wraparound still produces the exact C32 result. A physical
+input prefix before the invalid operation remains a valid **prefix**, but
+it cannot certify a complete C source return or an output effect.
+
+The red-first source-CFG regression now tests the dead-result case across
+all affected families, plus defined and implementation-defined controls.
+The 123 source-order instances (three independently composed layout paths)
+pass. Pinned Clang 22.1.8 C23 UBSan at `-O0` and `-O2` independently traps
+before stdout for dead-invalid shift, signed add and unsigned divide,
+in addition to earlier result-used shift controls. The unchanged original
+mutable EOF checksum still refuses at its seven-block unlinked CFG: this
+check does **not** execute C32 arithmetic or looping in Malbolge, nor
+establish a compiler release.

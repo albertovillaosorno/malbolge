@@ -870,7 +870,7 @@ fn signed_source_product_and_checked_overflow_affect_branch_proof() {
     // the wrapped physical byte or a made-up definite source branch.
     source.blocks[0].operations[1] = TernaryOperation::MaterializeI32 {
         result: 10,
-        scalar: TernaryI32Scalar::from_bits(i32::MAX as u32),
+        scalar: TernaryI32Scalar::from_bits(0x7fff_ffff),
         span,
     };
     for invalid in [1, 2] {
@@ -887,7 +887,7 @@ fn signed_source_product_and_checked_overflow_affect_branch_proof() {
         TernaryOperation::GetcharI32 { result: 0, span },
         TernaryOperation::MaterializeI32 {
             result: 10,
-            scalar: TernaryI32Scalar::from_bits(i32::MAX as u32),
+            scalar: TernaryI32Scalar::from_bits(0x7fff_ffff),
             span,
         },
         TernaryOperation::AddI32 {
@@ -1264,16 +1264,16 @@ fn undefined_shift_redefinition_removes_stale_source_scalar() {
         right: 2,
         span,
     };
-    advance_known_source_scalar(&unsigned, &mut known);
+    assert!(advance_known_source_scalar(&unsigned, &mut known));
     assert_eq!(known.get(&3), Some(&2040));
     let _prior = known.insert(2, 32);
-    advance_known_source_scalar(&unsigned, &mut known);
+    assert!(!advance_known_source_scalar(&unsigned, &mut known));
     assert!(!known.contains_key(&3));
     let _prior = known.insert(2, 1);
-    advance_known_source_scalar(&unsigned, &mut known);
+    assert!(advance_known_source_scalar(&unsigned, &mut known));
     assert_eq!(known.get(&3), Some(&510));
     let _prior = known.remove(&1);
-    advance_known_source_scalar(&unsigned, &mut known);
+    assert!(advance_known_source_scalar(&unsigned, &mut known));
     assert!(!known.contains_key(&3));
 
     // The same invalidation is required for negative signed inputs even
@@ -1286,15 +1286,282 @@ fn undefined_shift_redefinition_removes_stale_source_scalar() {
     };
     let _prior = known.insert(1, 255);
     let _prior = known.insert(2, 1);
-    advance_known_source_scalar(&signed, &mut known);
+    assert!(advance_known_source_scalar(&signed, &mut known));
     assert_eq!(known.get(&3), Some(&127));
     let _prior = known.insert(1, u32::MAX);
-    advance_known_source_scalar(&signed, &mut known);
+    assert!(advance_known_source_scalar(&signed, &mut known));
     assert!(!known.contains_key(&3));
     let _prior = known.insert(1, 255);
     let _prior = known.insert(2, u32::MAX);
-    advance_known_source_scalar(&signed, &mut known);
+    assert!(!advance_known_source_scalar(&signed, &mut known));
     assert!(!known.contains_key(&3));
+}
+
+// A complete source return with a dead arithmetic result must still honor
+// C23 definedness before accepting its later observable output.
+fn dead_result_source_path(
+    operation: TernaryOperation,
+    left: u32,
+    right: u32,
+) -> Result<bool, SourceInputTraceError> {
+    let span = dummy_span();
+    let function = TernaryCfgFunction {
+        blocks: vec![TernaryCfgBlock {
+            id: 0,
+            operations: vec![
+                TernaryOperation::GetcharI32 { result: 0, span },
+                TernaryOperation::MaterializeI32 {
+                    result: 1,
+                    scalar: TernaryI32Scalar::from_bits(left),
+                    span,
+                },
+                TernaryOperation::MaterializeI32 {
+                    result: 2,
+                    scalar: TernaryI32Scalar::from_bits(right),
+                    span,
+                },
+                operation,
+                TernaryOperation::MaterializeU32 {
+                    result: 4,
+                    scalar: TernaryI32Scalar::from_bits(65),
+                    span,
+                },
+                TernaryOperation::TruncateU32ToU8 {
+                    result: 5,
+                    value: 4,
+                    span,
+                },
+                TernaryOperation::ByteOutput { value: 5, span },
+            ],
+            phis: Vec::new(),
+            terminator: TernaryCfgTerminator::Return(
+                TernaryOperation::ReturnVoid { span },
+            ),
+        }],
+        entry: 0,
+        id: 0,
+        name: "dead_result".to_owned(),
+        span,
+    };
+    let input = observed(0, 0);
+    source_path_matches_input_observables(&function, &[&input], b"A", 32)
+}
+
+// Unknown counts and implementation-defined signed right shifts remain possible
+// source paths; known undefined left/right shifts must not certify a return.
+#[test]
+fn executed_undefined_shift_cannot_certify_unrelated_guest_output() {
+    let span = dummy_span();
+    for (operation, lhs, count, expected) in [
+        (
+            TernaryOperation::ShiftLeftU32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            1,
+            31,
+            true,
+        ),
+        (
+            TernaryOperation::ShiftLeftU32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            1,
+            32,
+            false,
+        ),
+        (
+            TernaryOperation::ShiftRightLogicalU32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            1,
+            u32::MAX,
+            false,
+        ),
+        (
+            TernaryOperation::ShiftLeftI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            u32::MAX,
+            1,
+            false,
+        ),
+        (
+            TernaryOperation::ShiftLeftI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            255,
+            24,
+            false,
+        ),
+        (
+            TernaryOperation::ShiftRightArithmeticI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            17,
+            32,
+            false,
+        ),
+        (
+            TernaryOperation::ShiftRightArithmeticI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            u32::MAX,
+            1,
+            true,
+        ),
+    ] {
+        assert_eq!(
+            dead_result_source_path(operation, lhs, count),
+            Ok(expected),
+            "dead shift {operation:?}, lhs={lhs}, count={count}"
+        );
+    }
+}
+
+// As with shifts, executing undefined arithmetic is not a valid C23
+// return, even when subsequent guest I/O uses an independent constant.
+#[test]
+fn executed_undefined_arithmetic_cannot_certify_unrelated_output() {
+    let span = dummy_span();
+    for (operation, lhs, rhs, expected) in [
+        (
+            TernaryOperation::AddI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            0x7fff_ffff,
+            1,
+            false,
+        ),
+        (
+            TernaryOperation::AddI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            10,
+            1,
+            true,
+        ),
+        (
+            TernaryOperation::SubtractI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            0x8000_0000,
+            1,
+            false,
+        ),
+        (
+            TernaryOperation::MultiplyI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            0x7fff_ffff,
+            2,
+            false,
+        ),
+        (
+            TernaryOperation::DivideI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            1,
+            0,
+            false,
+        ),
+        (
+            TernaryOperation::DivideI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            9,
+            3,
+            true,
+        ),
+        (
+            TernaryOperation::DivideU32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            1,
+            0,
+            false,
+        ),
+        (
+            TernaryOperation::RemainderI32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            0x8000_0000,
+            u32::MAX,
+            false,
+        ),
+        (
+            TernaryOperation::RemainderU32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            1,
+            0,
+            false,
+        ),
+        (
+            TernaryOperation::AddU32 {
+                left: 1,
+                result: 3,
+                right: 2,
+                span,
+            },
+            u32::MAX,
+            1,
+            true,
+        ),
+    ] {
+        assert_eq!(
+            dead_result_source_path(operation, lhs, rhs),
+            Ok(expected),
+            "dead arithmetic {operation:?}, lhs={lhs}, rhs={rhs}",
+        );
+    }
 }
 
 // A source EOF guard loops through the same read/shift SSA slots.
@@ -2381,9 +2648,24 @@ fn undefined_source_division_cannot_certify_guest_output() {
         source_path_matches_input_observables(&function, &[&first], &[0], 128),
         Ok(false),
     );
-    // An input-only path may exist without knowledge of target arithmetic.
+    // The physical input is still a valid prefix, but no complete C return
+    // can pass through an executed, source-known division by zero.
+    assert_eq!(
+        source_path_matches_input_prefix(&function, &[&first], 128),
+        Ok(true),
+    );
     assert_eq!(
         source_path_matches_input_trace(&function, &[&first], 128, true),
+        Ok(false),
+    );
+    let mut defined = function;
+    defined.blocks[0].operations[1] = TernaryOperation::MaterializeU32 {
+        result: 1,
+        scalar: TernaryI32Scalar::from_bits(1),
+        span,
+    };
+    assert_eq!(
+        source_path_matches_input_observables(&defined, &[&first], &[3], 128),
         Ok(true),
     );
 }
