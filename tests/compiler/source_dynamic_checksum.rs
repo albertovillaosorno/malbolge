@@ -1946,11 +1946,33 @@ fn source_input_anchors_share_a_real_basic_block_without_aliasing() {
         Ok(expected.clone())
     );
 
+    let gapped = GuestCodeInputAnchor {
+        code_address: 40,
+        ..second
+    };
+    let with_setup =
+        plan_source_locked_cfg_with_input_anchors(&wire, 91, 128, &[
+            first, gapped,
+        ])
+        .expect("source-typed input sites may have a real guest setup gap");
+    assert_eq!(with_setup.code_blocks[0].start, 37);
+    assert_eq!(with_setup.code_blocks[0].end_exclusive, 44);
+    assert_eq!(
+        with_setup
+            .operation_effect_sites
+            .iter()
+            .filter_map(|site| {
+                matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+                    .then_some(site.code_address)
+            })
+            .collect::<Vec<_>>(),
+        [37, 40],
+    );
     let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
     for anchors in [
         vec![first, first],
         vec![first, GuestCodeInputAnchor {
-            code_address: 40,
+            code_address: 38,
             ..second
         }],
         vec![first, GuestCodeInputAnchor {
@@ -2103,6 +2125,129 @@ fn original_same_block_c23_getchar_sites_match_two_real_guest_reads() {
                     .map_or(current_profile().eof_word(), u32::from)
             ),
         ]);
+    }
+}
+
+// The original source-locked two-getchar C23 shape has one basic block.
+// A source-loaded N15 guest may reserve an inert cell for future pointer
+// preparation between the two real reads. Physical read sites must remain
+// fixed, even though neither result has yet been written to its signed two-cell
+// frame.
+#[test]
+fn original_two_getchars_accept_a_real_guest_setup_gap() {
+    use malbolge::{
+        ProfileMachine, RunOutcome, Termination, TraceInput, current_profile,
+        decode_profile_instruction,
+    };
+
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeInputAnchor, GuestCodeOperationEffect,
+        GuestCodePlacementError, plan_source_locked_cfg_with_input_anchors,
+    };
+
+    let original =
+        include_bytes!("c-frontend/accepted/discarded_getchar_two.c");
+    let normalized =
+        include_bytes!("c-frontend/golden/discarded_getchar_two.json");
+    let (wire, mode) =
+        canonical_guest_typed_ir_with_source(normalized, Some(original))
+            .expect("pinned two-read C23 source");
+    assert_eq!(mode, FrontendGuestMode::DiscardedGetchar);
+    let first = GuestCodeInputAnchor {
+        block: 0,
+        code_address: 0,
+        function: 0,
+        ordinal: 0,
+    };
+    let second = GuestCodeInputAnchor {
+        code_address: 4,
+        ordinal: 1,
+        ..first
+    };
+    let plan = plan_source_locked_cfg_with_input_anchors(&wire, 8, 128, &[
+        second, first,
+    ])
+    .expect("physical guest setup gap must not shift authenticated reads");
+    assert_eq!(plan.code_blocks.len(), 1);
+    assert_eq!(
+        (
+            plan.code_blocks[0].start,
+            plan.code_blocks[0].control_start,
+            plan.code_blocks[0].end_exclusive,
+        ),
+        (0, 7, 8)
+    );
+    assert_eq!(
+        plan.operation_effect_sites
+            .iter()
+            .filter_map(|site| {
+                matches!(site.effect, GuestCodeOperationEffect::Input { .. })
+                    .then_some((site.ordinal, site.code_address))
+            })
+            .collect::<Vec<_>>(),
+        [(0, 0), (1, 4)],
+    );
+    assert_eq!(
+        plan_source_locked_cfg_with_input_anchors(&wire, 8, 128, &[
+            first,
+            GuestCodeInputAnchor {
+                code_address: 2,
+                ..second
+            },
+        ]),
+        Err(GuestCodePlacementError::InvalidCodePlacement),
+    );
+    let physical = b"/ooo/oov"
+        .iter()
+        .enumerate()
+        .map(|(position, opcode)| {
+            (33u8..=126)
+                .find(|byte| {
+                    decode_profile_instruction(
+                        u32::from(*byte),
+                        u32::try_from(position).unwrap_or(u32::MAX),
+                    ) == Some(*opcode)
+                })
+                .expect("source-loadable N15 instruction")
+        })
+        .collect::<Vec<_>>();
+    for input in [&[][..], &[0][..], &[255, 128][..], &[3, 0, 44][..]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            &physical,
+            input.to_vec(),
+        )
+        .expect("source-loaded two-read guest");
+        let mut reads = Vec::new();
+        let outcome = vm
+            .run_traced(8, &mut |step| {
+                if let Some(value) = step.input {
+                    reads.push((step.before.registers.code_pointer, value));
+                }
+            })
+            .expect("bounded normative N15 VM");
+        assert_eq!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 8,
+        });
+        assert_eq!(reads, [
+            (
+                0,
+                input
+                    .first()
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            ),
+            (
+                4,
+                input
+                    .get(1)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            ),
+        ]);
+        assert_eq!(vm.input_consumed(), input.len().min(2));
+        assert!(vm.output().is_empty());
     }
 }
 

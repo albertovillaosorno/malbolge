@@ -28,6 +28,21 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-locked same-block input setup gaps (2026-11-23)
+
+The canonical typed-CFG input planner now preserves two real `/` sites in
+one original C23 basic block with an extra physical code cell between
+them. Previously the source-locked planner required every input
+site to equal the strict minimum immediately after its predecessor, even
+though its lower-level operation binder already admitted sparse positions.
+A red-first source-backed test now accepts C0 and C4 reads in an eight-step,
+fully loader-valid N15 guest for EOF, NUL, high-byte and two-byte streams.
+The second site remains at C4; overlapping, repeated, non-input and
+out-of-bounds proposals still refuse. No output or source-C32 result
+stores are present in this probe, and the original mutable seven-block
+EOF checksum still fails closed before target publication. Regression:
+`tests/compiler/source_dynamic_checksum.rs`.
+
 ### Finite loader-seed bound for signed EOF conversion (2026-11-23)
 
 An independent N15 scalar enumeration freezes a **two-crazy operand**

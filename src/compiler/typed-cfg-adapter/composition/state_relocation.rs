@@ -2036,8 +2036,12 @@ fn first_fit_phi_pad(
 /// This allows a future physical linker to *propose* addresses observed in a
 /// real guest input prefix without requiring that all source-C blocks execute
 /// in canonical numeric order. Anchors are checked against actual source
-/// input operations and their preceding minimum write obligations. The
-/// remaining blocks/pads are first-fit packed in deterministic source order;
+/// input operations and their preceding minimum write obligations. Two
+/// source-typed reads in the same block may have intervening physical setup
+/// cells; the earliest admitted first anchor fixes the block's start, while
+/// subsequent anchors enlarge its reservation and remain at their exact
+/// positions. No setup code or SSA store is executed by the planner.
+/// Remaining blocks/pads are first-fit packed in deterministic source order;
 /// no target code, runtime control, EOF conversion or guest output is built.
 /// A physical VM witness and true operation/copy instruction encoding remain
 /// mandatory before the result can be used for artifact publication.
@@ -2055,16 +2059,11 @@ pub fn plan_source_locked_cfg_with_input_anchors(
     let relocated =
         relocate_source_locked_cfg(canonical, source_cells, frame_base)
             .map_err(GuestCodePlacementError::TypedCfg)?;
-    let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
-    let mut seen_input_operations = BTreeSet::new();
+    // Input positions are physical instruction sites. Validated setup code
+    // may separate those sites even when the reads share one source block.
+    // Group by canonical identity and retain each source-order ordinal.
+    let mut input_sites = BTreeMap::<(u32, u32), BTreeMap<u32, u32>>::new();
     for anchor in anchors {
-        if !seen_input_operations.insert((
-            anchor.function,
-            anchor.block,
-            anchor.ordinal,
-        )) {
-            return Err(GuestCodePlacementError::InvalidCodePlacement);
-        }
         let block = relocated
             .operation_blocks
             .iter()
@@ -2081,44 +2080,67 @@ pub fn plan_source_locked_cfg_with_input_anchors(
         if !matches!(
             operation.instruction,
             Instruction::Getchar { .. } | Instruction::ByteInput { .. }
-        ) {
+        ) || input_sites
+            .entry((anchor.function, anchor.block))
+            .or_default()
+            .insert(anchor.ordinal, anchor.code_address)
+            .is_some()
+        {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
-        let prefix = block.instructions[..ordinal]
+    }
+    let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
+    for block in &relocated.operation_blocks {
+        let Some(sites) = input_sites.get(&(block.function, block.block))
+        else {
+            continue;
+        };
+        let (&first_ordinal, &first_address) = sites
+            .iter()
+            .next()
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let prefix = block.instructions[..usize::try_from(first_ordinal)
+            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?]
             .iter()
             .try_fold(0u32, |cells, instruction| {
                 cells.checked_add(minimum_operation_cells(instruction)?)
             })
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        let start = anchor
-            .code_address
+        let start = first_address
             .checked_sub(prefix)
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        let operations = block
-            .instructions
-            .iter()
-            .try_fold(0u32, |cells, instruction| {
-                cells.checked_add(minimum_operation_cells(instruction)?)
-            })
-            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        let control_start = start
-            .checked_add(operations)
-            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        let mut next = start;
+        for (ordinal, instruction) in block.instructions.iter().enumerate() {
+            let ordinal = u32::try_from(ordinal)
+                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+            if let Some(&site) = sites.get(&ordinal) {
+                if site < next {
+                    return Err(GuestCodePlacementError::InvalidCodePlacement);
+                }
+                next = site;
+            }
+            next = next
+                .checked_add(
+                    minimum_operation_cells(instruction)
+                        .ok_or(GuestCodePlacementError::InvalidCodePlacement)?,
+                )
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        }
+        let control_start = next;
         let end_exclusive = control_start
             .checked_add(1)
             .filter(|end| *end <= source_cells)
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        let placement = GuestCodeBlockPlacement {
-            block: block.block,
-            control_start,
-            end_exclusive,
-            function: block.function,
-            start,
-        };
-        let existing = fixed
-            .entry((block.function, block.block))
-            .or_insert(placement);
-        if *existing != placement {
+        if fixed
+            .insert((block.function, block.block), GuestCodeBlockPlacement {
+                block: block.block,
+                control_start,
+                end_exclusive,
+                function: block.function,
+                start,
+            })
+            .is_some()
+        {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
     }
@@ -2194,10 +2216,19 @@ pub fn plan_source_locked_cfg_with_input_anchors(
             sum.checked_add(end.checked_sub(start)?)
         })
         .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-    if used != source_locked_cfg_minimum_code_cells(canonical)? {
+    if used < source_locked_cfg_minimum_code_cells(canonical)? {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
-    bind_source_locked_cfg_code_targets(
+    let operation_anchors = anchors
+        .iter()
+        .map(|anchor| GuestCodeOperationAnchor {
+            block: anchor.block,
+            code_address: anchor.code_address,
+            function: anchor.function,
+            ordinal: anchor.ordinal,
+        })
+        .collect::<Vec<_>>();
+    bind_source_locked_cfg_code_targets_with_operation_anchors(
         canonical,
         source_cells,
         frame_base,
@@ -2205,6 +2236,7 @@ pub fn plan_source_locked_cfg_with_input_anchors(
             code_blocks: &blocks,
             edge_pads: &pads,
         },
+        &operation_anchors,
     )
 }
 
