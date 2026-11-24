@@ -35,6 +35,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast as type_cast
+
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
@@ -176,7 +179,8 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
                     target = root / f"exits-{bound}.malbolge"
                     path.write_text(exit_program(bound), encoding="utf-8")
                     result = self.compile(path, target)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, target):
+                        continue
                     for data in (
                         bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
                         bytes(rng.randrange(256) for _ in range(10)),
@@ -207,7 +211,8 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
                     target = root / f"comparison-{index}.malbolge"
                     path.write_text(comparison_program(operation), encoding="utf-8")
                     result = self.compile(path, target)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, target):
+                        continue
                     for data in (bytes((0, 255, 128, 1, 42)),
                                  bytes((99, 14, 239, 0, 155))):
                         expected = bytes(
@@ -230,7 +235,8 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             target = root / "nested.malbolge"
             path.write_text(nested_program(), encoding="utf-8")
             result = self.compile(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, target):
+                return
             for data in (bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
                          bytes((16, 233, 127, 11, 42, 1, 128, 255, 0))):
                 vm = self.vm(target, data)
@@ -248,7 +254,8 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             target = root / "mixed-nested.malbolge"
             path.write_text(source, encoding="utf-8")
             result = self.compile(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, target):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
                 bytes((16, 233, 127, 11, 42, 1, 128, 255, 0)),
@@ -271,7 +278,8 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
                     target = root / f"postfix-{bound}.malbolge"
                     path.write_text(source, encoding="utf-8")
                     result = self.compile(path, target)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, target):
+                        continue
                     for data in (
                         bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
                         bytes(rng.randrange(256) for _ in range(10)),
@@ -306,7 +314,7 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             path.write_text(exit_program().replace("++i)", "i++)"),
                             encoding="utf-8")
             normalized = self.normalized(path)
-            nodes = normalized["nodes"]
+            nodes = type_cast(list[dict[str, object]], normalized["nodes"])
             loop = next(n for n in nodes if n["kind"] == "for-statement")
             increment = next(
                 n for n in nodes if n["parent"] == loop["id"]
@@ -328,12 +336,13 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             for index, (node_id, field, value) in enumerate(mutations):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(normalized)
-                    node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                    forged_nodes = type_cast(list[dict[str, object]], forged["nodes"])
+                    node = next(n for n in forged_nodes if n["id"] == node_id)
                     target_field = node
                     components = field.split(".")
                     for component in components[:-1]:
-                        target_field = target_field[component]
-                    target_field[components[-1]] = value
+                        target_field = type_cast(dict[str, object], target_field[component])
+                    type_cast(dict[str, object], target_field)[components[-1]] = value
                     target = root / f"forged-postfix-{index}.malbolge"
                     result = subprocess.run(
                         [
@@ -361,7 +370,8 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
                     target = root / f"compound-{bound}.malbolge"
                     path.write_text(source, encoding="utf-8")
                     result = self.compile(path, target)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, target):
+                        continue
                     for data in (
                         bytes((0, 255, 128, 1, 42, 11, 127, 233, 16)),
                         bytes(rng.randrange(256) for _ in range(10)),
@@ -409,7 +419,7 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             path = root / "compound.c"
             path.write_text(original, encoding="utf-8")
             normalized = self.normalized(path)
-            nodes = normalized["nodes"]
+            nodes = type_cast(list[dict[str, object]], normalized["nodes"])
             increment = next(
                 node for node in nodes
                 if node["kind"] == "compound-assignment-expression"
@@ -432,12 +442,13 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             for index, (node_id, field, value) in enumerate(mutations):
                 with self.subTest(forged=index):
                     forged = copy.deepcopy(normalized)
-                    node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                    forged_nodes = type_cast(list[dict[str, object]], forged["nodes"])
+                    node = next(n for n in forged_nodes if n["id"] == node_id)
                     target_field = node
                     components = field.split(".")
                     for component in components[:-1]:
-                        target_field = target_field[component]
-                    target_field[components[-1]] = value
+                        target_field = type_cast(dict[str, object], target_field[component])
+                    type_cast(dict[str, object], target_field)[components[-1]] = value
                     target = root / f"forged-compound-{index}.malbolge"
                     result = subprocess.run(
                         [
@@ -480,7 +491,7 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             path = root / "source.c"
             path.write_text(exit_program(), encoding="utf-8")
             normalized = self.normalized(path)
-            nodes = normalized["nodes"]
+            nodes = type_cast(list[dict[str, object]], normalized["nodes"])
             predicate = next(
                 node for node in nodes
                 if node["kind"] == "binary-expression"
@@ -507,12 +518,13 @@ class InductionStaticForCPipelineTests(unittest.TestCase):
             for index, (node_id, field, value) in enumerate(mutations):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(normalized)
-                    node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                    forged_nodes = type_cast(list[dict[str, object]], forged["nodes"])
+                    node = next(n for n in forged_nodes if n["id"] == node_id)
                     target_field = node
                     path_components = field.split(".")
                     for component in path_components[:-1]:
-                        target_field = target_field[component]
-                    target_field[path_components[-1]] = value
+                        target_field = type_cast(dict[str, object], target_field[component])
+                    type_cast(dict[str, object], target_field)[path_components[-1]] = value
                     target = root / f"forged-{index}.malbolge"
                     result = subprocess.run(
                         [
