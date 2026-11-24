@@ -369,33 +369,57 @@ fn evaluate(
         } => {
             let bits = read_scalar(source, written)?;
             let width = scalar_bits(result.type_kind);
+            let source_width = scalar_bits(source.type_kind);
+            let source_is_signed = matches!(
+                source.type_kind,
+                TernaryCfgScalarKind::I8
+                    | TernaryCfgScalarKind::I16
+                    | TernaryCfgScalarKind::I32
+            );
+            let result_is_signed = matches!(
+                result.type_kind,
+                TernaryCfgScalarKind::I8
+                    | TernaryCfgScalarKind::I16
+                    | TernaryCfgScalarKind::I32
+            );
             let value = match operation {
                 CastOp::IntegerBitcast
-                    if scalar_bits(source.type_kind) == width =>
+                    if source.type_kind != TernaryCfgScalarKind::Bool
+                        && result.type_kind != TernaryCfgScalarKind::Bool
+                        && source_width == width =>
                 {
                     bits
                 },
-                CastOp::Truncate if scalar_bits(source.type_kind) >= width => {
+                CastOp::Truncate
+                    if source.type_kind != TernaryCfgScalarKind::Bool
+                        && result.type_kind != TernaryCfgScalarKind::Bool
+                        && source_width > width =>
+                {
                     bits & bit_mask(width)
                 },
                 CastOp::ZeroExtend
-                    if scalar_bits(source.type_kind) <= width =>
+                    if !source_is_signed
+                        && result.type_kind != TernaryCfgScalarKind::Bool
+                        && source_width < width =>
                 {
                     bits
                 },
                 CastOp::SignExtend
-                    if scalar_bits(source.type_kind) <= width =>
+                    if source_is_signed
+                        && result.type_kind != TernaryCfgScalarKind::Bool
+                        && source_width < width =>
                 {
-                    signed(bits, scalar_bits(source.type_kind)).cast_unsigned()
-                        & bit_mask(width)
+                    signed(bits, source_width).cast_unsigned() & bit_mask(width)
                 },
                 CastOp::IntegerToBool
-                    if result.type_kind == TernaryCfgScalarKind::Bool =>
+                    if source.type_kind != TernaryCfgScalarKind::Bool
+                        && result.type_kind == TernaryCfgScalarKind::Bool =>
                 {
                     u32::from(bits != 0)
                 },
                 CastOp::BoolToSigned
-                    if source.type_kind == TernaryCfgScalarKind::Bool =>
+                    if source.type_kind == TernaryCfgScalarKind::Bool
+                        && result_is_signed =>
                 {
                     bits
                 },

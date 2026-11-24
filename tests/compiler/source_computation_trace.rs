@@ -355,6 +355,89 @@ fn typed_c32_checksum_operations_preserve_full_width() {
     assert_eq!(evaluate(cast, &journal), Ok(254));
 }
 
+// The typed cast opcode is part of the source-C contract. A numerically
+// matching guest store cannot authorize a forged cast: C truth conversion
+// tests nonzero, and sign extension depends on the *source* signedness.
+#[test]
+fn typed_casts_refuse_invalid_signedness_and_bool_truncation() {
+    let input = |operation, source_type, result_type, value| {
+        let source = GuestPlacedOperand {
+            address: 70,
+            type_kind: source_type,
+            words: 1,
+            value: 0,
+        };
+        let result = GuestPlacedOperand {
+            address: 72,
+            type_kind: result_type,
+            words: 1,
+            value: 1,
+        };
+        let mut written = BTreeMap::new();
+        let _old = written.insert(70, value);
+        evaluate(
+            GuestCodeComputation::Cast {
+                operation,
+                source,
+                result,
+            },
+            &written,
+        )
+    };
+    use TernaryCfgScalarKind::{Bool, I8, I16, U8, U16};
+    let invalid = Err(SourcePhiCopyTraceError::UnsupportedComputation);
+    // These incorrect conversions used to return a plausible guest word.
+    assert_eq!(input(CastOp::SignExtend, U8, I16, 128), invalid);
+    assert_eq!(input(CastOp::ZeroExtend, I8, U16, 128), invalid);
+    assert_eq!(input(CastOp::Truncate, U8, Bool, 2), invalid);
+    assert_eq!(input(CastOp::BoolToSigned, Bool, U16, 1), invalid);
+    assert_eq!(input(CastOp::IntegerToBool, Bool, Bool, 1), invalid);
+    assert_eq!(input(CastOp::IntegerBitcast, Bool, Bool, 1), invalid);
+    assert_eq!(input(CastOp::Truncate, U8, U8, 2), invalid);
+    assert_eq!(input(CastOp::SignExtend, I8, I8, 128), invalid);
+    assert_eq!(input(CastOp::ZeroExtend, U8, U8, 128), invalid);
+
+    // Valid conversions retain the exact source-width sign and C truth.
+    assert_eq!(input(CastOp::SignExtend, I8, I16, 128), Ok(0xff80));
+    assert_eq!(input(CastOp::ZeroExtend, U8, U16, 128), Ok(128));
+    assert_eq!(input(CastOp::Truncate, U16, U8, 0x102), Ok(2));
+    assert_eq!(input(CastOp::IntegerToBool, U8, Bool, 2), Ok(1));
+    assert_eq!(input(CastOp::BoolToSigned, Bool, I16, 1), Ok(1));
+    assert_eq!(input(CastOp::IntegerBitcast, U8, I8, 255), Ok(255));
+}
+
+#[test]
+fn real_guest_zero_result_cannot_authenticate_bool_truncate_of_two()
+-> Result<(), String> {
+    // The real N15 guest stores 1, 2, 0 in M70..M72. Truncating the
+    // signed/unsigned byte 2 to a one-bit Boolean would falsely accept its
+    // zero result; C23 (bool)2 is 1, so only IntegerToBool is meaningful.
+    let steps = traced_three_stores_with_seeds([3, 6, 0])?;
+    let source = operand(71, 0);
+    let result = GuestPlacedOperand {
+        address: 72,
+        type_kind: TernaryCfgScalarKind::Bool,
+        value: 1,
+        words: 1,
+    };
+    let truncate = operations(GuestCodeComputation::Cast {
+        operation: CastOp::Truncate,
+        source,
+        result,
+    });
+    assert_eq!(
+        verify_source_computation_values(
+            &truncate,
+            &effects(),
+            &[],
+            &frames(),
+            &steps
+        ),
+        Err(SourcePhiCopyTraceError::UnsupportedComputation)
+    );
+    Ok(())
+}
+
 // C23 signed arithmetic overflow is undefined source behavior, even when
 // the guest physically writes the corresponding low-width wrapped bits.
 // These are real four-step N15 guest executions, not fabricated VM traces.
