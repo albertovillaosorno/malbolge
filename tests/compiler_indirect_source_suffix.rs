@@ -58,7 +58,7 @@ const FOUR_INPUT_CUMULATIVE_SUFFIX: &[u8] = b"/<oooojpp<*/jjopv";
 const FOUR_INPUT_CUMULATIVE_RETURN_SUFFIX: &[u8] = b"/<oooojpp<*/jjopi";
 // A repaired two-jump prefix allows the protected tail to end in a v after
 // C133 emits the actual fourth cumulative fold.
-const FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX: &[u8] = b"/<oooojpp<*/jjop<i";
+const FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX: &[u8] = b"/<oooojpp<*/jjop<v";
 
 fn graphical(position: u32, opcode: u8) -> Option<u8> {
     (33..=126u8).find(|byte| {
@@ -1821,12 +1821,36 @@ fn fourth_cumulative_state_survives_a_real_indirect_return_to_encrypted_code() {
     clippy::indexing_slicing,
     reason = "frozen source-admitted fourth-fold continuation geometry"
 )]
-fn fourth_cumulative_output_plan() -> IndirectSourceSuffixPlan {
-    let mut plan = fourth_cumulative_plan(FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX);
+fn fourth_cumulative_output_original() -> Vec<u8> {
+    let mut original = saved_fold_source();
+    // The repair belongs to the original protected route, rather than
+    // being patched *after* the indirect suffix planner authenticates it.
     for (at, instruction) in [(60u32, b'j'), (61, b'j'), (134, b'v')] {
-        plan.source[usize::try_from(at).expect("physical source position")] =
+        original[usize::try_from(at).expect("physical source position")] =
             graphical(at, instruction).expect("graphical encoded instruction");
     }
+    original[110] = 117;
+    assert_eq!(layout::admit_c23_probe_graphical_source(&original), Ok(()));
+    original
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "source-locked pointer and protected terminal halt"
+)]
+fn fourth_cumulative_output_plan() -> IndirectSourceSuffixPlan {
+    let original = fourth_cumulative_output_original();
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let plan = plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        111,
+        117,
+        117,
+        FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX,
+        &protected,
+    )
+    .expect("source-rederived fourth cumulative output guest");
     assert_eq!(
         layout::admit_c23_probe_graphical_source(&plan.source),
         Ok(()),
@@ -2104,6 +2128,184 @@ fn fourth_cumulative_fifth_output_survives_seeded_cross_input_streams() {
     }
 }
 
+// The repaired fourth cumulative guest must be rederived from its exact
+// source, not constructed by patching three unverified code cells *after*
+// a successful placement. The public proof now carries complete normative
+// guest step observations for the future linker to check phase-sensitive
+// entry/exit state and code/data aliasing against independent C obligations.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division_remainder_used,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "source-locked full physical fourfold and independent trit oracle"
+)]
+fn physical_indirect_proof_authenticates_fourfold_output_and_phase_effects() {
+    use layout::{
+        IndirectSourceSuffixGuestError, IndirectSourceSuffixGuestProbe,
+        verify_source_loaded_indirect_suffix_guest,
+    };
+    let original = fourth_cumulative_output_original();
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let plan = fourth_cumulative_output_plan();
+    assert_eq!(plan.source[134], original[134]);
+    assert_eq!(plan.source[60], original[60]);
+    assert_eq!(plan.source[61], original[61]);
+    assert_eq!(plan.source[110], original[110]);
+    let profile = current_profile();
+    for input in [
+        vec![3, 4, 5, 6],
+        vec![3, 4, 5],
+        vec![],
+        vec![0, 255, 128, 0],
+        vec![255, 0, 1, 255, 7],
+    ] {
+        let raw = |at: usize| {
+            input
+                .get(at)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        };
+        let (fourfold, prior_outputs) =
+            fourth_fold_expected(raw(0), raw(1), raw(2), raw(3));
+        let proof = verify_source_loaded_indirect_suffix_guest(
+            profile,
+            IndirectSourceSuffixGuestProbe {
+                candidate: &plan,
+                indirect_code_cell: 94,
+                input: &input,
+                original: &original,
+                pointer_cell: 111,
+                protected: &protected,
+                step_budget: 130,
+                suffix: FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX,
+            },
+        )
+        .expect("source-rederived physical four-input cumulative output");
+        assert_eq!((proof.transfer_step, proof.steps), (94, 113));
+        assert_eq!(proof.trace.len(), proof.steps);
+        assert_eq!(proof.input_consumed, input.len().min(4));
+        let input_events = proof
+            .trace
+            .iter()
+            .filter_map(|step| step.input)
+            .collect::<Vec<_>>();
+        let expected_reads = (0..4usize)
+            .map(|index| {
+                input
+                    .get(index)
+                    .copied()
+                    .map_or(TraceInput::EndOfInput, TraceInput::Byte)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(input_events, expected_reads, "actual guest EOF events");
+        assert_eq!(proof.trace[106].decoded, Some(b'/'));
+        assert_eq!(proof.trace[106].input, Some(expected_reads[3]));
+        assert_eq!(proof.return_address, None);
+        assert_eq!(proof.output, [
+            prior_outputs[0],
+            prior_outputs[1],
+            prior_outputs[2],
+            prior_outputs[3],
+            u8::try_from(fourfold % 256).expect("cumulative low byte"),
+        ]);
+        let transfer = proof.trace[94];
+        assert_eq!(transfer.before.registers.code_pointer, 94);
+        assert_eq!(transfer.decoded, Some(b'i'));
+        assert_eq!(
+            transfer
+                .memory_reads
+                .data
+                .map(|word| (word.address, word.value)),
+            Some((111, 116))
+        );
+        assert_eq!(transfer.after.registers.code_pointer, 117);
+        for (index, code, address, value, next_data) in [
+            (60usize, 60u32, 59u32, 104u32, 105u32),
+            (61, 61, 105, 57, 58),
+            (107, 129, 110, 117, 118),
+            (108, 130, 118, 104, 105),
+        ] {
+            let step = proof.trace[index];
+            assert_eq!(
+                (step.before.registers.code_pointer, step.decoded),
+                (code, Some(b'j'))
+            );
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|word| (word.address, word.value)),
+                Some((address, value))
+            );
+            assert_eq!(step.after.registers.data_pointer, next_data);
+        }
+        let fold_step = proof.trace[110];
+        let prior = scalar_crazy(
+            scalar_crazy(scalar_crazy(121, raw(0)), raw(1)),
+            scalar_crazy(57, raw(2)),
+        );
+        assert_eq!(
+            (fold_step.before.registers.code_pointer, fold_step.decoded),
+            (132, Some(b'p'))
+        );
+        assert_eq!(
+            fold_step
+                .memory_reads
+                .data
+                .map(|word| (word.address, word.value)),
+            Some((106, prior))
+        );
+        assert_eq!(
+            fold_step.memory_delta.data.map(|write| (
+                write.address,
+                write.before,
+                write.after
+            )),
+            Some((106, prior, fourfold)),
+        );
+        assert_eq!(
+            proof.trace[111].output,
+            Some(u8::try_from(fourfold % 256).expect("fold low"))
+        );
+        assert_eq!(
+            (
+                proof.trace[112].before.registers.code_pointer,
+                proof.trace[112].decoded
+            ),
+            (134, Some(b'v'))
+        );
+    }
+    // Both mutations remain source graphical. Neither may borrow the
+    // original proof to authorize altered code or its reentry path.
+    for changed in [60usize, 132, 134] {
+        let mut altered = plan.clone();
+        altered.source[changed] =
+            graphical(u32::try_from(changed).expect("source position"), b'o')
+                .expect("source graphical no-op");
+        assert_eq!(
+            layout::admit_c23_probe_graphical_source(&altered.source),
+            Ok(())
+        );
+        assert_eq!(
+            verify_source_loaded_indirect_suffix_guest(
+                profile,
+                IndirectSourceSuffixGuestProbe {
+                    candidate: &altered,
+                    indirect_code_cell: 94,
+                    input: &[3, 4, 5, 6],
+                    original: &original,
+                    pointer_cell: 111,
+                    protected: &protected,
+                    step_budget: 130,
+                    suffix: FOUR_INPUT_CUMULATIVE_OUTPUT_SUFFIX,
+                },
+            ),
+            Err(IndirectSourceSuffixGuestError::CandidateMismatch),
+        );
+    }
+}
+
 // This independently derived, source-bound placement is a physical VM gate,
 // not a proof of the original checksum's runtime C control or scalar storage.
 #[test]
@@ -2210,6 +2412,11 @@ fn physical_indirect_suffix_proof_checks_terminal_indirect_return() {
     assert_eq!(proof.transfer_step, 94);
     assert_eq!(proof.return_address, Some(67));
     assert_eq!(proof.steps, 123);
+    assert_eq!(proof.trace.len(), proof.steps);
+    assert_eq!(proof.trace[106].decoded, Some(b'i'));
+    assert_eq!(proof.trace[107].before.registers.code_pointer, 67);
+    assert_eq!(proof.trace[122].before.registers.code_pointer, 82);
+    assert_eq!(proof.trace[122].decoded, Some(b'v'));
     assert_eq!(proof.input_consumed, 3);
     assert_eq!(proof.output, [3, 49, 5, 58]);
 }

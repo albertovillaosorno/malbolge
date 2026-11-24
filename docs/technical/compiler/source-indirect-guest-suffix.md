@@ -375,7 +375,12 @@ cell after completion refuses. When the leaf ends with an `i`, the verifier
 also checks its real successor transition; the remaining guest must halt
 under the same bounded VM run, including any earlier encrypted-code reentry.
 The proof exposes the actual transfer step, complete VM step count,
-consumed input count, output bytes and terminal-indirect return address.
+consumed input count, output bytes, terminal-indirect return address and
+**every bounded normative transition**. Each immutable observation records
+registers, exact data reads, instruction writes, post-step encryption,
+committed I/O and the reached code word. A prospective linker may compare
+these per-input physical facts with separate source-SSA obligations; their
+presence in a trace does not establish a C operation by itself.
 It **does not** transform or compute source C output, recognize a runtime
 C `while`, certify all stdin streams, or publish an executable artifact.
 
@@ -385,8 +390,35 @@ at C111=117 landing at C118, and the 123-step terminal `i` return that
 reaches a previously encrypted C82 `v`. The verifier rejects source-only
 or candidate-only mutation, a nominated `i` site that never executes,
 a source-valid M110 pointer that is never read because the real C94 `i`
-reads M111 instead, a guest run truncated before its actual halt, an oversize stdin and an
-unsupported profile. Separate existing VM/exhaustive-scalar tests remain
+reads M111 instead, a guest run truncated before its actual halt, an
+oversize stdin and an unsupported profile. Separate existing VM/exhaustive-scalar tests remain
 authoritative for all byte/EOF classes. In particular, this new gate is
 **physical guest-control evidence**, not linkage of the seven-block
 source-C mutable EOF checksum; P2 remains open.
+
+
+### Source-rederived terminal halt with cumulative fourth-input output
+
+The strongest existing 113-step four-input cumulative guest previously
+patched C60/C61 and terminal C134 *after* planning the indirect suffix.
+That admitted a valid graphical VM source, but the planner's input was
+not the exact source that actually ran. In particular, the preparatory
+suffix still ended with `i` while the real final code at C134 was `v`.
+The physical verifier correctly cannot rederive that inconsistent pair.
+
+The corrected construction moves the C60/C61 `j` reroute, M110=117 and
+C134 `v` into the **original source before planning**. The suffix now
+explicitly ends in `<v`. The protected final C134 word is preserved
+byte-for-byte, so the entire 135-cell candidate is exactly reproducible
+by the production source planner. A dedicated regression passes the real
+source, plan, protected words and suffix to the new normative verifier.
+It checks five frozen binary, high-byte, empty, EOF and extra-input
+streams within 130 steps each, including the distinct trit oracle for
+the actual fourth cumulative `crazy` result. The returned trace pins
+C94's M111=116 pointer read; C60/C61 encrypted-code reentry; the C129
+M110=117 and C130 encrypted M118=104 data transfers; C132's real M106
+read and computed write; C133's calculated fifth output; and terminal
+C134 `v`. Three source-graphical altered-code candidates cannot borrow
+the original proof. This verifies finite *physical effect provenance*,
+not signed C23 EOF, a source-C mutable loop, or publication of the
+unchanged seven-block checksum.

@@ -37,8 +37,8 @@
 //! linkage and unbounded input behavior remain independent obligations.
 
 use malbolge::{
-    ProfileDescriptor, ProfileMachine, RunOutcome, Termination,
-    current_profile, decode_profile_instruction,
+    ProfileDescriptor, ProfileMachine, ProfileStepTrace, RunOutcome,
+    Termination, current_profile, decode_profile_instruction,
 };
 
 use super::admit_c23_probe_graphical_source;
@@ -133,6 +133,10 @@ pub struct IndirectSourceSuffixGuestProof {
     pub steps: usize,
     /// VM transition index of the genuine `i` that enters the suffix.
     pub transfer_step: usize,
+    /// Every normative transition, including prefix writes, actual indirect
+    /// reads, suffix state changes, encrypted-code return, and the real halt.
+    /// This finite, input-specific evidence is not a source-C oracle.
+    pub trace: Vec<ProfileStepTrace>,
 }
 
 /// A graphical candidate; **not** evidence that any guest `i` reaches it.
@@ -366,6 +370,18 @@ pub fn verify_source_loaded_indirect_suffix_guest(
     else {
         return Err(InvalidGuestExecution);
     };
+    // A caller will use every returned observation as a state-transfer
+    // witness. Reject incomplete or internally inconsistent trace delivery,
+    // even if the VM's aggregate run outcome reports an authentic halt.
+    if trace.len() != steps
+        || trace.last().is_none_or(|last| {
+            last.after.termination != Some(Termination::HaltInstruction)
+                || last.after.input_consumed != vm.input_consumed()
+                || last.after.output_len != vm.output().len()
+        })
+    {
+        return Err(InvalidGuestExecution);
+    }
     let transfers = trace
         .iter()
         .enumerate()
@@ -398,7 +414,7 @@ pub fn verify_source_loaded_indirect_suffix_guest(
     let suffix_end = landing
         .checked_add(probe.suffix.len())
         .ok_or(InvalidBound)?;
-    let in_suffix = |step: &malbolge::ProfileStepTrace| {
+    let in_suffix = |step: &ProfileStepTrace| {
         let code = usize::try_from(step.before.registers.code_pointer)
             .unwrap_or(usize::MAX);
         (landing..suffix_end).contains(&code)
@@ -454,5 +470,6 @@ pub fn verify_source_loaded_indirect_suffix_guest(
         return_address,
         steps,
         transfer_step: *transfer_step,
+        trace,
     })
 }
