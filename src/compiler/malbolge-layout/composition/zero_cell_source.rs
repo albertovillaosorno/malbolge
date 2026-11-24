@@ -992,6 +992,12 @@ pub fn build_adjacent_c32_zero_c37_raw_eof_marker_source(
 /// all-twos word into exact zero. C55 outputs the low byte and C56 halts.
 /// No physical raw input or adjacent zero cell is overwritten. The output is
 /// zero exactly for EOF, not a canonical C23 integer or guest CFG branch.
+/// In particular, replacing C55/C56 with `j;i` to read the stored raw EOF
+/// word does **not** form a valid EOF backedge: N15 `i` tries to encrypt
+/// M[raw EOF]=M[14,348,906], which is non-graphical. A new code/data
+/// placement must prove both the target and its post-jump encryption.
+/// A third cell at C57 can route EOF via `j;j;i` into encrypted C34,
+/// but NUL then stops at non-graphical C86: this is still not a C branch.
 ///
 /// # Errors
 ///
