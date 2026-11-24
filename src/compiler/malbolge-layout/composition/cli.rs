@@ -3809,10 +3809,14 @@ fn verify_two_read_eof_branch(
         vec![3, 255, 0],
         vec![3, 1],
     ];
+    // The second signed read selects the actual EOF-versus-byte branch.
+    // Verify all 256 successful second-byte values in the normative VM,
+    // with one fixed first byte and an unread suffix. The vectors above
+    // separately exercise initial/second EOF and first-byte boundaries.
+    // This keeps per-publication replay finite without reloading every
+    // first/second cross-product or trusting a host-selected output.
     inputs.extend(
-        [1, 127, 254, 255]
-            .into_iter()
-            .map(|second| vec![second ^ 0xa5, second, 0x7c]),
+        (u8::MIN..=u8::MAX).map(|second| vec![0xa5, second, 0x7c]),
     );
     for input in inputs {
         let eof_second = input.len() < 2;

@@ -28,6 +28,20 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Published second-read EOF branch verifies every byte (2026-11-24)
+
+The existing source-authenticated C23 two-read EOF branch still emits a real
+N15 guest and checks the same graphical source under the normative VM before
+publication. The publisher previously replayed only fourteen selected binary
+streams. It now also replays all 256 successful **second** `getchar` byte
+values with a fixed first byte and unread suffix. The existing vectors
+separately retain true first/second EOF, first-byte boundaries and guarded
+third-read behavior. Each real branch output, I/O instruction site, consumed
+byte count and halt step must agree with the admitted typed-source witness.
+This is a finite validation strengthening for an **already linked** two-read
+slice; it neither generalizes the fixed source grammar nor executes mutable
+checksum arithmetic, loop phi copies or the original seven-block C23 program.
+
 ### Bounded EOF-zero predicate operand reentry refusal (2026-11-23)
 
 After retrying the complete seven-block mutable C23 checksum, the real
