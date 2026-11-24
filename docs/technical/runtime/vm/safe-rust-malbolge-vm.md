@@ -34,7 +34,9 @@ serve multiple physical input classes without rescanning all 14,348,907
 memory words on each fork. This is an execution/checkpoint optimization,
 not permission to reuse a mutated machine as pristine source or to infer
 source-C behavior from guest input data. Independent fork/full-state tests
-check complete memory, registers, output and input consumption.
+check complete memory, registers, output and input consumption. A
+verified-width fork test also refuses an EOF input when the opaque
+execution-geometry proof requires a successful byte.
 
 ### Model
 

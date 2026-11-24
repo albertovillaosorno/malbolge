@@ -357,6 +357,38 @@ fn input_output_halt_policy_survives_geometry_checkpoint_api() -> TestResult {
 }
 
 #[test]
+fn validated_checkpoint_fork_cannot_escape_verified_input_policy() -> TestResult
+{
+    let verified = normalize_result(verify_input_output_halt_profile_width(
+        current_profile(),
+        b"ubO",
+        MINIMUM_WORD_TRITS,
+    ))?;
+    let loaded = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        vec![0x41],
+    ))?;
+    check_equal(
+        &loaded.fork_with_input(Vec::new()).err(),
+        &Some(ProfileMachineError::VerifiedInputRejected),
+        "fork cannot replace required byte with EOF",
+    )?;
+    let mut fork = normalize_result(loaded.fork_with_input(vec![0xff]))?;
+    check_equal(
+        &normalize_result(fork.run(3))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "verified fork halt",
+    )?;
+    check_equal(fork.output(), &[0xff], "verified fork output")?;
+    check_equal(&fork.input_consumed(), &1, "verified fork cursor")?;
+    check_equal(loaded.input(), &[0x41], "verified parent stream")?;
+    check_equal(&loaded.input_consumed(), &0, "verified parent cursor")
+}
+
+#[test]
 fn input_output_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
     let observed = verify_input_output_halt_profile_width(
         current_profile(),
