@@ -56,10 +56,15 @@ The exception is deliberately narrow: reversed signed `getchar` input-result
 stores, unmatched or duplicated indices, inconsistent source bindings and
 code collisions still refuse. Unanchored literal effects retain the existing
 low-before-high order, and computations, I/O and phi writes never acquire an
-ordering exception. The 19-step zero initializer remains a *separate*
-62-cell physical guest; the 256-cell checksum reservation does not make its
-loader seeds, pointer routes, operand writes or branch paths executable in a
-joint artifact. This is source-authenticated geometry only, not a C23
+ordering exception. A follow-on **real 39-step N15 guest** now composes those same source-loaded
+C14/C17 zero writes with 19 reached no-ops and a genuine C37 `/`, followed
+by a C38 halt. The original loader-tail bytes and all prior physical words
+are preserved; EOF, NUL, `0xff` and unread-suffix streams are checked in the
+normative VM. The input still remains raw in A, with **no** signed C23
+conversion or source-SSA store (`tests/compiler_adjacent_zero_source.rs`).
+The 62-cell physical guest and the 256-cell checksum reservation do not yet
+form one source-verified linked artifact with all 43 frame words, operand
+preparation, phi pads or branch paths. This is source-authenticated geometry only, not a C23
 checksum, signed EOF conversion or successful P2 guest parity. Regression:
 `tests/compiler/source_dynamic_checksum.rs`.
 

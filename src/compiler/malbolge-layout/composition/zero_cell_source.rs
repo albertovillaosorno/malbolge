@@ -627,6 +627,36 @@ pub fn build_adjacent_c32_zero_then_input_source(
         .map(AdjacentC32ZeroSource::from)
 }
 
+/// Emit the source-loaded adjacent-zero initializer followed by a real C37
+/// N15 input and a C38 halt, preserving the original 62 graphical cells.
+///
+/// This is a fixed first-two-effect *guest prefix* for the source-C checksum:
+/// C14 writes high zero, C17 writes low zero, and C37 performs genuine `/`.
+/// C18..C36 are real reached no-ops. The input is not converted to signed
+/// C23 or written to SSA state, and there is no source-C branch, phi, loop,
+/// or complete checksum artifact. Only source-loader-backed memory is used.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles or a missing graphical source encoding.
+pub fn build_adjacent_c32_zero_then_c37_input_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut candidate = build_adjacent_c32_zero_source(profile)?;
+    for (site, operation) in [
+        (18usize, LinearOpcode::NoOperation),
+        (37usize, LinearOpcode::InputWord),
+        (38usize, LinearOpcode::Halt),
+    ] {
+        let byte = unique_graphical_cell(profile, operation, site)
+            .map_err(|_error| NoLoadableZero)?;
+        *candidate.source.get_mut(site).ok_or(NoLoadableZero)? = byte;
+    }
+    candidate.input_code_address = Some(37);
+    Ok(candidate)
+}
+
 /// Build one real input-driven `[raw_input, 0]` adjacent data pair.
 ///
 /// This graphical N15 source uses three loader-backed `j` reentries and

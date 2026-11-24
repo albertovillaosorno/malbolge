@@ -108,8 +108,7 @@ pub use code_cell_trace::{
     SourcePhysicalCodeFetch, SourcePhysicalDataRead, SourcePhysicalDataWrite,
     SourcePhysicalEncryptionWrite, SourcePhysicalImageTrace,
     SourcePhysicalImageTraceError, SourcePhysicalIoEvent,
-    SourcePhysicalWordEffect,
-    verify_source_code_cell_trace,
+    SourcePhysicalWordEffect, verify_source_code_cell_trace,
     verify_source_code_image_trace, verify_source_expanded_code_cell_trace,
     verify_source_expanded_code_cells_trace,
     verify_source_physical_image_trace,
@@ -123,10 +122,10 @@ pub use eof_branch_plan::{
 };
 pub use eof_c23_conversion_source::{
     C23OperandProbeSourceError, admit_c23_probe_graphical_source,
-    build_c23_five_rotated_signed_crazy_source,
+    build_c23_first_input_lossless_store_source,
     build_c23_first_input_saved_eight_rotations_source,
     build_c23_first_input_two_crazy_byte_echo_source,
-    build_c23_first_input_lossless_store_source,
+    build_c23_five_rotated_signed_crazy_source,
     build_c23_nine_rotated_indirect_crazy_output_source,
     build_c23_nine_rotated_indirect_halt_probe_source,
     build_c23_nine_rotated_input_checkpoint_source,
@@ -198,11 +197,6 @@ pub use signed_eof_branch_source::{
     build_two_input_eof_classified_echo_source,
     build_two_signed_guest_echo_source,
 };
-pub use source_phi_copy_trace::{
-    MAX_SOURCE_PHI_TRACE_CELLS, MAX_SOURCE_PHI_TRACE_STEPS,
-    SourcePhiCopyObservation, SourcePhiCopyProof, SourcePhiCopyTraceError,
-    SourcePhiCopyProbe,
-};
 pub use source_input_state_trace::{
     SourceInputStoreCell, SourceInputStoreObservation, SourceInputStoredProof,
     verify_source_input_site_stored_results,
@@ -211,10 +205,14 @@ pub use source_input_trace::{
     MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS,
     SourceInputIoEvent, SourceInputPrefixProof, SourceInputProbe,
     SourceInputSiteObservation, SourceInputTraceError,
-    SourceOutputSiteObservation,
-    verify_source_input_site_output_compatible,
+    SourceOutputSiteObservation, verify_source_input_site_output_compatible,
     verify_source_input_site_prefix,
     verify_source_input_site_return_compatible,
+};
+pub use source_phi_copy_trace::{
+    MAX_SOURCE_PHI_TRACE_CELLS, MAX_SOURCE_PHI_TRACE_STEPS,
+    SourcePhiCopyObservation, SourcePhiCopyProbe, SourcePhiCopyProof,
+    SourcePhiCopyTraceError,
 };
 pub use zero_cell_source::{
     AccumulatorIndependentZeroCellSource, AdjacentC32ZeroSource,
@@ -223,7 +221,9 @@ pub use zero_cell_source::{
     GuestByteC32PairEofZeroPointerSource, GuestByteC32PairReloadSource,
     GuestByteC32PairSource, ZeroCellSource, ZeroCellSourceError,
     build_accumulator_independent_zero_cell_source,
-    build_adjacent_c32_zero_source, build_adjacent_c32_zero_then_input_source,
+    build_adjacent_c32_zero_source,
+    build_adjacent_c32_zero_then_c37_input_source,
+    build_adjacent_c32_zero_then_input_source,
     build_guest_byte_c32_pair_echo_source,
     build_guest_byte_c32_pair_eof_classify_source,
     build_guest_byte_c32_pair_eof_distinguish_source,

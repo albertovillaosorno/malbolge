@@ -1780,3 +1780,77 @@ fn eof_full_word_flag_refuses_a_missing_second_crazy_write()
     }
     Ok(())
 }
+
+// The unchanged source-C23 checksum starts with a two-word zero and then its
+// first getchar. This is a real guest *prefix* with matching code positions,
+// not the missing signed conversion, SSA write or source-C EOF loop.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "39 exact reached VM transitions on four binary/EOF input streams"
+)]
+fn physical_zero_pair_then_c37_getchar_has_genuine_input_and_data_effects()
+-> Result<(), String> {
+    let profile = current_profile();
+    let baseline = layout::build_adjacent_c32_zero_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    let plan = layout::build_adjacent_c32_zero_then_c37_input_source(profile)
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(plan.source.len(), 62);
+    assert_eq!(plan.input_code_address, Some(37));
+    assert_eq!(plan.zero_high_code_address, 14);
+    assert_eq!(plan.zero_low_code_address, 17);
+    for (site, opcode) in [(18usize, b'o'), (37, b'/'), (38, b'v')] {
+        assert_eq!(plan.source[site], encode(opcode, site)?);
+    }
+    assert_eq!(plan.zero_high_address, baseline.zero_high_address);
+    assert_eq!(plan.zero_low_address, baseline.zero_low_address);
+    assert!(plan.source.iter().enumerate().all(|(site, byte)| {
+        [18, 37, 38].contains(&site) || *byte == baseline.source[site]
+    }));
+    for input in [vec![], vec![0], vec![255], vec![1, 222]] {
+        let mut guest =
+            ProfileMachine::from_source(profile, &plan.source, input.clone())
+                .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let result = guest
+            .run_traced(39, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?;
+        assert_eq!(result, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 39,
+        });
+        assert_eq!(trace.len(), 39);
+        assert_eq!(trace[14].decoded, Some(b'p'));
+        assert_eq!(trace[17].decoded, Some(b'p'));
+        assert_eq!(trace[18].decoded, Some(b'o'));
+        assert_eq!(trace[37].decoded, Some(b'/'));
+        assert_eq!(trace[38].decoded, Some(b'v'));
+        assert_eq!(
+            trace[14]
+                .memory_delta
+                .data
+                .map(|write| (write.address, write.after)),
+            Some((plan.zero_high_address, 0))
+        );
+        assert_eq!(
+            trace[17]
+                .memory_delta
+                .data
+                .map(|write| (write.address, write.after)),
+            Some((plan.zero_low_address, 0))
+        );
+        let expected = input
+            .first()
+            .map_or(malbolge::TraceInput::EndOfInput, |value| {
+                malbolge::TraceInput::Byte(*value)
+            });
+        assert_eq!(trace[37].input, Some(expected));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        assert_eq!(guest.memory_word(plan.zero_low_address), Ok(0));
+        assert_eq!(guest.memory_word(plan.zero_high_address), Ok(0));
+        assert!(guest.output().is_empty());
+    }
+    Ok(())
+}
