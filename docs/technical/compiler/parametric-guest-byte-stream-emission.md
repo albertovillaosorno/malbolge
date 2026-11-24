@@ -28,6 +28,39 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Authentic finite input backedge under source self-encryption (2026-11-24)
+
+The full seven-block C23 mutable checksum was reattempted unchanged and
+still refuses unlinked physical CFG publication. A separate constructive N15
+experiment extends the **source-loaded 261-cell two-read guest** by changing
+only C68's first-visit `v` into a real indirect `i`. The fresh code jump
+reads twelve *different* untouched expanded-memory operands (all 62), so
+its physical C68 -> C63 transfer repeats twelve times while D advances six
+words per traversal. The earlier C39 `i` and all twelve C68 `i` instructions
+encrypt physical C62 before incrementing to C63; the revisited C63..C67
+instructions separately self-encrypt on execution. This distinction matters:
+modeling the jumps as encrypting C63 gives a false code schedule.
+
+A normative N15 VM actually runs **115 instructions**, reading at step indices
+37, 43, 73, 96, and 103, and terminates with a decoded C65 `v` after its
+thirteenth visit. The C65 halt is caused by XLAT2 source-code mutation, not
+by input-dependent EOF control. Five binary/EOF streams check exact guest
+halt, all twelve backedge sites and operands, stepwise code-cell fetches
+against an independent per-address XLAT2 schedule, consumed input cursor,
+and preserved initial two injective physical stores. A separate scalar crazy
+oracle proves that these first two storage cells can distinguish all 257
+raw byte/EOF inputs. The old single-C68 `v` source is the one-cell negative
+control: it halts after 46 steps and consumes only two inputs.
+
+This is the first loader-authenticated, repeatably *reentered* input-code
+region in this high-memory source family. It is a **finite, self-encryption-
+controlled** path, not a repeatable source-C loop body: the later three raw
+reads are not linked to C23 SSA storage, the two existing stores are not
+signed `getchar` words, and there is no branch on EOF or checksum arithmetic.
+The complete source-C checksum still cannot be published. See
+`tests/compiler_long_source_input_loop.rs` and
+`build_long_source_finite_input_loop_source`.
+
 ### Loader-valid expanded-data input continuation (2026-11-24)
 
 The original seven-block C23 mutable checksum still refuses physical CFG

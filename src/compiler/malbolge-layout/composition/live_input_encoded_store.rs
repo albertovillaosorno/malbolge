@@ -36,7 +36,10 @@ use std::iter::repeat_n;
 
 use malbolge::{ProfileDescriptor, current_profile};
 
-use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
+use super::{
+    CodeVisitRequirement, LinearOpcode, encode_code_visits,
+    unique_graphical_cell, unwritten_loader_word,
+};
 
 const PHASE_BOUND: usize = 94;
 const LOWER_FIVE_ONES: u32 = 121;
@@ -394,6 +397,89 @@ pub fn build_long_source_two_input_bootstrap_source(
         halt_code_address: u32::try_from(HALT)
             .map_err(|_error| NoLoadableSeed)?,
         source,
+    })
+}
+
+/// One finite, source-loaded N15 self-modifying input loop.
+///
+/// The C68 indirect code jump reenters C63 twelve times while its physical
+/// data pointer advances through untouched loader words. After the twelfth
+/// backedge, C65 has self-encrypted to `v` and halts on step 115. Subsequent
+/// graphical code bytes are not rewritten by the host, and this fixed
+/// self-modifying schedule is not a reusable source-C/EOF loop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LongSourceFiniteInputLoopSource {
+    /// One canonical graphical source including its source-tail loader seeds.
+    pub source: Vec<u8>,
+    /// Preserved first input encoding written at C38.
+    pub first_data_address: u32,
+    /// Preserved second input encoding written at C67.
+    pub second_data_address: u32,
+    /// Original loader seed at each of those two physical store addresses.
+    pub initial_data_word: u32,
+    /// Reentered code-cell address C63.
+    pub loop_entry_code_address: u32,
+    /// Backedge source-cell address C68.
+    pub backedge_code_address: u32,
+    /// Final, self-encrypted halt at C65, not at the backedge.
+    pub final_halt_code_address: u32,
+}
+
+/// Build a genuine bounded backward `i` path over mutable source instructions.
+///
+/// This deliberately differs from a hand-unrolled read sequence: the same
+/// C63..C68 graphical code cells execute on repeated visits and mutate under
+/// XLAT2. Each of twelve `i` operands is a different, unwritten N15 loader
+/// word, all equal to C63-1. The code-site visit schedule and exact halt are
+/// independently replayed by the normative VM; they are not inferred from
+/// these loader values alone.
+///
+/// # Errors
+///
+/// Rejects any source/profile or loader-seed drift before providing a witness.
+pub fn build_long_source_finite_input_loop_source(
+    profile: &ProfileDescriptor,
+) -> Result<LongSourceFiniteInputLoopSource, LiveInputEncodedStoreError> {
+    use LiveInputEncodedStoreError::NoLoadableSeed;
+    const ENTRY: u32 = 63;
+    const BACKEDGE: u32 = 68;
+    const BACKEDGES: u32 = 12;
+    let plan = build_long_source_two_input_bootstrap_source(profile)?;
+    let mut source = plan.source;
+    let backedge = source
+        .get_mut(usize::try_from(BACKEDGE).map_err(|_error| NoLoadableSeed)?)
+        .ok_or(NoLoadableSeed)?;
+    *backedge = encode_code_visits(profile, BACKEDGE, &[
+        CodeVisitRequirement::Decoded(b'i'),
+    ])
+    .map_err(|_error| NoLoadableSeed)?;
+    for iteration in 0..BACKEDGES {
+        let stride = iteration
+            .checked_mul(6)
+            .and_then(|offset| offset.checked_add(1))
+            .ok_or(NoLoadableSeed)?;
+        let address = plan
+            .second_data_address
+            .checked_add(stride)
+            .ok_or(NoLoadableSeed)?;
+        let operand = unwritten_loader_word(
+            &source,
+            usize::try_from(address).map_err(|_error| NoLoadableSeed)?,
+            profile,
+        )
+        .map_err(|_error| NoLoadableSeed)?;
+        if operand != ENTRY - 1 {
+            return Err(NoLoadableSeed);
+        }
+    }
+    Ok(LongSourceFiniteInputLoopSource {
+        source,
+        first_data_address: plan.first_data_address,
+        second_data_address: plan.second_data_address,
+        initial_data_word: plan.first_initial_data_word,
+        loop_entry_code_address: ENTRY,
+        backedge_code_address: BACKEDGE,
+        final_halt_code_address: 65,
     })
 }
 

@@ -146,10 +146,12 @@ pub use guest_state_placement::{
 pub use live_input_encoded_store::{
     LiveInputEncodedStoreError, LiveInputEncodedStoreSource,
     LiveInputReentrySource, LiveInputThenZeroSource,
-    LiveTwoInputEncodedStoreSource, LongSourceInputBootstrapSource,
+    LiveTwoInputEncodedStoreSource, LongSourceFiniteInputLoopSource,
+    LongSourceInputBootstrapSource,
     LongSourceTwoInputBootstrapSource, build_live_input_injective_store_source,
     build_live_input_reentry_source, build_live_input_then_zero_source,
     build_live_two_input_injective_store_source,
+    build_long_source_finite_input_loop_source,
     build_long_source_input_bootstrap_source,
     build_long_source_two_input_bootstrap_source,
 };
