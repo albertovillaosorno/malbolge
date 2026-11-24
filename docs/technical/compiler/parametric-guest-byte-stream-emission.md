@@ -28,6 +28,16 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Signed and unsigned C32 quotient/remainder in finite source paths
+
+The source-locked branch/output walk now interprets known C32 quotient and
+remainder exactly. Two 257-class byte/EOF sweeps preserve source-selected
+branch truth, computed byte and the full physical I/O ordering; forged arms
+and outputs refuse. Signed `INT_MIN / -1` and all zero divisors remain
+undefined and cannot prove a source branch or output. This is only a bounded
+necessary *source* check: no physical guest division, EOF loop, phi/backedge
+or compiled checksum has been established.
+
 ### Source-checked arithmetic at a selected guest branch (2026-11-24)
 
 The finite source branch/output checker now evaluates source-known unsigned

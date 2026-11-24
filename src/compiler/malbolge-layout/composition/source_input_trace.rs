@@ -607,6 +607,50 @@ fn known_source_binary(
                 result,
                 apply_known_binary(known, left, right, u32::wrapping_mul),
             )
+        } else if let TernaryOperation::DivideI32 {
+            left, result, right, ..
+        } = *operation
+        {
+            (
+                result,
+                apply_known_signed_binary(known, left, right, i32::checked_div),
+            )
+        } else if let TernaryOperation::DivideU32 {
+            left, result, right, ..
+        } = *operation
+        {
+            (
+                result,
+                known
+                    .get(&left)
+                    .zip(known.get(&right))
+                    .and_then(|(lhs, rhs)| lhs.checked_div(*rhs)),
+            )
+        } else if let TernaryOperation::RemainderI32 {
+            left,
+            result,
+            right,
+            ..
+        } = *operation
+        {
+            (
+                result,
+                apply_known_signed_binary(known, left, right, i32::checked_rem),
+            )
+        } else if let TernaryOperation::RemainderU32 {
+            left,
+            result,
+            right,
+            ..
+        } = *operation
+        {
+            (
+                result,
+                known
+                    .get(&left)
+                    .zip(known.get(&right))
+                    .and_then(|(lhs, rhs)| lhs.checked_rem(*rhs)),
+            )
         } else if let TernaryOperation::AndI32 { left, result, right, .. }
         | TernaryOperation::AndU32 { left, result, right, .. } =
             *operation
@@ -1405,8 +1449,9 @@ pub fn verify_source_input_site_return_compatible(
 ///
 /// The input/return checker runs first against the actual normative VM. Only
 /// exact source-known constants, casts, unsigned wrapping arithmetic,
-/// defined signed add/subtract/multiply, comparisons, bitwise operations
-/// and parallel phi assignments can justify output here. Unknown byte scalars
+/// defined signed arithmetic, checked signed/unsigned division and
+/// remainder, comparisons, bitwise operations and parallel phi assignments
+/// can justify output here. Unknown byte scalars
 /// fail closed; no host-produced checksum is substituted for a guest output,
 /// and output-before-read is not accepted as output-after-read. This is a
 /// necessary finite I/O check, *not* target arithmetic, state writes, jump or

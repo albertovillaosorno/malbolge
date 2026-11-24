@@ -935,6 +935,285 @@ fn signed_source_product_and_checked_overflow_affect_branch_proof() {
     assert_eq!(check(&source, TraceInput::Byte(1), true, 255), Ok(false));
 }
 
+// Exact C32 division and remainder can jointly select one source branch
+// and output. The 257 input classes include EOF rather than treating byte
+// 255 as -1; zero divisors and signed MIN / -1 stay unprovable.
+#[test]
+fn defined_unsigned_quotient_remainder_preserve_source_branch_and_io() {
+    use super::{
+        SourceBranchObligation, source_path_matches_input_walk_with_branch,
+    };
+    let span = dummy_span();
+    let mut source = guarded_inequality_fixture();
+    source.blocks[0].operations = vec![
+        TernaryOperation::GetcharI32 { result: 0, span },
+        TernaryOperation::BitcastI32ToU32 {
+            result: 10,
+            value: 0,
+            span,
+        },
+        TernaryOperation::MaterializeU32 {
+            result: 11,
+            scalar: TernaryI32Scalar::from_bits(3),
+            span,
+        },
+        TernaryOperation::DivideU32 {
+            left: 10,
+            result: 12,
+            right: 11,
+            span,
+        },
+        TernaryOperation::RemainderU32 {
+            left: 10,
+            result: 13,
+            right: 11,
+            span,
+        },
+        TernaryOperation::AddU32 {
+            left: 12,
+            result: 14,
+            right: 13,
+            span,
+        },
+        TernaryOperation::MaterializeU32 {
+            result: 15,
+            scalar: TernaryI32Scalar::from_bits(80),
+            span,
+        },
+        TernaryOperation::LessUnsignedU32 {
+            left: 12,
+            result: 2,
+            right: 15,
+            span,
+        },
+        TernaryOperation::TruncateU32ToU8 {
+            result: 16,
+            value: 14,
+            span,
+        },
+        TernaryOperation::ByteOutput { value: 16, span },
+    ];
+    for input in std::iter::once(TraceInput::EndOfInput)
+        .chain((u8::MIN..=u8::MAX).map(TraceInput::Byte))
+    {
+        let raw = match input {
+            TraceInput::Byte(byte) => u32::from(byte),
+            TraceInput::EndOfInput => u32::MAX,
+        };
+        let expected = (raw / 3 + raw % 3) as u8;
+        let true_arm = raw / 3 < 80;
+        let first = SourceInputSiteObservation {
+            input,
+            raw_accumulator: raw,
+            ..observed(0, 0)
+        };
+        let second = SourceInputSiteObservation {
+            block: if true_arm {
+                2
+            } else {
+                1
+            },
+            input: TraceInput::EndOfInput,
+            raw_accumulator: 14_348_906,
+            ..observed(0, 0)
+        };
+        let reads = [&first, &second];
+        let io = [
+            SourceInputIoEvent::Input { observation_index: 0 },
+            SourceInputIoEvent::Output(expected),
+            SourceInputIoEvent::Input { observation_index: 1 },
+        ];
+        let check = |function: &TernaryCfgFunction, arm, cut, output| {
+            source_path_matches_input_walk_with_branch(
+                function,
+                &reads,
+                128,
+                true,
+                Some(&[output]),
+                Some(&io),
+                None,
+                Some(SourceBranchObligation {
+                    after_inputs: 1,
+                    io_before_transfer: Some(cut),
+                    block: 0,
+                    expected_true: arm,
+                }),
+            )
+        };
+        assert_eq!(check(&source, true_arm, 2, expected), Ok(true));
+        assert_eq!(check(&source, !true_arm, 2, expected), Ok(false));
+        assert_eq!(check(&source, true_arm, 1, expected), Ok(false));
+        assert_eq!(check(&source, true_arm, 2, expected ^ 1), Ok(false));
+        source.blocks[0].operations[2] = TernaryOperation::MaterializeU32 {
+            result: 11,
+            scalar: TernaryI32Scalar::from_bits(0),
+            span,
+        };
+        assert_eq!(check(&source, true_arm, 2, expected), Ok(false));
+        source.blocks[0].operations[2] = TernaryOperation::MaterializeU32 {
+            result: 11,
+            scalar: TernaryI32Scalar::from_bits(3),
+            span,
+        };
+    }
+}
+
+#[test]
+fn signed_quotient_and_remainder_distinguish_eof_from_high_byte() {
+    use super::{
+        SourceBranchObligation, source_path_matches_input_walk_with_branch,
+    };
+    let span = dummy_span();
+    let mut source = guarded_inequality_fixture();
+    source.blocks[0].operations = vec![
+        TernaryOperation::GetcharI32 { result: 0, span },
+        TernaryOperation::MaterializeI32 {
+            result: 10,
+            scalar: TernaryI32Scalar::from_bits(3),
+            span,
+        },
+        TernaryOperation::DivideI32 {
+            left: 0,
+            result: 11,
+            right: 10,
+            span,
+        },
+        TernaryOperation::RemainderI32 {
+            left: 0,
+            result: 12,
+            right: 10,
+            span,
+        },
+        TernaryOperation::MaterializeI32 {
+            result: 13,
+            scalar: TernaryI32Scalar::from_bits(0),
+            span,
+        },
+        TernaryOperation::LessSignedI32 {
+            left: 12,
+            result: 2,
+            right: 13,
+            span,
+        },
+        TernaryOperation::BitcastI32ToU32 {
+            result: 14,
+            value: 12,
+            span,
+        },
+        TernaryOperation::TruncateU32ToU8 {
+            result: 15,
+            value: 14,
+            span,
+        },
+        TernaryOperation::ByteOutput { value: 15, span },
+    ];
+    let check = |function: &TernaryCfgFunction, first_input, true_arm, byte| {
+        let first = SourceInputSiteObservation {
+            input: first_input,
+            raw_accumulator: match first_input {
+                TraceInput::Byte(value) => u32::from(value),
+                TraceInput::EndOfInput => 14_348_906,
+            },
+            ..observed(0, 0)
+        };
+        let second = SourceInputSiteObservation {
+            block: if true_arm {
+                2
+            } else {
+                1
+            },
+            input: TraceInput::EndOfInput,
+            raw_accumulator: 14_348_906,
+            ..observed(0, 0)
+        };
+        source_path_matches_input_walk_with_branch(
+            function,
+            &[&first, &second],
+            128,
+            true,
+            Some(&[byte]),
+            Some(&[
+                SourceInputIoEvent::Input { observation_index: 0 },
+                SourceInputIoEvent::Output(byte),
+                SourceInputIoEvent::Input { observation_index: 1 },
+            ]),
+            None,
+            Some(SourceBranchObligation {
+                after_inputs: 1,
+                io_before_transfer: Some(2),
+                block: 0,
+                expected_true: true_arm,
+            }),
+        )
+    };
+    for input in std::iter::once(TraceInput::EndOfInput)
+        .chain((u8::MIN..=u8::MAX).map(TraceInput::Byte))
+    {
+        let signed = match input {
+            TraceInput::Byte(byte) => i32::from(byte),
+            TraceInput::EndOfInput => -1,
+        };
+        let result = (signed % 3) as u8;
+        let arm = signed % 3 < 0;
+        assert_eq!(check(&source, input, arm, result), Ok(true));
+        assert_eq!(check(&source, input, !arm, result), Ok(false));
+    }
+    source.blocks[0].operations[1] = TernaryOperation::MaterializeI32 {
+        result: 10,
+        scalar: TernaryI32Scalar::from_bits(0),
+        span,
+    };
+    assert_eq!(check(&source, TraceInput::Byte(1), false, 0), Ok(false),);
+    // The first source input remains real and reaches both operations.
+    // MIN divided by successful byte 1 is defined; EOF=-1 overflows,
+    // while a successful NUL creates a zero divisor instead.
+    source.blocks[0].operations = vec![
+        TernaryOperation::GetcharI32 { result: 0, span },
+        TernaryOperation::MaterializeI32 {
+            result: 10,
+            scalar: TernaryI32Scalar::from_bits(i32::MIN as u32),
+            span,
+        },
+        TernaryOperation::DivideI32 {
+            left: 10,
+            result: 11,
+            right: 0,
+            span,
+        },
+        TernaryOperation::RemainderI32 {
+            left: 10,
+            result: 12,
+            right: 0,
+            span,
+        },
+        TernaryOperation::MaterializeI32 {
+            result: 13,
+            scalar: TernaryI32Scalar::from_bits(0),
+            span,
+        },
+        TernaryOperation::LessSignedI32 {
+            left: 12,
+            result: 2,
+            right: 13,
+            span,
+        },
+        TernaryOperation::BitcastI32ToU32 {
+            result: 14,
+            value: 12,
+            span,
+        },
+        TernaryOperation::TruncateU32ToU8 {
+            result: 15,
+            value: 14,
+            span,
+        },
+        TernaryOperation::ByteOutput { value: 15, span },
+    ];
+    assert_eq!(check(&source, TraceInput::Byte(1), false, 0), Ok(true));
+    assert_eq!(check(&source, TraceInput::Byte(0), false, 0), Ok(false));
+    assert_eq!(check(&source, TraceInput::EndOfInput, false, 0), Ok(false));
+}
+
 // A valid source branch may follow an output effect. The full-I/O cut gate
 // must admit that ordering while rejecting the same final bytes if the guest
 // transfers before the source's preceding output has occurred.

@@ -6,6 +6,18 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Defined quotient/remainder source branch and output (2026-11-24)
+
+The finite source/guest *source-path* checker now computes exact C32 signed
+and unsigned division and remainder when the source operands are known.
+Division by zero and the signed `INT_MIN / -1` quotient/remainder refuse;
+signed negative remainder truncates toward zero in C. Two independent
+257-class byte/true-EOF sweeps bind quotient/remainder-derived output to a
+single known source branch, including complete input/output chronology and
+forged arm, byte, cut, zero-divisor and signed-overflow controls. No source
+operation is thereby proved to execute as guest arithmetic, and the full
+seven-block C23 checksum still refuses target linkage without publication.
+
 ## Exact source arithmetic remains distinct from guest computation
 
 A source-known product can now justify a finite C32 branch and source byte
