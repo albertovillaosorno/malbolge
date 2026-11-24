@@ -945,6 +945,11 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
             175,
         ),
         (
+            &[0, 0][..],
+            vec![(53, TraceInput::Byte(0)), (101, TraceInput::Byte(0))],
+            175,
+        ),
+        (
             &[255, 0, 44][..],
             vec![(53, TraceInput::Byte(255)), (101, TraceInput::Byte(0))],
             175,
@@ -997,6 +1002,24 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
         assert_eq!(joined.guest_pointer().pointer_write_step(), 82);
         assert_eq!(joined.guest_pointer().transfer_step(), 114);
         assert_eq!(joined.guest_pointer().steps(), steps);
+        // A source input prefix alone can accept a guest that halts before
+        // the C EOF loop would consume the next byte. Require a separate
+        // typed source-return-compatible path before treating reads as final.
+        let source_return =
+            pointer_verifier.verify_source_return_bound(&requested);
+        if input.len() >= 2 {
+            assert_eq!(
+                source_return,
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::UnreachedSourceInput,
+                )),
+            );
+        } else {
+            assert_eq!(
+                source_return.map_err(|error| format!("{error:?}"))?,
+                joined,
+            );
+        }
         // The second C23 getchar is a real input on non-EOF paths, but
         // cannot be borrowed as an ancestor of this earlier pointer.
         for origins in [&[][..], &[first_getchar[0], first_getchar[0]][..]] {

@@ -521,13 +521,41 @@ impl SourceWrittenIndirectGuestVerifier {
     ///
     /// Rejects forged source operation identities, mismatched guest images,
     /// source input failures, missing pointer origin and divergent VM replay.
+    pub fn verify_source_bound(
+        &self,
+        probe: &SourceBoundIndirectGuestProbe<'_>,
+    ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
+    {
+        self.verify_source_bound_with_return(probe, false)
+    }
+
+    /// Additionally require a complete source-CFG return path after the
+    /// source-typed physical input events feeding a reached guest pointer.
+    ///
+    /// This refuses a real guest that halts after reading only a valid
+    /// prefix of the C EOF loop. It still does not prove source values,
+    /// guest arithmetic, physical branch-predicate parity or source output.
+    ///
+    /// # Errors
+    ///
+    /// Refuses every source-bound failure, including a source path that
+    /// cannot return after exactly the physical guest input observations.
+    pub fn verify_source_return_bound(
+        &self,
+        probe: &SourceBoundIndirectGuestProbe<'_>,
+    ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
+    {
+        self.verify_source_bound_with_return(probe, true)
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "source and guest checks retain both complete trace receipts"
     )]
-    pub fn verify_source_bound(
+    fn verify_source_bound_with_return(
         &self,
         probe: &SourceBoundIndirectGuestProbe<'_>,
+        require_source_return: bool,
     ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
     {
         use SourceBoundIndirectGuestError::{
@@ -544,13 +572,18 @@ impl SourceWrittenIndirectGuestVerifier {
         {
             return Err(InvalidOriginSelection);
         }
-        let source_input = probe
-            .source_input
-            .verify_with_operation_anchors(
+        let source_input = if require_source_return {
+            probe.source_input.verify_return_with_operation_anchors(
                 probe.proposals,
                 probe.operation_anchors,
             )
-            .map_err(SourceInput)?;
+        } else {
+            probe.source_input.verify_with_operation_anchors(
+                probe.proposals,
+                probe.operation_anchors,
+            )
+        }
+        .map_err(SourceInput)?;
         let mut observed = BTreeSet::new();
         let input_transitions = source_input
             .observations

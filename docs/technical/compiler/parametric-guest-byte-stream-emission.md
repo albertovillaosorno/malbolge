@@ -45,6 +45,13 @@ This proves only a necessary source-to-guest input-control ancestry condition,
 **not** source-C predicate parity, signed frame storage, arithmetic, phi
 copies, a live loop or compiled checksum output. P2 remains open.
 
+The stricter `verify_source_return_bound` alternative additionally requires
+the observed physical reads to permit a completed source CFG return. It
+accepts the EOF and NUL-then-EOF controls while rejecting a guest that halts
+after two successful bytes (`00 00` or `ff 00 2c`) when C23 still needs
+a third read. This is an input-path completeness check, not physical loop linkage or output
+parity; the full checksum remains unsupported and unpublished.
+
 ### Guest pointer proofs bind the specific input read (2026-11-24)
 
 A bounded source-authenticated pointer verifier now records individual

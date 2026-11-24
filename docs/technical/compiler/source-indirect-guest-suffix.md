@@ -38,6 +38,17 @@ source frame, that checksum arithmetic executes, or that a source backedge
 or phi transfer occurs. The guest still emits class markers, not the source
 checksum. A genuine complete source-C23 artifact still cannot be published.
 
+The stricter `verify_source_return_bound` option also checks a **complete
+source CFG input/return path**, rather than accepting any genuine guest input
+prefix. With the same original checksum and M143 pointer, empty input and a
+NUL byte followed by EOF satisfy this extra *source input-order* obligation.
+On input `00 00` or `ff 00 2c`, the physical guest reads two bytes and
+halts before the C23 loop's mandatory next read. The strict checker refuses
+this incomplete source path with `UnreachedSourceInput`. Its initial pointer proof still succeeds; a pointer
+ancestor alone cannot turn an incomplete C loop into a published target.
+Even the strict gate does not check physical arithmetic, signed frame words,
+source branch parity, phi transfers, emitted checksum or loop backedge.
+
 ## Input-site-bound guest pointer provenance (2026-11-24)
 
 The physical guest-written indirect verifier no longer reduces every input
