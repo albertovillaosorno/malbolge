@@ -2659,6 +2659,153 @@ fn original_checksum_anchors_non_input_operations_around_signed_reads() {
     );
 }
 
+// The checked source CFG also needs space for a physical control suffix
+// after each block's data effects, including blocks with no input anchor.
+// The proposed sites are not yet verified Malbolge branch instructions.
+#[test]
+fn original_checksum_pins_sparse_control_sites_after_data_effects() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeControlAnchor, GuestCodeEffectAnchor,
+        GuestCodeOperationAnchor, GuestCodePlacementError,
+        plan_source_locked_cfg_with_operation_effect_and_control_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 checksum");
+    let operations = [
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            code_address: 37,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            code_address: 66,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 3,
+            ordinal: 0,
+            code_address: 180,
+        },
+    ];
+    let effects = [
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 1,
+            code_address: 40,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 2,
+            code_address: 42,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 1,
+            code_address: 69,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 2,
+            code_address: 71,
+        },
+    ];
+    let controls = [
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 0,
+            code_address: 60,
+        },
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 5,
+            code_address: 75,
+        },
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 3,
+            code_address: 201,
+        },
+        GuestCodeControlAnchor {
+            function: 0,
+            block: 6,
+            code_address: 224,
+        },
+    ];
+    let bind = |controls: &[GuestCodeControlAnchor]| {
+        plan_source_locked_cfg_with_operation_effect_and_control_anchors(
+            &wire,
+            256,
+            512,
+            &operations,
+            &effects,
+            controls,
+        )
+    };
+    let plan =
+        bind(&controls).expect("source operations and control suffixes fit");
+    for anchor in controls {
+        assert_eq!(
+            plan.code_blocks
+                .iter()
+                .find(|block| {
+                    (block.function, block.block)
+                        == (anchor.function, anchor.block)
+                })
+                .map(|block| block.control_start),
+            Some(anchor.code_address),
+        );
+    }
+    assert_eq!(plan.function_entries[0].block, 0);
+    assert_eq!(plan.return_sites[0].address, 224);
+    assert_eq!(plan.control_edges.len(), 8);
+    assert_eq!(plan.edge_pads.len(), 4);
+    let invalid = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let mut forged = controls;
+    forged[1].code_address = 70;
+    assert_eq!(
+        bind(&forged),
+        invalid,
+        "control cannot precede a signed word store"
+    );
+    forged = controls;
+    forged[0].code_address = 67;
+    assert_eq!(
+        bind(&forged),
+        invalid,
+        "overlapping source CFG blocks refuse"
+    );
+    forged = controls;
+    forged[3].block = 99;
+    assert_eq!(bind(&forged), invalid, "foreign CFG control site refuses");
+    let mut duplicate = controls.to_vec();
+    duplicate.push(controls[0]);
+    assert_eq!(bind(&duplicate), invalid);
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_effect_and_control_anchors(
+            &wire,
+            224,
+            512,
+            &operations,
+            &effects,
+            &controls,
+        ),
+        invalid,
+        "guest control address must fit within the graphical source",
+    );
+}
+
 #[test]
 fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
     use super::typed_cfg_adapter::state_relocation::{

@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Sparse source control-suffix reservations (2026-11-23)
+
+The source-typed automatic CFG code planner also accepts explicit physical
+control-suffix anchors for source jumps, conditional branches or returns.
+When a block has sparse operation sites, its control site must follow every
+source-derived effect; for a control-only anchored block, the planner places
+its complete minimum operation prefix before the fixed control address.
+Checks independently rebind all source control edges and retain disjoint
+code intervals and predecessor-specific phi pads.
+
+A red-first **original C23 EOF checksum** regression binds two signed input
+sites, four signed-word effects and separate source control obligations at
+C60, C75, C201 and C224, including the Return block with no pinned data
+operations. Foreign, duplicate, out-of-order, overlapping and source-
+capacity-exceeding control proposals refuse. No branch/jump/return opcode
+has been encoded at these sites; the proposed geometry still cannot
+execute the full mutable-C program, and P2 remains open. Regression:
+`tests/compiler/source_dynamic_checksum.rs`.
+
 ### Sparse source-operation code reservations beyond input (2026-11-23)
 
 The source-locked CFG planner now accepts sparse **operation anchors** for

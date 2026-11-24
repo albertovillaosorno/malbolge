@@ -421,6 +421,20 @@ pub struct GuestCodeOperationAnchor {
     pub ordinal: u32,
 }
 
+/// One source-CFG block's proposed physical control-suffix address.
+///
+/// This is a reservation for an independently verified jump, branch or halt,
+/// not evidence that any guest control opcode has been encoded or executed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodeControlAnchor {
+    /// Canonical source block identity.
+    pub block: u32,
+    /// Exact proposed control step, after every operation effect in the block.
+    pub code_address: u32,
+    /// Canonical source function identity.
+    pub function: u32,
+}
+
 /// One individually located effect inside a source-authenticated operation.
 ///
 /// Unlike an operation's first-effect anchor, this may leave setup cells
@@ -2102,6 +2116,7 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
         frame_base,
         &operations,
         effect_anchors,
+        &[],
         true,
     )
 }
@@ -2135,6 +2150,41 @@ pub fn plan_source_locked_cfg_with_operation_and_effect_anchors(
         frame_base,
         anchors,
         effect_anchors,
+        &[],
+        false,
+    )
+}
+
+/// Plan sparse source-typed operation effects and their block control sites.
+///
+/// A control-only anchor fixes the source block's minimum operation prefix
+/// immediately before its proposed physical control instruction. A block
+/// with earlier operation anchors instead reserves all intervening setup
+/// cells before its exact control position. All reservations remain disjoint
+/// from other blocks, source phi pads and the relocated state frame.
+///
+/// The control is not encoded or run here: an independent target verifier
+/// must prove the real branch/halt transition and its data dependence.
+///
+/// # Errors
+///
+/// Refuses duplicated, foreign, reordered or overlapping control addresses,
+/// alongside the ordinary source operation and frame placement errors.
+pub fn plan_source_locked_cfg_with_operation_effect_and_control_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+    controls: &[GuestCodeControlAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    plan_source_locked_cfg_with_general_effect_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        anchors,
+        effect_anchors,
+        controls,
         false,
     )
 }
@@ -2145,6 +2195,7 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     frame_base: u32,
     anchors: &[GuestCodeOperationAnchor],
     effect_anchors: &[GuestCodeEffectAnchor],
+    controls: &[GuestCodeControlAnchor],
     inputs_only: bool,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let relocated =
@@ -2199,26 +2250,55 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
     }
+    let mut control_sites = BTreeMap::<(u32, u32), u32>::new();
+    for anchor in controls {
+        let key = (anchor.function, anchor.block);
+        if !relocated
+            .operation_blocks
+            .iter()
+            .any(|block| (block.function, block.block) == key)
+            || control_sites.insert(key, anchor.code_address).is_some()
+        {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
     let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
     for block in &relocated.operation_blocks {
-        let Some(sites) = operation_sites.get(&(block.function, block.block))
-        else {
+        let key = (block.function, block.block);
+        let sites = operation_sites.get(&key);
+        let control_site = control_sites.get(&key).copied();
+        if sites.is_none() && control_site.is_none() {
             continue;
+        }
+        let start = if let Some(sites) = sites {
+            let (&first_ordinal, &first_address) = sites
+                .iter()
+                .next()
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let prefix = block.instructions[..usize::try_from(first_ordinal)
+                .map_err(|_| {
+                GuestCodePlacementError::InvalidCodePlacement
+            })?]
+                .iter()
+                .try_fold(0u32, |cells, instruction| {
+                    cells.checked_add(minimum_operation_cells(instruction)?)
+                })
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            first_address
+                .checked_sub(prefix)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?
+        } else {
+            let minimum = block
+                .instructions
+                .iter()
+                .try_fold(0u32, |cells, instruction| {
+                    cells.checked_add(minimum_operation_cells(instruction)?)
+                })
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            control_site
+                .and_then(|address| address.checked_sub(minimum))
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?
         };
-        let (&first_ordinal, &first_address) = sites
-            .iter()
-            .next()
-            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        let prefix = block.instructions[..usize::try_from(first_ordinal)
-            .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?]
-            .iter()
-            .try_fold(0u32, |cells, instruction| {
-                cells.checked_add(minimum_operation_cells(instruction)?)
-            })
-            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        let start = first_address
-            .checked_sub(prefix)
-            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         let mut next = start;
         for (ordinal, instruction) in block.instructions.iter().enumerate() {
             let ordinal = u32::try_from(ordinal)
@@ -2229,20 +2309,20 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
                     u32::try_from(effect_index).map_err(|_| {
                         GuestCodePlacementError::InvalidCodePlacement
                     })?;
-                let from_input = (effect_index == 0)
-                    .then(|| sites.get(&ordinal))
+                let from_operation = (effect_index == 0)
+                    .then(|| sites.and_then(|sites| sites.get(&ordinal)))
                     .flatten()
                     .copied();
                 let from_effect = anchored_effects
                     .get(&(block.function, block.block, ordinal, effect_index))
                     .copied();
-                if from_input.is_some()
+                if from_operation.is_some()
                     && from_effect.is_some()
-                    && from_input != from_effect
+                    && from_operation != from_effect
                 {
                     return Err(GuestCodePlacementError::InvalidCodePlacement);
                 }
-                if let Some(site) = from_input.or(from_effect) {
+                if let Some(site) = from_operation.or(from_effect) {
                     if site < next {
                         return Err(
                             GuestCodePlacementError::InvalidCodePlacement,
@@ -2255,7 +2335,10 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
                     .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
             }
         }
-        let control_start = next;
+        let control_start = control_site.unwrap_or(next);
+        if control_start < next {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
         let end_exclusive = control_start
             .checked_add(1)
             .filter(|end| *end <= source_cells)
