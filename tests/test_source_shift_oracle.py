@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Independent native C23 oracle for the repeated unsigned shift CFG.
+#   - Independent native C23 shift/EOF and undefined-shift controls.
 # - Must-Not:
 #   - Claim that the source-only checker or a native binary is a guest.
 # - Allows:
@@ -23,7 +23,7 @@
 # - Summary:
 #   - Verify original C shift semantics, independently of Rust source replay.
 
-"""Independent C23 reference for source-locked unsigned shift-loop checks."""
+"""Independent C23 reference for source-locked shift and EOF-loop checks."""
 
 from __future__ import annotations
 
@@ -144,3 +144,84 @@ def test_defined_signed_shifts_with_native_optimizations() -> None:
         SIGNED_SOURCE,
         lambda stream: bytes((value * 2) & 0xFF for value in stream),
     )
+
+
+# The source checker deliberately refuses these cases rather than treating
+# a host shift result as C23 data. UBSan independently confirms that they
+# are undefined for both optimization modes, even with volatile operands.
+UNDEFINED_RUNTIME_ERROR: Final = b"runtime error:"
+UNDEFINED_EMPTY_OUTPUT: Final = b""
+UNDEFINED_UNSIGNED_COUNT_SOURCE: Final = r"""
+#include <stdio.h>
+int main(void) {
+    volatile unsigned count = 32u;
+    unsigned shifted = 1u << count;
+    return putchar((int)(shifted & 255u)) == EOF ? 2 : 0;
+}
+"""
+UNDEFINED_SIGNED_OVERFLOW_SOURCE: Final = r"""
+#include <stdio.h>
+int main(void) {
+    volatile int value = 255;
+    int shifted = value << 24;
+    return putchar(shifted & 255) == EOF ? 2 : 0;
+}
+"""
+
+
+def _assert_native_rejects_undefined_shift(source_text: str) -> None:
+    """All signed/unsigned invalid shifts must trigger UBSan at run time."""
+    with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+        scratch = Path(directory)
+        source = scratch / "undefined.c"
+        _ = source.write_text(source_text, encoding="utf-8")
+        env = os.environ.copy()
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            part
+            for part in (str(LLVM_LIB), env.get("LD_LIBRARY_PATH", ""))
+            if part
+        )
+        for optimization in ("-O0", "-O2"):
+            binary = scratch / f"undefined-{optimization[2:]}"
+            compiled = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+                [
+                    str(CLANG),
+                    "-std=c23",
+                    optimization,
+                    "-Wall",
+                    "-Wextra",
+                    "-Werror",
+                    "-fsanitize=undefined",
+                    "-fno-sanitize-recover=all",
+                    str(source),
+                    "-o",
+                    str(binary),
+                ],
+                env=env,
+                capture_output=True,
+                check=False,
+                timeout=40,
+            )
+            assert compiled.returncode == 0, compiled.stderr
+            native = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+                [str(binary)],
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            assert native.returncode != 0, optimization
+            assert UNDEFINED_RUNTIME_ERROR in native.stderr, (
+                optimization,
+                native.stderr,
+            )
+            assert native.stdout == UNDEFINED_EMPTY_OUTPUT, optimization
+
+
+def test_native_rejects_out_of_range_unsigned_shift() -> None:
+    """The 32-bit unsigned count `32` cannot silently wrap to zero."""
+    _assert_native_rejects_undefined_shift(UNDEFINED_UNSIGNED_COUNT_SOURCE)
+
+
+def test_native_rejects_signed_left_overflow() -> None:
+    """A positive signed value with an unrepresentable shift is undefined."""
+    _assert_native_rejects_undefined_shift(UNDEFINED_SIGNED_OVERFLOW_SOURCE)

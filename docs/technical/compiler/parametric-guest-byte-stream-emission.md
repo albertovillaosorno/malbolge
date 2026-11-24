@@ -12817,3 +12817,9 @@ The same two native optimization modes also run a defined signed C23
 `(current << 4) >> 3` program for the full byte domain, using a separately
 calculated doubled-byte oracle. Neither control infers a result for negative
 signed operands or out-of-range shift counts.
+
+Pinned UBSan negative controls also execute a 32-bit unsigned shift with
+count 32 and a signed left shift whose positive result exceeds `INT_MAX`.
+Both source programs must trap at `-O0` and `-O2` without stdout; this
+corroborates refusal of undefined source-known shift values, not a guest
+execution guarantee.

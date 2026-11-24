@@ -1516,9 +1516,10 @@ pub fn verify_source_input_site_return_compatible(
 /// The input/return checker runs first against the actual normative VM. Only
 /// exact source-known constants, casts, unsigned wrapping arithmetic,
 /// defined signed arithmetic, checked signed/unsigned division and
-/// remainder, comparisons, bitwise operations and parallel phi assignments
-/// can justify output here. Unknown byte scalars
-/// fail closed; no host-produced checksum is substituted for a guest output,
+/// remainder, defined unsigned shifts, conservatively defined signed shifts,
+/// comparisons, bitwise operations and parallel phi assignments can justify
+/// output here. Unknown byte scalars fail closed; no host-produced checksum
+/// is substituted for a guest output,
 /// and output-before-read is not accepted as output-after-read. This is a
 /// necessary finite I/O check, *not* target arithmetic, state writes, jump or
 /// full C translation proof.
