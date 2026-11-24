@@ -532,13 +532,54 @@ fn typed_comparisons_require_consistent_ordering_signedness() {
         (CompareOp::LessUnsignedEqual, U8, 1, 255, Ok(1)),
         (CompareOp::LessSigned, I8, 255, 1, Ok(1)),
         (CompareOp::LessSignedEqual, I8, 255, 255, Ok(1)),
-        (CompareOp::LessUnsigned, Bool, 0, 1, Ok(1)),
+        (CompareOp::LessUnsigned, Bool, 0, 1, unsupported),
+        (CompareOp::Equal, Bool, 1, 1, unsupported),
+        (CompareOp::NotEqual, Bool, 1, 0, unsupported),
         (CompareOp::Equal, I8, 255, 255, Ok(1)),
         (CompareOp::NotEqual, U8, 255, 1, Ok(1)),
     ];
     for (operation, kind, lhs, rhs, expected) in checks {
         assert_eq!(compare(operation, kind, lhs, rhs), expected);
     }
+}
+
+// A real equal-byte comparison can be numerically correct while its
+// direct Boolean operand kind violates the typed IR promotion boundary.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "one authentic N15 trace distinguishes promoted comparisons"
+)]
+fn real_guest_bool_comparison_requires_promoted_integer_operands()
+-> Result<(), String> {
+    let trace = traced_three_stores_with_seeds([3, 3, 3])?;
+    let typed = |address, kind| GuestPlacedOperand {
+        address,
+        type_kind: kind,
+        value: address.saturating_sub(70),
+        words: 1,
+    };
+    let check = |kind| {
+        let sites = operations(GuestCodeComputation::Compare {
+            operation: CompareOp::Equal,
+            left: typed(70, kind),
+            right: typed(71, kind),
+            result: typed(72, TernaryCfgScalarKind::Bool),
+        });
+        verify_source_computation_values(
+            &sites,
+            &effects(),
+            &[],
+            &frames(),
+            &trace,
+        )
+    };
+    assert_eq!(
+        check(TernaryCfgScalarKind::Bool),
+        Err(SourcePhiCopyTraceError::UnsupportedComputation)
+    );
+    assert_eq!(check(TernaryCfgScalarKind::U8), Ok(()));
+    Ok(())
 }
 
 #[test]
@@ -629,9 +670,9 @@ fn real_guest_signed_and_unsigned_ordering_use_source_width()
     Ok(())
 }
 
-// C's _Bool operands undergo integer promotion for arithmetic. The typed
-// SSA checker cannot claim a one-bit Add/Mul/Sub result as source C math:
-// (bool)(true + true) is 1, not the one-bit wrapped result 0.
+// Boolean C operands undergo integer promotion for arithmetic and bitwise
+// operations. Typed IR cannot claim a direct one-bit opcode as source C:
+// (bool)(true + true) is 1, not a one-bit wrapped result of zero.
 #[test]
 fn typed_boolean_arithmetic_requires_explicit_integer_promotion() {
     let value = |operation| {
@@ -657,9 +698,12 @@ fn typed_boolean_arithmetic_requires_explicit_integer_promotion() {
             Err(SourcePhiCopyTraceError::UnsupportedComputation)
         );
     }
-    assert_eq!(value(BinaryOp::And), Ok(1));
-    assert_eq!(value(BinaryOp::Or), Ok(1));
-    assert_eq!(value(BinaryOp::Xor), Ok(0));
+    for operation in [BinaryOp::And, BinaryOp::Or, BinaryOp::Xor] {
+        assert_eq!(
+            value(operation),
+            Err(SourcePhiCopyTraceError::UnsupportedComputation)
+        );
+    }
 }
 
 #[test]
@@ -702,7 +746,10 @@ fn real_guest_one_bit_wrapped_add_is_not_c_boolean_add() -> Result<(), String> {
         check(BinaryOp::Add),
         Err(SourcePhiCopyTraceError::UnsupportedComputation)
     );
-    assert_eq!(check(BinaryOp::Xor), Ok(()));
+    assert_eq!(
+        check(BinaryOp::Xor),
+        Err(SourcePhiCopyTraceError::UnsupportedComputation)
+    );
     Ok(())
 }
 

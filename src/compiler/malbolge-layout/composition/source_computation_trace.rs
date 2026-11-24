@@ -288,15 +288,10 @@ fn evaluate(
             {
                 return Err(UnsupportedComputation);
             }
-            // C arithmetic promotes _Bool to int. Without an explicit
-            // integer cast, one-bit Add would wrap 1+1 to 0 even though
-            // converting the actual C result back to _Bool yields 1.
-            if result.type_kind == TernaryCfgScalarKind::Bool
-                && !matches!(
-                    operation,
-                    BinaryOp::And | BinaryOp::Or | BinaryOp::Xor
-                )
-            {
+            // Typed IR admits no direct _Bool binary operations. Even
+            // bitwise operands are promoted to int before the C operation;
+            // the compiler must expose the promotion as typed casts.
+            if result.type_kind == TernaryCfgScalarKind::Bool {
                 return Err(UnsupportedComputation);
             }
             let lhs = read_scalar(left, written)?;
@@ -350,7 +345,11 @@ fn evaluate(
         } => {
             if result.type_kind != TernaryCfgScalarKind::Bool
                 || left.type_kind != right.type_kind
+                || left.type_kind == TernaryCfgScalarKind::Bool
             {
+                // C Boolean comparison operands must be explicitly
+                // promoted; accepting a direct _Bool equality as a source
+                // operation would bypass typed-IR admission.
                 return Err(UnsupportedComputation);
             }
             let lhs = read_scalar(left, written)?;

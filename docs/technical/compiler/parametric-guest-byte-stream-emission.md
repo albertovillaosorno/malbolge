@@ -28,6 +28,22 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source Boolean promotions before binary and comparison (2026-11-24)
+
+The strict numerical source-operation gate now refuses every direct `_Bool`
+binary operation, including numerically plausible bitwise `And`/`Or`/`Xor`,
+and direct `_Bool` equality/inequality. The admitted typed IR requires
+explicit integer promotion before these operations; a matching one-bit guest
+result cannot stand in for the missing source cast. A normative four-step N15
+guess trace physically stores Boolean one/one/one: it rejects a direct
+Boolean equality but accepts U8 equality as a numerical control (not a
+complete source-admitted C comparison); it also rejects a raw Boolean XOR
+even when its bits match. All
+54 mirrored targeted compiler-verifier cases pass. This is admission
+alignment, not a guest C comparison/linker, signed EOF or whole-program
+parity result; the seven-block mutable checksum remains unlinked. Evidence:
+`tests/compiler/source_computation_trace.rs`.
+
 ### Source-typed cast destination category (2026-11-24)
 
 The opt-in numerical source-computation verifier now refuses physically
