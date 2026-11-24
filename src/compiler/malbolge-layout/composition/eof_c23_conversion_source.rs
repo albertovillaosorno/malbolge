@@ -415,6 +415,38 @@ pub fn build_c23_first_input_lossless_store_source(
     Ok(source)
 }
 
+/// Preserve and emit the same first guest input after two real crazy writes.
+///
+/// This extends the source-loaded C37 `/`, C43 `p` store at M126 by advancing
+/// D through five no-ops to untouched loader M132=121. The reached C49 `p`
+/// applies a second 15-trit crazy operation, restoring every successful raw
+/// byte to A while preserving the first injective store at M126. C50 `<`
+/// emits that byte and C51 `v` halts. Genuine N15 EOF instead restores the
+/// distinct word 7,174,574 and emits 174, **not** the C23 EOF conversion.
+/// This is a bounded physical state-and-output primitive, not source-C input
+/// handling, an EOF branch, a typed mutable local or checksum lowering.
+///
+/// # Errors
+///
+/// Refuses a noncanonical N15 profile, invalid graphical source or any
+/// position without the required instruction encoding. VM evidence must
+/// separately check every claimed memory and I/O effect.
+pub fn build_c23_first_input_saved_and_echoed_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source = build_c23_first_input_lossless_store_source(profile)?;
+    for position in 44..=48 {
+        set(&mut source, position, b'o')?;
+    }
+    for (position, opcode) in
+        [(49, b'p'), (50, profile.output_instruction()), (51, b'v')]
+    {
+        set(&mut source, position, opcode)?;
+    }
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
 /// Extend a first-read lossless store across the eighth real Iy rotation.
 ///
 /// The first signed `/` at C37 feeds a physical C43 `p` write to M126.

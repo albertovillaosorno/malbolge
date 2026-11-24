@@ -41,6 +41,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A 91-cell source-loaded N15 helper now retains its genuine C37 input at
+M126 and emits the same successful byte after an independent C49 physical
+crazy write at M132; ten guest traces verify the 52-step halt, actual stores
+and output. A 257-class scalar check proves input retention; two code-mutation
+negatives reject counterfeit state or output. Raw N15 EOF still emits 174,
+not the C23 255 conversion, and this helper is **not** source-C CFG linkage.
+The unchanged complete seven-block C23 mutable EOF checksum still refuses
+publication. See the compiler contract and
+`tests/compiler_c23_first_saved_echo_guest.rs`.
+
 The original C23 checksum's two-word zero initializer can now reserve its
 explicit physical effects in high-before-low order (C14 high, C17 low)
 without weakening the ordered signed-input or computed-result constraints.

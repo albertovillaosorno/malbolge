@@ -28,6 +28,34 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### First input retained across its physical output (2026-11-24)
+
+The unchanged full seven-block C23 mutable EOF checksum still refuses
+publication at unlinked physical control, arithmetic and phi writes. Three
+original pipeline acceptance tests pass only their explicit refusal path.
+No C23 checksum guest was produced.
+
+An independently loaded **91-cell N15** graphical program now runs a true
+C37 input, writes an injective 257-class raw-byte/EOF representation at M126
+through C43 `p`, advances D through five reached no-ops, and executes a
+second real C49 `p` against untouched loader M132=121. The second crazy
+operation restores each successful byte exactly to the guest accumulator
+while preserving its earlier M126 storage. C50 `<` emits the restored byte;
+C51 `v` halts after 52 physical instructions. This extends the earlier
+lossless-first-store source with a **separate input-dependent physical output**
+without a second `/` or any host-computed output substitution. Independent
+15-trit scalar enumeration proves 257 distinct first-store classes and exact
+successful-byte restoration. Ten normative VM traces check storage, second
+store, output, source identity, input cursor and halt. Two mutation controls
+remove C43 or C49 `p` and break the output contract.
+
+N15 EOF is **not** a C23 signed EOF conversion: its first crazy write is 242,
+the second yields 7,174,574, and its emitted byte is 174 rather than 255.
+Neither source-C typed local storage, input-driven branch selection, repeated
+EOF loop, phi transfers, nor checksum arithmetic has been linked. Evidence:
+`build_c23_first_input_saved_and_echoed_source` and
+`tests/compiler_c23_first_saved_echo_guest.rs`. P2 remains open.
+
 ### Source-loaded two-input physical computation and output (2026-11-24)
 
 The original complete seven-block C23 mutable EOF checksum was rerun through
