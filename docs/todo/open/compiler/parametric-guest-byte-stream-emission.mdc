@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The original C23 checksum's two-word zero initializer can now reserve its
+explicit physical effects in high-before-low order (C14 high, C17 low)
+without weakening the ordered signed-input or computed-result constraints.
+A separate real N15 source-loaded primitive already performs those writes;
+the proposed C0-entry checksum still does **not** link that source, initialize
+its 43-word frame or execute its EOF branches/loop. The full C23 compiler
+still refuses publication. See the technical contract and
+`tests/compiler/source_dynamic_checksum.rs`.
+
 A source-checked function-entry anchor now permits the actual C23 checksum's
 entry block to reserve C0 without moving its independently proposed first
 input at C37 or the loop backedge's sparse phi writes at C90..C150. This

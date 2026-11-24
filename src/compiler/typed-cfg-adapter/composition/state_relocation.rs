@@ -476,7 +476,11 @@ pub struct GuestCodeControlAnchor {
 /// Unlike an operation's first-effect anchor, this may leave setup cells
 /// between the input and its frame writes, or between two C32 word writes.
 /// The index selects an effect derived from the typed instruction, not a
-/// caller-provided opcode, destination, or instruction order.
+/// caller-provided opcode or destination. The physical order may differ
+/// only for two separately anchored constant-integer word stores: both
+/// literal words must be explicitly proposed, and their writes have no
+/// intervening source-visible operation. Input and computed-result effects
+/// always preserve their canonical order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GuestCodeEffectAnchor {
     /// Canonical source block containing the instruction.
@@ -1210,6 +1214,35 @@ fn bound_computation(
     }
 }
 
+// An explicitly anchored, two-word source literal may be written high-first.
+// No source-visible effect occurs between its two independent constant stores.
+// Runtime input and computed results retain canonical physical effect order.
+fn scheduled_operation_effects(
+    instruction: &GuestPlacedInstruction,
+    key: (u32, u32, u32),
+    anchors: &BTreeMap<(u32, u32, u32, u32), u32>,
+) -> Result<Vec<(u32, GuestCodeOperationEffect)>, GuestCodePlacementError> {
+    let mut effects = required_operation_effects(instruction)?
+        .into_iter()
+        .enumerate()
+        .map(|(index, effect)| {
+            u32::try_from(index)
+                .map(|index| (index, effect))
+                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if matches!(instruction.instruction, Instruction::ConstantInteger { .. })
+        && effects.len() == 2
+    {
+        let low = anchors.get(&(key.0, key.1, key.2, 0));
+        let high = anchors.get(&(key.0, key.1, key.2, 1));
+        if matches!((low, high), (Some(low), Some(high)) if high < low) {
+            effects.reverse();
+        }
+    }
+    Ok(effects)
+}
+
 fn bind_operation_sites(
     block: &GuestPlacedBlock,
     placement: GuestCodeBlockPlacement,
@@ -1226,27 +1259,36 @@ fn bind_operation_sites(
     let mut sites = Vec::with_capacity(block.instructions.len());
     let mut effect_sites = Vec::new();
     for (index, instruction) in block.instructions.iter().enumerate() {
-        let effects = required_operation_effects(instruction)?;
         let ordinal = u32::try_from(index)
             .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
         let key = (block.function, block.block, ordinal);
+        let effects =
+            scheduled_operation_effects(instruction, key, effect_anchors)?;
+        let first_index = effects
+            .first()
+            .map(|(effect_index, _)| *effect_index)
+            .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
         let start = anchors
             .get(&key)
             .copied()
-            .or_else(|| effect_anchors.get(&(key.0, key.1, key.2, 0)).copied())
+            .or_else(|| {
+                effect_anchors
+                    .get(&(key.0, key.1, key.2, first_index))
+                    .copied()
+            })
             .unwrap_or(next_address);
-        for (effect_index, effect) in effects.into_iter().enumerate() {
-            let effect_index = u32::try_from(effect_index)
-                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+        for (position, (effect_index, effect)) in
+            effects.into_iter().enumerate()
+        {
             let code_address = effect_anchors
                 .get(&(key.0, key.1, key.2, effect_index))
                 .copied()
-                .unwrap_or(if effect_index == 0 {
+                .unwrap_or(if position == 0 {
                     start
                 } else {
                     next_address
                 });
-            if (effect_index == 0 && code_address != start)
+            if (position == 0 && code_address != start)
                 || code_address < next_address
             {
                 return Err(GuestCodePlacementError::InvalidCodePlacement);
@@ -1504,7 +1546,9 @@ pub fn bind_source_locked_cfg_code_targets(
 /// identifies a source instruction and its *first required effect*, not an
 /// arbitrary N15 instruction or a completed source operation. The checked
 /// effect cells remain consecutive within that instruction and ordered
-/// relative to other operations in its block. Unanchored operations retain
+/// relative to other operations in its block, except that explicitly pinned
+/// independent two-word constant writes can run high-first. Unanchored
+/// operations retain
 /// their earliest nonoverlapping minimum placements, and all code/control/phi
 /// intervals retain their original source-owned reservations.
 ///
@@ -1537,11 +1581,13 @@ pub fn bind_source_locked_cfg_code_targets_with_operation_anchors(
 /// Bind source-typed individual effects to sparse physical code addresses.
 ///
 /// Within each canonical instruction, required effects stay in their exact
-/// source-derived order; unanchored effects follow the preceding effect in
-/// the earliest available cell. Arbitrary setup gaps are permitted before
-/// or between them, but cannot overlap later operations, source control or
-/// phi pads. The existing operation anchors still identify only the first
-/// effect and must agree with an optional index-zero effect anchor.
+/// source-derived order except a pair of independent two-word literal stores
+/// that are both explicitly pinned, whose order may be reversed. Unanchored
+/// effects follow the preceding physical effect in the earliest available
+/// cell. Arbitrary setup gaps are permitted before or between them, but
+/// cannot overlap later operations, source control or phi pads. Operation
+/// anchors identify the first *physical* effect and must agree with any
+/// separate anchor naming that effect's canonical index.
 ///
 /// These are checked **proposals**, not verified VM transitions. In
 /// particular a signed C23 input remains unimplemented unless real `/` and
@@ -1636,18 +1682,21 @@ pub fn bind_source_locked_cfg_code_targets_with_effect_anchors(
             &anchored,
             &anchored_effects,
         )?;
-        let mut effect_indices = BTreeMap::<u32, u32>::new();
-        for effect_site in &effects {
-            let index = effect_indices.entry(effect_site.ordinal).or_insert(0);
-            let _matched = unmatched_effects.remove(&(
-                effect_site.function,
-                effect_site.block,
-                effect_site.ordinal,
-                *index,
-            ));
-            *index = index
-                .checked_add(1)
-                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+        // Match canonical indices even when literal words execute high-first.
+        for (ordinal, instruction) in block.instructions.iter().enumerate() {
+            let ordinal = u32::try_from(ordinal)
+                .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
+            for index in 0..required_operation_effects(instruction)?.len() {
+                let index = u32::try_from(index).map_err(|_| {
+                    GuestCodePlacementError::InvalidCodePlacement
+                })?;
+                let _matched = unmatched_effects.remove(&(
+                    block.function,
+                    block.block,
+                    ordinal,
+                    index,
+                ));
+            }
         }
         for site in &sites {
             let _matched =
@@ -2663,13 +2712,33 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
                 .next()
                 .map(|(&ordinal, &address)| (ordinal, 0u32, address))
         });
-        let first_effect = anchored_effects
-            .iter()
-            .filter(|((function, id, ..), _)| (*function, *id) == key)
-            .map(|((_, _, ordinal, index), &address)| {
-                (*ordinal, *index, address)
-            })
-            .min_by_key(|&(ordinal, index, _)| (ordinal, index));
+        let mut first_effect = None;
+        for (&(function, id, ordinal, index), &address) in &anchored_effects {
+            if (function, id) != key {
+                continue;
+            }
+            let instruction = block
+                .instructions
+                .get(usize::try_from(ordinal).map_err(|_| {
+                    GuestCodePlacementError::InvalidCodePlacement
+                })?)
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let schedule = scheduled_operation_effects(
+                instruction,
+                (function, id, ordinal),
+                &anchored_effects,
+            )?;
+            let position = schedule
+                .iter()
+                .position(|(effect_index, _)| *effect_index == index)
+                .and_then(|position| u32::try_from(position).ok())
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            if first_effect.is_none_or(|(best_ordinal, best_position, _)| {
+                (ordinal, position) < (best_ordinal, best_position)
+            }) {
+                first_effect = Some((ordinal, position, address));
+            }
+        }
         let first_site = first_operation
             .into_iter()
             .chain(first_effect)
@@ -2728,18 +2797,18 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
         for (ordinal, instruction) in block.instructions.iter().enumerate() {
             let ordinal = u32::try_from(ordinal)
                 .map_err(|_| GuestCodePlacementError::InvalidCodePlacement)?;
-            let effects = required_operation_effects(instruction)?;
-            for effect_index in 0..effects.len() {
-                let effect_index =
-                    u32::try_from(effect_index).map_err(|_| {
-                        GuestCodePlacementError::InvalidCodePlacement
-                    })?;
-                let from_operation = (effect_index == 0)
+            let effects = scheduled_operation_effects(
+                instruction,
+                (block.function, block.block, ordinal),
+                &anchored_effects,
+            )?;
+            for (position, (effect_index, _)) in effects.iter().enumerate() {
+                let from_operation = (position == 0)
                     .then(|| sites.and_then(|sites| sites.get(&ordinal)))
                     .flatten()
                     .copied();
                 let from_effect = anchored_effects
-                    .get(&(block.function, block.block, ordinal, effect_index))
+                    .get(&(block.function, block.block, ordinal, *effect_index))
                     .copied();
                 if from_operation.is_some()
                     && from_effect.is_some()

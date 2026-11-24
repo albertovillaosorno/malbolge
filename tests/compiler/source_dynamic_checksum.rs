@@ -5071,3 +5071,185 @@ fn original_checksum_can_pin_function_entry_before_sparse_input_setup() {
     reversed[1].function = 17;
     assert_eq!(bind(&reversed), rejected);
 }
+
+// The real source-loaded adjacent-zero N15 primitive writes its high C32
+// word at C14, then revisits and writes the low word at C17. These two
+// constant stores have no intervening C-visible effect and may be scheduled
+// in physical order, unlike signed getchar or a computed C32 result.
+// This reserves addresses only: the 62-cell primitive is not a linked
+// seven-block checksum and cannot be published as one.
+#[test]
+fn source_checksum_initial_zero_can_reserve_reverse_physical_word_writes() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeFunctionEntryAnchor,
+        GuestCodeFunctionEntryPlacement, GuestCodeOperationAnchor,
+        GuestCodeOperationEffect, GuestCodePlacementError,
+        plan_source_locked_cfg_with_function_entry_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 checksum");
+    let zero_low = GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 17,
+        effect_index: 0,
+        function: 0,
+        ordinal: 0,
+    };
+    let zero_high = GuestCodeEffectAnchor {
+        code_address: 14,
+        effect_index: 1,
+        ..zero_low
+    };
+    let entry = GuestCodeFunctionEntryAnchor {
+        block: 0,
+        code_address: 0,
+        function: 0,
+    };
+    let bind = |effects: &[GuestCodeEffectAnchor]| {
+        plan_source_locked_cfg_with_function_entry_anchors(
+            &GuestCodeFunctionEntryPlacement {
+                canonical: &wire,
+                source_cells: 256,
+                frame_base: 512,
+                operation_anchors: &[],
+                effect_anchors: effects,
+                control_anchors: &[],
+                phi_anchors: &[],
+                phi_entries: &[],
+                phi_exits: &[],
+                function_entries: &[entry],
+            },
+        )
+    };
+    let plan = bind(&[zero_low, zero_high])
+        .expect("independent literal C32 stores can write high before low");
+    let written = plan
+        .operation_effect_sites
+        .iter()
+        .filter(|site| (site.block, site.ordinal) == (0, 0))
+        .map(|site| (site.code_address, site.effect))
+        .collect::<Vec<_>>();
+    assert!(matches!(written.as_slice(), [
+        (14, GuestCodeOperationEffect::Store { literal: Some(0), .. }),
+        (17, GuestCodeOperationEffect::Store { literal: Some(0), .. }),
+    ]));
+    let first = match &written[0].1 {
+        GuestCodeOperationEffect::Store { destination, .. } => *destination,
+        _ => unreachable!("literal writes"),
+    };
+    let second = match &written[1].1 {
+        GuestCodeOperationEffect::Store { destination, .. } => *destination,
+        _ => unreachable!("literal writes"),
+    };
+    assert_eq!(first, second + 1, "the high word must write first");
+    assert_eq!(plan.code_blocks[0].start, 0);
+    assert_eq!(plan.operation_sites[0].start, 14);
+    assert_eq!(plan.operation_sites[0].end_exclusive, 18);
+    assert_eq!(plan.edge_pads.len(), 4);
+    // A second independent source literal has *different* high/low word
+    // values. Preserve its source identity rather than comparing only two
+    // coincidentally equal zero words from the first initializer.
+    let three_low = GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 72,
+        effect_index: 0,
+        function: 0,
+        ordinal: 5,
+    };
+    let three_high = GuestCodeEffectAnchor {
+        code_address: 69,
+        effect_index: 1,
+        ..three_low
+    };
+    let double = bind(&[three_high, zero_low, three_low, zero_high])
+        .expect("source literal three keeps its distinct high and low cells");
+    let other_words = double
+        .operation_effect_sites
+        .iter()
+        .filter(|site| (site.block, site.ordinal) == (0, 5))
+        .map(|site| (site.code_address, site.effect))
+        .collect::<Vec<_>>();
+    assert!(matches!(other_words.as_slice(), [
+        (69, GuestCodeOperationEffect::Store {
+            destination: 523,
+            literal: Some(0)
+        }),
+        (72, GuestCodeOperationEffect::Store {
+            destination: 522,
+            literal: Some(3)
+        }),
+    ]));
+    assert_eq!(double.code_blocks[0].start, 0);
+    assert_eq!(double.edge_pads.len(), 4);
+    // Index-zero operation anchors identify the first *physical* effect,
+    // even when its canonical source index is the high literal word.
+    let physical_first = GuestCodeOperationAnchor {
+        block: 0,
+        code_address: 14,
+        function: 0,
+        ordinal: 0,
+    };
+    let with_operation = plan_source_locked_cfg_with_function_entry_anchors(
+        &GuestCodeFunctionEntryPlacement {
+            canonical: &wire,
+            source_cells: 256,
+            frame_base: 512,
+            operation_anchors: &[physical_first],
+            effect_anchors: &[zero_low, zero_high],
+            control_anchors: &[],
+            phi_anchors: &[],
+            phi_entries: &[],
+            phi_exits: &[],
+            function_entries: &[entry],
+        },
+    );
+    assert_eq!(with_operation, Ok(plan.clone()));
+    let refuses = Err(GuestCodePlacementError::InvalidCodePlacement);
+    assert_eq!(bind(&[zero_low, zero_low]), refuses);
+    assert_eq!(
+        plan_source_locked_cfg_with_function_entry_anchors(
+            &GuestCodeFunctionEntryPlacement {
+                canonical: &wire,
+                source_cells: 256,
+                frame_base: 512,
+                operation_anchors: &[GuestCodeOperationAnchor {
+                    code_address: 17,
+                    ..physical_first
+                }],
+                effect_anchors: &[zero_low, zero_high],
+                control_anchors: &[],
+                phi_anchors: &[],
+                phi_entries: &[],
+                phi_exits: &[],
+                function_entries: &[entry],
+            },
+        ),
+        refuses,
+        "physical operation anchor cannot point past the first literal store",
+    );
+    let signed_low = GuestCodeEffectAnchor {
+        block: 0,
+        code_address: 25,
+        effect_index: 1,
+        function: 0,
+        ordinal: 1,
+    };
+    let signed_high = GuestCodeEffectAnchor {
+        code_address: 22,
+        effect_index: 2,
+        ..signed_low
+    };
+    assert_eq!(
+        bind(&[zero_low, zero_high, signed_low, signed_high]),
+        refuses,
+        "signed getchar cannot borrow a literal's reorder rule",
+    );
+    assert_eq!(
+        bind(&[zero_low, GuestCodeEffectAnchor {
+            effect_index: 2,
+            ..zero_high
+        }]),
+        refuses,
+        "only source-defined literal word effects may be reordered",
+    );
+}

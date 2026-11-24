@@ -28,6 +28,41 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### High-first adjacent C32 constant initialization reservations (2026-11-23)
+
+The unchanged complete source-C23 EOF-checksum compilation was retried through
+its pinned compiler and still failed closed before publication: seven typed
+blocks, 19 operations, four phi edges, 43 state words and a 71-cell minimum
+*unlinked* code bound. No target guest artifact was created. The first real
+missing stage is still executable physical code and CFG control, not source
+admission.
+
+A narrower source-CFG placement refusal was repaired without weakening that
+publication gate. The independent loader-backed N15 adjacent-C32 zero
+initializer executes two `p` writes in **high-before-low** order: the high
+zero cell at C14, followed by the low zero cell at C17 after physical reentry
+(`tests/compiler_adjacent_zero_source.rs`). The original checksum's first
+`unsigned checksum = 0U` produces two independently materializable constant
+word effects. Previously source-locked placement required low-before-high,
+rejecting the physically demonstrated order before a linker could even
+attempt it. Its sparse binder and automatic code planner now accept a pair of
+**explicitly anchored** two-word integer literal writes in either order,
+while retaining their exact canonical source-index and destination identity.
+The checksum regression reserves its first C block entry at C0, high word at
+C14 and low word at C17, with four separate phi pads. No other original
+checksum operation is elided.
+
+The exception is deliberately narrow: reversed signed `getchar` input-result
+stores, unmatched or duplicated indices, inconsistent source bindings and
+code collisions still refuse. Unanchored literal effects retain the existing
+low-before-high order, and computations, I/O and phi writes never acquire an
+ordering exception. The 19-step zero initializer remains a *separate*
+62-cell physical guest; the 256-cell checksum reservation does not make its
+loader seeds, pointer routes, operand writes or branch paths executable in a
+joint artifact. This is source-authenticated geometry only, not a C23
+checksum, signed EOF conversion or successful P2 guest parity. Regression:
+`tests/compiler/source_dynamic_checksum.rs`.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend
