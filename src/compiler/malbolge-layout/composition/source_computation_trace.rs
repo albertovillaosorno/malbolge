@@ -31,7 +31,7 @@
 //! Numeric equality is necessary, not proof that guest arithmetic consumed
 //! the inputs: causal source dependencies still require separate evidence.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::ProfileStepTrace;
 
@@ -531,6 +531,56 @@ const fn result_operand(
     }
 }
 
+// A two-word computation may execute its high-word code first. Complete
+// result publication requires both original code sites, regardless of their
+// physical order: a skipped low-word site cannot pass merely because the last
+// numerical comparison matched. This only validates site coverage; the
+// source-block/effect checker independently proves the actual CFG and stores.
+fn computation_result_sites(
+    key: OperationId,
+    computation: GuestCodeComputation,
+    effects: &[GuestCodeOperationEffectSite],
+) -> Result<BTreeSet<u32>, SourcePhiCopyTraceError> {
+    use SourcePhiCopyTraceError::{InvalidSourcePlacement, MissingBlockEffect};
+    let result = result_operand(computation);
+    let required_words = if scalar_bits(result.type_kind) == 32 {
+        2
+    } else {
+        1
+    };
+    if result.words != required_words {
+        return Err(InvalidSourcePlacement);
+    }
+    let mut seen_words = BTreeSet::new();
+    let mut sites = BTreeSet::new();
+    for effect in effects {
+        if (effect.function, effect.block, effect.ordinal) != key {
+            continue;
+        }
+        if let GuestCodeOperationEffect::Store { destination, .. } =
+            effect.effect
+        {
+            if !seen_words.insert(destination)
+                || !sites.insert(effect.code_address)
+            {
+                return Err(InvalidSourcePlacement);
+            }
+        }
+    }
+    let expected_words = (0..result.words)
+        .map(|offset| {
+            result
+                .address
+                .checked_add(offset)
+                .ok_or(InvalidSourcePlacement)
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    if seen_words != expected_words {
+        return Err(MissingBlockEffect);
+    }
+    Ok(sites)
+}
+
 /// Independently compare reached source-computation stores with typed results.
 ///
 /// The caller must first validate the same normative VM trace against the
@@ -572,7 +622,10 @@ pub(super) fn verify_source_computation_values(
         .map(|site| (site.code_address, site.copy.destination))
         .collect();
     let mut written = BTreeMap::new();
-    let mut pending: BTreeMap<OperationId, u32> = BTreeMap::new();
+    // Each live invocation retains the set of result-store code sites not
+    // yet reached. A same-site revisit before completion is also invalid.
+    let mut pending: BTreeMap<OperationId, (u32, BTreeSet<u32>)> =
+        BTreeMap::new();
     for step in steps {
         if !matches!(step.decoded, Some(b'p' | b'*')) {
             continue;
@@ -603,28 +656,28 @@ pub(super) fn verify_source_computation_values(
         }
         let key = (effect.function, effect.block, effect.ordinal);
         if let Some(&computation) = computations.get(&key) {
-            let computed = if let Some(&value) = pending.get(&key) {
-                value
-            } else {
+            if !pending.contains_key(&key) {
                 let value = evaluate(computation, &written)?;
-                let _previous = pending.insert(key, value);
-                value
-            };
+                let sites =
+                    computation_result_sites(key, computation, effects)?;
+                let _previous = pending.insert(key, (value, sites));
+            }
+            let (computed, remaining) = pending
+                .get_mut(&key)
+                .ok_or(SourcePhiCopyTraceError::MissingBlockEffect)?;
+            if !remaining.remove(&code) {
+                return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
+            }
             if step.after.registers.accumulator
                 != expected_word(
-                    computed,
+                    *computed,
                     result_operand(computation),
                     destination,
                 )?
             {
                 return Err(SourcePhiCopyTraceError::InvalidComputationValue);
             }
-            let last_effect = effects
-                .iter()
-                .filter(|site| (site.function, site.block, site.ordinal) == key)
-                .map(|site| site.code_address)
-                .max();
-            if last_effect == Some(code) {
+            if remaining.is_empty() {
                 let _done = pending.remove(&key);
             }
         }

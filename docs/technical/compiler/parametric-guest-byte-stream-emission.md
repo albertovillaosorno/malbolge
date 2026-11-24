@@ -1446,6 +1446,22 @@ from matching output. This does **not** prove arithmetic operand provenance,
 produce a linked C23 EOF checksum, or publish any guest artifact.
 Regression: `tests/compiler/source_input_cfg_order.rs`.
 
+### Complete source-computation result stores (2026-11-24)
+
+A red-first normative N15 guest executes C0 `*`, C1 `i`, C3 `*` and
+C4 `v`, deliberately skipping a source-reserved C2 low-word store.
+The C3 high-word result is numerically correct, but the previous
+computation verifier accepted the partial C32 result because it only
+cleared a pending check at the largest result code address. The strict
+checker now requires **every source-reserved result-store code site**
+per reached computation, in physical execution order, and refuses repeated
+sites or missing/duplicate result words. The same full two-word guest
+still verifies, while the skipped C2 guest returns `MissingBlockEffect`.
+This is a necessary store-completeness check on actual VM execution, not
+authorization of source arithmetic dataflow, arbitrary physical branching,
+C23 runtime state, or full seven-block checksum publication.
+Regression: `tests/compiler/source_computation_trace.rs`.
+
 ### Opt-in source computation result authentication (2026-11-23)
 
 `SourcePhiCopyProbe::verify_with_source_computations` extends the strongest

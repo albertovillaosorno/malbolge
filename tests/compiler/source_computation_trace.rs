@@ -306,6 +306,124 @@ fn real_guest_two_word_computation_rejects_wrong_high_result_word()
     Ok(())
 }
 
+// C1's real indirect transfer skips the low C32 result store at C2 but
+// reaches the high-word site C3 with the expected zero. The numeric checker
+// must not certify the complete result solely from that last site.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "five-cell physical jump with a skipped source store"
+)]
+fn real_guest_skipped_low_word_store_cannot_certify_a_c32_result()
+-> Result<(), String> {
+    let mut source = (0..59)
+        .map(|at| graphical(at, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (at, opcode) in [(0, b'*'), (1, b'i'), (2, b'*'), (3, b'*'), (4, b'v')]
+    {
+        source[at] = graphical(at, opcode)?;
+    }
+    let profile = malbolge::current_profile();
+    let loaded =
+        malbolge::ProfileMachine::from_source(profile, &source, Vec::new())
+            .map_err(|error| format!("source load: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    // C0 rotates M70=3 to 1. C1 i reads M71=2 and jumps to C3,
+    // bypassing the promised M71 low-word result at C2. C3 rotates
+    // M72=0 to the numerically correct high word 0 and C4 halts.
+    memory[70] = 3;
+    memory[71] = 2;
+    memory[72] = 0;
+    let mut machine = malbolge::ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("state load: {error:?}"))?;
+    let mut steps = Vec::new();
+    let outcome = machine
+        .run_traced(5, &mut |step| steps.push(*step))
+        .map_err(|error| format!("guest run: {error:?}"))?;
+    assert_eq!(outcome, malbolge::RunOutcome::Terminated {
+        reason: malbolge::Termination::HaltInstruction,
+        steps: 4,
+    });
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        [0, 1, 3, 4],
+    );
+    let result = GuestPlacedOperand {
+        address: 71,
+        type_kind: TernaryCfgScalarKind::U32,
+        value: 1,
+        words: 2,
+    };
+    let sites = [GuestCodeOperationSite {
+        block: 0,
+        computation: Some(GuestCodeComputation::Cast {
+            operation: CastOp::ZeroExtend,
+            source: operand(70, 0),
+            result,
+        }),
+        start: 2,
+        end_exclusive: 4,
+        function: 0,
+        ordinal: 1,
+    }];
+    let effects = [
+        GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: 0,
+            effect: GuestCodeOperationEffect::Store {
+                destination: 70,
+                literal: None,
+            },
+            function: 0,
+            ordinal: 0,
+        },
+        GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: 2,
+            effect: GuestCodeOperationEffect::Store {
+                destination: 71,
+                literal: None,
+            },
+            function: 0,
+            ordinal: 1,
+        },
+        GuestCodeOperationEffectSite {
+            block: 0,
+            code_address: 3,
+            effect: GuestCodeOperationEffect::Store {
+                destination: 72,
+                literal: None,
+            },
+            function: 0,
+            ordinal: 1,
+        },
+    ];
+    assert_eq!(
+        verify_source_computation_values(
+            &sites,
+            &effects,
+            &[],
+            &frames(),
+            &steps
+        ),
+        Err(SourcePhiCopyTraceError::MissingBlockEffect),
+    );
+    Ok(())
+}
+
 #[test]
 fn typed_c32_checksum_operations_preserve_full_width() {
     let i32_operand = |address, value| GuestPlacedOperand {
