@@ -183,6 +183,42 @@ source-language branch or loop, or compile the seven-block mutable C23
 checksum. In particular, an output of the raw N15 EOF image is **not** a
 C23 `getchar()` EOF condition. P2 remains open.
 
+## Fourth input folds the existing cumulative guest state (2026-11-24)
+
+A distinct source-admitted 17-opcode suffix `/<oooojpp<*/jjopv` at
+C117..C133 makes the fourth raw input update the **same M106 word** that
+already holds all three previous input effects. The original protected
+M124=126, M127=100 and M134=58 stay unmodified. M110 changes from 52
+to the source-loadable value 117; C129 `j` reads that real operand and
+points D to 118. The earlier C118 `<` has already encrypted to 104, so
+C130 `j` reads the real encrypted M118=104 and points D to 105. C131 `o`
+advances D to 106, and C132 `p` physically reads the preceding M106 fold
+and writes its crazy combination with the fourth runtime input. The real
+C133 `v` halts after **112** normative N15 steps.
+
+For `03 04 05 06`, the first three inputs give M106=58; the reached
+fourth crazy write produces **M106=7,174,483**. The independent
+fifteen-trit oracle checks
+`crazy(crazy(crazy(crazy(121, a), b), crazy(57, c)), d)` for the four
+raw byte/EOF words. Exhaustive fourth-input 256-byte and genuine-EOF
+classes, all 768 earlier-input one-byte marginal cases, six truncated or
+extra-byte controls, exact reached step/data/encryption traces, and five
+source-valid negative operand/opcode controls prove this finite guest.
+It consumes four real inputs and preserves the four earlier output bytes
+`03 31 05 3a`, **without** emitting the fourth fold yet.
+
+Replacing terminal C133 `v` with a source-loadable terminal `i` yields a
+second 139-step valid-halt guest: C133 reads protected M107=55, reenters
+already encrypted C56, eventually emits an **input-independent** fifth
+byte `57` (hex) at C57, and halts on the real encrypted C82 `v`. All
+257 fourth-input/EOF classes retain the precise M106 fourth fold even
+through this nonlinear return. The fifth byte is caused by a later
+rotation of a fixed prior word, **not** the fourth computed M106 value.
+Both paths remain physical proof of four-input cumulative ternary state,
+not C23 XOR/add, signed `getchar()`/EOF dispatch, a dynamic branch, a
+loop or a source-compiled checksum. The full C23 checksum still refuses
+target publication; see `tests/compiler_indirect_source_suffix.rs`.
+
 ## Terminal indirect return through already encrypted code (2026-11-24)
 
 The source-loaded 135-cell three-input fold now has a *nonlinear* terminal

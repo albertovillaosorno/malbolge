@@ -41,6 +41,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A distinct 135-cell N15 guest now incorporates the fourth raw input into
+the **existing M106 cumulative state**: C129/C130 `j` follow real
+source M110=117 and encrypted C118=104, C132 `p` folds the previous
+three-input M106 with the fourth input, and C133 `v` halts in 112
+normative steps. A 257-class fourth byte/EOF sweep, all 768 previous
+byte marginals, six length controls, physical traces and five negative
+mutations authenticate the result. Its earlier four output bytes remain
+unchanged; the fourth folded value is **not emitted**. A separate
+139-step terminal-`i` guest preserves that state through encrypted code
+but emits only a constant fifth byte. Neither variant is a signed C23
+EOF test, source-C branch/loop, or published checksum. Evidence:
+`docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 A source-loaded 135-cell guest now computes and **outputs** a result from
 a fourth real input: reached C132 `p` stores `crazy(63, fourth)` after
 reading previously encrypted C40, C133 `<` emits its low byte, and the

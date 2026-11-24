@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Fourth guest input now accumulates into M106 (2026-11-24)
+
+Another strict 135-cell N15 source uses `/<oooojpp<*/jjopv` and a
+source-valid M110=117 to direct C129/C130 `j` through the **encrypted**
+C118 output word. C132 `p` then computes
+`crazy(prior_three_input_M106, fourth_raw_input)` into the original
+M106 state, and a genuine C133 `v` halts in **112** steps. The
+independent oracle verifies all 257 fourth byte/EOF classes, all three
+256-class prior-input marginals, six truncated/extra vectors, exact VM
+traces and five source-valid mutations. The original four outputs stay
+unchanged; the fourth cumulative value is stored but **not yet output**.
+A terminal `i` variant preserves M106 through a 139-step encrypted-code
+return, but its fifth output is constant, not computed from the fold.
+This is real four-input cumulative guest storage, still not C23 arithmetic,
+EOF normalization, dynamic C flow or the complete source checksum.
+Evidence: `docs/technical/compiler/source-indirect-guest-suffix.md`.
+
 ### Fourth input performs an observable guest computation (2026-11-24)
 
 The graphical 135-cell indirect suffix now ends `...jojp<i` instead of
