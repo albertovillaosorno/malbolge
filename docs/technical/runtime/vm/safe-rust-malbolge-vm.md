@@ -21,6 +21,21 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Validated input-tail checkpoint forks (2026-11-24)
+
+`ProfileMachine::fork_with_input` clones an already validated VM state with
+independent owned memory and a different unread input suffix. It retains the
+exact registers, prior output, consumed-input cursor, termination and existing
+profile geometry; a fork cannot retroactively change previously consumed
+input bytes or violate a verified geometry's input-domain restriction. A
+shortened consumed prefix returns a typed cursor error and a changed prefix
+returns `InputPrefixMismatch`. A pristine loader-derived VM can therefore
+serve multiple physical input classes without rescanning all 14,348,907
+memory words on each fork. This is an execution/checkpoint optimization,
+not permission to reuse a mutated machine as pristine source or to infer
+source-C behavior from guest input data. Independent fork/full-state tests
+check complete memory, registers, output and input consumption.
+
 ### Model
 
 The safe-Rust VM is the primary interpreter-authority classic execution engine.

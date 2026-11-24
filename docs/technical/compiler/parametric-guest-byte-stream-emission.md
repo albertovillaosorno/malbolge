@@ -41,6 +41,10 @@ byte count and halt step must agree with the admitted typed-source witness.
 This is a finite validation strengthening for an **already linked** two-read
 slice; it neither generalizes the fixed source grammar nor executes mutable
 checksum arithmetic, loop phi copies or the original seven-block C23 program.
+The replay now forks one validated source-loaded VM checkpoint with fresh
+unread input, retaining its exact physical source image without repeating a
+full-domain memory validation for each branch case. The runtime rejects
+changed already-consumed prefixes, and the real VM still executes all cases.
 
 ### Bounded EOF-zero predicate operand reentry refusal (2026-11-23)
 

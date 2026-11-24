@@ -3765,7 +3765,7 @@ fn verify_two_read_eof_branch(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
 ) -> Result<(), String> {
-    use malbolge::{ProfileRegisters, TraceInput};
+    use malbolge::TraceInput;
     if artifact.steps != 119
         || artifact.source.len() != 132
         || artifact.source.get(130..) != Some(b"-}".as_slice())
@@ -3815,9 +3815,9 @@ fn verify_two_read_eof_branch(
     // separately exercise initial/second EOF and first-byte boundaries.
     // This keeps per-publication replay finite without reloading every
     // first/second cross-product or trusting a host-selected output.
-    inputs.extend(
-        (u8::MIN..=u8::MAX).map(|second| vec![0xa5, second, 0x7c]),
-    );
+    for second in u8::MIN..=u8::MAX {
+        inputs.push(vec![0xa5, second, 0x7c]);
+    }
     for input in inputs {
         let eof_second = input.len() < 2;
         let steps = if eof_second {
@@ -3832,13 +3832,9 @@ fn verify_two_read_eof_branch(
         } else {
             154
         };
-        let mut vm = ProfileMachine::from_state(
-            profile,
-            loaded.memory().to_vec(),
-            input.clone(),
-            ProfileRegisters::default(),
-        )
-        .map_err(|error| format!("two-read EOF guest copy: {error:?}"))?;
+        let mut vm = loaded
+            .fork_with_input(input.clone())
+            .map_err(|error| format!("two-read EOF guest copy: {error:?}"))?;
         let mut reads = Vec::new();
         let mut writes = Vec::new();
         let outcome = vm

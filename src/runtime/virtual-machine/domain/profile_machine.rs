@@ -287,6 +287,8 @@ pub enum ProfileMachineError {
         /// Rejected cursor value.
         observed: usize,
     },
+    /// A checkpoint fork tried to change bytes already consumed by the VM.
+    InputPrefixMismatch,
     /// Self-encryption would access a non-graphical target cell.
     InvalidEncryptionTarget {
         /// Resulting profile-width code pointer selected for encryption.
@@ -449,6 +451,9 @@ impl Display for ProfileMachineError {
                 f,
                 "profile input cursor {observed} exceeds length {input_len}"
             ),
+            Self::InputPrefixMismatch => f.write_str(
+                "new checkpoint input differs from already consumed bytes",
+            ),
             Self::InvalidEncryptionTarget { pointer, value } => {
                 write!(f, "self-encryption target {pointer} contains ")?;
                 write!(f, "non-graphical value {value}")
@@ -540,6 +545,40 @@ impl ProfileMachine {
             self.output.push(byte);
         }
         Ok(())
+    }
+
+    /// Forks an already validated machine with a different unread input tail.
+    ///
+    /// The source image, registers, output, consumed cursor and termination
+    /// are cloned **without resetting execution**. Bytes already consumed
+    /// must be identical in the new stream, so past guest effects cannot be
+    /// retroactively attributed to different input. Both the original and
+    /// fork retain independent owned memory. The accepted geometry is checked
+    /// for the new stream; its already validated memory is not rescanned.
+    ///
+    /// A fresh source-loaded machine has consumed no input and can therefore
+    /// be forked for any admitted byte stream. Replaying from a checkpoint
+    /// after input is only valid when its consumed prefix is unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Rejects shortened or changed consumed input and input outside the
+    /// validated execution geometry's input domain.
+    pub fn fork_with_input(
+        &self,
+        input: Vec<u8>,
+    ) -> Result<Self, ProfileMachineError> {
+        validate_input_cursor(input.len(), self.input_cursor)?;
+        if !self.geometry.admits_input(&input) {
+            return Err(ProfileMachineError::VerifiedInputRejected);
+        }
+        if self.input.get(..self.input_cursor) != input.get(..self.input_cursor)
+        {
+            return Err(ProfileMachineError::InputPrefixMismatch);
+        }
+        let mut fork = self.clone();
+        fork.input = input;
+        Ok(fork)
     }
 
     /// Loads the narrowest independently verified supported geometry.

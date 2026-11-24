@@ -186,6 +186,141 @@ fn checkpoint_roundtrip_preserves_complete_execution_state() -> TestResult {
     )
 }
 
+// A validated VM can be replayed with distinct stdin without scanning its
+// entire immutable N15 loader image for every independent input class.
+#[test]
+fn validated_checkpoint_forks_independent_input_without_resetting_state()
+-> TestResult {
+    let profile = historical_profile();
+    let original = normalize_result(ProfileMachine::from_source(
+        profile,
+        IO_ROUNDTRIP,
+        vec![0x6b],
+    ))?;
+    let mut changed = normalize_result(original.fork_with_input(vec![0x42]))?;
+    let mut unchanged = normalize_result(original.fork_with_input(vec![0x6b]))?;
+    check_equal(
+        &normalize_result(changed.run(3))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "fork changed input halt",
+    )?;
+    check_equal(
+        &normalize_result(unchanged.run(3))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "fork original input halt",
+    )?;
+    check_equal(changed.output(), b"B", "fork changed input output")?;
+    check_equal(unchanged.output(), b"k", "fork original input output")?;
+    check_equal(original.output(), b"", "parent output remains unchanged")?;
+    check_equal(&original.input_consumed(), &0, "parent cursor stays zero")?;
+    check_equal(
+        original.memory(),
+        normalize_result(ProfileMachine::from_source(
+            profile,
+            IO_ROUNDTRIP,
+            vec![0x6b],
+        ))?
+        .memory(),
+        "fork does not mutate parent memory",
+    )
+}
+
+#[test]
+fn forked_input_replays_same_vm_as_full_validated_state() -> TestResult {
+    let profile = historical_profile();
+    let loaded = normalize_result(ProfileMachine::from_source(
+        profile,
+        IO_ROUNDTRIP,
+        Vec::new(),
+    ))?;
+    for input in [Vec::new(), vec![0], vec![0x80], vec![0xff, 0x23]] {
+        let mut fork = normalize_result(loaded.fork_with_input(input.clone()))?;
+        let mut reconstructed = normalize_result(ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        ))?;
+        check_equal(
+            &normalize_result(fork.run(3))?,
+            &normalize_result(reconstructed.run(3))?,
+            "fork/full-state terminal outcome",
+        )?;
+        check_equal(
+            fork.output(),
+            reconstructed.output(),
+            "fork/full-state output",
+        )?;
+        check_equal(
+            &fork.input_consumed(),
+            &reconstructed.input_consumed(),
+            "fork/full-state byte count",
+        )?;
+        check_equal(
+            &fork.registers(),
+            &reconstructed.registers(),
+            "fork/full-state registers",
+        )?;
+        check_equal(
+            fork.memory(),
+            reconstructed.memory(),
+            "fork/full-state memory",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn checkpoint_fork_preserves_consumed_prefix_and_pending_execution()
+-> TestResult {
+    let profile = historical_profile();
+    let mut machine = normalize_result(ProfileMachine::from_source(
+        profile,
+        IO_ROUNDTRIP,
+        vec![0x6b, 0x02],
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(2))?,
+        &RunOutcome::BudgetExhausted { steps: 2 },
+        "fork source checkpoint",
+    )?;
+    check_equal(&machine.input_consumed(), &1, "checkpoint consumed cursor")?;
+    check_equal(
+        &machine.fork_with_input(vec![0x6c, 0x02]).map(|_| ()),
+        &Err(ProfileMachineError::InputPrefixMismatch),
+        "fork refuses changed consumed byte",
+    )?;
+    check_equal(
+        &machine.fork_with_input(Vec::new()).map(|_| ()),
+        &Err(ProfileMachineError::InputCursorOutOfRange {
+            input_len: 0,
+            observed: 1,
+        }),
+        "fork refuses truncated consumed input",
+    )?;
+    let mut fork = normalize_result(machine.fork_with_input(vec![0x6b, 0xff]))?;
+    check_equal(&fork.registers(), &machine.registers(), "fork registers")?;
+    check_equal(fork.output(), machine.output(), "fork prior output")?;
+    check_equal(&fork.input_consumed(), &1, "fork prior cursor")?;
+    check_equal(
+        &normalize_result(fork.run(1))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 1,
+        },
+        "fork continuation halt",
+    )?;
+    check_equal(fork.output(), b"k", "fork retained prior output")?;
+    check_equal(machine.output(), b"k", "parent retained prior output")?;
+    check_equal(&machine.input_consumed(), &1, "parent cursor unchanged")
+}
+
 #[test]
 fn current_state_wraps_max_pointers_after_committed_encryption() -> TestResult {
     let profile = current_profile();
