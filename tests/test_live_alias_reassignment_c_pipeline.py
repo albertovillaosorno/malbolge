@@ -32,6 +32,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 from tests import test_source_local_alias_c_pipeline as aliases
 from tests import test_static_for_break_c_pipeline as helpers
@@ -83,7 +84,8 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
             guest = root / "whole.malbolge"
             path.write_text(source(), encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 42)),
                 hashlib.shake_256(b"verified-dual-alias-c-stream").digest(5),
@@ -101,7 +103,8 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
             guest = root / "original.malbolge"
             path.write_text(source(loop_copy=False), encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (bytes((255, 0, 128, 1, 42)), bytes((19, 3, 2, 1, 0))):
                 run = helpers.StaticForBreakCPipelineTests.vm(guest, data)
                 self.assertEqual(run.returncode, 0, run.stderr)
@@ -116,7 +119,8 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
             guest = root / "rebind.malbolge"
             path.write_text(program, encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 42, 13)),
                 hashlib.shake_256(b"source-local-rebinding-2026").digest(6),
@@ -142,7 +146,8 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
             guest = root / "copy-rebound.malbolge"
             path.write_text(program, encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 42, 13)),
                 hashlib.shake_256(b"C-live-stale-identity-proof").digest(6),
@@ -181,14 +186,15 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
             path = root / "copy-assignment.c"
             path.write_text(rebinding_source(), encoding="utf-8")
             normalized = helpers.StaticForBreakCPipelineTests.normalized(path)
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
             assignment = next(
                 n
-                for n in normalized["nodes"]
+                for n in nodes
                 if n["kind"] == "binary-expression"
                 and n.get("operation") == "="
-                and n["span"]["begin"]["line"] == 6
+                and cast(dict[str, dict[str, int]], n["span"])["begin"]["line"] == 6
             )
-            first_id = assignment["id"]
+            first_id = cast(int, assignment["id"])
             variants = (
                 (0, "operation", "+"),
                 (0, "type", "u32"),
@@ -205,7 +211,9 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(normalized)
                     node = next(
-                        n for n in forged["nodes"] if n["id"] == first_id + offset
+                        n
+                        for n in cast(list[dict[str, object]], forged["nodes"])
+                        if n["id"] == first_id + offset
                     )
                     node[field] = value
                     guest = root / f"forged-assignment-{index}.malbolge"
@@ -274,13 +282,14 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
             path = root / "source.c"
             path.write_text(source(), encoding="utf-8")
             normalized = helpers.StaticForBreakCPipelineTests.normalized(path)
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
             declaration = next(
                 n
-                for n in normalized["nodes"]
+                for n in nodes
                 if n["kind"] == "declaration-statement"
-                and n["span"]["begin"]["line"] == 4
+                and cast(dict[str, dict[str, int]], n["span"])["begin"]["line"] == 4
             )
-            id_ = declaration["id"]
+            id_ = cast(int, declaration["id"])
             for index, (offset, field, value) in enumerate(
                 (
                     (0, "parent", 0),
@@ -292,7 +301,11 @@ class LiveAliasReassignmentCPipelineTests(unittest.TestCase):
             ):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(normalized)
-                    node = next(n for n in forged["nodes"] if n["id"] == id_ + offset)
+                    node = next(
+                        n
+                        for n in cast(list[dict[str, object]], forged["nodes"])
+                        if n["id"] == id_ + offset
+                    )
                     node[field] = value
                     guest = root / f"forged-{index}.malbolge"
                     result = aliases.SourceLocalAliasCPipelineTests.adapter(

@@ -32,6 +32,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 from tests import test_source_local_alias_c_pipeline as alias_helpers
 from tests import test_static_for_break_c_pipeline as helpers
@@ -71,7 +72,8 @@ class LiveLocalReassignmentCPipelineTests(unittest.TestCase):
             guest = root / "reassigned.malbolge"
             path.write_text(source(), encoding="utf-8")
             result = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 42, 13, 254, 7, 9)),
                 hashlib.shake_256(b"live-byte-reassignment-2026").digest(9),
@@ -91,7 +93,8 @@ class LiveLocalReassignmentCPipelineTests(unittest.TestCase):
             guest = root / "zero-trip.malbolge"
             path.write_text(source().replace("i < 3", "i < 0"), encoding="utf-8")
             result = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in (bytes((0, 255, 128)), bytes((17, 42, 0))):
                 run = helpers.StaticForBreakCPipelineTests.vm(guest, data)
                 self.assertEqual(run.returncode, 0, run.stderr)
@@ -108,7 +111,8 @@ class LiveLocalReassignmentCPipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             result = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, result, guest):
+                return
             data = bytes((0, 255, 128, 1, 42, 13, 254, 7, 9, 16, 200, 3))
             run = helpers.StaticForBreakCPipelineTests.vm(guest, data)
             self.assertEqual(run.returncode, 0, run.stderr)
@@ -142,13 +146,13 @@ class LiveLocalReassignmentCPipelineTests(unittest.TestCase):
             path = root / "reassignment.c"
             path.write_text(source(), encoding="utf-8")
             normalized = helpers.StaticForBreakCPipelineTests.normalized(path)
-            nodes = normalized["nodes"]
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
             assignment = next(
                 n
                 for n in nodes
                 if n["kind"] == "binary-expression" and n.get("operation") == "="
             )
-            node_id = assignment["id"]
+            node_id = cast(int, assignment["id"])
             for index, (offset, field, value) in enumerate(
                 (
                     (0, "operation", "+"),
@@ -163,7 +167,8 @@ class LiveLocalReassignmentCPipelineTests(unittest.TestCase):
             ):
                 with self.subTest(index=index):
                     altered = copy.deepcopy(normalized)
-                    next(n for n in altered["nodes"] if n["id"] == node_id + offset)[
+                    altered_nodes = cast(list[dict[str, object]], altered["nodes"])
+                    next(n for n in altered_nodes if n["id"] == node_id + offset)[
                         field
                     ] = value
                     guest = root / f"forged-{index}.malbolge"

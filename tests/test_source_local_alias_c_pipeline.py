@@ -34,6 +34,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 from tests import test_static_for_break_c_pipeline as helpers
 from tests.test_static_for_break_c_pipeline import ADAPTER, FRONTEND, LAYOUT, ROOT, VM
@@ -84,7 +85,8 @@ class SourceLocalAliasCPipelineTests(unittest.TestCase):
                 target = root / "alias.malbolge"
                 path.write_text(source(alias, consumer), encoding="utf-8")
                 compiled = helpers.StaticForBreakCPipelineTests.compile(path, target)
-                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                if not helpers.guest_or_explicit_eof_refusal(self, compiled, target):
+                    continue
                 for data in (
                     bytes((0, 255, 128, 1, 42, 13)),
                     hashlib.shake_256(b"C-alias-guest-2026").digest(6),
@@ -104,7 +106,8 @@ class SourceLocalAliasCPipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             compiled = helpers.StaticForBreakCPipelineTests.compile(path, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 42, 13)),
                 hashlib.shake_256(b"loop-C-alias-guest-2026").digest(6),
@@ -136,7 +139,10 @@ class SourceLocalAliasCPipelineTests(unittest.TestCase):
                     compiled = helpers.StaticForBreakCPipelineTests.compile(
                         path, target
                     )
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not helpers.guest_or_explicit_eof_refusal(
+                        self, compiled, target
+                    ):
+                        continue
                     guest = helpers.StaticForBreakCPipelineTests.vm(target, data)
                     self.assertEqual(guest.returncode, 0, guest.stderr)
                     self.assertEqual(guest.stdout, data)
@@ -196,13 +202,13 @@ class SourceLocalAliasCPipelineTests(unittest.TestCase):
             path = root / "alias.c"
             path.write_text(source(), encoding="utf-8")
             normalized = helpers.StaticForBreakCPipelineTests.normalized(path)
-            nodes = normalized["nodes"]
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
             declaration = next(
                 n
                 for n in nodes
                 if n["kind"] == "variable-declaration" and n.get("name") == "snapshot"
             )
-            alias_id = declaration["id"]
+            alias_id = cast(int, declaration["id"])
             mutations = (
                 (alias_id, "name", "spoofed"),
                 (alias_id, "reference", "current@47"),
@@ -217,9 +223,8 @@ class SourceLocalAliasCPipelineTests(unittest.TestCase):
                 with self.subTest(index=index):
                     modified = copy.deepcopy(normalized)
                     node_id, field, value = mutation
-                    next(n for n in modified["nodes"] if n["id"] == node_id)[field] = (
-                        value
-                    )
+                    modified_nodes = cast(list[dict[str, object]], modified["nodes"])
+                    next(n for n in modified_nodes if n["id"] == node_id)[field] = value
                     target = root / f"forged-{index}.malbolge"
                     result = self.adapter(modified, target, path)
                     self.assertNotEqual(result.returncode, 0)

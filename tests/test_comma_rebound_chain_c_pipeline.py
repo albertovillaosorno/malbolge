@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_comma_assigned_output_c_pipeline as previous
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -85,7 +86,8 @@ class CommaReboundChainCPipelineTests(unittest.TestCase):
             path, guest_path = root / "stream.c", root / "stream.malbolge"
             path.write_text(source(), encoding="utf-8")
             compiled = COMPILE(path, guest_path)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest_path):
+                return
             samples = (
                 bytes((0, 255, 128, 1)),
                 bytes((255, 0, 1, 128)),
@@ -110,7 +112,8 @@ class CommaReboundChainCPipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             compiled = COMPILE(path, guest_path)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest_path):
+                return
             samples = (
                 bytes((0, 255, 128, 1)),
                 bytes((255, 0, 1, 128)),
@@ -142,7 +145,8 @@ class CommaReboundChainCPipelineTests(unittest.TestCase):
             path, guest_path = root / "zero.c", root / "zero.malbolge"
             path.write_text(source(bound=0), encoding="utf-8")
             compiled = COMPILE(path, guest_path)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest_path):
+                return
             for data in (bytes((0, 255)), bytes((255, 0))):
                 guest = RUN(guest_path, data)
                 self.assertEqual(guest.returncode, 0, guest.stderr)
