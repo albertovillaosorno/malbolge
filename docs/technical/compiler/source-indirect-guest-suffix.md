@@ -453,6 +453,9 @@ idempotent `p` stores. This verifier reconstructs the reached `p`/`*` write
 from the decoded opcode, live data pointer and actual data read, even when
 the resulting value equals the previous word. Without this distinction the
 true-EOF branch would falsely fail `MissingGuestPointerWrite`.
+The version audit also refuses to attribute an earlier guest pointer store
+to a cell later modified by off-site XLAT2 encryption. Its earlier data
+provenance cannot authenticate that subsequent code-cell version.
 
 A reusable `SourceWrittenIndirectGuestVerifier` loads each graphical source
 and its 15-trit memory image once. Each finite input uses a **fresh copy**

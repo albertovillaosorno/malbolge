@@ -2599,6 +2599,8 @@ fn physical_indirect_proof_rejects_planned_but_unread_pointer_cell() {
 #[expect(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
     reason = "finite 257-class source-loaded EOF branch and trace receipt"
 )]
 fn source_written_indirect_branch_proves_guest_input_pointer_for_all_classes() {
@@ -2688,6 +2690,8 @@ fn source_written_indirect_branch_proves_guest_input_pointer_for_all_classes() {
 #[test]
 #[expect(
     clippy::expect_used,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
     reason = "source-authenticated dynamic branch refusal boundaries"
 )]
 fn source_written_indirect_branch_refuses_unwritten_and_wrong_targets() {
@@ -2699,11 +2703,11 @@ fn source_written_indirect_branch_refuses_unwritten_and_wrong_targets() {
     let source = layout::build_signed_eof_branch_source(profile)
         .expect("strict signed-EOF physical source");
     let valid = SourceWrittenIndirectGuestProbe {
-        source: &source,
-        input: &[3],
-        indirect_code_cell: 114,
-        pointer_cell: 143,
         allowed_landings: &[45, 126],
+        indirect_code_cell: 114,
+        input: &[3],
+        pointer_cell: 143,
+        source: &source,
         step_budget: 180,
     };
     assert_eq!(
@@ -2740,8 +2744,8 @@ fn source_written_indirect_branch_refuses_unwritten_and_wrong_targets() {
         verify_source_written_indirect_guest(
             profile,
             SourceWrittenIndirectGuestProbe {
-                input: &[],
                 allowed_landings: &[45],
+                input: &[],
                 ..valid
             }
         ),
@@ -2796,11 +2800,11 @@ fn source_written_indirect_branch_refuses_unwritten_and_wrong_targets() {
         verify_source_written_indirect_guest(
             profile,
             SourceWrittenIndirectGuestProbe {
-                source: &plan.source,
-                input: &[3, 4, 5],
-                indirect_code_cell: 94,
-                pointer_cell: 111,
                 allowed_landings: &[117],
+                indirect_code_cell: 94,
+                input: &[3, 4, 5],
+                pointer_cell: 111,
+                source: &plan.source,
                 step_budget: 110,
             }
         ),
