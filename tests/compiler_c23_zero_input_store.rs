@@ -419,3 +419,112 @@ fn skipping_real_preinput_one_priming_loses_raw_byte_two() -> Result<(), String>
     }
     Ok(())
 }
+
+fn raw_input_pointer_select_source() -> Vec<u8> {
+    let mut source = full_raw_input_pair_source();
+    for (site, instruction) in [
+        (44usize, b'j'),
+        (45, b'j'),
+        (46, b'j'),
+        (47, b'j'),
+        (48, b'v'),
+    ] {
+        source[site] = graphical(site, instruction);
+    }
+    source
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "normative 257-class input-dependent pointer transfer"
+)]
+fn guest_uses_saved_raw_input_as_257_class_data_pointer() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = raw_input_pointer_select_source();
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    for raw in (0..=255u32).chain([profile.eof_word()]) {
+        let pointed = (raw + 1) % profile.memory_words();
+        assert_eq!(pointed == 0, raw == profile.eof_word());
+    }
+    let prepared = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for input in [
+        vec![],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![127],
+        vec![128],
+        vec![255],
+        vec![255, 4],
+    ] {
+        let raw = input
+            .first()
+            .map_or(profile.eof_word(), |byte| u32::from(*byte));
+        let expected_pointer = (raw + 1) % profile.memory_words();
+        let mut guest = ProfileMachine::from_state(
+            profile,
+            prepared.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            guest
+                .run_traced(49, &mut |step| trace.push(*step))
+                .map_err(|error| error.to_string())?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 49,
+            },
+        );
+        assert_eq!(trace[43].decoded, Some(b'p'));
+        assert_eq!(trace[43].after.registers.accumulator, raw);
+        for (index, read_address, read_value, next_pointer) in [
+            (44, HIGH, 0, 1),
+            (45, 1, 85, 86),
+            (46, 86, LOW - 1, LOW),
+            (47, LOW, raw, expected_pointer),
+        ] {
+            assert_eq!(trace[index].decoded, Some(b'j'));
+            assert_eq!(
+                trace[index].memory_reads.data.map(|r| (r.address, r.value)),
+                Some((read_address, read_value))
+            );
+            assert_eq!(trace[index].after.registers.data_pointer, next_pointer);
+        }
+        assert_eq!(trace[48].decoded, Some(b'v'));
+        assert_eq!(guest.memory_word(LOW), Ok(raw));
+        assert_eq!(guest.memory_word(HIGH), Ok(0));
+        assert_eq!(guest.input_consumed(), usize::from(!input.is_empty()));
+        assert!(guest.output().is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn raw_pointer_builder_matches_independent_guest_and_refuses_old_profile() {
+    let plan = layout::build_adjacent_c32_zero_c37_raw_pointer_source(
+        current_profile(),
+    )
+    .expect("current profile has exact raw-input pointer reentry");
+    assert_eq!(
+        plan.raw_pair.zero_pair.source,
+        raw_input_pointer_select_source()
+    );
+    assert_eq!(plan.input_pointer_code_address, 47);
+    assert_eq!(plan.halt_code_address, 48);
+    assert_eq!(plan.raw_pair.low_store_code_address, 43);
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_raw_pointer_source(
+            historical_profile(),
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+}

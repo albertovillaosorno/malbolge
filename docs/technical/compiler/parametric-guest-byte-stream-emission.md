@@ -28,6 +28,18 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Authentic raw EOF-dependent data-pointer selection (2026-11-23)
+
+A 49-step extension (`build_adjacent_c32_zero_c37_raw_pointer_source`)
+returns to the physically saved raw input with C44..C46 `j` and executes
+C47 `j` using that actual source-loaded word. The resulting D is exactly
+`raw + 1` modulo 14,348,907: successful input bytes select D1..D256 and
+true N15 EOF alone selects D0. C48 halts without dereferencing the selected
+cell. Independent 257-class arithmetic and sampled normative VM traces in
+`tests/compiler_c23_zero_input_store.rs` establish the dynamic selection.
+This is a **data-pointer effect only**, not a guest code-pointer branch,
+source-C23 signed EOF predicate, loop backedge or checksum publication.
+
 ### Lossless raw input into the original initialized C32 pair (2026-11-23)
 
 A stronger, independently verified 45-step graphical N15 source now continues

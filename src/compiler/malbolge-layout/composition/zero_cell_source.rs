@@ -170,6 +170,20 @@ pub struct AdjacentC32ZeroC37RawInputPairSource {
     pub zero_pair: AdjacentC32ZeroSource,
 }
 
+/// A bounded real `j` after the first source-initialized raw input store.
+///
+/// EOF selects data pointer 0 and successful bytes select 1..=256. This
+/// physical data-pointer split is not a code-pointer branch or C23 EOF guard.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37RawPointerSource {
+    /// Reached `j` reading the physically saved N15 input word.
+    pub input_pointer_code_address: u32,
+    /// Reached halt after the dynamic pointer selection.
+    pub halt_code_address: u32,
+    /// Source-loaded zero pair followed by the lossless raw N15 store.
+    pub raw_pair: AdjacentC32ZeroC37RawInputPairSource,
+}
+
 /// N15 byte/EOF input written into a real adjacent two-word physical region.
 ///
 /// The low word holds the raw unsigned byte (or unnormalized profile EOF),
@@ -837,6 +851,46 @@ pub fn build_adjacent_c32_zero_c37_raw_input_pair_source(
         low_store_code_address: 43,
         return_code_addresses: [40, 41, 42],
         zero_pair,
+    })
+}
+
+/// Append a genuine data-pointer selection after the physical raw N15
+/// input store, preserving the initialized low and high words.
+///
+/// C44..C46 `j` revisit the saved low cell through high zero, encrypted C1,
+/// and loader M86. C47 `j` reads the actual raw input word, selecting D0
+/// for N15 EOF or D1..D256 for successful input bytes. C48 halts without
+/// fetching or dereferencing the selected address. This is not an EOF code
+/// branch, a signed C23 source guard, or a complete compiler artifact.
+///
+/// # Errors
+///
+/// Refuses noncurrent profiles or an unencodable graphical continuation.
+pub fn build_adjacent_c32_zero_c37_raw_pointer_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37RawPointerSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut raw_pair =
+        build_adjacent_c32_zero_c37_raw_input_pair_source(profile)?;
+    for (site, operation) in [
+        (44usize, LinearOpcode::RelocateDataPointer),
+        (45, LinearOpcode::RelocateDataPointer),
+        (46, LinearOpcode::RelocateDataPointer),
+        (47, LinearOpcode::RelocateDataPointer),
+        (48, LinearOpcode::Halt),
+    ] {
+        *raw_pair
+            .zero_pair
+            .source
+            .get_mut(site)
+            .ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37RawPointerSource {
+        input_pointer_code_address: 47,
+        halt_code_address: 48,
+        raw_pair,
     })
 }
 
