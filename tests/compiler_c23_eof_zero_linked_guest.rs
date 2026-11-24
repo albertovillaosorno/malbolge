@@ -152,3 +152,96 @@ fn eof_two_pointer_hops_reach_an_encrypted_guest_store_not_a_c23_branch()
     assert_eq!(nul.output(), b"");
     Ok(())
 }
+
+// An extra j after C57 makes *both* EOF and NUL reach a valid first
+// post-jump encryption target. This is more progress than the shorter jji
+// candidate, but the full trace still fails: a later encrypted i reenters
+// loader noncode M[7_174_416] for both input classes. The source-controlled
+// checksum loop remains unlinked, and the other 255 byte values are unproven.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "bounded 119-step VM proof of two physical paths"
+)]
+fn eof_and_nul_pointer_chain_transfers_but_later_encryption_blocks_loop()
+-> Result<(), String> {
+    const RAW_LOW: u32 = 7_174_417;
+    let profile = current_profile();
+    let mut source =
+        layout::build_adjacent_c32_zero_c37_raw_eof_zero_source(profile)
+            .map_err(|error| format!("source: {error:?}"))?
+            .raw_pointer
+            .raw_pair
+            .zero_pair
+            .source;
+    for (position, operation) in [
+        (55u32, b'j'),
+        (56, b'j'),
+        (57, b'j'),
+        (58, b'j'),
+        (59, b'i'),
+    ] {
+        source
+            [usize::try_from(position).map_err(|error| error.to_string())?] =
+            graphical(position, operation)?;
+    }
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    for (input, event, raw, jump, encrypted, failure_at) in [
+        (
+            Vec::new(),
+            TraceInput::EndOfInput,
+            profile.eof_word(),
+            38,
+            (37, 66),
+            90,
+        ),
+        (vec![0], TraceInput::Byte(0), 0, 1, (0, 33), 118),
+    ] {
+        let mut vm = ProfileMachine::from_source(profile, &source, input)
+            .map_err(|error| format!("source load: {error:?}"))?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(150, &mut |step| trace.push(*step)),
+            Err(malbolge::ProfileMachineError::InvalidEncryptionTarget {
+                pointer: RAW_LOW - 1,
+                value: RAW_LOW - 1,
+            }),
+        );
+        assert_eq!(trace.len(), failure_at + 1);
+        assert_eq!(trace[37].input, Some(event));
+        assert_eq!(trace[54].decoded, Some(b'p'));
+        assert_eq!(
+            trace[54].after.registers.accumulator == 0,
+            raw == profile.eof_word()
+        );
+        assert_eq!(vm.memory_word(RAW_LOW), Ok(raw));
+        assert_eq!(vm.memory_word(RAW_LOW + 1), Ok(0));
+        for index in 55..=58 {
+            assert_eq!(trace[index].decoded, Some(b'j'));
+        }
+        assert_eq!(trace[59].decoded, Some(b'i'));
+        assert_eq!(trace[59].after.registers.code_pointer, jump);
+        assert_eq!(
+            trace[59]
+                .memory_reads
+                .encryption
+                .map(|read| (read.address, read.value)),
+            Some(encrypted),
+        );
+        assert_eq!(trace[60].before.registers.code_pointer, jump);
+        assert!(trace[60].result.is_ok());
+        assert_eq!(trace[failure_at].decoded, Some(b'i'));
+        assert_eq!(
+            trace[failure_at].result,
+            Err(malbolge::ProfileMachineError::InvalidEncryptionTarget {
+                pointer: RAW_LOW - 1,
+                value: RAW_LOW - 1,
+            }),
+        );
+        assert_eq!(vm.output(), b"");
+    }
+    Ok(())
+}
