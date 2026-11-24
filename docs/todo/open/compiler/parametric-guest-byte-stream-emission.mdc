@@ -41,6 +41,15 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A new opt-in joined branch/I/O/source-effect gate authenticates **the
+physical address of every guest output opcode** against the proposed
+source ByteOutput effect while retaining exact physical branch/IO order
+and one source return path. All five frozen actual classifier EOF/byte
+vectors reject unplaced marker outputs as **UnexpectedGuestOutput**.
+The older source-branch and pointer checks still pass where intended;
+no C23 arithmetic/phi/backedge/loop has been linked and no checksum
+artifact has been published. Evidence: source-indirect-guest-suffix.
+
 The source/guest bridge now has a stricter opt-in **single-path branch
 plus complete I/O** check. Its physical guest branch now binds to
 an exact full-I/O event cut, including any output before the conditional,

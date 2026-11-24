@@ -1266,7 +1266,8 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
     use super::super::signed_eof_branch_source as signed_source;
     use super::super::typed_cfg_adapter::state_relocation::{
         GuestCodeBlockPlacement, GuestCodeEdgeKind, GuestCodeEdgePadPlacement,
-        GuestCodeInputAnchor, GuestCodeOperationAnchor, GuestCodeProposals,
+        GuestCodeEffectAnchor, GuestCodeInputAnchor, GuestCodeOperationAnchor,
+        GuestCodeProposals,
     };
     use super::{SourceBranchLanding, SourceInputProbe};
 
@@ -1567,6 +1568,48 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
         );
         if input.len() == 1 {
             assert_eq!(joined.source_input().observations[1].trace_index, 171);
+        }
+        // An input/branch proof cannot borrow an unplaced marker output
+        // as a source-identical checksum effect. The new strict option
+        // independently checks each reached guest output opcode address.
+        assert_eq!(
+            pointer_verifier
+                .verify_source_return_branch_io_effect_anchored(
+                    &requested,
+                    source_first_guard,
+                    &[],
+                )
+                .map(|_proof| ()),
+            Err(BoundError::SourceInput(
+                SourceInputTraceError::UnexpectedGuestOutput,
+            )),
+            "real N15 marker output has no source effect anchor for {input:?}",
+        );
+        if input.is_empty() {
+            let (block, ordinal) = checksum_source_output_identity(&wire)?;
+            // Naming the physical C128 marker as the checksum ByteOutput
+            // cannot place it inside the source block's bounded interval.
+            // A forged identity is refused before it can authenticate bytes.
+            let forged = [GuestCodeEffectAnchor {
+                block,
+                code_address: 128,
+                effect_index: 0,
+                function: 0,
+                ordinal,
+            }];
+            assert_eq!(
+                pointer_verifier
+                    .verify_source_return_branch_io_effect_anchored(
+                        &requested,
+                        source_first_guard,
+                        &forged,
+                    )
+                    .map(|_proof| ()),
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::InvalidSourcePlacement,
+                )),
+                "the real C128 marker is outside its claimed source output",
+            );
         }
         // The second C23 getchar is a real input on non-EOF paths, but
         // cannot be borrowed as an ancestor of this earlier pointer.

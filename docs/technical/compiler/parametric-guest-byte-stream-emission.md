@@ -28,6 +28,20 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical output addresses require authenticated source effects (2026-11-24)
+
+An additional opt-in source/guest verifier now checks every physically
+executed output at its exact proposed source output-effect address, together
+with the already proved input-derived branch arm, full I/O chronology and
+source-known output bytes. It replays both trace receipts and insists that
+the source branch and the **reached output-site identities** coexist on one
+complete source return path. Five binary/EOF inputs to the real 132-cell
+classifier refuse its unplaced C57/C128 marker writes with
+**UnexpectedGuestOutput**; the narrower physical pointer proof remains valid.
+This establishes a stricter fail-closed necessary condition, not a complete
+C23 output-translation success. The full seven-block EOF checksum is still
+unlinked and unpublished. See source-indirect-guest-suffix.md.
+
 ### Joint source branch and guest I/O path validation (2026-11-24)
 
 An opt-in verifier now requires a source-known conditional's physical

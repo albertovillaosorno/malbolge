@@ -6,6 +6,29 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Source-identified physical output effect addresses (2026-11-24)
+
+The opt-in **verify_source_return_branch_io_effect_anchored** composes the
+existing exact source-known branch/I/O verifier with independently replayed
+source operation/effect anchors. Each reached normative VM output must decode
+as an actual output instruction at the proposed **canonical source output
+effect address**; matching stdout bytes without such an anchor cannot pass.
+The output-site receipt is additionally replayed in the **same source branch
+CFG walk**, with the actual physical transfer's full-I/O cut. Its source and
+physical traces must agree on all reads, I/O events, output, consumed bytes
+and termination. This avoids claiming that independently plausible source
+output and source branch paths establish one executable source-C program.
+
+The 132-cell source-authenticated C23 first-read classifier still passes its
+narrower real guest pointer and source branch checks on EOF/NUL/high-byte
+classes. All five pinned EOF, one-byte and multiple-byte streams now
+independently refuse the strict effect-address option: the real C57/C128
+class-marker outputs have **no placed C23 checksum output effect anchor**.
+The source checker reports **UnexpectedGuestOutput** before pretending those
+markers came from the checksum's source putchar. This is a negative physical
+witness and a necessary verifier boundary, not a positive full-output linker;
+the original seven-block checksum remains unlinked and unpublished.
+
 ## Source branch and complete I/O must agree on one path (2026-11-24)
 
 The stricter opt-in `verify_source_return_branch_io_ordered` first replays

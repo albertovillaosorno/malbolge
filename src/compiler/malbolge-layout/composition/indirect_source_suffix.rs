@@ -48,9 +48,10 @@ use super::source_input_trace::{
     SourceBranchLanding, SourceInputPrefixProof, SourceInputProbe,
     SourceInputTraceError, verify_source_branch_io_landing,
     verify_source_branch_landing,
+    verify_source_input_site_output_with_effect_anchors,
 };
 use super::typed_cfg_adapter::state_relocation::{
-    GuestCodeOperationAnchor, GuestCodeProposals,
+    GuestCodeEffectAnchor, GuestCodeOperationAnchor, GuestCodeProposals,
 };
 
 const MAX_SOURCE_CELLS: usize = 4096;
@@ -674,6 +675,75 @@ impl SourceWrittenIndirectGuestVerifier {
         )
         .map_err(SourceBoundIndirectGuestError::SourceInput)?;
         Ok(joined)
+    }
+
+    /// Additionally authenticate every physical output as the exact source
+    /// output effect at its reached code address, not only as a matching byte.
+    ///
+    /// This opt-in strengthening binds named output effects and one physical
+    /// branch to the same finite source return path. A matching output from
+    /// an unplaced guest code cell refuses, even if its byte, read order and
+    /// source-known branch direction are correct. It remains a necessary
+    /// output/control condition, not guest arithmetic or complete C linking.
+    ///
+    /// # Errors
+    ///
+    /// Refuses missing, forged or reordered source output effect anchors,
+    /// or any physical pointer, source CFG or return-path discrepancy.
+    pub fn verify_source_return_branch_io_effect_anchored(
+        &self,
+        probe: &SourceBoundIndirectGuestProbe<'_>,
+        branch: SourceBranchLanding,
+        effect_anchors: &[GuestCodeEffectAnchor],
+    ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
+    {
+        use SourceBoundIndirectGuestError::{
+            InconsistentGuestTrace, SourceInput,
+        };
+        // The output-site verifier independently replays the actual VM and
+        // authenticates *every* reached output opcode against source effects.
+        // It also checks the complete source-known output and input sequence.
+        let anchored = verify_source_input_site_output_with_effect_anchors(
+            probe.source_input,
+            probe.proposals,
+            probe.operation_anchors,
+            effect_anchors,
+        )
+        .map_err(SourceInput)?;
+        let joined =
+            self.verify_source_return_branch_io_ordered(probe, branch)?;
+        if anchored.observations != joined.source_input.observations
+            || anchored.io_events != joined.source_input.io_events
+            || anchored.guest_output != joined.source_input.guest_output
+            || anchored.bytes_consumed != joined.source_input.bytes_consumed
+            || anchored.outcome != joined.source_input.outcome
+        {
+            return Err(InconsistentGuestTrace);
+        }
+        let before_transfer = joined
+            .guest_pointer
+            .trace()
+            .get(..joined.guest_pointer.transfer_step())
+            .ok_or(InconsistentGuestTrace)?;
+        let io_before_transfer = before_transfer
+            .iter()
+            .filter(|step| step.input.is_some() || step.output.is_some())
+            .count();
+        // A distinct source path might explain the correct physical output
+        // sites without selecting the same branch arm. Re-check them *jointly*
+        // with the known source condition and the actual guest I/O cut.
+        verify_source_branch_io_landing(
+            probe.source_input.canonical,
+            &anchored,
+            branch,
+            joined.guest_pointer.landing_address(),
+            io_before_transfer,
+        )
+        .map_err(SourceInput)?;
+        Ok(SourceBoundIndirectGuestProof {
+            source_input: anchored,
+            guest_pointer: joined.guest_pointer,
+        })
     }
 
     #[expect(
