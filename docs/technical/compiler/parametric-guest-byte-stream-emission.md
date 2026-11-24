@@ -28,6 +28,32 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Finite loader-seed bound for signed EOF conversion (2026-11-23)
+
+An independent N15 scalar enumeration freezes a **two-crazy operand**
+grammar: two graphical seeds in `[33, 126]` (8,836 ordered pairs), six
+recurrence phases for the first and second operand (36 ordered choices),
+and 0 through 14 right-trit rotations of the **first** operand only.
+The second operand remains a virgin recurrence word. Each proposal must
+produce every raw byte 0..255 unchanged modulo 256 and map the target's
+true signed EOF word 14,348,906 to C23 output byte 255. A fixed seven-byte
+filter precedes complete 256-byte checking; false positives cannot pass.
+The complete finite search has exactly **12 accepted tuples**, all at
+**nine rotations**, all with second seed and final operand 121. The
+known `Iy` (`73,121`) seed, first recurrence phase, ninth rotation to
+7,138,732 and final phase 121 are one accepted tuple. Zero through eight
+rotations cannot solve this *specified* two-crazy loader grammar; the
+ninth rotation is not a universal lower bound for all possible guest
+algorithms or operand sequences.
+
+This is a reproducible scalar negative bound, not target source-loadability:
+graphical seeds are not independently authenticated as code at a chosen
+position and the search never executes a source-C program or links guest
+control. The real source-loaded eight-rotation prefix still cannot reach
+the ninth rotation and then a correct EOF loop. The complete seven-block
+C23 checksum still fails closed without a target artifact. Regression:
+`tests/test_c23_loader_seed_rotation_bound.py`.
+
 ### Signed EOF input-store causality for both C23 words (2026-11-23)
 
 The opt-in physical input-store verifier now refuses a **numerically correct**
