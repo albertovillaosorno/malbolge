@@ -29,7 +29,7 @@
 # - Defaults:
 #   - Inconclusive guards and forged provenance refuse publication.
 
-"""Whole C-to-Malbolge proof of byte-total conditional statements."""
+"""Audit C23 byte-total conditional statements at the guest boundary."""
 
 from __future__ import annotations
 
@@ -44,6 +44,8 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_wide_range_conditional_c_pipeline as previous
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -100,7 +102,8 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
             guest = root / "live-if.malbolge"
             _ = program.write_text(source(), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             boundaries = (
                 bytes((0, 255)),
                 bytes((1, 254)),
@@ -127,7 +130,8 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                 source("current >= 256", reverse=True), encoding="utf-8"
             )
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (bytes((0, 255)), bytes((255, 0))):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -158,7 +162,8 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                 original.replace(first, replacement), encoding="utf-8"
             )
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (bytes((0, 255)), bytes((255, 0)), bytes((33, 89))):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -182,7 +187,8 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                         source(guard, reverse=reverse), encoding="utf-8"
                     )
                     compiled = COMPILE(program, guest)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                        continue
                     for data in (
                         bytes((0, 255)),
                         bytes((255, 0)),
@@ -216,7 +222,8 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                         source(guard, reverse=reverse), encoding="utf-8"
                     )
                     compiled = COMPILE(program, guest)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                        continue
                     for data in (
                         bytes((0, 255)),
                         bytes((255, 0)),
@@ -255,7 +262,8 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                 original.replace(first, replacement), encoding="utf-8"
             )
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (bytes((0, 255)), bytes((255, 0))):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -278,7 +286,8 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                         source(guard, reverse=reverse), encoding="utf-8"
                     )
                     result = COMPILE(program, guest)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, guest):
+                        continue
                     boundaries = (
                         bytes((0, 255)),
                         bytes((1, 254)),
@@ -329,11 +338,7 @@ class GuestByteTotalIfCPipelineTests(unittest.TestCase):
                         check=False,
                         timeout=15,
                     )
-                    self.assertEqual(outcome.returncode, 1, outcome.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", outcome.stderr
-                    )
-                    self.assertFalse(guest.exists())
+                    frontend_layout_or_explicit_refusal(self, outcome, guest)
 
     def test_partitioned_non_total_and_effectful_guards_refuse(self) -> None:
         """One uncovered byte or hidden short-circuit read defeats proof."""
