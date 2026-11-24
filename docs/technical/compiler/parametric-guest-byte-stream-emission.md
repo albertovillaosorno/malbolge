@@ -84,6 +84,14 @@ establishes a physical **zero-if-EOF data value**, not normalized signed C23
 `getchar`, guest `i` code branching, an unbounded loop or publication of the
 complete seven-block mutable checksum. P2 remains open.
 
+A deliberately naive reached C55 `j` / C56 `i` continuation proves why the
+zero data value is **not yet a code branch**. The jump reads a different
+loader word rather than returning D to the new C54 predicate: on true EOF,
+the `i` still consumes raw MLOW=14,348,906 and rejects a non-graphical
+post-jump encryption target. Successful input byte 2 likewise rejects at
+M118. The paired source and normative VM negative control prevent treating
+this partial control transfer as linked guest CFG execution.
+
 ### Authentic raw EOF-dependent data-pointer selection (2026-11-23)
 
 A 49-step extension (`build_adjacent_c32_zero_c37_raw_pointer_source`)

@@ -939,3 +939,61 @@ fn exhaustive_real_vm_preserves_raw_and_eof_zero() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "bounded negative real VM code-pointer continuation"
+)]
+fn raw_eof_zero_requires_operand_reentry_before_guest_code_jump()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut source = raw_pointer_eof_zero_source();
+    // A reachable `i` alone does not consume the C54 predicate: C55 `j`
+    // changes D using a *different* source-loader word, then C56 reads M[D].
+    for (site, opcode) in [(55, b'j'), (56, b'i'), (57, b'v')] {
+        source[site] = graphical(site, opcode);
+    }
+    assert_eq!(layout::admit_c23_probe_graphical_source(&source), Ok(()));
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    for (input, expected_target, expected_error) in [
+        (vec![], 14_348_906u32, (14_348_906, 7_174_416)),
+        (vec![2], 118, (118, 7_174_416)),
+    ] {
+        let raw = input.first().map_or(profile.eof_word(), |b| u32::from(*b));
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            input.clone(),
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(70, &mut |step| trace.push(*step)),
+            Err(malbolge::ProfileMachineError::InvalidEncryptionTarget {
+                pointer: expected_error.0,
+                value: expected_error.1,
+            }),
+            "input {input:?}",
+        );
+        assert_eq!(trace.len(), 57);
+        assert_eq!(trace[54].decoded, Some(b'p'));
+        assert_eq!(
+            trace[54].after.registers.accumulator == 0,
+            input.is_empty(),
+        );
+        assert_eq!(trace[55].decoded, Some(b'j'));
+        assert_eq!(trace[56].decoded, Some(b'i'));
+        assert_eq!(
+            trace[56].memory_reads.data.map(|read| read.value),
+            Some(expected_target),
+        );
+        assert_eq!(vm.memory_word(LOW), Ok(raw));
+        assert_eq!(vm.memory_word(HIGH), Ok(0));
+        assert!(vm.output().is_empty());
+    }
+    Ok(())
+}
