@@ -2183,11 +2183,11 @@ fn physical_indirect_proof_authenticates_fourfold_output_and_phase_effects() {
             },
         )
         .expect("source-rederived physical four-input cumulative output");
-        assert_eq!((proof.transfer_step, proof.steps), (94, 113));
-        assert_eq!(proof.trace.len(), proof.steps);
-        assert_eq!(proof.input_consumed, input.len().min(4));
+        assert_eq!((proof.transfer_step(), proof.steps()), (94, 113));
+        assert_eq!(proof.trace().len(), proof.steps());
+        assert_eq!(proof.input_consumed(), input.len().min(4));
         let input_events = proof
-            .trace
+            .trace()
             .iter()
             .filter_map(|step| step.input)
             .collect::<Vec<_>>();
@@ -2200,17 +2200,17 @@ fn physical_indirect_proof_authenticates_fourfold_output_and_phase_effects() {
             })
             .collect::<Vec<_>>();
         assert_eq!(input_events, expected_reads, "actual guest EOF events");
-        assert_eq!(proof.trace[106].decoded, Some(b'/'));
-        assert_eq!(proof.trace[106].input, Some(expected_reads[3]));
-        assert_eq!(proof.return_address, None);
-        assert_eq!(proof.output, [
+        assert_eq!(proof.trace()[106].decoded, Some(b'/'));
+        assert_eq!(proof.trace()[106].input, Some(expected_reads[3]));
+        assert_eq!(proof.return_address(), None);
+        assert_eq!(proof.output(), [
             prior_outputs[0],
             prior_outputs[1],
             prior_outputs[2],
             prior_outputs[3],
             u8::try_from(fourfold % 256).expect("cumulative low byte"),
         ]);
-        let transfer = proof.trace[94];
+        let transfer = proof.trace()[94];
         assert_eq!(transfer.before.registers.code_pointer, 94);
         assert_eq!(transfer.decoded, Some(b'i'));
         assert_eq!(
@@ -2227,7 +2227,7 @@ fn physical_indirect_proof_authenticates_fourfold_output_and_phase_effects() {
             (107, 129, 110, 117, 118),
             (108, 130, 118, 104, 105),
         ] {
-            let step = proof.trace[index];
+            let step = proof.trace()[index];
             assert_eq!(
                 (step.before.registers.code_pointer, step.decoded),
                 (code, Some(b'j'))
@@ -2240,7 +2240,7 @@ fn physical_indirect_proof_authenticates_fourfold_output_and_phase_effects() {
             );
             assert_eq!(step.after.registers.data_pointer, next_data);
         }
-        let fold_step = proof.trace[110];
+        let fold_step = proof.trace()[110];
         let prior = scalar_crazy(
             scalar_crazy(scalar_crazy(121, raw(0)), raw(1)),
             scalar_crazy(57, raw(2)),
@@ -2265,13 +2265,13 @@ fn physical_indirect_proof_authenticates_fourfold_output_and_phase_effects() {
             Some((106, prior, fourfold)),
         );
         assert_eq!(
-            proof.trace[111].output,
+            proof.trace()[111].output,
             Some(u8::try_from(fourfold % 256).expect("fold low"))
         );
         assert_eq!(
             (
-                proof.trace[112].before.registers.code_pointer,
-                proof.trace[112].decoded
+                proof.trace()[112].before.registers.code_pointer,
+                proof.trace()[112].decoded
             ),
             (134, Some(b'v'))
         );
@@ -2341,11 +2341,11 @@ fn physical_indirect_suffix_proof_replays_actual_guest_input_and_halt() {
             },
         )
         .expect("full physical input, pointer, suffix and halt");
-        assert_eq!(proof.transfer_step, 94);
-        assert_eq!(proof.steps, 107);
-        assert_eq!(proof.input_consumed, consumed);
-        assert_eq!(proof.output, expected);
-        assert_eq!(proof.return_address, None);
+        assert_eq!(proof.transfer_step(), 94);
+        assert_eq!(proof.steps(), 107);
+        assert_eq!(proof.input_consumed(), consumed);
+        assert_eq!(proof.output(), expected);
+        assert_eq!(proof.return_address(), None);
     }
     // A second independently graphical pointer byte, C111=117, reaches
     // C118 through the *same* genuine C94 i. Selection is source-bound.
@@ -2376,8 +2376,8 @@ fn physical_indirect_suffix_proof_replays_actual_guest_input_and_halt() {
         },
     )
     .expect("alternate source pointer and code leaf are physically reachable");
-    assert_eq!(proof.steps, 98);
-    assert_eq!(proof.output, [3, 49, 0x80]);
+    assert_eq!(proof.steps(), 98);
+    assert_eq!(proof.output(), [3, 49, 0x80]);
 }
 
 #[test]
@@ -2409,16 +2409,16 @@ fn physical_indirect_suffix_proof_checks_terminal_indirect_return() {
         },
     )
     .expect("real terminal-i return reaches previously encrypted code halt");
-    assert_eq!(proof.transfer_step, 94);
-    assert_eq!(proof.return_address, Some(67));
-    assert_eq!(proof.steps, 123);
-    assert_eq!(proof.trace.len(), proof.steps);
-    assert_eq!(proof.trace[106].decoded, Some(b'i'));
-    assert_eq!(proof.trace[107].before.registers.code_pointer, 67);
-    assert_eq!(proof.trace[122].before.registers.code_pointer, 82);
-    assert_eq!(proof.trace[122].decoded, Some(b'v'));
-    assert_eq!(proof.input_consumed, 3);
-    assert_eq!(proof.output, [3, 49, 5, 58]);
+    assert_eq!(proof.transfer_step(), 94);
+    assert_eq!(proof.return_address(), Some(67));
+    assert_eq!(proof.steps(), 123);
+    assert_eq!(proof.trace().len(), proof.steps());
+    assert_eq!(proof.trace()[106].decoded, Some(b'i'));
+    assert_eq!(proof.trace()[107].before.registers.code_pointer, 67);
+    assert_eq!(proof.trace()[122].before.registers.code_pointer, 82);
+    assert_eq!(proof.trace()[122].decoded, Some(b'v'));
+    assert_eq!(proof.input_consumed(), 3);
+    assert_eq!(proof.output(), [3, 49, 5, 58]);
 }
 
 #[test]
@@ -2450,7 +2450,7 @@ fn physical_indirect_suffix_proof_refuses_forged_source_and_unlinked_control() {
     assert_eq!(
         verify_source_loaded_indirect_suffix_guest(current_profile(), baseline)
             .expect("reached and halted physical suffix")
-            .steps,
+            .steps(),
         98
     );
     let mut false_original = original.clone();

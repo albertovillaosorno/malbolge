@@ -376,8 +376,9 @@ also checks its real successor transition; the remaining guest must halt
 under the same bounded VM run, including any earlier encrypted-code reentry.
 The proof exposes the actual transfer step, complete VM step count,
 consumed input count, output bytes, terminal-indirect return address and
-**every bounded normative transition**. Each immutable observation records
-registers, exact data reads, instruction writes, post-step encryption,
+**every bounded normative transition**. An opaque proof with private
+fields exposes read-only accessors for the verified state and sequence.
+Each immutable observation records registers, reads, writes, encryption,
 committed I/O and the reached code word. A prospective linker may compare
 these per-input physical facts with separate source-SSA obligations; their
 presence in a trace does not establish a C operation by itself.
@@ -391,8 +392,9 @@ reaches a previously encrypted C82 `v`. The verifier rejects source-only
 or candidate-only mutation, a nominated `i` site that never executes,
 a source-valid M110 pointer that is never read because the real C94 `i`
 reads M111 instead, a guest run truncated before its actual halt, an
-oversize stdin and an unsupported profile. Separate existing VM/exhaustive-scalar tests remain
-authoritative for all byte/EOF classes. In particular, this new gate is
+oversize stdin and an unsupported profile. Separate existing VM and
+exhaustive-scalar tests remain authoritative for all byte/EOF
+classes. In particular, this new gate is
 **physical guest-control evidence**, not linkage of the seven-block
 source-C mutable EOF checksum; P2 remains open.
 

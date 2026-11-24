@@ -123,20 +123,52 @@ pub struct IndirectSourceSuffixGuestProbe<'source> {
 /// does not prove unbounded C CFG control, signed EOF conversion or arithmetic.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IndirectSourceSuffixGuestProof {
+    input_consumed: usize,
+    output: Vec<u8>,
+    return_address: Option<u32>,
+    steps: usize,
+    transfer_step: usize,
+    trace: Vec<ProfileStepTrace>,
+}
+
+impl IndirectSourceSuffixGuestProof {
     /// Number of bytes consumed by actual guest input instructions.
-    pub input_consumed: usize,
+    #[must_use]
+    pub const fn input_consumed(&self) -> usize {
+        self.input_consumed
+    }
+
     /// Exact bytes emitted by the normative guest, not a host C projection.
-    pub output: Vec<u8>,
+    #[must_use]
+    pub fn output(&self) -> &[u8] {
+        &self.output
+    }
+
     /// Next code address selected by a terminal `i`, if that leaf has one.
-    pub return_address: Option<u32>,
+    #[must_use]
+    pub const fn return_address(&self) -> Option<u32> {
+        self.return_address
+    }
+
     /// Number of completed transitions through the final guest halt.
-    pub steps: usize,
+    #[must_use]
+    pub const fn steps(&self) -> usize {
+        self.steps
+    }
+
     /// VM transition index of the genuine `i` that enters the suffix.
-    pub transfer_step: usize,
+    #[must_use]
+    pub const fn transfer_step(&self) -> usize {
+        self.transfer_step
+    }
+
     /// Every normative transition, including prefix writes, actual indirect
     /// reads, suffix state changes, encrypted-code return, and the real halt.
     /// This finite, input-specific evidence is not a source-C oracle.
-    pub trace: Vec<ProfileStepTrace>,
+    #[must_use]
+    pub fn trace(&self) -> &[ProfileStepTrace] {
+        &self.trace
+    }
 }
 
 /// A graphical candidate; **not** evidence that any guest `i` reaches it.
