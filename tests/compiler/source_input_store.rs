@@ -335,6 +335,34 @@ fn matching_constant_writes_are_not_input_stores()
     Ok(())
 }
 
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "full-width signed EOF provenance regression"
+)]
+fn c23_eof_high_word_cannot_be_an_unrelated_constant()
+-> Result<(), SourceInputTraceError> {
+    let input = input_observation(TraceInput::EndOfInput, signed_c23(), 2);
+    let mut forged = synthetic_tracker(input)?;
+    let _low = forged.words.insert(256, 4_644_102);
+    forged.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
+    let _high = forged.words.insert(257, 299);
+    forged.observe_data_write(257, 55, 55, &BTreeSet::new());
+    assert_eq!(
+        forged.complete().err(),
+        Some(SourceInputTraceError::InputResultUnrelatedToInput),
+        "matching high EOF word must not bypass input provenance"
+    );
+
+    let mut dependent = synthetic_tracker(input)?;
+    let _dependent_low = dependent.words.insert(256, 4_644_102);
+    dependent.observe_data_write(256, 54, 54, &BTreeSet::from([0]));
+    let _dependent_high = dependent.words.insert(257, 299);
+    dependent.observe_data_write(257, 55, 55, &BTreeSet::from([0]));
+    assert_eq!(dependent.complete()?.len(), 1);
+    Ok(())
+}
+
 fn source_cell(position: usize, opcode: u8) -> Result<u8, String> {
     (33..=126u8)
         .find(|byte| {
@@ -344,6 +372,96 @@ fn source_cell(position: usize, opcode: u8) -> Result<u8, String> {
             ) == Some(opcode)
         })
         .ok_or_else(|| format!("missing graphical {opcode} at {position}"))
+}
+
+// This deliberately seeds data words for a genuine N15 VM trace. It is a
+// checker counterexample, not a published source-C compiler artifact.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "real signed EOF input and two independently traced frame writes"
+)]
+fn real_guest_cannot_forge_c23_eof_high_word_with_a_rotate()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source = b"/p*vo"
+        .iter()
+        .enumerate()
+        .map(|(position, opcode)| source_cell(position, *opcode))
+        .collect::<Result<Vec<_>, _>>()?;
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let mut memory = loaded.memory().to_vec();
+    // These exact seeds are deliberately chosen so a real EOF /, p, *
+    // writes both numerically correct C23 cells without the high word
+    // ever receiving data, pointer or control dependence from the read.
+    memory[70] = 2_353_200;
+    memory[71] = 897;
+    let registers = malbolge::ProfileRegisters {
+        data_pointer: 69,
+        ..malbolge::ProfileRegisters::default()
+    };
+    let mut vm =
+        ProfileMachine::from_state(profile, memory, Vec::new(), registers)
+            .map_err(|error| error.to_string())?;
+    let mut observation =
+        input_observation(TraceInput::EndOfInput, signed_c23(), 2);
+    observation.code_address = 0;
+    observation.trace_index = 0;
+    observation.destination.address = 70;
+    let prefix = SourceInputPrefixProof {
+        bytes_consumed: 0,
+        guest_output: Vec::new(),
+        io_events: Vec::new(),
+        output_sites: Vec::new(),
+        observations: vec![observation],
+        outcome: malbolge::RunOutcome::Terminated {
+            reason: malbolge::Termination::HaltInstruction,
+            steps: 4,
+        },
+    };
+    let mut tracker = StoreTracker::from_machine(&vm, &prefix)
+        .map_err(|error| format!("{error:?}"))?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(4, &mut |step| trace.push(*step))
+            .map_err(|error| error.to_string())?,
+        prefix.outcome,
+    );
+    assert_eq!(trace.len(), 4);
+    assert_eq!(trace[0].decoded, Some(b'/'));
+    assert_eq!(trace[0].input, Some(TraceInput::EndOfInput));
+    assert_eq!(trace[1].decoded, Some(b'p'));
+    assert_eq!(
+        trace[1]
+            .memory_delta
+            .data
+            .map(|write| (write.address, write.after)),
+        Some((70, 4_644_102)),
+    );
+    assert_eq!(trace[2].decoded, Some(b'*'));
+    assert_eq!(
+        trace[2]
+            .memory_delta
+            .data
+            .map(|write| (write.address, write.after)),
+        Some((71, 299)),
+    );
+    assert_eq!(trace[3].decoded, Some(b'v'));
+    for step in &trace {
+        tracker.step(step);
+    }
+    assert_eq!(
+        tracker.complete().err(),
+        Some(SourceInputTraceError::InputResultUnrelatedToInput),
+        "a correct numeric C23 EOF store needs causal high-word evidence",
+    );
+    assert_eq!(vm.input_consumed(), 0);
+    assert!(vm.output().is_empty());
+    Ok(())
 }
 
 #[test]

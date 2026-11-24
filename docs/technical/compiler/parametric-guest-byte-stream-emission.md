@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Signed EOF input-store causality for both C23 words (2026-11-23)
+
+The opt-in physical input-store verifier now refuses a **numerically correct**
+signed C23 EOF store unless the real EOF input affects both C32 result words.
+A successful finite `getchar` may still write its constant-zero high word
+without data dependence, provided its low word carries this read. At EOF,
+allowing only one dependent word would authenticate an unrelated high-word
+constant even though the source operation promised a signed `-1` result.
+
+A red-first four-step **real N15 VM** trace executes `/`, `p`, `*`, `v`
+with deliberately seeded frame operands. The genuine EOF and `p` write
+M70=4,644,102, while an independent `*` rotates M71=897 into exactly
+299. Both are the correct C23 EOF encoding, but the high word never
+receives EOF data or control influence. The former checker accepted this
+trace; the stronger checker refuses `InputResultUnrelatedToInput`. Separate
+synthetic accounting controls accept two EOF-dependent writes and preserve
+successful-byte constant-high behavior. The guest's seeded data words are
+not a source-loaded C compiler artifact, and the original seven-block
+mutable EOF checksum still refuses physical layout and publication.
+Regression: `tests/compiler/source_input_store.rs`.
+
 ### One-read physical input-to-pointer after nine rotations (2026-11-23)
 
 A modified **fully source-loaded** 91-cell `Iy` guest now makes its first
