@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Second input folds a saved first guest word before a valid halt (2026-11-24)
+
+A new source-valid 135-cell N15 program executes two real guest inputs and
+stores the first in M106 via `p`. Four pointer reads, including the physically
+encrypted C37 no-op value, redirect the second accumulator through another
+actual `p` on the previously saved word. It outputs the crazy-word fold and
+follows five further `j` instructions and one `i` into a genuine encrypted
+C82 `v` halt at step 96. Two complete 257-class input marginal sweeps,
+nine full physical traces and five source-valid negative mutations are
+checked against an independent fifteen-trit oracle. No host-derived guest
+output is published. This verifies a state-dependent physical arithmetic
+continuation that the preceding two-read echo guest did not establish.
+It remains neither C23 arithmetic, signed EOF conversion, nor executable
+source checksum control flow. Evidence and limits:
+`docs/technical/compiler/two-input-fold-reentry-research.md` and
+`tests/compiler_c23_saved_input_fold_reentry.rs`.
+
 ### Source Boolean promotions before binary and comparison (2026-11-24)
 
 The strict numerical source-operation gate now refuses every direct `_Bool`
