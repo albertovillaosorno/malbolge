@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-owned phi pad entry setup reservations (2026-11-23)
+
+The source-locked CFG planner now accepts a proposed **phi-pad entry site**
+for a fully anchored predecessor-specific edge. Previously the automatic pad
+always began on its first snapshot, leaving no room for guest pointer setup
+*before* that snapshot. An exact entry may now precede the first write; the
+planned source control edge enters there, while all source-bound snapshot,
+commit and successor-exit sites remain unchanged. Entry/exit setup intervals
+are reserved together, disjoint from other source blocks and phi pads.
+
+The original seven-block C23 mutable EOF checksum reserves the 5-to-1
+backedge at C80..C171: entry C80, eight exact snapshot/commit sites at
+C90/C97/C105/C114/C123/C131/C140/C150, and exit C170. Legacy callers
+still obtain C90 as the entry when none is proposed. Duplicate, foreign,
+copy-skipping, missing-copy and overlapping entry sites fail closed. A
+separate pre-existing normative N15 guest test proves the **bounded physical
+possibility** of a pre-snapshot `j` pointer setup at C3 and genuine phi
+copies at C4/C6, but does not execute this checksum. These are only code
+reservations: no full C23 arithmetic, EOF loop or final artifact is linked.
+P2 remains open. Regressions: `tests/compiler/source_dynamic_checksum.rs`
+and `tests/compiler/source_phi_copy_trace.rs`.
+
 ### Sparse predecessor-specific phi exit transfer anchors (2026-11-23)
 
 The automatic source-CFG phi planner now accepts an **optional exact exit

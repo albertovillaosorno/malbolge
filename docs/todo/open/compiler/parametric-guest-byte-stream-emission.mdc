@@ -239,6 +239,16 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-23 the source-authenticated automatic phi-pad planner added
+  an optional **pre-snapshot entry address** alongside sparse writes and
+  post-commit exits. The original seven-block mutable EOF checksum now
+  reserves C80..C171 for its 5-to-1 pad while preserving eight exact copy
+  sites and disjoint other blocks/pads. Omitted entries retain prior layout;
+  late, foreign, duplicate, copy-free and colliding proposals refuse.
+  An earlier separately executed N15 pre-snapshot pointer-setup test supports
+  physical feasibility, not a linked checksum: full C23 guest publication
+  still refuses. See the P2 contract and source checksum regression.
+
 - On 2026-11-23 the strongest opt-in source CFG guest gate also began
   requiring every source operation-effect address to execute in order on
   each reached block visit. A real five-step N15 `p, o, o, o, v` source

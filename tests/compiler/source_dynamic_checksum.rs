@@ -3082,9 +3082,10 @@ fn original_checksum_auto_phi_pad_composes_with_signed_input_and_control_sites()
 #[test]
 fn original_checksum_auto_phi_pads_keep_both_header_predecessors_disjoint() {
     use super::typed_cfg_adapter::state_relocation::{
-        GuestCodeEdgeKind, GuestCodePhiCopyAnchor, GuestCodePhiExitAnchor,
-        GuestCodePlacementError,
+        GuestCodeEdgeKind, GuestCodePhiCopyAnchor, GuestCodePhiEntryAnchor,
+        GuestCodePhiExitAnchor, GuestCodePlacementError,
         plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors,
+        plan_source_locked_cfg_with_phi_boundary_anchors,
         plan_source_locked_cfg_with_phi_exit_anchors,
     };
     let wire =
@@ -3211,6 +3212,78 @@ fn original_checksum_auto_phi_pads_keep_both_header_predecessors_disjoint() {
     let mut reordered = exits;
     reordered.reverse();
     assert_eq!(with_exits(&reordered), Ok(padded));
+    // Both distinct loop-header phi predecessors may reserve setup before
+    // *their own* first copy, without relocating one another's word sites.
+    let entries = [
+        GuestCodePhiEntryAnchor {
+            code_address: 80,
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 0,
+            successor: 1,
+        },
+        GuestCodePhiEntryAnchor {
+            code_address: 112,
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        },
+    ];
+    let with_boundaries = |entries: &[GuestCodePhiEntryAnchor]| {
+        plan_source_locked_cfg_with_phi_boundary_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            &anchors,
+            entries,
+            &exits,
+        )
+    };
+    let with_entries = with_boundaries(&entries)
+        .expect("both original checksum predecessors keep private setup");
+    for (predecessor, start, first, exit) in
+        [(0, 80, 88, 109), (5, 112, 120, 199)]
+    {
+        let edge = with_entries
+            .control_edges
+            .iter()
+            .find(|edge| {
+                (edge.function, edge.predecessor, edge.successor)
+                    == (0, predecessor, 1)
+            })
+            .expect("source predecessor edge");
+        assert_eq!(
+            (edge.entry_address, edge.pad_exit_address),
+            (start, Some(exit))
+        );
+        assert_eq!(edge.snapshot_sites[0].code_address, first);
+    }
+    let mut entry_order = entries;
+    entry_order.reverse();
+    assert_eq!(with_boundaries(&entry_order), Ok(with_entries));
+    assert_eq!(
+        with_boundaries(&[entries[0], GuestCodePhiEntryAnchor {
+            code_address: 105,
+            ..entries[1]
+        },]),
+        refused,
+        "one predecessor setup cannot overlap the other pad"
+    );
+    assert_eq!(
+        with_boundaries(&[
+            GuestCodePhiEntryAnchor {
+                predecessor: 5,
+                ..entries[0]
+            },
+            entries[1],
+        ]),
+        refused,
+        "predecessor identity cannot be borrowed"
+    );
     assert_eq!(
         with_exits(&[
             GuestCodePhiExitAnchor {
@@ -4582,4 +4655,192 @@ fn original_checksum_phi_exit_anchor_reserves_post_commit_guest_setup() {
         refusal,
         "guest setup may not overlap another source block"
     );
+}
+
+// Before a phi snapshot can physically execute p/*, its predecessor-owned pad
+// may need guest pointer setup. The predecessor must land at the setup entry,
+// not skip directly to the first copy. These are address obligations only.
+#[test]
+fn original_checksum_phi_entry_anchor_reserves_pre_snapshot_guest_setup() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEdgeKind, GuestCodeOperationAnchor, GuestCodePhiCopyAnchor,
+        GuestCodePhiEntryAnchor, GuestCodePhiExitAnchor,
+        GuestCodePlacementError,
+        plan_source_locked_cfg_with_phi_boundary_anchors,
+        plan_source_locked_cfg_with_phi_exit_anchors,
+    };
+
+    let wire =
+        source_locked_checksum_wire().expect("original C23 EOF checksum");
+    let positions = [90, 97, 105, 114, 123, 131, 140, 150];
+    let copies = positions
+        .into_iter()
+        .enumerate()
+        .map(|(copy_index, code_address)| GuestCodePhiCopyAnchor {
+            code_address,
+            copy_index: u32::try_from(copy_index)
+                .expect("eight backedge writes"),
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        })
+        .collect::<Vec<_>>();
+    let entry = GuestCodePhiEntryAnchor {
+        code_address: 80,
+        function: 0,
+        kind: GuestCodeEdgeKind::Jump,
+        predecessor: 5,
+        successor: 1,
+    };
+    let exit = GuestCodePhiExitAnchor {
+        code_address: 170,
+        function: 0,
+        kind: GuestCodeEdgeKind::Jump,
+        predecessor: 5,
+        successor: 1,
+    };
+    let bind = |operations: &[GuestCodeOperationAnchor],
+                copies: &[GuestCodePhiCopyAnchor],
+                entries: &[GuestCodePhiEntryAnchor],
+                exits: &[GuestCodePhiExitAnchor]| {
+        plan_source_locked_cfg_with_phi_boundary_anchors(
+            &wire,
+            256,
+            512,
+            operations,
+            &[],
+            &[],
+            copies,
+            entries,
+            exits,
+        )
+    };
+    let plan = bind(&[], &copies, &[entry], &[exit])
+        .expect("the source-owned pad retains pointer setup at both ends");
+    let pad = plan
+        .edge_pads
+        .iter()
+        .find(|pad| (pad.function, pad.predecessor, pad.successor) == (0, 5, 1))
+        .expect("checked loop backedge pad");
+    assert_eq!((pad.start, pad.end_exclusive), (80, 171));
+    let edge = plan
+        .control_edges
+        .iter()
+        .find(|edge| {
+            (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+        })
+        .expect("checked source control edge");
+    assert_eq!((edge.entry_address, edge.pad_exit_address), (80, Some(170)));
+    assert_eq!(
+        edge.snapshot_sites
+            .iter()
+            .chain(&edge.commit_sites)
+            .map(|copy| copy.code_address)
+            .collect::<Vec<_>>(),
+        positions,
+    );
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.edge_pads.len(), 4);
+    let entry_only = bind(&[], &copies, &[entry], &[])
+        .expect("an explicit entry also permits the ordinary compact exit");
+    let compact_pad = entry_only
+        .edge_pads
+        .iter()
+        .find(|pad| (pad.function, pad.predecessor, pad.successor) == (0, 5, 1))
+        .expect("same source backedge without an exit override");
+    assert_eq!((compact_pad.start, compact_pad.end_exclusive), (80, 152));
+    let compact_edge = entry_only
+        .control_edges
+        .iter()
+        .find(|edge| {
+            (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+        })
+        .expect("same source control edge without an exit override");
+    assert_eq!(
+        (compact_edge.entry_address, compact_edge.pad_exit_address),
+        (80, Some(151))
+    );
+    assert_eq!(
+        compact_edge
+            .snapshot_sites
+            .iter()
+            .chain(&compact_edge.commit_sites)
+            .map(|copy| copy.code_address)
+            .collect::<Vec<_>>(),
+        positions,
+    );
+    assert_eq!(
+        bind(&[], &copies, &[], &[exit])
+            .expect("old exit-only boundary remains supported")
+            .edge_pads,
+        plan_source_locked_cfg_with_phi_exit_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            &copies,
+            &[exit],
+        )
+        .expect("legacy exit-only API remains supported")
+        .edge_pads,
+    );
+    assert_eq!(
+        bind(
+            &[],
+            &copies,
+            &[GuestCodePhiEntryAnchor {
+                code_address: 90,
+                ..entry
+            }],
+            &[exit]
+        )
+        .map(|plan| plan.edge_pads),
+        plan_source_locked_cfg_with_phi_exit_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            &copies,
+            &[exit],
+        )
+        .map(|plan| plan.edge_pads),
+        "an entry exactly at the first copy preserves old reservations",
+    );
+    let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+    for wrong in [
+        GuestCodePhiEntryAnchor {
+            code_address: 91,
+            ..entry
+        },
+        GuestCodePhiEntryAnchor {
+            code_address: 171,
+            ..entry
+        },
+        GuestCodePhiEntryAnchor {
+            code_address: 256,
+            ..entry
+        },
+        GuestCodePhiEntryAnchor { predecessor: 4, ..entry },
+        GuestCodePhiEntryAnchor {
+            kind: GuestCodeEdgeKind::WhenFalse,
+            ..entry
+        },
+        GuestCodePhiEntryAnchor { successor: 2, ..entry },
+    ] {
+        assert_eq!(bind(&[], &copies, &[wrong], &[exit]), refusal);
+    }
+    assert_eq!(bind(&[], &copies, &[entry, entry], &[exit]), refusal);
+    assert_eq!(bind(&[], &[], &[entry], &[exit]), refusal);
+    let occupied = [GuestCodeOperationAnchor {
+        function: 0,
+        block: 3,
+        ordinal: 0,
+        code_address: 83,
+    }];
+    assert_eq!(bind(&occupied, &copies, &[entry], &[exit]), refusal);
 }
