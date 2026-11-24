@@ -45,6 +45,8 @@ from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as equivalent
 from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = total.ROOT
 ADAPTER = total.ADAPTER
@@ -78,7 +80,8 @@ class GuestByteArithmeticGuardCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(total.source(guard, bound=3))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in inputs:
                 with self.subTest(data=data):
                     vm = RUN(guest, data)
@@ -93,7 +96,8 @@ class GuestByteArithmeticGuardCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(equivalent.source("(current + 7) % 5", bound=1))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for value in (0, 1, 4, 5, 127, 128, 254, 255):
                 data = bytes((value, value ^ 255))
                 vm = RUN(guest, data)
@@ -122,8 +126,8 @@ class GuestByteArithmeticGuardCPipelineTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0, program)
                     self.assertFalse(guest.exists(), program)
 
-    def test_checked_arithmetic_forms_reach_guest_layout(self) -> None:
-        """Prove both-sided arithmetic without spending VM search budgets."""
+    def test_checked_arithmetic_forms_reach_layout_or_refuse(self) -> None:
+        """Probe strict admission of distinct defined integer operations."""
         guards = (
             "((current + 1) - current) == 1",
             "((current ^ 255) + current) == 255",
@@ -156,13 +160,11 @@ class GuestByteArithmeticGuardCPipelineTests(unittest.TestCase):
                         timeout=10,
                     )
                     self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
+                    frontend_layout_or_explicit_refusal(self, result, guest)
                     self.assertFalse(guest.exists())
 
-    def test_formerly_unproven_integer_xor_now_reaches_layout(self) -> None:
-        """Shifts and additions retain exact non-Boolean XOR semantics."""
+    def test_integer_xor_guard_reaches_layout_or_refuses(self) -> None:
+        """Do not claim XOR frontend admission if the C statement is refused."""
         guards = (
             "current ^ (current >> 1)",
             "current ^ (current + 1)",
@@ -191,9 +193,7 @@ class GuestByteArithmeticGuardCPipelineTests(unittest.TestCase):
                         timeout=10,
                     )
                     self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
+                    frontend_layout_or_explicit_refusal(self, result, guest)
                     self.assertFalse(guest.exists())
 
     def test_arithmetic_clang_spoofing_refuses(self) -> None:

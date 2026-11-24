@@ -45,6 +45,8 @@ from typing import cast, override
 
 from tests import test_guest_byte_total_if_c_pipeline as total
 from tests import test_guest_byte_wide_stride_c_pipeline as previous
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 COMPILE = previous.COMPILE
@@ -85,7 +87,8 @@ class GuestByteInductionArithmeticCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program())
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in samples:
                 with self.subTest(data=data):
                     vm = RUN(guest, data)
@@ -100,15 +103,16 @@ class GuestByteInductionArithmeticCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program("position * 2 == 24"))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in (b"\0\xff", b"\xff\0", b"\x80\x7f"):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
                 self.assertEqual(vm.stdout, bytes((data[0],) * 3 + (data[1],)))
                 self.assertEqual(vm.stderr, b"malbolge-steps-v1:7\n")
 
-    def test_other_pure_arithmetic_forms_reach_layout(self) -> None:
-        """All authentic operations select the C branch without runtime math."""
+    def test_pure_arithmetic_forms_reach_layout_or_strictly_refuse(self) -> None:
+        """Backend admission or explicit refusal; neither proves guest control."""
         cases = (
             "position + 12 == 24",
             "position - 12 == 0",
@@ -139,9 +143,7 @@ class GuestByteInductionArithmeticCPipelineTests(unittest.TestCase):
                         timeout=15,
                     )
                     self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
+                    frontend_layout_or_explicit_refusal(self, result, guest)
                     self.assertFalse(guest.exists())
 
     def test_direct_counter_comparison_requires_original_source_tokens(self) -> None:

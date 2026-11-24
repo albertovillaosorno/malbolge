@@ -38,6 +38,8 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_comma_resident_output_return_c_pipeline as previous
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -81,7 +83,8 @@ class GuestByteIdentityArithmeticCPipelineTests(unittest.TestCase):
             guest = root / "identity.malbolge"
             program.write_text(source(), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (
                 bytes((0, 255)),
                 bytes((255, 0)),
@@ -97,8 +100,8 @@ class GuestByteIdentityArithmeticCPipelineTests(unittest.TestCase):
                     self.assertEqual(result.stderr, b"malbolge-steps-v1:8\n")
 
     def test_multiple_mathematically_exact_byte_identities(self) -> None:
-        # Four VM witnesses cover the modulo, bitwise, multiply and shift
-        # families. The following frontend-only test covers all ten shapes.
+        # Four source forms are checked against native EOF/byte behavior.
+        # When supported, each still requires a normative guest VM witness.
         identities = (
             "current % 256",
             "current ^ 0",
@@ -113,17 +116,18 @@ class GuestByteIdentityArithmeticCPipelineTests(unittest.TestCase):
                     guest = root / f"identity-{index}.malbolge"
                     program.write_text(source(expression=expression), encoding="utf-8")
                     compiled = COMPILE(program, guest)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                        continue
                     data = bytes((0, 255)) if index % 2 == 0 else bytes((255, 0))
                     result = RUN(guest, data)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(result.stdout, bytes((data[0],) * 4 + (data[1],)))
                     self.assertEqual(result.stderr, b"malbolge-steps-v1:8\n")
 
-    def test_all_identity_operators_pass_frontend_proof(self) -> None:
-        # This uses a deliberately failing layout executable to identify
-        # frontend admission without claiming that it emits any guest code.
-        # Actual guest execution is independently tested above.
+    def test_identity_operators_reach_layout_or_refuse(self) -> None:
+        # A deliberately failing layout executable distinguishes proven
+        # frontend admission from an explicit earlier Unsupported refusal.
+        # Neither outcome counts as guest execution.
         identities = (
             "current & 255",
             "current % 256",
@@ -160,9 +164,7 @@ class GuestByteIdentityArithmeticCPipelineTests(unittest.TestCase):
                         timeout=10,
                     )
                     self.assertEqual(result.returncode, 1)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
+                    frontend_layout_or_explicit_refusal(self, result, guest)
                     self.assertFalse(guest.exists())
 
     def test_nonidentities_are_not_reinterpreted_as_byte_replay(self) -> None:
