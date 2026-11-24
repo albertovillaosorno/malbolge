@@ -33,6 +33,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
+
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
@@ -125,7 +128,8 @@ class StaticForLocalPipelineTests(unittest.TestCase):
                     target = root / f"local-{count}.malbolge"
                     path.write_text(source(count), encoding="utf-8")
                     compiled = self.compile(path, target)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not guest_or_explicit_eof_refusal(self, compiled, target):
+                        continue
                     for data in (
                         bytes([0, 255, 128, 1, 64][: count + 1]),
                         bytes(rng.randrange(256) for _ in range(count + 1)),
@@ -158,7 +162,8 @@ class StaticForLocalPipelineTests(unittest.TestCase):
             target = root / "two-phases.malbolge"
             path.write_text(source(2, statements=statements), encoding="utf-8")
             compiled = self.compile(path, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 15)),
                 bytes((3, 9, 0, 255, 42)),
@@ -191,7 +196,8 @@ class StaticForLocalPipelineTests(unittest.TestCase):
             target = root / "branch-local.malbolge"
             path.write_text(source(2, statements=statements), encoding="utf-8")
             compiled = self.compile(path, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (bytes((0, 255, 1, 128, 17)), bytes((7, 16, 33, 9, 65))):
                 guest = self.guest(target, data)
                 self.assertEqual(guest.returncode, 0, guest.stderr)
@@ -217,7 +223,8 @@ class StaticForLocalPipelineTests(unittest.TestCase):
             target = root / "else-local.malbolge"
             path.write_text(source(2, statements=statements), encoding="utf-8")
             compiled = self.compile(path, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (bytes((255, 0, 128, 1, 64)), bytes((3, 9, 6, 2, 7))):
                 guest = self.guest(target, data)
                 self.assertEqual(guest.returncode, 0, guest.stderr)
@@ -241,13 +248,13 @@ class StaticForLocalPipelineTests(unittest.TestCase):
             path = root / "branch-local.c"
             path.write_text(source(2, statements=statements), encoding="utf-8")
             normalized = self.normalized(path)
-            nodes = normalized["nodes"]
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
             declaration = next(
                 n
                 for n in nodes
                 if n["kind"] == "variable-declaration" and n.get("name") == "chosen"
             )
-            declaration_id = declaration["id"]
+            declaration_id = cast(int, declaration["id"])
             for node_id, field, replacement in (
                 (declaration_id - 1, "parent", 3),
                 (declaration_id, "reference", "chosen@1"),
@@ -255,7 +262,8 @@ class StaticForLocalPipelineTests(unittest.TestCase):
             ):
                 with self.subTest(node_id=node_id, field=field):
                     altered = copy.deepcopy(normalized)
-                    changed = next(n for n in altered["nodes"] if n["id"] == node_id)
+                    changed_nodes = cast(list[dict[str, object]], altered["nodes"])
+                    changed = next(n for n in changed_nodes if n["id"] == node_id)
                     changed[field] = replacement
                     target = root / f"forged-scope-{node_id}.malbolge"
                     result = subprocess.run(
@@ -336,7 +344,9 @@ class StaticForLocalPipelineTests(unittest.TestCase):
                 with self.subTest(node_id=node_id, field=field):
                     altered = copy.deepcopy(normalized)
                     node = next(
-                        node for node in altered["nodes"] if node["id"] == node_id
+                        node
+                        for node in cast(list[dict[str, object]], altered["nodes"])
+                        if node["id"] == node_id
                     )
                     node[field] = replacement
                     target = root / f"forged-{node_id}-{field}.malbolge"

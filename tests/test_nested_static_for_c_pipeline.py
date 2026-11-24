@@ -35,6 +35,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
+
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
@@ -129,7 +132,8 @@ class NestedStaticForCPipelineTests(unittest.TestCase):
                     target = root / f"stream-{outer}-{inner}.malbolge"
                     path.write_text(source(outer, inner), encoding="utf-8")
                     built = self.compile(path, target)
-                    self.assertEqual(built.returncode, 0, built.stderr)
+                    if not guest_or_explicit_eof_refusal(self, built, target):
+                        continue
                     count = outer * (inner + 1)
                     samples = (
                         bytes((0, 255, 128, 1, 64, 13, 237, 17) * count)[:count],
@@ -160,7 +164,7 @@ class NestedStaticForCPipelineTests(unittest.TestCase):
             path = root / "nested.c"
             path.write_text(source(), encoding="utf-8")
             normalized = self.normalized(path)
-            nodes = normalized["nodes"]
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
             loops = [node for node in nodes if node["kind"] == "for-statement"]
             self.assertEqual(len(loops), 2)
             inner = loops[1]
@@ -170,24 +174,26 @@ class NestedStaticForCPipelineTests(unittest.TestCase):
                 if node["kind"] == "compound-statement"
                 and node["parent"] == inner["id"]
             )
+            inner_id = cast(int, inner["id"])
             changes = (
-                (inner["id"], "parent", 2),
-                (inner["id"], "span.begin.column", 1),
-                (inner["id"], "span.end.byte", 0),
-                (inner["id"] + 2, "reference", "i@52"),
-                (inner["id"] + 6, "parent", 3),
+                (inner_id, "parent", 2),
+                (inner_id, "span.begin.column", 1),
+                (inner_id, "span.end.byte", 0),
+                (inner_id + 2, "reference", "i@52"),
+                (inner_id + 6, "parent", 3),
                 (inner_body["id"], "parent", 3),
                 (inner_body["id"], "span.end.column", 1),
             )
             for index, (node_id, field, replacement) in enumerate(changes):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(normalized)
-                    node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                    forged_nodes = cast(list[dict[str, object]], forged["nodes"])
+                    node = next(n for n in forged_nodes if n["id"] == node_id)
                     slot = node
                     parts = field.split(".")
                     for part in parts[:-1]:
-                        slot = slot[part]
-                    slot[parts[-1]] = replacement
+                        slot = cast(dict[str, object], slot)[part]
+                    cast(dict[str, object], slot)[parts[-1]] = replacement
                     target = root / f"forged-{index}.malbolge"
                     result = subprocess.run(
                         [

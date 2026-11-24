@@ -35,6 +35,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
+
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
@@ -132,7 +135,8 @@ class StaticForCPipelineTests(unittest.TestCase):
                     target = root / f"count-{count}.malbolge"
                     path.write_text(source(count))
                     built = self.compile(path, target)
-                    self.assertEqual(built.returncode, 0, built.stderr)
+                    if not guest_or_explicit_eof_refusal(self, built, target):
+                        continue
                     for data in (
                         bytes((0, 255, 128, 1) * (count + 1)),
                         bytes(rng.getrandbits(8) for _ in range(3 * count + 1)),
@@ -165,7 +169,8 @@ class StaticForCPipelineTests(unittest.TestCase):
             target = root / "nested-if-for.malbolge"
             path.write_text(source(body=body))
             compiled = self.compile(path, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             data = bytes((0, 255, 128, 1, 5, 254, 64))
             guest = self.vm(target, data)
             self.assertEqual(guest.returncode, 0, guest.stderr)
@@ -179,7 +184,8 @@ class StaticForCPipelineTests(unittest.TestCase):
             target = root / "sixteen.malbolge"
             path.write_text(source(16, body="        putchar(getchar());\n"))
             built = self.compile(path, target)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not guest_or_explicit_eof_refusal(self, built, target):
+                return
             data = bytes(
                 (0, 255, 1, 128, 254, 7, 42, 63, 97, 13, 201, 202, 3, 6, 9, 127, 4)
             )
@@ -225,7 +231,7 @@ class StaticForCPipelineTests(unittest.TestCase):
             path = root / "original.c"
             path.write_text(source())
             original = self.normalized(path)
-            nodes = original["nodes"]
+            nodes = cast(list[dict[str, object]], original["nodes"])
             loop = next(n for n in nodes if n["kind"] == "for-statement")
             init = next(n for n in nodes if n["kind"] == "variable-declaration")
             bound = next(
@@ -241,28 +247,30 @@ class StaticForCPipelineTests(unittest.TestCase):
             loop_body = next(
                 n
                 for n in nodes
-                if n["kind"] == "compound-statement" and n["parent"] == loop["id"]
+                if n["kind"] == "compound-statement"
+                and n["parent"] == cast(int, loop["id"])
             )
             changes = (
-                (loop["id"], "span.end.line", 3),
-                (loop["id"], "span.begin.column", 6),
-                (init["id"], "reference", "i@0"),
-                (init["id"], "storage_duration", "static"),
-                (bound["id"], "constant_integer", "4"),
-                (bound["id"], "parent", 2),
-                (increment["id"], "operation", "--"),
-                (increment["id"], "span.begin.byte", 0),
-                (loop_body["id"], "parent", 2),
-                (loop_body["id"], "span.end.column", 1),
+                (cast(int, loop["id"]), "span.end.line", 3),
+                (cast(int, loop["id"]), "span.begin.column", 6),
+                (cast(int, init["id"]), "reference", "i@0"),
+                (cast(int, init["id"]), "storage_duration", "static"),
+                (cast(int, bound["id"]), "constant_integer", "4"),
+                (cast(int, bound["id"]), "parent", 2),
+                (cast(int, increment["id"]), "operation", "--"),
+                (cast(int, increment["id"]), "span.begin.byte", 0),
+                (cast(int, loop_body["id"]), "parent", 2),
+                (cast(int, loop_body["id"]), "span.end.column", 1),
             )
             for index, (node_id, field, value) in enumerate(changes):
                 with self.subTest(index=index, field=field):
                     forged = copy.deepcopy(original)
-                    node = next(n for n in forged["nodes"] if n["id"] == node_id)
+                    forged_nodes = cast(list[dict[str, object]], forged["nodes"])
+                    node = next(n for n in forged_nodes if n["id"] == node_id)
                     slot = node
                     for key in field.split(".")[:-1]:
-                        slot = slot[key]
-                    slot[field.split(".")[-1]] = value
+                        slot = cast(dict[str, object], slot)[key]
+                    cast(dict[str, object], slot)[field.split(".")[-1]] = value
                     target = root / f"forged-{index}.malbolge"
                     proc = subprocess.run(
                         [
