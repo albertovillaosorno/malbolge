@@ -21,6 +21,27 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
+### Exact six-phase canonical loader expansion (2026-11-24)
+
+`ProfileMachine::from_source` and trusted verified-width loading now evaluate
+only the first five memory recurrence cells after the last two source words.
+Every scalar Malbolge crazy-recurrence trit pair returns to its previous
+state after six transitions beginning with the first generated state; full
+words therefore repeat every six positions starting at the final source
+word. Later initial-memory cells copy their six-position predecessor rather
+than recomputing `profile_crazy` millions of times. The original graphical
+source is never subjected to recurrence periodicity, and the full selected
+profile memory image, instruction semantics, and allocation failures stay
+unchanged.
+
+An independent scalar check exhausts all nine one-trit seed pairs through
+32 states. Profile tests compare the actual historical and 14,348,907-word
+current memory images at source boundaries, distant phases, and final cells
+against a separately iterated 256-word scalar reference. The full VM suite
+and the physically reentered 261-cell N15 input-loop suite still pass. This
+accelerates exact guest verification; it does not link the seven-block C23
+mutable checksum or establish source-level EOF loop semantics.
+
 ### Validated input-tail checkpoint forks (2026-11-24)
 
 `ProfileMachine::fork_with_input` clones an already validated VM state with

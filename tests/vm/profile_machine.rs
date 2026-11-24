@@ -847,6 +847,104 @@ fn current_loader_projects_to_complete_historical_memory_prefix() -> TestResult
 }
 
 #[test]
+fn scalar_loader_recurrence_state_repeats_after_six_transitions() -> TestResult
+{
+    // All nine trit-pair states constitute a width-independent proof:
+    // crazy is coordinate-wise, so six-phase recurrence holds at N10/N15.
+    for older in 0..=2u32 {
+        for previous in 0..=2u32 {
+            let mut scalar = vec![older, previous];
+            for _ in 0..30usize {
+                let last = scalar.len();
+                let older_word = *scalar
+                    .get(last.saturating_sub(2))
+                    .ok_or("scalar recurrence requires two words")?;
+                let previous_word = *scalar
+                    .last()
+                    .ok_or("scalar recurrence requires the last word")?;
+                scalar.push(scalar_crazy(older_word, previous_word, 1));
+            }
+            // The first source trit is not necessarily periodic; the
+            // second and all generated trits are, starting at index seven.
+            for index in 7..scalar.len() {
+                check_equal(
+                    scalar.get(index).ok_or("scalar phase must exist")?,
+                    scalar.get(index - 6).ok_or("prior phase must exist")?,
+                    "independent scalar loader cycle",
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn profile_loader_retains_scalar_initialization_at_far_addresses() -> TestResult
+{
+    for (profile, source) in [
+        (historical_profile(), CURRENT_SOURCE),
+        (historical_profile(), NARROWING_NOOP_HALT_SOURCE),
+        (current_profile(), CURRENT_SOURCE),
+    ] {
+        let vm = normalize_result(ProfileMachine::from_source(
+            profile,
+            source,
+            Vec::new(),
+        ))?;
+        let base = scalar_loaded_prefix(source, profile.word_trits(), 256);
+        let modulus = profile.memory_words();
+        // Besides source and post-source boundaries, check both the center
+        // and final recurrence cells of the full canonical memory image.
+        let probes = [
+            0,
+            1,
+            2,
+            3,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            12,
+            13,
+            15,
+            16,
+            94,
+            255,
+            256,
+            257,
+            1023,
+            modulus.div_euclid(2),
+            modulus - 7,
+            modulus - 6,
+            modulus - 2,
+            modulus - 1,
+        ];
+        for address in probes {
+            let index = usize::try_from(address)
+                .map_err(|error| format!("address conversion: {error}"))?;
+            let expected = if index < base.len() {
+                *base.get(index).ok_or("scalar prefix must exist")?
+            } else {
+                // Choose the phase from an independently iterated 256-word
+                // scalar reference, not from the loader's five-step prefix.
+                let reference_index = 250 + (index - 250).rem_euclid(6);
+                *base
+                    .get(reference_index)
+                    .ok_or("scalar phase witness must exist")?
+            };
+            check_equal(
+                &normalize_result(vm.memory_word(address))?,
+                &expected,
+                "profile loader scalar far-address parity",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn profiled_historical_matches_classic_roundtrip_and_eof() -> TestResult {
     for input in [vec![0x41], Vec::new()] {
         let mut classic = normalize_result(Machine::from_source(

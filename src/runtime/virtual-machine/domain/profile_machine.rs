@@ -1359,7 +1359,16 @@ fn load_profile(
     words
         .try_reserve_exact(additional)
         .map_err(|_error| ProfileLoadError::MemoryAllocation)?;
-    while words.len() < memory_words {
+    // Every scalar ternary recurrence pair returns to the same state six
+    // transitions after its first transition. Crazy operates independently
+    // on each trit, so this also holds for complete words at any width.
+    // Retain five actual recurrence transitions after the source's final
+    // two words; from the sixth onward, each cell repeats the one six
+    // positions earlier. Source bytes themselves are never made periodic.
+    for _ in 0..5usize {
+        if words.len() == memory_words {
+            return Ok(words);
+        }
         let previous = words
             .last()
             .copied()
@@ -1370,6 +1379,14 @@ fn load_profile(
             .copied()
             .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
         words.push(profile_crazy(older, previous, geometry.word_trits()));
+    }
+    while words.len() < memory_words {
+        let phase_index = words.len().saturating_sub(6);
+        let word = words
+            .get(phase_index)
+            .copied()
+            .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
+        words.push(word);
     }
     Ok(words)
 }
