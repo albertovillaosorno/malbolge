@@ -56,6 +56,7 @@ mod eof_branch_plan;
 mod eof_c23_conversion_source;
 mod eof_output_plan;
 mod guest_state_placement;
+mod indirect_source_suffix;
 mod live_input_encoded_store;
 mod loader_rotation_source;
 mod loader_seed;
@@ -145,6 +146,10 @@ pub use eof_output_plan::{
 pub use guest_state_placement::{
     GuestStatePlacementCandidate, GuestStatePlacementError,
     GuestStatePlacementRequest, place_source_bound_guest_state,
+};
+pub use indirect_source_suffix::{
+    IndirectSourceSuffixError, IndirectSourceSuffixPlan,
+    plan_source_loaded_indirect_suffix,
 };
 pub use live_input_encoded_store::{
     LiveInputEncodedStoreError, LiveInputEncodedStoreSource,
