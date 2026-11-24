@@ -28,6 +28,28 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Sparse source-operation code reservations beyond input (2026-11-23)
+
+The source-locked CFG planner now accepts sparse **operation anchors** for
+any canonical typed instruction, not only `getchar`/byte input. The first
+anchor fixes that block's minimum source-prefix position, later anchors
+preserve source order with physical setup gaps, and unanchored blocks plus
+predecessor-specific phi pads are packed into disjoint code intervals.
+The original input-only interface still rejects non-input anchors; both
+paths rebind every typed effect and source control edge independently.
+
+The original complete seven-block C23 checksum now has a checked *proposal*
+for a first entry-block literal at C0, the first signed read at C37, both
+word effects at C40/C42, the second signed read at C66 with C69/C71 word
+sites, and an independent computation in block 3 at C180. Wrong ordering,
+overlapping blocks, duplicate identities and foreign ordinals all refuse.
+This fixes a code-placement capability gap for source operations preceding
+physical input setup and blocks containing arithmetic but no reads. It does
+**not** prove those positions execute the prescribed guest instructions,
+link conditional jumps or form an EOF loop. The exact same full C23 source
+still refuses target publication; P2 acceptance is open. The red-first
+regression is `tests/compiler/source_dynamic_checksum.rs`.
+
 ### Source-typed signed input per-word effect reservations (2026-11-23)
 
 The source-locked automatic code planner also accepts distinct sparse

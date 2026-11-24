@@ -2087,13 +2087,72 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
     anchors: &[GuestCodeInputAnchor],
     effect_anchors: &[GuestCodeEffectAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    let operations = anchors
+        .iter()
+        .map(|anchor| GuestCodeOperationAnchor {
+            block: anchor.block,
+            code_address: anchor.code_address,
+            function: anchor.function,
+            ordinal: anchor.ordinal,
+        })
+        .collect::<Vec<_>>();
+    plan_source_locked_cfg_with_general_effect_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        &operations,
+        effect_anchors,
+        true,
+    )
+}
+
+/// Automatically reserve source-locked, sparsely anchored operations from
+/// **any** typed CFG block, including literals before the first real input
+/// and arithmetic in blocks without input. The first anchored instruction
+/// fixes that block's minimum prefix, while subsequent effect anchors may
+/// leave code cells for operand setup between source-ordered operations.
+/// Other source blocks and predecessor-specific phi pads remain disjoint.
+///
+/// All source instructions, write widths and control edges are independently
+/// rebound from canonical typed IR. These are only proposed code positions;
+/// no guest opcodes, source arithmetic, signed EOF conversion or branch
+/// transfers execute here.
+///
+/// # Errors
+///
+/// Refuses missing, duplicate, out-of-order or foreign source operation
+/// identities, overlapping code/phi reservations and invalid frame geometry.
+pub fn plan_source_locked_cfg_with_operation_and_effect_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    plan_source_locked_cfg_with_general_effect_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        anchors,
+        effect_anchors,
+        false,
+    )
+}
+
+fn plan_source_locked_cfg_with_general_effect_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+    inputs_only: bool,
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let relocated =
         relocate_source_locked_cfg(canonical, source_cells, frame_base)
             .map_err(GuestCodePlacementError::TypedCfg)?;
-    // Input positions are physical instruction sites. Validated setup code
-    // may separate those sites even when the reads share one source block.
-    // Group by canonical identity and retain each source-order ordinal.
-    let mut input_sites = BTreeMap::<(u32, u32), BTreeMap<u32, u32>>::new();
+    // Real physical source sites may be sparse, but every anchored
+    // instruction must remain ordered within its canonical basic block.
+    let mut operation_sites = BTreeMap::<(u32, u32), BTreeMap<u32, u32>>::new();
     for anchor in anchors {
         let block = relocated
             .operation_blocks
@@ -2108,21 +2167,23 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
             .instructions
             .get(ordinal)
             .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-        if !matches!(
-            operation.instruction,
-            Instruction::Getchar { .. } | Instruction::ByteInput { .. }
-        ) || input_sites
-            .entry((anchor.function, anchor.block))
-            .or_default()
-            .insert(anchor.ordinal, anchor.code_address)
-            .is_some()
+        if (inputs_only
+            && !matches!(
+                operation.instruction,
+                Instruction::Getchar { .. } | Instruction::ByteInput { .. }
+            ))
+            || operation_sites
+                .entry((anchor.function, anchor.block))
+                .or_default()
+                .insert(anchor.ordinal, anchor.code_address)
+                .is_some()
         {
             return Err(GuestCodePlacementError::InvalidCodePlacement);
         }
     }
     let mut anchored_effects = BTreeMap::new();
     for anchor in effect_anchors {
-        if !input_sites.contains_key(&(anchor.function, anchor.block))
+        if !operation_sites.contains_key(&(anchor.function, anchor.block))
             || anchored_effects
                 .insert(
                     (
@@ -2140,7 +2201,7 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
     }
     let mut fixed = BTreeMap::<(u32, u32), GuestCodeBlockPlacement>::new();
     for block in &relocated.operation_blocks {
-        let Some(sites) = input_sites.get(&(block.function, block.block))
+        let Some(sites) = operation_sites.get(&(block.function, block.block))
         else {
             continue;
         };
@@ -2287,15 +2348,6 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
     if used < source_locked_cfg_minimum_code_cells(canonical)? {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
-    let operation_anchors = anchors
-        .iter()
-        .map(|anchor| GuestCodeOperationAnchor {
-            block: anchor.block,
-            code_address: anchor.code_address,
-            function: anchor.function,
-            ordinal: anchor.ordinal,
-        })
-        .collect::<Vec<_>>();
     bind_source_locked_cfg_code_targets_with_effect_anchors(
         canonical,
         source_cells,
@@ -2304,7 +2356,7 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
             code_blocks: &blocks,
             edge_pads: &pads,
         },
-        &operation_anchors,
+        anchors,
         effect_anchors,
     )
 }

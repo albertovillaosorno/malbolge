@@ -2505,6 +2505,160 @@ fn original_checksum_sparse_c23_effects_keep_phi_pads_disjoint() {
     }
 }
 
+// Source-authenticated operations before the first real signed input, and in
+// unrelated blocks, need independently anchored code positions. These are
+// unverified layout proposals, not executable C or guest opcodes.
+#[test]
+fn original_checksum_anchors_non_input_operations_around_signed_reads() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEffectAnchor, GuestCodeOperationAnchor,
+        GuestCodePlacementError,
+        plan_source_locked_cfg_with_operation_and_effect_anchors,
+    };
+
+    let wire = source_locked_checksum_wire().expect("original C23 checksum");
+    let operations = [
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 0,
+            code_address: 0,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            code_address: 37,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            code_address: 66,
+        },
+        GuestCodeOperationAnchor {
+            function: 0,
+            block: 3,
+            ordinal: 0,
+            code_address: 180,
+        },
+    ];
+    let effects = [
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 1,
+            code_address: 40,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 0,
+            ordinal: 1,
+            effect_index: 2,
+            code_address: 42,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 1,
+            code_address: 69,
+        },
+        GuestCodeEffectAnchor {
+            function: 0,
+            block: 5,
+            ordinal: 2,
+            effect_index: 2,
+            code_address: 71,
+        },
+    ];
+    let plan = plan_source_locked_cfg_with_operation_and_effect_anchors(
+        &wire,
+        256,
+        512,
+        &operations,
+        &effects,
+    )
+    .expect("literal, arithmetic, two reads and four stores reserve code");
+    assert_eq!(plan.code_blocks.len(), 7);
+    assert_eq!(plan.edge_pads.len(), 4);
+    for anchor in operations {
+        assert_eq!(
+            plan.operation_sites
+                .iter()
+                .find(|site| {
+                    (site.function, site.block, site.ordinal)
+                        == (anchor.function, anchor.block, anchor.ordinal)
+                })
+                .map(|site| site.start),
+            Some(anchor.code_address),
+        );
+    }
+    assert!(matches!(
+        plan.relocated.operation_blocks[0].instructions[0].instruction,
+        super::typed_cfg_adapter::typed::Instruction::ConstantInteger { .. }
+    ));
+    assert!(
+        plan.operation_sites.iter().any(|site| {
+            site.block == 3 && site.ordinal == 0 && site.computation.is_some()
+        }),
+        "source block three must retain its typed arithmetic/cast"
+    );
+    assert_eq!(plan.function_entries[0].address, 0);
+    assert_eq!(plan.relocated.state_placements[0].base, 512);
+    for effect in effects {
+        assert!(plan.operation_effect_sites.iter().any(|site| {
+            (site.function, site.block, site.ordinal, site.code_address)
+                == (
+                    effect.function,
+                    effect.block,
+                    effect.ordinal,
+                    effect.code_address,
+                )
+        }));
+    }
+    let invalid = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let mut forged = operations;
+    forged[0].code_address = 38;
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_and_effect_anchors(
+            &wire, 256, 512, &forged, &effects,
+        ),
+        invalid,
+        "the first source literal cannot execute after the read",
+    );
+    forged = operations;
+    forged[3].code_address = 40;
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_and_effect_anchors(
+            &wire, 256, 512, &forged, &effects,
+        ),
+        invalid,
+        "different source blocks cannot share a code reservation",
+    );
+    forged = operations;
+    forged[3].ordinal = 99;
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_and_effect_anchors(
+            &wire, 256, 512, &forged, &effects,
+        ),
+        invalid,
+    );
+    let mut duplicated = operations.to_vec();
+    duplicated.push(operations[0]);
+    assert_eq!(
+        plan_source_locked_cfg_with_operation_and_effect_anchors(
+            &wire,
+            256,
+            512,
+            &duplicated,
+            &effects,
+        ),
+        invalid,
+    );
+}
+
 #[test]
 fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
     use super::typed_cfg_adapter::state_relocation::{
