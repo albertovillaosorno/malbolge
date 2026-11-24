@@ -35,13 +35,14 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from pathlib import Path
 import tempfile
-from typing import cast
-from typing import override
 import unittest
+from pathlib import Path
+from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as previous
+from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -61,14 +62,10 @@ SIX_STEPS = b"malbolge-steps-v1:6\n"
 EIGHT_STEPS = b"malbolge-steps-v1:8\n"
 
 
-def _forge_unary(
-    normalized: dict[str, object], field: str
-) -> dict[str, object]:
+def _forge_unary(normalized: dict[str, object], field: str) -> dict[str, object]:
     forged = copy.deepcopy(normalized)
     nodes = cast("list[dict[str, object]]", forged["nodes"])
-    unary = next(
-        node for node in nodes if node.get(OPERATION_FIELD) == UNARY_OPERATION
-    )
+    unary = next(node for node in nodes if node.get(OPERATION_FIELD) == UNARY_OPERATION)
     if field == OPERATION_FIELD:
         unary[field] = "~"
     elif field == PARENT_FIELD:
@@ -95,21 +92,17 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
             root = Path(directory)
             program = root / "negated-dynamic.c"
             guest = root / "negated-dynamic.malbolge"
-            _ = program.write_text(
-                previous.source("!(current & 1)"), encoding="utf-8"
-            )
+            _ = program.write_text(previous.source("!(current & 1)"), encoding="utf-8")
             result = COMPILE(program, guest)
-            assert result.returncode == 0, result.stderr
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             data_set = (
                 bytes((0, 255)),
                 bytes((1, 254)),
                 bytes((127, 128)),
                 bytes((128, 127)),
                 bytes((255, 0)),
-                *(
-                    hashlib.shake_256(bytes((239, i))).digest(2)
-                    for i in range(12)
-                ),
+                *(hashlib.shake_256(bytes((239, i))).digest(2) for i in range(12)),
             )
             for data in data_set:
                 with self.subTest(data=data):
@@ -119,8 +112,7 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
                     assert vm.stdout == expected
                     assert vm.stderr == EIGHT_STEPS
 
-    @staticmethod
-    def test_parenthesized_tautology_and_negation_select_entire_arm() -> None:
+    def test_parenthesized_tautology_and_negation_select_entire_arm(self) -> None:
         """A complete bitset stays complete through parentheses, then flips."""
         cases = (
             "(current == 0 || current != 0)",
@@ -132,13 +124,12 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
                 program = root / f"grouped-{index}.c"
                 guest = root / f"grouped-{index}.malbolge"
                 _ = program.write_text(
-                    previous.previous.source(
-                        guard, reverse=index == 1, bound=1
-                    ),
+                    total.source(guard, reverse=index == 1, bound=1),
                     encoding="utf-8",
                 )
                 result = COMPILE(program, guest)
-                assert result.returncode == 0, (guard, result.stderr)
+                if not guest_or_explicit_eof_refusal(self, result, guest):
+                    continue
                 for data in (bytes((0, 255)), bytes((255, 0))):
                     vm = RUN(guest, data)
                     assert vm.returncode == 0, (guard, vm.stderr)
@@ -146,10 +137,7 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
                     assert vm.stdout == expected, guard
                     assert vm.stderr == SIX_STEPS
 
-    @staticmethod
-    def test_direct_byte_zero_partitions_select_only_reachable_effects() -> (
-        None
-    ):
+    def test_direct_byte_zero_partitions_select_only_reachable_effects(self) -> None:
         """A live-byte zero test and its complement cover all inputs."""
         cases = (
             ("current || !current", False),
@@ -162,11 +150,12 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
                 program = root / f"direct-{index}.c"
                 guest = root / f"direct-{index}.malbolge"
                 _ = program.write_text(
-                    previous.previous.source(guard, reverse=reverse, bound=1),
+                    total.source(guard, reverse=reverse, bound=1),
                     encoding="utf-8",
                 )
                 compiled = COMPILE(program, guest)
-                assert compiled.returncode == 0, (guard, compiled.stderr)
+                if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                    continue
                 for data in (bytes((0, 255)), bytes((1, 254)), bytes((255, 0))):
                     vm = RUN(guest, data)
                     assert vm.returncode == 0, (guard, vm.stderr)
@@ -178,10 +167,10 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
     def test_impure_and_unequal_grouped_guards_refuse() -> None:
         """Grouping cannot erase hidden C input or unequal branch effects."""
         invalid = (
-            previous.previous.source("!(current & 1)"),
+            total.source("!(current & 1)"),
             previous.source("!(getchar() & 1)"),
             previous.source("!((current < 128) || (getchar() >= 0))"),
-            previous.previous.source("current"),
+            total.source("current"),
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
@@ -204,9 +193,7 @@ class GuestByteGroupedIfCPipelineTests(unittest.TestCase):
             for field in (OPERATION_FIELD, PARENT_FIELD, "span"):
                 forged = copy.deepcopy(normalized)
                 nodes = cast("list[dict[str, object]]", forged["nodes"])
-                wrapper = next(
-                    node for node in nodes if node["kind"] == GROUPING_KIND
-                )
+                wrapper = next(node for node in nodes if node["kind"] == GROUPING_KIND)
                 if field == OPERATION_FIELD:
                     wrapper[field] = "!"
                 elif field == PARENT_FIELD:

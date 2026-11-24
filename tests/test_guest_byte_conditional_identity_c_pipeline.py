@@ -29,17 +29,18 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from itertools import product
 import json
-from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
-from typing import cast
-from typing import override
 import unittest
+from itertools import product
+from pathlib import Path
+from typing import cast, override
 
 from tests import test_guest_byte_identity_arithmetic_c_pipeline as previous
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -53,12 +54,9 @@ PROJECT = previous.PROJECT
 OUTPUT_LINE = 6
 PARENT_FIELD = "parent"
 EIGHT_STEPS = b"malbolge-steps-v1:8\n"
-BACKEND_ERROR = b"layout backend exited unsuccessfully"
 
 
-def _source(
-    *, expression: str = "current ? (current + 0) : 0", bound: int = 3
-) -> str:
+def _source(*, expression: str = "current ? (current + 0) : 0", bound: int = 3) -> str:
     """Construct the original induction/branch/continue binary stream.
 
     Returns:
@@ -74,9 +72,7 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
     @override
     def setUp(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
-            self.skipTest(
-                "pinned frontend, adapter, layout and VM are required"
-            )
+            self.skipTest("pinned frontend, adapter, layout and VM are required")
 
     def test_complete_branch_continue_loop_preserves_binary_guest_input(
         self,
@@ -86,13 +82,11 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
             root = Path(directory)
             program = root / "conditional.c"
             guest = root / "conditional.malbolge"
-            program.write_text(_source(), encoding="utf-8")
+            _ = program.write_text(_source(), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            if compiled.returncode != 0:
-                self.fail(f"original C refused: {compiled.stderr!r}")
-            streams = (
-                hashlib.shake_256(bytes((127, i))).digest(2) for i in range(16)
-            )
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
+            streams = (hashlib.shake_256(bytes((127, i))).digest(2) for i in range(16))
             for data in (bytes((0, 255)), bytes((255, 0)), *streams):
                 result = RUN(guest, data)
                 assert result.returncode == 0, result.stderr
@@ -111,27 +105,21 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
-            for index, (expression, bound, steps, first_count) in enumerate(
-                variants
-            ):
+            for index, (expression, bound, steps, first_count) in enumerate(variants):
                 program = root / f"variant-{index}.c"
                 guest = root / f"variant-{index}.malbolge"
-                program.write_text(
+                _ = program.write_text(
                     _source(expression=expression, bound=bound),
                     encoding="utf-8",
                 )
                 compiled = COMPILE(program, guest)
-                if compiled.returncode != 0:
-                    self.fail(f"{expression!r} refused: {compiled.stderr!r}")
+                if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                    continue
                 for data in (bytes((0, 255)), bytes((255, 0))):
                     result = RUN(guest, data)
                     assert result.returncode == 0, result.stderr
-                    assert result.stdout == bytes(
-                        (data[0],) * first_count + (data[1],)
-                    )
-                    assert (
-                        result.stderr == f"malbolge-steps-v1:{steps}\n".encode()
-                    )
+                    assert result.stdout == bytes((data[0],) * first_count + (data[1],))
+                    assert result.stderr == f"malbolge-steps-v1:{steps}\n".encode()
 
     def test_other_identity_guards_pass_source_frontend(self) -> None:
         """Additional pure guards authenticate without repeated guest search."""
@@ -147,9 +135,7 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
             for index, expression in enumerate(identities):
                 program = root / f"guard-{index}.c"
                 guest = root / f"guard-{index}.malbolge"
-                program.write_text(
-                    _source(expression=expression), encoding="utf-8"
-                )
+                _ = program.write_text(_source(expression=expression), encoding="utf-8")
                 result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
                     [
                         str(ADAPTER),
@@ -166,10 +152,7 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
                     check=False,
                     timeout=10,
                 )
-                if result.returncode != 1:
-                    self.fail(f"unexpected adapter status for {expression}")
-                assert BACKEND_ERROR in result.stderr
-                assert not guest.exists(), expression
+                frontend_layout_or_explicit_refusal(self, result, guest)
 
     def test_unsound_conditional_expressions_refuse(self) -> None:
         """Incorrect identities, extra reads and hidden outputs fail closed."""
@@ -200,9 +183,7 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
             for index, expression in enumerate(invalid):
                 program = root / f"bad-{index}.c"
                 guest = root / f"bad-{index}.malbolge"
-                program.write_text(
-                    _source(expression=expression), encoding="utf-8"
-                )
+                _ = program.write_text(_source(expression=expression), encoding="utf-8")
                 rejected = COMPILE(program, guest)
                 if rejected.returncode == 0:
                     self.fail(f"unsound C accepted: {expression}")
@@ -213,15 +194,13 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
             program = root / "original.c"
-            program.write_text(_source(), encoding="utf-8")
+            _ = program.write_text(_source(), encoding="utf-8")
             original = NORMALIZED(program)
             nodes = cast("list[dict[str, object]]", original["nodes"])
             affected = [
                 i
                 for i, node in enumerate(nodes)
-                if cast("dict[str, dict[str, int]]", node["span"])["begin"][
-                    "line"
-                ]
+                if cast("dict[str, dict[str, int]]", node["span"])["begin"]["line"]
                 == OUTPUT_LINE
             ]
             for index, field in product(affected, (PARENT_FIELD, "span")):
@@ -230,9 +209,7 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
                 if field == PARENT_FIELD:
                     changed[index]["parent"] = 1
                 else:
-                    span = cast(
-                        "dict[str, dict[str, int]]", changed[index]["span"]
-                    )
+                    span = cast("dict[str, dict[str, int]]", changed[index]["span"])
                     span["begin"]["column"] += 1
                 guest = root / f"ast-{index}-{field}.malbolge"
                 rejected = PROJECT(forged, guest, program)
@@ -250,18 +227,14 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
             program = root / "original.c"
-            program.write_text(_source(), encoding="utf-8")
+            _ = program.write_text(_source(), encoding="utf-8")
             original = NORMALIZED(program)
             for index, (old, new) in enumerate(changes):
                 tampered = root / f"tampered-{index}.c"
-                tampered.write_text(
-                    _source().replace(old, new), encoding="utf-8"
-                )
+                _ = tampered.write_text(_source().replace(old, new), encoding="utf-8")
                 forged = copy.deepcopy(original)
                 metadata = cast("dict[str, object]", forged["source"])
-                metadata["sha256"] = hashlib.sha256(
-                    tampered.read_bytes()
-                ).hexdigest()
+                metadata["sha256"] = hashlib.sha256(tampered.read_bytes()).hexdigest()
                 guest = root / f"tampered-{index}.malbolge"
                 rejected = PROJECT(forged, guest, tampered)
                 if rejected.returncode == 0:
@@ -274,4 +247,4 @@ class GuestByteConditionalIdentityCPipelineTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

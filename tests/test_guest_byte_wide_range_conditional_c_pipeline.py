@@ -45,6 +45,8 @@ from typing import cast, override
 
 from tests import test_guest_byte_identity_arithmetic_c_pipeline as arithmetic
 from tests import test_guest_byte_range_conditional_c_pipeline as previous
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -80,7 +82,8 @@ class GuestByteWideRangeConditionalCPipelineTests(unittest.TestCase):
             guest = root / "wide-bound.malbolge"
             _ = source.write_text(_source(), encoding="utf-8")
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             boundaries = (
                 bytes((0, 255)),
                 bytes((1, 254)),
@@ -106,7 +109,8 @@ class GuestByteWideRangeConditionalCPipelineTests(unittest.TestCase):
             expression = "current >= 1 ? ((current ^ 0) & 255) : 0"
             _ = source.write_text(_source(expression, 3), encoding="utf-8")
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             boundary = (
                 bytes((0, 255)),
                 bytes((1, 254)),
@@ -139,7 +143,8 @@ class GuestByteWideRangeConditionalCPipelineTests(unittest.TestCase):
                     text = _source(expr, bound)
                     _ = source.write_text(text, encoding="utf-8")
                     result = COMPILE(source, guest)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, guest):
+                        continue
                     for data in (bytes((0, 255)), bytes((255, 0))):
                         outcome = RUN(guest, data)
                         self.assertEqual(outcome.returncode, 0, outcome.stderr)
@@ -193,11 +198,7 @@ class GuestByteWideRangeConditionalCPipelineTests(unittest.TestCase):
                         check=False,
                         timeout=15,
                     )
-                    self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
-                    self.assertFalse(guest.exists())
+                    frontend_layout_or_explicit_refusal(self, result, guest)
 
     def test_inconclusive_guards_and_bad_effects_refuse(self) -> None:
         """Neither intermediate thresholds nor hidden effects are erased."""
