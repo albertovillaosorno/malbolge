@@ -2957,6 +2957,163 @@ fn source_signed_narrow_loop_rechecks_every_byte_before_eof() {
     }
 }
 
+// Source-loop phi values must copy simultaneously from their predecessor.
+// A sequential copy of (left,right) <- (right,left) corrupts the second
+// value. A missing backedge operand must invalidate a former known value.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "parallel source phi exchange and complete return-path controls"
+)]
+fn source_parallel_phi_exchange_survives_loop_and_unknown_backedge() {
+    use super::super::typed_cfg_adapter::ternary::TernaryCfgPhi;
+
+    let span = dummy_span();
+    let mut function = TernaryCfgFunction {
+        blocks: vec![
+            TernaryCfgBlock {
+                id: 0,
+                operations: vec![
+                    TernaryOperation::MaterializeU8 {
+                        result: 0,
+                        scalar: TernaryU8Scalar::from_bits(1),
+                        span,
+                    },
+                    TernaryOperation::MaterializeU8 {
+                        result: 1,
+                        scalar: TernaryU8Scalar::from_bits(2),
+                        span,
+                    },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Jump { target: 1, span },
+            },
+            TernaryCfgBlock {
+                id: 1,
+                operations: vec![
+                    TernaryOperation::GetcharI32 { result: 4, span },
+                    TernaryOperation::MaterializeI32 {
+                        result: 5,
+                        scalar: TernaryI32Scalar::from_bits(u32::MAX),
+                        span,
+                    },
+                    TernaryOperation::EqualI32 {
+                        left: 4,
+                        result: 6,
+                        right: 5,
+                        span,
+                    },
+                ],
+                phis: vec![
+                    TernaryCfgPhi {
+                        incoming: vec![(0, 0), (2, 3)],
+                        result: 2,
+                        span,
+                        type_kind: TernaryCfgScalarKind::U8,
+                    },
+                    TernaryCfgPhi {
+                        incoming: vec![(0, 1), (2, 2)],
+                        result: 3,
+                        span,
+                        type_kind: TernaryCfgScalarKind::U8,
+                    },
+                ],
+                terminator: TernaryCfgTerminator::Branch {
+                    condition: 6,
+                    false_target: 2,
+                    span,
+                    true_target: 3,
+                },
+            },
+            TernaryCfgBlock {
+                id: 2,
+                operations: Vec::new(),
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Jump { target: 1, span },
+            },
+            TernaryCfgBlock {
+                id: 3,
+                operations: vec![
+                    TernaryOperation::ByteOutput { value: 2, span },
+                    TernaryOperation::ByteOutput { value: 3, span },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Return(
+                    TernaryOperation::ReturnVoid { span },
+                ),
+            },
+        ],
+        entry: 0,
+        id: 0,
+        name: "parallel_phi_source_exchange".to_owned(),
+        span,
+    };
+    let check = |source: &TernaryCfgFunction, n: usize, output: &[u8]| {
+        let mut observations = vec![
+            SourceInputSiteObservation {
+                input: TraceInput::Byte(0),
+                raw_accumulator: 0,
+                ..observed(1, 0)
+            };
+            n
+        ];
+        observations.push(SourceInputSiteObservation {
+            input: TraceInput::EndOfInput,
+            raw_accumulator: 14_348_906,
+            ..observed(1, 0)
+        });
+        let refs = observations.iter().collect::<Vec<_>>();
+        let mut io = (0..observations.len())
+            .map(|observation_index| SourceInputIoEvent::Input {
+                observation_index: u16::try_from(observation_index)
+                    .unwrap_or(u16::MAX),
+            })
+            .collect::<Vec<_>>();
+        io.extend(output.iter().copied().map(SourceInputIoEvent::Output));
+        source_path_matches_input_walk(
+            source,
+            &refs,
+            4096,
+            true,
+            Some(output),
+            Some(&io),
+            None,
+        )
+    };
+    for iteration_count in 0..=7 {
+        let expected = if iteration_count % 2 == 0 {
+            &[1u8, 2u8][..]
+        } else {
+            &[2u8, 1u8][..]
+        };
+        assert_eq!(
+            check(&function, iteration_count, expected),
+            Ok(true),
+            "parallel phi swap count {iteration_count}",
+        );
+        assert_eq!(
+            check(&function, iteration_count, &[3, 3]),
+            Ok(false),
+            "forged source phi result {iteration_count}",
+        );
+    }
+    let Some(loop_header) = function.blocks.get_mut(1) else {
+        panic!("symbolic loop header is present");
+    };
+    let Some(phi) = loop_header.phis.get_mut(1) else {
+        panic!("second loop phi is present");
+    };
+    phi.incoming = vec![(0, 1), (2, 999)];
+    assert_eq!(
+        check(&function, 1, &[2, 1]),
+        Ok(false),
+        "missing source phi operand must not reuse stale prior state",
+    );
+    // The zero-backedge entry is still valid: only the missing backedge
+    // operand is unproven, not the predecessor-independent entry value.
+    assert_eq!(check(&function, 0, &[1, 2]), Ok(true));
+}
+
 #[test]
 fn source_known_equality_selects_only_the_matching_input_arm() {
     let mut function = guarded_inequality_fixture();
