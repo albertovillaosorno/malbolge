@@ -42,7 +42,8 @@ use std::path::{Path, PathBuf};
 use std::process::{ExitCode, id};
 
 use malbolge::{
-    ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile,
+    ProfileMachine, RunOutcome, Termination, build_capsule, parse_capsule,
+    target_profile,
 };
 
 use crate::bridge::ternary::{TernaryOperation, canonical_ternary_program};
@@ -3757,7 +3758,8 @@ fn verified_two_read_eof_branch(
         source,
         steps: 119,
     };
-    verify_two_read_eof_branch(profile, &artifact)?;
+    // The final publisher performs the normative multi-input replay exactly
+    // once, after checking the same source's empty-input halt.
     Ok(artifact)
 }
 
@@ -3809,12 +3811,16 @@ fn verify_two_read_eof_branch(
         vec![3, 255, 0],
         vec![3, 1],
     ];
-    // The second signed read selects the actual EOF-versus-byte branch.
-    // Verify all 256 successful second-byte values in the normative VM,
-    // with one fixed first byte and an unread suffix. The vectors above
-    // separately exercise initial/second EOF and first-byte boundaries.
-    // This keeps per-publication replay finite without reloading every
-    // first/second cross-product or trusting a host-selected output.
+    // Verify all second-byte values against a fixed first byte. Also
+    // exercise the first byte on both second-EOF and second-byte paths at
+    // selected boundaries. Exhaustive first-byte replay lives in the
+    // independent regression, not on every artifact publication.
+    for first in [
+        0, 1, 2, 3, 15, 16, 31, 32, 63, 64, 127, 128, 129, 165, 254, 255,
+    ] {
+        inputs.push(vec![first]);
+        inputs.push(vec![first, 0x7c, 0xa5]);
+    }
     for second in u8::MIN..=u8::MAX {
         inputs.push(vec![0xa5, second, 0x7c]);
     }
@@ -3897,7 +3903,10 @@ fn verify_two_read_eof_branch(
             marker,
         ));
         expected_output.push(marker);
-        if !matches!(outcome, RunOutcome::Terminated { steps: actual, .. } if actual == steps)
+        if !matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: actual,
+        } if actual == steps)
             || vm.input_consumed() != expected_consumed
             || vm.output() != expected_output
             || reads != expected_reads
@@ -3978,7 +3987,7 @@ fn verified_signed_second_echo(
         source,
         steps: 81,
     };
-    verify_signed_second_echo(profile, &artifact)?;
+    // The final publisher owns normative replay after source admission.
     Ok(artifact)
 }
 
@@ -4040,8 +4049,10 @@ fn verify_signed_second_echo(
             .get(1)
             .copied()
             .map_or(TraceInput::EndOfInput, TraceInput::Byte);
-        if !matches!(outcome, RunOutcome::Terminated { steps: 81, .. })
-            || vm.input_consumed() != input.len().min(2)
+        if !matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 81,
+        }) || vm.input_consumed() != input.len().min(2)
             || vm.output() != [expected_second]
             || reads != [(37, first), (66, second)]
             || writes != [(79, expected_second)]
@@ -4104,7 +4115,10 @@ fn verify_successful_byte_trace(
                     format!("successful-byte VM load failed: {error:?}")
                 })?;
         if !matches!(vm.run(artifact.steps),
-            Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: count,
+            }) if count == artifact.steps)
         {
             return Err(String::from(
                 "successful-byte VM trace did not terminate",
@@ -6876,7 +6890,10 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         ProfileMachine::from_source(profile, &artifact.source, Vec::new())
     }
     .map_err(|error| format!("normative VM rejected source: {error:?}"))?;
-    if !matches!(vm.run(artifact.steps), Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
+    if !matches!(vm.run(artifact.steps), Ok(RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: count,
+    }) if count == artifact.steps)
     {
         return Err(String::from(
             "normative VM did not halt at the proven code step",

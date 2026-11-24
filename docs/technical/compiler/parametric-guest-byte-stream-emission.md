@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-authenticated two-read branch halt and replay (2026-11-24)
+
+The final publisher checks an actual decoded `v` halt reason, not just a
+matching step count; termination on non-graphical code is never a valid C
+return. This applies to the two-read EOF branch, signed second-byte echo,
+byte-trace output and their final source replay. The two-read branch still
+executes every second-byte value on the real N15 VM, and now checks 16
+selected first-byte boundaries against both second EOF and a successful
+second read. Each case checks output, input sites, consumed cursor and exact
+branch steps. This is finite marginal coverage, not the 65,536-pair product
+or a complete C23 mutable checksum.
+
+The two-read branch and signed-second-echo replay now occur once at their
+final publication gates, instead of repeating the same VM and full-memory
+reconstruction during candidate construction. An independent exhaustive
+256-first-byte regression checks the actual second-EOF path without adding
+that expensive matrix to every publication. The original seven-block mutable C23
+EOF checksum still refuses physical linkage and publishes no guest artifact.
+
 ### Published second-read EOF branch verifies every byte (2026-11-24)
 
 The existing source-authenticated C23 two-read EOF branch still emits a real
