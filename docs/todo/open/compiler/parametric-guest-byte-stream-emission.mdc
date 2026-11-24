@@ -256,6 +256,22 @@ evidence describe the old priority scheme, not the current phase.
 
 ## Evidence
 
+- On 2026-11-24 the unchanged complete source C23 mutable EOF checksum was
+  retried and still refuses publication at unlinked seven-block physical
+  control, 19 source operations, four phi edges and 43 state words. A
+  separate fixed 26-cell source-loaded N15 guest now reads **two** inputs,
+  stores a lossless first input encoding to M38 at C4, returns D to that
+  first **guest-written** word at C19 and computes `p(stored, second)` at
+  C20. C22 outputs its actual result modulo 256 and C23 halts after 24
+  normative VM steps. Fourteen binary/EOF traces, independent scalar
+  crazy results and mutated-source controls prove the reached two-operand
+  dataflow, computed output and stop; a 257-class scalar check establishes
+  initial store injectivity, not 257x257 guest parity. This does not
+  implement C23 arithmetic, signed EOF normalization, loop phi transfers
+  or source-C checksum publication. See the technical contract and
+  `tests/compiler_live_two_input_fold.rs`.
+
+
 - On 2026-11-23 the source-authenticated automatic phi-pad planner added
   an optional **pre-snapshot entry address** alongside sparse writes and
   post-commit exits. The original seven-block mutable EOF checksum now

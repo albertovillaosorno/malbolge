@@ -28,6 +28,41 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-loaded two-input physical computation and output (2026-11-24)
+
+The original complete seven-block C23 mutable EOF checksum was rerun through
+`malbolge --repository-tools compile` and still refuses publication: 19
+source operations, four phi edges, six phi moves and a 43-word guest state
+frame are not linked to executable guest control. No checksum artifact was
+published.
+
+A separate **26-byte** graphical N15 guest now performs a genuinely
+**two-input nonlinear operation**. C2 `/` reads the first raw input and C4
+`p` stores its injectively encoded word into source-loaded expanded M38.
+After thirteen reached inert instructions, C18 `/` reads the second raw
+input (or genuine EOF); C19 `j` uses untouched loader M53=37 to return D to
+M38, and C20 `p` reads the actual *first guest store*, combines it with
+the second input in the 15-trit crazy operation, and overwrites M38. C22
+`<` outputs the computed word modulo 256, and C23 `v` halts at step 24.
+Both the M38 seed 7,174,453 and M53 return operand come from the original
+graphical source's two `J` tail bytes, not from a host-provided VM state.
+
+`build_live_two_input_fold_source` returns the frozen graphical source and
+its exact physical effect sites. `tests/compiler_live_two_input_fold.rs`
+checks 14 real normative-VM binary/EOF streams, independent scalar inputs,
+source cells, both input sites, read-after-write, output and actual halt.
+An independent all-257 raw-input scalar census checks retention by the
+first store and nonconstant dependence on either input. A separate reached
+C20 no-op guest emits the *unfolded* second byte; skipping C19's pointer
+return makes the subsequent `p` read a different cell. These negative
+controls distinguish guest computation from host-derived output values.
+
+This is one finite real guest **binary dataflow and output primitive**,
+not signed C23 `getchar`, typed XOR/addition, source-language loop linkage,
+EOF-driven control flow or a compileable mutable-C checksum. The P2
+source-C end-to-end acceptance remains open.
+
+
 ### Authentic delayed third-input output through finite code reuse (2026-11-24)
 
 The frozen complete C23 mutable EOF checksum still refuses publication at

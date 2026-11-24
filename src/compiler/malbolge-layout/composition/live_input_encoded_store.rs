@@ -184,6 +184,35 @@ pub struct LongSourceInputBootstrapSource {
     pub store_code_address: u32,
 }
 
+/// One source-loaded, two-input, nonlinear guest operation with real output.
+///
+/// A first `/;j;p` saves an invertible raw-input encoding in expanded M38.
+/// A second `/` supplies an independent accumulator. C19 rereads loader
+/// M53=37 to reset D to M38, C20 `p` combines the *written* first operand
+/// with the second input, and C22 `<` emits the low byte before C23 `v`.
+/// Neither the output nor the arithmetic is synthesized by host execution.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LiveTwoInputFoldSource {
+    /// Store and subsequent arithmetic operand address in expanded memory.
+    pub data_address: u32,
+    /// First real input opcode address.
+    pub first_input_code_address: u32,
+    /// Code position executing the two-input `p`.
+    pub fold_code_address: u32,
+    /// Actual reached guest `v` halt code position.
+    pub halt_code_address: u32,
+    /// Exact unmodified loader operand for the first input store.
+    pub initial_data_word: u32,
+    /// Code position emitting the real computed low byte.
+    pub output_code_address: u32,
+    /// Exact unmodified loader address that points back to the first store.
+    pub return_data_address: u32,
+    /// Second real input opcode address.
+    pub second_input_code_address: u32,
+    /// Exact graphical source including two unreachable tail cells.
+    pub source: Vec<u8>,
+}
+
 /// Construct a real 261-cell source-backed high-pointer bootstrap.
 ///
 /// C0 relocates D to M41. C1 writes a full-width pointer there using its
@@ -928,4 +957,77 @@ pub fn build_live_input_reentry_source(
         }
     }
     Err(NoLoadableSeed)
+}
+
+/// Construct the bounded physical two-read, fold, output and halt path.
+///
+/// The 26 graphical source bytes execute `oo/jp`, thirteen `o`, `/jp`,
+/// `o<v`, with two non-fetched loader tail bytes 74/74. The original first
+/// store and second fold use the same source-loaded data word, not an
+/// injected memory value. Both input words remain genuine guest observations
+/// through EOF, although the 15-trit crazy operation is **not** C32 signed
+/// arithmetic, source-C compilation, an EOF branch or a reusable loop.
+///
+/// # Errors
+///
+/// Refuses noncanonical N15 profiles, drifted position encoding, or any
+/// loader recurrence that does not prove the real operand/reentry geometry.
+pub fn build_live_two_input_fold_source(
+    profile: &ProfileDescriptor,
+) -> Result<LiveTwoInputFoldSource, LiveInputEncodedStoreError> {
+    const SOURCE_CELLS: usize = 26;
+    const FIRST_INPUT: usize = 2;
+    const SECOND_INPUT: usize = 18;
+    const FOLD: usize = 20;
+    const OUTPUT: usize = 22;
+    const HALT: usize = 23;
+    const STORE_ADDRESS: usize = 38;
+    const RETURN_ADDRESS: usize = 53;
+    use LiveInputEncodedStoreError::{NoLoadableSeed, UnsupportedProfile};
+    if profile != current_profile() {
+        return Err(UnsupportedProfile);
+    }
+    let mut source = Vec::with_capacity(SOURCE_CELLS);
+    for code in 0..SOURCE_CELLS {
+        let opcode = match code {
+            FIRST_INPUT | SECOND_INPUT => LinearOpcode::InputWord,
+            3 | 19 => LinearOpcode::RelocateDataPointer,
+            4 | FOLD => LinearOpcode::CrazyData,
+            OUTPUT => LinearOpcode::OutputByte,
+            HALT => LinearOpcode::Halt,
+            24 | 25 => LinearOpcode::SkippedDataByte { byte: 74 },
+            _ => LinearOpcode::NoOperation,
+        };
+        source.push(
+            unique_graphical_cell(profile, opcode, code)
+                .map_err(|_error| NoLoadableSeed)?,
+        );
+    }
+    let first_store = source.get(3).map_or(0, |byte| usize::from(*byte) + 1);
+    let first_seed = unwritten_loader_word(&source, STORE_ADDRESS, profile)
+        .map_err(|_error| NoLoadableSeed)?;
+    let return_word = unwritten_loader_word(&source, RETURN_ADDRESS, profile)
+        .map_err(|_error| NoLoadableSeed)?;
+    if first_store != STORE_ADDRESS
+        || !retains_all_raw_inputs(first_seed)
+        || first_seed != 7_174_453
+        || return_word
+            != u32::try_from(STORE_ADDRESS - 1)
+                .map_err(|_error| NoLoadableSeed)?
+        || RETURN_ADDRESS <= SOURCE_CELLS.saturating_add(2)
+        || STORE_ADDRESS <= SOURCE_CELLS.saturating_add(2)
+    {
+        return Err(NoLoadableSeed);
+    }
+    Ok(LiveTwoInputFoldSource {
+        data_address: 38,
+        first_input_code_address: 2,
+        fold_code_address: 20,
+        halt_code_address: 23,
+        initial_data_word: first_seed,
+        output_code_address: 22,
+        return_data_address: 53,
+        second_input_code_address: 18,
+        source,
+    })
 }
