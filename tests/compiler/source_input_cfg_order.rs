@@ -1297,6 +1297,175 @@ fn undefined_shift_redefinition_removes_stale_source_scalar() {
     assert!(!known.contains_key(&3));
 }
 
+// A source EOF guard loops through the same read/shift SSA slots.
+// Each iteration must use *that iteration's* input and preserve proposed
+// input/output ordering; a stale shifted result cannot justify an output.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "three source CFG blocks and complete four-input I/O walk"
+)]
+fn source_known_unsigned_shift_loop_rederives_each_read_before_eof() {
+    let span = dummy_span();
+    let function = TernaryCfgFunction {
+        blocks: vec![
+            TernaryCfgBlock {
+                id: 0,
+                operations: vec![
+                    TernaryOperation::GetcharI32 { result: 0, span },
+                    TernaryOperation::MaterializeI32 {
+                        result: 1,
+                        scalar: TernaryI32Scalar::from_bits(u32::MAX),
+                        span,
+                    },
+                    TernaryOperation::NotEqualI32 {
+                        left: 0,
+                        result: 2,
+                        right: 1,
+                        span,
+                    },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Branch {
+                    condition: 2,
+                    false_target: 2,
+                    span,
+                    true_target: 1,
+                },
+            },
+            TernaryCfgBlock {
+                id: 1,
+                operations: vec![
+                    TernaryOperation::BitcastI32ToU32 {
+                        result: 3,
+                        value: 0,
+                        span,
+                    },
+                    TernaryOperation::MaterializeU32 {
+                        result: 4,
+                        scalar: TernaryI32Scalar::from_bits(3),
+                        span,
+                    },
+                    TernaryOperation::ShiftRightLogicalU32 {
+                        left: 3,
+                        result: 5,
+                        right: 4,
+                        span,
+                    },
+                    TernaryOperation::ShiftLeftU32 {
+                        left: 5,
+                        result: 7,
+                        right: 4,
+                        span,
+                    },
+                    TernaryOperation::TruncateU32ToU8 {
+                        result: 8,
+                        value: 7,
+                        span,
+                    },
+                    TernaryOperation::ByteOutput { value: 8, span },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Jump { target: 0, span },
+            },
+            TernaryCfgBlock {
+                id: 2,
+                operations: Vec::new(),
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Return(
+                    TernaryOperation::ReturnVoid { span },
+                ),
+            },
+        ],
+        entry: 0,
+        id: 0,
+        name: "shift_until_eof".to_owned(),
+        span,
+    };
+    let inputs = [
+        TraceInput::Byte(0),
+        TraceInput::Byte(0x80),
+        TraceInput::Byte(0xff),
+        TraceInput::EndOfInput,
+    ];
+    let observations = inputs.map(|input| SourceInputSiteObservation {
+        input,
+        raw_accumulator: match input {
+            TraceInput::Byte(byte) => u32::from(byte),
+            TraceInput::EndOfInput => 14_348_906,
+        },
+        ..observed(0, 0)
+    });
+    let refs = observations.iter().collect::<Vec<_>>();
+    let expected = [0u8, 0x80, 0xf8];
+    let events = [
+        SourceInputIoEvent::Input { observation_index: 0 },
+        SourceInputIoEvent::Output(0),
+        SourceInputIoEvent::Input { observation_index: 1 },
+        SourceInputIoEvent::Output(0x80),
+        SourceInputIoEvent::Input { observation_index: 2 },
+        SourceInputIoEvent::Output(0xf8),
+        SourceInputIoEvent::Input { observation_index: 3 },
+    ];
+    let check = |function: &TernaryCfgFunction, observed: &[_], output, io| {
+        source_path_matches_input_walk(
+            function,
+            observed,
+            4096,
+            true,
+            Some(output),
+            Some(io),
+            None,
+        )
+    };
+    assert_eq!(check(&function, &refs, &expected, &events), Ok(true));
+    assert_eq!(
+        check(&function, &refs, &[0, 0x80, 0xff], &events),
+        Ok(false)
+    );
+    assert_eq!(check(&function, &refs, &[0, 0, 0xf8], &events), Ok(false));
+    let [
+        first_read,
+        _first_out,
+        second_read,
+        second_out,
+        third_read,
+        third_out,
+        eof_read,
+    ] = events;
+    let wrong_order = [
+        SourceInputIoEvent::Output(0),
+        first_read,
+        second_read,
+        second_out,
+        third_read,
+        third_out,
+        eof_read,
+    ];
+    assert_eq!(check(&function, &refs, &expected, &wrong_order), Ok(false));
+    let truncated = refs.iter().take(3).copied().collect::<Vec<_>>();
+    assert_eq!(check(&function, &truncated, &expected, &events), Ok(false));
+    let [_first, second, third, eof] = &observations;
+    let early_eof = [eof, second, third, eof];
+    assert_eq!(check(&function, &early_eof, &expected, &events), Ok(false));
+    let mut invalid = function;
+    assert!(
+        invalid
+            .blocks
+            .get_mut(1)
+            .and_then(|block| block.operations.get_mut(1))
+            .map(|operation| {
+                *operation = TernaryOperation::MaterializeU32 {
+                    result: 4,
+                    scalar: TernaryI32Scalar::from_bits(32),
+                    span,
+                };
+            })
+            .is_some()
+    );
+    assert_eq!(check(&invalid, &refs, &expected, &events), Ok(false));
+}
+
 // Exact C32 division and remainder can jointly select one source branch
 // and output. The 257 input classes include EOF rather than treating byte
 // 255 as -1; zero divisors and signed MIN / -1 stay unprovable.

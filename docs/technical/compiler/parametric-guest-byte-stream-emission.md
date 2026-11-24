@@ -12800,3 +12800,9 @@ operations, materialize guest C32 locals, link branches or prove the complete
 mutable checksum. The original unchanged seven-block EOF checksum still
 refuses backend emission with the explicit unlinked-CFG diagnostic and no
 published guest artifact.
+
+A separate source-CFG loop regression rereads `00`, `80`, `ff`, then real
+EOF through one backedge, with expected shifted output bytes `00 80 f8` and
+interleaved I/O sites. A wrong third byte, reordered effects, missing EOF,
+early EOF or invalid shift count cannot satisfy one complete source return.
+This is still a source-path constraint, **not a guest-executed loop**.
