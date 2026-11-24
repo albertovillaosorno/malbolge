@@ -271,3 +271,44 @@ fn two_real_inputs_are_folded_and_emitted_from_the_first_guest_store() {
         Some(plan.data_address)
     );
 }
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "exact physical EOF-versus-success collision with both reads"
+)]
+fn two_input_fold_cannot_classify_true_eof() {
+    let profile = current_profile();
+    let plan = layout::build_live_two_input_fold_source(profile)
+        .expect("fixed source-backed two-input crazy guest");
+    let initial = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("canonical graphical source must load");
+    // Both pairs are reachable with ordinary sequential byte-stream EOF.
+    // Distinct physical input observations yield the same *full* N15 word,
+    // not merely a colliding output byte. Therefore this word cannot be a
+    // general C23 predicate for whether the final getchar saw EOF.
+    let samples = [
+        (vec![], TraceInput::EndOfInput, TraceInput::EndOfInput),
+        (vec![0, 0], TraceInput::Byte(0), TraceInput::Byte(0)),
+    ];
+    for (input, first, second) in samples {
+        let mut vm = initial
+            .fork_with_input(input.clone())
+            .expect("source-locked pristine VM with independent input");
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(24, &mut |step| trace.push(*step)),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 24,
+            }),
+        );
+        assert_eq!(trace[2].input, Some(first));
+        assert_eq!(trace[18].input, Some(second));
+        assert_eq!(vm.input_consumed(), input.len());
+        assert_eq!(vm.memory_word(plan.data_address), Ok(7_174_453));
+        assert_eq!(trace[20].after.registers.accumulator, 7_174_453);
+        assert_eq!(vm.output(), [53]);
+    }
+}

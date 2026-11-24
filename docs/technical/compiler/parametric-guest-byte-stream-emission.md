@@ -56,6 +56,11 @@ first store and nonconstant dependence on either input. A separate reached
 C20 no-op guest emits the *unfolded* second byte; skipping C19's pointer
 return makes the subsequent `p` read a different cell. These negative
 controls distinguish guest computation from host-derived output values.
+A further source-loaded negative witness shows that **empty input**
+(two genuine EOF observations) and **two NUL bytes** (two genuine successful
+reads) both leave the complete 15-trit fold word M38=7,174,453 and emit
+byte 53. This is a real reachable collision, not only a low-byte alias:
+the fold cannot classify final `getchar` EOF for the source C23 checksum.
 
 This is one finite real guest **binary dataflow and output primitive**,
 not signed C23 `getchar`, typed XOR/addition, source-language loop linkage,

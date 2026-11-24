@@ -266,7 +266,10 @@ evidence describe the old priority scheme, not the current phase.
   normative VM steps. Fourteen binary/EOF traces, independent scalar
   crazy results and mutated-source controls prove the reached two-operand
   dataflow, computed output and stop; a 257-class scalar check establishes
-  initial store injectivity, not 257x257 guest parity. This does not
+  initial store injectivity, not 257x257 guest parity. A real guest
+  negative control finds empty stdin (EOF, EOF) and two NUL bytes (0, 0)
+  both produce identical full N15 result 7,174,453 and output byte 53,
+  so this fold cannot classify true EOF. This does not
   implement C23 arithmetic, signed EOF normalization, loop phi transfers
   or source-C checksum publication. See the technical contract and
   `tests/compiler_live_two_input_fold.rs`.
