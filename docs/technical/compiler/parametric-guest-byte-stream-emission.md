@@ -53,13 +53,6 @@ and missing incoming phi operands while preserving valid zero-iteration
 entry values. These are symbolic source-CFG tests; no source phi-copy guest
 instructions or linked loop have been established.
 
-A separate multi-phi backedge regression checks **parallel** source
-SSA exchange: two loop-carried bytes swap every iteration and only the
-final EOF-guarded return emits them. The checker refuses forged output bytes
-and missing incoming phi operands while preserving valid zero-iteration
-entry values. These are symbolic source-CFG tests; no source phi-copy guest
-instructions or linked loop have been established.
-
 This check concerns only a source-known *necessary* branch/output condition
 on canonical typed-IR semantics, not implementation-defined arbitrary C
 conversions, executed guest casts, memory writes, source lowering or complete
