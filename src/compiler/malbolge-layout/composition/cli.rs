@@ -4001,7 +4001,7 @@ fn verified_signed_second_echo(
 fn checked_signed_echo_crazy(mut lhs: u32, mut rhs: u32) -> Option<u32> {
     let mut result = 0u32;
     let mut place = 1u32;
-    for _ in 0..15 {
+    for _ in 0usize..15usize {
         let digit = match (lhs % 3, rhs % 3) {
             (0 | 1, 0) | (2, 2) => 1u32,
             (1, 2) | (2, 0 | 1) => 2u32,
@@ -4015,6 +4015,10 @@ fn checked_signed_echo_crazy(mut lhs: u32, mut rhs: u32) -> Option<u32> {
     Some(result)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "signed byte oracle and physical four-step VM conversion audit"
+)]
 fn verify_signed_second_echo(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
@@ -4040,13 +4044,13 @@ fn verify_signed_second_echo(
     // All 256 valid C bytes plus the distinct signed EOF class are modeled
     // independently. The physical guest check below then authenticates the
     // exact M95/M96 operand path and emitted result on representative inputs.
-    for input in std::iter::once(None).chain((u8::MIN..=u8::MAX).map(Some)) {
+    for input in [None].into_iter().chain((u8::MIN..=u8::MAX).map(Some)) {
         let raw = input.map_or_else(|| profile.eof_word(), u32::from);
         let intermediate = checked_signed_echo_crazy(7_138_732, raw)
             .ok_or("signed second echo first crazy overflow")?;
         let converted = checked_signed_echo_crazy(121, intermediate)
             .ok_or("signed second echo second crazy overflow")?;
-        if converted % 256 != u32::from(input.unwrap_or(255)) {
+        if converted & 0xff != u32::from(input.unwrap_or(255)) {
             return Err(String::from(
                 "signed second echo complete C23 byte domain disagrees",
             ));
