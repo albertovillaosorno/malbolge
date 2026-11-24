@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Bounded EOF-zero predicate operand reentry refusal (2026-11-23)
+
+After retrying the complete seven-block mutable C23 checksum, the real
+compiler still refuses to link its physical CFG or publish a guest artifact.
+The latest N15 raw-input-preserving C54 `p` predicate can be reached on true
+EOF in 55 normative VM steps, with A=0, D=128 and the physically consumed
+M127=0. The C14/C17 zero-initialized C32 pair still holds raw EOF in its low
+word and zero in its high word. C54's EOF write is **idempotent**: its
+executed `p` is visible in the trace's data read and accumulator result,
+while the memory-delta field is absent because M127 was already zero.
+
+A fixed, exhaustive **negative** continuation search in
+`tests/compiler_c23_eof_zero_branch.rs` starts from that genuine 55-step
+state. It explores every 1- through 6-opcode continuation over
+`{j, o, *, p}` (5,460 paths), using independent ternary arithmetic and a
+per-path guest-memory-write overlay. No path restores D=127 to let a
+subsequent real `i` consume the C54 result within the original 62-source-
+cell envelope. The search deliberately allows arbitrary per-path writes,
+including destructive rewrites of the original input pair, and ignores
+actual code/encryption encodability. Thus it excludes even those relaxed
+six-opcode routes, not all longer layouts, revised loader seeds, other
+opcode sequences or other conditional guest techniques.
+
+This makes the **physical operand reentry** obstruction explicit rather than
+mistaking a reached zero accumulator, a self-contained EOF marker or a raw
+pointer jump for executable source-C control. It does not establish a C23
+signed EOF pair, guest arithmetic/phi execution, a reusable EOF loop or the
+whole C23 checksum. The next attempt needs a different predicate-placement
+or longer source-backed state/operand route, with normative replay and
+independent C23 parity before any target publication.
+
 ### Source-loaded lossless input with an EOF-only physical output marker (2026-11-23)
 
 The compiler now exposes
