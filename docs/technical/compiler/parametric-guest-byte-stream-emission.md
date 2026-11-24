@@ -28,6 +28,38 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Two-read EOF-selected encrypted instruction fetch (2026-11-24)
+
+The source-authentic 91-cell two-input guest now has a second, strictly
+physical continuation. After C37/C54 have read inputs, M126/M138 have
+preserved their distinct raw values, and C50/C62 have echoed each successful
+byte, the replacement C63/C64 `j` and C65 `i` reach already encrypted C67.
+That cell is source-required to be 125 for the early C42 pointer setup; its
+actual `i` takes a second, independently verified code backedge to C35.
+The resulting second C45 `p` consumes the **restored second guest input**
+and physically rewrites instruction C49 from encrypted value 75. An
+independent 15-trit oracle exhausts all 256 successful bytes: every result
+is non-graphical (range 7,174,242..7,174,492). True N15 EOF alone gives
+word 42, which decodes as a harmless instruction at C49, continues to C57
+and emits an additional byte 32 before reaching a non-graphical C60.
+
+The normative VM replays all 257 second-input classes and all 257
+first-input classes with second-input EOF. It checks exact input
+consumption, both stored input words, two initial outputs, jump
+and encryption sites, code-word fetch and terminal outcome. Finite classes
+terminate at C49 after 82 steps; EOF terminates at C60 after 93. Changed
+C63/C64 pointer transfers no longer select the same EOF path. This is a
+**real input-dependent instruction-fetch discriminator** and a bounded
+self-modifying code reentry, not an executable C23 `if`/`while`: neither
+branch reaches a valid `v` halt, N15 raw EOF is not converted to signed
+C23 EOF, and no checksum state or reusable backedge is linked. Evidence:
+`build_c23_two_inputs_eof_fetch_probe_source` and
+`tests/compiler_c23_two_saved_echo_guest.rs`.
+
+The next repair must give **both** outcomes valid, source-backed control
+sites and implement a repeatable EOF loop, without replacing the complete
+original seven-block checksum with a fixed probe.
+
 ### Post-output first-state reentry needs relocated guest control
 
 The two-saved-input guest halts at C63 by design. A separate source-valid

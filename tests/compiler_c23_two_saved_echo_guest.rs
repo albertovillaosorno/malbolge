@@ -31,8 +31,9 @@ use std::collections::BTreeSet;
 use std::iter::once;
 
 use malbolge::{
-    ProfileMachine, ProfileMachineError, RunOutcome, Termination, TraceInput,
-    current_profile, decode_profile_instruction, historical_profile,
+    ProfileMachine, ProfileMachineError, ProfileStepTrace, RunOutcome,
+    Termination, TraceInput, current_profile, decode_profile_instruction,
+    historical_profile,
 };
 
 #[expect(
@@ -268,8 +269,8 @@ fn first_state_cannot_be_reentered_via_unchanged_c67_control() {
     let mut source =
         layout::build_c23_two_inputs_saved_and_echoed_source(profile)
             .expect("already proven two-input source");
-    for position in 63..=66 {
-        source[position] = source_encoding(
+    for (position, cell) in source.iter_mut().enumerate().take(67).skip(63) {
+        *cell = source_encoding(
             u32::try_from(position).expect("bounded code site"),
             b'o',
         )
@@ -281,36 +282,360 @@ fn first_state_cannot_be_reentered_via_unchanged_c67_control() {
     layout::admit_c23_probe_graphical_source(&source)
         .expect("modified source remains loader-valid");
     for stdin in [vec![], vec![3, 4], vec![255, 0]] {
-        let mut vm =
-            ProfileMachine::from_source(profile, &source, stdin.clone())
-                .expect("valid graphical VM source");
+        assert_fixed_c67_invalid_reentry(&source, &stdin);
+    }
+}
+
+#[expect(clippy::expect_used, reason = "three finite actual VM cases")]
+fn assert_fixed_c67_invalid_reentry(source: &[u8], stdin: &[u8]) {
+    let profile = current_profile();
+    let mut vm = ProfileMachine::from_source(profile, source, stdin.to_vec())
+        .expect("valid graphical VM source");
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(80, &mut |step| trace.push(*step)),
+        Err(ProfileMachineError::InvalidEncryptionTarget {
+            pointer: 121,
+            value: 7_174_404,
+        }),
+        "stdin={stdin:?}: expected invalid indirect instruction target"
+    );
+    assert_eq!(
+        vm.input_consumed(),
+        stdin.len().min(2),
+        "stdin={stdin:?} expected both reads"
+    );
+    assert_eq!(
+        trace.last().map(|step| step.decoded),
+        Some(Some(b'i')),
+        "stdin={stdin:?} expected final indirect branch"
+    );
+    assert_eq!(
+        trace.last().map(|step| step.before.registers.code_pointer),
+        Some(67),
+        "stdin={stdin:?} expected source-required C67"
+    );
+    assert_eq!(
+        trace
+            .last()
+            .and_then(|step| step.memory_reads.data)
+            .map(|read| (read.address, read.value)),
+        Some((150, 121)),
+        "stdin={stdin:?} expected expanded-cell target"
+    );
+    let expected = stdin
+        .iter()
+        .copied()
+        .chain(once(174u8).cycle())
+        .take(2)
+        .collect::<Vec<_>>();
+    assert_eq!(vm.output(), expected, "stdin={stdin:?} physical outputs");
+}
+
+// Both stored inputs survive a real j,j,i,i branch to encrypted C35. The
+// second execution of C45 rewrites C49 from the *second* input: successful
+// bytes select a non-graphical fetch, EOF selects graphical instruction 42.
+// Both paths still terminate on non-graphical code, not a valid C23 `if`.
+#[test]
+#[expect(clippy::expect_used, reason = "bounded graphical N15 source")]
+fn eof_fetch_source_preserves_original_two_output_prefix() {
+    let profile = current_profile();
+    let source = layout::build_c23_two_inputs_eof_fetch_probe_source(profile)
+        .expect("physical EOF-dependent code fetch");
+    assert_eq!(source.len(), 91);
+    assert_eq!(source.get(89..), Some(b"Iy".as_slice()));
+    assert_eq!(
+        layout::build_c23_two_inputs_eof_fetch_probe_source(
+            historical_profile()
+        ),
+        Err(layout::C23OperandProbeSourceError::UnsupportedProfile)
+    );
+    layout::admit_c23_probe_graphical_source(&source)
+        .expect("strict graphical source admission");
+    let baseline =
+        layout::build_c23_two_inputs_saved_and_echoed_source(profile)
+            .expect("original two-input source");
+    assert_eq!(source.get(..63), baseline.get(..63));
+    assert_eq!(source.get(66..), baseline.get(66..));
+    for (position, opcode) in [(63u32, b'j'), (64, b'j'), (65, b'i')] {
+        let encoded = source.get(usize::try_from(position).expect("code site"));
+        assert_eq!(
+            encoded.and_then(|byte| {
+                decode_profile_instruction(u32::from(*byte), position)
+            }),
+            Some(opcode)
+        );
+    }
+}
+
+#[test]
+fn scalar_eof_fetch_code_class_is_unique() {
+    let profile = current_profile();
+    let eof_encoded = oracle_crazy(121, profile.eof_word());
+    let eof_restored = oracle_crazy(121, eof_encoded);
+    assert_eq!(eof_restored, 7_174_574);
+    assert_eq!(oracle_crazy(75, eof_restored), 42);
+    assert_eq!(decode_profile_instruction(42, 49), Some(b'='));
+    let mut distinct = BTreeSet::new();
+    for byte in 0..=255u8 {
+        let encoded = oracle_crazy(121, u32::from(byte));
+        assert!(distinct.insert(encoded));
+        assert_eq!(oracle_crazy(121, encoded), u32::from(byte));
+        let code = oracle_crazy(75, u32::from(byte));
+        assert!(!(33..=126).contains(&code), "byte={byte}");
+    }
+    assert_eq!(distinct.len(), 256);
+    assert!(!distinct.contains(&eof_encoded));
+}
+
+#[expect(clippy::expect_used, reason = "bounded real VM trace")]
+fn assert_two_input_code_reentry(trace: &[ProfileStepTrace], second: u32) {
+    assert!(trace.len() >= 82, "second={second} trace is truncated");
+    for (step, code, opcode) in [
+        (63, 63, b'j'),
+        (64, 64, b'j'),
+        (65, 65, b'i'),
+        (66, 67, b'i'),
+        (77, 45, b'p'),
+    ] {
+        let observed = trace.get(step).expect("validated physical step");
+        assert_eq!(
+            observed.before.registers.code_pointer, code,
+            "second={second}; unexpected C at step {step}"
+        );
+        assert_eq!(
+            observed.decoded,
+            Some(opcode),
+            "second={second}; unexpected opcode at step {step}"
+        );
+    }
+    assert_eq!(
+        trace.get(65).map(|step| step.before.registers.data_pointer),
+        Some(37),
+        "second={second} expected input-cell pointer"
+    );
+    assert_eq!(
+        trace.get(67).map(|step| step.before.registers.code_pointer),
+        Some(35),
+        "second={second} expected encrypted code backedge"
+    );
+}
+
+#[expect(clippy::expect_used, reason = "bounded real VM trace")]
+fn assert_second_input_code_fetch(
+    trace: &[ProfileStepTrace],
+    second: u32,
+    eof_word: u32,
+) {
+    let eof = second == eof_word;
+    let code = oracle_crazy(
+        75,
+        if eof {
+            7_174_574
+        } else {
+            second
+        },
+    );
+    let write = trace.get(77).and_then(|step| step.memory_delta.data);
+    assert_eq!(
+        write.map(|value| (value.address, value.before, value.after)),
+        Some((49, 75, code)),
+        "second={second} expected live guest code rewrite"
+    );
+    let fetch = trace.get(81).expect("validated C49 fetch");
+    assert_eq!(
+        fetch.before.registers.code_pointer, 49,
+        "second={second} expected C49 code fetch"
+    );
+    assert_eq!(
+        fetch.memory_reads.fetch.map(|read| read.value),
+        Some(code),
+        "second={second} expected rewritten instruction fetch"
+    );
+    assert_eq!(
+        fetch.decoded,
+        if eof {
+            Some(b'=')
+        } else {
+            None
+        },
+        "second={second} expected EOF-only graphical code"
+    );
+    if eof {
+        let output = trace.get(89).expect("EOF path reached C57");
+        assert_eq!(
+            (output.before.registers.code_pointer, output.output),
+            (57, Some(32)),
+            "second={second} expected EOF-only third output"
+        );
+    }
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "oracle compares finite byte class"
+)]
+fn assert_second_input_state(
+    vm: &ProfileMachine,
+    second: u32,
+    eof_word: u32,
+    consumed: usize,
+) {
+    let eof = second == eof_word;
+    let mut output = vec![
+        3,
+        if eof {
+            174
+        } else {
+            u8::try_from(second).expect("finite byte")
+        },
+    ];
+    if eof {
+        output.push(32);
+    }
+    assert_eq!(vm.output(), output, "second={second} guest output");
+    assert_eq!(vm.input_consumed(), consumed, "second={second} cursor");
+    assert_eq!(
+        vm.memory_word(126),
+        Ok(oracle_crazy(121, 3)),
+        "second={second} first saved word"
+    );
+    assert_eq!(
+        vm.memory_word(138),
+        Ok(oracle_crazy(121, second)),
+        "second={second} second saved word"
+    );
+    let code = oracle_crazy(
+        75,
+        if eof {
+            7_174_574
+        } else {
+            second
+        },
+    );
+    assert_eq!(
+        vm.memory_word(49),
+        Ok(if eof {
+            114
+        } else {
+            code
+        }),
+        "second={second} expected exact terminal code cell"
+    );
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    reason = "257 physical N15 input classes"
+)]
+fn second_input_selects_exact_guest_code_fetch_in_all_257_classes() {
+    let profile = current_profile();
+    let source = layout::build_c23_two_inputs_eof_fetch_probe_source(profile)
+        .expect("source construction");
+    let pristine = ProfileMachine::from_source(profile, &source, vec![])
+        .expect("normative source loader");
+    for second in (0..=255u32).chain(once(profile.eof_word())) {
+        let eof = second == profile.eof_word();
+        let input = if eof {
+            vec![3]
+        } else {
+            vec![3, u8::try_from(second).expect("finite byte")]
+        };
+        let mut vm = pristine.fork_with_input(input.clone()).expect("VM fork");
+        let mut trace = Vec::new();
+        let expected_steps = if eof {
+            93
+        } else {
+            82
+        };
+        assert_eq!(
+            vm.run_traced(100, &mut |step| trace.push(*step)),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::NonGraphicalCell,
+                steps: expected_steps,
+            }),
+            "second={second}"
+        );
+        assert_eq!(trace.len(), expected_steps);
+        assert_second_input_state(&vm, second, profile.eof_word(), input.len());
+        assert_two_input_code_reentry(&trace, second);
+        assert_second_input_code_fetch(&trace, second, profile.eof_word());
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    reason = "257 physical N15 first-input classes"
+)]
+fn every_first_input_retains_the_second_eof_code_path() {
+    let profile = current_profile();
+    let source = layout::build_c23_two_inputs_eof_fetch_probe_source(profile)
+        .expect("source construction");
+    let pristine = ProfileMachine::from_source(profile, &source, vec![])
+        .expect("normative source loader");
+    for first in (0..=255u32).chain(once(profile.eof_word())) {
+        let input = if first == profile.eof_word() {
+            vec![]
+        } else {
+            vec![u8::try_from(first).expect("finite byte")]
+        };
+        let mut vm = pristine.fork_with_input(input.clone()).expect("VM fork");
         let mut trace = Vec::new();
         assert_eq!(
-            vm.run_traced(80, &mut |step| trace.push(*step)),
-            Err(ProfileMachineError::InvalidEncryptionTarget {
-                pointer: 121,
-                value: 7_174_404,
-            })
+            vm.run_traced(100, &mut |step| trace.push(*step)),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::NonGraphicalCell,
+                steps: 93,
+            }),
+            "first={first}"
         );
-        assert_eq!(vm.input_consumed(), stdin.len().min(2));
-        assert_eq!(trace.last().map(|step| step.decoded), Some(Some(b'i')));
+        let output_first = if first == profile.eof_word() {
+            174
+        } else {
+            u8::try_from(first).expect("finite byte")
+        };
+        assert_eq!(vm.output(), [output_first, 174, 32]);
+        assert_eq!(vm.input_consumed(), input.len());
+        assert_eq!(vm.memory_word(126), Ok(oracle_crazy(121, first)));
         assert_eq!(
-            trace.last().map(|step| step.before.registers.code_pointer),
-            Some(67)
+            vm.memory_word(138),
+            Ok(oracle_crazy(121, profile.eof_word()))
         );
-        assert_eq!(
-            trace
-                .last()
-                .and_then(|step| step.memory_reads.data)
-                .map(|read| (read.address, read.value)),
-            Some((150, 121))
+        assert_two_input_code_reentry(&trace, profile.eof_word());
+        assert_second_input_code_fetch(
+            &trace,
+            profile.eof_word(),
+            profile.eof_word(),
         );
-        let expected = stdin
-            .iter()
-            .map(|byte| *byte)
-            .chain(std::iter::repeat_n(174u8, 2))
-            .take(2)
-            .collect::<Vec<_>>();
-        assert_eq!(vm.output(), expected);
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    reason = "bounded real N15 mutation controls"
+)]
+fn changing_reentry_jumps_refuses_the_eof_code_path() {
+    let profile = current_profile();
+    let source = layout::build_c23_two_inputs_eof_fetch_probe_source(profile)
+        .expect("source construction");
+    for position in [63u32, 64] {
+        let mut changed = source.clone();
+        let site = usize::try_from(position).expect("bounded code site");
+        *changed.get_mut(site).expect("valid source code site") =
+            source_encoding(position, b'o').expect("graphical negative code");
+        let mut vm = ProfileMachine::from_source(profile, &changed, vec![3])
+            .expect("negative source still loads");
+        assert_ne!(
+            vm.run(100),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::NonGraphicalCell,
+                steps: 93,
+            }),
+            "invalid transfer cannot select the EOF code fetch"
+        );
+        assert_eq!(vm.output().get(..2), Some([3, 174].as_slice()));
     }
 }

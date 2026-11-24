@@ -483,6 +483,37 @@ pub fn build_c23_two_inputs_saved_and_echoed_source(
     Ok(source)
 }
 
+/// Re-enter encrypted guest code after two stored and echoed input attempts.
+///
+/// This is a physical **EOF instruction-fetch discriminator**, not a valid
+/// source-C branch. C63/C64 `j` return D to the encrypted C37 word; C65 `i`
+/// enters C67, whose source-required value 125 executes as another `i` and
+/// transfers control to encrypted C35. The second traversal reaches C45,
+/// now self-encrypted to `p`: it writes `crazy(M49=75, restored_second_input)`
+/// into the next instruction at C49. For every successful byte 0..255,
+/// that word is non-graphical and the VM terminates at C49. For true N15
+/// EOF only, the word becomes graphical 42 and the VM reaches C57 `<` to
+/// emit an additional byte before terminating on non-graphical C60.
+///
+/// No branch has a valid C23 EOF/non-EOF **halt** or backedge. This probe
+/// authenticates one input-dependent, self-modifying code-fetch decision,
+/// not an executable checksum, legal C if/else or guest loop.
+///
+/// # Errors
+///
+/// Rejects a noncanonical target, source-invalid byte or missing positional
+/// encoding. Independent normative VM and scalar-trit replay are mandatory.
+pub fn build_c23_two_inputs_eof_fetch_probe_source(
+    profile: &ProfileDescriptor,
+) -> Result<Vec<u8>, C23OperandProbeSourceError> {
+    let mut source = build_c23_two_inputs_saved_and_echoed_source(profile)?;
+    for (position, opcode) in [(63, b'j'), (64, b'j'), (65, b'i')] {
+        set(&mut source, position, opcode)?;
+    }
+    admit_c23_probe_graphical_source(&source)?;
+    Ok(source)
+}
+
 /// Extend a first-read lossless store across the eighth real Iy rotation.
 ///
 /// The first signed `/` at C37 feeds a physical C43 `p` write to M126.

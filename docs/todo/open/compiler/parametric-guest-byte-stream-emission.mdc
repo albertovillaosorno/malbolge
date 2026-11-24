@@ -41,6 +41,16 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The same real two-input source now has a bounded encrypted-code reentry:
+C63/C64 `j` and C65/C67 `i` enter C35 after both input stores/outputs.
+On a second visit, C45 `p` writes physical instruction C49 from the
+second input. Two 257-class normative N15 VM sweeps and an
+independent trit oracle show C49 is non-graphical for every
+successful byte, but graphical 42 for true EOF, which alone reaches a third output. Both branches still terminate
+on non-graphical code, not a valid C23 halt or loop. Source-C checksum,
+signed EOF, physical phi and arithmetic remain unlinked. Evidence:
+`tests/compiler_c23_two_saved_echo_guest.rs` and the compiler contract.
+
 A second readback probe proves why the unchanged `Iy` source cannot
 simply fall through from C63 to re-read the first saved word: C67 must be
 literal 125 for the earlier M126 store, but decodes as an indirect `i`,
