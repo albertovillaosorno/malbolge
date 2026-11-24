@@ -152,7 +152,12 @@ def guest_or_explicit_eof_refusal(
                     expected[data] = run.stdout
 
     if compiled.returncode != 0:
+        # A compiler crash, mixed-stage diagnostic or other failed pass must
+        # not be accepted as the explicit source-frontend EOF safety gate.
+        test.assertEqual(compiled.returncode, 1, compiled.stderr)
         test.assertIn(b"normalized frontend rejected: Unsupported", compiled.stderr)
+        test.assertIn(b"unlowered C", compiled.stderr)
+        test.assertNotIn(b"layout backend exited unsuccessfully", compiled.stderr)
         test.assertFalse(artifact.exists())
         return False
     test.assertTrue(artifact.is_file())
