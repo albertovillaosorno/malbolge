@@ -570,6 +570,79 @@ fn real_guest_signed_and_unsigned_ordering_use_source_width()
     Ok(())
 }
 
+// C's _Bool operands undergo integer promotion for arithmetic. The typed
+// SSA checker cannot claim a one-bit Add/Mul/Sub result as source C math:
+// (bool)(true + true) is 1, not the one-bit wrapped result 0.
+#[test]
+fn typed_boolean_arithmetic_requires_explicit_integer_promotion() {
+    let value = |operation| {
+        let operand = |address| GuestPlacedOperand {
+            address,
+            type_kind: TernaryCfgScalarKind::Bool,
+            value: address.saturating_sub(70),
+            words: 1,
+        };
+        evaluate(
+            GuestCodeComputation::Binary {
+                operation,
+                left: operand(70),
+                right: operand(71),
+                result: operand(72),
+            },
+            &BTreeMap::from([(70, 1), (71, 1)]),
+        )
+    };
+    for operation in [BinaryOp::Add, BinaryOp::Subtract, BinaryOp::Multiply] {
+        assert_eq!(
+            value(operation),
+            Err(SourcePhiCopyTraceError::UnsupportedComputation)
+        );
+    }
+    assert_eq!(value(BinaryOp::And), Ok(1));
+    assert_eq!(value(BinaryOp::Or), Ok(1));
+    assert_eq!(value(BinaryOp::Xor), Ok(0));
+}
+
+#[test]
+fn real_guest_one_bit_wrapped_add_is_not_c_boolean_add() -> Result<(), String> {
+    let trace = traced_three_stores_with_seeds([3, 3, 0])?;
+    assert_eq!(
+        trace
+            .iter()
+            .take(3)
+            .map(|step| step.after.registers.accumulator)
+            .collect::<Vec<_>>(),
+        vec![1, 1, 0]
+    );
+    let bool_operand = |address| GuestPlacedOperand {
+        address,
+        type_kind: TernaryCfgScalarKind::Bool,
+        value: address.saturating_sub(70),
+        words: 1,
+    };
+    let check = |operation| {
+        let computation = GuestCodeComputation::Binary {
+            operation,
+            left: bool_operand(70),
+            right: bool_operand(71),
+            result: bool_operand(72),
+        };
+        verify_source_computation_values(
+            &operations(computation),
+            &effects(),
+            &[],
+            &frames(),
+            &trace,
+        )
+    };
+    assert_eq!(
+        check(BinaryOp::Add),
+        Err(SourcePhiCopyTraceError::UnsupportedComputation)
+    );
+    assert_eq!(check(BinaryOp::Xor), Ok(()));
+    Ok(())
+}
+
 // C23 signed arithmetic overflow is undefined source behavior, even when
 // the guest physically writes the corresponding low-width wrapped bits.
 // These are real four-step N15 guest executions, not fabricated VM traces.

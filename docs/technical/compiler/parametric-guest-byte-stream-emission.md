@@ -1130,6 +1130,40 @@ passes only its **explicit refusal/no guest artifact** contract; P2 remains
 open. See `src/compiler/malbolge-layout/composition/source_computation_trace.rs`
 and `tests/compiler/source_computation_trace.rs`.
 
+### Source-typed numerical opcode validity (2026-11-24)
+
+The opt-in **numeric** computation verifier now refuses an operation whose
+explicit typed opcode contradicts the source scalar. `SignExtend` requires a
+signed integer source, `ZeroExtend` cannot reinterpret a negative signed
+source as a positive value, and a one-bit `Truncate` cannot stand in for C
+nonzero-to-Boolean conversion. `BoolToSigned`, `IntegerToBool`,
+`IntegerBitcast` and width-changing casts also require the corresponding
+source and result kinds and genuine width relation. A former forged
+unsigned-byte sign extension produced `0xff80` for source U8 `0x80` where
+C unsigned extension requires `0x0080`. A real four-step N15 store of
+`1, 2, 0` previously certified a forged byte-to-Boolean truncate although
+C23 `(bool)2` is one. Both now refuse with `UnsupportedComputation`, while
+valid signed/unsigned extensions and C nonzero conversion still pass.
+
+Integer-order comparisons now require matching operand signedness: an
+unsigned U8 `255 < 1` is false and a signed I8 `-1 < 1` is true, so neither
+may be checked using the opposite signed-order opcode. Paired normative
+four-step N15 guests physically store `255`, `1` and the opposing Boolean
+result to demonstrate prior false acceptance and corrected refusal. The
+verifier also refuses one-bit `Add`, `Subtract` and `Multiply` on `_Bool`
+operands: C promotes those operands to integer before arithmetic, and
+`(bool)(true + true)` is one, not the wrapped one-bit sum zero. A real
+four-step N15 `1, 1, 0` guest now refuses such forged addition but still
+passes a matching typed Boolean XOR. The regression is
+`tests/compiler/source_computation_trace.rs`.
+
+These are defensive **typed numeric acceptance conditions** over seeded,
+real VM stores; they do not synthesize guest arithmetic or prove the real
+physical operand dependencies. The original full seven-block mutable C23
+EOF checksum remains unlinked at guest CFG, phi transfers, signed EOF
+conversion and guest arithmetic. Its three pipeline tests still pass only
+explicit refusal without publishing a target. P2 remains open.
+
 ### Physically sourced phi-copy dataflow (2026-11-23)
 
 The linked-CFG physical phi transfer gate now requires the *latest*

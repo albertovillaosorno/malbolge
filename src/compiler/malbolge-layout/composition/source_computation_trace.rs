@@ -288,6 +288,17 @@ fn evaluate(
             {
                 return Err(UnsupportedComputation);
             }
+            // C arithmetic promotes _Bool to int. Without an explicit
+            // integer cast, one-bit Add would wrap 1+1 to 0 even though
+            // converting the actual C result back to _Bool yields 1.
+            if result.type_kind == TernaryCfgScalarKind::Bool
+                && !matches!(
+                    operation,
+                    BinaryOp::And | BinaryOp::Or | BinaryOp::Xor
+                )
+            {
+                return Err(UnsupportedComputation);
+            }
             let lhs = read_scalar(left, written)?;
             let rhs = read_scalar(right, written)?;
             let width = scalar_bits(result.type_kind);
