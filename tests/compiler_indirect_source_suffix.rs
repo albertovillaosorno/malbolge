@@ -2103,3 +2103,284 @@ fn fourth_cumulative_fifth_output_survives_seeded_cross_input_streams() {
         );
     }
 }
+
+// This independently derived, source-bound placement is a physical VM gate,
+// not a proof of the original checksum's runtime C control or scalar storage.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::too_many_lines,
+    reason = "exact source identities and finite real N15 trace obligations"
+)]
+fn physical_indirect_suffix_proof_replays_actual_guest_input_and_halt() {
+    use layout::{
+        IndirectSourceSuffixGuestProbe,
+        verify_source_loaded_indirect_suffix_guest,
+    };
+    let original = saved_fold_source();
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let plan = open_suffix(&original, THREE_INPUT_FOLD_SUFFIX);
+    for (input, expected, consumed) in [
+        (vec![3, 4, 5], vec![3, 49, 5, 58], 3),
+        (vec![3, 4], vec![3, 49, 106, 23], 2),
+        (vec![3, 4, 255, 99], vec![3, 49, 255, 53], 3),
+    ] {
+        let proof = verify_source_loaded_indirect_suffix_guest(
+            current_profile(),
+            IndirectSourceSuffixGuestProbe {
+                candidate: &plan,
+                indirect_code_cell: 94,
+                input: &input,
+                original: &original,
+                pointer_cell: 111,
+                protected: &protected,
+                step_budget: 130,
+                suffix: THREE_INPUT_FOLD_SUFFIX,
+            },
+        )
+        .expect("full physical input, pointer, suffix and halt");
+        assert_eq!(proof.transfer_step, 94);
+        assert_eq!(proof.steps, 107);
+        assert_eq!(proof.input_consumed, consumed);
+        assert_eq!(proof.output, expected);
+        assert_eq!(proof.return_address, None);
+    }
+    // A second independently graphical pointer byte, C111=117, reaches
+    // C118 through the *same* genuine C94 i. Selection is source-bound.
+    let mut protected_second = protected;
+    protected_second.push(117);
+    let second = plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        111,
+        117,
+        118,
+        b"/<v",
+        &protected_second,
+    )
+    .expect("second graphical landing");
+    assert_eq!((second.pointer_word, second.landing_address), (117, 118));
+    let proof = verify_source_loaded_indirect_suffix_guest(
+        current_profile(),
+        IndirectSourceSuffixGuestProbe {
+            candidate: &second,
+            indirect_code_cell: 94,
+            input: &[3, 4, 0x80],
+            original: &original,
+            pointer_cell: 111,
+            protected: &protected_second,
+            step_budget: 110,
+            suffix: b"/<v",
+        },
+    )
+    .expect("alternate source pointer and code leaf are physically reachable");
+    assert_eq!(proof.steps, 98);
+    assert_eq!(proof.output, [3, 49, 0x80]);
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "real indirect return after physical three-input stateful fold"
+)]
+fn physical_indirect_suffix_proof_checks_terminal_indirect_return() {
+    use layout::{
+        IndirectSourceSuffixGuestProbe,
+        verify_source_loaded_indirect_suffix_guest,
+    };
+    let mut original = saved_fold_source();
+    original[109] = 66;
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let candidate = saved_fold_return_plan();
+    let proof = verify_source_loaded_indirect_suffix_guest(
+        current_profile(),
+        IndirectSourceSuffixGuestProbe {
+            candidate: &candidate,
+            indirect_code_cell: 94,
+            input: &[3, 4, 5],
+            original: &original,
+            pointer_cell: 111,
+            protected: &protected,
+            step_budget: 140,
+            suffix: THREE_INPUT_FOLD_RETURN_SUFFIX,
+        },
+    )
+    .expect("real terminal-i return reaches previously encrypted code halt");
+    assert_eq!(proof.transfer_step, 94);
+    assert_eq!(proof.return_address, Some(67));
+    assert_eq!(proof.steps, 123);
+    assert_eq!(proof.input_consumed, 3);
+    assert_eq!(proof.output, [3, 49, 5, 58]);
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::too_many_lines,
+    reason = "source mutation and unreachable guest control must fail closed"
+)]
+fn physical_indirect_suffix_proof_refuses_forged_source_and_unlinked_control() {
+    use layout::{
+        IndirectSourceSuffixGuestError as Refusal,
+        IndirectSourceSuffixGuestProbe, MAX_INDIRECT_SUFFIX_PROOF_INPUT,
+        verify_source_loaded_indirect_suffix_guest,
+    };
+    let original = saved_fold_source();
+    let protected = (0..111).chain([124, 127, 134]).collect::<Vec<_>>();
+    let candidate = open_suffix(&original, b"/<v");
+    let baseline = IndirectSourceSuffixGuestProbe {
+        candidate: &candidate,
+        indirect_code_cell: 94,
+        input: &[3, 4, 5],
+        original: &original,
+        pointer_cell: 111,
+        protected: &protected,
+        step_budget: 110,
+        suffix: b"/<v",
+    };
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(current_profile(), baseline)
+            .expect("reached and halted physical suffix")
+            .steps,
+        98
+    );
+    let mut false_original = original.clone();
+    // Alter a preserved physical source cell while keeping its graphical
+    // encoding valid. It is not the original plan's source identity.
+    false_original[9] = graphical(9, b'j').expect("graphical other opcode");
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(
+            current_profile(),
+            IndirectSourceSuffixGuestProbe {
+                original: &false_original,
+                ..baseline
+            }
+        ),
+        Err(Refusal::CandidateMismatch)
+    );
+    let mut false_candidate = candidate.clone();
+    false_candidate.source[111] = original[111];
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(
+            current_profile(),
+            IndirectSourceSuffixGuestProbe {
+                candidate: &false_candidate,
+                ..baseline
+            }
+        ),
+        Err(Refusal::CandidateMismatch)
+    );
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(
+            current_profile(),
+            IndirectSourceSuffixGuestProbe {
+                indirect_code_cell: 82,
+                ..baseline
+            }
+        ),
+        Err(Refusal::MissingIndirectTransfer)
+    );
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(
+            current_profile(),
+            IndirectSourceSuffixGuestProbe {
+                step_budget: 97,
+                ..baseline
+            }
+        ),
+        Err(Refusal::InvalidGuestExecution)
+    );
+    let large_input = vec![0; MAX_INDIRECT_SUFFIX_PROOF_INPUT + 1];
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(
+            current_profile(),
+            IndirectSourceSuffixGuestProbe {
+                input: &large_input,
+                ..baseline
+            }
+        ),
+        Err(Refusal::InvalidBound)
+    );
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(
+            historical_profile(),
+            baseline
+        ),
+        Err(Refusal::CandidateMismatch)
+    );
+}
+
+/// A source-legal pointer byte is not enough: the actual reached `i` can
+/// read a *different* data cell and halt on an old, already encrypted path.
+#[test]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::too_many_lines,
+    reason = "source-valid false pointer and independent physical guest control"
+)]
+fn physical_indirect_proof_rejects_planned_but_unread_pointer_cell() {
+    use layout::{
+        IndirectSourceSuffixGuestError, IndirectSourceSuffixGuestProbe,
+        verify_source_loaded_indirect_suffix_guest,
+    };
+    let original = saved_fold_source();
+    let protected = (0..110).chain([111, 124, 127, 134]).collect::<Vec<_>>();
+    let plan = plan_source_loaded_indirect_suffix(
+        current_profile(),
+        &original,
+        110,
+        118,
+        118,
+        b"/<v",
+        &protected,
+    )
+    .expect("M110=117 decodes as source-valid code at C110");
+    assert_eq!((plan.pointer_word, plan.landing_address), (117, 118));
+    assert_eq!(plan.source[111], original[111]);
+    assert_eq!(
+        layout::admit_c23_probe_graphical_source(&plan.source),
+        Ok(())
+    );
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), &plan.source, vec![
+            3, 4, 5,
+        ])
+        .expect("both pointer-cell choices are syntactically graphical");
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(110, &mut |step| trace.push(*step)),
+        Ok(RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 96,
+        })
+    );
+    assert_eq!(trace[94].decoded, Some(b'i'));
+    assert_eq!(
+        trace[94]
+            .memory_reads
+            .data
+            .map(|word| (word.address, word.value)),
+        Some((111, 81)),
+        "the actually reached guest reads M111, not the proposed M110"
+    );
+    assert_eq!(vm.output(), [3, 49]);
+    assert_eq!(
+        verify_source_loaded_indirect_suffix_guest(
+            current_profile(),
+            IndirectSourceSuffixGuestProbe {
+                candidate: &plan,
+                indirect_code_cell: 94,
+                input: &[3, 4, 5],
+                original: &original,
+                pointer_cell: 110,
+                protected: &protected,
+                step_budget: 110,
+                suffix: b"/<v",
+            }
+        ),
+        Err(IndirectSourceSuffixGuestError::InvalidIndirectTransfer)
+    );
+}

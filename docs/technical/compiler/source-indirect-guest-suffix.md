@@ -22,7 +22,8 @@ pointer data, and future code cells must also remain disjoint from patches.
   source-resident, candidate pointer-cell position.
 - It explores a finite code window in increasing landing-address order,
   with a bounded linear suffix of `o`, `/`, `<`, `j`, `p`, `*` and terminal
-  `v`. No recursive branch or `i` may occur inside the suffix.
+  `v` or `i`. An `i` is terminal, not a proved return or halt; there is no
+  interior branch or arbitrary loop synthesis.
 - It requires `landing - 1` to be a printable graphical source byte **and**
   decode to a valid opcode at the exact pointer-cell position. Protected
   source words inside a suffix may be *executed* only if their unchanged
@@ -352,3 +353,40 @@ retire any of those obligations.
 
 The second command tests the intentional original-checksum refusal and
 non-publication, **not** an accepted complete compiler target.
+
+## Source-rederived physical suffix verification (2026-11-24)
+
+`verify_source_loaded_indirect_suffix_guest` provides a **separate finite
+execution gate** for candidate leaves. Unlike the preparatory source placer,
+it first reconstructs the exact graphical candidate from the original
+pre-patch source, the requested landing, the pointer-cell address, the
+protected-cell set and every suffix opcode. A changed protected word,
+forged candidate source byte, stale pointer or different target cannot
+borrow the original placement witness.
+
+For each explicit guest input (up to 4,096 bytes) it starts a fresh normative
+current-profile N15 VM and observes at most 4,096 steps. A successful proof
+requires a complete physical `v` halt, exactly one reached nominated `i`
+with a real `M[D]` read of the promised **source-loadable pointer word**,
+its actual successor `C` equal to the reserved landing address, and each
+suffix opcode fetched in order at exactly the expected code cell. Fetching
+any suffix cell before that `i`, missing the leaf, or revisiting a suffix
+cell after completion refuses. When the leaf ends with an `i`, the verifier
+also checks its real successor transition; the remaining guest must halt
+under the same bounded VM run, including any earlier encrypted-code reentry.
+The proof exposes the actual transfer step, complete VM step count,
+consumed input count, output bytes and terminal-indirect return address.
+It **does not** transform or compute source C output, recognize a runtime
+C `while`, certify all stdin streams, or publish an executable artifact.
+
+The focused production-verifier tests demonstrate the genuine 107-step
+three-input fold leaf with binary stdin/EOF, an alternate graphical pointer
+at C111=117 landing at C118, and the 123-step terminal `i` return that
+reaches a previously encrypted C82 `v`. The verifier rejects source-only
+or candidate-only mutation, a nominated `i` site that never executes,
+a source-valid M110 pointer that is never read because the real C94 `i`
+reads M111 instead, a guest run truncated before its actual halt, an oversize stdin and an
+unsupported profile. Separate existing VM/exhaustive-scalar tests remain
+authoritative for all byte/EOF classes. In particular, this new gate is
+**physical guest-control evidence**, not linkage of the seven-block
+source-C mutable EOF checksum; P2 remains open.

@@ -148,8 +148,11 @@ pub use guest_state_placement::{
     GuestStatePlacementRequest, place_source_bound_guest_state,
 };
 pub use indirect_source_suffix::{
-    IndirectSourceSuffixError, IndirectSourceSuffixPlan,
-    plan_source_loaded_indirect_suffix,
+    IndirectSourceSuffixError, IndirectSourceSuffixGuestError,
+    IndirectSourceSuffixGuestProbe, IndirectSourceSuffixGuestProof,
+    IndirectSourceSuffixPlan, MAX_INDIRECT_SUFFIX_PROOF_INPUT,
+    MAX_INDIRECT_SUFFIX_PROOF_STEPS, plan_source_loaded_indirect_suffix,
+    verify_source_loaded_indirect_suffix_guest,
 };
 pub use live_input_encoded_store::{
     LiveInputEncodedStoreError, LiveInputEncodedStoreSource,

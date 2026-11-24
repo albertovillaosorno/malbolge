@@ -9,16 +9,15 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Finite, position-sensitive placement of a linear source-loadable leaf
-//     behind an indirect guest code-pointer operand.
+//   - Finite position-sensitive indirect-leaf placement and source-rederived
+//     physical N15 guest execution of the proposed leaf.
 // - Must-Not:
-//   - Assume a guest i is reached, that its D selects this operand, or that
-//     preceding self-modification preserves the leaf or pointer value.
+//   - Infer a jump from code placement, claim a whole source-C branch or loop,
+//     or substitute host calculations for guest-executed effects.
 // - Allows:
-//   - Inputs: already-admitted source, pointer-cell position, open code range,
-//     protected cells and a linear data/I/O/control suffix.
-//   - Outputs: a deterministic graphical candidate and exact landing address.
-//   - Side effects: owned allocation only; no VM or host I/O.
+//   - Inputs: source-locked pointer, protected cells, suffix and finite stdin.
+//   - Outputs: graphical candidate or exact reached guest trace observations.
+//   - Side effects: isolated bounded normative VM execution in proof mode.
 // - Split-When:
 //   - Source-locked CFG placement links arbitrary branches and phi pads.
 // - Merge-When:
@@ -32,11 +31,14 @@
 //! pointer word is itself graphical source and must decode to a legal opcode
 //! at *its own* source position. Merely choosing the desired target is not
 //! sufficient. All original and resulting code cells are admitted here.
-//! Guest execution, read provenance, pointer preservation, code encryption
-//! and the original C23 semantics remain independent verification obligations.
+//! The separate physical verifier re-derives a candidate from its original
+//! source, then checks a finite normative VM trace including pointer read,
+//! actual landing, leaf opcodes and halt. Source-C semantics, general CFG
+//! linkage and unbounded input behavior remain independent obligations.
 
 use malbolge::{
-    ProfileDescriptor, current_profile, decode_profile_instruction,
+    ProfileDescriptor, ProfileMachine, RunOutcome, Termination,
+    current_profile, decode_profile_instruction,
 };
 
 use super::admit_c23_probe_graphical_source;
@@ -45,13 +47,18 @@ const MAX_SOURCE_CELLS: usize = 4096;
 const MAX_SUFFIX_CELLS: usize = 32;
 const LOADABLE_OPCODES: &[u8] = b"ji*p</ov";
 
+/// Maximum normative transitions admitted by one physical suffix check.
+pub const MAX_INDIRECT_SUFFIX_PROOF_STEPS: usize = 4096;
+/// Maximum explicit stdin bytes accepted by a finite suffix check.
+pub const MAX_INDIRECT_SUFFIX_PROOF_INPUT: usize = 4096;
+
 /// Why a finite indirect source suffix cannot be placed as requested.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IndirectSourceSuffixError {
-    /// The source is malformed or exceeds this bounded candidate study.
-    InvalidSource,
     /// The pointer site, landing window or protected positions are invalid.
     InvalidPlacement,
+    /// The source is malformed or exceeds this bounded candidate study.
+    InvalidSource,
     /// Only a bounded linear leaf ending in a halt or indirect transfer is
     /// admitted.
     InvalidSuffix,
@@ -62,6 +69,70 @@ pub enum IndirectSourceSuffixError {
     NoSourceLoadablePointer,
     /// The geometry depends on the canonical current N15 decoder and loader.
     UnsupportedProfile,
+}
+
+/// Why a physical execution does not establish the requested indirect leaf.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IndirectSourceSuffixGuestError {
+    /// Original source, source identity or protected cells do not re-plan.
+    CandidateMismatch,
+    /// Source/output/input/step geometry is outside this finite proof bound.
+    InvalidBound,
+    /// The source is not an executable, normally halting N15 guest.
+    InvalidGuestExecution,
+    /// The reached indirect instruction did not read the authentic pointer.
+    InvalidIndirectTransfer,
+    /// The suffix did not execute at the exact promised code cells/opcodes.
+    InvalidSuffixExecution,
+    /// The expected first indirect instruction never executed exactly once.
+    MissingIndirectTransfer,
+    /// The proposed suffix was entered before the authenticated jump.
+    PrematureSuffixExecution,
+    /// The suffix was executed again after its first completed visit.
+    RepeatedSuffixExecution,
+}
+
+/// Source and physical execution obligations for one planned indirect leaf.
+///
+/// `original` is the pre-patch graphical source. Reconstructing the exact
+/// candidate from it prevents a forged plan from borrowing a genuine VM run.
+/// The caller supplies the *actual* source `i` site, not an assumed jump.
+#[derive(Clone, Copy, Debug)]
+pub struct IndirectSourceSuffixGuestProbe<'source> {
+    /// Untrusted proposed placement and exact candidate source bytes.
+    pub candidate: &'source IndirectSourceSuffixPlan,
+    /// Exact source address expected to execute the indirect instruction.
+    pub indirect_code_cell: u32,
+    /// The complete finite guest input, never compiler-precomputed output.
+    pub input: &'source [u8],
+    /// Source from which the pointer and suffix were prepared.
+    pub original: &'source [u8],
+    /// Data pointer target which the indirect instruction must read.
+    pub pointer_cell: usize,
+    /// Source cells whose original bytes must be preserved by placement.
+    pub protected: &'source [usize],
+    /// Positive upper bound on real guest instructions, including termination.
+    pub step_budget: usize,
+    /// Exact linear suffix opcodes, including its terminal `v` or `i`.
+    pub suffix: &'source [u8],
+}
+
+/// Actual guest evidence from one completed, source-identical indirect leaf.
+///
+/// This proves only one finite input, one source and one leaf execution; it
+/// does not prove unbounded C CFG control, signed EOF conversion or arithmetic.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IndirectSourceSuffixGuestProof {
+    /// Number of bytes consumed by actual guest input instructions.
+    pub input_consumed: usize,
+    /// Exact bytes emitted by the normative guest, not a host C projection.
+    pub output: Vec<u8>,
+    /// Next code address selected by a terminal `i`, if that leaf has one.
+    pub return_address: Option<u32>,
+    /// Number of completed transitions through the final guest halt.
+    pub steps: usize,
+    /// VM transition index of the genuine `i` that enters the suffix.
+    pub transfer_step: usize,
 }
 
 /// A graphical candidate; **not** evidence that any guest `i` reaches it.
@@ -218,4 +289,170 @@ pub fn plan_source_loaded_indirect_suffix(
         });
     }
     Err(NoSourceLoadablePointer)
+}
+
+/// Execute and verify one source-planned indirect guest suffix in the real VM.
+///
+/// First reconstruct the *same* planned byte image from the pre-patch source,
+/// including its graphical pointer, protected cells and requested suffix. A
+/// completed normative N15 trace must then show the named `i` reading that
+/// unchanged operand, landing at the promised first code cell, executing all
+/// suffix opcodes in source order, and eventually halting by real `v`. A
+/// terminal suffix `i` may return to earlier encrypted code; that return is
+/// included in the VM run and its actual destination is reported. The entry
+/// and suffix must each be reached exactly once in this bounded witness.
+///
+/// This is a finite **physical code** admission gate only. Its observed
+/// output and input consumption are evidence for callers to compare with an
+/// independent source-C oracle; no guest artifact is published here.
+///
+/// # Errors
+///
+/// Refuses re-planning drift, a missing/wrong physical operand or target,
+/// hidden earlier/repeated suffix visits, mismatched actual decoded code,
+/// nonhalt, invalid source, and exceeded execution or input bounds.
+#[expect(
+    clippy::too_many_lines,
+    reason = "exact re-planned source and one finite normative transition audit"
+)]
+pub fn verify_source_loaded_indirect_suffix_guest(
+    profile: &ProfileDescriptor,
+    probe: IndirectSourceSuffixGuestProbe<'_>,
+) -> Result<IndirectSourceSuffixGuestProof, IndirectSourceSuffixGuestError> {
+    use IndirectSourceSuffixGuestError::{
+        CandidateMismatch, InvalidBound, InvalidGuestExecution,
+        InvalidIndirectTransfer, InvalidSuffixExecution,
+        MissingIndirectTransfer, PrematureSuffixExecution,
+        RepeatedSuffixExecution,
+    };
+    if probe.step_budget == 0
+        || probe.step_budget > MAX_INDIRECT_SUFFIX_PROOF_STEPS
+        || probe.input.len() > MAX_INDIRECT_SUFFIX_PROOF_INPUT
+        || usize::try_from(probe.indirect_code_cell)
+            .map_or(true, |site| site >= probe.original.len())
+    {
+        return Err(InvalidBound);
+    }
+    let landing = usize::try_from(probe.candidate.landing_address)
+        .map_err(|_error| InvalidBound)?;
+    let rebuilt = plan_source_loaded_indirect_suffix(
+        profile,
+        probe.original,
+        probe.pointer_cell,
+        landing,
+        landing,
+        probe.suffix,
+        probe.protected,
+    )
+    .map_err(|_error| CandidateMismatch)?;
+    if rebuilt != *probe.candidate {
+        return Err(CandidateMismatch);
+    }
+    // The re-planner already proved this is exactly current_profile().
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &probe.candidate.source,
+        probe.input.to_vec(),
+    )
+    .map_err(|_error| InvalidGuestExecution)?;
+    let mut trace = Vec::new();
+    let outcome = vm
+        .run_traced(probe.step_budget, &mut |step| trace.push(*step))
+        .map_err(|_error| InvalidGuestExecution)?;
+    let RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps,
+    } = outcome
+    else {
+        return Err(InvalidGuestExecution);
+    };
+    let transfers = trace
+        .iter()
+        .enumerate()
+        .filter(|(_index, step)| {
+            step.before.registers.code_pointer == probe.indirect_code_cell
+                && step.decoded == Some(b'i')
+        })
+        .map(|(index, _step)| index)
+        .collect::<Vec<_>>();
+    let [transfer_step] = transfers.as_slice() else {
+        return Err(MissingIndirectTransfer);
+    };
+    let transfer = trace.get(*transfer_step).ok_or(InvalidGuestExecution)?;
+    if transfer.before.registers.data_pointer
+        != u32::try_from(probe.pointer_cell).map_err(|_error| InvalidBound)?
+        || transfer
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value))
+            != Some((
+                u32::try_from(probe.pointer_cell)
+                    .map_err(|_error| InvalidBound)?,
+                u32::from(probe.candidate.pointer_word),
+            ))
+        || transfer.after.registers.code_pointer
+            != probe.candidate.landing_address
+    {
+        return Err(InvalidIndirectTransfer);
+    }
+    let suffix_end = landing
+        .checked_add(probe.suffix.len())
+        .ok_or(InvalidBound)?;
+    let in_suffix = |step: &malbolge::ProfileStepTrace| {
+        let code = usize::try_from(step.before.registers.code_pointer)
+            .unwrap_or(usize::MAX);
+        (landing..suffix_end).contains(&code)
+    };
+    if trace
+        .get(..*transfer_step)
+        .ok_or(InvalidGuestExecution)?
+        .iter()
+        .any(in_suffix)
+    {
+        return Err(PrematureSuffixExecution);
+    }
+    let start = transfer_step.checked_add(1).ok_or(InvalidBound)?;
+    let end = start.checked_add(probe.suffix.len()).ok_or(InvalidBound)?;
+    let suffix_trace = trace.get(start..end).ok_or(InvalidSuffixExecution)?;
+    for (offset, (step, &opcode)) in
+        suffix_trace.iter().zip(probe.suffix).enumerate()
+    {
+        if step.before.registers.code_pointer
+            != u32::try_from(landing.checked_add(offset).ok_or(InvalidBound)?)
+                .map_err(|_error| InvalidBound)?
+            || step.decoded != Some(opcode)
+        {
+            return Err(InvalidSuffixExecution);
+        }
+    }
+    if trace
+        .get(end..)
+        .ok_or(InvalidSuffixExecution)?
+        .iter()
+        .any(in_suffix)
+    {
+        return Err(RepeatedSuffixExecution);
+    }
+    let last = suffix_trace.last().ok_or(InvalidSuffixExecution)?;
+    let return_address = if probe.suffix.last() == Some(&b'i') {
+        let resumed = trace.get(end).ok_or(InvalidSuffixExecution)?;
+        if resumed.before.registers.code_pointer
+            != last.after.registers.code_pointer
+        {
+            return Err(InvalidSuffixExecution);
+        }
+        Some(last.after.registers.code_pointer)
+    } else {
+        if end != trace.len() {
+            return Err(InvalidSuffixExecution);
+        }
+        None
+    };
+    Ok(IndirectSourceSuffixGuestProof {
+        input_consumed: vm.input_consumed(),
+        output: vm.output().to_vec(),
+        return_address,
+        steps,
+        transfer_step: *transfer_step,
+    })
 }
