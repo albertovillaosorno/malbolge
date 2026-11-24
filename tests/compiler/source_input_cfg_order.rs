@@ -935,6 +935,368 @@ fn signed_source_product_and_checked_overflow_affect_branch_proof() {
     assert_eq!(check(&source, TraceInput::Byte(1), true, 255), Ok(false));
 }
 
+// The physical branch must agree with the same source return that emits a
+// shifted input byte. Unsigned C32 left shifts wrap; logical right shifts
+// retain all 32 input bits, including true EOF as 0xffffffff.
+#[test]
+fn defined_unsigned_shifts_bind_source_output_and_branch() -> Result<(), String>
+{
+    use std::iter::once;
+
+    use super::{
+        SourceBranchObligation, source_path_matches_input_walk_with_branch,
+    };
+
+    let span = dummy_span();
+    let mut source = guarded_inequality_fixture();
+    source
+        .blocks
+        .first_mut()
+        .ok_or("missing source block")?
+        .operations = vec![
+        TernaryOperation::GetcharI32 { result: 0, span },
+        TernaryOperation::BitcastI32ToU32 {
+            result: 10,
+            value: 0,
+            span,
+        },
+        TernaryOperation::MaterializeU32 {
+            result: 11,
+            scalar: TernaryI32Scalar::from_bits(3),
+            span,
+        },
+        TernaryOperation::ShiftLeftU32 {
+            left: 10,
+            result: 12,
+            right: 11,
+            span,
+        },
+        TernaryOperation::ShiftRightLogicalU32 {
+            left: 10,
+            result: 13,
+            right: 11,
+            span,
+        },
+        TernaryOperation::XorU32 {
+            left: 12,
+            result: 14,
+            right: 13,
+            span,
+        },
+        TernaryOperation::MaterializeU32 {
+            result: 15,
+            scalar: TernaryI32Scalar::from_bits(16),
+            span,
+        },
+        TernaryOperation::LessUnsignedU32 {
+            left: 13,
+            result: 2,
+            right: 15,
+            span,
+        },
+        TernaryOperation::TruncateU32ToU8 {
+            result: 16,
+            value: 14,
+            span,
+        },
+        TernaryOperation::ByteOutput { value: 16, span },
+    ];
+    for input in once(TraceInput::EndOfInput)
+        .chain((u8::MIN..=u8::MAX).map(TraceInput::Byte))
+    {
+        let raw = match input {
+            TraceInput::Byte(byte) => u32::from(byte),
+            TraceInput::EndOfInput => u32::MAX,
+        };
+        let shifted = raw.wrapping_shl(3u32) ^ raw.wrapping_shr(3u32);
+        let expected = u8::try_from(shifted & 0xffu32)
+            .map_err(|error| error.to_string())?;
+        let true_arm = raw.wrapping_shr(3u32) < 16u32;
+        let first = SourceInputSiteObservation {
+            input,
+            raw_accumulator: raw,
+            ..observed(0, 0)
+        };
+        let second = SourceInputSiteObservation {
+            block: if true_arm {
+                2
+            } else {
+                1
+            },
+            input: TraceInput::EndOfInput,
+            raw_accumulator: 14_348_906,
+            ..observed(0, 0)
+        };
+        let observations = [&first, &second];
+        let events = [
+            SourceInputIoEvent::Input { observation_index: 0 },
+            SourceInputIoEvent::Output(expected),
+            SourceInputIoEvent::Input { observation_index: 1 },
+        ];
+        let check = |function: &TernaryCfgFunction, arm, cut, output| {
+            source_path_matches_input_walk_with_branch(
+                function,
+                &observations,
+                128,
+                true,
+                Some(&[output]),
+                Some(&events),
+                None,
+                Some(SourceBranchObligation {
+                    after_inputs: 1,
+                    io_before_transfer: Some(cut),
+                    block: 0,
+                    expected_true: arm,
+                }),
+            )
+        };
+        assert_eq!(check(&source, true_arm, 2, expected), Ok(true));
+        assert_eq!(check(&source, !true_arm, 2, expected), Ok(false));
+        assert_eq!(check(&source, true_arm, 1, expected), Ok(false));
+        assert_eq!(check(&source, true_arm, 2, expected ^ 1), Ok(false));
+        *source
+            .blocks
+            .first_mut()
+            .and_then(|block| block.operations.get_mut(2))
+            .ok_or("missing shift count")? = TernaryOperation::MaterializeU32 {
+            result: 11,
+            scalar: TernaryI32Scalar::from_bits(32),
+            span,
+        };
+        assert_eq!(
+            check(&source, true_arm, 2, expected),
+            Ok(false),
+            "undefined unsigned shift count for {input:?}",
+        );
+        *source
+            .blocks
+            .first_mut()
+            .and_then(|block| block.operations.get_mut(2))
+            .ok_or("missing shift count")? = TernaryOperation::MaterializeU32 {
+            result: 11,
+            scalar: TernaryI32Scalar::from_bits(3),
+            span,
+        };
+    }
+    Ok(())
+}
+
+// Signed left shifts require nonnegative, representable results. Arithmetic
+// right shift of a negative signed value is implementation-defined in C23,
+// so this source proof does not select its value. Neither failure can pass
+// by coincidentally matching a physical output byte or proposed branch arm.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "signed shift variants must share one input and branch oracle"
+)]
+fn signed_shifts_refuse_overflow_negative_values_and_invalid_counts()
+-> Result<(), String> {
+    use super::{
+        SourceBranchObligation, source_path_matches_input_walk_with_branch,
+    };
+    let span = dummy_span();
+    let mut source = guarded_inequality_fixture();
+    source
+        .blocks
+        .first_mut()
+        .ok_or("missing source block")?
+        .operations = vec![
+        TernaryOperation::GetcharI32 { result: 0, span },
+        TernaryOperation::MaterializeI32 {
+            result: 10,
+            scalar: TernaryI32Scalar::from_bits(4),
+            span,
+        },
+        TernaryOperation::ShiftLeftI32 {
+            left: 0,
+            result: 11,
+            right: 10,
+            span,
+        },
+        TernaryOperation::MaterializeI32 {
+            result: 12,
+            scalar: TernaryI32Scalar::from_bits(3),
+            span,
+        },
+        TernaryOperation::ShiftRightArithmeticI32 {
+            left: 11,
+            result: 13,
+            right: 12,
+            span,
+        },
+        TernaryOperation::MaterializeI32 {
+            result: 14,
+            scalar: TernaryI32Scalar::from_bits(100),
+            span,
+        },
+        TernaryOperation::LessSignedI32 {
+            left: 13,
+            result: 2,
+            right: 14,
+            span,
+        },
+        TernaryOperation::TruncateI32ToU8 {
+            result: 15,
+            value: 13,
+            span,
+        },
+        TernaryOperation::ByteOutput { value: 15, span },
+    ];
+    let check = |function: &TernaryCfgFunction, input, true_arm, byte| {
+        let first = SourceInputSiteObservation {
+            input,
+            raw_accumulator: match input {
+                TraceInput::Byte(input_byte) => u32::from(input_byte),
+                TraceInput::EndOfInput => 14_348_906,
+            },
+            ..observed(0, 0)
+        };
+        let second = SourceInputSiteObservation {
+            block: if true_arm {
+                2
+            } else {
+                1
+            },
+            input: TraceInput::EndOfInput,
+            raw_accumulator: 14_348_906,
+            ..observed(0, 0)
+        };
+        source_path_matches_input_walk_with_branch(
+            function,
+            &[&first, &second],
+            128,
+            true,
+            Some(&[byte]),
+            Some(&[
+                SourceInputIoEvent::Input { observation_index: 0 },
+                SourceInputIoEvent::Output(byte),
+                SourceInputIoEvent::Input { observation_index: 1 },
+            ]),
+            None,
+            Some(SourceBranchObligation {
+                after_inputs: 1,
+                io_before_transfer: Some(2),
+                block: 0,
+                expected_true: true_arm,
+            }),
+        )
+    };
+    for byte in u8::MIN..=u8::MAX {
+        let expected = byte.wrapping_mul(2);
+        let arm = u16::from(byte).saturating_mul(2u16) < 100u16;
+        assert_eq!(
+            check(&source, TraceInput::Byte(byte), arm, expected),
+            Ok(true),
+            "defined signed shift for {byte}",
+        );
+        assert_eq!(
+            check(&source, TraceInput::Byte(byte), !arm, expected),
+            Ok(false),
+        );
+    }
+    assert_eq!(
+        check(&source, TraceInput::EndOfInput, true, 254),
+        Ok(false),
+        "negative C signed left shift cannot select a return",
+    );
+    for invalid_count in [32u32, u32::MAX] {
+        *source
+            .blocks
+            .first_mut()
+            .and_then(|block| block.operations.get_mut(1))
+            .ok_or("missing signed shift count")? =
+            TernaryOperation::MaterializeI32 {
+                result: 10,
+                scalar: TernaryI32Scalar::from_bits(invalid_count),
+                span,
+            };
+        assert_eq!(
+            check(&source, TraceInput::Byte(1), true, 0),
+            Ok(false),
+            "invalid signed count {invalid_count}",
+        );
+    }
+    *source
+        .blocks
+        .first_mut()
+        .and_then(|block| block.operations.get_mut(1))
+        .ok_or("missing signed shift count")? =
+        TernaryOperation::MaterializeI32 {
+            result: 10,
+            scalar: TernaryI32Scalar::from_bits(31),
+            span,
+        };
+    assert_eq!(check(&source, TraceInput::Byte(0), true, 0), Ok(true));
+    assert_eq!(check(&source, TraceInput::Byte(1), true, 0), Ok(false));
+    // The right shift must not silently adopt the host's arithmetic shift
+    // when its signed left operand is negative.
+    *source
+        .blocks
+        .first_mut()
+        .and_then(|block| block.operations.get_mut(4))
+        .ok_or("missing arithmetic shift")? =
+        TernaryOperation::ShiftRightArithmeticI32 {
+            left: 0,
+            result: 13,
+            right: 12,
+            span,
+        };
+    assert_eq!(check(&source, TraceInput::EndOfInput, true, 255), Ok(false),);
+    Ok(())
+}
+
+// Revisited source blocks must not keep a past defined shift result when a
+// later input or shift count makes that very same SSA definition unknown.
+// This is essential for the original checksum's backedge path accounting.
+#[test]
+fn undefined_shift_redefinition_removes_stale_source_scalar() {
+    use std::collections::BTreeMap;
+
+    use super::advance_known_source_scalar;
+
+    let span = dummy_span();
+    let mut known =
+        BTreeMap::from([(1u32, 255u32), (2u32, 3u32), (3u32, 123u32)]);
+    let unsigned = TernaryOperation::ShiftLeftU32 {
+        left: 1,
+        result: 3,
+        right: 2,
+        span,
+    };
+    advance_known_source_scalar(&unsigned, &mut known);
+    assert_eq!(known.get(&3), Some(&2040));
+    let _prior = known.insert(2, 32);
+    advance_known_source_scalar(&unsigned, &mut known);
+    assert!(!known.contains_key(&3));
+    let _prior = known.insert(2, 1);
+    advance_known_source_scalar(&unsigned, &mut known);
+    assert_eq!(known.get(&3), Some(&510));
+    let _prior = known.remove(&1);
+    advance_known_source_scalar(&unsigned, &mut known);
+    assert!(!known.contains_key(&3));
+
+    // The same invalidation is required for negative signed inputs even
+    // when an earlier execution of the same result produced a known byte.
+    let signed = TernaryOperation::ShiftRightArithmeticI32 {
+        left: 1,
+        result: 3,
+        right: 2,
+        span,
+    };
+    let _prior = known.insert(1, 255);
+    let _prior = known.insert(2, 1);
+    advance_known_source_scalar(&signed, &mut known);
+    assert_eq!(known.get(&3), Some(&127));
+    let _prior = known.insert(1, u32::MAX);
+    advance_known_source_scalar(&signed, &mut known);
+    assert!(!known.contains_key(&3));
+    let _prior = known.insert(1, 255);
+    let _prior = known.insert(2, u32::MAX);
+    advance_known_source_scalar(&signed, &mut known);
+    assert!(!known.contains_key(&3));
+}
+
 // Exact C32 division and remainder can jointly select one source branch
 // and output. The 257 input classes include EOF rather than treating byte
 // 255 as -1; zero divisors and signed MIN / -1 stay unprovable.

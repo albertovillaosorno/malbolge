@@ -12778,3 +12778,25 @@ does not link mutable checksum state or runtime branches. The source-C
 frontend also conservatively refuses unconverted signed direct or aliased
 outputs inside `for`, `while`, and `do` loop ancestry; only independent
 EOF-capable lowering may relax those refusals.
+
+### Exact known-source C32 shifts at the input-path gate (2026-11-24)
+
+The source-locked input/return, output and branch-path checker now retains
+exact C32 values across unsigned left and logical-right shifts and
+conservative signed shifts. Unsigned left shift has 32-bit modulo semantics;
+counts outside `0..31` remain unknown. Signed left shift requires a
+nonnegative operand and a mathematically representable `i32` result. Signed
+arithmetic right shift is treated as source-known only for nonnegative
+operands; the implementation-defined negative case cannot certify a branch
+or byte output from a host shift. Unknown or invalid shift results invalidate
+any previously tracked value of the same SSA identity.
+
+Two synthetic, source-CFG-only tests cover the full 256-byte input domain,
+true EOF as a separate C32 class, correlated output and branch-arm identity,
+incorrect output, wrong branch cut, undefined counts, signed-left overflow
+and negative signed operands. These checks are necessary constraints on an
+independently executed guest trace. They **do not** emit executable shift
+operations, materialize guest C32 locals, link branches or prove the complete
+mutable checksum. The original unchanged seven-block EOF checksum still
+refuses backend emission with the explicit unlinked-CFG diagnostic and no
+published guest artifact.

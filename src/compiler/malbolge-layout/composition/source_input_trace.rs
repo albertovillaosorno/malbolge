@@ -681,6 +681,71 @@ fn known_source_binary(
     Some((result, derived))
 }
 
+// Source-only knowledge must never turn C shift UB or a platform-specific
+// signed right shift into a made-up guest output or a definite branch arm.
+fn known_signed_left_shift(left: i32, right: i32) -> Option<i32> {
+    let count = u32::try_from(right).ok().filter(|count| *count < 32u32)?;
+    (left >= 0i32)
+        .then_some(())
+        .and_then(|()| i64::from(left).checked_shl(count))
+        .and_then(|bits| i32::try_from(bits).ok())
+}
+
+fn known_signed_right_shift(left: i32, right: i32) -> Option<i32> {
+    let count = u32::try_from(right).ok()?;
+    (left >= 0i32).then_some(())?;
+    left.checked_shr(count)
+}
+
+fn known_source_shift(
+    operation: &TernaryOperation,
+    known: &BTreeMap<u32, u32>,
+) -> Option<KnownSourceScalar> {
+    let (result, derived) = match *operation {
+        TernaryOperation::ShiftLeftU32 { left, result, right, .. } => (
+            result,
+            known
+                .get(&left)
+                .zip(known.get(&right))
+                .and_then(|(lhs, rhs)| lhs.checked_shl(*rhs)),
+        ),
+        TernaryOperation::ShiftRightLogicalU32 {
+            left, result, right, ..
+        } => (
+            result,
+            known
+                .get(&left)
+                .zip(known.get(&right))
+                .and_then(|(lhs, rhs)| lhs.checked_shr(*rhs)),
+        ),
+        TernaryOperation::ShiftLeftI32 { left, result, right, .. } => (
+            result,
+            apply_known_signed_binary(
+                known,
+                left,
+                right,
+                known_signed_left_shift,
+            ),
+        ),
+        TernaryOperation::ShiftRightArithmeticI32 {
+            left,
+            result,
+            right,
+            ..
+        } => (
+            result,
+            apply_known_signed_binary(
+                known,
+                left,
+                right,
+                known_signed_right_shift,
+            ),
+        ),
+        _ => return None,
+    };
+    Some((result, derived))
+}
+
 fn known_source_threshold(
     operation: &TernaryOperation,
     known: &BTreeMap<u32, u32>,
@@ -754,6 +819,7 @@ fn advance_known_source_scalar(
     // Unmodeled arithmetic retains unknown values, not host-computed output.
     let Some((result, derived)) = known_source_cast(operation, known)
         .or_else(|| known_source_binary(operation, known))
+        .or_else(|| known_source_shift(operation, known))
         .or_else(|| known_source_threshold(operation, known))
     else {
         return;
