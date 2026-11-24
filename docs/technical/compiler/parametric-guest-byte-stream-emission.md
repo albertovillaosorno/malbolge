@@ -49,6 +49,13 @@ word stores and C60/C75/C201/C224 source control obligations. Missing,
 duplicate, reordered, forged or colliding anchors refuse. No Malbolge
 source bytes at those sites are authenticated or emitted, and no executable
 EOF loop exists; the original full C23 program still refuses publication.
+A follow-on original-C23 multi-predecessor case pins both separate
+loop-header incoming edges (0-to-1 and 5-to-1), each with four snapshots
+and four commits. The first edge occupies C88..C102; the second uses
+C120..C182. Their exact source-derived copies stay distinct after sorting
+caller proposals, while overlapping edges and foreign identities refuse.
+This tests *predecessor isolation*, not merely one correctly placed pad.
+
 This is a placement capability only, not P2 acceptance. See
 `tests/compiler/source_dynamic_checksum.rs`.
 

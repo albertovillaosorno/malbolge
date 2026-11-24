@@ -3077,6 +3077,90 @@ fn original_checksum_auto_phi_pad_composes_with_signed_input_and_control_sites()
     );
 }
 
+// Two independently pinned incoming phi edges for the same loop header
+// must keep their own snapshot/commit code pads and predecessor identity.
+#[test]
+fn original_checksum_auto_phi_pads_keep_both_header_predecessors_disjoint() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEdgeKind, GuestCodePhiCopyAnchor, GuestCodePlacementError,
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors,
+    };
+    let wire =
+        source_locked_checksum_wire().expect("C23 loop backedge and entry");
+    let entry = [88, 89, 91, 93, 95, 97, 99, 101];
+    let backedge = [120, 127, 135, 144, 153, 161, 170, 181];
+    let anchors = [(0, entry), (5, backedge)]
+        .into_iter()
+        .flat_map(|(predecessor, addresses)| {
+            addresses.into_iter().enumerate().map(
+                move |(index, code_address)| GuestCodePhiCopyAnchor {
+                    code_address,
+                    copy_index: u32::try_from(index)
+                        .expect("eight source copies"),
+                    function: 0,
+                    kind: GuestCodeEdgeKind::Jump,
+                    predecessor,
+                    successor: 1,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    let bind = |anchors: &[GuestCodePhiCopyAnchor]| {
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            anchors,
+        )
+    };
+    let plan = bind(&anchors).expect("both incoming edges have separate pads");
+    for (predecessor, addresses) in [(0, entry), (5, backedge)] {
+        let edge = plan
+            .control_edges
+            .iter()
+            .find(|edge| {
+                (edge.function, edge.predecessor, edge.successor)
+                    == (0, predecessor, 1)
+            })
+            .expect("source predecessor-specific loop phi edge");
+        assert_eq!(edge.entry_address, addresses[0]);
+        assert_eq!(edge.pad_exit_address, Some(addresses[7] + 1));
+        assert_eq!(edge.snapshot_sites.len(), 4);
+        assert_eq!(edge.commit_sites.len(), 4);
+        assert_eq!(
+            edge.snapshot_sites
+                .iter()
+                .chain(&edge.commit_sites)
+                .map(|site| site.code_address)
+                .collect::<Vec<_>>(),
+            addresses,
+        );
+    }
+    assert_eq!(plan.edge_pads.len(), 4);
+    let refused = Err(GuestCodePlacementError::InvalidCodePlacement);
+    let mut overlapping = anchors.clone();
+    for anchor in overlapping
+        .iter_mut()
+        .filter(|anchor| anchor.predecessor == 5)
+    {
+        anchor.code_address -= 35;
+    }
+    assert_eq!(
+        bind(&overlapping),
+        refused,
+        "distinct phi edges may not alias"
+    );
+    let mut foreign = anchors.clone();
+    foreign[0].predecessor = 3;
+    assert_eq!(bind(&foreign), refused, "source copy identities stay bound");
+    let mut shuffled = anchors.clone();
+    shuffled.reverse();
+    assert_eq!(bind(&shuffled), Ok(plan));
+}
+
 #[test]
 fn source_checksum_input_anchors_reserve_disjoint_unselected_phi_paths() {
     use super::typed_cfg_adapter::state_relocation::{
