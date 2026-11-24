@@ -99,8 +99,12 @@ The normative N15 VM terminates in **107 steps**, with exactly three real
 reads and four outputs. For input `03 04 05`, output is `03 31 05 3a`;
 M105 and M106 contain the two actual computed words. Nine independent
 empty/truncated/NUL/high-byte/suffix traces and a 257-case third-input/EOF
-sweep match a separate fifteen-trit scalar oracle. Mutating the encrypted
-pointer site C118 or either C123/C125 operation breaks the witness; the
+sweep match a separate fifteen-trit scalar oracle. Another 514-source
+matrix varies **each of the first two byte inputs** independently over all
+256 byte values with third input fixed at 0x80, then checks empty and
+second-read EOF streams. All maintain the exact real 107-step stateful fold.
+Mutating the encrypted pointer site C118 or either C123/C125 operation breaks
+the witness; the
 planner refuses an attempted overwrite of protected C124. The guest trace,
 not the scalar formula, proves the reached code, pointer read, memory writes
 and halt. See `tests/compiler_indirect_source_suffix.rs`.

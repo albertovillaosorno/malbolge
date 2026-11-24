@@ -38,7 +38,9 @@ M118=104 and places D at 105. The physical C124 and C125 `p` instructions
 combine the third input with the previously saved fold and overwrite M106.
 C126 emits the new result and C128 halts in 107 normative VM steps. Nine
 independent binary/EOF streams and all 257 third-input/EOF classes match a
-separate fifteen-trit oracle; changed-code negative controls fail.
+separate fifteen-trit oracle. Two further 256-byte first-/second-input
+marginals, plus two genuine truncated-EOF cases, independently verify
+prior-state dependence; changed-code negative controls fail.
 
 The bounded suffix placer now supports linear `j`/`p`/`*` data operations
 and preserves byte-exact protected source words even when those operands

@@ -608,6 +608,59 @@ fn all_third_input_classes_reach_the_earlier_guest_fold_again() {
 #[test]
 #[expect(
     clippy::expect_used,
+    clippy::integer_division_remainder_used,
+    reason = "all first and second byte/EOF marginals with a third-input fold"
+)]
+fn all_prior_input_classes_contribute_to_the_third_guest_fold() {
+    let plan = open_suffix(&saved_fold_source(), THREE_INPUT_FOLD_SUFFIX);
+    let profile = current_profile();
+    let pristine = ProfileMachine::from_source(profile, &plan.source, vec![])
+        .expect("source-admitted stateful fold");
+    // The first two successful-byte marginals each vary independently,
+    // holding a nontrivial third byte fixed. Real EOF cases are truncated
+    // streams: input cannot resume after EOF has already been observed.
+    let streams = (0..=255u8)
+        .map(|first| vec![first, 4, 0x80])
+        .chain((0..=255u8).map(|second| vec![3, second, 0x80]))
+        .chain([vec![], vec![3]]);
+    for input in streams {
+        let raw = |index| {
+            input
+                .get(index)
+                .map_or_else(|| profile.eof_word(), |byte| u32::from(*byte))
+        };
+        let first = raw(0);
+        let second = raw(1);
+        let third = raw(2);
+        let twice = scalar_crazy(scalar_crazy(121, first), second);
+        let seeded = scalar_crazy(57, third);
+        let thrice = scalar_crazy(twice, seeded);
+        let low = |word| u8::try_from(word % 256).expect("low byte");
+        let mut vm = pristine
+            .fork_with_input(input.clone())
+            .expect("independent VM memory");
+        assert_eq!(
+            vm.run(110),
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 107,
+            }),
+            "stdin={input:?}"
+        );
+        assert_eq!(vm.input_consumed(), input.len().min(3));
+        assert_eq!(vm.memory_word(105), Ok(seeded));
+        assert_eq!(vm.memory_word(106), Ok(thrice));
+        assert_eq!(
+            vm.output(),
+            &[low(first), low(twice), low(third), low(thrice)],
+            "stdin={input:?}"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::expect_used,
     clippy::indexing_slicing,
     reason = "pinned data-alias and code/data dependency negative controls"
 )]
