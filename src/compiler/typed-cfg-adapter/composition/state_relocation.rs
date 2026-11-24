@@ -2316,16 +2316,18 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
         })
         .collect::<Vec<_>>();
     plan_source_locked_cfg_with_general_effect_anchors(
-        canonical,
-        source_cells,
-        frame_base,
-        &operations,
-        effect_anchors,
-        &[],
-        &[],
-        &[],
-        &[],
-        &[],
+        &GuestCodeFunctionEntryPlacement {
+            canonical,
+            source_cells,
+            frame_base,
+            operation_anchors: &operations,
+            effect_anchors,
+            control_anchors: &[],
+            phi_anchors: &[],
+            phi_entries: &[],
+            phi_exits: &[],
+            function_entries: &[],
+        },
         true,
     )
 }
@@ -2354,16 +2356,18 @@ pub fn plan_source_locked_cfg_with_operation_and_effect_anchors(
     effect_anchors: &[GuestCodeEffectAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     plan_source_locked_cfg_with_general_effect_anchors(
-        canonical,
-        source_cells,
-        frame_base,
-        anchors,
-        effect_anchors,
-        &[],
-        &[],
-        &[],
-        &[],
-        &[],
+        &GuestCodeFunctionEntryPlacement {
+            canonical,
+            source_cells,
+            frame_base,
+            operation_anchors: anchors,
+            effect_anchors,
+            control_anchors: &[],
+            phi_anchors: &[],
+            phi_entries: &[],
+            phi_exits: &[],
+            function_entries: &[],
+        },
         false,
     )
 }
@@ -2392,16 +2396,18 @@ pub fn plan_source_locked_cfg_with_operation_effect_and_control_anchors(
     controls: &[GuestCodeControlAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     plan_source_locked_cfg_with_general_effect_anchors(
-        canonical,
-        source_cells,
-        frame_base,
-        anchors,
-        effect_anchors,
-        controls,
-        &[],
-        &[],
-        &[],
-        &[],
+        &GuestCodeFunctionEntryPlacement {
+            canonical,
+            source_cells,
+            frame_base,
+            operation_anchors: anchors,
+            effect_anchors,
+            control_anchors: controls,
+            phi_anchors: &[],
+            phi_entries: &[],
+            phi_exits: &[],
+            function_entries: &[],
+        },
         false,
     )
 }
@@ -2429,16 +2435,18 @@ pub fn plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
     phi_anchors: &[GuestCodePhiCopyAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     plan_source_locked_cfg_with_general_effect_anchors(
-        canonical,
-        source_cells,
-        frame_base,
-        anchors,
-        effect_anchors,
-        controls,
-        phi_anchors,
-        &[],
-        &[],
-        &[],
+        &GuestCodeFunctionEntryPlacement {
+            canonical,
+            source_cells,
+            frame_base,
+            operation_anchors: anchors,
+            effect_anchors,
+            control_anchors: controls,
+            phi_anchors,
+            phi_entries: &[],
+            phi_exits: &[],
+            function_entries: &[],
+        },
         false,
     )
 }
@@ -2471,16 +2479,18 @@ pub fn plan_source_locked_cfg_with_phi_exit_anchors(
     exits: &[GuestCodePhiExitAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     plan_source_locked_cfg_with_general_effect_anchors(
-        canonical,
-        source_cells,
-        frame_base,
-        anchors,
-        effect_anchors,
-        controls,
-        phi_anchors,
-        &[],
-        exits,
-        &[],
+        &GuestCodeFunctionEntryPlacement {
+            canonical,
+            source_cells,
+            frame_base,
+            operation_anchors: anchors,
+            effect_anchors,
+            control_anchors: controls,
+            phi_anchors,
+            phi_entries: &[],
+            phi_exits: exits,
+            function_entries: &[],
+        },
         false,
     )
 }
@@ -2511,25 +2521,27 @@ pub fn plan_source_locked_cfg_with_phi_boundary_anchors(
     exits: &[GuestCodePhiExitAnchor],
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     plan_source_locked_cfg_with_general_effect_anchors(
-        canonical,
-        source_cells,
-        frame_base,
-        anchors,
-        effect_anchors,
-        controls,
-        phi_anchors,
-        entries,
-        exits,
-        &[],
+        &GuestCodeFunctionEntryPlacement {
+            canonical,
+            source_cells,
+            frame_base,
+            operation_anchors: anchors,
+            effect_anchors,
+            control_anchors: controls,
+            phi_anchors,
+            phi_entries: entries,
+            phi_exits: exits,
+            function_entries: &[],
+        },
         false,
     )
 }
 
-/// Reserve real function entry code addresses before sparsely located input,
-/// computation, control and phi effects. An entry anchor is source-checked
-/// against the canonical function's actual entry block, not merely a valid
-/// block elsewhere in its CFG. Earlier setup cells stay inside that block;
-/// anchored effects cannot be moved backwards to fit the proposed entry.
+/// Reserve source-checked function entries ahead of sparse typed effects.
+///
+/// The entry must name the canonical function's actual entry block, not an
+/// arbitrary block elsewhere in its CFG. Earlier setup cells stay inside
+/// that block; anchored effects cannot move backwards to fit the entry.
 ///
 /// This is a physical code *reservation* only. It does not prove reachability,
 /// decoded guest opcodes, C23 arithmetic, branch behavior or EOF termination.
@@ -2539,36 +2551,27 @@ pub fn plan_source_locked_cfg_with_phi_boundary_anchors(
 /// Refuses foreign, duplicate, non-entry, late or overlapping function entry
 /// anchors and all previously checked sparse operation/phi placement errors.
 pub fn plan_source_locked_cfg_with_function_entry_anchors(
-    request: GuestCodeFunctionEntryPlacement<'_>,
+    request: &GuestCodeFunctionEntryPlacement<'_>,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
-    plan_source_locked_cfg_with_general_effect_anchors(
-        request.canonical,
-        request.source_cells,
-        request.frame_base,
-        request.operation_anchors,
-        request.effect_anchors,
-        request.control_anchors,
-        request.phi_anchors,
-        request.phi_entries,
-        request.phi_exits,
-        request.function_entries,
-        false,
-    )
+    plan_source_locked_cfg_with_general_effect_anchors(request, false)
 }
 
 fn plan_source_locked_cfg_with_general_effect_anchors(
-    canonical: &[u8],
-    source_cells: u32,
-    frame_base: u32,
-    anchors: &[GuestCodeOperationAnchor],
-    effect_anchors: &[GuestCodeEffectAnchor],
-    controls: &[GuestCodeControlAnchor],
-    phi_anchors: &[GuestCodePhiCopyAnchor],
-    entries: &[GuestCodePhiEntryAnchor],
-    exits: &[GuestCodePhiExitAnchor],
-    function_entries: &[GuestCodeFunctionEntryAnchor],
+    request: &GuestCodeFunctionEntryPlacement<'_>,
     inputs_only: bool,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    let GuestCodeFunctionEntryPlacement {
+        canonical,
+        source_cells,
+        frame_base,
+        operation_anchors: anchors,
+        effect_anchors,
+        control_anchors: controls,
+        phi_anchors,
+        phi_entries: entries,
+        phi_exits: exits,
+        function_entries,
+    } = *request;
     let relocated =
         relocate_source_locked_cfg(canonical, source_cells, frame_base)
             .map_err(GuestCodePlacementError::TypedCfg)?;

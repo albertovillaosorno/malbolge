@@ -4930,7 +4930,7 @@ fn original_checksum_can_pin_function_entry_before_sparse_input_setup() {
     };
     let bind = |entries: &[GuestCodeFunctionEntryAnchor]| {
         plan_source_locked_cfg_with_function_entry_anchors(
-            GuestCodeFunctionEntryPlacement {
+            &GuestCodeFunctionEntryPlacement {
                 canonical: &wire,
                 source_cells: 256,
                 frame_base: 512,
@@ -5000,7 +5000,7 @@ fn original_checksum_can_pin_function_entry_before_sparse_input_setup() {
         successor: 1,
     };
     let complete = plan_source_locked_cfg_with_function_entry_anchors(
-        GuestCodeFunctionEntryPlacement {
+        &GuestCodeFunctionEntryPlacement {
             canonical: &wire,
             source_cells: 256,
             frame_base: 512,
