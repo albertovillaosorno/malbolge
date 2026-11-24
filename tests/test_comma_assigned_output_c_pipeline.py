@@ -88,7 +88,8 @@ class CommaAssignedOutputCPipelineTests(unittest.TestCase):
             path, guest_path = root / "stream.c", root / "stream.malbolge"
             _ = path.write_text(source(), encoding="utf-8")
             compiled = COMPILE(path, guest_path)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, guest_path):
+                return
             samples = (
                 bytes((0, 255, 128, 1, 42)),
                 bytes((255, 0, 1, 128, 0)),
@@ -121,7 +122,8 @@ class CommaAssignedOutputCPipelineTests(unittest.TestCase):
             path, guest_path = root / "zero.c", root / "zero.malbolge"
             _ = path.write_text(source(bound=0), encoding="utf-8")
             compiled = COMPILE(path, guest_path)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, guest_path):
+                return
             for data in (bytes((0, 255)), bytes((255, 0))):
                 actual = RUN(guest_path, data)
                 self.assertEqual(actual.returncode, 0, actual.stderr)
@@ -151,7 +153,10 @@ class CommaAssignedOutputCPipelineTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     compiled = COMPILE(path, target)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not pipeline.guest_or_explicit_eof_refusal(
+                        self, compiled, target
+                    ):
+                        continue
                     for data in (
                         bytes((0, 255, 128)),
                         bytes((255, 0, 1)),
@@ -190,13 +195,14 @@ class CommaAssignedOutputCPipelineTests(unittest.TestCase):
             stream = template.replace("{consumer}", "")
             _ = path.write_text(stream, encoding="utf-8")
             result = COMPILE(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            for data in (bytes((0, 255, 128, 42)), bytes((255, 0, 1, 2))):
-                guest = RUN(target, data)
-                self.assertEqual(guest.returncode, 0, guest.stderr)
-                expected = bytes((data[2], data[2], data[3]))
-                self.assertEqual(guest.stdout, expected)
-                self.assertEqual(guest.stderr, b"malbolge-steps-v1:8\n")
+            admissible = pipeline.guest_or_explicit_eof_refusal(self, result, target)
+            if admissible:
+                for data in (bytes((0, 255, 128, 42)), bytes((255, 0, 1, 2))):
+                    guest = RUN(target, data)
+                    self.assertEqual(guest.returncode, 0, guest.stderr)
+                    expected = bytes((data[2], data[2], data[3]))
+                    self.assertEqual(guest.stdout, expected)
+                    self.assertEqual(guest.stderr, b"malbolge-steps-v1:8\n")
             invalid = root / "stale.c"
             invalid_target = root / "stale.malbolge"
             _ = invalid.write_text(

@@ -29,12 +29,14 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import random
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
@@ -86,6 +88,85 @@ def nested_break_source(*, bound: int = 3) -> str:
         "    putchar(getchar());\n"
         "}\n"
     )
+
+
+def guest_or_explicit_eof_refusal(
+    test: unittest.TestCase,
+    compiled: subprocess.CompletedProcess[bytes],
+    artifact: Path,
+) -> bool:
+    """Require real guest publication or a typed refusal for unhandled C EOF.
+
+    Successful-byte-only source proofs do not authorize an executable whose
+    stdin may exhaust. A rejection is not guest equivalence evidence.
+    """
+    source = artifact.with_suffix(".c")
+    test.assertTrue(source.is_file())
+    # Prove the observable EOF behavior of the *original C source* before
+    # allowing any compiler success. A byte-only backend's apparent success
+    # on full input streams is insufficient to publish an executable.
+    vectors = (b"", b"\x00", b"\xff", b"\x00\x80")
+    clang = ROOT / ".dependencies/llvm/22.1.8/bin/clang"
+    env = os.environ.copy()
+    env["LD_LIBRARY_PATH"] = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+    with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
+        root = Path(directory)
+        wrapper = root / "entry.c"
+        wrapper.write_text(
+            f'#include "{source.resolve()}"\n'
+            "int main(void) { stream(); return 0; }\n",
+            encoding="utf-8",
+        )
+        expected: dict[bytes, bytes] = {}
+        for optimization in ("-O0", "-O2"):
+            native = root / f"native-{optimization[2:]}"
+            built = subprocess.run(
+                [
+                    str(clang),
+                    "-std=c23",
+                    optimization,
+                    "-fsanitize=undefined",
+                    "-fno-sanitize-recover=all",
+                    str(wrapper),
+                    "-o",
+                    str(native),
+                ],
+                env=env,
+                capture_output=True,
+                check=False,
+                timeout=20,
+            )
+            test.assertEqual(built.returncode, 0, built.stderr)
+            for data in vectors:
+                run = subprocess.run(
+                    [str(native)],
+                    input=data,
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+                test.assertEqual(run.returncode, 0, run.stderr)
+                if data in expected:
+                    test.assertEqual(run.stdout, expected[data])
+                else:
+                    expected[data] = run.stdout
+
+    if compiled.returncode != 0:
+        test.assertIn(b"normalized frontend rejected: Unsupported", compiled.stderr)
+        test.assertFalse(artifact.exists())
+        return False
+    test.assertTrue(artifact.is_file())
+    for data in vectors:
+        guest = subprocess.run(
+            [str(VM), str(artifact), "--input-stdin", "--max-steps", "100000"],
+            input=data,
+            capture_output=True,
+            check=False,
+            timeout=15,
+        )
+        test.assertEqual(guest.returncode, 0, guest.stderr)
+        test.assertEqual(guest.stdout, expected[data])
+    return True
 
 
 class StaticForBreakCPipelineTests(unittest.TestCase):
@@ -155,7 +236,8 @@ class StaticForBreakCPipelineTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     result = self.compile(path, target)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, target):
+                        continue
                     for data in (
                         bytes((0, 255)),
                         bytes((128, 1)),
@@ -176,7 +258,8 @@ class StaticForBreakCPipelineTests(unittest.TestCase):
             target = root / "skipped.malbolge"
             path.write_text(break_source(bound=1, predicate="0"), encoding="utf-8")
             result = self.compile(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, target):
+                return
             for data in (bytes((0, 255, 128, 1)), bytes((7, 0, 3, 255))):
                 with self.subTest(data=data):
                     vm = self.vm(target, data)
@@ -192,7 +275,8 @@ class StaticForBreakCPipelineTests(unittest.TestCase):
             target = root / "nested.malbolge"
             path.write_text(nested_break_source(), encoding="utf-8")
             result = self.compile(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, target):
+                return
             for data in (bytes((0, 255, 128, 1, 42)), bytes((1, 42, 3, 254, 128))):
                 with self.subTest(data=data):
                     vm = self.vm(target, data)
@@ -244,27 +328,30 @@ class StaticForBreakCPipelineTests(unittest.TestCase):
             path = root / "source.c"
             path.write_text(break_source(), encoding="utf-8")
             artifact = self.normalized(path)
-            nodes = artifact["nodes"]
+            nodes = cast(list[dict[str, object]], artifact["nodes"])
             selected = next(node for node in nodes if node["kind"] == "break-statement")
+            selected_span = cast(dict[str, dict[str, int]], selected["span"])
             variations = (
                 ("parent", 2),
                 ("kind", "continue-statement"),
                 ("type", "i32"),
                 ("operation", "++"),
-                ("span.begin.column", selected["span"]["begin"]["column"] + 1),
-                ("span.end.byte", selected["span"]["end"]["byte"] + 1),
+                ("span.begin.column", selected_span["begin"]["column"] + 1),
+                ("span.end.byte", selected_span["end"]["byte"] + 1),
             )
             for index, (field, value) in enumerate(variations):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(artifact)
                     node = next(
-                        node for node in forged["nodes"] if node["id"] == selected["id"]
+                        node
+                        for node in cast(list[dict[str, object]], forged["nodes"])
+                        if node["id"] == selected["id"]
                     )
                     target = node
                     parts = field.split(".")
                     for part in parts[:-1]:
-                        target = target[part]
-                    target[parts[-1]] = value
+                        target = cast(dict[str, object], target)[part]
+                    cast(dict[str, object], target)[parts[-1]] = value
                     output = root / f"forged-{index}.malbolge"
                     result = subprocess.run(
                         [

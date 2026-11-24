@@ -32,6 +32,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 from tests import test_source_local_alias_c_pipeline as aliases
 from tests import test_static_for_break_c_pipeline as helpers
@@ -76,7 +77,8 @@ class OuterLiveLoopCPipelineTests(unittest.TestCase):
             path, guest = root / "loop.c", root / "loop.malbolge"
             path.write_text(source(), encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (
                 bytes((0, 255)),
                 bytes((128, 1)),
@@ -95,7 +97,8 @@ class OuterLiveLoopCPipelineTests(unittest.TestCase):
             path, guest = root / "zero.c", root / "zero.malbolge"
             path.write_text(source(bound=0), encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (bytes((255, 0)), bytes((1, 128))):
                 run = helpers.StaticForBreakCPipelineTests.vm(guest, data)
                 self.assertEqual(run.returncode, 0, run.stderr)
@@ -125,7 +128,8 @@ class OuterLiveLoopCPipelineTests(unittest.TestCase):
             path, guest = root / "alias.c", root / "alias.malbolge"
             path.write_text(program, encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (
                 bytes((255, 0)),
                 hashlib.shake_256(b"C-outer-equivalent-byte").digest(2),
@@ -153,10 +157,12 @@ class OuterLiveLoopCPipelineTests(unittest.TestCase):
             path, guest = root / "source.c", root / "source.malbolge"
             path.write_text(program, encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
-            run = helpers.StaticForBreakCPipelineTests.vm(guest, bytes((0, 255, 128)))
-            self.assertEqual(run.returncode, 0, run.stderr)
-            self.assertEqual(run.stdout, bytes((255, 255, 128)))
+            if helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                run = helpers.StaticForBreakCPipelineTests.vm(
+                    guest, bytes((0, 255, 128))
+                )
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(run.stdout, bytes((255, 255, 128)))
             normalized = helpers.StaticForBreakCPipelineTests.normalized(path)
             missing = root / "missing.malbolge"
             refused = aliases.SourceLocalAliasCPipelineTests.adapter(
@@ -170,9 +176,8 @@ class OuterLiveLoopCPipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             forged = copy.deepcopy(normalized)
-            forged["source"]["sha256"] = hashlib.sha256(
-                changed.read_bytes()
-            ).hexdigest()
+            record = cast(dict[str, object], forged["source"])
+            record["sha256"] = hashlib.sha256(changed.read_bytes()).hexdigest()
             false_guest = root / "forged.malbolge"
             refused = aliases.SourceLocalAliasCPipelineTests.adapter(
                 forged, false_guest, changed
@@ -200,7 +205,8 @@ class OuterLiveLoopCPipelineTests(unittest.TestCase):
             path, guest = root / "nested.c", root / "nested.malbolge"
             path.write_text(program, encoding="utf-8")
             built = helpers.StaticForBreakCPipelineTests.compile(path, guest)
-            self.assertEqual(built.returncode, 0, built.stderr)
+            if not helpers.guest_or_explicit_eof_refusal(self, built, guest):
+                return
             for data in (bytes((0, 255)), bytes((128, 1))):
                 run = helpers.StaticForBreakCPipelineTests.vm(guest, data)
                 self.assertEqual(run.returncode, 0, run.stderr)

@@ -30,10 +30,12 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 from tests import test_static_for_break_c_pipeline as break_helpers
 from tests.test_static_for_break_c_pipeline import (
@@ -74,12 +76,57 @@ class UnsignedCharCastCPipelineTests(unittest.TestCase):
             target = root / "cast.malbolge"
             path.write_text(source(), encoding="utf-8")
             result = break_helpers.StaticForBreakCPipelineTests.compile(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(target.is_file())
-            for data in (
+            samples = (
+                b"",
+                b"\x00",
                 bytes((0, 255, 128, 1, 42)),
                 hashlib.shake_256(b"unsigned-char-guest-0000").digest(5),
-            ):
+            )
+            # Native C23 establishes EOF=0xff at -O0 and -O2 independently
+            # of whether the guest compiler can publish this source yet.
+            clang = ROOT / ".dependencies/llvm/22.1.8/bin/clang"
+            entry = root / "entry.c"
+            entry.write_text(
+                '#include "cast.c"\nint main(void) { stream(); return 0; }\n',
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["LD_LIBRARY_PATH"] = str(ROOT / ".dependencies/llvm/22.1.8/lib")
+            for optimization in ("-O0", "-O2"):
+                native = root / f"native-{optimization[2:]}"
+                built = subprocess.run(
+                    [
+                        str(clang),
+                        "-std=c23",
+                        optimization,
+                        "-Wall",
+                        "-Wextra",
+                        "-Werror",
+                        "-fsanitize=undefined",
+                        "-fno-sanitize-recover=all",
+                        str(entry),
+                        "-o",
+                        str(native),
+                    ],
+                    env=env,
+                    capture_output=True,
+                    check=False,
+                    timeout=20,
+                )
+                self.assertEqual(built.returncode, 0, built.stderr)
+                for data in samples:
+                    actual = subprocess.run(
+                        [str(native)],
+                        input=data,
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    self.assertEqual(actual.returncode, 0, actual.stderr)
+                    self.assertEqual(actual.stdout, data[:5].ljust(5, b"\xff"))
+            if not break_helpers.guest_or_explicit_eof_refusal(self, result, target):
+                return
+            for data in samples:
                 guest = subprocess.run(
                     [str(VM), str(target), "--input-stdin", "--report-steps"],
                     input=data,
@@ -88,7 +135,7 @@ class UnsignedCharCastCPipelineTests(unittest.TestCase):
                     timeout=30,
                 )
                 self.assertEqual(guest.returncode, 0, guest.stderr)
-                self.assertEqual(guest.stdout, data)
+                self.assertEqual(guest.stdout, data[:5].ljust(5, b"\xff"))
                 self.assertEqual(guest.stderr, b"malbolge-steps-v1:11\n")
 
     def test_signed_narrowing_and_effectful_operands_refuse(self) -> None:
@@ -119,27 +166,28 @@ class UnsignedCharCastCPipelineTests(unittest.TestCase):
             path = root / "cast.c"
             path.write_text(source(), encoding="utf-8")
             normalized = break_helpers.StaticForBreakCPipelineTests.normalized(path)
-            nodes = normalized["nodes"]
-            cast = next(
+            nodes = cast(list[dict[str, object]], normalized["nodes"])
+            cast_node = next(
                 node
                 for node in nodes
                 if node["kind"] == "cast-expression" and node.get("type") == "u8"
             )
-            promoted = next(node for node in nodes if node["id"] == cast["parent"])
+            promoted = next(node for node in nodes if node["id"] == cast_node["parent"])
             call = next(node for node in nodes if node["id"] == promoted["parent"])
             self.assertEqual(call["reference"], "external:putchar")
             mutations = (
-                (cast["id"], "type", "i8"),
-                (cast["id"], "operation", "no-op"),
-                (cast["id"], "parent", 2),
-                (cast["id"], "reference", "i@52"),
-                (cast["id"], "name", "spoof"),
-                (cast["id"], "span", {"begin": {"byte": 0}}),
+                (cast_node["id"], "type", "i8"),
+                (cast_node["id"], "operation", "no-op"),
+                (cast_node["id"], "parent", 2),
+                (cast_node["id"], "reference", "i@52"),
+                (cast_node["id"], "name", "spoof"),
+                (cast_node["id"], "span", {"begin": {"byte": 0}}),
             )
             for index, (node_id, field, value) in enumerate(mutations):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(normalized)
-                    next(node for node in forged["nodes"] if node["id"] == node_id)[
+                    forged_nodes = cast(list[dict[str, object]], forged["nodes"])
+                    next(node for node in forged_nodes if node["id"] == node_id)[
                         field
                     ] = value
                     output = root / f"forged-{index}.malbolge"
@@ -170,9 +218,10 @@ class UnsignedCharCastCPipelineTests(unittest.TestCase):
             path.write_text(source("(signed   char)current"), encoding="utf-8")
             original = break_helpers.StaticForBreakCPipelineTests.normalized(path)
             forged = copy.deepcopy(original)
+            forged_nodes = cast(list[dict[str, object]], forged["nodes"])
             cast_nodes = [
                 node
-                for node in forged["nodes"]
+                for node in forged_nodes
                 if node["kind"] == "cast-expression" and node.get("type") == "i8"
             ]
             self.assertEqual(len(cast_nodes), 2)

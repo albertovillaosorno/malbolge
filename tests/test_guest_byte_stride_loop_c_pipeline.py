@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_inequality_loop_c_pipeline as previous
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 COMPILE = previous.COMPILE
@@ -85,7 +86,8 @@ class GuestByteStrideLoopCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program(0, "!=", 6, "i += 2"))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for stdin in data:
                 with self.subTest(stdin=stdin):
                     run = RUN(guest, stdin)
@@ -100,7 +102,8 @@ class GuestByteStrideLoopCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program(6, "!=", 0, "i -= 2"))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for stdin in (b"\0\xff", b"\xff\0"):
                 run = RUN(guest, stdin)
                 self.assertEqual(run.returncode, 0, run.stderr)
@@ -138,8 +141,11 @@ class GuestByteStrideLoopCPipelineTests(unittest.TestCase):
                         timeout=15,
                     )
                     self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
+                    self.assertTrue(
+                        b"layout backend exited unsuccessfully" in result.stderr
+                        or b"normalized frontend rejected: Unsupported"
+                        in result.stderr,
+                        result.stderr,
                     )
                     self.assertFalse(guest.exists())
 

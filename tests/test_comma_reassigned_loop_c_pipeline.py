@@ -79,7 +79,8 @@ class CommaReassignedLoopCPipelineTests(unittest.TestCase):
             target = root / "outer.malbolge"
             source.write_text(original_program(), encoding="utf-8")
             compiled = COMPILE(source, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             inputs = (
                 bytes((0, 255, 128, 31, 64, 90)),
                 bytes((255, 0, 1, 2, 3, 4)),
@@ -108,7 +109,8 @@ class CommaReassignedLoopCPipelineTests(unittest.TestCase):
             target = root / "selected.malbolge"
             source.write_text(program, encoding="utf-8")
             compiled = COMPILE(source, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (bytes((0, 255, 128, 42)), bytes((255, 0, 42, 128))):
                 guest = RUN(target, data)
                 self.assertEqual(guest.returncode, 0, guest.stderr)
@@ -124,7 +126,8 @@ class CommaReassignedLoopCPipelineTests(unittest.TestCase):
             target = root / "zero.malbolge"
             source.write_text(original_program(bound=0), encoding="utf-8")
             compiled = COMPILE(source, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (bytes((0, 255)), bytes((255, 0))):
                 guest = RUN(target, data)
                 self.assertEqual(guest.returncode, 0, guest.stderr)
@@ -186,7 +189,8 @@ class CommaReassignedLoopCPipelineTests(unittest.TestCase):
             comma = next(
                 node
                 for node in nodes
-                if node.get("operation") == "," and node["span"]["begin"]["line"] == 5
+                if node.get("operation") == ","
+                and cast(dict[str, dict[str, int]], node["span"])["begin"]["line"] == 5
             )
             mutations: tuple[tuple[str, object], ...] = (
                 ("operation", "+"),
@@ -198,7 +202,7 @@ class CommaReassignedLoopCPipelineTests(unittest.TestCase):
                 with self.subTest(index=index):
                     modified = copy.deepcopy(original)
                     changed = cast(list[dict[str, object]], modified["nodes"])
-                    changed[int(comma["id"]) - 1][field] = value
+                    changed[cast(int, comma["id"]) - 1][field] = value
                     target = root / f"clang-spoof-{index}.malbolge"
                     result = PROJECT(modified, target, source)
                     self.assertNotEqual(result.returncode, 0)

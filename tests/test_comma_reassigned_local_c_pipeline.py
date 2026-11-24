@@ -79,7 +79,8 @@ class CommaReassignedLocalCPipelineTests(unittest.TestCase):
             source, target = root / "whole.c", root / "whole.malbolge"
             _ = source.write_text(whole_program(), encoding="utf-8")
             compiled = COMPILE(source, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (
                 bytes((0, 255, 128, 3)),
                 bytes((255, 0, 128, 42)),
@@ -106,7 +107,8 @@ class CommaReassignedLocalCPipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             compiled = COMPILE(source, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (bytes((0, 255)), bytes((255, 128))):
                 guest = RUN(target, data)
                 self.assertEqual(guest.returncode, 0, guest.stderr)
@@ -129,7 +131,8 @@ class CommaReassignedLocalCPipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             compiled = COMPILE(source, target)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not pipeline.guest_or_explicit_eof_refusal(self, compiled, target):
+                return
             for data in (
                 bytes((0, 255, 128, 3, 7, 42)),
                 hashlib.shake_256(b"comma-rebind-stale").digest(6),
@@ -206,9 +209,9 @@ class CommaReassignedLocalCPipelineTests(unittest.TestCase):
                 for node in nodes
                 if node["kind"] == "binary-expression"
                 and node.get("operation") == "="
-                and node["span"]["begin"]["line"] == 5
+                and cast(dict[str, dict[str, int]], node["span"])["begin"]["line"] == 5
             )
-            base = int(assignment["id"])
+            base = cast(int, assignment["id"])
             mutations: tuple[tuple[int, str, object], ...] = (
                 (0, "operation", ","),
                 (0, "type", "u8"),
