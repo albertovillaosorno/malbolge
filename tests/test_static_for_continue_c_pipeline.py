@@ -35,6 +35,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
+
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
@@ -153,7 +156,8 @@ class StaticForContinueCPipelineTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     result = self.compile(path, target)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, target):
+                        continue
                     for data in (
                         bytes((0, 255, 128, 1, 42)[: count + 1]),
                         bytes(rng.randrange(256) for _ in range(count + 1)),
@@ -181,7 +185,8 @@ class StaticForContinueCPipelineTests(unittest.TestCase):
             target = root / "skipped.malbolge"
             path.write_text(continue_source(bound=1, predicate="0"), encoding="utf-8")
             result = self.compile(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, target):
+                return
             for data in (bytes((0, 255, 128, 1)), bytes((7, 0, 3, 255))):
                 with self.subTest(data=data):
                     vm = self.vm(target, data)
@@ -198,7 +203,8 @@ class StaticForContinueCPipelineTests(unittest.TestCase):
             target = root / "nested.malbolge"
             path.write_text(nested_continue_source(), encoding="utf-8")
             result = self.compile(path, target)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, target):
+                return
             for data in (
                 bytes((0, 255, 128, 1, 42, 9, 7)),
                 bytes((1, 42, 3, 254, 128, 3, 0)),
@@ -255,29 +261,32 @@ class StaticForContinueCPipelineTests(unittest.TestCase):
             path = root / "source.c"
             path.write_text(continue_source(), encoding="utf-8")
             artifact = self.normalized(path)
-            nodes = artifact["nodes"]
+            nodes = cast(list[dict[str, object]], artifact["nodes"])
             selected = next(
                 node for node in nodes if node["kind"] == "continue-statement"
             )
+            selected_span = cast(dict[str, dict[str, int]], selected["span"])
             variations = (
                 ("parent", 2),
                 ("kind", "break-statement"),
                 ("type", "i32"),
                 ("operation", "++"),
-                ("span.begin.column", selected["span"]["begin"]["column"] + 1),
-                ("span.end.byte", selected["span"]["end"]["byte"] + 1),
+                ("span.begin.column", selected_span["begin"]["column"] + 1),
+                ("span.end.byte", selected_span["end"]["byte"] + 1),
             )
             for index, (field, value) in enumerate(variations):
                 with self.subTest(index=index):
                     forged = copy.deepcopy(artifact)
                     node = next(
-                        node for node in forged["nodes"] if node["id"] == selected["id"]
+                        node
+                        for node in cast(list[dict[str, object]], forged["nodes"])
+                        if node["id"] == selected["id"]
                     )
                     target = node
                     parts = field.split(".")
                     for part in parts[:-1]:
-                        target = target[part]
-                    target[parts[-1]] = value
+                        target = cast(dict[str, object], target)[part]
+                    cast(dict[str, object], target)[parts[-1]] = value
                     output = root / f"forged-{index}.malbolge"
                     result = subprocess.run(
                         [

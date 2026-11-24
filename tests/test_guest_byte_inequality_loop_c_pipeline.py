@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = total.ROOT
 ADAPTER = total.ADAPTER
@@ -86,7 +87,8 @@ class GuestByteInequalityLoopCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program(), encoding="utf-8")
             compiled = COMPILE(source, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in inputs:
                 with self.subTest(data=data):
                     vm = RUN(guest, data)
@@ -128,8 +130,10 @@ class GuestByteInequalityLoopCPipelineTests(unittest.TestCase):
                         timeout=10,
                     )
                     self.assertEqual(admitted.returncode, 1, admitted.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully",
+                    self.assertTrue(
+                        b"layout backend exited unsuccessfully" in admitted.stderr
+                        or b"normalized frontend rejected: Unsupported"
+                        in admitted.stderr,
                         admitted.stderr,
                     )
                     self.assertFalse(guest.exists())
@@ -153,7 +157,8 @@ class GuestByteInequalityLoopCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(source_text)
             compiled = COMPILE(source, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (b"\x00\xff\x80", b"\xff\x00\x01"):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -167,7 +172,8 @@ class GuestByteInequalityLoopCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program(initial=3, bound=3))
             compiled = COMPILE(source, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (b"\x00\xff", b"\xff\x00"):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)

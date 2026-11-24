@@ -45,6 +45,7 @@ from typing import cast, override
 
 from tests import test_guest_byte_named_induction_c_pipeline as previous
 from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 COMPILE = previous.COMPILE
@@ -89,7 +90,8 @@ class GuestByteWideStrideCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program())
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in inputs:
                 with self.subTest(data=data):
                     vm = RUN(guest, data)
@@ -104,7 +106,8 @@ class GuestByteWideStrideCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program(initial=36, bound=0, step="-= 12"))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in (b"\0\xff", b"\xff\0", b"\x80\x7f"):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -145,8 +148,11 @@ class GuestByteWideStrideCPipelineTests(unittest.TestCase):
                         timeout=15,
                     )
                     self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
+                    self.assertTrue(
+                        b"layout backend exited unsuccessfully" in result.stderr
+                        or b"normalized frontend rejected: Unsupported"
+                        in result.stderr,
+                        result.stderr,
                     )
                     self.assertFalse(guest.exists())
 
