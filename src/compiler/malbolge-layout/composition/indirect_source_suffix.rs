@@ -422,17 +422,16 @@ impl SourceWrittenIndirectGuestVerifier {
         )
     }
 
-    /// Prove that a particular reached guest `/` supplies the branch pointer.
+    /// Prove that precisely one guest input site supplies the branch pointer.
     ///
-    /// The code site, not the ordinal input byte, is the source identity:
-    /// the same instruction can read EOF on an exhausted stream. This
-    /// verifies physical lineage only; source-C predicate equivalence must
-    /// still be checked separately against every admitted input class.
+    /// The site identifies the physical `/` instruction, whether it read a
+    /// byte or EOF. Other input sites may execute, but their values cannot
+    /// contribute to this pointer. The proof describes *possible physical
+    /// dataflow*, not source-C condition equivalence.
     ///
     /// # Errors
     ///
-    /// Refuses any ordinary physical proof failure, or a branch whose final
-    /// pointer has no dataflow path from the required actual input site.
+    /// Refuses any physical guest failure or unexpected input ancestry.
     #[expect(
         clippy::too_many_arguments,
         reason = "explicit guest read and indirect branch binding"
@@ -446,6 +445,55 @@ impl SourceWrittenIndirectGuestVerifier {
         allowed_landings: &[u32],
         step_budget: usize,
     ) -> SourceWrittenIndirectGuestResult {
+        self.verify_from_input_sites(
+            input,
+            &[input_code_cell],
+            indirect_code_cell,
+            pointer_cell,
+            allowed_landings,
+            step_budget,
+        )
+    }
+
+    /// Prove the complete set of physical input sites feeding a guest pointer.
+    ///
+    /// This accepts a nonempty, duplicate-free set of code addresses and
+    /// requires it to equal the sites of *all* input transitions that can
+    /// flow into the final `i` operand. The proof keeps every contributing
+    /// trace index, so a future CFG verifier can distinguish loop iterations
+    /// at one source site. The source-C predicate and loop remain unproven.
+    ///
+    /// # Errors
+    ///
+    /// Refuses invalid read-site sets, any physical guest failure, and
+    /// missing or extraneous guest input origins.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "source input-site set and independent guest transfer geometry"
+    )]
+    pub fn verify_from_input_sites(
+        &self,
+        input: &[u8],
+        input_code_cells: &[u32],
+        indirect_code_cell: u32,
+        pointer_cell: u32,
+        allowed_landings: &[u32],
+        step_budget: usize,
+    ) -> SourceWrittenIndirectGuestResult {
+        use SourceWrittenIndirectGuestError::{
+            InvalidBound, InvalidGuestExecution, MissingRequiredInputProvenance,
+        };
+        let expected =
+            input_code_cells.iter().copied().collect::<BTreeSet<_>>();
+        if expected.is_empty()
+            || expected.len() != input_code_cells.len()
+            || expected.len() > MAX_INDIRECT_SUFFIX_PROOF_STEPS
+            || expected.iter().any(|code_address| {
+                *code_address >= current_profile().memory_words()
+            })
+        {
+            return Err(InvalidBound);
+        }
         let proof = self.verify(
             input,
             indirect_code_cell,
@@ -453,16 +501,20 @@ impl SourceWrittenIndirectGuestVerifier {
             allowed_landings,
             step_budget,
         )?;
-        if proof.pointer_input_steps().iter().any(|index| {
-            proof.trace().get(*index).is_some_and(|step| {
-                step.before.registers.code_pointer == input_code_cell
-                    && step.input.is_some()
+        let observed = proof
+            .pointer_input_steps()
+            .iter()
+            .map(|index| {
+                proof.trace().get(*index).and_then(|step| {
+                    step.input.map(|_input| step.before.registers.code_pointer)
+                })
             })
-        }) {
-            Ok(proof)
-        } else {
-            Err(SourceWrittenIndirectGuestError::MissingRequiredInputProvenance)
+            .collect::<Option<BTreeSet<_>>>()
+            .ok_or(InvalidGuestExecution)?;
+        if observed != expected {
+            return Err(MissingRequiredInputProvenance);
         }
+        Ok(proof)
     }
 }
 

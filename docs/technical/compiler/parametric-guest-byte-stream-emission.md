@@ -36,8 +36,9 @@ input-site-constrained API accepts the existing single-input C53 branch,
 and separately the two-read C63 branch whose second successful byte or EOF
 selects the physical C45/C126 continuation. All 256 second-byte classes,
 truncated EOF and extra bytes use real N15 guest halts; forged first-input
-C53 and unreached C101 provenance refuse. The origin set is conservative
-physical dataflow, not C predicate equivalence. No C23 local state,
+C53 and unreached C101 provenance refuse. The new exact-origin API also
+rejects an extraneous first-read C53 in the claimed set for the C63 branch.
+The origin set is conservative physical dataflow, not C predicate equivalence. No C23 local state,
 checksum computation or loop has been linked. Evidence:
 `docs/technical/compiler/source-indirect-guest-suffix.md` and
 `tests/compiler_indirect_source_suffix.rs`.

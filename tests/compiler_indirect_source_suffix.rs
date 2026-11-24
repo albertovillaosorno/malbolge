@@ -2784,6 +2784,38 @@ fn source_written_indirect_branch_refuses_wrong_input_origin() {
         verifier.verify_from_input_site(&[], 101, 114, 143, &[45, 126], 180),
         Err(Refusal::MissingRequiredInputProvenance),
     );
+    // A successful first read is not a second-input pointer origin.
+    // Empty and duplicated declarations are invalid even before replay.
+    for (claimed_sites, expected_error) in [
+        (&[53, 63][..], Refusal::MissingRequiredInputProvenance),
+        (&[63, 63][..], Refusal::InvalidBound),
+        (&[][..], Refusal::InvalidBound),
+    ] {
+        assert_eq!(
+            verifier.verify_from_input_sites(
+                &[0xa7, 0xff],
+                claimed_sites,
+                114,
+                143,
+                &[45, 126],
+                180,
+            ),
+            Err(expected_error),
+        );
+    }
+    assert_eq!(
+        verifier
+            .verify_from_input_sites(
+                &[0xa7, 0xff],
+                &[63],
+                114,
+                143,
+                &[45, 126],
+                180,
+            )
+            .map(|proof| proof.pointer_input_steps().to_vec()),
+        Ok(vec![63]),
+    );
 }
 
 #[test]

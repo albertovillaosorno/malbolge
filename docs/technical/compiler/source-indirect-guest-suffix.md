@@ -18,13 +18,17 @@ rather than append stale memory origins. The earlier requirement that the
 pointer's latest physical version comes from a real `p`/`*` still holds;
 post-store self-encryption of that pointer invalidates the candidate.
 
-`SourceWrittenIndirectGuestVerifier::verify_from_input_site` additionally
-refuses a claimed source input site unless a *reached* input instruction at
-that exact code address contributes to the reached indirect pointer. This
-makes a source-C CFG linker capable of distinguishing two distinct live
-`getchar` sites rather than borrowing an unrelated successful VM path.
-The proof remains **possible physical dataflow**, not proof that every bit of
-that read affects a branch or that a C23 predicate is equivalent.
+`SourceWrittenIndirectGuestVerifier::verify_from_input_site` now requires
+that the named, reached input instruction be the **only** physical input
+site in the pointer's ancestry. Its general counterpart
+`verify_from_input_sites` accepts an explicit nonempty, duplicate-free set
+and requires exact equality with every observed contributing input site.
+The proof retains individual transitions even when a code site is revisited
+across loop iterations. The verified classifier with a second read refuses
+both missing C63 and extraneous C53 site claims; empty or duplicate origin
+sets also refuse. No source-C linker can borrow an unrelated successful VM
+input path. This remains **possible physical dataflow**, not proof that every
+bit of each read affects a branch or that a C23 predicate is equivalent.
 
 The fixed 132-cell first-input classifier's 257 byte/EOF runs now require
 origin C53. The existing two-read classifier's 256 second-byte classes,
