@@ -643,6 +643,71 @@ fn real_guest_one_bit_wrapped_add_is_not_c_boolean_add() -> Result<(), String> {
     Ok(())
 }
 
+// A C32 SSA result needs two physical N15 frame words even when its
+// current value happens to fit in one. Conversely, a byte or Boolean result
+// cannot authorize an invented high word. Operand widths are independently
+// checked by read_scalar; result widths must obey the same invariant.
+#[test]
+fn typed_results_require_canonical_guest_word_count() {
+    use TernaryCfgScalarKind::{Bool, U8, U32};
+    let word = |kind, words, part: u32| {
+        expected_word(
+            if kind == U32 {
+                0x1234_5678
+            } else {
+                0x78
+            },
+            GuestPlacedOperand {
+                address: 72,
+                type_kind: kind,
+                value: 0,
+                words,
+            },
+            72 + part,
+        )
+    };
+    let invalid = Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
+    assert_eq!(word(U8, 2, 0), invalid);
+    assert_eq!(word(Bool, 2, 0), invalid);
+    assert_eq!(word(U32, 1, 0), invalid);
+    assert_eq!(word(U32, 3, 0), invalid);
+    assert_eq!(word(U8, 1, 1), invalid);
+    assert_eq!(word(U8, 1, 0), Ok(0x78));
+    let full = encode_i32_cells(0x1234_5678);
+    assert_eq!(word(U32, 2, 0), Ok(full[0]));
+    assert_eq!(word(U32, 2, 1), Ok(full[1]));
+}
+
+#[test]
+fn real_guest_byte_result_cannot_claim_two_c32_words() -> Result<(), String> {
+    // These three stores are genuine N15 rotations with values 1, 2, 3.
+    // A forged U8 result placement requiring two words previously passed
+    // numerical XOR even though only M72 was written; no high word exists.
+    let steps = traced_three_stores(9)?;
+    let forged = operations(GuestCodeComputation::Binary {
+        operation: BinaryOp::Xor,
+        left: operand(70, 0),
+        right: operand(71, 1),
+        result: GuestPlacedOperand {
+            address: 72,
+            type_kind: TernaryCfgScalarKind::U8,
+            value: 2,
+            words: 2,
+        },
+    });
+    assert_eq!(
+        verify_source_computation_values(
+            &forged,
+            &effects(),
+            &[],
+            &frames(),
+            &steps,
+        ),
+        Err(SourcePhiCopyTraceError::InvalidSourcePlacement)
+    );
+    Ok(())
+}
+
 // C23 signed arithmetic overflow is undefined source behavior, even when
 // the guest physically writes the corresponding low-width wrapped bits.
 // These are real four-step N15 guest executions, not fabricated VM traces.

@@ -481,6 +481,16 @@ fn expected_word(
     result: GuestPlacedOperand,
     destination: u32,
 ) -> Result<u32, SourcePhiCopyTraceError> {
+    // A coincident low value cannot authorize a forged C32 one-word store,
+    // nor can a byte or Boolean claim an unmaterialized second frame word.
+    let required_words = if scalar_bits(result.type_kind) == 32 {
+        2
+    } else {
+        1
+    };
+    if result.words != required_words {
+        return Err(SourcePhiCopyTraceError::InvalidSourcePlacement);
+    }
     let index = destination
         .checked_sub(result.address)
         .ok_or(SourcePhiCopyTraceError::InvalidSourcePlacement)?;

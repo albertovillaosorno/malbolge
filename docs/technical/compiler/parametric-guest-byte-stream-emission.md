@@ -1154,8 +1154,13 @@ verifier also refuses one-bit `Add`, `Subtract` and `Multiply` on `_Bool`
 operands: C promotes those operands to integer before arithmetic, and
 `(bool)(true + true)` is one, not the wrapped one-bit sum zero. A real
 four-step N15 `1, 1, 0` guest now refuses such forged addition but still
-passes a matching typed Boolean XOR. The regression is
-`tests/compiler/source_computation_trace.rs`.
+passes a matching typed Boolean XOR. The same gate checks every result
+operand's **physical word count**: a Boolean, byte or I16 result occupies
+one guest word, whereas C32 takes two. The actual four-step N15 `1, 2, 3`
+XOR guest previously passed with a forged two-word U8 result despite only
+one reached result store; it now refuses `InvalidSourcePlacement`. Direct
+positive and negative controls cover C32 low/high words and narrow scalar
+result placements. Regression: `tests/compiler/source_computation_trace.rs`.
 
 These are defensive **typed numeric acceptance conditions** over seeded,
 real VM stores; they do not synthesize guest arithmetic or prove the real
