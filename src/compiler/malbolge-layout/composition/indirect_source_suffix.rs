@@ -572,6 +572,17 @@ impl SourceWrittenIndirectGuestVerifier {
         branch: SourceBranchLanding,
     ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
     {
+        // A source branch binds both physical successors. The caller's
+        // admitted landing domain must contain both, even though this one
+        // finite replay can actually witness only its selected arm.
+        if ![branch.false_landing, branch.true_landing]
+            .iter()
+            .all(|landing| probe.allowed_landings.contains(landing))
+        {
+            return Err(SourceBoundIndirectGuestError::SourceInput(
+                SourceInputTraceError::InvalidBranchBinding,
+            ));
+        }
         let joined = self.verify_source_return_bound(probe)?;
         verify_source_branch_landing(
             probe.source_input.canonical,

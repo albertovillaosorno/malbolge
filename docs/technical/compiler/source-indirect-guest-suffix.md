@@ -26,8 +26,14 @@ in the guest. An independent branch-matching source path and a different
 output-matching source path are not interchangeable. If output-site
 identities were authenticated in the source prefix receipt, the joint walk
 also requires those same identities.
-The older direction/chronology methods remain usable for deliberately
-partial physical control experiments without claiming source output parity.
+The source branch binding also requires **both** claimed arm landing
+addresses to belong to the guest probe's admitted physical landing set,
+even though any one finite execution can verify only its selected arm. A
+real C45 successful-byte branch with an admitted set omitting C126 now
+refuses a two-arm source binding; the narrower single-landing physical
+pointer witness still passes. The older direction/chronology methods remain
+usable for deliberately partial physical control experiments without
+claiming source output parity.
 
 A source-only positive for the original C23 checksum admits true first
 EOF with one final zero byte, as well as successful NUL, odd and high-byte

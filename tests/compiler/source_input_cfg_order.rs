@@ -1603,6 +1603,28 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
                 ),
                 Err(BoundError::GuestPointer(PointerError::UnexpectedLanding)),
             );
+            // The actual byte arm C45 is allowed in isolation, but a
+            // source-branch binding must reserve *both* stated physical
+            // successors. A missing EOF-arm C126 cannot be tacitly accepted.
+            let one_arm_only = SourceBoundIndirectGuestProbe {
+                allowed_landings: &[45],
+                ..requested
+            };
+            assert_eq!(
+                pointer_verifier
+                    .verify_source_return_bound(&one_arm_only)
+                    .map_err(|error| format!("{error:?}"))?,
+                joined,
+            );
+            assert_eq!(
+                pointer_verifier.verify_source_return_branch_bound(
+                    &one_arm_only,
+                    source_first_guard,
+                ),
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::InvalidBranchBinding,
+                )),
+            );
             let wrong_anchors = [
                 GuestCodeOperationAnchor {
                     code_address: 52,
