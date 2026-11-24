@@ -32,11 +32,15 @@ from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
 from typing import Final
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT: Final = Path(__file__).resolve().parents[1]
 CLANG: Final = ROOT / ".dependencies/llvm/22.1.8/bin/clang"
 LLVM_LIB: Final = ROOT / ".dependencies/llvm/22.1.8/lib"
-SOURCE: Final = r"""
+UNSIGNED_SOURCE: Final = r"""
 #include <stdio.h>
 #include <limits.h>
 static_assert(UINT_MAX == 0xffffffffu);
@@ -50,6 +54,19 @@ int main(void) {
     }
 }
 """
+SIGNED_SOURCE: Final = r"""
+#include <stdio.h>
+#include <limits.h>
+static_assert(INT_MAX == 2147483647);
+int main(void) {
+    for (;;) {
+        int current = getchar();
+        if (current == EOF) return 0;
+        int shifted = (current << 4) >> 3;
+        if (putchar(shifted & 255) == EOF) return 1;
+    }
+}
+"""
 VECTORS: Final = (
     ("empty", b""),
     ("nul", b"\x00"),
@@ -60,12 +77,14 @@ VECTORS: Final = (
 )
 
 
-def test_all_bytes_and_eof_with_native_optimizations() -> None:
-    """Exact binary stdout; Clang UBSan must not report undefined shifts."""
+def _assert_native_oracle(
+    source_text: str, expected_bytes: Callable[[bytes], bytes]
+) -> None:
+    """Compare independent C23 UBSan runs to a finite byte-stream oracle."""
     with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
         scratch = Path(directory)
         source = scratch / "source.c"
-        _ = source.write_text(SOURCE, encoding="utf-8")
+        _ = source.write_text(source_text, encoding="utf-8")
         env = os.environ.copy()
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
             part
@@ -107,6 +126,21 @@ def test_all_bytes_and_eof_with_native_optimizations() -> None:
                     name,
                     native.stderr,
                 )
-                # Mathematically independent low-bit mask oracle.
-                expected = bytes(value & 0xF8 for value in input_stream)
+                expected = expected_bytes(input_stream)
                 assert native.stdout == expected, (optimization, name)
+
+
+def test_all_bytes_and_eof_with_native_optimizations() -> None:
+    """Unsigned shifts wrap; native C23 remains exact under -O0/-O2."""
+    _assert_native_oracle(
+        UNSIGNED_SOURCE,
+        lambda stream: bytes(value & 0xF8 for value in stream),
+    )
+
+
+def test_defined_signed_shifts_with_native_optimizations() -> None:
+    """Signed shifts of nonnegative bytes remain representable at C32."""
+    _assert_native_oracle(
+        SIGNED_SOURCE,
+        lambda stream: bytes((value * 2) & 0xFF for value in stream),
+    )

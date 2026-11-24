@@ -12812,3 +12812,8 @@ unsigned shift/EOF loop independently at `-O0` and `-O2`. It checks empty,
 NUL, high-byte, `ff`, mixed and all-256-byte streams against an independently
 masked binary result. These are native controls for the source-path arithmetic,
 not proof of a linked or running Malbolge guest loop.
+
+The same two native optimization modes also run a defined signed C23
+`(current << 4) >> 3` program for the full byte domain, using a separately
+calculated doubled-byte oracle. Neither control infers a result for negative
+signed operands or out-of-range shift counts.
