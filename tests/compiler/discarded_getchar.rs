@@ -27,6 +27,7 @@
 use super::super::typed::{Instruction, TypeDef, canonical_module};
 use super::super::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir_with_source,
+    source_byte_echo as echo,
 };
 
 const SINGLE_SOURCE: &[u8] =
@@ -108,4 +109,84 @@ fn standalone_put_get_refuses_without_signed_eof_to_byte_conversion() {
             Err(FrontendJsonError::Unsupported)
         );
     }
+}
+
+#[test]
+fn signed_direct_eof_output_in_every_loop_kind_requires_its_own_conversion() {
+    use super::super::source_byte_echo::is_unchecked_direct_loop_eof_echo;
+
+    // Wrap the existing source-normalized direct output in a synthetic loop
+    // ancestor. This is a refusal-only structural test, never a source proof:
+    // the real frontend separately authenticates all Clang/source topology.
+    for kind in ["for-statement", "while-statement", "do-statement"] {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(DIRECT_OUTPUT_JSON).unwrap();
+        let nodes = value["nodes"].as_array_mut().unwrap();
+        let mut wrapper = nodes[2].clone();
+        wrapper["id"] = serde_json::json!(9);
+        wrapper["parent"] = serde_json::json!(2);
+        wrapper["kind"] = serde_json::json!(kind);
+        wrapper["reference"] = serde_json::Value::Null;
+        nodes[2]["parent"] = serde_json::json!(9);
+        nodes.insert(2, wrapper);
+        let encoded = serde_json::to_vec(&value).unwrap();
+        assert!(
+            is_unchecked_direct_loop_eof_echo(&encoded),
+            "signed getchar nested in {kind} escaped the EOF guard"
+        );
+        assert_eq!(
+            canonical_guest_typed_ir_with_source(
+                &encoded,
+                Some(DIRECT_OUTPUT_SOURCE)
+            ),
+            Err(FrontendJsonError::Unsupported),
+        );
+    }
+    // The loop guard does not itself claim that a standalone signed input
+    // can safely become a successful-u8 output. That refusal is separate.
+    assert!(!is_unchecked_direct_loop_eof_echo(DIRECT_OUTPUT_JSON));
+}
+
+#[test]
+fn signed_local_output_in_each_loop_kind_refuses_byte_only_projection() {
+    // A genuine pinned-Clang C for-loop gives us the i32 declaration,
+    // getchar initializer, nested if and all local-reference parent edges.
+    // Swapping only its loop node kind tests this *refusal* on both other
+    // source-control kinds without manufacturing an admissible Clang proof.
+    const LOOP_JSON: &[u8] = include_bytes!(
+        "c-frontend/golden/unsigned_conditional_live_input.json"
+    );
+    for kind in ["for-statement", "while-statement", "do-statement"] {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(LOOP_JSON).unwrap();
+        let node = value["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|node| node["kind"] == "for-statement")
+            .unwrap();
+        node["kind"] = serde_json::json!(kind);
+        let encoded = serde_json::to_vec(&value).unwrap();
+        assert!(
+            echo::is_unchecked_counter_loop_signed_eof_output(&encoded),
+            "i32 local getchar output escaped its {kind} EOF guard"
+        );
+    }
+    let mut altered: serde_json::Value =
+        serde_json::from_slice(LOOP_JSON).unwrap();
+    let local = altered["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| {
+            node["kind"] == "variable-declaration"
+                && node["reference"]
+                    .as_str()
+                    .is_some_and(|r| r.starts_with("current@"))
+        })
+        .unwrap();
+    local["type"] = serde_json::json!("u8");
+    assert!(!echo::is_unchecked_counter_loop_signed_eof_output(
+        &serde_json::to_vec(&altered).unwrap()
+    ));
 }

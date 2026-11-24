@@ -453,11 +453,11 @@ pub(super) fn is_unchecked_direct_eof_echo(bytes: &[u8]) -> bool {
     signed_outputs > 0
 }
 
-// Unrolling a bounded for loop cannot remove the observable EOF result of
-// putchar(getchar()). Even though every successful read is a guest byte,
-// exhausted C23 stdin makes getchar return -1 and putchar write 0xff.
-// Reject a signed input nested inside an output directly in a for-loop body
-// before the successful-u8 projection can publish a false executable.
+// Unrolling any bounded for/while/do loop cannot remove the observable EOF
+// result of putchar(getchar()). Even though every successful read is a guest
+// byte, exhausted C23 stdin makes getchar return -1 and putchar write 0xff.
+// Reject signed input nested inside output directly in any loop body before
+// the successful-u8 projection can publish a false executable.
 // This is a conservative refusal only: it cannot authorize a C lowering.
 pub(super) fn is_unchecked_direct_loop_eof_echo(bytes: &[u8]) -> bool {
     let Ok(artifact) = serde_json::from_slice::<Artifact>(bytes) else {
@@ -477,14 +477,17 @@ pub(super) fn is_unchecked_direct_loop_eof_echo(bytes: &[u8]) -> bool {
         // evaluation. Walk the original Clang parent identities to include
         // braced, unbraced and conditionally selected loop outputs.
         let mut parent = output.parent;
-        let enclosed_by_for = (0..MAX_NESTED_LOCAL_DEPTH).any(|_| {
+        let enclosed_by_loop = (0..MAX_NESTED_LOCAL_DEPTH).any(|_| {
             let Some(ancestor) = by_id.get(&parent) else {
                 return false;
             };
             parent = ancestor.parent;
-            ancestor.kind == "for-statement"
+            matches!(
+                ancestor.kind.as_str(),
+                "for-statement" | "while-statement" | "do-statement"
+            )
         });
-        if !enclosed_by_for {
+        if !enclosed_by_loop {
             return false;
         }
         nodes.iter().any(|input| {
@@ -638,8 +641,10 @@ pub(super) fn is_unchecked_counter_loop_signed_eof_output(
             && local.type_name.as_deref() == Some("i32")
             && declaration.kind == "declaration-statement"
             && loop_body.kind == "compound-statement"
-            && (owner.kind == "for-statement"
-                || owner.kind == "function-declaration")
+            && (matches!(
+                owner.kind.as_str(),
+                "for-statement" | "while-statement" | "do-statement"
+            ) || owner.kind == "function-declaration")
             && let Some(reference) = local.reference.as_deref()
         {
             let _ = signed_inputs.insert((loop_body.id, reference));
