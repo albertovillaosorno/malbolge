@@ -33,7 +33,7 @@ use super::super::typed_cfg_adapter::lower_canonical_dynamic_cfg;
 use super::super::typed_cfg_adapter::ternary::{
     TernaryCfgBlock, TernaryCfgFunction, TernaryCfgScalarKind,
     TernaryCfgTerminator, TernaryI32Scalar, TernaryOperation,
-    TernarySourcePosition, TernarySourceSpan,
+    TernarySourcePosition, TernarySourceSpan, TernaryU8Scalar,
 };
 use super::{
     GuestCodeInputSemantics, GuestPlacedOperand, SourceBranchLanding,
@@ -1560,6 +1560,130 @@ fn executed_undefined_arithmetic_cannot_certify_unrelated_output() {
             dead_result_source_path(operation, lhs, rhs),
             Ok(expected),
             "dead arithmetic {operation:?}, lhs={lhs}, rhs={rhs}",
+        );
+    }
+}
+
+// An invalid operation in one selected C23 arm prevents *that* complete
+// return. The opposite arm must remain valid; simply scanning all blocks for
+// an invalid arithmetic expression would reject correct source execution.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "bounded two-arm source-conditional definedness witness"
+)]
+fn source_selected_arm_must_execute_before_undefined_arithmetic_refusal() {
+    let span = dummy_span();
+    let output = |value| {
+        vec![
+            TernaryOperation::MaterializeU8 {
+                result: value,
+                scalar: TernaryU8Scalar::from_bits(65),
+                span,
+            },
+            TernaryOperation::ByteOutput { value, span },
+        ]
+    };
+    let return_void =
+        TernaryCfgTerminator::Return(TernaryOperation::ReturnVoid { span });
+    let mut function = TernaryCfgFunction {
+        blocks: vec![
+            TernaryCfgBlock {
+                id: 0,
+                operations: vec![
+                    TernaryOperation::GetcharI32 { result: 0, span },
+                    TernaryOperation::MaterializeI32 {
+                        result: 1,
+                        scalar: TernaryI32Scalar::from_bits(0),
+                        span,
+                    },
+                    TernaryOperation::NotEqualI32 {
+                        left: 0,
+                        result: 2,
+                        right: 1,
+                        span,
+                    },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Branch {
+                    condition: 2,
+                    false_target: 2,
+                    span,
+                    true_target: 1,
+                },
+            },
+            TernaryCfgBlock {
+                id: 1,
+                operations: vec![
+                    TernaryOperation::MaterializeU32 {
+                        result: 3,
+                        scalar: TernaryI32Scalar::from_bits(0),
+                        span,
+                    },
+                    TernaryOperation::DivideU32 {
+                        left: 0,
+                        result: 4,
+                        right: 3,
+                        span,
+                    },
+                ]
+                .into_iter()
+                .chain(output(8))
+                .collect(),
+                phis: Vec::new(),
+                terminator: return_void,
+            },
+            TernaryCfgBlock {
+                id: 2,
+                operations: output(9),
+                phis: Vec::new(),
+                terminator: return_void,
+            },
+        ],
+        entry: 0,
+        id: 0,
+        name: "selected_undefined_arm".to_owned(),
+        span,
+    };
+    let check = |source: &TernaryCfgFunction, input, output: &[u8]| {
+        let actual = SourceInputSiteObservation {
+            input,
+            raw_accumulator: match input {
+                TraceInput::Byte(byte) => u32::from(byte),
+                TraceInput::EndOfInput => 14_348_906,
+            },
+            ..observed(0, 0)
+        };
+        source_path_matches_input_observables(source, &[&actual], output, 128)
+    };
+    for input in (u8::MIN..=u8::MAX)
+        .map(TraceInput::Byte)
+        .chain(std::iter::once(TraceInput::EndOfInput))
+    {
+        assert_eq!(
+            check(&function, input, b"A"),
+            Ok(input == TraceInput::Byte(0)),
+            "selected invalid division {input:?}",
+        );
+    }
+    function.blocks[1].operations[0] = TernaryOperation::MaterializeU32 {
+        result: 3,
+        scalar: TernaryI32Scalar::from_bits(1),
+        span,
+    };
+    for input in (u8::MIN..=u8::MAX)
+        .map(TraceInput::Byte)
+        .chain(std::iter::once(TraceInput::EndOfInput))
+    {
+        assert_eq!(
+            check(&function, input, b"A"),
+            Ok(true),
+            "defined selected arm {input:?}",
+        );
+        assert_eq!(
+            check(&function, input, b"B"),
+            Ok(false),
+            "forged output on {input:?}",
         );
     }
 }

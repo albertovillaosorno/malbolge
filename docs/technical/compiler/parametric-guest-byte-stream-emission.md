@@ -12851,3 +12851,12 @@ in addition to earlier result-used shift controls. The unchanged original
 mutable EOF checksum still refuses at its seven-block unlinked CFG: this
 check does **not** execute C32 arithmetic or looping in Malbolge, nor
 establish a compiler release.
+
+An additional two-arm source-CFG control now checks every 256 successful
+input bytes and EOF: only byte zero skips an otherwise dead `unsigned / 0`
+operation and can complete the source return with `A`. In the repaired
+valid-denominator control every class can output `A`; no class can forge
+`B`. The independent native C23 UBSan branch control runs at `-O0` and
+`-O2`, requiring NUL to output `A` and byte 1, `ff`, and real EOF to trap
+before output. The source-only branch checker never executes the C branch
+or arithmetic in the guest; these are separately scoped C23 controls.

@@ -200,7 +200,24 @@ int main(void) {
 """
 
 
-def _assert_native_rejects_undefined_arithmetic(source_text: str) -> None:
+UNDEFINED_SELECTED_BRANCH_SOURCE: Final = r"""
+#include <stdio.h>
+int main(void) {
+    int current = getchar();
+    if (current != 0) {
+        volatile unsigned divisor = 0u;
+        volatile unsigned ignored = (unsigned)current / divisor;
+        (void)ignored;
+    }
+    return putchar('A') == EOF ? 2 : 0;
+}
+"""
+
+
+def _assert_native_rejects_undefined_arithmetic(
+    source_text: str,
+    streams: tuple[tuple[bytes, bytes | None], ...] = ((b"", None),),
+) -> None:
     """An executed undefined operation must trap before guest-like output."""
     with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
         scratch = Path(directory)
@@ -232,18 +249,29 @@ def _assert_native_rejects_undefined_arithmetic(source_text: str) -> None:
                 timeout=40,
             )
             assert compiled.returncode == 0, compiled.stderr
-            native = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-                [str(binary)],
-                capture_output=True,
-                check=False,
-                timeout=10,
-            )
-            assert native.returncode != 0, optimization
-            assert UNDEFINED_RUNTIME_ERROR in native.stderr, (
-                optimization,
-                native.stderr,
-            )
-            assert native.stdout == UNDEFINED_EMPTY_OUTPUT, optimization
+            for input_stream, expected in streams:
+                native = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+                    [str(binary)],
+                    input=input_stream,
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+                if expected is None:
+                    assert native.returncode != 0, (optimization, input_stream)
+                    assert UNDEFINED_RUNTIME_ERROR in native.stderr, (
+                        optimization,
+                        input_stream,
+                        native.stderr,
+                    )
+                    assert native.stdout == UNDEFINED_EMPTY_OUTPUT, (
+                        optimization,
+                        input_stream,
+                    )
+                else:
+                    assert native.returncode == 0, (optimization, input_stream)
+                    assert native.stderr == b"", (optimization, input_stream)
+                    assert native.stdout == expected, (optimization, input_stream)
 
 
 def test_native_rejects_out_of_range_unsigned_shift() -> None:
@@ -269,3 +297,16 @@ def test_native_rejects_dead_signed_add_before_output() -> None:
 def test_native_rejects_dead_divide_before_output() -> None:
     """Zero division is undefined even when the result is discarded."""
     _assert_native_rejects_undefined_arithmetic(UNDEFINED_DEAD_DIVIDE_SOURCE)
+
+
+def test_native_selected_branch_only_traps_on_executed_division() -> None:
+    """Only the taken invalid arithmetic arm prevents the C23 return."""
+    _assert_native_rejects_undefined_arithmetic(
+        UNDEFINED_SELECTED_BRANCH_SOURCE,
+        (
+            (b"\x00", b"A"),
+            (b"\x01", None),
+            (b"\xff", None),
+            (b"", None),
+        ),
+    )
