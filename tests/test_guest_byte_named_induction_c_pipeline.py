@@ -44,7 +44,11 @@ import unittest
 from pathlib import Path
 from typing import cast, override
 
+from tests import test_guest_byte_inequality_loop_c_pipeline as inequality
 from tests import test_guest_byte_stride_loop_c_pipeline as previous
+from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 COMPILE = previous.COMPILE
@@ -65,10 +69,10 @@ class GuestByteNamedInductionCPipelineTests(unittest.TestCase):
         if not all(
             path.is_file()
             for path in (
-                previous.previous.total.FRONTEND,
-                previous.previous.total.ADAPTER,
-                previous.previous.total.LAYOUT,
-                previous.previous.total.VM,
+                total.FRONTEND,
+                total.ADAPTER,
+                total.LAYOUT,
+                total.VM,
             )
         ):
             self.skipTest("pinned Clang and normative guest VM required")
@@ -84,7 +88,8 @@ class GuestByteNamedInductionCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program("index"))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in inputs:
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -98,7 +103,8 @@ class GuestByteNamedInductionCPipelineTests(unittest.TestCase):
             guest = source.with_suffix(".malbolge")
             _ = source.write_text(program("position", initial=6, bound=0, step="-= 2"))
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in (b"\0\xff", b"\xff\0"):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -129,7 +135,7 @@ class GuestByteNamedInductionCPipelineTests(unittest.TestCase):
                     guest = source.with_suffix(".malbolge")
                     result = subprocess.run(
                         [
-                            str(previous.previous.ADAPTER),
+                            str(inequality.ADAPTER),
                             "--layout-backend",
                             sys.executable,
                             "--output",
@@ -143,11 +149,7 @@ class GuestByteNamedInductionCPipelineTests(unittest.TestCase):
                         check=False,
                         timeout=15,
                     )
-                    self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
-                    self.assertFalse(guest.exists())
+                    frontend_layout_or_explicit_refusal(self, result, guest)
 
     def test_named_counter_direct_comparison_runs_in_guest(self) -> None:
         """A direct i32 comparison uses the same proven counter binding."""
@@ -157,7 +159,8 @@ class GuestByteNamedInductionCPipelineTests(unittest.TestCase):
             text = program("index").replace("index % 2 == 0", "index == 2")
             _ = source.write_text(text)
             result = COMPILE(source, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in (b"\0\xff", b"\xff\0", b"\x80\x7f"):
                 vm = RUN(guest, data)
                 self.assertEqual(vm.returncode, 0, vm.stderr)

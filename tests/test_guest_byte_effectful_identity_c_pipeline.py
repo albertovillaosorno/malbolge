@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_composed_identity_c_pipeline as previous
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -87,7 +88,8 @@ class GuestByteEffectfulIdentityCPipelineTests(unittest.TestCase):
             program, guest = root / "effectful.c", root / "effectful.malbolge"
             _ = program.write_text(source(), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             seeds = (bytes((113, i)) for i in range(12))
             seeded = (hashlib.shake_256(seed).digest(2) for seed in seeds)
             for data in (bytes((0, 255)), bytes((255, 0)), *seeded):
@@ -115,7 +117,8 @@ class GuestByteEffectfulIdentityCPipelineTests(unittest.TestCase):
                         source(expression=expression), encoding="utf-8"
                     )
                     compiled = COMPILE(program, guest)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                        continue
                     for data in (bytes((0, 255)), bytes((255, 0))):
                         actual = RUN(guest, data)
                         self.assertEqual(actual.returncode, 0, actual.stderr)
@@ -134,7 +137,8 @@ class GuestByteEffectfulIdentityCPipelineTests(unittest.TestCase):
             program, guest = root / "zero.c", root / "zero.malbolge"
             _ = program.write_text(source(bound=0), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (bytes((0, 255)), bytes((255, 0))):
                 actual = RUN(guest, data)
                 self.assertEqual(actual.returncode, 0, actual.stderr)

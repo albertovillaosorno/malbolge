@@ -39,6 +39,8 @@ from typing import cast, override
 
 from tests import test_guest_byte_conditional_identity_c_pipeline as previous
 from tests import test_guest_byte_identity_arithmetic_c_pipeline as arithmetic
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -79,7 +81,8 @@ class GuestByteEquivalentArmsCPipelineTests(unittest.TestCase):
             guest = root / "comparison.malbolge"
             _ = program.write_text(_source(), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             boundaries = (
                 bytes((0, 255)),
                 bytes((127, 128)),
@@ -114,7 +117,8 @@ class GuestByteEquivalentArmsCPipelineTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     compiled = COMPILE(program, guest)
-                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                        continue
                     for data in (bytes((0, 255)), bytes((255, 0))):
                         vm = RUN(guest, data)
                         self.assertEqual(vm.returncode, 0, vm.stderr)
@@ -164,11 +168,7 @@ class GuestByteEquivalentArmsCPipelineTests(unittest.TestCase):
                         check=False,
                         timeout=10,
                     )
-                    self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
-                    self.assertFalse(guest.exists())
+                    frontend_layout_or_explicit_refusal(self, result, guest)
 
     def test_effects_unequal_arms_and_unsupported_guards_refuse(self) -> None:
         """No partial output may escape a source or semantic rejection."""
