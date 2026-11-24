@@ -2812,6 +2812,151 @@ fn source_known_narrow_casts_preserve_signedness_and_invalidate_unknowns() {
     assert_eq!(known.get(&101), Some(&0));
 }
 
+// Backedges revisit the same narrow source SSA IDs. An old known-byte value
+// must never stand in for the next signed input; 255 and true EOF both narrow
+// to i8 -1, while 0x80 widens to i32 -128 and outputs its original low byte.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "typed three-block loop with exhaustive source input chronology"
+)]
+fn source_signed_narrow_loop_rechecks_every_byte_before_eof() {
+    let span = dummy_span();
+    let function = TernaryCfgFunction {
+        blocks: vec![
+            TernaryCfgBlock {
+                id: 0,
+                operations: vec![
+                    TernaryOperation::GetcharI32 { result: 0, span },
+                    TernaryOperation::TruncateI32ToI8 {
+                        result: 1,
+                        value: 0,
+                        span,
+                    },
+                    TernaryOperation::SignExtendI8ToI32 {
+                        result: 2,
+                        value: 1,
+                        span,
+                    },
+                    TernaryOperation::MaterializeI32 {
+                        result: 3,
+                        scalar: TernaryI32Scalar::from_bits(u32::MAX),
+                        span,
+                    },
+                    TernaryOperation::EqualI32 {
+                        left: 2,
+                        result: 4,
+                        right: 3,
+                        span,
+                    },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Branch {
+                    condition: 4,
+                    false_target: 1,
+                    span,
+                    true_target: 2,
+                },
+            },
+            TernaryCfgBlock {
+                id: 1,
+                operations: vec![
+                    TernaryOperation::TruncateI32ToU8 {
+                        result: 5,
+                        value: 2,
+                        span,
+                    },
+                    TernaryOperation::ByteOutput { value: 5, span },
+                ],
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Jump { target: 0, span },
+            },
+            TernaryCfgBlock {
+                id: 2,
+                operations: Vec::new(),
+                phis: Vec::new(),
+                terminator: TernaryCfgTerminator::Return(
+                    TernaryOperation::ReturnVoid { span },
+                ),
+            },
+        ],
+        entry: 0,
+        id: 0,
+        name: "narrow_signed_source_loop".to_owned(),
+        span,
+    };
+    for second in (u8::MIN..=u8::MAX)
+        .map(TraceInput::Byte)
+        .chain(std::iter::once(TraceInput::EndOfInput))
+    {
+        let stops_on_second =
+            matches!(second, TraceInput::Byte(255) | TraceInput::EndOfInput);
+        let mut inputs = vec![TraceInput::Byte(128), second];
+        let mut output = vec![128u8];
+        if !stops_on_second {
+            let TraceInput::Byte(byte) = second else {
+                unreachable!("only bytes continue after the source guard");
+            };
+            output.push(byte);
+            inputs.push(TraceInput::EndOfInput);
+        }
+        let observations = inputs
+            .iter()
+            .map(|input| SourceInputSiteObservation {
+                input: *input,
+                raw_accumulator: match input {
+                    TraceInput::Byte(byte) => u32::from(*byte),
+                    TraceInput::EndOfInput => 14_348_906,
+                },
+                ..observed(0, 0)
+            })
+            .collect::<Vec<_>>();
+        let references = observations.iter().collect::<Vec<_>>();
+        let mut events = Vec::new();
+        for (index, input) in inputs.iter().enumerate() {
+            events.push(SourceInputIoEvent::Input {
+                observation_index: u16::try_from(index).unwrap_or(u16::MAX),
+            });
+            if index < output.len() {
+                assert!(matches!(input, TraceInput::Byte(_)));
+                events.push(SourceInputIoEvent::Output(output[index]));
+            }
+        }
+        let check = |observed: &[_], bytes: &[u8], io: &[_]| {
+            source_path_matches_input_walk(
+                &function,
+                observed,
+                512,
+                true,
+                Some(bytes),
+                Some(io),
+                None,
+            )
+        };
+        assert_eq!(
+            check(&references, &output, &events),
+            Ok(true),
+            "correct signed-loop C23 case {second:?}",
+        );
+        let mut incorrect_output = output.clone();
+        if let Some(byte) = incorrect_output.first_mut() {
+            *byte ^= 1;
+        }
+        assert_eq!(
+            check(&references, &incorrect_output, &events),
+            Ok(false),
+            "forged source byte after {second:?}",
+        );
+        let mut wrong_io = events.clone();
+        wrong_io.swap(1, 2);
+        assert_eq!(
+            check(&references, &output, &wrong_io),
+            Ok(false),
+            "guest output must precede next signed read for {second:?}",
+        );
+    }
+}
+
 #[test]
 fn source_known_equality_selects_only_the_matching_input_arm() {
     let mut function = guarded_inequality_fixture();

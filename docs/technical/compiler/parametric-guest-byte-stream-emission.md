@@ -39,6 +39,13 @@ A red-first 257-class signed-byte path test now rejects a forged branch
 output after `getchar()` narrows to `i8` and widens through `i16` to `i32`.
 The entire source-input CFG regression suite passes with this change.
 
+A second exhaustive 257-class source-CFG regression drives a real
+three-block symbolic backedge: after an initial 0x80 byte, each next signed
+input is narrowed to `i8`, re-extended to `i32`, and conditionally emitted.
+Both a byte `0xff` and EOF stop this explicitly typed loop; a second byte
+in 0..254 requires its own output before another read. Reused SSA slots,
+wrong bytes and reordered input/output sequences cannot certify a return.
+
 This check concerns only a source-known *necessary* branch/output condition
 on canonical typed-IR semantics, not implementation-defined arbitrary C
 conversions, executed guest casts, memory writes, source lowering or complete
