@@ -287,6 +287,25 @@ pub struct GuestCodePhiCopyAnchor {
     pub successor: u32,
 }
 
+/// One proposed successor-transfer instruction at the end of a phi pad.
+///
+/// The last source-authenticated snapshot/commit may be followed by real
+/// pointer setup before the guest `i` transfers to the shared successor.
+/// This exact edge-specific cell is only a reservation, not an opcode proof.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestCodePhiExitAnchor {
+    /// Proposed final code cell executing the successor transfer.
+    pub code_address: u32,
+    /// Canonical source-function identity.
+    pub function: u32,
+    /// Branch-arm or unconditional edge identity.
+    pub kind: GuestCodeEdgeKind,
+    /// Source predecessor whose phi snapshots and commits must finish first.
+    pub predecessor: u32,
+    /// Canonical shared successor block reached by this transfer.
+    pub successor: u32,
+}
+
 /// Complete source-checked sparse phi binding request.
 ///
 /// The caller supplies only address proposals. Copy operands, two-phase
@@ -2044,21 +2063,36 @@ fn first_fit_phi_pad(
     Ok(())
 }
 
-// Source-locked sparse copy sites reserve their entire physical phi pad
-// before first-fit placement of otherwise unanchored blocks. The pad begins
-// at the first snapshot and ends after one successor-transfer reservation;
-// the existing independent binder rechecks exact copy order and operands.
+// Source-locked sparse copies and edge-specific successor transfers reserve
+// their whole phi pad before first-fit placement of unrelated code. A pinned
+// exit may leave setup cells after the final commit; the independent binder
+// still rechecks exact source copies and the reserved transfer suffix.
 fn reserve_source_phi_pads(
     blocks: &[GuestPlacedBlock],
     anchors: &[GuestCodePhiCopyAnchor],
+    exits: &[GuestCodePhiExitAnchor],
     source_cells: u32,
 ) -> Result<EdgePadPlacements, GuestCodePlacementError> {
     let mut by_edge = source_phi_site_anchors(anchors)?;
+    let mut exit_by_edge = BTreeMap::new();
+    for exit in exits {
+        let key = (exit.function, exit.predecessor, exit.kind, exit.successor);
+        if exit_by_edge.insert(key, exit.code_address).is_some() {
+            return Err(GuestCodePlacementError::InvalidCodePlacement);
+        }
+    }
     let mut pinned = EdgePadPlacements::new();
     for block in blocks {
         let mut reserve = |kind, edge: &GuestPlacedControlEdge| {
             let key = (block.function, block.block, kind, edge.successor);
-            let Some(sites) = by_edge.remove(&key) else {
+            let site_list = by_edge.remove(&key);
+            let exit = exit_by_edge.remove(&key);
+            let Some(sites) = site_list else {
+                // An explicitly placed transfer must never invent missing
+                // source snapshot/commit obligations.
+                if exit.is_some() {
+                    return Err(GuestCodePlacementError::InvalidCodePlacement);
+                }
                 return Ok(());
             };
             let total = edge
@@ -2086,8 +2120,19 @@ fn reserve_source_phi_pads(
             }
             let start =
                 first.ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
-            let end_exclusive = previous
-                .and_then(|last| last.checked_add(2))
+            let last = previous
+                .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
+            let transfer = match exit {
+                Some(site) if site > last => site,
+                Some(_) => {
+                    return Err(GuestCodePlacementError::InvalidCodePlacement);
+                },
+                None => last
+                    .checked_add(1)
+                    .ok_or(GuestCodePlacementError::InvalidCodePlacement)?,
+            };
+            let end_exclusive = transfer
+                .checked_add(1)
                 .filter(|end| *end <= source_cells)
                 .ok_or(GuestCodePlacementError::InvalidCodePlacement)?;
             let pad = GuestCodeEdgePadPlacement {
@@ -2114,7 +2159,7 @@ fn reserve_source_phi_pads(
             GuestPlacedControl::Return => {},
         }
     }
-    if !by_edge.is_empty() {
+    if !by_edge.is_empty() || !exit_by_edge.is_empty() {
         return Err(GuestCodePlacementError::InvalidCodePlacement);
     }
     Ok(pinned)
@@ -2194,6 +2239,7 @@ pub fn plan_source_locked_cfg_with_input_and_effect_anchors(
         effect_anchors,
         &[],
         &[],
+        &[],
         true,
     )
 }
@@ -2227,6 +2273,7 @@ pub fn plan_source_locked_cfg_with_operation_and_effect_anchors(
         frame_base,
         anchors,
         effect_anchors,
+        &[],
         &[],
         &[],
         false,
@@ -2264,6 +2311,7 @@ pub fn plan_source_locked_cfg_with_operation_effect_and_control_anchors(
         effect_anchors,
         controls,
         &[],
+        &[],
         false,
     )
 }
@@ -2298,6 +2346,47 @@ pub fn plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
         effect_anchors,
         controls,
         phi_anchors,
+        &[],
+        false,
+    )
+}
+
+/// Reserve an exact source-identified successor transfer after sparse phi
+/// copies, allowing real pointer-setup code between the last commit and `i`.
+///
+/// Every anchored exit must identify a fully anchored, source-derived phi
+/// edge. Its address must follow all writes, fit source memory and stay
+/// disjoint from source blocks and all other predecessor-specific phi pads.
+/// Copies, typed effects and the transfer location remain *proposals*;
+/// actual Malbolge guest execution and EOF loop linkage are not inferred.
+///
+/// # Errors
+///
+/// Refuses a missing/foreign/duplicated phi edge, transfer before or on a
+/// copy, source-capacity exhaustion, overlaps or invalid source identities.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one source-locked placement API retains each anchor category"
+)]
+pub fn plan_source_locked_cfg_with_phi_exit_anchors(
+    canonical: &[u8],
+    source_cells: u32,
+    frame_base: u32,
+    anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+    controls: &[GuestCodeControlAnchor],
+    phi_anchors: &[GuestCodePhiCopyAnchor],
+    exits: &[GuestCodePhiExitAnchor],
+) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
+    plan_source_locked_cfg_with_general_effect_anchors(
+        canonical,
+        source_cells,
+        frame_base,
+        anchors,
+        effect_anchors,
+        controls,
+        phi_anchors,
+        exits,
         false,
     )
 }
@@ -2310,6 +2399,7 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     effect_anchors: &[GuestCodeEffectAnchor],
     controls: &[GuestCodeControlAnchor],
     phi_anchors: &[GuestCodePhiCopyAnchor],
+    exits: &[GuestCodePhiExitAnchor],
     inputs_only: bool,
 ) -> Result<GuestAddressedCfgPlan, GuestCodePlacementError> {
     let relocated =
@@ -2517,6 +2607,7 @@ fn plan_source_locked_cfg_with_general_effect_anchors(
     let pinned_pads = reserve_source_phi_pads(
         &relocated.operation_blocks,
         phi_anchors,
+        exits,
         source_cells,
     )?;
     for pad in pinned_pads.values() {

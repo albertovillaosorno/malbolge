@@ -28,6 +28,27 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Sparse predecessor-specific phi exit transfer anchors (2026-11-23)
+
+The automatic source-CFG phi planner now accepts an **optional exact exit
+transfer site** for a fully source-anchored phi edge. The final commit may be
+followed by guest pointer setup before its source-specific `i` successor
+jump. Previously, automatic placement always forced the transfer immediately
+after the last phi write, although the existing strict binder and normative
+VM test already admitted post-commit setup.
+
+The red-first original mutable C23 checksum test now pins all eight loop
+backedge writes at C90/C97/C105/C114/C123/C131/C140/C150 and the eventual
+successor transfer at C170. The checked pad occupies C90..C171, retaining
+all seven blocks and four distinct phi pads. The existing API still ends
+at C151; an exit before the final copy, duplicate/foreign edge, missing
+snapshot/commit list, overflow, or collision with another source block
+refuses. An earlier bounded real-VM test independently proved that post-
+commit setup is possible. Neither test links this full C23 checksum: the
+pinned positions do not assert that matching `p` or `i` opcodes exist.
+The original program still refuses target publication. Regression:
+`tests/compiler/source_dynamic_checksum.rs`.
+
 ### Source-word effects without explicit operation anchors (2026-11-23)
 
 The general source-locked CFG auto planner can now reserve exact **word

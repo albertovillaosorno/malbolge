@@ -3082,8 +3082,10 @@ fn original_checksum_auto_phi_pad_composes_with_signed_input_and_control_sites()
 #[test]
 fn original_checksum_auto_phi_pads_keep_both_header_predecessors_disjoint() {
     use super::typed_cfg_adapter::state_relocation::{
-        GuestCodeEdgeKind, GuestCodePhiCopyAnchor, GuestCodePlacementError,
+        GuestCodeEdgeKind, GuestCodePhiCopyAnchor, GuestCodePhiExitAnchor,
+        GuestCodePlacementError,
         plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors,
+        plan_source_locked_cfg_with_phi_exit_anchors,
     };
     let wire =
         source_locked_checksum_wire().expect("C23 loop backedge and entry");
@@ -3159,6 +3161,67 @@ fn original_checksum_auto_phi_pads_keep_both_header_predecessors_disjoint() {
     let mut shuffled = anchors.clone();
     shuffled.reverse();
     assert_eq!(bind(&shuffled), Ok(plan));
+
+    // Each predecessor may need its *own* post-commit pointer setup, and
+    // neither exit may consume code reserved for the other phi landing pad.
+    let exits = [
+        GuestCodePhiExitAnchor {
+            code_address: 109,
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 0,
+            successor: 1,
+        },
+        GuestCodePhiExitAnchor {
+            code_address: 199,
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        },
+    ];
+    let with_exits = |exits: &[GuestCodePhiExitAnchor]| {
+        plan_source_locked_cfg_with_phi_exit_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            &anchors,
+            exits,
+        )
+    };
+    let padded = with_exits(&exits)
+        .expect("each source predecessor has an independent exit and setup");
+    for (predecessor, first, exit) in [(0, 88, 109), (5, 120, 199)] {
+        let edge = padded
+            .control_edges
+            .iter()
+            .find(|edge| {
+                (edge.function, edge.predecessor, edge.successor)
+                    == (0, predecessor, 1)
+            })
+            .expect("source locked predecessor");
+        assert_eq!(
+            (edge.entry_address, edge.pad_exit_address),
+            (first, Some(exit))
+        );
+    }
+    let mut reordered = exits;
+    reordered.reverse();
+    assert_eq!(with_exits(&reordered), Ok(padded));
+    assert_eq!(
+        with_exits(&[
+            GuestCodePhiExitAnchor {
+                code_address: 125,
+                ..exits[0]
+            },
+            exits[1],
+        ]),
+        refused,
+        "one predecessor cannot occupy the next phi pad"
+    );
 }
 
 #[test]
@@ -4364,5 +4427,159 @@ fn original_checksum_auto_places_signed_stores_without_input_op_anchors() {
         ),
         invalid,
         "signed store effects retain physical source order",
+    );
+}
+
+// A reached source phi pad may require real pointer-setup instructions after
+// its final p/* memory copy and before its successor i. Pinning the transfer
+// site must not force that setup interval into another source block or pad.
+// All sites remain code reservations, never executable C23 guest claims.
+#[test]
+fn original_checksum_phi_exit_anchor_reserves_post_commit_guest_setup() {
+    use super::typed_cfg_adapter::state_relocation::{
+        GuestCodeEdgeKind, GuestCodeOperationAnchor, GuestCodePhiCopyAnchor,
+        GuestCodePhiExitAnchor, GuestCodePlacementError,
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors,
+        plan_source_locked_cfg_with_phi_exit_anchors,
+    };
+
+    let wire =
+        source_locked_checksum_wire().expect("original C23 EOF checksum");
+    let positions = [90, 97, 105, 114, 123, 131, 140, 150];
+    let copies = positions
+        .into_iter()
+        .enumerate()
+        .map(|(copy_index, code_address)| GuestCodePhiCopyAnchor {
+            code_address,
+            copy_index: u32::try_from(copy_index)
+                .expect("eight backedge copies"),
+            function: 0,
+            kind: GuestCodeEdgeKind::Jump,
+            predecessor: 5,
+            successor: 1,
+        })
+        .collect::<Vec<_>>();
+    let exits = [GuestCodePhiExitAnchor {
+        code_address: 170,
+        function: 0,
+        kind: GuestCodeEdgeKind::Jump,
+        predecessor: 5,
+        successor: 1,
+    }];
+    let bind = |operation: &[GuestCodeOperationAnchor],
+                exits: &[GuestCodePhiExitAnchor]| {
+        plan_source_locked_cfg_with_phi_exit_anchors(
+            &wire,
+            256,
+            512,
+            operation,
+            &[],
+            &[],
+            &copies,
+            exits,
+        )
+    };
+    let placed = bind(&[], &exits)
+        .expect("source-authenticated post-commit setup and exit fit");
+    let pad = placed
+        .edge_pads
+        .iter()
+        .find(|pad| (pad.function, pad.predecessor, pad.successor) == (0, 5, 1))
+        .expect("one original checksum backedge pad");
+    assert_eq!((pad.start, pad.end_exclusive), (90, 171));
+    let edge = placed
+        .control_edges
+        .iter()
+        .find(|edge| {
+            (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+        })
+        .expect("source C23 backedge");
+    assert_eq!(edge.pad_exit_address, Some(170));
+    assert_eq!(
+        edge.snapshot_sites
+            .iter()
+            .chain(&edge.commit_sites)
+            .map(|copy| copy.code_address)
+            .collect::<Vec<_>>(),
+        positions
+    );
+    assert_eq!(placed.code_blocks.len(), 7);
+    assert_eq!(placed.edge_pads.len(), 4);
+
+    let compact =
+        plan_source_locked_cfg_with_operation_effect_control_and_phi_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            &copies,
+        )
+        .expect("existing compact source-backedge API still works");
+    assert_eq!(
+        compact
+            .control_edges
+            .iter()
+            .find(|edge| {
+                (edge.function, edge.predecessor, edge.successor) == (0, 5, 1)
+            })
+            .and_then(|edge| edge.pad_exit_address),
+        Some(151)
+    );
+    let refusal = Err(GuestCodePlacementError::InvalidCodePlacement);
+    for wrong in [
+        GuestCodePhiExitAnchor {
+            code_address: 150,
+            ..exits[0]
+        },
+        GuestCodePhiExitAnchor {
+            code_address: 149,
+            ..exits[0]
+        },
+        GuestCodePhiExitAnchor {
+            code_address: 256,
+            ..exits[0]
+        },
+        GuestCodePhiExitAnchor {
+            predecessor: 4,
+            ..exits[0]
+        },
+        GuestCodePhiExitAnchor {
+            kind: GuestCodeEdgeKind::WhenTrue,
+            ..exits[0]
+        },
+        GuestCodePhiExitAnchor { successor: 2, ..exits[0] },
+    ] {
+        assert_eq!(bind(&[], &[wrong]), refusal, "invalid exit: {wrong:?}");
+    }
+    assert_eq!(bind(&[], &[exits[0], exits[0]]), refusal);
+    assert_eq!(
+        plan_source_locked_cfg_with_phi_exit_anchors(
+            &wire,
+            256,
+            512,
+            &[],
+            &[],
+            &[],
+            &[],
+            &exits,
+        ),
+        refusal,
+        "exit-only pad without all anchored copy sites must refuse",
+    );
+    let block = [GuestCodeOperationAnchor {
+        function: 0,
+        block: 3,
+        ordinal: 0,
+        code_address: 180,
+    }];
+    assert_eq!(
+        bind(&block, &[GuestCodePhiExitAnchor {
+            code_address: 190,
+            ..exits[0]
+        }]),
+        refusal,
+        "guest setup may not overlap another source block"
     );
 }
