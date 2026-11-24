@@ -44,6 +44,12 @@ use malbolge::{
 };
 
 use super::admit_c23_probe_graphical_source;
+use super::source_input_trace::{
+    SourceInputPrefixProof, SourceInputProbe, SourceInputTraceError,
+};
+use super::typed_cfg_adapter::state_relocation::{
+    GuestCodeOperationAnchor, GuestCodeProposals,
+};
 
 const MAX_SOURCE_CELLS: usize = 4096;
 const MAX_SUFFIX_CELLS: usize = 32;
@@ -328,6 +334,84 @@ impl SourceWrittenIndirectGuestProof {
 pub type SourceWrittenIndirectGuestResult =
     Result<SourceWrittenIndirectGuestProof, SourceWrittenIndirectGuestError>;
 
+/// Canonical source-C input operation proposed to feed a physical pointer.
+///
+/// This identifies a typed source operation, not a guest source address.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct SourceInputPointerOrigin {
+    /// Canonical source basic block containing the input operation.
+    pub block: u32,
+    /// Canonical function containing the input operation.
+    pub function: u32,
+    /// Original instruction ordinal within that source block.
+    pub ordinal: u32,
+}
+
+/// Require a source-authenticated input effect to feed a physical guest `i`.
+///
+/// The source operation identity and physical input address are independently
+/// checked using the existing typed input trace verifier and normative VM.
+/// This is only a necessary source-to-physical dataflow condition, not C
+/// predicate, arithmetic, state, edge or loop equivalence.
+#[derive(Clone, Copy, Debug)]
+pub struct SourceBoundIndirectGuestProbe<'source> {
+    /// Allowed physical successors after the authentic `i`.
+    pub allowed_landings: &'source [u32],
+    /// Reached physical instruction that must execute `i` exactly once.
+    pub indirect_code_cell: u32,
+    /// Canonical source operation anchors for the input trace checker.
+    pub operation_anchors: &'source [GuestCodeOperationAnchor],
+    /// Source-authenticated operations whose inputs must feed the pointer.
+    pub origins: &'source [SourceInputPointerOrigin],
+    /// Guest data word from which the reached `i` must read its operand.
+    pub pointer_cell: u32,
+    /// Source CFG physical-placement proposals, not guest code evidence.
+    pub proposals: GuestCodeProposals<'source>,
+    /// Independent source input trace obligation on the identical binary.
+    pub source_input: SourceInputProbe<'source>,
+}
+
+/// Why source-typed `getchar` ancestry and a reached guest pointer disagree.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceBoundIndirectGuestError {
+    /// The source-bound input and guest pointer use different source images.
+    SourceMismatch,
+    /// No source operation was requested or its identities were duplicated.
+    InvalidOriginSelection,
+    /// A required typed source operation did not execute a matching input.
+    MissingSourceInputOrigin,
+    /// Source-typed input sites, CFG prefix or physical input did not validate.
+    SourceInput(SourceInputTraceError),
+    /// Guest-written pointer, reached indirect control or lineage is invalid.
+    GuestPointer(SourceWrittenIndirectGuestError),
+    /// Two independent normative VM replays do not describe the same run.
+    InconsistentGuestTrace,
+}
+
+/// Opaque joined proof of source-identified inputs and a guest-written branch.
+///
+/// The verifier owns both executions; a caller cannot inject a mutable,
+/// fabricated source-input proof to authenticate a different guest pointer.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceBoundIndirectGuestProof {
+    source_input: SourceInputPrefixProof,
+    guest_pointer: SourceWrittenIndirectGuestProof,
+}
+
+impl SourceBoundIndirectGuestProof {
+    /// Real input events authenticated against the canonical source CFG.
+    #[must_use]
+    pub const fn source_input(&self) -> &SourceInputPrefixProof {
+        &self.source_input
+    }
+
+    /// Real guest pointer write, input ancestry, transfer and output trace.
+    #[must_use]
+    pub const fn guest_pointer(&self) -> &SourceWrittenIndirectGuestProof {
+        &self.guest_pointer
+    }
+}
+
 /// Reusable pristine N15 source for a finite guest-written branch corpus.
 ///
 /// Construction authenticates the graphical source *once*, including its
@@ -420,6 +504,99 @@ impl SourceWrittenIndirectGuestVerifier {
             },
             vm,
         )
+    }
+
+    /// Require the entire input ancestry of a physical `i` pointer to come
+    /// from specifically authenticated canonical C source input operations.
+    ///
+    /// The source-input verifier checks every reached `/` against its typed
+    /// C operation and source CFG prefix, while the separate guest verifier
+    /// proves the actual pointer write and selected `i` successor. Both
+    /// execute the *same source bytes and input* independently and must agree
+    /// on the halted trace and output. Extra or skipped source reads may be
+    /// valid but cannot be silently credited as pointer ancestors.
+    /// This never claims C predicate truth, arithmetic, phi or loop linkage.
+    ///
+    /// # Errors
+    ///
+    /// Rejects forged source operation identities, mismatched guest images,
+    /// source input failures, missing pointer origin and divergent VM replay.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "source and guest checks retain both complete trace receipts"
+    )]
+    pub fn verify_source_bound(
+        &self,
+        probe: &SourceBoundIndirectGuestProbe<'_>,
+    ) -> Result<SourceBoundIndirectGuestProof, SourceBoundIndirectGuestError>
+    {
+        use SourceBoundIndirectGuestError::{
+            GuestPointer, InconsistentGuestTrace, InvalidOriginSelection,
+            MissingSourceInputOrigin, SourceInput, SourceMismatch,
+        };
+        if probe.source_input.physical_source != self.source {
+            return Err(SourceMismatch);
+        }
+        let expected = probe.origins.iter().copied().collect::<BTreeSet<_>>();
+        if expected.is_empty()
+            || expected.len() != probe.origins.len()
+            || expected.len() > MAX_INDIRECT_SUFFIX_PROOF_STEPS
+        {
+            return Err(InvalidOriginSelection);
+        }
+        let source_input = probe
+            .source_input
+            .verify_with_operation_anchors(
+                probe.proposals,
+                probe.operation_anchors,
+            )
+            .map_err(SourceInput)?;
+        let mut observed = BTreeSet::new();
+        let input_transitions = source_input
+            .observations
+            .iter()
+            .filter_map(|input| {
+                let identity = SourceInputPointerOrigin {
+                    block: input.block,
+                    function: input.function,
+                    ordinal: input.ordinal,
+                };
+                expected.contains(&identity).then(|| {
+                    let _new = observed.insert(identity);
+                    (input.trace_index, input.code_address)
+                })
+            })
+            .collect::<Vec<_>>();
+        if observed != expected {
+            return Err(MissingSourceInputOrigin);
+        }
+        let guest_pointer = self
+            .verify_from_input_transitions(
+                probe.source_input.input,
+                &input_transitions,
+                probe.indirect_code_cell,
+                probe.pointer_cell,
+                probe.allowed_landings,
+                probe.source_input.step_budget,
+            )
+            .map_err(GuestPointer)?;
+        let RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps,
+        } = source_input.outcome
+        else {
+            return Err(InconsistentGuestTrace);
+        };
+        if steps != guest_pointer.steps()
+            || source_input.bytes_consumed != guest_pointer.input_consumed()
+            || source_input.guest_output != guest_pointer.output()
+        {
+            return Err(InconsistentGuestTrace);
+        }
+        Ok(SourceBoundIndirectGuestProof {
+            source_input,
+            guest_pointer,
+        })
     }
 
     /// Prove that precisely one guest input site supplies the branch pointer.

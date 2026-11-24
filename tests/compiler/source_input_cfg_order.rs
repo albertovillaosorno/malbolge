@@ -837,6 +837,12 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
 -> Result<(), String> {
     use malbolge::{RunOutcome, Termination, current_profile};
 
+    use super::super::indirect_source_suffix::{
+        SourceBoundIndirectGuestError as BoundError,
+        SourceBoundIndirectGuestProbe, SourceInputPointerOrigin,
+        SourceWrittenIndirectGuestError as PointerError,
+        SourceWrittenIndirectGuestVerifier,
+    };
     use super::super::signed_eof_branch_source as signed_source;
     use super::super::typed_cfg_adapter::state_relocation::{
         GuestCodeBlockPlacement, GuestCodeEdgeKind, GuestCodeEdgePadPlacement,
@@ -916,6 +922,21 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
             ordinal: 2,
         },
     ];
+    // Independently bind the first real C23 getchar SSA operation to the
+    // physical guest-written M143 pointer and reached C114 i branch.
+    let pointer_verifier =
+        SourceWrittenIndirectGuestVerifier::new(current_profile(), &physical)
+            .map_err(|error| format!("physical guest source: {error:?}"))?;
+    let first_getchar = [SourceInputPointerOrigin {
+        block: 0,
+        function: 0,
+        ordinal: 1,
+    }];
+    let second_getchar = [SourceInputPointerOrigin {
+        block: 5,
+        function: 0,
+        ordinal: 2,
+    }];
     for (input, expected, steps) in [
         (&[][..], vec![(53, TraceInput::EndOfInput)], 119),
         (
@@ -951,6 +972,98 @@ fn physically_reached_input_effects_allow_expanded_code_block_anchors()
                 .collect::<Vec<_>>(),
             expected
         );
+        let source_input = SourceInputProbe {
+            anchors: &read_sites,
+            canonical: &wire,
+            frame_base: 256,
+            input,
+            physical_source: &physical,
+            step_budget: 175,
+        };
+        let requested = SourceBoundIndirectGuestProbe {
+            allowed_landings: &[45, 126],
+            indirect_code_cell: 114,
+            operation_anchors: &operation_anchors,
+            origins: &first_getchar,
+            pointer_cell: 143,
+            proposals,
+            source_input,
+        };
+        let joined = pointer_verifier
+            .verify_source_bound(&requested)
+            .map_err(|error| format!("typed C input to guest i: {error:?}"))?;
+        assert_eq!(joined.source_input(), &proof);
+        assert_eq!(joined.guest_pointer().pointer_input_steps(), &[53]);
+        assert_eq!(joined.guest_pointer().pointer_write_step(), 82);
+        assert_eq!(joined.guest_pointer().transfer_step(), 114);
+        assert_eq!(joined.guest_pointer().steps(), steps);
+        // The second C23 getchar is a real input on non-EOF paths, but
+        // cannot be borrowed as an ancestor of this earlier pointer.
+        for origins in [&[][..], &[first_getchar[0], first_getchar[0]][..]] {
+            assert_eq!(
+                pointer_verifier.verify_source_bound(
+                    &SourceBoundIndirectGuestProbe { origins, ..requested }
+                ),
+                Err(BoundError::InvalidOriginSelection),
+            );
+        }
+        assert_eq!(
+            pointer_verifier.verify_source_bound(
+                &SourceBoundIndirectGuestProbe {
+                    origins: &second_getchar,
+                    ..requested
+                }
+            ),
+            if input.is_empty() {
+                Err(BoundError::MissingSourceInputOrigin)
+            } else {
+                Err(BoundError::GuestPointer(
+                    PointerError::MissingRequiredInputProvenance,
+                ))
+            },
+        );
+        if input == [0] {
+            assert_eq!(
+                pointer_verifier.verify_source_bound(
+                    &SourceBoundIndirectGuestProbe {
+                        allowed_landings: &[126],
+                        ..requested
+                    }
+                ),
+                Err(BoundError::GuestPointer(PointerError::UnexpectedLanding)),
+            );
+            let wrong_anchors = [
+                GuestCodeOperationAnchor {
+                    code_address: 52,
+                    ..operation_anchors[0]
+                },
+                operation_anchors[1],
+            ];
+            assert_eq!(
+                pointer_verifier.verify_source_bound(
+                    &SourceBoundIndirectGuestProbe {
+                        operation_anchors: &wrong_anchors,
+                        ..requested
+                    }
+                ),
+                Err(BoundError::SourceInput(
+                    SourceInputTraceError::InvalidSourcePlacement,
+                )),
+            );
+            let changed_source = &physical[1..];
+            assert_eq!(
+                pointer_verifier.verify_source_bound(
+                    &SourceBoundIndirectGuestProbe {
+                        source_input: SourceInputProbe {
+                            physical_source: changed_source,
+                            ..source_input
+                        },
+                        ..requested
+                    }
+                ),
+                Err(BoundError::SourceMismatch),
+            );
+        }
     }
     // Reached signed reads alone do not implement the source checksum.
     // The unchanged physical helper emits a class marker, not the source

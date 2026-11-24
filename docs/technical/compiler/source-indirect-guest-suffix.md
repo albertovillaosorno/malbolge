@@ -6,6 +6,38 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Source-typed input to physical indirect pointer (2026-11-24)
+
+`SourceWrittenIndirectGuestVerifier::verify_source_bound` now joins two
+**independently replayed** normative VM obligations for an *identical* N15
+source and finite stdin: the existing source-typed input/CFG-prefix checker
+and the guest-written pointer/indirect-control checker. The caller supplies
+specific canonical `(function, block, ordinal)` input operation identities,
+not guest code addresses or an already accepted source proof. The checker
+rederives each reached input transition index and physical code position
+from the source-verified observations, then requires **exact equality** with
+the guest pointer's complete `/` ancestry. It returns both trace receipts
+only if VM halt steps, input consumption and output also agree. Duplicate,
+missing or unreachable source identities and alternate physical source
+images refuse.
+
+The frozen *original seven-block C23 checksum* typed IR provides the source
+input identities for this necessary-condition test: the first `getchar` at
+block 0/ordinal 1 is reached as C53 `/` and supplies an actual C82 `p`
+write to M143, used by reached C114 `i`. A later source `getchar` in block
+5/ordinal 2 can execute at C101 without feeding that earlier pointer. The
+real empty, NUL and high-byte/trailing-input executions preserve the
+C45/C126 physical destinations and 119/175-step halts. Wrong source
+operation identity, duplicate or empty selections, wrong input anchor,
+wrong arm and source-image mismatch refuse. Regression:
+`tests/compiler/source_input_cfg_order.rs`.
+
+This **does not** establish that the C23 `current != EOF` condition selects
+the guest arm, nor that a signed input is converted and written into the
+source frame, that checksum arithmetic executes, or that a source backedge
+or phi transfer occurs. The guest still emits class markers, not the source
+checksum. A genuine complete source-C23 artifact still cannot be published.
+
 ## Input-site-bound guest pointer provenance (2026-11-24)
 
 The physical guest-written indirect verifier no longer reduces every input

@@ -28,6 +28,23 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Source-typed C input now binds a physical guest pointer (2026-11-24)
+
+A joined proof composes the source-locked C23 input/CFG-prefix verifier with
+normative guest-written pointer verification on the exact same binary and
+finite stdin. Canonical `(function, block, ordinal)` `getchar` identities
+are checked against real `/` trace indices and all input ancestors of the
+M143 word read at C114 `i`. The first original-checksum `getchar` matches
+C53; the later C101 `getchar` cannot substitute for it. EOF, NUL and high
+byte with trailing input all execute and halt; wrong source operation,
+source anchor, guest source image or physical target refuses. See
+`docs/technical/compiler/source-indirect-guest-suffix.md` and
+`tests/compiler/source_input_cfg_order.rs`.
+
+This proves only a necessary source-to-guest input-control ancestry condition,
+**not** source-C predicate parity, signed frame storage, arithmetic, phi
+copies, a live loop or compiled checksum output. P2 remains open.
+
 ### Guest pointer proofs bind the specific input read (2026-11-24)
 
 A bounded source-authenticated pointer verifier now records individual
