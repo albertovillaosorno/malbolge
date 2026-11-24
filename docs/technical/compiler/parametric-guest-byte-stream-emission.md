@@ -59,6 +59,24 @@ whole C23 checksum. The next attempt needs a different predicate-placement
 or longer source-backed state/operand route, with normative replay and
 independent C23 parity before any target publication.
 
+### Fixed N15 EOF source tail rejects a silent code jump (2026-11-23)
+
+The 62-cell raw-input/EOF-zero source already ends with a real C60 `<`
+(output) and C61 `i` (code transfer). They are not free instruction
+slots: the two bytes `b"'%"` seed the untouched loader recurrence.
+A second independent 15-trit scalar test enumerates all 8,836 printable
+C60/C61 pairs against the exact four initial words at M86, M126, M127,
+and M128 required by the raw input return and EOF-zero construction.
+Exactly **20 tails** reproduce all four loader words. However, of those
+20 only the original pair is accepted by the actual N15 graphical source
+admission rule: the other 19 decode to invalid C60 instructions.
+Therefore, simply replacing C60's premature output with a no-op while
+preserving those four loader operands cannot expose the existing C61 `i`
+for a complete C23 checksum. This is a **fixed seed-equivalence and
+source-admission** result, not a prohibition on other loader layouts,
+reallocated operands, code-cell revisits or longer guest programs.
+See `only_source_valid_eof_seed_tail_keeps_output_before_code_jump`.
+
 ### Source-loaded lossless input with an EOF-only physical output marker (2026-11-23)
 
 The compiler now exposes

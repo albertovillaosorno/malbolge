@@ -181,3 +181,78 @@ fn source_loaded_eof_zero_has_no_six_cell_data_pointer_reentry()
     }
     Ok(())
 }
+
+/// The exact 62-byte source's loader recurrence is keyed by C60 and C61.
+/// All earlier source cells are fixed. A replacement must preserve the four
+/// live loader seeds used by the physical raw/EOF pair and its return path.
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "finite 94-squared source-tail and independent N15 loader oracle"
+)]
+fn only_source_valid_eof_seed_tail_keeps_output_before_code_jump()
+-> Result<(), String> {
+    let profile = current_profile();
+    let source =
+        layout::build_adjacent_c32_zero_c37_raw_eof_zero_source(profile)
+            .map_err(|error| format!("{error:?}"))?
+            .raw_pointer
+            .raw_pair
+            .zero_pair
+            .source;
+    assert_eq!(source.len(), 62);
+    assert_eq!(&source[60..], b"'%");
+    let seeds = |tail: [u8; 2]| {
+        let mut older = u32::from(tail[0]);
+        let mut previous = u32::from(tail[1]);
+        let mut selected = [0; 4];
+        for address in 62u32..=128 {
+            let next = independent_crazy(older, previous);
+            for (index, selected_address) in
+                [86, 126, 127, 128].iter().enumerate()
+            {
+                if address == *selected_address {
+                    selected[index] = next;
+                }
+            }
+            older = previous;
+            previous = next;
+        }
+        selected
+    };
+    let original = seeds([source[60], source[61]]);
+    assert_eq!(original, [RAW_LOW - 1, RAW_LOW - 1, 37, RAW_LOW - 1]);
+    let mut equivalent = Vec::new();
+    let mut admitted = Vec::new();
+    for first in 33u8..=126 {
+        for second in 33u8..=126 {
+            let tail = [first, second];
+            if seeds(tail) != original {
+                continue;
+            }
+            equivalent.push(tail);
+            let mut candidate = source.clone();
+            candidate[60..].copy_from_slice(&tail);
+            if layout::admit_c23_probe_graphical_source(&candidate).is_ok() {
+                admitted.push(tail);
+            }
+        }
+    }
+    // There are many arithmetic loader collisions, but the N15 source
+    // loader rejects every alternative's invalid C60 decode; preserving
+    // C61's i alone does not make the mutated source physically loadable.
+    assert_eq!(equivalent.len(), 20);
+    assert!(equivalent.contains(&[36, 37]));
+    assert_eq!(admitted, vec![[39, 37]]);
+    assert_eq!(
+        malbolge::decode_profile_instruction(u32::from(source[60]), 60),
+        Some(b'<'),
+    );
+    assert_eq!(
+        malbolge::decode_profile_instruction(u32::from(source[61]), 61),
+        Some(b'i'),
+    );
+    Ok(())
+}
