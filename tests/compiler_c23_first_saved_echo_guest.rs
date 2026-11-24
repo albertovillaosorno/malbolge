@@ -245,3 +245,62 @@ fn first_saved_input_reaches_second_fold_and_guest_output() {
         );
     }
 }
+
+// Once the C43 source-loader M126=121 crazy has executed, every successful
+// input has trits 1 at positions 6..14; EOF has trits 0 there. A second
+// *constant* crazy operand cannot use trit 0 or 2 below position five:
+// either would irreversibly merge two successful input classes. Position
+// five admits only seed 0 or 1 (bytes have input trit 0 or 1). Above five,
+// seed trits 0 and 1 behave identically for both successful classes and
+// EOF; a seed trit 2 is the only distinguishable alternative. Thus this
+// finite 2 * 2^9 search covers every two-p static-operand byte-identity
+// candidate, even sources with arbitrary second operand values, not only
+// the M132=121 loader operand in the physical guest above.
+#[test]
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used,
+    reason = "finite exact N15 ternary seed census"
+)]
+fn no_static_second_crazy_seed_can_echo_bytes_and_normalize_eof() {
+    const HIGH_PLACES: [u32; 9] = [
+        729, 2_187, 6_561, 19_683, 59_049, 177_147, 531_441, 1_594_323,
+        4_782_969,
+    ];
+    let profile = current_profile();
+    let saved = (0..=255u32)
+        .map(|byte| scalar_crazy(121, byte))
+        .collect::<Vec<_>>();
+    let saved_eof = scalar_crazy(121, profile.eof_word());
+    let mut candidates = 0usize;
+    let mut eof_bytes = BTreeSet::new();
+    for mask in 0..512u32 {
+        let mut high_seed = 121u32;
+        for (index, place) in HIGH_PLACES.iter().enumerate() {
+            if mask & (1u32 << index) != 0 {
+                high_seed += 2 * place;
+            }
+        }
+        for sixth_trit in 0..=1u32 {
+            let seed = high_seed + sixth_trit * 243;
+            assert!(seed < profile.word_modulus());
+            let retains_all_bytes =
+                (0..=255u32).zip(&saved).all(|(byte, saved_byte)| {
+                    scalar_crazy(seed, *saved_byte) % 256 == byte
+                });
+            if retains_all_bytes {
+                candidates += 1;
+                let eof = scalar_crazy(seed, saved_eof) % 256;
+                assert_ne!(
+                    eof, 255,
+                    "static seed {seed} cannot supply C23 EOF"
+                );
+                _ = eof_bytes.insert(eof);
+            }
+        }
+    }
+    assert_eq!(candidates, 14);
+    assert_eq!(eof_bytes, BTreeSet::from([46, 174]));
+    // Changing only a static second p operand cannot complete source-C23
+    // EOF handling. A guest EOF branch or different live data path is needed.
+}

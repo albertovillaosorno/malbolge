@@ -41,6 +41,13 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+The two-crazy single-input path cannot be turned into a C23 EOF conversion
+by changing only its second static operand: a complete 1,024-candidate
+ternary seed census finds 14 variants echoing all 256 successful bytes, but
+all emit 46 or 174 for actual N15 EOF, never 255. This is a bounded
+obstruction, not a proof against other guest control paths. Continue with a
+live EOF data dependency rather than static seed substitutions.
+
 A second continuation of the same 91-cell source now performs two genuine
 raw N15 input reads at C37/C54, injectively stores both into disjoint M126
 and M138, restores and emits both from M132/M144, and halts at step 64.

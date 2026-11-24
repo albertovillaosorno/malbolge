@@ -28,6 +28,25 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Static second-crazy operand cannot normalize C23 EOF (2026-11-24)
+
+A finite, independent 15-trit algebraic census now rules out the simplest
+attempt to repair EOF in the physical first-input saved-and-echoed guest by
+changing only the **second constant** `p` data operand. With its first M126
+operand fixed at 121, any second operand that retains all 256 successful
+bytes must have seed trit 1 in the five least significant places; the sixth
+seed trit may be 0 or 1. In the nine remaining places, seed trits 0 and 1
+act identically on the first store's successful-byte and EOF images; only
+trit 2 is different. Exhaustively enumerating the resulting 2 × 512
+possibilities leaves **14** seed variants that preserve all 256 output bytes.
+Their N15 EOF output is always **174 or 46**, never the required C23 255.
+
+`tests/compiler_c23_first_saved_echo_guest.rs` checks this exhaustive
+mathematical obstruction separately from the source-loaded VM traces. The
+obstruction applies only to the fixed first 121-operand and two constant
+crazy writes, not arbitrary guest programs. A source-dependent pointer,
+additional live arithmetic, or real EOF branch is required to go further.
+
 ### Two independent stored raw inputs and physical outputs (2026-11-24)
 
 The first-store program now has a source-loaded continuation in the **same
