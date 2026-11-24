@@ -49,6 +49,7 @@ use super::typed_cfg_adapter::state_relocation::{
 use super::typed_cfg_adapter::state_storage::{
     GuestFramePlacement, encode_i32_cells,
 };
+use super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
 
 struct PendingInputStore {
     completed: Option<SourceInputStoreObservation>,
@@ -442,15 +443,37 @@ impl StoreTracker {
 fn pending_store(
     input: SourceInputSiteObservation,
 ) -> Result<PendingInputStore, SourceInputTraceError> {
+    // Recheck the physical read, rather than trusting an observation that
+    // could have been fabricated or deserialized independently of VM replay.
+    let profile = current_profile();
+    let raw = match input.input {
+        TraceInput::Byte(byte) => u32::from(byte),
+        TraceInput::EndOfInput => profile.eof_word(),
+    };
+    if input.raw_accumulator != raw {
+        return Err(SourceInputTraceError::InvalidInputTransition);
+    }
     let expected = match (input.semantics, input.input) {
         (GuestCodeInputSemantics::ByteU8, TraceInput::Byte(byte))
-            if input.destination.words == 1 =>
+            if input.destination.words == 1
+                && input.destination.type_kind == TernaryCfgScalarKind::U8 =>
         {
             vec![u32::from(byte)]
         },
-        (GuestCodeInputSemantics::SignedC23 { .. }, value)
-            if input.destination.words == 2 =>
+        (
+            GuestCodeInputSemantics::SignedC23 {
+                raw_eof_word,
+                c23_eof_cells,
+            },
+            value,
+        ) if input.destination.words == 2
+            && input.destination.type_kind == TernaryCfgScalarKind::I32 =>
         {
+            if raw_eof_word != profile.eof_word()
+                || c23_eof_cells != encode_i32_cells(u32::MAX)
+            {
+                return Err(SourceInputTraceError::InvalidInputTransition);
+            }
             let bits = match value {
                 TraceInput::Byte(byte) => u32::from(byte),
                 TraceInput::EndOfInput => u32::MAX,

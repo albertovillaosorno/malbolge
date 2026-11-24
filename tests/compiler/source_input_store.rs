@@ -26,7 +26,6 @@
 //! Full-width typed input-store obligations, separate from physical tests.
 
 use super::super::typed_cfg_adapter::state_relocation::GuestPlacedOperand;
-use super::super::typed_cfg_adapter::ternary::TernaryCfgScalarKind;
 use super::*;
 
 fn input_observation(
@@ -127,6 +126,48 @@ fn byte_result_refuses_eof_or_width() -> Result<(), SourceInputTraceError> {
 
 // These state-accounting unit tests do not claim guest execution. The public
 // verifier obtains every word from the actual normative VM, not this helper.
+#[test]
+fn input_store_rejects_inconsistent_authenticated_input_observations() {
+    let mut byte = input_observation(
+        TraceInput::Byte(0xff),
+        GuestCodeInputSemantics::ByteU8,
+        1,
+    );
+    byte.destination.type_kind = TernaryCfgScalarKind::I32;
+    assert_eq!(
+        pending_store(byte).err(),
+        Some(SourceInputTraceError::InputResultMismatch),
+    );
+    byte.destination.type_kind = TernaryCfgScalarKind::U8;
+    byte.raw_accumulator = 0;
+    assert_eq!(
+        pending_store(byte).err(),
+        Some(SourceInputTraceError::InvalidInputTransition),
+    );
+
+    let mut signed = input_observation(TraceInput::EndOfInput, signed_c23(), 2);
+    signed.destination.type_kind = TernaryCfgScalarKind::U32;
+    assert_eq!(
+        pending_store(signed).err(),
+        Some(SourceInputTraceError::InputResultMismatch),
+    );
+    signed.destination.type_kind = TernaryCfgScalarKind::I32;
+    signed.raw_accumulator = 0xff;
+    assert_eq!(
+        pending_store(signed).err(),
+        Some(SourceInputTraceError::InvalidInputTransition),
+    );
+    signed.raw_accumulator = current_profile().eof_word();
+    signed.semantics = GuestCodeInputSemantics::SignedC23 {
+        raw_eof_word: 0,
+        c23_eof_cells: encode_i32_cells(u32::MAX),
+    };
+    assert_eq!(
+        pending_store(signed).err(),
+        Some(SourceInputTraceError::InvalidInputTransition),
+    );
+}
+
 fn synthetic_tracker(
     input: SourceInputSiteObservation,
 ) -> Result<StoreTracker, SourceInputTraceError> {
