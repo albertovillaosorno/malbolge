@@ -179,7 +179,7 @@ pub struct SourceInputPrefixProof {
 /// One exact source conditional is bound to a physical guest indirect arm.
 ///
 /// `after_inputs` is the number of observed source input operations before
-/// this branch, distinguishing later iterations of the same source block.
+/// this branch (possibly zero), distinguishing source loop iterations.
 /// A source-unknown condition cannot authenticate a guest destination.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SourceBranchLanding {
@@ -1067,8 +1067,7 @@ fn verify_source_branch_landing_with_io(
     use SourceInputTraceError::{
         InvalidBranchBinding, InvalidSourcePlacement, SourceBranchMismatch,
     };
-    if binding.after_inputs == 0
-        || binding.after_inputs > observations.len()
+    if binding.after_inputs > observations.len()
         || binding.false_landing == binding.true_landing
     {
         return Err(InvalidBranchBinding);

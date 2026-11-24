@@ -6,6 +6,18 @@ Bounded physical pre-link capability, **not** C23 source compilation.
 The unchanged seven-block mutable EOF checksum still refuses guest target
 lowering, and P2 remains open.
 
+## Zero-read source branch occurrence (2026-11-24)
+
+The source-branch verifier now admits a conditional at **input ordinal zero**,
+including a branch whose selected return never executes the later source
+`getchar`. A fresh, validated canonical typed three-block source fixture
+proves both constant guard arms, a true arm that reads once and a false arm
+that returns without reading. The joint branch/I/O path proof accepts the
+true branch at physical I/O cut zero and refuses a transferred branch after
+its later read. A conditional after the first read is still constrained by
+its exact source input occurrence. This is source-only control evidence,
+not a real guest branch-before-input linker, output, or whole C program.
+
 ## Source-identified physical output effect addresses (2026-11-24)
 
 The opt-in **verify_source_return_branch_io_effect_anchored** composes the

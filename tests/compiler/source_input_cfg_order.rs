@@ -498,6 +498,154 @@ fn source_branch_arm_requires_a_known_guard_and_the_exact_input_occurrence() {
     assert_eq!(proof(&unknown, 0, 1, true), Ok(false));
 }
 
+// A source conditional may precede *all* input effects. A physical guest
+// pointer can branch at I/O cut zero, then execute the selected source read;
+// forcing after_inputs >= 1 incorrectly rules out that legal source order.
+fn branch_before_first_read_wire(truth: bool) -> Result<Vec<u8>, String> {
+    use super::super::typed_cfg_adapter::typed::{
+        BasicBlock, BasicBlockSpec, BlockId, Function, FunctionId,
+        FunctionSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
+        ModuleSpec, SourcePosition, SourceSpan, Terminator, TypeDef, TypeEntry,
+        TypeId, ValueId, canonical_bytes, validate_module,
+    };
+    let span = SourceSpan::new(
+        SourcePosition::new(0, 1, 1),
+        SourcePosition::new(1, 1, 2),
+    );
+    let block = |id, instructions, terminator| {
+        BasicBlock::new(BasicBlockSpec {
+            id: BlockId::new(id),
+            instructions,
+            phis: Vec::new(),
+            span,
+            terminator,
+            terminator_span: span,
+        })
+    };
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version:
+            super::super::typed_cfg_adapter::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![
+                block(
+                    0,
+                    vec![LocatedInstruction::new(
+                        Instruction::ConstantInteger {
+                            constant: IntegerConstant::new(1, vec![u8::from(
+                                truth,
+                            )]),
+                            result: ValueId::new(0),
+                            type_id: TypeId::new(0),
+                        },
+                        span,
+                    )],
+                    Terminator::Branch {
+                        condition: ValueId::new(0),
+                        false_target: BlockId::new(2),
+                        true_target: BlockId::new(1),
+                    },
+                ),
+                block(
+                    1,
+                    vec![LocatedInstruction::new(
+                        Instruction::Getchar {
+                            result: ValueId::new(1),
+                            type_id: TypeId::new(1),
+                        },
+                        span,
+                    )],
+                    Terminator::Return { value: None },
+                ),
+                block(2, Vec::new(), Terminator::Return { value: None }),
+            ],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("branch_before_first_read"),
+            parameters: Vec::new(),
+            signature: TypeId::new(2),
+            span,
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/branch-before-first-read.c"),
+        source_sha256: [0x61; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::Bool),
+            TypeEntry::new(TypeId::new(1), TypeDef::I32),
+            TypeEntry::new(
+                TypeId::new(2),
+                TypeDef::function(Vec::new(), None, false),
+            ),
+        ],
+    });
+    validate_module(&module).map_err(|error| format!("typed: {error:?}"))?;
+    canonical_bytes(&module).map_err(|error| format!("canonical: {error:?}"))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source branch before any input"
+)]
+fn first_source_branch_can_precede_every_guest_read() -> Result<(), String> {
+    use super::{
+        verify_source_branch_io_landing, verify_source_branch_landing,
+    };
+
+    let binding = SourceBranchLanding {
+        after_inputs: 0,
+        block: 0,
+        false_landing: 126,
+        function: 0,
+        true_landing: 45,
+    };
+    let read = SourceInputSiteObservation {
+        block: 1,
+        ordinal: 0,
+        ..observed(0, 0)
+    };
+    let true_wire = branch_before_first_read_wire(true)?;
+    assert_eq!(
+        verify_source_branch_landing(&true_wire, &[read], binding, 45),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_branch_landing(&true_wire, &[read], binding, 126),
+        Err(SourceInputTraceError::SourceBranchMismatch),
+    );
+    let proof = SourceInputPrefixProof {
+        bytes_consumed: 1,
+        guest_output: Vec::new(),
+        io_events: vec![SourceInputIoEvent::Input { observation_index: 0 }],
+        output_sites: Vec::new(),
+        observations: vec![read],
+        outcome: malbolge::RunOutcome::Terminated {
+            reason: malbolge::Termination::HaltInstruction,
+            steps: 1,
+        },
+    };
+    assert_eq!(
+        verify_source_branch_io_landing(&true_wire, &proof, binding, 45, 0),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_branch_io_landing(&true_wire, &proof, binding, 45, 1),
+        Err(SourceInputTraceError::SourceOutputNotProven),
+    );
+    let false_wire = branch_before_first_read_wire(false)?;
+    assert_eq!(
+        verify_source_branch_landing(&false_wire, &[], binding, 126),
+        Ok(()),
+    );
+    assert_eq!(
+        verify_source_branch_landing(&false_wire, &[], binding, 45),
+        Err(SourceInputTraceError::SourceBranchMismatch),
+    );
+    Ok(())
+}
+
 // A valid source branch may follow an output effect. The full-I/O cut gate
 // must admit that ordering while rejecting the same final bytes if the guest
 // transfers before the source's preceding output has occurred.
