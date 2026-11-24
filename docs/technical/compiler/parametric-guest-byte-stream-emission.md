@@ -12606,3 +12606,27 @@ executed as guest storage/arithmetic. Input-dependent updates, runtime
 conditional branches and the frozen mutable EOF checksum still refuse
 at their first unsupported dynamic construct. This is not P2 acceptance.
 EOF may never be treated as a successful `u8` read.
+
+### Publisher-scope signed C23 byte conversion audit (2026-11-24)
+
+The separately linked **second** signed `getchar()` / `putchar()` path now
+checks the full **257-class** scalar domain before target publication: every
+successful C byte (`00` through `ff`) and true C23 EOF (`-1`), converted
+through an independent 15-trit `crazy` truth table and compared with C23's
+unsigned-char output. This is fast scalar evidence, **not** 257 extra VM
+runs on each compilation. The existing normative VM replay still checks
+representative first/second input combinations and now additionally
+requires physical `p` execution at C77/M95 and C78/M96, their exact
+pre-write operands (7,138,732 and 121), both input-dependent accumulator
+results, and the C79 output. The separate exhaustive 259-vector guest
+regression remains authoritative for the actual full byte domain; it is too
+expensive for every publish transaction.
+
+The complete source-C double-read pipeline, including automatic `int`
+aliases, remains executable and agrees with native C23 on EOF and binary
+input. The first C37 read is **still consumed**, so the one-read direct
+`putchar(getchar())` program must continue to refuse, and this change
+does not link mutable checksum state or runtime branches. The source-C
+frontend also conservatively refuses unconverted signed direct or aliased
+outputs inside `for`, `while`, and `do` loop ancestry; only independent
+EOF-capable lowering may relax those refusals.

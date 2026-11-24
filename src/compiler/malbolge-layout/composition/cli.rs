@@ -3991,6 +3991,30 @@ fn verified_signed_second_echo(
     Ok(artifact)
 }
 
+// Independent fifteen-trit truth table for the physical C23 converter.
+// Unlike a sampled VM trace, this checks the entire signed getchar domain
+// without allocating a 15-trit memory image for every possible byte.
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "explicit independent ternary-digit arithmetic oracle"
+)]
+fn checked_signed_echo_crazy(mut lhs: u32, mut rhs: u32) -> Option<u32> {
+    let mut result = 0u32;
+    let mut place = 1u32;
+    for _ in 0..15 {
+        let digit = match (lhs % 3, rhs % 3) {
+            (0 | 1, 0) | (2, 2) => 1u32,
+            (1, 2) | (2, 0 | 1) => 2u32,
+            _ => 0u32,
+        };
+        result = result.checked_add(digit.checked_mul(place)?)?;
+        lhs = lhs.checked_div(3)?;
+        rhs = rhs.checked_div(3)?;
+        place = place.checked_mul(3)?;
+    }
+    Some(result)
+}
+
 fn verify_signed_second_echo(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
@@ -4013,6 +4037,21 @@ fn verify_signed_second_echo(
         vec![0, 128, 42],
         vec![128, 0, 254],
     ];
+    // All 256 valid C bytes plus the distinct signed EOF class are modeled
+    // independently. The physical guest check below then authenticates the
+    // exact M95/M96 operand path and emitted result on representative inputs.
+    for input in std::iter::once(None).chain((u8::MIN..=u8::MAX).map(Some)) {
+        let raw = input.map_or_else(|| profile.eof_word(), u32::from);
+        let intermediate = checked_signed_echo_crazy(7_138_732, raw)
+            .ok_or("signed second echo first crazy overflow")?;
+        let converted = checked_signed_echo_crazy(121, intermediate)
+            .ok_or("signed second echo second crazy overflow")?;
+        if converted % 256 != u32::from(input.unwrap_or(255)) {
+            return Err(String::from(
+                "signed second echo complete C23 byte domain disagrees",
+            ));
+        }
+    }
     let loaded =
         ProfileMachine::from_source(profile, &artifact.source, Vec::new())
             .map_err(|error| {
@@ -4028,6 +4067,7 @@ fn verify_signed_second_echo(
         .map_err(|error| format!("signed second echo VM copy: {error:?}"))?;
         let mut reads = Vec::new();
         let mut writes = Vec::new();
+        let mut conversions = Vec::new();
         let outcome = vm
             .run_traced(artifact.steps, &mut |step| {
                 if let Some(value) = step.input {
@@ -4035,6 +4075,15 @@ fn verify_signed_second_echo(
                 }
                 if let Some(value) = step.output {
                     writes.push((step.before.registers.code_pointer, value));
+                }
+                if step.decoded == Some(b'p') {
+                    conversions.push((
+                        step.before.registers.code_pointer,
+                        step.before.registers.data_pointer,
+                        step.memory_reads.data.map(|read| read.value),
+                        step.before.registers.accumulator,
+                        step.after.registers.accumulator,
+                    ));
                 }
             })
             .map_err(|error| {
@@ -4049,6 +4098,24 @@ fn verify_signed_second_echo(
             .get(1)
             .copied()
             .map_or(TraceInput::EndOfInput, TraceInput::Byte);
+        let raw = input
+            .get(1)
+            .copied()
+            .map_or_else(|| profile.eof_word(), u32::from);
+        let intermediate = checked_signed_echo_crazy(7_138_732, raw)
+            .ok_or("signed second echo invalid first conversion")?;
+        let converted = checked_signed_echo_crazy(121, intermediate)
+            .ok_or("signed second echo invalid second conversion")?;
+        if conversions
+            != [
+                (77, 95, Some(7_138_732), raw, intermediate),
+                (78, 96, Some(121), intermediate, converted),
+            ]
+        {
+            return Err(String::from(
+                "signed second echo physical p operands disagree",
+            ));
+        }
         if !matches!(outcome, RunOutcome::Terminated {
             reason: Termination::HaltInstruction,
             steps: 81,
