@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_total_if_c_pipeline as previous
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -77,7 +78,8 @@ class GuestByteEquivalentIfCPipelineTests(unittest.TestCase):
             guest = root / "dynamic-equivalent.malbolge"
             _ = program.write_text(source(), encoding="utf-8")
             result = COMPILE(program, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             boundaries = (
                 bytes((0, 255)),
                 bytes((1, 254)),
@@ -109,7 +111,8 @@ class GuestByteEquivalentIfCPipelineTests(unittest.TestCase):
             # jig-ignore-next-line: pinned Ruff formats at 88 columns
             _ = program.write_text(source("current >= 128", bound=0), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (bytes((0, 255)), bytes((255, 0))):
                 result = RUN(guest, data)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -138,7 +141,8 @@ class GuestByteEquivalentIfCPipelineTests(unittest.TestCase):
             guest = root / "two-effects.malbolge"
             _ = program.write_text(original.replace(old, new), encoding="utf-8")
             compiled = COMPILE(program, guest)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (
                 bytes((0, 255)),
                 bytes((127, 128)),

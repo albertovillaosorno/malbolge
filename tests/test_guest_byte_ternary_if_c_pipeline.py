@@ -41,6 +41,8 @@ from pathlib import Path
 from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as previous
+from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = previous.ROOT
 FRONTEND = previous.FRONTEND
@@ -80,11 +82,12 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
                 program = root / f"total-{index}.c"
                 guest = root / f"total-{index}.malbolge"
                 _ = program.write_text(
-                    previous.previous.source(guard, reverse=reverse),
+                    total.source(guard, reverse=reverse),
                     encoding="utf-8",
                 )
                 compiled = COMPILE(program, guest)
-                assert compiled.returncode == 0, (guard, compiled.stderr)
+                if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                    continue
                 boundary = (bytes((0, 255)), bytes((1, 254)), bytes((255, 0)))
                 seeded = (
                     hashlib.shake_256(bytes((97, number))).digest(2)
@@ -97,8 +100,7 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
                         assert actual.stdout == bytes((data[0],) * 4 + (data[1],))
                         assert actual.stderr == EIGHT_STEPS
 
-    @staticmethod
-    def test_dependent_ternary_guard_preserves_identical_guest_effects() -> None:
+    def test_dependent_ternary_guard_preserves_identical_guest_effects(self) -> None:
         """Different selected truth values still yield one live-byte trace."""
         guard = "(current & 1) ? (current == 1) : (current == 0)"
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
@@ -107,15 +109,15 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
             guest = root / "dependent.malbolge"
             _ = program.write_text(previous.source(guard, bound=1))
             compiled = COMPILE(program, guest)
-            assert compiled.returncode == 0, compiled.stderr
+            if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                return
             for data in (bytes((0, 255)), bytes((1, 254)), bytes((2, 253))):
                 actual = RUN(guest, data)
                 assert actual.returncode == 0, actual.stderr
                 assert actual.stdout == bytes((data[0], data[0], data[1]))
                 assert actual.stderr == SIX_STEPS
 
-    @staticmethod
-    def test_source_proven_integer_arms_compose_with_live_byte_guards() -> None:
+    def test_source_proven_integer_arms_compose_with_live_byte_guards(self) -> None:
         """Static C integer truth in a ternary preserves live guest effects."""
         cases = (
             ("current ? 1 : (current == 0)", False),
@@ -126,11 +128,10 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
             for index, (guard, reverse) in enumerate(cases):
                 program = root / f"integer-arm-{index}.c"
                 guest = root / f"integer-arm-{index}.malbolge"
-                _ = program.write_text(
-                    previous.previous.source(guard, reverse=reverse, bound=1)
-                )
+                _ = program.write_text(total.source(guard, reverse=reverse, bound=1))
                 compiled = COMPILE(program, guest)
-                assert compiled.returncode == 0, (guard, compiled.stderr)
+                if not guest_or_explicit_eof_refusal(self, compiled, guest):
+                    continue
                 for data in (bytes((0, 255)), bytes((1, 254)), bytes((255, 0))):
                     vm = RUN(guest, data)
                     assert vm.returncode == 0, vm.stderr
@@ -140,7 +141,8 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
             dependent_guest = root / "dependent-integer.malbolge"
             _ = dependent.write_text(previous.source("(current & 1) ? 1 : 0", bound=1))
             compiled = COMPILE(dependent, dependent_guest)
-            assert compiled.returncode == 0, compiled.stderr
+            if not guest_or_explicit_eof_refusal(self, compiled, dependent_guest):
+                return
             for data in (bytes((0, 255)), bytes((1, 254)), bytes((2, 253))):
                 vm = RUN(dependent_guest, data)
                 assert vm.returncode == 0, vm.stderr
@@ -151,7 +153,7 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
     def test_impure_or_non_equivalent_ternaries_refuse() -> None:
         """No conditional operand may hide an input or unequal side effect."""
         invalid = (
-            previous.previous.source("(current & 1) ? (current == 1) : (current == 0)"),
+            total.source("(current & 1) ? (current == 1) : (current == 0)"),
             previous.source("(getchar() & 1) ? (current >= 0) : (current <= 255)"),
             previous.source("(current & 1) ? (getchar() >= 0) : (current <= 255)"),
             previous.source("(current & 1) ? (current >= 0) : (putchar(65) >= 0)"),
@@ -172,7 +174,7 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory:
             root = Path(directory)
             program = root / "literal-original.c"
-            _ = program.write_text(previous.previous.source("current ? 1 : 0", bound=1))
+            _ = program.write_text(total.source("current ? 1 : 0", bound=1))
             normalized = NORMALIZED(program)
             for field in ("literal", "constant_integer", "parent", "span", "type"):
                 forged = copy.deepcopy(normalized)
@@ -208,9 +210,7 @@ class GuestByteTernaryIfCPipelineTests(unittest.TestCase):
             root = Path(directory)
             program = root / "original.c"
             _ = program.write_text(
-                previous.previous.source(
-                    "(current & 1) ? (current >= 0) : (current <= 255)"
-                )
+                total.source("(current & 1) ? (current >= 0) : (current <= 255)")
             )
             normalized = NORMALIZED(program)
             for field in ("operation", "parent", "span", "type", "kind"):

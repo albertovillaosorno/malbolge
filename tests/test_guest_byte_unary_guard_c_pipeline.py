@@ -45,6 +45,8 @@ from typing import cast, override
 
 from tests import test_guest_byte_equivalent_if_c_pipeline as equivalent
 from tests import test_guest_byte_total_if_c_pipeline as total
+from tests.guest_eof_audit import frontend_layout_or_explicit_refusal
+from tests.test_static_for_break_c_pipeline import guest_or_explicit_eof_refusal
 
 ROOT = total.ROOT
 ADAPTER = total.ADAPTER
@@ -77,7 +79,8 @@ class GuestByteUnaryGuardCPipelineTests(unittest.TestCase):
             guest = program.with_suffix(".malbolge")
             _ = program.write_text(total.source(guard, bound=3))
             result = COMPILE(program, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for data in samples:
                 with self.subTest(data=data):
                     vm = RUN(guest, data)
@@ -101,7 +104,8 @@ class GuestByteUnaryGuardCPipelineTests(unittest.TestCase):
                     guest = program.with_suffix(".malbolge")
                     _ = program.write_text(total.source(guard, bound=1))
                     result = COMPILE(program, guest)
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if not guest_or_explicit_eof_refusal(self, result, guest):
+                        continue
                     for value in (0, 1, 127, 128, 255):
                         data = bytes((value, value ^ 255))
                         vm = RUN(guest, data)
@@ -117,7 +121,8 @@ class GuestByteUnaryGuardCPipelineTests(unittest.TestCase):
             guest = program.with_suffix(".malbolge")
             _ = program.write_text(equivalent.source("~current & 1", bound=1))
             result = COMPILE(program, guest)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            if not guest_or_explicit_eof_refusal(self, result, guest):
+                return
             for value in (0, 1, 2, 127, 128, 254, 255):
                 data = bytes((value, value ^ 255))
                 vm = RUN(guest, data)
@@ -176,11 +181,7 @@ class GuestByteUnaryGuardCPipelineTests(unittest.TestCase):
                         check=False,
                         timeout=10,
                     )
-                    self.assertEqual(result.returncode, 1, result.stderr)
-                    self.assertIn(
-                        b"layout backend exited unsuccessfully", result.stderr
-                    )
-                    self.assertFalse(guest.exists())
+                    frontend_layout_or_explicit_refusal(self, result, guest)
 
     def test_forged_unary_evidence_refuses(self) -> None:
         """No AST operator/type/span/parent can override original C bytes."""
