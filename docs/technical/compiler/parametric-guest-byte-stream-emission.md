@@ -14400,3 +14400,22 @@ entry encryption delta refuses. The 512 internal bootstrap forks can
 still exercise post-input behavior but cannot issue the complete
 initial-entry receipt. Earlier bootstrap initialization, all SSA
 storage and the original publication ceiling remain unresolved.
+
+The physical checksum bootstrap no longer builds a distant marker tape
+before it can initialize the chunk-mask bank. The composed prefix's
+unexecuted source marker supplies one ternary two, copied into a local
+scratch and rotated through all fifteen positions to construct the
+uniform two word. Two immutable near-frame column pairs then permit
+single-trit synthesis of the four initial anchors and seven elementary
+mask pairs; the existing three-trit bank synthesizes the remainder.
+The local initializer must bypass the two even reset cells dirtied by
+the composed prefix (M7,174,488 and M7,174,490). The target materializer
+no longer needs the special dirty-tape normalization branch because
+no temporary distant marker tape overlaps the planned target words.
+The independent VM reaches its first input in 1,784,223 steps, saving
+159,628 steps from the previous 1,943,851-step bootstrap at the same
+2,318,854-cell source geometry. The physical test bound is 1,790,000
+steps. Local column reads and their trit effects are checked against
+the independent crazy table; omission of the real spike or either
+column store must fail the physical witness. The original 100,000-step
+publication gate is unchanged; this is not a source-frame proof.

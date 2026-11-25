@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_950_000;
+const BOOT_BUDGET: usize = 1_790_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -716,9 +716,47 @@ fn census() -> Result<Vec<u8>, String> {
     Ok(stream)
 }
 
+// The local marker and its two single-trit columns must survive the
+// complete bootstrap. Verify both immutable reads and their effect on an
+// all-one target using the independent trit table, not the emitter.
+fn check_bootstrap_columns(vm: &ProfileMachine) -> Result<(), String> {
+    if word(vm, 7_174_427)? != 2
+        || word(vm, 7_174_488)? != 6
+        || word(vm, 7_174_490)? != 7_174_456
+    {
+        return Err("wrong local marker or reserved reset geometry".to_owned());
+    }
+    for (address, digit, expected_prefix) in
+        [(7_174_429, 2u32, 2u32), (7_174_433, 0u32, 0u32)]
+    {
+        let prefix = word(vm, address)?;
+        let value = word(vm, plus(address, 2)?)?;
+        let selected =
+            independent_crazy(value, independent_crazy(prefix, ONES));
+        let result = independent_crazy(independent_crazy(ONES, selected), EOF);
+        if prefix != expected_prefix
+            || value
+                != EOF
+                    .checked_sub(if digit == 2 {
+                        2
+                    } else {
+                        1
+                    })
+                    .ok_or("column")?
+            || independent_crazy(prefix, ONES) != prefix
+            || selected != value
+            || result != plus(ONES.checked_sub(1).ok_or("target")?, digit)?
+        {
+            return Err(format!("wrong local immutable column M{address}"));
+        }
+    }
+    Ok(())
+}
+
 // Every mask remains immutable after synthesizing the page and seed
 // banks, including the special return-pointer mask at the final pair.
 fn check_chunk_mask_bank(vm: &ProfileMachine) -> Result<(), String> {
+    check_bootstrap_columns(vm)?;
     if word(vm, 7_174_442)? != 7_174_440 || word(vm, 7_174_445)? != 7_174_440 {
         return Err("incorrect scratch return pointers".to_owned());
     }
@@ -1117,6 +1155,27 @@ fn relocated_recurrent_checksum_omitted_dirty_patch_refuses()
         && check_materialized_tables(&mutated).is_ok()
     {
         return Err("accepted omitted dirty chunk patch".to_owned());
+    }
+    Ok(())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_bootstrap_column_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    for (address, value) in [
+        (7_174_427, 54),
+        (7_174_431, EOF.checked_sub(2).ok_or("column")?),
+        (7_174_435, EOF.checked_sub(1).ok_or("column")?),
+    ] {
+        let site = materialization_site(&guest, (address, value))?;
+        let modified = omit_site(&guest, site)?;
+        if let Ok(mutated) = boot(&modified)
+            && check_chunk_mask_bank(&mutated).is_ok()
+            && check_materialized_tables(&mutated).is_ok()
+        {
+            return Err(format!("accepted omitted local column M{address}"));
+        }
     }
     Ok(())
 }

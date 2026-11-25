@@ -28,17 +28,25 @@ use malbolge::profile_crazy;
 
 use super::super::super::super::LinearOpcode;
 use super::super::super::{BuildError, Emitter, FRAME, LAYOUT};
-use super::super::{after_store, initialize_words_compact_extent};
+use super::super::after_store;
 use super::{
     ALL_ONES, ALL_TWOS, ANCHOR_END, ANCHOR_START, CAPTURE, EXTRA_SEED_ANCHOR,
     NEAR_ONES, NEAR_TWOS, NEAR_ZERO, SEED_ANCHOR, SEEDS, SeedAccess, SeedPlan,
-    Words, crazy, immutable_seed_prefix, plan_seeds_with_pairs,
-    prepare_near_constants, previous, rotate, store_anchored,
+    Words, crazy, immutable_seed_prefix, plan_seeds_with_pairs, previous,
+    rotate, store_anchored,
 };
 
 // A compact seed bootstrap reuses one 27-entry mask bank for the
 // five three-trit chunks of each N15 word. Scratch rotations bring each
 // chunk into the same low-trit position.
+// Reuse the source prefix's single trit marker to bootstrap two local
+// immutable columns. All six local words precede the ordinary scratch.
+const BOOT_SPIKE: u32 = 7_174_427;
+const BOOT_ZERO_PREFIX: u32 = 7_174_429;
+const BOOT_ZERO_COLUMN: u32 = 7_174_431;
+const BOOT_ONE_PREFIX: u32 = 7_174_433;
+const BOOT_ONE_COLUMN: u32 = 7_174_435;
+const BOOT_WORD: u32 = 7_174_437;
 const CHUNK_SCRATCH: u32 = 7_174_441;
 const CHUNK_NEXT: u32 = CHUNK_SCRATCH + 1;
 const CHUNK_TWOS: u32 = CHUNK_SCRATCH + 2;
@@ -112,7 +120,7 @@ struct SeedRouting<'directory> {
 }
 
 type ChunkMaterialization<'seeds> =
-    (u32, &'seeds BTreeMap<u32, SeedAccess>, SeedRouting<'seeds>);
+    (&'seeds BTreeMap<u32, SeedAccess>, SeedRouting<'seeds>);
 
 struct ChunkWord {
     value: u32,
@@ -613,8 +621,8 @@ fn elementary_mask(address: u32) -> bool {
 }
 
 // The six single-trit columns suffice to synthesize every other
-// three-trit mask, starting from a uniform high prefix. This keeps
-// the initial marker tape independent of the complete 27-entry bank.
+// three-trit mask, starting from a uniform high prefix. The local
+// one-trit columns need only bootstrap the seven elementary pairs.
 fn synthesize_mask_word(
     emitter: &mut Emitter<'_>,
     value: u32,
@@ -813,24 +821,141 @@ fn target_roots(
     Ok(roots.into_iter().collect())
 }
 
+// The prefix finishes with A=0 and a virgin odd loader cell at BOOT_SPIKE.
+// One source marker makes a single ternary two; it is never used as code.
+fn bootstrap_spike(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
+    chunk_access(emitter, BOOT_SPIKE, LinearOpcode::CrazyData)?;
+    rotate(emitter, FRAME)?;
+    emitter.source_marker(LinearOpcode::CrazyData)?;
+    chunk_access(emitter, BOOT_SPIKE, LinearOpcode::CrazyData)?;
+    // Alternating folds of the two virgin loader phases establish
+    // all ones, all zeroes, and an initial all-one target for the spikes.
+    rotate(emitter, FRAME)?;
+    for target in [NEAR_ONES, NEAR_ZERO, NEAR_TWOS] {
+        crazy(emitter, target)?;
+    }
+    // With zeroes elsewhere, each rotated spike leaves the previously
+    // written twos invariant and changes one more one to two.
+    for _ in 0..15u32 {
+        chunk_access(emitter, BOOT_SPIKE, LinearOpcode::RotateData)?;
+        crazy(emitter, NEAR_TWOS)?;
+    }
+    Ok(())
+}
+
+fn bootstrap_columns(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
+    bootstrap_spike(emitter)?;
+    for address in [
+        BOOT_ZERO_PREFIX,
+        BOOT_ZERO_COLUMN,
+        BOOT_ONE_COLUMN,
+        BOOT_WORD,
+    ] {
+        rotate(emitter, NEAR_ZERO)?;
+        chunk_access(emitter, address, LinearOpcode::CrazyData)?;
+    }
+    rotate(emitter, NEAR_ONES)?;
+    chunk_access(emitter, BOOT_ONE_PREFIX, LinearOpcode::CrazyData)?;
+    rotate(emitter, NEAR_TWOS)?;
+    chunk_access(emitter, BOOT_ONE_COLUMN, LinearOpcode::CrazyData)?;
+    // The source marker started in digit three. Move the two to digit zero
+    // and turn an all-two word into the all-two-except-one column. Its
+    // inverse under the all-one target is the all-two-except-zero column.
+    for _ in 0..3u32 {
+        chunk_access(emitter, BOOT_SPIKE, LinearOpcode::RotateData)?;
+    }
+    chunk_access(emitter, BOOT_ONE_COLUMN, LinearOpcode::CrazyData)?;
+    chunk_access(emitter, BOOT_ZERO_COLUMN, LinearOpcode::CrazyData)?;
+    // The zero column needs a two only in its zero position. Copy the
+    // spike through the all-one scratch into its all-one prefix.
+    for _ in 0..15u32 {
+        chunk_access(emitter, BOOT_SPIKE, LinearOpcode::RotateData)?;
+    }
+    chunk_access(emitter, BOOT_WORD, LinearOpcode::CrazyData)?;
+    chunk_access(emitter, BOOT_ZERO_PREFIX, LinearOpcode::CrazyData)?;
+    Ok(())
+}
+
+fn boot_read_column(
+    emitter: &mut Emitter<'_>,
+    digit: u32,
+) -> Result<(), BuildError> {
+    let (prefix, column) = match digit {
+        0 => (BOOT_ONE_PREFIX, BOOT_ONE_COLUMN),
+        2 => (BOOT_ZERO_PREFIX, BOOT_ZERO_COLUMN),
+        _ => return Err(LAYOUT),
+    };
+    rotate(emitter, NEAR_ONES)?;
+    emitter.go(prefix)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    emitter.walk(column)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    emitter.walk(CHUNK_RESET)
+}
+
+// Each two-fold column updates one trit, leaving the other fourteen
+// unchanged. Fifteen rotations return the word to its original orientation.
+fn boot_word(
+    emitter: &mut Emitter<'_>,
+    mut value: u32,
+) -> Result<(), BuildError> {
+    reset_chunk_word(emitter, BOOT_WORD, false)?;
+    for _ in 0..15u32 {
+        let digit = value.rem_euclid(3);
+        value = value.div_euclid(3);
+        if digit != 1 {
+            boot_read_column(emitter, digit)?;
+            chunk_access(emitter, BOOT_WORD, LinearOpcode::CrazyData)?;
+            rotate(emitter, NEAR_TWOS)?;
+            chunk_access(emitter, BOOT_WORD, LinearOpcode::CrazyData)?;
+        }
+        chunk_access(emitter, BOOT_WORD, LinearOpcode::RotateData)?;
+    }
+    if value != 0 {
+        return Err(LAYOUT);
+    }
+    Ok(())
+}
+
+fn prepare_elementary_masks(
+    emitter: &mut Emitter<'_>,
+    near: &[(u32, u32)],
+    masks: &[(u32, u32)],
+) -> Result<(), BuildError> {
+    bootstrap_columns(emitter)?;
+    for &(address, value) in near {
+        rotate(emitter, NEAR_ZERO)?;
+        crazy(emitter, address)?;
+        if address >= CHUNK_ANCHOR {
+            // The composed prefix writes both following even reset cells.
+            emitter.walk(7_174_492)?;
+        }
+        boot_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
+        crazy(emitter, address)?;
+        if address >= CHUNK_ANCHOR {
+            // The composed prefix writes both following even reset cells.
+            emitter.walk(7_174_492)?;
+        }
+    }
+    let anchors = [(CHUNK_ANCHOR, CHUNK_BANK)];
+    for &(address, value) in masks {
+        if !elementary_mask(address) {
+            continue;
+        }
+        rotate(emitter, NEAR_ZERO)?;
+        store_anchored(emitter, address, &anchors)?;
+        boot_word(emitter, profile_crazy(ALL_ONES, value, 15))?;
+        store_anchored(emitter, address, &anchors)?;
+    }
+    Ok(())
+}
+
 fn prepare_chunk_bank(
     emitter: &mut Emitter<'_>,
     near: &[(u32, u32)],
-) -> Result<u32, BuildError> {
+) -> Result<(), BuildError> {
     let masks = chunk_masks()?;
-    let elementary = masks
-        .iter()
-        .copied()
-        .filter(|&(address, _)| elementary_mask(address))
-        .collect::<Vec<_>>();
-    let tape_end =
-        initialize_words_compact_extent(emitter, near, &elementary, true)?;
-    if tape_end >= *TARGET_BANKS.first().ok_or(LAYOUT)? {
-        return Err(LAYOUT);
-    }
-    prepare_near_constants(emitter)?;
-    rotate(emitter, NEAR_ZERO)?;
-    crazy(emitter, NEAR_ONES)?;
+    prepare_elementary_masks(emitter, near, &masks)?;
     reset_chunk_word(emitter, CHUNK_TWOS, false)?;
     rotate(emitter, NEAR_TWOS)?;
     chunk_access(emitter, CHUNK_TWOS, LinearOpcode::CrazyData)?;
@@ -844,8 +969,7 @@ fn prepare_chunk_bank(
     read_chunk_mask(emitter, 27, false)?;
     chunk_access(emitter, CHUNK_NEXT, LinearOpcode::CrazyData)?;
     initialize_chunk_masks(emitter, &masks)?;
-
-    Ok(tape_end)
+    Ok(())
 }
 
 fn initialize_chunk_roots(
@@ -897,7 +1021,7 @@ pub(super) fn initialize_chunk_seeds(
     }
     let seed_plan =
         plan_seeds_with_pairs(emitter, words, (2, &[]), (Some(extra), 80))?;
-    let tape_end = prepare_chunk_bank(emitter, &near)?;
+    prepare_chunk_bank(emitter, &near)?;
     let mut scratch = initialize_chunk_roots(emitter, roots)?;
     let directory = initialize_seed_directory(emitter, extra, &mut scratch)?;
     let routing = SeedRouting {
@@ -914,19 +1038,14 @@ pub(super) fn initialize_chunk_seeds(
     }
     initialize_target_pages(emitter, anchors, &mut scratch)?;
     initialize_seed_returns(emitter, &seed_addresses, &routing, &mut scratch)?;
-    materialize_chunk_words(
-        emitter,
-        words,
-        anchors,
-        (tape_end, &seed_addresses, routing),
-    )
+    materialize_chunk_words(emitter, words, anchors, (&seed_addresses, routing))
 }
 
 fn materialize_chunk_words(
     emitter: &mut Emitter<'_>,
     words: &Words,
     anchors: &[(TargetSlot, u32)],
-    (tape_end, seed_addresses, routing): ChunkMaterialization<'_>,
+    (seed_addresses, routing): ChunkMaterialization<'_>,
 ) -> Result<(), BuildError> {
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.limit).contains(&address) {
@@ -938,14 +1057,9 @@ fn materialize_chunk_words(
             37
         };
         let inverse = profile_crazy(ALL_ONES, value, 15);
-        let dirty = (emitter.tape_bounds.start..tape_end).contains(&address)
-            && !address.is_multiple_of(2);
-        let normalized = dirty || profile_crazy(virgin, inverse, 15) != value;
-        if dirty {
-            fast_rotate(emitter, NEAR_ONES)?;
-            fast_store(emitter, address, anchors)?;
-            fast_store(emitter, address, anchors)?;
-        } else if normalized {
+        // The local-column bootstrap leaves every target word virgin.
+        let normalized = profile_crazy(virgin, inverse, 15) != value;
+        if normalized {
             fast_rotate(emitter, NEAR_ZERO)?;
             fast_store(emitter, address, anchors)?;
         }
