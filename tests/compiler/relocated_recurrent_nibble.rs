@@ -39,7 +39,7 @@ use super::{
     effect, enter, fold, independent_crazy, plus, prev, routing, select, word,
 };
 
-const BOOT_BUDGET: usize = 6_200_000;
+const BOOT_BUDGET: usize = 5_400_000;
 const RAW_TABLE: u32 = 7_195_959;
 const RAW_SEEDS: u32 = 7_197_000;
 const STATE_TABLE: u32 = 7_199_010;
@@ -373,12 +373,25 @@ fn transition_stream() -> Result<Vec<u8>, String> {
 #[test]
 fn relocated_recurrent_nibble_all_transitions_and_eof() -> Result<(), String> {
     let guest = source()?;
-    if guest.capture.source.len() != 6_510_126 {
+    if guest.capture.source.len() != 5_610_170 {
         return Err("incorrect source extent".to_owned());
     }
     let boot = enter(&guest.capture, BOOT_BUDGET)?;
     if word(&boot, 7_174_485)? != 7_175_600 {
         return Err("incorrect extra seed anchor".to_owned());
+    }
+    if word(&boot, 7_174_469)? != ONES {
+        return Err("incorrect immutable-seed initial accumulator".to_owned());
+    }
+    for index in 0..10 {
+        let address = plus(7_174_611, 4 * index)?;
+        let prefix = word(&boot, address)?;
+        let inverse = word(&boot, plus(address, 2)?)?;
+        if independent_crazy(prefix, ONES) != prefix
+            || independent_crazy(inverse, prefix) != inverse
+        {
+            return Err("unstable immutable seed pair".to_owned());
+        }
     }
     let census = transition_stream()?;
     let mut visited = BTreeSet::new();

@@ -44,9 +44,9 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_280_001,
     start: 7_201_001,
 };
-const CODE_BASE: u32 = 6_500_000;
-const TERMINAL: u32 = 6_510_000;
-const SOURCE_CELLS: usize = 6_510_126;
+const CODE_BASE: u32 = 5_600_044;
+const TERMINAL: u32 = 5_610_044;
+const SOURCE_CELLS: usize = 5_610_170;
 // Six complemented low trits select a raw-byte table entry.
 // The selected seed transforms the nibble into three complemented trits;
 // the state table then uses a 27-cell row. Its aligned high prefix also

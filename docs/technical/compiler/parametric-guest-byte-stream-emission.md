@@ -13927,7 +13927,7 @@ not full-byte arithmetic or source-C admission; the original P2
 
 ### Factorized recurrent four-bit checksum transition
 
-The separate 6,510,126-cell
+The separate 5,610,170-cell
 `build_relocated_recurrent_nibble_source` image factors a direct
 16-by-256 transition table into two 256-entry tables. A physical
 raw-byte lookup at M7195959 + 729 - byte selects one of sixteen
@@ -13947,8 +13947,16 @@ The bounded compact bootstrap selects the cheaper all-zero/all-one
 tape baseline for each value, partitions the operand tape into sixteen
 aligned segments instead of four, and materializes the furthest
 anchor second. This mode leaves the original initializer available
-for earlier physical witnesses. The new bootstrap is bounded by
-6,200,000 instructions, far beyond the P2 publication budget.
+for earlier physical witnesses. Virgin odd loader destinations need only a single column-zero crazy
+fold to become all ones; dirty-word normalization remains unchanged.
+The ten most frequent inverse seed values use adjacent odd prefix/value
+pairs. With A initially all ones, two crazy folds read both words
+without mutation, eliminating a second anchor traversal. Other seeds
+retain reversible loading. The compact source saves 899,956 cells
+relative to the initial 6,510,126-cell image, keeping its original
+instruction phases and loader tail. Independent replay bounds the
+bootstrap by 5,400,000 instructions, far beyond the P2 publication
+budget.
 
 Independent VM replay follows a 4,096-byte Euler circuit through every
 raw-byte/prior-nibble pair exactly once. Short streams cover all

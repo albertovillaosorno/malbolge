@@ -71,6 +71,7 @@ const BOUNDS: TapeBounds = TapeBounds {
 const SOURCE_CELLS: usize = 1_660_196;
 const CODE_BASE: u32 = 1_649_986;
 // These virgin odd cells are outside the prefix's frame and return pair.
+const NEAR_ONES: u32 = 7_174_469;
 const NEAR_ZERO: u32 = 7_174_471;
 const NEAR_TWOS: u32 = 7_174_473;
 const SEED_ANCHOR: u32 = 7_174_483;
@@ -80,6 +81,9 @@ const ANCHOR_END: u32 = ONES;
 const SEEDS: u32 = 7_174_611;
 // Every inverse-seed slot precedes the first recurrent operand.
 const SEED_END: u32 = CAPTURE;
+// Ten pairs fit in the near seed bank. Use them for the most frequent
+// route values; rare values retain the smaller reversible representation.
+const IMMUTABLE_PAIRS: usize = 10;
 const ANCHORS: [(u32, u32); 7] = [
     (ANCHOR_START, CAPTURE),
     (7_174_491, MAIN_ROUTE),
@@ -136,7 +140,13 @@ pub struct RelocatedRecurrentCaptureSource {
 
 type Words = BTreeMap<u32, u32>;
 type WordPairs = [(u32, u32)];
-type SeedPlan = (Words, Vec<(u32, u32)>);
+type SeedPlan = (BTreeMap<u32, SeedAccess>, Vec<(u32, u32)>);
+
+#[derive(Clone, Copy)]
+enum SeedAccess {
+    Reversible(u32),
+    ImmutablePair(u32),
+}
 type ExtraSeeds = Option<(u32, u32)>;
 type SeedOptions<'words> = (u32, &'words WordPairs, ExtraSeeds);
 
@@ -457,6 +467,10 @@ fn initialize_with_extra_seeds(
         initialize_words_with_anchors(emitter, &near, &seeds)?;
     }
     prepare_near_constants(emitter)?;
+    if extra.is_some() {
+        rotate(emitter, NEAR_ZERO)?;
+        crazy(emitter, NEAR_ONES)?;
+    }
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.start).contains(&address) {
             return Err(LAYOUT);
@@ -470,12 +484,13 @@ fn initialize_with_extra_seeds(
         };
         let trits = emitter.profile.word_trits();
         let inverse = profile_crazy(ALL_ONES, value, trits);
-        if profile_crazy(virgin, inverse, trits) != value {
+        let normalized = profile_crazy(virgin, inverse, trits) != value;
+        if normalized {
             rotate(emitter, NEAR_ZERO)?;
             store_anchored(emitter, address, anchors)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        load_seed(emitter, seed, extra)?;
+        load_seed(emitter, seed, extra, normalized)?;
         store_anchored(emitter, address, anchors)?;
     }
     for &(address, value) in dispatch {
@@ -484,7 +499,7 @@ fn initialize_with_extra_seeds(
             store_dispatch(emitter, address)?;
         }
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        load_seed(emitter, seed, extra)?;
+        load_seed(emitter, seed, extra, true)?;
         store_dispatch(emitter, address)?;
     }
     Ok(())
@@ -517,11 +532,19 @@ fn plan_seeds(
     } else {
         SEED_END
     };
+    let paired_count = if extra.is_some() {
+        IMMUTABLE_PAIRS
+    } else {
+        0
+    };
     for (index, (value, _)) in values.into_iter().enumerate() {
-        let offset = u32::try_from(index)
-            .map_err(|_error| LAYOUT)?
-            .checked_mul(stride)
-            .ok_or(LAYOUT)?;
+        let paired = index < paired_count;
+        let offset = u32::try_from(
+            index.checked_add(index.min(paired_count)).ok_or(LAYOUT)?,
+        )
+        .map_err(|_error| LAYOUT)?
+        .checked_mul(stride)
+        .ok_or(LAYOUT)?;
         let mut address = SEEDS.checked_add(offset).ok_or(LAYOUT)?;
         if address >= seed_end {
             let (base, end) = extra.ok_or(LAYOUT)?;
@@ -542,19 +565,71 @@ fn plan_seeds(
         }
         let inverse =
             profile_crazy(ALL_ONES, value, emitter.profile.word_trits());
-        seeds.push((address, inverse));
-        let _: Option<u32> = seed_addresses.insert(value, address);
+        let access = if paired {
+            let second = address.checked_add(2).ok_or(LAYOUT)?;
+            // Adjacent odd slots and their virgin even reset words.
+            if stride != 2 || second >= seed_end {
+                return Err(LAYOUT);
+            }
+            seeds.push((
+                address,
+                immutable_seed_prefix(inverse, emitter.profile.word_trits())?,
+            ));
+            seeds.push((second, inverse));
+            SeedAccess::ImmutablePair(address)
+        } else {
+            seeds.push((address, inverse));
+            SeedAccess::Reversible(address)
+        };
+        let _: Option<SeedAccess> = seed_addresses.insert(value, access);
     }
     Ok((seed_addresses, seeds))
 }
 
-// The near pointer skips the gap between the frame and the inverse seed
-// table. Each pair of all-two folds restores the seed after loading it.
+// With A=all ones, a prefix trit of two is stable exactly where the
+// inverse seed is zero. A prefix trit of zero is stable elsewhere.
+// The following crazy fold reads the inverse without changing it.
+fn immutable_seed_prefix(
+    mut inverse: u32,
+    trits: u8,
+) -> Result<u32, BuildError> {
+    let mut prefix = 0u32;
+    for digit in 0..u32::from(trits) {
+        if inverse.rem_euclid(3) == 0 {
+            prefix = prefix
+                .checked_add(2u32.checked_mul(3u32.pow(digit)).ok_or(LAYOUT)?)
+                .ok_or(LAYOUT)?;
+        }
+        inverse = inverse.div_euclid(3);
+    }
+    if inverse != 0 {
+        return Err(LAYOUT);
+    }
+    Ok(prefix)
+}
+
 fn load_seed(
     emitter: &mut Emitter<'_>,
-    seed: u32,
+    access: SeedAccess,
     extra: ExtraSeeds,
+    accumulator_ones: bool,
 ) -> Result<(), BuildError> {
+    let seed = match access {
+        SeedAccess::Reversible(seed) => seed,
+        SeedAccess::ImmutablePair(prefix) => {
+            if !accumulator_ones {
+                rotate(emitter, NEAR_ONES)?;
+            }
+            emitter.go(SEED_ANCHOR)?;
+            emitter.jump(SEEDS)?;
+            emitter.walk(prefix)?;
+            let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+            emitter.walk(prefix.checked_add(2).ok_or(LAYOUT)?)?;
+            let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+            return after_store(emitter);
+        },
+    };
+    // Rare values use two all-two folds to read and restore one seed.
     let (anchor, base) = if let Some((base, _)) =
         extra.filter(|(base, end)| (*base..*end).contains(&seed))
     {

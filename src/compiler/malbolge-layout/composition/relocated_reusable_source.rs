@@ -298,7 +298,13 @@ fn materialize_tape_anchors(
         tapes.insert(1, last);
     }
     for (address, base, tape, baseline) in tapes {
-        store_planned_word(emitter, address, &tape, (baseline, &anchors))?;
+        store_planned_word(
+            emitter,
+            address,
+            &tape,
+            (baseline, &anchors),
+            compact,
+        )?;
         anchors.push((address, base));
         if compact {
             anchors.sort_unstable_by_key(|&(_, target)| target);
@@ -313,6 +319,15 @@ fn initialize_words_compact(
     words: &[(u32, u32)],
     compact: bool,
 ) -> Result<(), BuildError> {
+    if compact
+        && near.iter().chain(words).any(|&(address, _)| {
+            TAPE_ANCHORS.contains(&address)
+                || EXTRA_TAPE_ANCHORS.contains(&address)
+                || address.is_multiple_of(2)
+        })
+    {
+        return Err(LAYOUT);
+    }
     let mut plan = TapePlan::with_bounds(emitter.tape_bounds);
     let twos = plan.tape(ALL_TWOS, false)?;
     let destinations = plan_destinations(&mut plan, near, words, compact)?;
@@ -326,7 +341,13 @@ fn initialize_words_compact(
     let _: u32 = emitter.store_tape(&twos, TWOS, ZERO)?;
     let anchors = materialize_tape_anchors(emitter, tapes, compact)?;
     for (address, tape, baseline) in destinations {
-        store_planned_word(emitter, address, &tape, (baseline, &anchors))?;
+        store_planned_word(
+            emitter,
+            address,
+            &tape,
+            (baseline, &anchors),
+            compact,
+        )?;
     }
     Ok(())
 }
@@ -336,8 +357,19 @@ fn store_planned_word(
     address: u32,
     tape: &[u32],
     (baseline, anchors): BaselineAnchors<'_>,
+    virgin: bool,
 ) -> Result<(), BuildError> {
-    reset_word(emitter, address)?;
+    if virgin {
+        // Both periodic loader classes contain only zero and one trits.
+        // One column-zero fold establishes an all-one destination.
+        emitter.go(ZERO)?;
+        let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
+        emitter.go(address)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        after_store(emitter)?;
+    } else {
+        reset_word(emitter, address)?;
+    }
     let anchor = tape.first().and_then(|first| {
         anchors
             .iter()
