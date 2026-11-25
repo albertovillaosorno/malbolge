@@ -3076,3 +3076,177 @@ fn original_checksum_empty_output_site_has_missing_source_operand()
     assert!(bind(&invalid).is_err());
     Ok(())
 }
+
+// A second, opt-in EOF-only physical witness writes the source output SSA
+// operand rather than merely returning the same result from a register.
+// The original byte classifier must remain untouched and independently proven.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "exact original C23 output-operand and guest-effect provenance"
+)]
+fn original_checksum_eof_operand_is_guest_written_by_two_crazy_stores()
+-> Result<(), String> {
+    let profile = current_profile();
+    let baseline =
+        layout::build_adjacent_c32_zero_c37_eof_code_arm_source(profile)
+            .map_err(|error| format!("original EOF code arm: {error:?}"))?;
+    let witness =
+        layout::build_adjacent_c32_zero_c37_eof_operand_source(profile)
+            .map_err(|error| format!("output operand guest: {error:?}"))?;
+    assert_eq!(witness.prime_code_address, 58);
+    assert_eq!(witness.output_store_code_address, 59);
+    assert_eq!(witness.output_data_address, 7_174_455);
+    let source = &witness.code_arm.pointer.byte_pair.zero_pair.source;
+    let before = &baseline.pointer.byte_pair.zero_pair.source;
+    assert_eq!(source.len(), 120);
+    assert_eq!(source.len(), before.len());
+    assert_eq!(
+        source
+            .iter()
+            .zip(before)
+            .enumerate()
+            .filter_map(|(at, (next, old))| (next != old).then_some(at))
+            .collect::<Vec<_>>(),
+        vec![58, 59]
+    );
+    assert!(
+        source
+            .iter()
+            .enumerate()
+            .all(|(at, &glyph)| graphical_tail(glyph, at))
+    );
+    let mut vm = ProfileMachine::from_source(profile, source, vec![])
+        .map_err(|error| format!("source load: {error:?}"))?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        vm.run_traced(70, &mut |step| trace.push(*step))
+            .map_err(|error| format!("EOF VM: {error:?}"))?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 70,
+        }
+    );
+    assert_eq!(trace[37].decoded, Some(b'/'));
+    assert_eq!(trace[50].decoded, Some(b'p'));
+    assert_eq!(trace[51].decoded, Some(b'*'));
+    assert_eq!(trace[58].decoded, Some(b'p'));
+    assert_eq!(trace[58].before.registers.accumulator, 0);
+    assert_eq!(trace[58].before.registers.data_pointer, 7_174_454);
+    assert_eq!(
+        trace[58].memory_reads.data.map(|read| read.value),
+        Some(7_174_416)
+    );
+    assert_eq!(
+        trace[58].memory_delta.data.map(|write| write.after),
+        Some(7_174_453)
+    );
+    assert_eq!(trace[59].decoded, Some(b'p'));
+    assert_eq!(trace[59].before.registers.accumulator, 7_174_453);
+    assert_eq!(trace[59].before.registers.data_pointer, 7_174_455);
+    assert_eq!(trace[59].memory_reads.data.map(|read| read.value), Some(37));
+    assert_eq!(
+        trace[59].memory_delta.data.map(|write| write.after),
+        Some(0)
+    );
+    assert_eq!(trace[66].decoded, Some(b'i'));
+    assert_eq!(trace[66].after.registers.code_pointer, 87);
+    assert_eq!(trace[68].decoded, Some(b'<'));
+    assert_eq!(trace[69].decoded, Some(b'v'));
+    assert_eq!(vm.memory_word(witness.output_data_address), Ok(0));
+    assert_eq!(vm.output(), &[0]);
+    assert_eq!(vm.input_consumed(), 0);
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_eof_operand_source(
+            historical_profile()
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile)
+    );
+    Ok(())
+}
+
+// Removing either store must fail the source operand proof even if the
+// loader and direct code-pointer dispatch still have the right geometry.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "two physically distinct source-output store mutations"
+)]
+fn original_checksum_eof_operand_refuses_missing_guest_store()
+-> Result<(), String> {
+    let profile = current_profile();
+    let witness =
+        layout::build_adjacent_c32_zero_c37_eof_operand_source(profile)
+            .map_err(|error| format!("EOF operand builder: {error:?}"))?;
+    for (site, expected_word) in [
+        (witness.prime_code_address, 7_174_453u32),
+        (witness.output_store_code_address, 37u32),
+    ] {
+        let mut source =
+            witness.code_arm.pointer.byte_pair.zero_pair.source.clone();
+        let at = usize::try_from(site).map_err(|error| error.to_string())?;
+        source[at] = encode(b'o', at)?;
+        let mut vm = ProfileMachine::from_source(profile, &source, vec![])
+            .map_err(|error| format!("mutant source: {error:?}"))?;
+        let mut trace = Vec::new();
+        assert_eq!(
+            vm.run_traced(70, &mut |step| trace.push(*step))
+                .map_err(|error| format!("mutant VM: {error:?}"))?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 70,
+            }
+        );
+        assert_eq!(trace[at].decoded, Some(b'o'));
+        assert_eq!(
+            vm.memory_word(witness.output_data_address),
+            Ok(expected_word),
+            "missing C{site} write"
+        );
+        assert_ne!(vm.output(), &[0], "missing C{site} output mismatch");
+    }
+    Ok(())
+}
+
+// The EOF-specific output store is *not* a complete first-byte classifier.
+// A real byte-zero input alters the later data-dependent jump, even though
+// the original finite prefix takes a different path from the source EOF arm.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "two genuine input-dependent C66 code-pointer transfers"
+)]
+fn original_checksum_eof_operand_refuses_full_byte_branch_claim()
+-> Result<(), String> {
+    let profile = current_profile();
+    let base = layout::build_adjacent_c32_zero_c37_eof_code_arm_source(profile)
+        .map_err(|error| format!("original guest: {error:?}"))?;
+    let variant =
+        layout::build_adjacent_c32_zero_c37_eof_operand_source(profile)
+            .map_err(|error| format!("EOF-only guest: {error:?}"))?;
+    let run = |source: &[u8]| -> Result<_, String> {
+        let mut vm = ProfileMachine::from_source(profile, source, vec![0u8])
+            .map_err(|error| format!("guest load: {error:?}"))?;
+        let mut trace = Vec::new();
+        let outcome = vm.run_traced(67, &mut |step| trace.push(*step));
+        Ok((trace, outcome, vm.output().to_vec()))
+    };
+    let (old, old_outcome, old_output) =
+        run(&base.pointer.byte_pair.zero_pair.source)?;
+    let (new, new_outcome, new_output) =
+        run(&variant.code_arm.pointer.byte_pair.zero_pair.source)?;
+    assert_eq!(old.len(), 67);
+    assert_eq!(new.len(), 67);
+    assert_eq!(old[37].decoded, Some(b'/'));
+    assert_eq!(new[37].decoded, Some(b'/'));
+    assert_eq!(old[66].decoded, Some(b'i'));
+    assert_eq!(new[66].decoded, Some(b'i'));
+    assert_eq!(old[66].after.registers.code_pointer, 1);
+    assert_eq!(new[66].after.registers.code_pointer, 7_174_454);
+    assert_eq!(old_output, new_output);
+    assert_eq!(format!("{old_outcome:?}"), format!("{new_outcome:?}"));
+    Ok(())
+}

@@ -201,6 +201,26 @@ pub struct AdjacentC32ZeroC37EofCodeArmSource {
     pub pointer: AdjacentC32ZeroC37EofPointerSource,
 }
 
+/// An EOF-specific output-word store after the original C23 first input.
+///
+/// The authentic C23 C88 output and C89 halt are preserved, but two earlier
+/// source-loaded crazy instructions also materialize its M7,174,455 operand.
+/// This experiment proves only the empty-input trace. C58 changes a loader
+/// word; successful-byte effects still need independent branch proof, so it
+/// must never replace the general input classifier or authorize a full
+/// checksum.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37EofOperandSource {
+    /// Original first-input physical EOF code arm, before its two new stores.
+    pub code_arm: AdjacentC32ZeroC37EofCodeArmSource,
+    /// Reached C52 `p` that primes the all-ones accumulator.
+    pub prime_code_address: u32,
+    /// Reached C59 `p` that writes the output SSA result word.
+    pub output_store_code_address: u32,
+    /// Original C23 source-typed output operand word.
+    pub output_data_address: u32,
+}
+
 /// A genuine read-derived low-cell fold after two adjacent zero writes.
 ///
 /// The first input is raw N15: the low result has only 40 distinct images
@@ -1102,6 +1122,56 @@ pub fn build_adjacent_c32_zero_c37_eof_code_arm_source(
         eof_output_code_address: 88,
         eof_halt_code_address: 89,
         pointer,
+    })
+}
+
+/// Extend the genuine first C23 EOF arm with a physical output SSA store.
+///
+/// On empty stdin, C51 rotates the high result word to A=0; C58 `p`
+/// computes the trit-wise ones word from virgin M7,174,454=7,174,416.
+/// The data pointer reaches M7,174,455=37 at C59; its second `p` stores
+/// zero there, and C88 outputs the resulting zero accumulator. The source
+/// cell matches the original typed `putchar` result address.
+///
+/// The added C58 store modifies loader memory on all input classes.
+/// This constructor is **only an EOF-path experiment**, not a
+/// safe two-arm classifier, signed C23 normalization, arithmetic, source
+/// frame-effect proof, or publishable checksum compiler.
+///
+/// # Errors
+///
+/// Refuses altered source geometry, loader seeds or unsupported profiles.
+pub fn build_adjacent_c32_zero_c37_eof_operand_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37EofOperandSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut code_arm =
+        build_adjacent_c32_zero_c37_eof_code_arm_source(profile)?;
+    let source = &mut code_arm.pointer.byte_pair.zero_pair.source;
+    if source.len() != 120
+        || code_arm.eof_output_code_address != 88
+        || code_arm.eof_halt_code_address != 89
+        || unwritten_loader_word(source, 7_174_454, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != 7_174_416
+        || unwritten_loader_word(source, 7_174_455, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != 37
+    {
+        return Err(NoLoadableZero);
+    }
+    // p(7,174,416, 0)=7,174,453; p(37, 7,174,453)=0.
+    // Both are guest operations, not host-supplied source-C arithmetic.
+    for site in [58usize, 59] {
+        *source.get_mut(site).ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, LinearOpcode::CrazyData, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37EofOperandSource {
+        code_arm,
+        prime_code_address: 58,
+        output_store_code_address: 59,
+        output_data_address: 7_174_455,
     })
 }
 

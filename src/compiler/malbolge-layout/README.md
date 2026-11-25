@@ -58,6 +58,16 @@ at M7,174,455 is **not** physically materialized, despite the correct
 empty-stream byte. Signed EOF storage, arithmetic, phi/backedge linkage
 and checksum publication are still absent.
 
+A separate opt-in `build_adjacent_c32_zero_c37_eof_operand_source`
+now writes the original output SSA word M7,174,455=0 with two genuine
+guest `p` instructions at C58/C59, preserving C88/C89 and the 70-step
+empty-input trace. Missing either physical write fails the EOF
+operand/output check. **It cannot replace the original classifier**:
+for byte zero its C66 transfer changes from C1 to C7,174,454 because
+the first new store modifies an input-addressed loader word. This
+EOF-only operand witness is not a source-C CFG linker, signed EOF
+conversion, arithmetic implementation or publishable checksum.
+
 ### Physical code-cell reuse contract (2026-11-21)
 
 `encode_code_visits` selects a graphical source byte for an exact bounded

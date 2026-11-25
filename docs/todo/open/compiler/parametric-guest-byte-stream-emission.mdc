@@ -41,6 +41,17 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A fresh source-loaded C23 **empty-EOF-only operand experiment** uses
+two real C58/C59 guest `p` writes to set the original source output SSA
+cell M7,174,455=0 before the physically reached C88 output and C89
+halt. A 70-step normative VM trace and two omitted-write negatives
+prove the exact operand effect. Crucially, byte zero changes C66's
+indirect landing from C1 to C7,174,454; the original first-byte
+classifier builder stays unmodified. This does **not** implement the
+source's branch, arithmetic, signed EOF result, complete state frame,
+loop, or checksum publication. Evidence: the P2 compiler contract and
+`tests/compiler_adjacent_zero_source.rs`.
+
 A new opt-in joined branch/I/O/source-effect gate authenticates **the
 physical address of every guest output opcode** against the proposed
 source ByteOutput effect while retaining exact physical branch/IO order

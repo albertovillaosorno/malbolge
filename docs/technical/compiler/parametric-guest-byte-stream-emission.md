@@ -1046,6 +1046,29 @@ extra preliminary writes, and arithmetic/phi/backedge/source-return
 linkage is absent. Matching the complete empty-stream oracle on this
 bounded guest prefix must never be promoted to full C23 acceptance.
 
+A fourth, explicitly **EOF-only output-operand experiment**,
+`build_adjacent_c32_zero_c37_eof_operand_source`, preserves the existing
+classifier builder unchanged while replacing its inert C58/C59 with
+two reached `p` instructions. C58 reads virgin M7,174,454=7,174,416
+with A=0 and writes 7,174,453. C59 reads M7,174,455=37 and uses
+that new accumulator to write zero into the *actual original C23
+`putchar` SSA output operand*. The true-EOF normative VM still reaches
+C66 `i`, C88 `<` and C89 `v`, emitting `00` and halting in 70 steps.
+Removing either `p` leaves a nonzero operand and produces a different
+output, even though the EOF control transfer and halt remain intact.
+The independent old physical builder continues to demonstrate that
+a matching output byte *without this source operand store* is weaker.
+
+The experimental two-write route is **not a safe general input arm**:
+C58 also overwrites a word that byte branches may dereference.
+A real byte-zero input transfers at C66 to code address 7,174,454
+instead of the original classifier's C1. The red-first false branch
+claim is retained as a negative VM test. This is a finite physical
+source-operand construction, **not** source-derived checksum arithmetic,
+a complete source-frame effect journal, signed EOF conversion, verified
+two-arm dispatch or a publishable C23 target. Evidence:
+`tests/compiler_adjacent_zero_source.rs`. P2 remains open.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend
