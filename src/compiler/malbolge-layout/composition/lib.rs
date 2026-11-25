@@ -64,6 +64,7 @@ mod loader_rotation_source;
 mod loader_seed;
 mod physical_reentry;
 mod relocated_eof_branch_source;
+mod relocated_signed_eof_source;
 mod signed_eof_branch_source;
 mod source_computation_trace;
 mod source_input_state_trace;
@@ -217,6 +218,9 @@ pub use physical_reentry::{
 };
 pub use relocated_eof_branch_source::{
     RelocatedEofBranchSource, build_relocated_eof_branch_source,
+};
+pub use relocated_signed_eof_source::{
+    RelocatedSignedEofBranchSource, build_relocated_signed_eof_source,
 };
 pub use signed_eof_branch_source::{
     SignedEofBranchSourceError,

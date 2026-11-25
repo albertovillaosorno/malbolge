@@ -41,6 +41,19 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A new **6,642-cell signed EOF physical candidate** preserves the common
+C53 read and C118 byte/EOF dispatch. True EOF builds a ternary marker
+tape through genuine guest operations, stores canonical signed C32
+`[4,644,102, 299]` at M7,174,419/420 using C5865/C6404, writes the
+source output zero at C6527 and emits it at C6528 before the C6529 halt
+in 6,523 steps. Every successful first byte retains `[byte, 0]` and
+reads again in 121 steps. Both omitted-result-store controls still
+output zero but fail canonical storage. This physical result exceeds
+the existing short full-image proof bounds and is not yet source-frame
+or input-provenance authorized. The byte arm lacks checksum arithmetic;
+phi/backedge and unchanged whole-program publication remain blocked.
+Evidence: `tests/compiler/relocated_signed_eof.rs` and the P2 contract.
+
 A separate **156-cell relocated physical branch** now preserves the
 original checksum zero pair and raw first-input pair while uniformly
 dispatching all 256 byte classes to C120 and true first EOF to C126.
@@ -56,8 +69,8 @@ forged claims. The existing pointer-value writer gate still refuses
 these encrypted operands. The source-return join now binds the actual
 C118 branch, C53 getchar, C141 ByteOutput and C142 halt to the original
 source plan for empty input. The byte arm remains refused: C120 is a
-loop-body entry, not the later getchar reserved at C94. Next: normalize
-signed EOF, authorize source operand stores, implement arithmetic and
+loop-body entry, not the later getchar reserved at C94. Next: authorize
+the new signed EOF and other source operand stores, implement arithmetic and
 phi/backedge, and rerun the unchanged whole checksum. Scratch frame
 writes and the incomplete byte arm prohibit publication. Evidence:
 `tests/compiler/relocated_eof_branch.rs`,

@@ -34,6 +34,9 @@ mod relocated_eof_branch;
 #[path = "compiler/relocated_eof_source_binding.rs"]
 mod relocated_eof_source_binding;
 
+#[path = "compiler/relocated_signed_eof.rs"]
+mod relocated_signed_eof;
+
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
 

@@ -12,6 +12,25 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Physical signed EOF pair (2026-11-24)
+
+`build_relocated_signed_eof_source` emits a separate 6,642-cell N15
+candidate. The extended bootstrap permits the longer source without
+changing the C118 selector. True EOF enters C126 and constructs a
+ternary marker tape from a virgin graphical word and loader cells.
+Real C5865/C6404 crazy writes set the original C32 input pair to
+`[4,644,102, 299]`; C6527 stores zero at the source output operand,
+C6528 emits zero, and C6529 halts in 6,523 steps. All 256 successful
+first bytes instead retain `[byte, 0]` and reach their second read and
+halt in 121 steps. Both omitted final-store controls retain the empty
+output but fail the signed result check.
+
+This direct VM evidence does not enlarge the shorter full-image proof
+bounds or authorize source frame writes. The EOF value is produced by
+an input-selected constant tape, not a general source-input conversion
+certificate. Checksum arithmetic, the linked loop, and publication
+remain absent. See `tests/compiler/relocated_signed_eof.rs`.
+
 ### Relocated all-byte first-EOF dispatch (2026-11-24)
 
 `build_relocated_eof_branch_source` emits a distinct 156-cell graphical

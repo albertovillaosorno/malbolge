@@ -28,6 +28,37 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### Physical signed C32 EOF materialization (2026-11-24)
+
+The separate `build_relocated_signed_eof_source` candidate extends the
+156-cell branch to 6,642 graphical source cells. Its extended bootstrap
+writes M122=7,174,466 and reaches expanded memory without assuming the
+old source boundary. The common C53 read, C99 classifier and C118
+transfer retain the prior byte/EOF landings C120/C126. The successful
+byte arm still reads again and halts at C121 without output in 121 steps.
+
+On true EOF, C689 turns the unreachable byte-arm halt word M121=54
+into a ternary marker (all ones except trit 3 is two). Fourteen real
+rotations generate the remaining marker positions. A scratch tape above
+M7,174,500 materializes marker and all-one operands with actual guest
+crazy writes. Applying these operands and the final all-one destination
+fold writes the canonical C32 EOF pair `[4,644,102, 299]` into the
+original input-result M7,174,419/420 at C5865/C6404. The checksum zero
+pair remains intact; C6527 stores the source output operand zero at
+M7,174,455, C6528 emits it, and C6529 halts after 6,523 instructions.
+
+Direct normative VM regressions authenticate the exact write sites,
+all 256 successful first-byte classes and two second-EOF boundaries.
+Omitting either final signed word store still emits zero and halts,
+but fails the canonical pair check. The existing shorter branch and
+its verification bounds remain unchanged. The longer tape exceeds the
+current full-image and paired-route proof resource bounds, so this is
+physical execution evidence, not a source-input provenance or frame
+admission certificate. In particular, the selected EOF tape builds
+constant words through control dependence; no general signed-input
+lowering, checksum arithmetic, phi/backedge or publication follows.
+Evidence: `tests/compiler/relocated_signed_eof.rs`.
+
 ### Stable relocated first-byte/EOF dispatch (2026-11-24)
 
 The earlier 120-cell EOF-only candidate has a real output operand but

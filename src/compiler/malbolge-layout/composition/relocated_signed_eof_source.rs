@@ -1,0 +1,412 @@
+// Copyright:
+//   - Copyright © 2026 Alberto Villa Osorno.
+// SPDX-License-Identifier:
+//   - Apache-2.0
+// Confidential:
+//   - false
+// License-File:
+//   - LICENSE
+// Boundary-Contract:
+// - Owns:
+//   - A source-loaded EOF-only canonical C32 pair materialization.
+// - Must-Not:
+//   - Claim source-frame admission, checksum arithmetic, or an EOF loop.
+// - Allows:
+//   - Inputs: the exact current N15 profile and fixed physical branch.
+//   - Outputs: graphical code and reached store/return proposals.
+//   - Side effects: none; independent normative replay owns acceptance.
+// - Split-When:
+//   - A general physical C32 operand allocator replaces the tape.
+// - Merge-When:
+//   - Source-C input lowering owns complete guest frame initialization.
+// - Summary:
+//   - Normalize true EOF using a branch-selected ternary marker tape.
+
+//! Source-loaded, branch-dependent C32 EOF normalization.
+//!
+//! The byte arm remains incomplete. No source-level CFG or frame
+//! authorization follows from these physical candidate addresses.
+
+use malbolge::{ProfileDescriptor, current_profile};
+
+use super::typed_cfg_adapter::state_storage::encode_i32_cells;
+use super::{
+    LinearOpcode, ZeroCellSourceError, build_relocated_eof_branch_source,
+    unique_graphical_cell, unwritten_loader_word,
+};
+
+const FRAME: u32 = 7_174_417;
+const FRAME_RESET: u32 = 7_174_424;
+const LAYOUT: BuildError = BuildError::NoLoadableZero;
+const BOOT_RETURN: u32 = 7_174_467;
+const TAPE_START: u32 = 7_174_501;
+const TAPE_LIMIT: u32 = 7_174_957;
+const TAPE_ZERO: u32 = 7_174_503;
+const SOURCE_CELLS: usize = 6_642;
+const ROTATION_ORDER: [u32; 15] =
+    [3, 2, 1, 0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4];
+
+/// One finite physical branch with normalized signed first-input storage.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSignedEofBranchSource {
+    /// Common C118 code transfer.
+    pub branch_code_address: u32,
+    /// Successful-byte arm's C121 halt, without checksum arithmetic.
+    pub byte_halt_code_address: u32,
+    /// Successful-byte arm's C120 second read.
+    pub byte_input_code_address: u32,
+    /// Common C99 class-word write.
+    pub class_store_code_address: u32,
+    /// EOF-only C126 entry.
+    pub eof_arm_code_address: u32,
+    /// Physical EOF return after the original output operand is written.
+    pub eof_halt_code_address: u32,
+    /// Physical EOF output site.
+    pub eof_output_code_address: u32,
+    /// Physical EOF output-operand store site.
+    pub eof_output_store_code_address: u32,
+    /// Last physical low/high writes of canonical signed C32 EOF.
+    pub eof_store_code_addresses: [u32; 2],
+    /// Common C53 first read.
+    pub first_input_code_address: u32,
+    /// Adjacent input result words, raw before and canonical after EOF arm.
+    pub input_pair: [u32; 2],
+    /// Physical source output operand address.
+    pub output_data_address: u32,
+    /// Graphical source and unchanged two-byte loader seed.
+    pub source: Vec<u8>,
+    /// Physical checksum initializer words.
+    pub zero_pair: [u32; 2],
+}
+
+type BuildError = ZeroCellSourceError;
+
+#[derive(Clone, Copy)]
+enum Operand {
+    Marker,
+    Swap,
+}
+
+struct MarkerCopy {
+    digit: u32,
+    intermediate: u32,
+    operand: u32,
+}
+
+struct TapePlan {
+    copies: Vec<MarkerCopy>,
+    next_slot: u32,
+    tapes: [Vec<u32>; 2],
+}
+
+impl TapePlan {
+    fn allocate(&mut self) -> Result<u32, BuildError> {
+        let slot = self.next_slot;
+        self.next_slot = slot.checked_add(4).ok_or(LAYOUT)?;
+        if self.next_slot > TAPE_LIMIT {
+            return Err(LAYOUT);
+        }
+        Ok(slot)
+    }
+
+    fn allocate_operand(
+        &mut self,
+        digit: u32,
+        kind: Operand,
+    ) -> Result<u32, BuildError> {
+        if matches!(kind, Operand::Marker) {
+            let intermediate = self.allocate()?;
+            let operand = self.allocate()?;
+            self.copies.push(MarkerCopy {
+                digit,
+                intermediate,
+                operand,
+            });
+            Ok(operand)
+        } else {
+            self.allocate()
+        }
+    }
+
+    fn new(targets: [u32; 2]) -> Result<Self, BuildError> {
+        let mut plan = Self {
+            copies: Vec::new(),
+            next_slot: TAPE_START,
+            tapes: [Vec::new(), Vec::new()],
+        };
+        let [low, high] = targets;
+        plan.tapes = [plan.tape(low)?, plan.tape(high)?];
+        Ok(plan)
+    }
+
+    const fn operands_for_digit(target_digit: u32) -> &'static [Operand] {
+        use Operand::{Marker, Swap};
+        // The final target store swaps zero/one. Build its inverse first.
+        // F_i,G changes digit i from zero to two; F_i,G,G,F_i to one.
+        match target_digit {
+            0 => &[Marker, Swap, Swap, Marker],
+            2 => &[Marker, Swap],
+            _ => &[],
+        }
+    }
+
+    fn tape(&mut self, target: u32) -> Result<Vec<u32>, BuildError> {
+        let mut tape = Vec::new();
+        for digit in ROTATION_ORDER {
+            let trit = target
+                .checked_div(3u32.pow(digit))
+                .and_then(|value| value.checked_rem(3))
+                .ok_or(LAYOUT)?;
+            for kind in Self::operands_for_digit(trit) {
+                tape.push(self.allocate_operand(digit, *kind)?);
+            }
+        }
+        Ok(tape)
+    }
+}
+
+/// Tracks only proposed straight-line D positions, not guest values or
+/// semantic acceptance. Real VM execution must authenticate every jump.
+struct Emitter<'profile> {
+    data: u32,
+    profile: &'profile ProfileDescriptor,
+    source: Vec<u8>,
+}
+
+impl Emitter<'_> {
+    fn append(&mut self, op: LinearOpcode) -> Result<u32, BuildError> {
+        let position = self.source.len();
+        if position >= SOURCE_CELLS {
+            return Err(LAYOUT);
+        }
+        let byte = unique_graphical_cell(self.profile, op, position)
+            .map_err(|_error| LAYOUT)?;
+        self.source.push(byte);
+        u32::try_from(position).map_err(|_error| LAYOUT)
+    }
+
+    fn finish(mut self) -> Result<Vec<u8>, BuildError> {
+        let tail = SOURCE_CELLS.checked_sub(2).ok_or(LAYOUT)?;
+        if self.source.len() > tail {
+            return Err(LAYOUT);
+        }
+        while self.source.len() < tail {
+            let _: u32 = self.append(LinearOpcode::NoOperation)?;
+        }
+        for byte in [39, 37] {
+            let _: u32 = self.append(LinearOpcode::SkippedDataByte { byte })?;
+        }
+        for (address, expected) in [
+            (FRAME, 37),
+            (FRAME_RESET, 7_174_416),
+            (TAPE_START, 37),
+            (TAPE_LIMIT, 37),
+        ] {
+            let cell = usize::try_from(address).map_err(|_error| LAYOUT)?;
+            if unwritten_loader_word(&self.source, cell, self.profile)
+                .map_err(|_error| LAYOUT)?
+                != expected
+            {
+                return Err(LAYOUT);
+            }
+        }
+        Ok(self.source)
+    }
+
+    fn go(&mut self, target: u32) -> Result<(), BuildError> {
+        if self.data > target {
+            self.reset()?;
+        }
+        self.walk(target)
+    }
+
+    fn jump(&mut self, landing: u32) -> Result<(), BuildError> {
+        let _: u32 = self.append(LinearOpcode::RelocateDataPointer)?;
+        self.data = landing;
+        Ok(())
+    }
+
+    fn linear(&mut self, op: LinearOpcode) -> Result<u32, BuildError> {
+        let site = self.append(op)?;
+        self.data = self.data.checked_add(1).ok_or(LAYOUT)?;
+        Ok(site)
+    }
+
+    fn prepare_pair(&mut self) -> Result<(), BuildError> {
+        use LinearOpcode::{CrazyData, RotateData};
+        // True EOF alone leaves all twos at M7,174,421. Rotating this
+        // word preserves it and sets A to all twos. The raw low word
+        // then becomes all ones. The high word requires A=0 to do so.
+        self.reset()?;
+        self.walk(7_174_421)?;
+        let _: u32 = self.linear(RotateData)?;
+        self.reset()?;
+        self.walk(7_174_419)?;
+        let _: u32 = self.linear(CrazyData)?;
+        let _: u32 = self.linear(CrazyData)?;
+        self.reset()?;
+        self.walk(7_174_420)?;
+        let _: u32 = self.linear(CrazyData)?;
+        Ok(())
+    }
+
+    fn prepare_tape(&mut self, plan: &TapePlan) -> Result<(), BuildError> {
+        use LinearOpcode::{CrazyData, RotateData};
+        // Alternate all-one and zero writes to odd virgin loader cells.
+        // The intervening even cells remain reusable frame-reset pointers.
+        for slot in (TAPE_START..plan.next_slot).step_by(4) {
+            self.walk(slot)?;
+            let _: u32 = self.linear(CrazyData)?;
+            self.walk(slot.checked_add(2).ok_or(LAYOUT)?)?;
+            let _: u32 = self.linear(CrazyData)?;
+        }
+        for (rotation, digit) in ROTATION_ORDER.into_iter().enumerate() {
+            self.source_marker(if rotation == 0 {
+                CrazyData
+            } else {
+                RotateData
+            })?;
+            for copy in plan.copies.iter().filter(|copy| copy.digit == digit) {
+                self.go(copy.intermediate)?;
+                let _: u32 = self.linear(CrazyData)?;
+                self.walk(copy.operand)?;
+                let _: u32 = self.linear(CrazyData)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn reset(&mut self) -> Result<(), BuildError> {
+        let reset_cell = if (FRAME..=FRAME_RESET).contains(&self.data) {
+            FRAME_RESET
+        } else if self.data == BOOT_RETURN {
+            7_174_468
+        } else if self.data >= TAPE_START && self.data.is_multiple_of(2) {
+            self.data
+        } else {
+            return Err(LAYOUT);
+        };
+        self.walk(reset_cell)?;
+        self.jump(FRAME)
+    }
+
+    fn source_marker(&mut self, op: LinearOpcode) -> Result<(), BuildError> {
+        // Virgin M7,174,425=37; reached encrypted source cells then route
+        // to M121=54, the byte-only halt never fetched in this EOF arm.
+        self.reset()?;
+        self.walk(7_174_425)?;
+        self.jump(38)?;
+        self.walk(40)?;
+        self.jump(70)?;
+        self.jump(116)?;
+        self.walk(117)?;
+        self.jump(120)?;
+        self.walk(121)?;
+        let _: u32 = self.linear(op)?;
+        // The extended bootstrap wrote M122=7,174,466 before the branch.
+        self.jump(BOOT_RETURN)
+    }
+
+    fn store_tape(
+        &mut self,
+        tape: &[u32],
+        target: u32,
+    ) -> Result<u32, BuildError> {
+        self.zero_accumulator()?;
+        for &operand in tape {
+            self.walk(operand)?;
+            let _: u32 = self.linear(LinearOpcode::CrazyData)?;
+        }
+        self.reset()?;
+        self.walk(target)?;
+        self.linear(LinearOpcode::CrazyData)
+    }
+
+    fn walk(&mut self, target: u32) -> Result<(), BuildError> {
+        if target < self.data || target > TAPE_LIMIT {
+            return Err(LAYOUT);
+        }
+        for _ in self.data..target {
+            let _: u32 = self.linear(LinearOpcode::NoOperation)?;
+        }
+        Ok(())
+    }
+
+    fn zero_accumulator(&mut self) -> Result<(), BuildError> {
+        self.go(TAPE_ZERO)?;
+        let _: u32 = self.linear(LinearOpcode::RotateData)?;
+        Ok(())
+    }
+}
+
+/// Emit a distinct source-loaded signed-EOF branch candidate.
+///
+/// The bootstrap uses unreachable M122 as a high-memory pointer instead
+/// of relying on the old 156-cell source boundary. The EOF arm creates
+/// ternary marker operands from M121=54 and virgin loader cells. Every
+/// marker copy, trit operation and final adjacent result store executes
+/// as a genuine guest instruction. The other arm retains the byte pair
+/// and reads again, without implementing a checksum iteration.
+///
+/// # Errors
+///
+/// Refuses a noncurrent profile or changed bounded source/tape geometry.
+pub fn build_relocated_signed_eof_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSignedEofBranchSource, BuildError> {
+    use LinearOpcode::{CrazyData, Halt, OutputByte, RelocateDataPointer};
+    if profile != current_profile() {
+        return Err(BuildError::UnsupportedProfile);
+    }
+    let prefix = build_relocated_eof_branch_source(profile)?;
+    let mut source = prefix.source;
+    source.truncate(134);
+    for (position, opcode) in [
+        (0, RelocateDataPointer),
+        (1, RelocateDataPointer),
+        (8, CrazyData),
+        (10, RelocateDataPointer),
+        (16, RelocateDataPointer),
+        (38, CrazyData),
+        (122, Halt),
+    ] {
+        let byte = unique_graphical_cell(profile, opcode, position)
+            .map_err(|_error| LAYOUT)?;
+        *source.get_mut(position).ok_or(LAYOUT)? = byte;
+    }
+    let mut emitter = Emitter {
+        data: 7_174_418,
+        profile,
+        source,
+    };
+    let tape = TapePlan::new(encode_i32_cells(u32::MAX))?;
+    emitter.prepare_tape(&tape)?;
+    emitter.prepare_pair()?;
+    let [low, high] = &tape.tapes;
+    let [low_address, high_address] = prefix.input_pair;
+    let low_store = emitter.store_tape(low, low_address)?;
+    let high_store = emitter.store_tape(high, high_address)?;
+    emitter.zero_accumulator()?;
+    emitter.reset()?;
+    emitter.walk(7_174_454)?;
+    let _site = emitter.linear(CrazyData)?;
+    let eof_output_store_code_address = emitter.linear(CrazyData)?;
+    let eof_output_code_address = emitter.linear(OutputByte)?;
+    let eof_halt_code_address = emitter.append(Halt)?;
+    Ok(RelocatedSignedEofBranchSource {
+        branch_code_address: prefix.branch_code_address,
+        byte_halt_code_address: prefix.byte_halt_code_address,
+        byte_input_code_address: prefix.byte_input_code_address,
+        class_store_code_address: prefix.class_store_code_address,
+        eof_arm_code_address: prefix.eof_arm_code_address,
+        eof_halt_code_address,
+        eof_output_code_address,
+        eof_output_store_code_address,
+        eof_store_code_addresses: [low_store, high_store],
+        first_input_code_address: prefix.first_input_code_address,
+        input_pair: prefix.input_pair,
+        output_data_address: prefix.output_data_address,
+        source: emitter.finish()?,
+        zero_pair: prefix.zero_pair,
+    })
+}
