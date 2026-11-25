@@ -31,6 +31,7 @@
 //! Numeric equality is necessary, not proof that guest arithmetic consumed
 //! the inputs: causal source dependencies still require separate evidence.
 
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::ProfileStepTrace;
@@ -531,12 +532,17 @@ const fn result_operand(
     }
 }
 
+struct PendingComputationResult {
+    value: u32,
+    remaining_sites: BTreeSet<u32>,
+}
+
 // A two-word computation may execute its high-word code first. Complete
 // result publication requires both original code sites, regardless of their
 // physical order: a skipped low-word site cannot pass merely because the last
 // numerical comparison matched. This only validates site coverage; the
 // source-block/effect checker independently proves the actual CFG and stores.
-fn computation_result_sites(
+pub(super) fn computation_result_sites(
     key: OperationId,
     computation: GuestCodeComputation,
     effects: &[GuestCodeOperationEffectSite],
@@ -559,12 +565,10 @@ fn computation_result_sites(
         }
         if let GuestCodeOperationEffect::Store { destination, .. } =
             effect.effect
+            && (!seen_words.insert(destination)
+                || !sites.insert(effect.code_address))
         {
-            if !seen_words.insert(destination)
-                || !sites.insert(effect.code_address)
-            {
-                return Err(InvalidSourcePlacement);
-            }
+            return Err(InvalidSourcePlacement);
         }
     }
     let expected_words = (0..result.words)
@@ -624,8 +628,7 @@ pub(super) fn verify_source_computation_values(
     let mut written = BTreeMap::new();
     // Each live invocation retains the set of result-store code sites not
     // yet reached. A same-site revisit before completion is also invalid.
-    let mut pending: BTreeMap<OperationId, (u32, BTreeSet<u32>)> =
-        BTreeMap::new();
+    let mut pending = BTreeMap::<OperationId, PendingComputationResult>::new();
     for step in steps {
         if !matches!(step.decoded, Some(b'p' | b'*')) {
             continue;
@@ -656,28 +659,31 @@ pub(super) fn verify_source_computation_values(
         }
         let key = (effect.function, effect.block, effect.ordinal);
         if let Some(&computation) = computations.get(&key) {
-            if !pending.contains_key(&key) {
+            if let Entry::Vacant(entry) = pending.entry(key) {
                 let value = evaluate(computation, &written)?;
-                let sites =
+                let remaining_sites =
                     computation_result_sites(key, computation, effects)?;
-                let _previous = pending.insert(key, (value, sites));
+                let _inserted = entry.insert(PendingComputationResult {
+                    value,
+                    remaining_sites,
+                });
             }
-            let (computed, remaining) = pending
+            let current = pending
                 .get_mut(&key)
                 .ok_or(SourcePhiCopyTraceError::MissingBlockEffect)?;
-            if !remaining.remove(&code) {
+            if !current.remaining_sites.remove(&code) {
                 return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
             }
             if step.after.registers.accumulator
                 != expected_word(
-                    *computed,
+                    current.value,
                     result_operand(computation),
                     destination,
                 )?
             {
                 return Err(SourcePhiCopyTraceError::InvalidComputationValue);
             }
-            if remaining.is_empty() {
+            if current.remaining_sites.is_empty() {
                 let _done = pending.remove(&key);
             }
         }

@@ -1457,6 +1457,14 @@ checker now requires **every source-reserved result-store code site**
 per reached computation, in physical execution order, and refuses repeated
 sites or missing/duplicate result words. The same full two-word guest
 still verifies, while the skipped C2 guest returns `MissingBlockEffect`.
+The separate **guest operand-provenance** checker formerly accepted a
+related C0 `*`, C1 `i`, C3 `p`, C4 `v` trace: that final `p` really
+carries its operand through A but the reserved low-word result is skipped.
+Both strict checks now reuse the same required-site inventory and refuse
+that partial execution. The full two-result-store C0 `*`, C1 `p`,
+C2 `p`, C3 `v` provenance control still succeeds. The combined stronger
+CFG verifier already checked operation visit order; these standalone
+necessary gates must not accidentally certify a partial word result.
 This is a necessary store-completeness check on actual VM execution, not
 authorization of source arithmetic dataflow, arbitrary physical branching,
 C23 runtime state, or full seven-block checksum publication.

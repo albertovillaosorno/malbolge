@@ -3502,6 +3502,157 @@ fn computation_requires_actual_latest_operand_data_path() -> Result<(), String>
     Ok(())
 }
 
+// The standalone operand-provenance gate must also require every source
+// result store: an input-derived last/high-word p is not enough when a real
+// guest indirect jump bypasses the earlier low-word source effect.
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "one physical jump bypasses an anchored two-word result write"
+)]
+fn skipped_low_result_store_cannot_certify_operand_provenance()
+-> Result<(), String> {
+    use super::super::typed_cfg_adapter::typed::CastOp;
+
+    let mut source = (0..59)
+        .map(|at| graphical(at, b'o'))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (at, opcode) in [(0, b'*'), (1, b'i'), (2, b'p'), (3, b'p'), (4, b'v')]
+    {
+        source[at] = graphical(at, opcode)?;
+    }
+    let profile = current_profile();
+    let loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("loaded source: {error:?}"))?;
+    let mut memory = loaded.memory().to_vec();
+    memory[70] = 3; // Genuine C0 source-operand rotation produces 1.
+    memory[71] = 2; // Genuine C1 i jumps directly to C3.
+    memory[72] = 0; // Genuine C3 p carries C0 via accumulator A.
+    let mut machine = ProfileMachine::from_state(
+        profile,
+        memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("guest state: {error:?}"))?;
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(5, &mut |step| trace.push(*step))
+        .map_err(|error| format!("guest replay: {error:?}"))?;
+    assert_eq!(outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 4,
+    });
+    assert_eq!(
+        trace
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        [0, 1, 3, 4],
+    );
+    let source_operand = GuestPlacedOperand {
+        address: 70,
+        type_kind: TernaryCfgScalarKind::U8,
+        value: 0,
+        words: 1,
+    };
+    let result = GuestPlacedOperand {
+        address: 71,
+        type_kind: TernaryCfgScalarKind::U32,
+        value: 1,
+        words: 2,
+    };
+    let operations = [GuestCodeOperationSite {
+        block: 0,
+        computation: Some(GuestCodeComputation::Cast {
+            operation: CastOp::ZeroExtend,
+            source: source_operand,
+            result,
+        }),
+        start: 2,
+        end_exclusive: 4,
+        function: 0,
+        ordinal: 1,
+    }];
+    let effects = [(0u32, 70u32, 0u32), (2, 71, 1), (3, 72, 1)].map(
+        |(code_address, destination, ordinal)| GuestCodeOperationEffectSite {
+            block: 0,
+            code_address,
+            effect: GuestCodeOperationEffect::Store {
+                destination,
+                literal: None,
+            },
+            function: 0,
+            ordinal,
+        },
+    );
+    assert_eq!(
+        verify_source_computation_provenance(
+            &operations,
+            &effects,
+            &[],
+            &trace,
+        ),
+        Err(SourcePhiCopyTraceError::MissingBlockEffect),
+    );
+
+    // Control: C0 *, C1 p, C2 p, C3 v executes both reserved result
+    // stores. Both p writes carry the source operand's physical lineage.
+    source[1] = graphical(1, b'p')?;
+    source[3] = graphical(3, b'v')?;
+    let full_loaded = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("full source: {error:?}"))?;
+    let mut full_memory = full_loaded.memory().to_vec();
+    full_memory[70] = 3;
+    full_memory[71] = 2;
+    full_memory[72] = 0;
+    let mut full = ProfileMachine::from_state(
+        profile,
+        full_memory,
+        Vec::new(),
+        malbolge::ProfileRegisters {
+            accumulator: profile.eof_word(),
+            code_pointer: 0,
+            data_pointer: 70,
+        },
+    )
+    .map_err(|error| format!("full guest state: {error:?}"))?;
+    let mut full_trace = Vec::new();
+    let full_outcome =
+        full.run_traced(4, &mut |step| full_trace.push(*step))
+            .map_err(|error| format!("full guest replay: {error:?}"))?;
+    assert_eq!(full_outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 4,
+    });
+    assert_eq!(
+        full_trace
+            .iter()
+            .map(|step| step.before.registers.code_pointer)
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 3],
+    );
+    let mut full_effects = effects;
+    full_effects[1].code_address = 1;
+    full_effects[2].code_address = 2;
+    assert_eq!(
+        verify_source_computation_provenance(
+            &operations,
+            &full_effects,
+            &[],
+            &full_trace,
+        ),
+        Ok(()),
+    );
+    Ok(())
+}
+
 // The old typed numeric gate accepted XOR(1, 2) = 3 after three unrelated
 // loader-seeded rotations. Neither source operand reaches the result opcode.
 #[test]

@@ -31,12 +31,14 @@
 //! declared source cell. The check does not prove that the instruction read
 //! that cell, selected the correct CFG edge or returned source-C results.
 
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, current_profile,
 };
 
+use super::source_computation_trace::computation_result_sites;
 use super::source_input_trace::{SourceInputProbe, SourceInputTraceError};
 use super::typed_cfg_adapter::state_relocation::{
     GuestAddressedCfgPlan, GuestCodeBlockPlacement, GuestCodeComputation,
@@ -331,6 +333,12 @@ impl SourceAccumulatorProvenance {
 
 type SourceOperationId = (u32, u32, u32);
 
+struct PendingComputationProvenance {
+    required: BTreeSet<SourceWriteOrigin>,
+    observed: BTreeSet<SourceWriteOrigin>,
+    remaining_sites: BTreeSet<u32>,
+}
+
 fn computation_operands(
     computation: GuestCodeComputation,
 ) -> ([PlacedComputationOperand; 2], usize) {
@@ -379,61 +387,60 @@ fn verify_source_computation_provenance(
                 .then_some((site.code_address, site))
         })
         .collect::<BTreeMap<_, _>>();
-    let mut last_effect = BTreeMap::<SourceOperationId, u32>::new();
-    for site in effects {
-        let key = (site.function, site.block, site.ordinal);
-        if computations.contains_key(&key) {
-            let previous = last_effect.entry(key).or_insert(site.code_address);
-            *previous = (*previous).max(site.code_address);
-        }
-    }
     let mut provenance = SourceAccumulatorProvenance::default();
-    let mut pending = BTreeMap::<
-        SourceOperationId,
-        (BTreeSet<SourceWriteOrigin>, BTreeSet<SourceWriteOrigin>),
-    >::new();
+    let mut pending =
+        BTreeMap::<SourceOperationId, PendingComputationProvenance>::new();
     for (index, step) in steps.iter().enumerate() {
         let code = step.before.registers.code_pointer;
         let destination = step.before.registers.data_pointer;
-        if matches!(step.decoded, Some(b'p' | b'*')) {
-            if let Some(site) = sites.get(&code) {
-                let key = (site.function, site.block, site.ordinal);
-                if let Some(&computation) = computations.get(&key) {
-                    let carried = provenance.data_write_sources(step);
-                    if !pending.contains_key(&key) {
-                        let (operands, count) =
-                            computation_operands(computation);
-                        let mut required = BTreeSet::new();
-                        for operand in operands.iter().take(count) {
-                            for offset in 0..operand.words {
-                                let address = operand
-                                    .address
-                                    .checked_add(offset)
-                                    .ok_or(InvalidSourcePlacement)?;
-                                let version = *provenance
-                                    .latest_write
-                                    .get(&address)
-                                    .ok_or(MissingComputationOperand)?;
-                                _ = required.insert((address, version));
-                            }
+        if matches!(step.decoded, Some(b'p' | b'*'))
+            && let Some(site) = sites.get(&code)
+        {
+            let key = (site.function, site.block, site.ordinal);
+            if let Some(&computation) = computations.get(&key) {
+                let carried = provenance.data_write_sources(step);
+                if let Entry::Vacant(entry) = pending.entry(key) {
+                    let (operands, count) = computation_operands(computation);
+                    let mut required = BTreeSet::new();
+                    for operand in operands.iter().take(count) {
+                        for offset in 0..operand.words {
+                            let address = operand
+                                .address
+                                .checked_add(offset)
+                                .ok_or(InvalidSourcePlacement)?;
+                            let version = *provenance
+                                .latest_write
+                                .get(&address)
+                                .ok_or(MissingComputationOperand)?;
+                            _ = required.insert((address, version));
                         }
-                        drop(pending.insert(key, (required, BTreeSet::new())));
                     }
-                    let (required, observed) =
-                        pending.get_mut(&key).ok_or(InvalidSourcePlacement)?;
-                    observed.extend(carried);
-                    if last_effect.get(&key) == Some(&code) {
-                        if !required.is_subset(observed) {
-                            return Err(MissingComputationProvenance);
-                        }
-                        drop(pending.remove(&key));
-                    }
+                    let remaining_sites =
+                        computation_result_sites(key, computation, effects)?;
+                    let _inserted =
+                        entry.insert(PendingComputationProvenance {
+                            required,
+                            observed: BTreeSet::new(),
+                            remaining_sites,
+                        });
                 }
-                // The exact result destination was already established by
-                // the source-locked physical effect/word verifier.
-                if !stores.contains_key(&(code, destination)) {
+                let current =
+                    pending.get_mut(&key).ok_or(InvalidSourcePlacement)?;
+                if !current.remaining_sites.remove(&code) {
                     return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
                 }
+                current.observed.extend(carried);
+                if current.remaining_sites.is_empty() {
+                    if !current.required.is_subset(&current.observed) {
+                        return Err(MissingComputationProvenance);
+                    }
+                    drop(pending.remove(&key));
+                }
+            }
+            // The exact result destination was already established by
+            // the source-locked physical effect/word verifier.
+            if !stores.contains_key(&(code, destination)) {
+                return Err(SourcePhiCopyTraceError::UnexpectedFrameEffect);
             }
         }
         provenance.observe_source_step(step, index, &stores, &copies)?;

@@ -313,6 +313,7 @@ fn real_guest_two_word_computation_rejects_wrong_high_result_word()
 #[expect(
     clippy::indexing_slicing,
     clippy::panic_in_result_fn,
+    clippy::too_many_lines,
     reason = "five-cell physical jump with a skipped source store"
 )]
 fn real_guest_skipped_low_word_store_cannot_certify_a_c32_result()
