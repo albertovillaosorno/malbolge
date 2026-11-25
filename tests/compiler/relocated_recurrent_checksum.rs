@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 2_350_000;
+const BOOT_BUDGET: usize = 2_250_000;
 const BYTE_BUDGET: usize = 13_000;
 const PUBLICATION_BUDGET: usize = 100_000;
 const RAW_TABLES: [u32; 2] = [7_208_352, 7_209_081];
@@ -842,7 +842,7 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
         (&[5, 0, 129], 34_685),
     ];
     let guest = source()?;
-    if guest.capture.source.len() != 2_348_934 {
+    if guest.capture.source.len() != 2_318_854 {
         return Err("unexpected recurrent source extent".to_owned());
     }
     let (initial, bootstrap_steps) = boot_with_steps(&guest)?;

@@ -13998,7 +13998,7 @@ from complete eight-bit arithmetic and source-frame admission.
 
 ### Carry-aware recurrent full-byte checksum
 
-The separate 2,348,934-cell
+The separate 2,318,854-cell
 `build_relocated_recurrent_checksum_source` image commits both nibbles
 of the original checksum recurrence. The raw-byte dispatch selects
 two immutable projections. The low transition uses 256 joint
@@ -14046,7 +14046,7 @@ partitions and assigns denser partitions to cheaper access slots.
 For each destination it compares the cost of every eligible direct
 or two-hop path. The page pointers are synthesized in the guest
 before the first route write; their even reset cells remain virgin.
-The boot replay has a 2,350,000-step bound.
+The boot replay has a 2,250,000-step bound.
 
 Independent VM replay covers all 256 low-state/nibble edges and
 1,280 reachable high-state/high-nibble/parity/carry edges in a
@@ -14096,6 +14096,11 @@ The 2,405,334-cell intermediate reached first input in 2,289,260 steps.
 A further phase-aligned shift by 56,400 cells trades some boot time
 for source extent: the 2,348,934-cell image reaches first input in
 2,336,549 steps.
+A bounded phase sweep next selected a further 30,080-cell shift,
+preserving instruction and loader phases. The resulting 2,318,854-cell
+image reaches first input in 2,236,405 instructions. The wider
+target directories and alternative seed-pair counts tested during
+this sweep did not improve the retained geometry.
 Independent traces check both scratch-reset stores and a patch
 starting from a previously committed root inverse, including
 preservation of the high prefix. Omission of the second reset fold,

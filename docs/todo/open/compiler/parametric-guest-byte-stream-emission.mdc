@@ -156,7 +156,7 @@ five-bit witness with 32 states, 1,024 joint transition pointers and
 a four-rotation EOF decoder. Independent replay covers all 8,192
 state/raw-byte pairs, all 64 state/EOF combinations and the same
 eight omitted effects; the bootstrap bound is 5,500,000 instructions.
-A separate 2,348,934-cell split-state recurrent witness now computes
+A separate 2,318,854-cell split-state recurrent witness now computes
 the full byte. Its low record supplies both carry (zero, one or two)
 and the next nibble; its high transition consumes the actual raw
 parity and carry. Two rotated scratch reloads commit the state, and
@@ -191,7 +191,11 @@ scratch when patching is shorter than fresh synthesis. Consecutive
 rotations reuse the return pointer. With an additional phase-aligned
 shift of 846,000 cells, the image reaches first input in 2,336,549
 steps under a 2,350,000-step bound. A slightly larger intermediate
-image boots faster (2,289,260 steps); the smaller extent is retained.
+image boots faster (2,289,260 steps); a bounded phase sweep then
+finds a smaller and faster candidate. Shifting by another 30,080
+cells reaches first input in 2,236,405 steps under a 2,250,000-step
+bound. The wider target directories and alternative seed-pair
+counts did not improve the retained geometry.
 Independent omitted dirty-patch and derived-mask stores refuse.
 Independent VM replay covers all 256 low and 1,280 reachable high
 factored edges, all 512 state/EOF combinations, and empty input.
