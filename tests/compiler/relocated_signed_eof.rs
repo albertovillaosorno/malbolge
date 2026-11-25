@@ -31,8 +31,14 @@ use malbolge::{
 };
 
 use super::layout::{
-    RelocatedSignedEofBranchSource, ZeroCellSourceError,
-    build_relocated_signed_eof_source,
+    AddressSelectedIndirectCase, AddressSelectedIndirectError,
+    AddressSelectedIndirectProbe, RelocatedSignedEofBranchSource,
+    SourceCodeImageTraceError, SourcePhysicalImageTraceError,
+    SourcePhysicalTraceBudget, ZeroCellSourceError,
+    build_relocated_signed_eof_source, verify_address_selected_indirect_guest,
+    verify_address_selected_indirect_guest_with_budget,
+    verify_source_physical_image_trace,
+    verify_source_physical_image_trace_with_budget,
 };
 
 const FRAME: u32 = 7_174_417;
@@ -334,5 +340,128 @@ fn relocated_signed_eof_refuses_output_only_counterfeits() -> Result<(), String>
             "omitted C{store} produced a false signed EOF"
         );
     }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "long tape must not relax short replay ceilings"
+)]
+#[test]
+fn relocated_signed_eof_requires_explicit_marker_tape_budget()
+-> Result<(), String> {
+    let guest = source()?;
+    let probe = AddressSelectedIndirectProbe {
+        cases: [
+            AddressSelectedIndirectCase {
+                input: &[255, 128],
+                landing_address: 120,
+                pointer_cell: 117,
+            },
+            AddressSelectedIndirectCase {
+                input: &[],
+                landing_address: 126,
+                pointer_cell: 48,
+            },
+        ],
+        indirect_code_cell: 118,
+        input_code_cell: 53,
+        selector_cell: 7_174_423,
+        selector_code_cell: 107,
+        selector_store_code_cell: 99,
+        source: &guest.source,
+        step_budget: STEP_BUDGET,
+    };
+    assert_eq!(
+        verify_address_selected_indirect_guest(current_profile(), probe),
+        Err(AddressSelectedIndirectError::InvalidBound)
+    );
+    assert_eq!(
+        verify_source_physical_image_trace(
+            current_profile(),
+            &guest.source,
+            &[],
+            STEP_BUDGET,
+        ),
+        Err(SourcePhysicalImageTraceError::Source(
+            SourceCodeImageTraceError::InvalidBound
+        ))
+    );
+    let proof = verify_address_selected_indirect_guest_with_budget(
+        current_profile(),
+        probe,
+        SourcePhysicalTraceBudget::MarkerTape,
+    )
+    .map_err(|error| format!("extended pair: {error:?}"))?;
+    assert_eq!(proof.budget(), SourcePhysicalTraceBudget::MarkerTape);
+    let [byte, eof] = proof.cases();
+    assert_eq!(byte.journal().source.outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: BYTE_STEPS,
+    });
+    assert_eq!(eof.journal().source.outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: EOF_STEPS,
+    });
+    assert!(eof.journal().expanded.len() > 128);
+    for (address, expected) in INPUT.into_iter().zip(SIGNED_EOF) {
+        let entry = eof
+            .journal()
+            .expanded
+            .iter()
+            .find(|cell| cell.site == address)
+            .ok_or_else(|| format!("missing physical cell M{address}"))?;
+        assert_eq!(entry.final_word, expected);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded resource-class and execution failure controls"
+)]
+#[test]
+fn relocated_signed_eof_long_replay_still_refuses_overbudget()
+-> Result<(), String> {
+    let guest = source()?;
+    let too_long = verify_source_physical_image_trace_with_budget(
+        current_profile(),
+        &guest.source,
+        &[],
+        8193,
+        SourcePhysicalTraceBudget::MarkerTape,
+    );
+    assert_eq!(
+        too_long,
+        Err(SourcePhysicalImageTraceError::Source(
+            SourceCodeImageTraceError::InvalidBound
+        ))
+    );
+    let overlong_source = vec![b'o'; 8193];
+    assert_eq!(
+        verify_source_physical_image_trace_with_budget(
+            current_profile(),
+            &overlong_source,
+            &[],
+            1,
+            SourcePhysicalTraceBudget::MarkerTape,
+        ),
+        Err(SourcePhysicalImageTraceError::Source(
+            SourceCodeImageTraceError::InvalidBound
+        ))
+    );
+    let prefix = verify_source_physical_image_trace_with_budget(
+        current_profile(),
+        &guest.source,
+        &[],
+        512,
+        SourcePhysicalTraceBudget::MarkerTape,
+    )
+    .map_err(|error| format!("bounded prefix: {error:?}"))?;
+    assert!(matches!(
+        prefix.source.outcome,
+        RunOutcome::BudgetExhausted { steps: 512 }
+    ));
     Ok(())
 }

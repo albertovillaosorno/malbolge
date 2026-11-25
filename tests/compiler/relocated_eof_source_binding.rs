@@ -38,8 +38,10 @@ use super::layout::{
     AddressSelectedIndirectCase, AddressSelectedIndirectProbe,
     AddressSelectedIndirectProof, AddressSelectedSourceReturnError,
     AddressSelectedSourceReturnProbe, SourceBranchLanding, SourceInputProbe,
-    SourceInputTraceError, build_relocated_eof_branch_source,
+    SourceInputTraceError, SourcePhysicalTraceBudget,
+    build_relocated_eof_branch_source, build_relocated_signed_eof_source,
     verify_address_selected_indirect_guest,
+    verify_address_selected_indirect_guest_with_budget,
     verify_address_selected_source_return,
 };
 
@@ -520,6 +522,129 @@ fn second_source_input_cannot_borrow_loop_entry() -> Result<(), String> {
         )
         .is_err(),
         "C120 belongs to block 2, not block 5's second source getchar"
+    );
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "source-bound signed EOF path and unchanged short admission"
+)]
+#[test]
+fn relocated_signed_eof_binds_source_return_only() -> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_signed_eof_source(current_profile())
+        .map_err(|error| format!("signed EOF: {error:?}"))?;
+    let physical = verify_address_selected_indirect_guest_with_budget(
+        current_profile(),
+        AddressSelectedIndirectProbe {
+            cases: [
+                AddressSelectedIndirectCase {
+                    input: &[0],
+                    landing_address: 120,
+                    pointer_cell: 117,
+                },
+                AddressSelectedIndirectCase {
+                    input: &[],
+                    landing_address: 126,
+                    pointer_cell: 48,
+                },
+            ],
+            indirect_code_cell: 118,
+            input_code_cell: 53,
+            selector_cell: 7_174_423,
+            selector_code_cell: 107,
+            selector_store_code_cell: 99,
+            source: &guest.source,
+            step_budget: 6600,
+        },
+        SourcePhysicalTraceBudget::MarkerTape,
+    )
+    .map_err(|error| format!("long paired route: {error:?}"))?;
+    let blocks = [
+        block(0, 0, 75, 76),
+        block(1, 117, 118, 119),
+        block(2, 120, 123, 124),
+        block(3, 80, 84, 85),
+        block(4, 85, 89, 90),
+        block(5, 90, 97, 98),
+        block(6, 126, 6529, 6530),
+    ];
+    let pads = [
+        pad(0, 1, 98, 107),
+        pad(3, 5, 107, 112),
+        pad(4, 5, 112, 117),
+        pad(5, 1, 6530, 6539),
+    ];
+    let proposals = GuestCodeProposals {
+        code_blocks: &blocks,
+        edge_pads: &pads,
+    };
+    let operations = [
+        operation(0, 1, 53),
+        operation(5, 2, 94),
+        operation(6, 0, 6527),
+        operation(6, 1, 6528),
+    ];
+    let probe = AddressSelectedSourceReturnProbe {
+        branch: BRANCH,
+        effect_anchors: &EFFECTS,
+        operation_anchors: &operations,
+        proposals,
+        source_input: SourceInputProbe {
+            anchors: &READS,
+            canonical: &wire,
+            frame_base: FRAME,
+            input: &[],
+            physical_source: &guest.source,
+            step_budget: 6600,
+        },
+    };
+    assert_eq!(
+        probe.source_input.verify_return_with_effect_anchors(
+            proposals,
+            &operations,
+            &EFFECTS
+        ),
+        Err(SourceInputTraceError::InvalidProbeBound),
+        "standalone source input verifier retains its short limit"
+    );
+    let receipt = verify_address_selected_source_return(&physical, &probe)
+        .map_err(|error| format!("extended source EOF return: {error:?}"))?;
+    assert_eq!(receipt.guest_output, [0]);
+    assert_eq!(receipt.bytes_consumed, 0);
+    let [input] = receipt.observations.as_slice() else {
+        return Err("missing source input".into());
+    };
+    assert_eq!(
+        (input.block, input.ordinal, input.code_address, input.input),
+        (0, 1, 53, TraceInput::EndOfInput)
+    );
+    let [output] = receipt.output_sites.as_slice() else {
+        return Err("missing source output".into());
+    };
+    assert_eq!(
+        (
+            output.block,
+            output.ordinal,
+            output.code_address,
+            output.byte
+        ),
+        (6, 1, 6528, 0)
+    );
+    let byte = AddressSelectedSourceReturnProbe {
+        source_input: SourceInputProbe {
+            input: &[0],
+            ..probe.source_input
+        },
+        ..probe
+    };
+    assert_eq!(
+        verify_address_selected_source_return(&physical, &byte),
+        Err(AddressSelectedSourceReturnError::SourceInput(
+            SourceInputTraceError::UnexpectedGuestInput
+        ))
     );
     Ok(())
 }

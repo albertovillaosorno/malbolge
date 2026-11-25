@@ -36,11 +36,12 @@ use malbolge::{
 };
 
 use super::{
-    MAX_INDIRECT_SUFFIX_PROOF_INPUT, MAX_REVISIT_SOURCE_CELLS,
-    MAX_REVISIT_STEPS, SourcePhysicalDataRead, SourcePhysicalDataWrite,
-    SourcePhysicalImageTrace, SourcePhysicalImageTraceError,
-    SourcePhysicalIoEvent, SourcePhysicalWordEffect,
-    admit_c23_probe_graphical_source, verify_source_physical_image_trace,
+    MAX_INDIRECT_SUFFIX_PROOF_INPUT, SourcePhysicalDataRead,
+    SourcePhysicalDataWrite, SourcePhysicalImageTrace,
+    SourcePhysicalImageTraceError, SourcePhysicalIoEvent,
+    SourcePhysicalTraceBudget, SourcePhysicalWordEffect,
+    admit_c23_probe_graphical_source,
+    verify_source_physical_image_trace_with_budget,
 };
 
 /// One proposed physical result of a finite input stream.
@@ -160,11 +161,18 @@ impl AddressSelectedIndirectCaseProof {
 /// Opaque two-case proof tied to a single graphical N15 source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AddressSelectedIndirectProof {
+    budget: SourcePhysicalTraceBudget,
     cases: [AddressSelectedIndirectCaseProof; 2],
     source: Vec<u8>,
 }
 
 impl AddressSelectedIndirectProof {
+    /// Resource class used for both complete physical replays.
+    #[must_use]
+    pub const fn budget(&self) -> SourcePhysicalTraceBudget {
+        self.budget
+    }
+
     /// The two exact replay receipts in the supplied order.
     #[must_use]
     pub const fn cases(&self) -> &[AddressSelectedIndirectCaseProof; 2] {
@@ -197,12 +205,33 @@ pub fn verify_address_selected_indirect_guest(
     profile: &'static ProfileDescriptor,
     probe: AddressSelectedIndirectProbe<'_>,
 ) -> Result<AddressSelectedIndirectProof, AddressSelectedIndirectError> {
+    verify_address_selected_indirect_guest_with_budget(
+        profile,
+        probe,
+        SourcePhysicalTraceBudget::Short,
+    )
+}
+
+/// Reconcile the same paired address-selection proof under a finite class.
+///
+/// This opt-in affects only the full-image replay resource ceilings. The
+/// selector, common prefix, operand history and real halt checks are the
+/// same as for the original short proof.
+///
+/// # Errors
+///
+/// Refuses malformed probes, exhausted bounds and any invalid paired route.
+pub fn verify_address_selected_indirect_guest_with_budget(
+    profile: &'static ProfileDescriptor,
+    probe: AddressSelectedIndirectProbe<'_>,
+    budget: SourcePhysicalTraceBudget,
+) -> Result<AddressSelectedIndirectProof, AddressSelectedIndirectError> {
     use AddressSelectedIndirectError as Error;
     let [first_case, second_case] = probe.cases;
     if profile != current_profile()
-        || probe.source.len() > MAX_REVISIT_SOURCE_CELLS
+        || probe.source.len() > budget.max_source_cells()
         || admit_c23_probe_graphical_source(probe.source).is_err()
-        || !(1..=MAX_REVISIT_STEPS).contains(&probe.step_budget)
+        || !(1..=budget.max_steps()).contains(&probe.step_budget)
         || [first_case, second_case].iter().any(|case| {
             case.input.len() > MAX_INDIRECT_SUFFIX_PROOF_INPUT
                 || case.pointer_cell >= profile.memory_words()
@@ -212,10 +241,11 @@ pub fn verify_address_selected_indirect_guest(
     {
         return Err(Error::InvalidBound);
     }
-    let first = replay_case(profile, probe, first_case)?;
-    let second = replay_case(profile, probe, second_case)?;
+    let first = replay_case(profile, probe, first_case, budget)?;
+    let second = replay_case(profile, probe, second_case, budget)?;
     verify_pair(&first, &second)?;
     Ok(AddressSelectedIndirectProof {
+        budget,
         cases: [first, second],
         source: probe.source.to_vec(),
     })
@@ -334,13 +364,15 @@ fn replay_case(
     profile: &'static ProfileDescriptor,
     probe: AddressSelectedIndirectProbe<'_>,
     case: AddressSelectedIndirectCase<'_>,
+    budget: SourcePhysicalTraceBudget,
 ) -> Result<AddressSelectedIndirectCaseProof, AddressSelectedIndirectError> {
     use AddressSelectedIndirectError as Error;
-    let journal = verify_source_physical_image_trace(
+    let journal = verify_source_physical_image_trace_with_budget(
         profile,
         probe.source,
         case.input,
         probe.step_budget,
+        budget,
     )
     .map_err(Error::PhysicalImage)?;
     if !matches!(journal.source.outcome, RunOutcome::Terminated {

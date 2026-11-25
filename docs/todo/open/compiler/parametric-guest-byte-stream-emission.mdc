@@ -49,8 +49,11 @@ source output zero at C6527 and emits it at C6528 before the C6529 halt
 in 6,523 steps. Every successful first byte retains `[byte, 0]` and
 reads again in 121 steps. Both omitted-result-store controls still
 output zero but fail canonical storage. This physical result exceeds
-the existing short full-image proof bounds and is not yet source-frame
-or input-provenance authorized. The byte arm lacks checksum arithmetic;
+the existing short full-image proof bounds. A distinct `MarkerTape`
+resource class now reconciles the complete image, paired address route
+and exact source-locked empty-return I/O, without broadening default
+short probes or admitting the byte arm. Input-store effect authorization
+is still missing. The byte arm lacks checksum arithmetic;
 phi/backedge and unchanged whole-program publication remain blocked.
 Evidence: `tests/compiler/relocated_signed_eof.rs` and the P2 contract.
 

@@ -51,6 +51,39 @@ use super::{
 /// Prevents unbounded event journals without limiting target memory itself.
 pub const MAX_EXPANDED_CODE_CELLS: usize = 128;
 
+/// Explicit finite resource classes for complete physical-effect replay.
+/// The larger tape class leaves the default short-probe limits unchanged.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourcePhysicalTraceBudget {
+    /// At most 8,192 source cells/steps and 512 expanded effect sites.
+    MarkerTape,
+    /// The original short-revisit limits and 128 expanded effect sites.
+    Short,
+}
+
+impl SourcePhysicalTraceBudget {
+    pub(super) const fn max_expanded_cells(self) -> usize {
+        match self {
+            Self::MarkerTape => 512,
+            Self::Short => MAX_EXPANDED_CODE_CELLS,
+        }
+    }
+
+    pub(super) const fn max_source_cells(self) -> usize {
+        match self {
+            Self::MarkerTape => 8192,
+            Self::Short => MAX_REVISIT_SOURCE_CELLS,
+        }
+    }
+
+    pub(super) const fn max_steps(self) -> usize {
+        match self {
+            Self::MarkerTape => 8192,
+            Self::Short => MAX_REVISIT_STEPS,
+        }
+    }
+}
+
 /// Bounded code-site verification refusal, distinct from any C23 linkage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceCodeCellTraceError {
@@ -533,7 +566,7 @@ pub enum SourcePhysicalImageTraceError {
         /// Reached loader-expanded guest memory address.
         site: u32,
     },
-    /// More than 128 distinct expanded effect sites were reached.
+    /// More distinct expanded effect sites than the selected class permits.
     ExpandedLimit,
     /// Source loader, prefix bounds or source-site checks refused.
     Source(SourceCodeImageTraceError),
@@ -547,6 +580,7 @@ struct ExpandedPhysicalJournal {
 
 /// Source and expanded event accumulators for one bounded guest execution.
 struct PhysicalImageJournals {
+    budget: SourcePhysicalTraceBudget,
     code_fetches: Vec<SourcePhysicalCodeFetch>,
     data_reads: Vec<SourcePhysicalDataRead>,
     data_writes: Vec<SourcePhysicalDataWrite>,
@@ -964,7 +998,7 @@ fn append_physical_step_effects(
         let journal = match journals.expanded.entry(site) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                if old_count >= MAX_EXPANDED_CODE_CELLS {
+                if old_count >= journals.budget.max_expanded_cells() {
                     return Err(PhysicalError::ExpandedLimit);
                 }
                 let initial = initial_effect_word(step, site).ok_or(
@@ -1000,21 +1034,48 @@ fn append_physical_step_effects(
 ///
 /// Refuses invalid sources/budgets, physical VM failures, incoherent code
 /// phases or more than 128 distinct expanded-memory effect sites.
-#[expect(
-    clippy::too_many_lines,
-    reason = "one VM pass must reconcile both source and expanded code cells"
-)]
 pub fn verify_source_physical_image_trace(
     profile: &'static ProfileDescriptor,
     source: &[u8],
     input: &[u8],
     steps: usize,
 ) -> Result<SourcePhysicalImageTrace, SourcePhysicalImageTraceError> {
+    verify_source_physical_image_trace_with_budget(
+        profile,
+        source,
+        input,
+        steps,
+        SourcePhysicalTraceBudget::Short,
+    )
+}
+
+/// Opt into an explicit bounded complete-image replay resource class.
+///
+/// No chronological or word reconciliation requirement is relaxed. The
+/// per-site event ceiling remains unchanged, and the original short verifier
+/// continues to use its original resource limits.
+///
+/// # Errors
+///
+/// Refuses invalid bounds, loader/execution failures, inconsistent effects,
+/// and exhaustion of the selected finite expanded-site budget.
+#[expect(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "one VM pass must reconcile both source and expanded code cells"
+)]
+pub fn verify_source_physical_image_trace_with_budget(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    input: &[u8],
+    steps: usize,
+    budget: SourcePhysicalTraceBudget,
+) -> Result<SourcePhysicalImageTrace, SourcePhysicalImageTraceError> {
     use SourceCodeImageTraceError as SourceError;
     use SourcePhysicalImageTraceError as PhysicalError;
     if steps == 0
-        || steps > MAX_REVISIT_STEPS
-        || source.len() > MAX_REVISIT_SOURCE_CELLS
+        || steps > budget.max_steps()
+        || source.len() > budget.max_source_cells()
     {
         return Err(PhysicalError::Source(SourceError::InvalidBound));
     }
@@ -1029,6 +1090,7 @@ pub fn verify_source_physical_image_trace(
             |_error| PhysicalError::Source(SourceError::InvalidSource),
         )?;
     let mut journals = PhysicalImageJournals {
+        budget,
         code_fetches: Vec::new(),
         data_reads: Vec::new(),
         data_writes: Vec::new(),

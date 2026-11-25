@@ -76,6 +76,7 @@ pub use address_selected_indirect_source::{
     AddressSelectedIndirectCase, AddressSelectedIndirectCaseProof,
     AddressSelectedIndirectError, AddressSelectedIndirectProbe,
     AddressSelectedIndirectProof, verify_address_selected_indirect_guest,
+    verify_address_selected_indirect_guest_with_budget,
 };
 pub use address_selected_source_return::{
     AddressSelectedSourceReturnError, AddressSelectedSourceReturnProbe,
@@ -122,10 +123,11 @@ pub use code_cell_trace::{
     SourcePhysicalCodeFetch, SourcePhysicalDataRead, SourcePhysicalDataWrite,
     SourcePhysicalEncryptionWrite, SourcePhysicalImageTrace,
     SourcePhysicalImageTraceError, SourcePhysicalIoEvent,
-    SourcePhysicalWordEffect, verify_source_code_cell_trace,
+    SourcePhysicalTraceBudget, SourcePhysicalWordEffect, verify_source_code_cell_trace,
     verify_source_code_image_trace, verify_source_expanded_code_cell_trace,
     verify_source_expanded_code_cells_trace,
     verify_source_physical_image_trace,
+    verify_source_physical_image_trace_with_budget,
 };
 pub use eof_branch_plan::{
     C23EofControlWordError, C23EofControlWordPlan,

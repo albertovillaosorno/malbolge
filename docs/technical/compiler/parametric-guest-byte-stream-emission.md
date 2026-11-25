@@ -51,12 +51,22 @@ Direct normative VM regressions authenticate the exact write sites,
 all 256 successful first-byte classes and two second-EOF boundaries.
 Omitting either final signed word store still emits zero and halts,
 but fails the canonical pair check. The existing shorter branch and
-its verification bounds remain unchanged. The longer tape exceeds the
-current full-image and paired-route proof resource bounds, so this is
-physical execution evidence, not a source-input provenance or frame
-admission certificate. In particular, the selected EOF tape builds
-constant words through control dependence; no general signed-input
-lowering, checksum arithmetic, phi/backedge or publication follows.
+its verification bounds remain unchanged. An explicit `MarkerTape`
+resource class admits at most 8,192 source cells/steps and 512 expanded
+effect sites without changing chronological reconciliation or the
+per-site event cap. The complete-image and paired-route gates now
+accept the long source against a representative successful byte and
+true EOF. An independently rederived source-return reservation joins
+C53, C118, C6528 and C6529 to the original empty-input source path.
+Standalone source-input probes retain their original short bounds;
+the joined verifier inherits its resource class from the opaque
+physical proof. Excessive source/step sizes, short-class admission,
+and the incomplete byte return are still refused.
+
+This is not source-input provenance or frame admission: the selected
+EOF tape builds constant words through control dependence after the
+physical branch. No general signed-input lowering, checksum arithmetic,
+phi/backedge or publication follows.
 Evidence: `tests/compiler/relocated_signed_eof.rs`.
 
 ### Stable relocated first-byte/EOF dispatch (2026-11-24)

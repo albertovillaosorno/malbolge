@@ -39,6 +39,7 @@ use malbolge::{
     current_profile,
 };
 
+use super::SourcePhysicalTraceBudget;
 use super::typed_cfg_adapter::lower_canonical_dynamic_cfg;
 use super::typed_cfg_adapter::state_relocation::{
     GuestCodeEffectAnchor, GuestCodeInputAnchor, GuestCodeInputSemantics,
@@ -292,15 +293,24 @@ type ExplicitOperationPlacement<'source> = (
 fn authenticate_io_sites(
     probe: SourceInputProbe<'_>,
     explicit: Option<ExplicitOperationPlacement<'_>>,
+    budget: SourcePhysicalTraceBudget,
 ) -> Result<SourceIoSites, SourceInputTraceError> {
+    let (max_source_cells, max_steps) = match budget {
+        SourcePhysicalTraceBudget::MarkerTape => {
+            (budget.max_source_cells(), budget.max_steps())
+        },
+        SourcePhysicalTraceBudget::Short => {
+            (MAX_SOURCE_INPUT_TRACE_CELLS, MAX_SOURCE_INPUT_TRACE_STEPS)
+        },
+    };
     if probe.physical_source.len() < 2
-        || probe.physical_source.len() > MAX_SOURCE_INPUT_TRACE_CELLS
+        || probe.physical_source.len() > max_source_cells
         || !probe
             .physical_source
             .iter()
             .all(|byte| (33..=126).contains(byte))
         || probe.step_budget == 0
-        || probe.step_budget > MAX_SOURCE_INPUT_TRACE_STEPS
+        || probe.step_budget > max_steps
         || probe.input.len() > MAX_SOURCE_INPUT_TRACE_STEPS
     {
         return Err(SourceInputTraceError::InvalidProbeBound);
@@ -1648,11 +1658,33 @@ pub(super) fn verify_source_input_site_output_with_effect_anchors(
     operation_anchors: &[GuestCodeOperationAnchor],
     effect_anchors: &[GuestCodeEffectAnchor],
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    let proof = verify_source_input_site_trace(
+    verify_source_input_site_output_with_effect_anchors_and_budget(
+        probe,
+        proposals,
+        operation_anchors,
+        effect_anchors,
+        SourcePhysicalTraceBudget::Short,
+    )
+}
+
+// Only the opaque paired physical proof selects the extended replay class.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "preserve explicit source anchors and finite replay class"
+)]
+pub(super) fn verify_source_input_site_output_with_effect_anchors_and_budget(
+    probe: SourceInputProbe<'_>,
+    proposals: GuestCodeProposals<'_>,
+    operation_anchors: &[GuestCodeOperationAnchor],
+    effect_anchors: &[GuestCodeEffectAnchor],
+    budget: SourcePhysicalTraceBudget,
+) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+    let proof = verify_source_input_site_trace_with_budget(
         probe,
         true,
         Some((proposals, operation_anchors, effect_anchors)),
         true,
+        budget,
     )?;
     verify_source_output_path(probe, proof)
 }
@@ -1798,7 +1830,28 @@ fn verify_source_input_site_trace(
     explicit: Option<ExplicitOperationPlacement<'_>>,
     require_output_anchors: bool,
 ) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
-    let sites = authenticate_io_sites(probe, explicit)?;
+    verify_source_input_site_trace_with_budget(
+        probe,
+        require_source_return,
+        explicit,
+        require_output_anchors,
+        SourcePhysicalTraceBudget::Short,
+    )
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "single bounded source-locked VM replay with exact options"
+)]
+fn verify_source_input_site_trace_with_budget(
+    probe: SourceInputProbe<'_>,
+    require_source_return: bool,
+    explicit: Option<ExplicitOperationPlacement<'_>>,
+    require_output_anchors: bool,
+    budget: SourcePhysicalTraceBudget,
+) -> Result<SourceInputPrefixProof, SourceInputTraceError> {
+    let sites = authenticate_io_sites(probe, explicit, budget)?;
     let mut machine = ProfileMachine::from_source(
         current_profile(),
         probe.physical_source,

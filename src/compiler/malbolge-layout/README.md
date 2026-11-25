@@ -25,10 +25,15 @@ first bytes instead retain `[byte, 0]` and reach their second read and
 halt in 121 steps. Both omitted final-store controls retain the empty
 output but fail the signed result check.
 
-This direct VM evidence does not enlarge the shorter full-image proof
-bounds or authorize source frame writes. The EOF value is produced by
-an input-selected constant tape, not a general source-input conversion
-certificate. Checksum arithmetic, the linked loop, and publication
+The original short verifier bounds are unchanged. The explicit
+`SourcePhysicalTraceBudget::MarkerTape` class admits at most 8,192
+source cells/steps and 512 expanded effect sites using the same full
+physical reconciliation and paired-route checks. A joined source-return
+probe inherits the opaque proof's resource class and authenticates the
+original empty-input C53/C118/C6528/C6529 path; standalone short source
+probes and the incomplete byte return remain refused. The EOF value is
+produced by an input-selected constant tape, not a general source-input
+conversion certificate or source frame authorization. Checksum arithmetic, the linked loop, and publication
 remain absent. See `tests/compiler/relocated_signed_eof.rs`.
 
 ### Relocated all-byte first-EOF dispatch (2026-11-24)

@@ -28,7 +28,7 @@ use std::slice::Iter;
 
 use super::source_input_trace::{
     verify_source_branch_io_landing,
-    verify_source_input_site_output_with_effect_anchors,
+    verify_source_input_site_output_with_effect_anchors_and_budget,
 };
 use super::typed_cfg_adapter::state_relocation::{
     GuestCodeEdgeKind, GuestCodeEffectAnchor, GuestCodeOperationAnchor,
@@ -100,13 +100,15 @@ pub fn verify_address_selected_source_return(
         .find(|case| case.input() == probe.source_input.input)
         .ok_or(Error::CaseNotProven)?;
     let return_address = verify_branch_reservations(physical, probe)?;
-    let receipt = verify_source_input_site_output_with_effect_anchors(
-        probe.source_input,
-        probe.proposals,
-        probe.operation_anchors,
-        probe.effect_anchors,
-    )
-    .map_err(Error::SourceInput)?;
+    let receipt =
+        verify_source_input_site_output_with_effect_anchors_and_budget(
+            probe.source_input,
+            probe.proposals,
+            probe.operation_anchors,
+            probe.effect_anchors,
+            physical.budget(),
+        )
+        .map_err(Error::SourceInput)?;
     if case
         .journal()
         .code_fetches
