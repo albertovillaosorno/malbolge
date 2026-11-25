@@ -75,8 +75,13 @@ effect controls pass. A separate 4,350,006-cell image now performs
 a real third read, signed normalization, and a second dirty phi edge
 with 64 ordered reset/copy effects; third EOF emits the actual
 committed checksum. Nine boundary vectors, earlier bypass paths and
-three omitted-store controls pass. Nonzero XOR, reusable code and
-complete source-frame routing remain open. Evidence:
+three omitted-store controls pass. A separate 2,240,082-cell odd
+variant performs one physical binary quotient/remainder step on
+both committed bytes and computes the lowest XOR bit after 396
+scratch resets. Seven boundary vectors, five bypass vectors and an
+omitted-result control pass. Independent host algebra checks all
+256 divisions and all 65,536 XOR pairs; full guest reconstruction,
+reusable code and complete source-frame routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

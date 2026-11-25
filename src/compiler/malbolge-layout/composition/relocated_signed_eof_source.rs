@@ -44,11 +44,13 @@ pub use relocated_first_byte_add_source::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstByteAddSource,
     RelocatedFirstIterationSource, RelocatedSecondAddSource,
     RelocatedSecondEvenMaskSource, RelocatedSecondEvenReadSource,
-    RelocatedSecondParityAddSource, ScratchResetSite,
-    build_relocated_dirty_phi_source, build_relocated_first_byte_add_source,
+    RelocatedSecondOddHalfSource, RelocatedSecondParityAddSource,
+    ScratchResetSite, build_relocated_dirty_phi_source,
+    build_relocated_first_byte_add_source,
     build_relocated_first_iteration_source, build_relocated_second_add_source,
     build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
+    build_relocated_second_odd_half_source,
     build_relocated_second_parity_add_source,
 };
 pub use relocated_live_parity_source::{

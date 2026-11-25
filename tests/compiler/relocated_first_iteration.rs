@@ -34,11 +34,12 @@ use super::super::crazy as independent_crazy;
 use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
     RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
-    RelocatedSecondEvenReadSource, RelocatedSecondParityAddSource,
-    ScratchResetSite, ZeroCellSourceError, build_relocated_dirty_phi_source,
-    build_relocated_first_iteration_source, build_relocated_second_add_source,
-    build_relocated_second_even_mask_source,
+    RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
+    RelocatedSecondParityAddSource, ScratchResetSite, ZeroCellSourceError,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source, build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
+    build_relocated_second_odd_half_source,
     build_relocated_second_parity_add_source,
 };
 use super::{at, check_transfer, check_write, word};
@@ -1652,7 +1653,7 @@ fn boolean_word_and(left: u32, right: u32) -> u32 {
 
 // On 0..=256 only, the one trits at positions 0, 1, 2, and 5
 // identify 256: their place values already sum to 256. This avoids
-// a second general carry circuit, but is not yet emitted guest code.
+// a second general carry circuit.
 fn second_wrap_flag(value: u32) -> u32 {
     let matches_one = independent_crazy(0, independent_crazy(7_174_453, value));
     let mut aligned = matches_one;
@@ -2520,6 +2521,313 @@ fn relocated_second_even_read_rejects_omitted_effects() -> Result<(), String> {
                 .is_err(),
             "omitted C{site} accepted: {outcome:?}"
         );
+    }
+    Ok(())
+}
+
+fn odd_half_source() -> Result<RelocatedSecondOddHalfSource, String> {
+    build_relocated_second_odd_half_source(current_profile())
+        .map_err(|error| format!("odd half source: {error:?}"))
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact physical binary decomposition"
+)]
+fn check_odd_half(
+    guest: &RelocatedSecondOddHalfSource,
+    initial: &ProfileMachine,
+    first: u8,
+    second: u8,
+) -> Result<(), String> {
+    let mut machine = initial
+        .fork_with_input(vec![first, second, 42])
+        .map_err(|error| error.to_string())?;
+    let sites = guest
+        .scratch_resets
+        .iter()
+        .flat_map(|reset| reset.code_addresses)
+        .collect::<Vec<_>>();
+    let mut replay = ScratchReplay::default();
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(2_240_082, &mut |step| {
+            let code = step.before.registers.code_pointer;
+            if sites.get(replay.resets.len()) == Some(&code) {
+                replay.resets.push(*step);
+            }
+            if sites.first().is_some_and(|&start| code < start)
+                && matches!(step.decoded, Some(b'p' | b'*'))
+                && let Some(read) = step.memory_reads.data
+                && guest
+                    .scratch_resets
+                    .binary_search_by_key(&read.address, |reset| reset.address)
+                    .is_ok()
+            {
+                let _: Option<u32> = replay
+                    .prior
+                    .insert(read.address, step.after.registers.accumulator);
+            }
+            if [guest.branch_code_address, guest.odd_halt_code_address]
+                .contains(&code)
+                || guest.result_store_code_addresses.contains(&code)
+            {
+                trace.push(*step);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "{outcome:?}"
+    );
+    check_transfer(&trace, guest.branch_code_address, 7_174_797, 1_100_000)?;
+    check_scratch_replay(&guest.scratch_resets, &replay)?;
+    check_odd_half_result(guest, &machine, &trace, [first, second])?;
+    for (address, expected) in guest
+        .iteration
+        .phi_header_words
+        .into_iter()
+        .zip([u32::from(second), 0, u32::from(first.wrapping_add(3)), 0])
+    {
+        assert_eq!(word(&machine, address)?, expected, "preserved header word");
+    }
+    assert_eq!(machine.input_consumed(), 2, "third byte must remain unread");
+    assert!(
+        machine.output().is_empty(),
+        "unfinished odd computation cannot output"
+    );
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "freeze bounded odd-arm geometry"
+)]
+#[test]
+fn relocated_second_odd_half_boundaries() -> Result<(), String> {
+    let guest = odd_half_source()?;
+    assert_eq!(guest.iteration.addition.source.len(), 2_240_082);
+    assert_eq!(guest.scratch_resets.len(), 132);
+    assert_eq!(
+        build_relocated_second_odd_half_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile)
+    );
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for (first, second) in [
+        (0, 1),
+        (1, 1),
+        (252, 255),
+        (253, 1),
+        (255, 255),
+        (100, 127),
+        (249, 85),
+    ] {
+        check_odd_half(&guest, &initial, first, second)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "authenticate all five physical result copies"
+)]
+fn check_odd_half_result(
+    guest: &RelocatedSecondOddHalfSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: [u8; 2],
+) -> Result<(), String> {
+    let [first, second] = input;
+    let (left, right) = (u32::from(first.wrapping_add(3)), u32::from(second));
+    let [left_q, right_q] = guest.quotient_addresses;
+    let [left_r, right_r] = guest.remainder_addresses;
+    for ((site, address), value) in guest
+        .result_store_code_addresses
+        .into_iter()
+        .zip([left_q, left_r, right_q, right_r, guest.low_xor_address])
+        .zip([
+            left >> 1u32,
+            left & 1,
+            right >> 1u32,
+            right & 1,
+            (left ^ right) & 1,
+        ])
+    {
+        check_write(trace, site, address, value)?;
+        assert_eq!(word(machine, address)?, value, "preserved result word");
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF and even arm bypass odd arithmetic"
+)]
+#[test]
+fn relocated_second_odd_half_preserves_bypass_paths() -> Result<(), String> {
+    let guest = odd_half_source()?;
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for (input, expected) in [
+        (vec![], vec![0]),
+        (vec![252], vec![255]),
+        (vec![255], vec![2]),
+        (vec![0, 2, 42], vec![]),
+        (vec![252, 254, 42], vec![]),
+    ] {
+        let count = input.len().min(2);
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(2_240_082, &mut |step| {
+                reached |= guest
+                    .result_store_code_addresses
+                    .contains(&step.before.registers.code_pointer);
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(!reached);
+        assert_eq!(machine.input_consumed(), count);
+        assert_eq!(machine.output(), expected);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual XOR result store omission must refuse"
+)]
+#[test]
+fn relocated_second_odd_half_rejects_omitted_result() -> Result<(), String> {
+    let guest = odd_half_source()?;
+    let [_, _, _, _, site] = guest.result_store_code_addresses;
+    let mut source = guest.iteration.addition.source.clone();
+    let noop = (33..=126u8)
+        .find(|&byte| {
+            decode_profile_instruction(u32::from(byte), site) == Some(b'o')
+        })
+        .ok_or("missing no-op")?;
+    let position = usize::try_from(site).map_err(|error| error.to_string())?;
+    *source.get_mut(position).ok_or("missing code cell")? = noop;
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), &source, vec![0, 1, 42])
+            .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(2_240_082, &mut |step| {
+            if guest
+                .result_store_code_addresses
+                .contains(&step.before.registers.code_pointer)
+            {
+                trace.push(*step);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert_eq!(at(&trace, site)?.decoded, Some(b'o'));
+    assert!(
+        check_odd_half_result(&guest, &machine, &trace, [0, 1]).is_err(),
+        "{outcome:?}"
+    );
+    Ok(())
+}
+
+fn boolean_word_xor(left: u32, right: u32) -> u32 {
+    independent_crazy(
+        0,
+        independent_crazy(
+            left,
+            independent_crazy(
+                right,
+                independent_crazy(independent_crazy(right, 14_348_906), left),
+            ),
+        ),
+    )
+}
+
+fn half_word(value: u32) -> [u32; 2] {
+    let mut prefix = independent_crazy(0, independent_crazy(7_174_453, value));
+    for shift in [1u32, 2, 4] {
+        let aligned =
+            (0..shift).fold(prefix, |word, _| profile_rotate(word, 14_348_907));
+        prefix = boolean_word_xor(prefix, aligned);
+    }
+    let carry = profile_rotate(prefix, 14_348_907);
+    let quotient = independent_crazy(
+        value,
+        independent_crazy(value, independent_crazy(carry, 14_348_906)),
+    );
+    [
+        [364, 14_348_542, 14_348_542, 364]
+            .into_iter()
+            .fold(quotient, |acc, mask| independent_crazy(mask, acc)),
+        [1, 14_348_905, 14_348_905, 1]
+            .into_iter()
+            .fold(prefix, |acc, mask| independent_crazy(mask, acc)),
+    ]
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exhaustive byte domain, host accumulation only"
+)]
+#[test]
+fn relocated_second_odd_half_algebra_covers_all_pairs() -> Result<(), String> {
+    let table = (0..=255u32).map(half_word).collect::<Vec<_>>();
+    for value in 0..=255u32 {
+        let half = table
+            .get(usize::try_from(value).map_err(|error| error.to_string())?)
+            .ok_or("missing half")?;
+        assert_eq!(
+            *half,
+            [value >> 1u32, value & 1],
+            "binary quotient and remainder for {value}"
+        );
+    }
+    for left in 0..=255u8 {
+        for right in 0..=255u8 {
+            let (mut left_index, mut right_index) =
+                (usize::from(left), usize::from(right));
+            let mut result = 0u32;
+            for shift in 0..8u32 {
+                let [qx, rx] = *table
+                    .get(left_index)
+                    .ok_or("left quotient outside byte domain")?;
+                let [qy, ry] = *table
+                    .get(right_index)
+                    .ok_or("right quotient outside byte domain")?;
+                result |= boolean_word_xor(rx, ry)
+                    .checked_shl(shift)
+                    .ok_or("invalid shift")?;
+                left_index =
+                    usize::try_from(qx).map_err(|error| error.to_string())?;
+                right_index =
+                    usize::try_from(qy).map_err(|error| error.to_string())?;
+            }
+            assert_eq!(
+                (left_index, right_index, result),
+                (0, 0, u32::from(left ^ right))
+            );
+        }
     }
     Ok(())
 }

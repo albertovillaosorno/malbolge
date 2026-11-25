@@ -29,11 +29,12 @@ use malbolge::ProfileDescriptor;
 pub use relocated_first_iteration_source::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
     RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
-    RelocatedSecondEvenReadSource, RelocatedSecondParityAddSource,
-    ScratchResetSite, build_relocated_dirty_phi_source,
-    build_relocated_first_iteration_source, build_relocated_second_add_source,
-    build_relocated_second_even_mask_source,
+    RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
+    RelocatedSecondParityAddSource, ScratchResetSite,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source, build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
+    build_relocated_second_odd_half_source,
     build_relocated_second_parity_add_source,
 };
 use relocated_first_iteration_source::{

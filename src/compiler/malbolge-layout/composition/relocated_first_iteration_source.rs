@@ -201,6 +201,31 @@ const WITH_THIRD_READ: Geometry = Geometry {
     scratch: 7_185_501,
     ..WITH_MASK
 };
+// Four folds retain six arbitrary low trits; four more isolate parity.
+const HALF_LOW_MASKS: [[u32; 4]; 2] = [
+    [7_174_801, 7_174_805, 7_174_809, 7_174_813],
+    [7_174_833, 7_174_837, 7_174_841, 7_174_845],
+];
+const HALF_BIT_MASKS: [[u32; 4]; 2] = [
+    [7_174_817, 7_174_821, 7_174_825, 7_174_829],
+    [7_174_849, 7_174_853, 7_174_857, 7_174_861],
+];
+const HALF_COUNT: u32 = 132;
+const BOOL_XOR: &[u8] = b"0sxsysys2psxpppp";
+const HALF_QUOTIENT: &[u8] = b"xsxsys2ppp";
+const WITH_ODD_HALF: Geometry = Geometry {
+    bounds: TapeBounds {
+        limit: 7_184_701,
+        start: 7_174_865,
+    },
+    cells: 2_240_082,
+    eof_entry: 2_200_000,
+    even_entry: 425_000,
+    join_entry: 430_000,
+    odd_entry: 427_000,
+    scratch: 7_183_201,
+    ..WITH_MASK
+};
 const WITH_SECOND_ADD: Geometry = Geometry {
     cells: 2_821_848,
     eof_entry: 2_800_000,
@@ -213,6 +238,7 @@ pub(super) enum IterationMode {
     SecondAdd,
     SecondEvenMask,
     SecondEvenRead,
+    SecondOddHalf,
     SecondParityAdd,
 }
 
@@ -220,11 +246,15 @@ impl IterationMode {
     fn first_entry(self, entry: usize) -> Result<usize, BuildError> {
         if self.has_third_read() {
             entry.checked_add(300_000).ok_or(LAYOUT)
-        } else if self.has_second_mask() {
+        } else if self.has_second_mask() || self.has_odd_half() {
             entry.checked_add(90_000).ok_or(LAYOUT)
         } else {
             Ok(entry)
         }
+    }
+
+    const fn has_odd_half(self) -> bool {
+        matches!(self, Self::SecondOddHalf)
     }
 
     const fn has_second_mask(self) -> bool {
@@ -234,7 +264,10 @@ impl IterationMode {
     const fn has_second_parity(self) -> bool {
         matches!(
             self,
-            Self::SecondParityAdd | Self::SecondEvenMask | Self::SecondEvenRead
+            Self::SecondParityAdd
+                | Self::SecondEvenMask
+                | Self::SecondEvenRead
+                | Self::SecondOddHalf
         )
     }
 
@@ -249,6 +282,15 @@ impl IterationMode {
             Self::SecondParityAdd => SECOND_PARITY_HEADER_EOF_ENTRY,
             Self::SecondEvenMask => SECOND_MASK_HEADER_EOF_ENTRY,
             Self::SecondEvenRead => 4_150_000,
+            Self::SecondOddHalf => 2_150_000,
+        }
+    }
+
+    fn second_even_entry(self) -> Result<usize, BuildError> {
+        if self.has_odd_half() {
+            Ok(2_100_000)
+        } else {
+            self.first_entry(SECOND_PARITY_EVEN_ENTRY)
         }
     }
 
@@ -479,6 +521,40 @@ struct ThirdSites {
     transfers: [u32; 2],
 }
 
+/// Odd-second path: one genuine binary decomposition step on both bytes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSecondOddHalfSource {
+    /// Actual parity branch selecting the odd computation.
+    pub branch_code_address: u32,
+    /// First-iteration image, including earlier EOF and even bypass.
+    pub iteration: RelocatedFirstIterationSource,
+    /// Low binary XOR bit of the committed checksum and current byte.
+    pub low_xor_address: u32,
+    /// Physical halt after the odd computation.
+    pub odd_halt_code_address: u32,
+    /// Both quotients (checksum, current) after division by two.
+    pub quotient_addresses: [u32; 2],
+    /// Both canonical remainders (checksum, current).
+    pub remainder_addresses: [u32; 2],
+    /// Final copy stores: checksum quotient/remainder, byte
+    /// quotient/remainder, XOR bit.
+    pub result_store_code_addresses: [u32; 5],
+    /// All reused scratch words and ordered reset effects.
+    pub scratch_resets: Vec<ScratchResetSite>,
+}
+
+type HalfMasks = ([u32; 4], [u32; 4]);
+type ResultCopy = (u32, u32);
+type HalfCopies = [ResultCopy; 2];
+
+struct OddHalfSites {
+    low_xor: u32,
+    quotients: [u32; 2],
+    remainders: [u32; 2],
+    resets: Vec<ScratchResetSite>,
+    result_stores: [u32; 5],
+}
+
 struct SecondMaskSites {
     branches: [u32; 2],
     copies: [DirtyPhiCopySites; 2],
@@ -488,6 +564,7 @@ struct SecondMaskSites {
 
 struct SecondParitySites {
     branch: u32,
+    half: Option<OddHalfSites>,
     lookup: u32,
     odd_halt: u32,
     parity_store: u32,
@@ -558,6 +635,9 @@ impl MaskTapes {
         }
         if mode.has_third_read() {
             constants.extend(Self::third_constants()?);
+        }
+        if mode.has_odd_half() {
+            constants.extend(Self::half_constants());
         }
         let mut mask_tapes = Vec::new();
         for (value, address, baseline_ones) in constants {
@@ -670,6 +750,27 @@ impl MaskTapes {
         ])
     }
 
+    fn half_constants() -> Vec<ConstantSpec> {
+        let mut constants = Vec::new();
+        for (low, bit) in HALF_LOW_MASKS.into_iter().zip(HALF_BIT_MASKS) {
+            constants.extend(
+                [364, 14_348_542, 14_348_542, 364]
+                    .into_iter()
+                    .zip(low)
+                    .zip([true, false, false, true])
+                    .map(|((value, address), ones)| (value, address, ones)),
+            );
+            constants.extend(
+                [1, 14_348_905, 14_348_905, 1]
+                    .into_iter()
+                    .zip(bit)
+                    .zip([true, false, false, true])
+                    .map(|((value, address), ones)| (value, address, ones)),
+            );
+        }
+        constants
+    }
+
     pub(super) fn prepare(
         emitter: &mut Emitter<'_>,
         mode: IterationMode,
@@ -684,6 +785,12 @@ impl MaskTapes {
         }
         if mode.has_third_read() {
             Self::extend_third_addresses(&mut addresses);
+        }
+        if mode.has_odd_half() {
+            for (low, bit) in HALF_LOW_MASKS.into_iter().zip(HALF_BIT_MASKS) {
+                addresses.extend(low);
+                addresses.extend(bit);
+            }
         }
         emitter.prepare_odd_pairs(&addresses)
     }
@@ -742,11 +849,7 @@ impl MaskTapes {
             (SECOND_PARITY_MASK, SECOND_PARITY_POINTER, false),
             (14_348_905, SECOND_PARITY_NORMALIZER, false),
             (1, SECOND_PARITY_FLAG, true),
-            (
-                before(mode.first_entry(SECOND_PARITY_EVEN_ENTRY)?)?,
-                SECOND_PARITY_EVEN,
-                true,
-            ),
+            (before(mode.second_even_entry()?)?, SECOND_PARITY_EVEN, true),
             (
                 before(mode.first_entry(SECOND_PARITY_ODD_ENTRY)?)?,
                 SECOND_PARITY_ODD,
@@ -866,6 +969,19 @@ impl IterationEmitter<'_, '_, '_> {
         self.copy_to([temp, dest])
     }
 
+    fn copy_result(&mut self) -> Result<ResultCopy, BuildError> {
+        let address = self.adder.copy()?;
+        let position = self
+            .adder
+            .emitter
+            .source
+            .len()
+            .checked_sub(1)
+            .ok_or(LAYOUT)?;
+        let site = u32::try_from(position).map_err(|_error| LAYOUT)?;
+        Ok((address, site))
+    }
+
     fn copy_to(&mut self, cells: [u32; 2]) -> Result<u32, BuildError> {
         self.adder.go(cells[0])?;
         let _: u32 = self.adder.emitter.linear(CrazyData)?;
@@ -918,6 +1034,31 @@ impl IterationEmitter<'_, '_, '_> {
             let _: u32 = self.adder.emitter.linear(CrazyData)?;
         }
         Ok(())
+    }
+
+    fn halve(
+        &mut self,
+        value: u32,
+        masks: HalfMasks,
+    ) -> Result<HalfCopies, BuildError> {
+        let (low_masks, bit_masks) = masks;
+        // Boolean trits for exactly the odd ternary digits.
+        self.adder.evaluate(b"0sxsypp", RESET_ONES, value)?;
+        let mut prefix = self.adder.copy()?;
+        for shift in [1u32, 2, 4] {
+            let aligned = self.rotated_copy(prefix, shift)?;
+            self.adder.evaluate(BOOL_XOR, prefix, aligned)?;
+            prefix = self.adder.copy()?;
+        }
+        // Exclusive high-prefix parity is the incoming long-division bit.
+        let carry = self.rotated_copy(prefix, 1)?;
+        self.adder.evaluate(HALF_QUOTIENT, value, carry)?;
+        self.fold(&low_masks)?;
+        let quotient = self.copy_result()?;
+        self.adder.load(prefix)?;
+        self.fold(&bit_masks)?;
+        let remainder = self.copy_result()?;
+        Ok([quotient, remainder])
     }
 
     fn header(&mut self) -> Result<HeaderSites, BuildError> {
@@ -993,6 +1134,41 @@ impl IterationEmitter<'_, '_, '_> {
         value: u32,
     ) -> Result<(), BuildError> {
         self.selected_arm((entry, pointer), value, (SELECTED, MASK_JOIN))
+    }
+
+    fn odd_half(&mut self) -> Result<OddHalfSites, BuildError> {
+        let mut adder = Adder {
+            count: HALF_COUNT,
+            cursor: 0,
+            emitter: self.adder.emitter,
+            scratch: self.adder.scratch,
+        };
+        let mut half = IterationEmitter { adder: &mut adder };
+        let resets = half.reset_scratch(HALF_COUNT)?;
+        let [left_low, right_low] = HALF_LOW_MASKS;
+        let [left_bit, right_bit] = HALF_BIT_MASKS;
+        let [
+            (left_q, checksum_quotient_site),
+            (left_r, checksum_bit_site),
+        ] = half.halve(PHI_DEST[2], (left_low, left_bit))?;
+        let [(right_q, byte_quotient_site), (right_r, byte_bit_site)] =
+            half.halve(PHI_DEST[0], (right_low, right_bit))?;
+        half.adder.evaluate(BOOL_XOR, left_r, right_r)?;
+        let (low_xor, xor_store) = half.copy_result()?;
+        adder.finish()?;
+        Ok(OddHalfSites {
+            low_xor,
+            quotients: [left_q, right_q],
+            remainders: [left_r, right_r],
+            resets,
+            result_stores: [
+                checksum_quotient_site,
+                checksum_bit_site,
+                byte_quotient_site,
+                byte_bit_site,
+                xor_store,
+            ],
+        })
     }
 
     fn once_wrapped(
@@ -1086,12 +1262,28 @@ impl IterationEmitter<'_, '_, '_> {
         Ok(resets)
     }
 
+    fn rotated_copy(
+        &mut self,
+        source: u32,
+        shifts: u32,
+    ) -> Result<u32, BuildError> {
+        self.adder.load(source)?;
+        let aligned = self.adder.copy()?;
+        for _ in 0..shifts {
+            self.adder.go(aligned)?;
+            let _: u32 = self.adder.emitter.linear(RotateData)?;
+        }
+        Ok(aligned)
+    }
+
     fn second_add(
         &mut self,
         mode: IterationMode,
     ) -> Result<SecondAddSites, BuildError> {
         let count = match mode {
-            IterationMode::First => return Err(LAYOUT),
+            IterationMode::First | IterationMode::SecondOddHalf => {
+                return Err(LAYOUT);
+            },
             IterationMode::SecondAdd => SECOND_ADD_COUNT,
             IterationMode::SecondParityAdd
             | IterationMode::SecondEvenMask
@@ -1124,7 +1316,7 @@ impl IterationEmitter<'_, '_, '_> {
         mode: IterationMode,
     ) -> Result<SecondArithmeticSites, BuildError> {
         let addition = match mode {
-            IterationMode::First => None,
+            IterationMode::First | IterationMode::SecondOddHalf => None,
             IterationMode::SecondAdd
             | IterationMode::SecondParityAdd
             | IterationMode::SecondEvenMask
@@ -1245,13 +1437,19 @@ impl IterationEmitter<'_, '_, '_> {
             mode.first_entry(SECOND_PARITY_ODD_ENTRY)?,
             SECOND_PARITY_ODD.checked_add(1).ok_or(LAYOUT)?,
         )?;
+        let half = if mode.has_odd_half() {
+            Some(self.odd_half()?)
+        } else {
+            None
+        };
         let odd_halt = self.adder.emitter.append(Halt)?;
         self.adder.emitter.pad_to_entry(
-            mode.first_entry(SECOND_PARITY_EVEN_ENTRY)?,
+            mode.second_even_entry()?,
             SECOND_PARITY_EVEN.checked_add(1).ok_or(LAYOUT)?,
         )?;
         Ok(SecondParitySites {
             branch,
+            half,
             lookup,
             odd_halt,
             parity_store,
@@ -1724,6 +1922,33 @@ pub fn build_relocated_second_even_read_source(
         third_phi_commits: third.header.commits,
         third_phi_snapshots: third.header.snapshots,
         third_phi_transfers: third.transfers,
+    })
+}
+
+/// Execute one physical binary decomposition step on the odd second path.
+///
+/// Both committed byte operands are divided by two; their remainders
+/// produce the lowest XOR bit. This is not a complete XOR or second update.
+///
+/// # Errors
+/// Refuses unsupported profiles and exhausted physical layouts.
+pub fn build_relocated_second_odd_half_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSecondOddHalfSource, BuildError> {
+    let (addition, candidate) =
+        build(profile, WITH_ODD_HALF, Some(IterationMode::SecondOddHalf))?;
+    let mut sites = candidate.ok_or(LAYOUT)?;
+    let mut parity = sites.second.parity.take().ok_or(LAYOUT)?;
+    let half = parity.half.take().ok_or(LAYOUT)?;
+    Ok(RelocatedSecondOddHalfSource {
+        branch_code_address: parity.branch,
+        iteration: iteration_from_sites(addition, &sites),
+        low_xor_address: half.low_xor,
+        odd_halt_code_address: parity.odd_halt,
+        quotient_addresses: half.quotients,
+        remainder_addresses: half.remainders,
+        result_store_code_addresses: half.result_stores,
+        scratch_resets: half.resets,
     })
 }
 

@@ -13492,3 +13492,30 @@ This is an executable two-update witness for an even second byte,
 not a whole-C linked artifact. The second odd XOR arm, subsequent
 arithmetic, reusable code cells and full independent source-frame
 admission remain open.
+
+
+### First physical binary XOR decomposition step
+
+The separate 2,240,082-cell second-odd candidate branches from the
+actual second-byte parity and divides both committed byte operands
+by two. Each ternary digit is first mapped to its Boolean oddness;
+three circular rotations by one, two and four trits and a five-gate
+crazy XOR compute inclusive high-prefix parity. The exclusive prefix
+supplies the incoming long-division bit. A three-gate crazy circuit
+and four masks recover the low six quotient trits; four further
+masks isolate the low binary remainder. A final five-gate XOR
+combines the two remainders. All 132 scratch words are reused after
+396 ordered physical resets. Both quotients, both remainders, and
+the lowest XOR bit are authenticated by their actual copy stores.
+
+Seven traced odd-input boundary vectors preserve the original
+committed header, consume exactly two bytes and halt without output;
+five earlier EOF/even bypass vectors and an omitted-result-store
+control pass. Independent host algebra checks division for all 256
+byte values and reconstructs XOR for all 65,536 byte pairs by eight
+decomposition steps and host-side weighted accumulation. This last
+test is an algebraic oracle, not a guest execution of full XOR.
+
+The other seven decomposition steps, weighted reconstruction,
+increment/mask, convergence with the even arm, subsequent input
+and reusable code remain open for the odd path.
