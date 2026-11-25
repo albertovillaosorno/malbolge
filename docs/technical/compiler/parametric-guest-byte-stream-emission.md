@@ -14755,3 +14755,16 @@ frozen-vector test passed. Its 168-step gain (about 0.014 percent) did
 not justify a second scheduling heuristic. The experiment was discarded;
 the maintained first-input count remains 1,163,613, with the same
 physical and publication ceilings.
+
+An independent instruction census of the maintained physical guest,
+using actual VM step traces before the first input, measured 1,017,336
+no-operations, 79,020 data relocations, 42,582 crazy operations, 24,673
+rotations and two code relocations, totaling 1,163,613 steps. Of the
+no-operations, 398,446 occurred with D in 7,174,400..7,174,499, which
+contains the frame and near seed/target roots. Even excluding every
+no-operation, this particular trace contains 146,277 other instructions.
+Eliminating address walks alone while retaining all remaining operations
+would therefore still miss the 100,000-step publication ceiling. This
+is a measured constraint on the present strategy, not a lower bound
+on alternative layouts. Investigate fewer materialization and reload
+effects alongside compact addressing before further schedule tuning.
