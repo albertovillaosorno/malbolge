@@ -957,7 +957,7 @@ and the reserved branch/phi/loop sites are still unimplemented. It permits
 future actual code to replace the presently inert reserved cells only after
 independent VM and original-C23 source verification.
 
-### Original C23 first-byte physical pair in the 120-cell reservation (2026-11-24)
+### C23 first-byte pair in 120-cell source (2026-11-24)
 
 `build_adjacent_c32_zero_c37_byte_pair_source` now starts from the same
 120-cell graphical zero/input prefix and **executes both** of the proposed
