@@ -994,6 +994,19 @@ also exercised while developing this prefix. Evidence:
 remains `tests/test_eof_checksum_pipeline.py`, which must still refuse
 without a guest artifact until EOF normalization and the full CFG exist.
 
+A second, independently checked physical continuation,
+`build_adjacent_c32_zero_c37_eof_pointer_source`, keeps the same C50/C51
+actual stores but replaces the C52 halt with a bounded return to the
+external encoded input scratch. C64 executes a real `j` on that word:
+true N15 EOF encodes to 14,348,906 and wraps D to **zero**, while all
+256 successful bytes encode to smaller words and select nonzero D.
+C65 then halts. A 257-class scalar oracle and seven full 66-step guest
+traces prove this disjoint pointer selection; removing C64 `j` is a
+negative physical control. **No `i` code-pointer transfer, signed C23
+normalization, EOF arm, or checksum loop follows.** This is an input-driven
+*data-pointer discriminator* that a future linker may use, not a guest
+implementation of the original C `if` or release parity.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend

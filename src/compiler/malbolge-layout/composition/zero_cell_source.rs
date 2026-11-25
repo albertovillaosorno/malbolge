@@ -156,6 +156,21 @@ pub struct AdjacentC32ZeroC37BytePairSource {
     pub zero_pair: AdjacentC32ZeroSource,
 }
 
+/// A physical first-input byte pair followed by an EOF-selected data pointer.
+///
+/// C64 `j` reads the input-derived external scratch word. True N15 EOF
+/// selects D0; each successful byte selects a nonzero D address. This is
+/// data-pointer selection, **not** a guest code branch or signed C23 EOF.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37EofPointerSource {
+    /// The physically written successful-byte pair and shared source.
+    pub byte_pair: AdjacentC32ZeroC37BytePairSource,
+    /// Reached C65 `v` without executing a source-C EOF arm.
+    pub halt_code_address: u32,
+    /// C64 `j` reading encoded scratch after both result-word operations.
+    pub pointer_code_address: u32,
+}
+
 /// A genuine read-derived low-cell fold after two adjacent zero writes.
 ///
 /// The first input is raw N15: the low result has only 40 distinct images
@@ -939,6 +954,48 @@ pub fn build_adjacent_c32_zero_c37_byte_pair_source(
         scratch_encode_code_address: 45,
         scratch_prime_code_address: 33,
         zero_pair,
+    })
+}
+
+/// Select a real guest data address from the first input's encoded scratch.
+///
+/// C52..C57 and six `o` steps return to the external encoded M7,174,460
+/// without changing either actual C32 word written at C50/C51. C64 `j`
+/// selects D0 on true EOF (the maximum N15 word wraps) and selects a
+/// disjoint, nonzero address for every successful byte. C65 halts. This
+/// is a physical EOF-dependent pointer witness, not C23 signed conversion,
+/// executable source `if`, phi linkage, or an executable checksum loop.
+///
+/// # Errors
+///
+/// Refuses any unrepresentable graphical instruction or unsupported source.
+pub fn build_adjacent_c32_zero_c37_eof_pointer_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37EofPointerSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut byte_pair = build_adjacent_c32_zero_c37_byte_pair_source(profile)?;
+    for (site, operation) in [
+        (52usize, LinearOpcode::NoOperation),
+        (53, LinearOpcode::RelocateDataPointer),
+        (54, LinearOpcode::RelocateDataPointer),
+        (55, LinearOpcode::RelocateDataPointer),
+        (56, LinearOpcode::RelocateDataPointer),
+        (57, LinearOpcode::RelocateDataPointer),
+        (64, LinearOpcode::RelocateDataPointer),
+        (65, LinearOpcode::Halt),
+    ] {
+        *byte_pair
+            .zero_pair
+            .source
+            .get_mut(site)
+            .ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, operation, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    Ok(AdjacentC32ZeroC37EofPointerSource {
+        byte_pair,
+        halt_code_address: 65,
+        pointer_code_address: 64,
     })
 }
 

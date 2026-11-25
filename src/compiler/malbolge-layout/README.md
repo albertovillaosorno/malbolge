@@ -32,6 +32,15 @@ journal; and all following source arithmetic/branches/phi edges are
 unlinked. The original complete mutable EOF checksum still fails closed
 without a published target. See `tests/compiler_adjacent_zero_source.rs`.
 
+`build_adjacent_c32_zero_c37_eof_pointer_source` extends that same
+source through C64 `j`, physically dereferencing the input-encoded
+M7,174,460 after the two result stores. The all-two-trit EOF word wraps
+D to zero; every successful byte selects a nonzero data pointer.
+Seven normative 66-step VM traces, 257 independent scalar input
+classes, and a no-jump mutation witness this exact separation. C65
+halts: no guest code branch, signed EOF result, source-C conditional,
+or checksum iteration is claimed.
+
 ### Physical code-cell reuse contract (2026-11-21)
 
 `encode_code_visits` selects a graphical source byte for an exact bounded

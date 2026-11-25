@@ -2054,6 +2054,124 @@ fn original_c23_first_byte_pair_is_written_by_the_120_cell_guest()
     Ok(())
 }
 
+// The same first input supplies an EOF-discriminating *guest data pointer*
+// after both physically written result words. No target source-C `if` is
+// executed by this finite prefix.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "257-class pointer oracle and actual 66-step EOF/byte VM controls"
+)]
+fn original_checksum_first_byte_pair_selects_eof_data_pointer()
+-> Result<(), String> {
+    let profile = current_profile();
+    let proposal =
+        layout::build_adjacent_c32_zero_c37_eof_pointer_source(profile)
+            .map_err(|error| format!("guest EOF pointer route: {error:?}"))?;
+    let source = &proposal.byte_pair.zero_pair.source;
+    assert_eq!(source.len(), 120);
+    assert_eq!(proposal.pointer_code_address, 64);
+    assert_eq!(proposal.halt_code_address, 65);
+    assert_eq!(proposal.byte_pair.low_store_code_address, 50);
+    assert_eq!(proposal.byte_pair.high_store_code_address, 51);
+    assert!(
+        source
+            .iter()
+            .enumerate()
+            .all(|(at, &glyph)| graphical_tail(glyph, at))
+    );
+    let ones = crazy(7_174_416, 0);
+    let max_word = profile.eof_word();
+    assert_eq!(max_word, 14_348_906);
+    // The encoded input word is injective, and exactly true EOF can select
+    // the wrapped zero address. This covers all N15 input classes.
+    for class in 0..=256u16 {
+        let raw = u8::try_from(class).map_or(max_word, u32::from);
+        let encoded = crazy(ones, raw);
+        let pointer = if encoded == max_word {
+            0
+        } else {
+            encoded.saturating_add(1)
+        };
+        assert_eq!(pointer == 0, class == 256, "class {class}");
+    }
+    let loaded = ProfileMachine::from_source(profile, source, Vec::new())
+        .map_err(|error| format!("input pointer source load: {error:?}"))?;
+    for class in [0u16, 1, 2, 127, 128, 255, 256] {
+        let byte = u8::try_from(class).ok();
+        let stream = byte.into_iter().collect::<Vec<_>>();
+        let raw = byte.map_or(max_word, u32::from);
+        let encoded = crazy(ones, raw);
+        let pointer = if encoded == max_word {
+            0
+        } else {
+            encoded.saturating_add(1)
+        };
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            loaded.memory().to_vec(),
+            stream,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("byte-pointer state: {error:?}"))?;
+        let mut steps = Vec::new();
+        assert_eq!(
+            vm.run_traced(66, &mut |step| steps.push(*step)).map_err(
+                |error| format!("byte-pointer execution: {error:?}")
+            )?,
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 66,
+            },
+            "class {class}",
+        );
+        assert_eq!(steps[37].decoded, Some(b'/'));
+        assert_eq!(steps[50].decoded, Some(b'p'));
+        assert_eq!(steps[51].decoded, Some(b'*'));
+        assert_eq!(steps[64].decoded, Some(b'j'));
+        assert_eq!(steps[64].before.registers.data_pointer, 7_174_460);
+        assert_eq!(
+            steps[64].memory_reads.data.map(|read| read.value),
+            Some(encoded),
+        );
+        assert_eq!(steps[64].after.registers.data_pointer, pointer);
+        assert_eq!(steps[65].decoded, Some(b'v'));
+        assert_eq!(vm.memory_word(7_174_419), Ok(raw));
+        assert_eq!(vm.memory_word(7_174_420), Ok(0));
+        assert_eq!(vm.memory_word(7_174_460), Ok(encoded));
+        assert!(vm.output().is_empty());
+    }
+    // Identical frame results without the final jump do not classify EOF.
+    let mut no_pointer = source.clone();
+    no_pointer[64] = encode(b'o', 64)?;
+    let mut missing =
+        ProfileMachine::from_source(profile, &no_pointer, Vec::new())
+            .map_err(|error| format!("missing-pointer source: {error:?}"))?;
+    let mut trace = Vec::new();
+    assert_eq!(
+        missing
+            .run_traced(66, &mut |step| trace.push(*step))
+            .map_err(|error| format!("missing-pointer replay: {error:?}"))?,
+        RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 66,
+        },
+    );
+    assert_eq!(trace[64].decoded, Some(b'o'));
+    assert_ne!(trace[64].after.registers.data_pointer, 0);
+    assert_eq!(missing.memory_word(7_174_419), Ok(max_word));
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_eof_pointer_source(
+            historical_profile()
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile),
+    );
+    Ok(())
+}
+
 // These are source-authenticated *placement reservations*, not target CFG
 // execution. The genuine guest proves C50/C51 stores on successful bytes,
 // while EOF and unvisited blocks still prevent source-C publication.
