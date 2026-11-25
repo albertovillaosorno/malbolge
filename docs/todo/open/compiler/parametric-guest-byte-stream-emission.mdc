@@ -168,6 +168,9 @@ route partitions near the frame, and shrinking the source extent cut
 measured bootstrap steps from 6,347,795 to 5,973,677.
 Independent VM replay covers all 256 low and 1,280 reachable high
 factored edges, all 512 state/EOF combinations, and empty input.
+The exact byte arithmetic visit journal and all 65,536 combinations
+of materialized transition pointers and result masks are checked;
+a physically omitted high-table pointer store refuses after boot.
 The five frozen C23 vectors halt in the physical guest, but a fresh
 VM exhausts the 100,000-step budget before I/O.
 Compact execution and complete source-frame routing remain open;

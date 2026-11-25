@@ -14037,7 +14037,14 @@ single recurrent stream. Short streams cover all 512 state/EOF
 combinations and the empty input. The replay checks each selected
 immutable record, both physical commits, both scratch rotations,
 per-step arithmetic and routing, restored persistent state and
-the actual terminal output. The 256 unreachable odd-byte carry-two
+the actual terminal output. It also requires the exact ordered code/data
+address pair of every byte-path arithmetic visit. An independent audit
+of booted guest memory checks all 65,536 full-state/raw-byte combinations,
+including both raw tables, each selected carry and immutable state pair,
+and both resulting masks. All 256 impossible high-table slots retain
+virgin loader words. A mutation found by replay omits the actual high-table
+pointer store; the guest still boots, but both the table audit and affected
+byte execution refuse. The 256 unreachable odd-byte carry-two
 combinations are not materialized: XOR of two nibbles is at most 15,
 so adding three cannot carry twice. Densely used route partitions
 receive the closest near-frame anchors; their lookup stays sorted by

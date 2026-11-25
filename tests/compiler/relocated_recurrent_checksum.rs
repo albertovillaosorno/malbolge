@@ -47,8 +47,10 @@ const RAW_SEEDS: [u32; 2] = [7_211_000, 7_211_200];
 const LOW_TABLE: u32 = 7_242_615;
 const LOW_SEEDS: u32 = 7_243_100;
 const HIGH_SEEDS: u32 = 7_243_400;
+const HIGH_TABLE: u32 = 7_223_661;
 const EOF_SCRATCH: u32 = 7_180_900;
 
+type ArithmeticVisit = (u32, u32);
 type BootReplay = (ProfileMachine, usize);
 type HighEdge = (u8, u8, u8, u32);
 type LowEdge = (u8, u8);
@@ -58,7 +60,9 @@ type FrozenVectors = [(&'static [u8], usize); 5];
 struct ByteAudit {
     addresses: [u32; 5],
     commits: Vec<u32>,
+    effects: Vec<ArithmeticVisit>,
     next: u8,
+    observed: usize,
     reads: usize,
     rotations: Vec<u32>,
     sites: Vec<u32>,
@@ -70,7 +74,8 @@ impl ByteAudit {
         vm: &ProfileMachine,
         guest: &RelocatedRecurrentChecksumSource,
     ) -> Result<(), String> {
-        if self.reads != self.sites.len()
+        if self.observed != self.effects.len()
+            || self.reads != self.sites.len()
             || self.commits != [guest.state[1], guest.state[0]]
             || self.rotations != [guest.scratch[1], guest.scratch[0]]
         {
@@ -102,7 +107,9 @@ impl ByteAudit {
         Ok(Self {
             addresses,
             commits: Vec::new(),
+            effects: expected_arithmetic(guest, addresses)?,
             next,
+            observed: 0,
             reads: 0,
             rotations: Vec::new(),
             sites,
@@ -116,6 +123,14 @@ impl ByteAudit {
     ) -> Result<(), String> {
         let before = trace.before.registers;
         let site = before.code_pointer;
+        let visit = (site, before.data_pointer);
+        if self.effects.get(self.observed) != Some(&visit) {
+            return Err(format!(
+                "unexpected arithmetic visit C{} M{}",
+                visit.0, visit.1
+            ));
+        }
+        self.observed = self.observed.checked_add(1).ok_or("effect count")?;
         let old = trace
             .memory_reads
             .data
@@ -199,6 +214,96 @@ impl ByteAudit {
         self.reads = self.reads.checked_add(1).ok_or("read count")?;
         Ok(())
     }
+}
+
+// Enumerate exact arithmetic visits independently of the route builder.
+// Any extra write, even through a legitimate reusable instruction, refuses.
+fn expected_arithmetic(
+    guest: &RelocatedRecurrentChecksumSource,
+    addresses: [u32; 5],
+) -> Result<Vec<ArithmeticVisit>, String> {
+    let capture = &guest.capture;
+    let [low, high] = guest.state;
+    let [pl, ph] = guest.pointers;
+    let [first, second] = guest.load;
+    let mut visits = vec![
+        (capture.rotate, 7_180_800),
+        (first, capture.capture),
+        (first, pl),
+        (capture.rotate, 7_180_812),
+    ];
+    lookup_visits(&mut visits, guest.lookup[0], addresses[0])?;
+    visits.extend([(first, low), (capture.rotate, 7_180_816)]);
+    lookup_visits(&mut visits, guest.lookup[1], addresses[1])?;
+    visits.extend([
+        (first, high),
+        (capture.rotate, 7_180_804),
+        (capture.reset[2], capture.capture),
+        (capture.rotate, 7_180_808),
+        (second, capture.capture),
+        (first, ph),
+        (capture.rotate, 7_180_820),
+    ]);
+    lookup_visits(&mut visits, guest.lookup[2], addresses[2])?;
+    visits.extend([(second, high), (capture.rotate, 7_180_824)]);
+    lookup_visits(&mut visits, guest.lookup[3], addresses[3])?;
+    commit_visits(&mut visits, guest, (high, guest.scratch[1]), [
+        7_180_836, 7_180_844,
+    ]);
+    visits.push((capture.rotate, 7_180_828));
+    lookup_visits(&mut visits, guest.lookup[4], addresses[4])?;
+    commit_visits(&mut visits, guest, (low, guest.scratch[0]), [
+        7_180_832, 7_180_840,
+    ]);
+    reset_visits(&mut visits, guest, capture.capture, 7_175_040);
+    for (pointer, constant, prefix, seed) in [
+        (pl, 7_180_848, 7_180_872, 7_180_876),
+        (ph, 7_180_852, 7_180_880, 7_180_884),
+    ] {
+        reset_visits(&mut visits, guest, pointer, constant);
+        visits.extend([
+            (capture.crazy, prefix),
+            (capture.crazy, seed),
+            (capture.crazy, pointer),
+        ]);
+    }
+    Ok(visits)
+}
+
+fn lookup_visits(
+    visits: &mut Vec<ArithmeticVisit>,
+    sites: [u32; 2],
+    address: u32,
+) -> Result<(), String> {
+    visits.extend([(sites[0], address), (sites[1], plus(address, 1)?)]);
+    Ok(())
+}
+
+fn reset_visits(
+    visits: &mut Vec<ArithmeticVisit>,
+    guest: &RelocatedRecurrentChecksumSource,
+    address: u32,
+    constant: u32,
+) {
+    let capture = &guest.capture;
+    visits.extend([
+        (capture.rotate, constant),
+        (capture.reset[0], address),
+        (capture.reset[1], address),
+    ]);
+}
+
+fn commit_visits(
+    visits: &mut Vec<ArithmeticVisit>,
+    guest: &RelocatedRecurrentChecksumSource,
+    (state, scratch): (u32, u32),
+    [state_constant, scratch_constant]: [u32; 2],
+) {
+    let capture = &guest.capture;
+    visits.push((capture.crazy, scratch));
+    reset_visits(visits, guest, state, state_constant);
+    visits.extend([(guest.scratch_rotate, scratch), (capture.reset[2], state)]);
+    reset_visits(visits, guest, scratch, scratch_constant);
 }
 
 fn source() -> Result<RelocatedRecurrentChecksumSource, String> {
@@ -463,6 +568,115 @@ fn edges(state: u8, byte: u8) -> Result<FactoredEdges, String> {
     ))
 }
 
+fn check_pointer(
+    vm: &ProfileMachine,
+    address: u32,
+    landing: u32,
+) -> Result<(), String> {
+    if plus(word(vm, address)?, 1)? != landing {
+        return Err(format!("wrong materialized table pointer M{address}"));
+    }
+    Ok(())
+}
+
+fn immutable_value(vm: &ProfileMachine, address: u32) -> Result<u32, String> {
+    let prefix = word(vm, address)?;
+    let value = word(vm, plus(address, 1)?)?;
+    if independent_crazy(prefix, ONES) != prefix
+        || independent_crazy(value, prefix) != value
+    {
+        return Err(format!("unstable materialized pair M{address}"));
+    }
+    Ok(value)
+}
+
+fn high_table_address(
+    (state, raw, parity, carry): HighEdge,
+) -> Result<u32, String> {
+    let row = mul(u32::from(state), 729)?;
+    let column = plus(
+        mul(carry, 81)?,
+        plus(mul(u32::from(parity), 27)?, u32::from(raw))?,
+    )?;
+    plus(plus(HIGH_TABLE, 487)?, plus(row, column)?)
+}
+
+fn check_materialized_transition(
+    vm: &ProfileMachine,
+    (prior, raw): (u8, u8),
+) -> Result<(), String> {
+    let update = checksum(prior, raw);
+    let intermediate = low_intermediate(prior, raw)?;
+    let low = plus(LOW_TABLE, mul(plus(u32::from(prior & 15), 1)?, 27)?)?
+        .checked_sub(u32::from(raw & 15))
+        .ok_or("low table address")?;
+    let low_record = record(LOW_SEEDS, intermediate, 0)?;
+    check_pointer(vm, low, low_record)?;
+    check_pointer(vm, low_record, plus(low_record, 4)?)?;
+    let high = high_table_address(edges(prior, raw)?.1)?;
+    let high_record = record(HIGH_SEEDS, u32::from(update >> 4u32), 0)?;
+    check_pointer(vm, high, high_record)?;
+    let low_result = rotate_right(immutable_value(vm, plus(low_record, 4)?)?)?;
+    let high_result = rotate_right(immutable_value(vm, high_record)?)?;
+    if low_result != low_mask(update)? || high_result != high_mask(update)? {
+        return Err(
+            "materialized transition does not commit the full checksum"
+                .to_owned(),
+        );
+    }
+    let carry = intermediate.div_euclid(16);
+    let expected_carry = match carry {
+        0 => EOF.checked_sub(81).ok_or("carry zero")?,
+        1 => EOF,
+        2 => EOF.checked_sub(162).ok_or("carry two")?,
+        _ => return Err("impossible carry".to_owned()),
+    };
+    if immutable_value(vm, plus(low_record, 1)?)? != expected_carry {
+        return Err("materialized carry differs from full checksum".to_owned());
+    }
+    Ok(())
+}
+
+fn check_materialized_tables(vm: &ProfileMachine) -> Result<(), String> {
+    // Every raw selector and every full-state/raw-byte combination is
+    // checked against actual guest memory, not a copy of the host plan.
+    for raw in 0..=255u8 {
+        for (table, seeds, index) in [
+            (RAW_TABLES[0], RAW_SEEDS[0], u32::from(raw & 15)),
+            (
+                RAW_TABLES[1],
+                RAW_SEEDS[1],
+                plus(mul(u32::from(raw >> 4u32), 2)?, u32::from(raw & 1))?,
+            ),
+        ] {
+            let address = plus(table, 729)?
+                .checked_sub(u32::from(raw))
+                .ok_or("raw table address")?;
+            check_pointer(vm, address, record(seeds, index, 0)?)?;
+        }
+        for state in 0..=255u8 {
+            check_materialized_transition(vm, (state, raw))?;
+        }
+    }
+    // The 256 impossible odd-byte carry-two slots remain loader words.
+    for state in 0..16u8 {
+        for raw in 0..16u8 {
+            let address = high_table_address((state, raw, 1, 2))?;
+            let virgin = if address.is_multiple_of(2) {
+                7_174_416
+            } else {
+                37
+            };
+            if word(vm, address)? != virgin {
+                return Err(format!(
+                    "impossible carry slot materialized M{address}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn census() -> Result<Vec<u8>, String> {
     let mut low = BTreeSet::new();
     let mut high = BTreeSet::new();
@@ -504,6 +718,7 @@ fn relocated_recurrent_checksum_all_factored_edges_and_eof()
 -> Result<(), String> {
     let guest = source()?;
     let initial = boot(&guest)?;
+    check_materialized_tables(&initial)?;
     let stream = census()?;
     run(&initial, &guest, &stream)?;
     run(&initial, &guest, &[])?;
@@ -572,6 +787,77 @@ fn relocated_recurrent_checksum_frozen_vectors_and_step_budget()
     Ok(())
 }
 
+fn omit_site(
+    guest: &RelocatedRecurrentChecksumSource,
+    site: u32,
+) -> Result<RelocatedRecurrentChecksumSource, String> {
+    let mut modified = guest.clone();
+    let noop = (33..=126u8)
+        .find(|byte| {
+            decode_profile_instruction(u32::from(*byte), site) == Some(b'o')
+        })
+        .ok_or("missing noop")?;
+    *modified
+        .capture
+        .source
+        .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
+        .ok_or("missing mutation site")? = noop;
+    Ok(modified)
+}
+
+fn materialization_site(
+    guest: &RelocatedRecurrentChecksumSource,
+    (address, value): (u32, u32),
+) -> Result<u32, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    for _ in 0..BOOT_BUDGET {
+        let registers = vm.registers();
+        let candidate = registers.data_pointer == address
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'p')
+            && word(&vm, address)? != value;
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature bootstrap termination".to_owned());
+        }
+        if candidate && word(&vm, address)? == value {
+            return Ok(registers.code_pointer);
+        }
+    }
+    Err("missing materialized table store".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_table_store_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    let target = high_table_address((0, 0, 0, 0))?;
+    let landing = record(HIGH_SEEDS, 0, 0)?;
+    let site = materialization_site(
+        &guest,
+        (target, landing.checked_sub(1).ok_or("table pointer")?),
+    )?;
+    let modified = omit_site(&guest, site)?;
+    let initial = boot(&modified)?;
+    // The mutated guest reaches its normal first input, but the missing
+    // high-table store must invalidate both the table audit and execution.
+    if check_pointer(&initial, target, landing).is_ok()
+        || check_materialized_tables(&initial).is_ok()
+        || run(&initial, &modified, &[0]).is_ok()
+    {
+        return Err("accepted omitted high-table materialization".to_owned());
+    }
+    Ok(())
+}
+
 #[test]
 fn relocated_recurrent_checksum_omitted_effects_refuse() -> Result<(), String> {
     let guest = source()?;
@@ -580,17 +866,7 @@ fn relocated_recurrent_checksum_omitted_effects_refuse() -> Result<(), String> {
         guest.scratch_rotate,
         guest.capture.output,
     ] {
-        let mut modified = guest.clone();
-        let noop = (33..=126u8)
-            .find(|byte| {
-                decode_profile_instruction(u32::from(*byte), site) == Some(b'o')
-            })
-            .ok_or("missing noop")?;
-        *modified
-            .capture
-            .source
-            .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
-            .ok_or("missing mutation site")? = noop;
+        let modified = omit_site(&guest, site)?;
         let initial = boot(&modified)?;
         if run(&initial, &modified, &[15, 14, 255]).is_ok() {
             return Err(format!("accepted omitted full-byte effect C{site}"));
