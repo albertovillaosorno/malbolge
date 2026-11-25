@@ -323,8 +323,11 @@ A static walk of the actual immutable tape validates exact call operands,
 return slots, destinations and inert-suffix encryption restoration. Six
 unused-store omissions preserve empty I/O but refuse the proof. All 32
 source-recurrent, 20 physical checksum and three C23 pipeline tests pass.
-Terminal contribution and other bootstrap storage remain outside this
-receipt.
+All 32 EOF contribution values and their 32 scratch-return links now
+also require actual stores and independent split-field residue checks.
+The table receipt increases to 2,514 words. Three omitted unvisited
+terminal stores refuse; all 33 source-recurrent tests pass. Other
+bootstrap storage remains outside the receipt.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

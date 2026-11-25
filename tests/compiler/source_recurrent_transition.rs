@@ -127,7 +127,7 @@ fn check_control_counts(
     {
         return Err("wrong initial state order".to_owned());
     }
-    if proof.bootstrap_table_words != 2_450
+    if proof.bootstrap_table_words != 2_514
         || proof.bootstrap_route_words != 4_716
         || proof.bootstrap_unreachable_words != 256
         || proof.bootstrap_table_last_store_index >= first_input
@@ -1005,6 +1005,27 @@ fn source_recurrent_transition_rejects_unvisited_table_store()
         (unused_bridge, bridge_target),
     ] {
         omitted_table_store(&guest, &wire, target)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_unvisited_output_contribution()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[], &guest)?;
+    let boot = terminal_boot(&guest)?;
+    let high = probe.tables[3]
+        .saturating_add(504)
+        .saturating_add(10_935u32);
+    let low = probe.tables[1].saturating_add(5).saturating_add(405u32);
+    for address in [high, low, low.saturating_add(1)] {
+        let value = boot
+            .memory_word(address)
+            .map_err(|error| error.to_string())?;
+        omitted_table_store(&guest, &wire, (address, value))?;
     }
     Ok(())
 }

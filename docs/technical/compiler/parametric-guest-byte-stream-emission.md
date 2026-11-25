@@ -14667,6 +14667,18 @@ high selector, a raw seed, a low-record link, a record return pointer,
 and unused main and bridge preparation pointers) preserve empty-input I/O
 but refuse the stronger transition proof. All 32 source-recurrent tests,
 20 physical checksum tests and three C23 pipeline tests pass. This receipt
-still does not attest every terminal contribution, the entire bootstrap,
-or complete source-frame placement. The 100,000-step publication ceiling
+still does not attest the entire bootstrap or complete source-frame
+placement. The 100,000-step publication ceiling
 is unchanged.
+
+The EOF table extension independently validates all 16 high and 16 low
+contributions using the disjoint seven/eight-trit residue requirements
+of the terminal, rather than importing the builder's chosen words.
+All 32 scratch-return links also require real initialization stores.
+The table receipt now covers 2,514 words; exactly two contribution
+words may undergo their terminal crazy read at the authenticated
+physical sites, and the resulting actual VM values must match the
+tracked values. Three omitted high/low contribution and scratch-link
+controls preserve empty-input I/O but refuse the proof. All 33
+source-recurrent tests pass, including the five full frozen guests.
+The 4,716 route words and 256 untouched slots remain required.

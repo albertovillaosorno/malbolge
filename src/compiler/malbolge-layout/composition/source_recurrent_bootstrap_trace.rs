@@ -28,12 +28,19 @@ use malbolge::{
 };
 
 use super::source_recurrent_control_trace::BootstrapRoute;
-use super::{Error, Geometry, high_selector, inverse_rotation, record};
+use super::{
+    Error, Geometry, SourceRecurrentTransitionProbe, high_selector,
+    inverse_rotation, record,
+};
+
+const OUTPUT_SPLIT: u32 = 2_187;
 
 #[derive(Clone, Copy)]
 enum Expected {
     Continuation(usize),
     Exact(u32),
+    OutputHigh { nibble: u32, site: u32 },
+    OutputLow { nibble: u32, site: u32 },
     Prefix(u32),
     RouteCandidate,
     Untouched,
@@ -43,6 +50,8 @@ impl Expected {
     fn matches(self, value: u32) -> bool {
         match self {
             Self::Exact(expected) => value == expected,
+            Self::OutputHigh { nibble, .. } => high_contribution(value, nibble),
+            Self::OutputLow { nibble, .. } => low_contribution(value, nibble),
             Self::Prefix(seed) => {
                 let ones = current_profile().eof_word().div_euclid(2);
                 crazy(value, ones) == value && crazy(seed, value) == seed
@@ -52,16 +61,47 @@ impl Expected {
             },
         }
     }
+
+    const fn output_site(self) -> Option<u32> {
+        match self {
+            Self::OutputHigh { site, .. } | Self::OutputLow { site, .. } => {
+                Some(site)
+            },
+            Self::Continuation(_)
+            | Self::Exact(_)
+            | Self::Prefix(_)
+            | Self::RouteCandidate
+            | Self::Untouched => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
 struct Cell {
     expected: Expected,
     last_store: Option<usize>,
+    output_consumed: bool,
     value: u32,
 }
 
 impl Cell {
+    const fn consume_output(
+        &mut self,
+        trace: &ProfileStepTrace,
+        (site, value): (u32, u32),
+    ) -> Result<(), Error> {
+        if self.output_consumed
+            || trace.before.registers.code_pointer != site
+            || trace.before.registers.accumulator
+                != current_profile().eof_word()
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        self.output_consumed = true;
+        self.value = value;
+        Ok(())
+    }
+
     fn observe(
         &mut self,
         trace: &ProfileStepTrace,
@@ -76,7 +116,9 @@ impl Cell {
         let value = crazy(self.value, trace.before.registers.accumulator);
         verify_store(trace, self.value, value)?;
         if initialized {
-            if self.value != value {
+            if let Some(site) = self.expected.output_site() {
+                self.consume_output(trace, (site, value))?;
+            } else if self.value != value {
                 return Err(Error::GuestTransitionMismatch);
             }
         } else {
@@ -131,6 +173,15 @@ impl BootstrapTableTrace {
     ) -> Result<(), Error> {
         let (tables, _, unreachable, mut last) = self.receipt()?;
         let input = self.first_input.ok_or(Error::GuestTransitionMismatch)?;
+        if self
+            .cells
+            .values()
+            .filter(|cell| cell.output_consumed)
+            .count()
+            != 2
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
         for (&address, cell) in &self.cells {
             if vm
                 .memory_word(address)
@@ -168,13 +219,17 @@ impl BootstrapTableTrace {
     pub(super) fn new(
         geometry: &Geometry,
         vm: &ProfileMachine,
-        source_extent: u32,
         route_addresses: Vec<u32>,
+        probe: &SourceRecurrentTransitionProbe<'_>,
     ) -> Result<Self, Error> {
+        let source_extent =
+            u32::try_from(probe.loop_probe.guard.io.physical_source.len())
+                .map_err(|_error| Error::InvalidTransitionBinding)?;
         let mut plan = BTreeMap::new();
         raw_tables(geometry, &mut plan)?;
         low_table(geometry, &mut plan)?;
         high_table(geometry, &mut plan)?;
+        output_table(probe, &mut plan)?;
         for address in route_addresses {
             if address < source_extent {
                 return Err(Error::InvalidTransitionBinding);
@@ -189,6 +244,7 @@ impl BootstrapTableTrace {
             let _previous = cells.insert(address, Cell {
                 expected,
                 last_store: None,
+                output_consumed: false,
                 value,
             });
         }
@@ -349,6 +405,18 @@ fn raw_tables(geometry: &Geometry, plan: &mut TablePlan) -> Result<(), Error> {
     Ok(())
 }
 
+fn low_contribution(value: u32, nibble: u32) -> bool {
+    let twos = current_profile().eof_word();
+    let ones = twos.div_euclid(2);
+    let accumulator = crazy(value, twos);
+    accumulator.rem_euclid(OUTPUT_SPLIT) == OUTPUT_SPLIT.saturating_sub(1)
+        && crazy(ones, accumulator)
+            .div_euclid(OUTPUT_SPLIT)
+            .saturating_mul(OUTPUT_SPLIT)
+            .rem_euclid(256)
+            == nibble
+}
+
 fn low_table(geometry: &Geometry, plan: &mut TablePlan) -> Result<(), Error> {
     let [_, table, _, _] = geometry.tables;
     let [_, seed, _, _] = geometry.seeds;
@@ -410,6 +478,17 @@ fn high_table(geometry: &Geometry, plan: &mut TablePlan) -> Result<(), Error> {
     Ok(())
 }
 
+fn high_contribution(value: u32, nibble: u32) -> bool {
+    let twos = current_profile().eof_word();
+    let ones = twos.div_euclid(2);
+    let scratch = crazy(ones, crazy(value, twos));
+    scratch.div_euclid(OUTPUT_SPLIT) == ones.div_euclid(OUTPUT_SPLIT)
+        && crazy(scratch, twos)
+            .rem_euclid(OUTPUT_SPLIT)
+            .rem_euclid(256)
+            == nibble.saturating_mul(16)
+}
+
 fn high_edges(
     plan: &mut TablePlan,
     (table, seed): (u32, u32),
@@ -435,6 +514,35 @@ fn high_edges(
             .saturating_add(carry)
                 & 15;
             pointer(plan, address, record(seed, next))?;
+        }
+    }
+    Ok(())
+}
+
+fn output_table(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    plan: &mut TablePlan,
+) -> Result<(), Error> {
+    let [_, low, _, high] = probe.tables;
+    for nibble in 0..16u32 {
+        let high_address = high
+            .saturating_add(504)
+            .saturating_add(nibble.saturating_mul(729));
+        let low_address = low
+            .saturating_add(5)
+            .saturating_add(nibble.saturating_mul(27));
+        for (address, expected) in [
+            (high_address, Expected::OutputHigh {
+                nibble,
+                site: probe.terminal_address.saturating_add(17),
+            }),
+            (low_address, Expected::OutputLow {
+                nibble,
+                site: probe.terminal_address.saturating_add(28),
+            }),
+        ] {
+            insert(plan, address, expected)?;
+            pointer(plan, address.saturating_add(1), probe.output_scratch)?;
         }
     }
     Ok(())

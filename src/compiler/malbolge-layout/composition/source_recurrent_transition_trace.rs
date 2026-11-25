@@ -566,10 +566,10 @@ impl TransitionTrace {
         audit.bootstrap = Some(BootstrapTableTrace::new(
             &audit.geometry,
             vm,
-            audit.source_extent,
             audit.control.bootstrap_addresses(
                 audit.geometry.lookup_sites.map(|[site, _]| site),
             )?,
+            probe,
         )?);
         Ok(audit)
     }
