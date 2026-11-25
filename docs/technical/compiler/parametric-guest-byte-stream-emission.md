@@ -14748,3 +14748,10 @@ site, its predecessor and the terminal, separately forging each of the
 five memory access roles; all refuse while the original trace passes.
 All 38 source-recurrent tests pass. This preserves the finite recurrent
 code placement, not the complete general SSA frame or publication gate.
+
+A bounded four-pass directed adjacent-exchange refinement of the greedy
+materialization schedule reached first input in 1,163,445 steps, and the
+frozen-vector test passed. Its 168-step gain (about 0.014 percent) did
+not justify a second scheduling heuristic. The experiment was discarded;
+the maintained first-input count remains 1,163,613, with the same
+physical and publication ceilings.
