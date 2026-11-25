@@ -29,12 +29,14 @@ use malbolge::ProfileDescriptor;
 pub use relocated_first_iteration_source::{
     DirtyPhiCopySites, OddXorStepSites, RelocatedDirtyPhiSource,
     RelocatedFirstIterationSource, RelocatedSecondAddSource,
-    RelocatedSecondEvenMaskSource, RelocatedSecondEvenReadSource,
-    RelocatedSecondOddHalfSource, RelocatedSecondOddReadSource,
-    RelocatedSecondOddUpdateSource, RelocatedSecondOddXorSource,
-    RelocatedSecondParityAddSource, ScratchResetSite,
-    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
-    build_relocated_second_add_source, build_relocated_second_even_mask_source,
+    RelocatedSecondCombinedReadSource, RelocatedSecondEvenMaskSource,
+    RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
+    RelocatedSecondOddReadSource, RelocatedSecondOddUpdateSource,
+    RelocatedSecondOddXorSource, RelocatedSecondParityAddSource,
+    ScratchResetSite, build_relocated_dirty_phi_source,
+    build_relocated_first_iteration_source, build_relocated_second_add_source,
+    build_relocated_second_combined_read_source,
+    build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
     build_relocated_second_odd_half_source,
     build_relocated_second_odd_read_source,
@@ -55,7 +57,8 @@ use super::relocated_live_parity_source::{
     emit_parity_result,
 };
 use super::{
-    BuildError, Emitter, FRAME, LAYOUT, TapeBounds, TapePlan, encode_i32_cells,
+    BOOT_RETURN, BuildError, Emitter, FRAME, LAYOUT, TapeBounds, TapePlan,
+    encode_i32_cells,
 };
 
 const BOUNDS: TapeBounds = TapeBounds {
@@ -363,6 +366,22 @@ fn build(
         source_cells: geometry.cells,
         tape_bounds: geometry.bounds,
     };
+    // The old bootstrap reads a loader word at 4,782,982. Larger
+    // source images must use the existing return pointer instead.
+    if geometry.cells > 4_782_982 {
+        if geometry.cells > 6_554_440 {
+            return Err(LAYOUT);
+        }
+        emitter.source.truncate(126);
+        emitter.data = 49;
+        emitter.walk(76)?;
+        let _: u32 = emitter.linear(RotateData)?;
+        emitter.walk(122)?;
+        emitter.jump(BOOT_RETURN)?;
+        emitter.walk(7_174_468)?;
+        emitter.jump(FRAME)?;
+        let _: u32 = emitter.linear(RotateData)?;
+    }
     let mut plan = TapePlan::with_bounds(geometry.bounds);
     let byte = plan.tape(before(geometry.byte_entry)?, false)?;
     let eof = plan.tape(before(geometry.eof_entry)?, false)?;

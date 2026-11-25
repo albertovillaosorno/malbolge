@@ -33,12 +33,14 @@ use malbolge::{
 use super::super::crazy as independent_crazy;
 use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
-    RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
-    RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
-    RelocatedSecondOddReadSource, RelocatedSecondOddUpdateSource,
-    RelocatedSecondOddXorSource, RelocatedSecondParityAddSource,
-    ScratchResetSite, ZeroCellSourceError, build_relocated_dirty_phi_source,
-    build_relocated_first_iteration_source, build_relocated_second_add_source,
+    RelocatedSecondAddSource, RelocatedSecondCombinedReadSource,
+    RelocatedSecondEvenMaskSource, RelocatedSecondEvenReadSource,
+    RelocatedSecondOddHalfSource, RelocatedSecondOddReadSource,
+    RelocatedSecondOddUpdateSource, RelocatedSecondOddXorSource,
+    RelocatedSecondParityAddSource, ScratchResetSite, ZeroCellSourceError,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source,
+    build_relocated_second_combined_read_source,
     build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
     build_relocated_second_odd_half_source,
@@ -3844,6 +3846,409 @@ fn relocated_second_odd_read_boundaries() -> Result<(), String> {
         assert!(!reached);
         assert_eq!(machine.output(), expected);
         assert_eq!(machine.input_consumed(), count);
+    }
+    Ok(())
+}
+
+fn combined_sites(guest: &RelocatedSecondCombinedReadSource) -> BTreeSet<u32> {
+    [
+        guest.parity_branch,
+        guest.parity_store,
+        guest.third_input,
+        guest.third_byte_halt,
+        guest.increment.1,
+    ]
+    .into_iter()
+    .chain(guest.arm_stores)
+    .chain(guest.arm_transfers)
+    .chain(guest.mask_branches)
+    .chain(guest.mask_flag_stores)
+    .chain(guest.third_eof)
+    .chain(guest.mask_copies.into_iter().flat_map(dirty_sites))
+    .chain(guest.third_snapshots.into_iter().flat_map(dirty_sites))
+    .chain(guest.third_commits.into_iter().flat_map(dirty_sites))
+    .collect()
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "authenticate physical parity and shared arithmetic"
+)]
+fn check_combined_arm(
+    guest: &RelocatedSecondCombinedReadSource,
+    trace: &[ProfileStepTrace],
+    first: u8,
+    second: u8,
+) -> Result<u32, String> {
+    let previous = u32::from(first.wrapping_add(3));
+    let odd = second & 1 != 0;
+    let value = if odd {
+        previous ^ u32::from(second)
+    } else {
+        previous
+            .checked_add(u32::from(second))
+            .ok_or("sum overflow")?
+    };
+    let [even_store, odd_store] = guest.arm_stores;
+    let [even_transfer, odd_transfer] = guest.arm_transfers;
+    let (store, transfer, skipped_store, skipped_transfer, pointer, entry) =
+        if odd {
+            (
+                odd_store,
+                odd_transfer,
+                even_store,
+                even_transfer,
+                7_174_797,
+                2_310_000,
+            )
+        } else {
+            (
+                even_store,
+                even_transfer,
+                odd_store,
+                odd_transfer,
+                7_174_787,
+                4_510_000,
+            )
+        };
+    check_write(trace, guest.parity_store, 7_174_777, u32::from(odd))?;
+    check_transfer(trace, guest.parity_branch, pointer, entry)?;
+    assert!(at(trace, skipped_store).is_err(), "unselected store");
+    assert!(at(trace, skipped_transfer).is_err(), "unselected transfer");
+    check_write(trace, store, guest.result_word, value)?;
+    check_transfer(trace, transfer, 7_176_287, 4_750_000)?;
+    let sum = value.checked_add(3).ok_or("increment overflow")?;
+    check_write(trace, guest.increment.1, guest.increment.0, sum)?;
+    Ok(sum)
+}
+
+fn check_combined_mask(
+    guest: &RelocatedSecondCombinedReadSource,
+    trace: &[ProfileStepTrace],
+    previous: u32,
+    sum: u32,
+) -> Result<u8, String> {
+    let checksum = sum & 255;
+    let first_wrap = sum >= 256;
+    let double_wrap = sum == 512;
+    let [first_store, double_store] = guest.mask_flag_stores;
+    let [first_branch, double_branch] = guest.mask_branches;
+    check_write(trace, first_store, 7_176_101, u32::from(first_wrap))?;
+    check_write(trace, double_store, 7_176_157, u32::from(double_wrap))?;
+    let (first_ptr, first_entry) = if first_wrap {
+        (7_176_051, 5_665_000)
+    } else {
+        (7_176_041, 5_650_000)
+    };
+    check_transfer(trace, first_branch, first_ptr, first_entry)?;
+    let (double_ptr, double_entry) = if double_wrap {
+        (7_176_123, 5_765_000)
+    } else {
+        (7_176_113, 5_750_000)
+    };
+    check_transfer(trace, double_branch, double_ptr, double_entry)?;
+    let [low_copy, high_copy] = guest.mask_copies;
+    let [low, high] = guest.iteration.masked_pair;
+    check_third_dirty_copy(trace, low_copy, [low, 7_174_633], [
+        previous,
+        checksum,
+        independent_crazy(7_174_453, previous),
+    ])?;
+    check_third_dirty_copy(trace, high_copy, [high, 7_174_633], [
+        0,
+        0,
+        independent_crazy(7_174_453, checksum),
+    ])?;
+    u8::try_from(checksum).map_err(|error| error.to_string())
+}
+
+fn check_combined_update(
+    guest: &RelocatedSecondCombinedReadSource,
+    trace: &[ProfileStepTrace],
+    first: u8,
+    second: u8,
+) -> Result<u8, String> {
+    let sum = check_combined_arm(guest, trace, first, second)?;
+    check_combined_mask(guest, trace, u32::from(first.wrapping_add(3)), sum)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "both arithmetic arms must reach the same dirty phi edge"
+)]
+fn check_combined_phi(
+    guest: &RelocatedSecondCombinedReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    values: PhiWordSets,
+) -> Result<(), String> {
+    let (previous, next) = values;
+    let temps = [
+        7_174_709, 7_174_713, 7_174_717, 7_174_721, 7_174_725, 7_174_729,
+        7_174_733, 7_174_737,
+    ];
+    let addresses = guest
+        .iteration
+        .phi_snapshot_words
+        .into_iter()
+        .chain(guest.iteration.phi_header_words);
+    let copies = guest.third_snapshots.into_iter().chain(guest.third_commits);
+    for ((copy, (dest, temp)), (old, new)) in
+        copies.clone().zip(addresses.zip(temps)).zip(
+            previous
+                .into_iter()
+                .chain(previous)
+                .zip(next.into_iter().chain(next)),
+        )
+    {
+        check_third_dirty_copy(trace, copy, [dest, temp], [
+            old,
+            new,
+            independent_crazy(7_174_453, old),
+        ])?;
+        assert_eq!(word(machine, dest)?, new, "committed M{dest}");
+    }
+    let sites = copies.flat_map(dirty_sites).collect::<Vec<_>>();
+    let observed = trace
+        .iter()
+        .map(|step| step.before.registers.code_pointer)
+        .filter(|code| sites.contains(code))
+        .collect::<Vec<_>>();
+    assert_eq!(observed, sites, "ordered snapshots and commits");
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual input order, phi effects and terminal behavior"
+)]
+fn check_combined_third(
+    guest: &RelocatedSecondCombinedReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: (u8, u8, Option<u8>),
+) -> Result<(), String> {
+    let (first, second, third) = input;
+    let checksum = check_combined_update(guest, trace, first, second)?;
+    let event = third.map_or(TraceInput::EndOfInput, TraceInput::Byte);
+    assert_eq!(
+        trace
+            .iter()
+            .filter_map(|step| step.input)
+            .collect::<Vec<_>>(),
+        [TraceInput::Byte(first), TraceInput::Byte(second), event],
+        "exact reads"
+    );
+    assert_eq!(
+        at(trace, guest.third_input)?.input,
+        Some(event),
+        "shared input"
+    );
+    let [low, high] =
+        third.map_or([4_644_102, 299], |byte| [u32::from(byte), 0]);
+    let previous = [u32::from(second), 0, u32::from(first.wrapping_add(3)), 0];
+    let next = [low, high, u32::from(checksum), 0];
+    check_combined_phi(guest, machine, trace, (previous, next))?;
+    check_combined_terminal(guest, machine, trace, (checksum, third))
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact terminal arm and output"
+)]
+fn check_combined_terminal(
+    guest: &RelocatedSecondCombinedReadSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    expected: (u8, Option<u8>),
+) -> Result<(), String> {
+    let (checksum, third) = expected;
+    let [output, halt] = guest.third_eof;
+    if third.is_none() {
+        assert_eq!(machine.output(), &[checksum], "committed checksum");
+        assert_eq!(machine.input_consumed(), 2, "third read is EOF");
+        assert_eq!(at(trace, output)?.output, Some(checksum), "actual output");
+        assert!(at(trace, halt).is_ok(), "EOF halt reached");
+        assert!(
+            at(trace, guest.third_byte_halt).is_err(),
+            "byte halt skipped"
+        );
+    } else {
+        assert!(machine.output().is_empty(), "no premature output");
+        assert_eq!(machine.input_consumed(), 3, "fourth byte remains unread");
+        assert!(
+            at(trace, guest.third_byte_halt).is_ok(),
+            "byte halt reached"
+        );
+        assert!(at(trace, output).is_err(), "EOF output skipped");
+    }
+    Ok(())
+}
+
+fn combined_source() -> Result<RelocatedSecondCombinedReadSource, String> {
+    build_relocated_second_combined_read_source(current_profile())
+        .map_err(|error| format!("combined source: {error:?}"))
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "one physical image for both checksum branches"
+)]
+#[test]
+fn relocated_second_combined_read_boundaries() -> Result<(), String> {
+    let guest = combined_source()?;
+    let source = &guest.iteration.addition.source;
+    assert_eq!(source.len(), 6_100_098, "bounded loader geometry");
+    assert_eq!(
+        build_relocated_second_combined_read_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile),
+        "N15 only"
+    );
+    let initial =
+        ProfileMachine::from_source(current_profile(), source, vec![])
+            .map_err(|error| error.to_string())?;
+    let sites = combined_sites(&guest);
+    for input in [
+        (252u8, 254u8, None),
+        (251, 254, None),
+        (0, 0, None),
+        (0, 250, None),
+        (100, 127, None),
+        (253, 255, None),
+        (0, 1, Some(0u8)),
+        (252, 2, Some(255)),
+    ] {
+        let (first, second, third) = input;
+        let mut stream = vec![first, second];
+        if let Some(byte) = third {
+            stream.extend([byte, 42]);
+        }
+        let mut machine = initial
+            .fork_with_input(stream)
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(source.len(), &mut |step| {
+                if step.input.is_some()
+                    || step.output.is_some()
+                    || sites.contains(&step.before.registers.code_pointer)
+                {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{input:?}: {outcome:?}"
+        );
+        check_combined_third(&guest, &machine, &trace, input)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF preserves terminal behavior"
+)]
+#[test]
+fn relocated_second_combined_read_bypasses() -> Result<(), String> {
+    let guest = combined_source()?;
+    let source = &guest.iteration.addition.source;
+    let initial =
+        ProfileMachine::from_source(current_profile(), source, vec![])
+            .map_err(|error| error.to_string())?;
+    let sites = combined_sites(&guest);
+    for (input, expected) in [
+        (vec![], vec![0]),
+        (vec![252], vec![255]),
+        (vec![255], vec![2]),
+    ] {
+        let count = input.len();
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(source.len(), &mut |step| {
+                reached |= sites.contains(&step.before.registers.code_pointer);
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(
+            !reached,
+            "earlier EOF skips second arithmetic and third read"
+        );
+        assert_eq!(machine.input_consumed(), count, "exact reads");
+        assert_eq!(machine.output(), expected, "earlier committed checksum");
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "selected-arm and common-store omission controls"
+)]
+#[test]
+fn relocated_second_combined_omitted_effects() -> Result<(), String> {
+    let guest = build_relocated_second_combined_read_source(current_profile())
+        .map_err(|error| format!("combined source: {error:?}"))?;
+    let [even, odd] = guest.arm_stores;
+    let [_, high] = guest.mask_copies;
+    let sites = combined_sites(&guest);
+    for (site, second) in [(even, 2), (odd, 1), (high.destination_store, 2)] {
+        let mut source = guest.iteration.addition.source.clone();
+        let noop = (33..=126u8)
+            .find(|&cell| {
+                decode_profile_instruction(u32::from(cell), site) == Some(b'o')
+            })
+            .ok_or("missing no-op")?;
+        let position =
+            usize::try_from(site).map_err(|error| error.to_string())?;
+        *source.get_mut(position).ok_or("missing effect site")? = noop;
+        let mut machine =
+            ProfileMachine::from_source(current_profile(), &source, vec![
+                0, second,
+            ])
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(source.len(), &mut |step| {
+                if step.input.is_some()
+                    || step.output.is_some()
+                    || sites.contains(&step.before.registers.code_pointer)
+                {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(at(&trace, site)?.decoded, Some(b'o'), "mutation reached");
+        if site == high.destination_store {
+            assert_eq!(
+                machine.output(),
+                &[8],
+                "missing high store hides in output"
+            );
+            assert!(
+                matches!(outcome, RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    ..
+                }),
+                "mutation still halts normally"
+            );
+        }
+        assert!(
+            check_combined_update(&guest, &trace, 0, second).is_err(),
+            "omitted C{site} accepted: {outcome:?}"
+        );
     }
     Ok(())
 }

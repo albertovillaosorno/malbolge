@@ -13608,3 +13608,27 @@ EOF, and third bytes 0 and 255. Three bypass vectors preserve earlier
 termination and the even-path halt. The odd and even images remain
 separate: a combined parity guest, reusable instruction schedule and
 independent source-frame admission are still open.
+
+
+### Combined second parity and shared third input
+
+One 6,100,098-cell physical image now admits both second-byte parity
+paths. The odd path reconstructs the XOR; the even path adds the
+committed checksum and input. Separate stores copy the result to
+M7176275 and transfer through M7176287 to C4750000. A single increment,
+double-wrap selection, and dirty checksum copy then precede the same
+third-input continuation. The mask and third-read data cells move by
+1240 words to avoid the XOR tables.
+
+The larger source covers the former virgin bootstrap word M4782982.
+The extended prefix instead uses its already prepared M122 return
+pointer to reach the relocated frame. The image remains below the
+other virgin classifier word M6554440; larger layouts refuse.
+
+Eight traced boundary cases cover both arms, the two wrap decisions
+(including 512), all dirty checksum and phi stores, third EOF, and
+successful third bytes. Three earlier EOF bypasses preserve the
+previous results. Three omitted-store controls refuse, including a
+shared high-word omission invisible in stdout. Both arms still halt
+on a successful third read. The shared continuation is not a reusable
+instruction schedule, and the original source CFG remains unlinked.

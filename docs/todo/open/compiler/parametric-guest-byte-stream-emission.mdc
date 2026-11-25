@@ -92,8 +92,11 @@ Twelve traced vectors, all 256 host-algebra cases, five bypasses and
 two omitted-effect controls pass. Bounded Boolean carry circuits save
 408,204 executable cells, permitting a separate odd third-read image.
 Four traced vectors authenticate signed normalization, the second dirty
-phi edge and EOF output; three earlier-path bypasses pass. A combined
-parity image, reusable code and complete source-frame routing remain
+phi edge and EOF output; three earlier-path bypasses pass. A single
+6,100,098-cell image now joins the second odd and even results before
+a common increment, mask, third read, and dirty phi edge. Eight traced
+boundary vectors, three earlier bypasses and three omitted-store
+controls pass. Reusable code and complete source-frame routing remain
 open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.

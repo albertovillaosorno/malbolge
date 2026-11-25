@@ -294,6 +294,28 @@ const WITH_ODD_READ: Geometry = Geometry {
     odd_entry: 1_227_000,
     ..WITH_ODD_UPDATE
 };
+// Keep all new writable words beyond the existing XOR lookup tables.
+const COMBINED_OFFSET: u32 = 1_240;
+const COMBINED_VALUE: [u32; 2] = [7_176_271, 7_176_275];
+const COMBINED_INCREMENT: [u32; 2] = [7_176_279, 7_176_283];
+const COMBINED_JOIN: u32 = 7_176_287;
+const COMBINED_JOIN_ENTRY: usize = 4_750_000;
+const COMBINED_INCREMENT_COUNT: u32 = 112;
+const COMBINED_EVEN_ENTRY: usize = 4_510_000;
+const WITH_COMBINED_READ: Geometry = Geometry {
+    bounds: TapeBounds {
+        limit: 7_195_001,
+        start: 7_176_291,
+    },
+    byte_entry: 280_000,
+    cells: 6_100_098,
+    eof_entry: 6_060_000,
+    even_entry: 1_610_000,
+    join_entry: 1_620_000,
+    odd_entry: 1_615_000,
+    scratch: 7_193_001,
+    ..WITH_MASK
+};
 const WITH_SECOND_ADD: Geometry = Geometry {
     cells: 2_821_848,
     eof_entry: 2_800_000,
@@ -304,6 +326,7 @@ const WITH_SECOND_ADD: Geometry = Geometry {
 pub(super) enum IterationMode {
     First,
     SecondAdd,
+    SecondCombinedRead,
     SecondEvenMask,
     SecondEvenRead,
     SecondOddHalf,
@@ -315,7 +338,9 @@ pub(super) enum IterationMode {
 
 impl IterationMode {
     fn first_entry(self, entry: usize) -> Result<usize, BuildError> {
-        if self.has_odd_read() {
+        if self.is_combined() {
+            entry.checked_add(1_300_000).ok_or(LAYOUT)
+        } else if self.has_odd_read() {
             entry.checked_add(895_000).ok_or(LAYOUT)
         } else if self.has_odd_update() {
             entry.checked_add(630_000).ok_or(LAYOUT)
@@ -333,7 +358,8 @@ impl IterationMode {
     const fn has_odd_half(self) -> bool {
         matches!(
             self,
-            Self::SecondOddHalf
+            Self::SecondCombinedRead
+                | Self::SecondOddHalf
                 | Self::SecondOddXor
                 | Self::SecondOddUpdate
                 | Self::SecondOddRead
@@ -343,7 +369,10 @@ impl IterationMode {
     const fn has_odd_xor(self) -> bool {
         matches!(
             self,
-            Self::SecondOddXor | Self::SecondOddUpdate | Self::SecondOddRead
+            Self::SecondCombinedRead
+                | Self::SecondOddXor
+                | Self::SecondOddUpdate
+                | Self::SecondOddRead
         )
     }
 
@@ -368,13 +397,19 @@ impl IterationMode {
     }
 
     const fn has_second_mask(self) -> bool {
-        matches!(self, Self::SecondEvenMask | Self::SecondEvenRead)
+        matches!(
+            self,
+            Self::SecondCombinedRead
+                | Self::SecondEvenMask
+                | Self::SecondEvenRead
+        )
     }
 
     const fn has_second_parity(self) -> bool {
         matches!(
             self,
-            Self::SecondParityAdd
+            Self::SecondCombinedRead
+                | Self::SecondParityAdd
                 | Self::SecondEvenMask
                 | Self::SecondEvenRead
                 | Self::SecondOddHalf
@@ -385,13 +420,40 @@ impl IterationMode {
     }
 
     const fn has_third_read(self) -> bool {
-        matches!(self, Self::SecondEvenRead)
+        matches!(self, Self::SecondCombinedRead | Self::SecondEvenRead)
+    }
+
+    const fn is_combined(self) -> bool {
+        matches!(self, Self::SecondCombinedRead)
+    }
+
+    const fn mask_address(self, address: u32) -> u32 {
+        if self.is_combined() {
+            address.saturating_add(COMBINED_OFFSET)
+        } else {
+            address
+        }
+    }
+
+    fn mask_words<const N: usize>(self, addresses: [u32; N]) -> [u32; N] {
+        addresses.map(|address| self.mask_address(address))
+    }
+
+    const fn third_layout(self) -> ThirdLayout {
+        if self.is_combined() {
+            ThirdLayout::COMBINED
+        } else if self.has_odd_read() {
+            ThirdLayout::ODD
+        } else {
+            ThirdLayout::EVEN
+        }
     }
 
     const fn header_eof_entry(self) -> usize {
         match self {
             Self::First => HEADER_EOF_ENTRY,
             Self::SecondAdd => SECOND_ADD_HEADER_EOF_ENTRY,
+            Self::SecondCombinedRead => 6_040_000,
             Self::SecondParityAdd => SECOND_PARITY_HEADER_EOF_ENTRY,
             Self::SecondEvenMask => SECOND_MASK_HEADER_EOF_ENTRY,
             Self::SecondEvenRead => 4_150_000,
@@ -403,7 +465,9 @@ impl IterationMode {
     }
 
     fn second_even_entry(self) -> Result<usize, BuildError> {
-        if self.has_odd_xor() {
+        if self.is_combined() {
+            Ok(COMBINED_EVEN_ENTRY)
+        } else if self.has_odd_xor() {
             Ok(4_685_000)
         } else if self.has_odd_half() {
             Ok(2_100_000)
@@ -413,7 +477,9 @@ impl IterationMode {
     }
 
     fn second_mask_entry(self, entry: usize) -> Result<usize, BuildError> {
-        if self.has_third_read() {
+        if self.is_combined() {
+            entry.checked_add(2_550_000).ok_or(LAYOUT)
+        } else if self.has_third_read() {
             entry.checked_add(600_000).ok_or(LAYOUT)
         } else {
             Ok(entry)
@@ -428,6 +494,10 @@ struct ThirdLayout {
 }
 
 impl ThirdLayout {
+    const COMBINED: Self = Self {
+        offset: COMBINED_OFFSET,
+        entries: [5_850_000, 5_890_000, 5_930_000, 6_000_000, 6_020_000],
+    };
     const EVEN: Self = Self {
         offset: 0,
         entries: [
@@ -452,6 +522,7 @@ impl ThirdLayout {
     }
 }
 
+type CombinedArithmeticSites = (SecondMaskSites, CombinedSites);
 type ConstantSpec = (u32, u32, bool);
 type SecondArithmeticSites = (Option<SecondAddSites>, Option<SecondMaskSites>);
 type ConstantTape = (Vec<u32>, u32, u32);
@@ -636,6 +707,41 @@ pub struct RelocatedSecondEvenReadSource {
     pub third_phi_snapshots: [DirtyPhiCopySites; 4],
     /// Both normalizers' actual transfer to the dirty phi edge.
     pub third_phi_transfers: [u32; 2],
+}
+
+/// Both second parity arms converge before one canonical update and read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSecondCombinedReadSource {
+    /// Both physical arithmetic-result stores, even then odd.
+    pub arm_stores: [u32; 2],
+    /// Both physical transfers to the common increment, even then odd.
+    pub arm_transfers: [u32; 2],
+    /// Common increment word and physical store site.
+    pub increment: (u32, u32),
+    /// Shared first-iteration image and its initial EOF paths.
+    pub iteration: RelocatedFirstIterationSource,
+    /// Shared wrap selection branches, in execution order.
+    pub mask_branches: [u32; 2],
+    /// Canonical checksum pair writes after shared masking.
+    pub mask_copies: [DirtyPhiCopySites; 2],
+    /// Both wrap flag stores.
+    pub mask_flag_stores: [u32; 2],
+    /// Actual second parity selection.
+    pub parity_branch: u32,
+    /// Actual second parity flag store.
+    pub parity_store: u32,
+    /// Shared unincremented result word.
+    pub result_word: u32,
+    /// Third-byte halt before unfinished arithmetic.
+    pub third_byte_halt: u32,
+    /// Four committed header stores after the third input.
+    pub third_commits: [DirtyPhiCopySites; 4],
+    /// Shared final EOF output and halt.
+    pub third_eof: [u32; 2],
+    /// Common third input instruction.
+    pub third_input: u32,
+    /// Four physical snapshots before the header commits.
+    pub third_snapshots: [DirtyPhiCopySites; 4],
 }
 
 /// Physical third-read continuation for the completed odd second-byte arm.
@@ -837,13 +943,24 @@ struct SecondMaskSites {
     resets: Vec<ScratchResetSite>,
 }
 
+struct CombinedArmSites {
+    store: u32,
+    transfer: u32,
+}
+
+struct CombinedSites {
+    even: CombinedArmSites,
+    increment_store: u32,
+}
+
 struct SecondParitySites {
     branch: u32,
+    combined_odd: Option<CombinedArmSites>,
     half: Option<OddHalfSites>,
     xor: Option<OddXorSites>,
     update: Option<OddUpdateSites>,
     lookup: u32,
-    odd_halt: u32,
+    odd_halt: Option<u32>,
     parity_store: u32,
     pointer_store: u32,
 }
@@ -877,6 +994,7 @@ struct SecondSites {
     branch: u32,
     byte_halt: u32,
     byte_stores: [u32; 2],
+    combined: Option<CombinedSites>,
     eof_halt: u32,
     eof_stores: [u32; 2],
     header_branch: u32,
@@ -910,10 +1028,11 @@ impl MaskTapes {
         if mode.has_second_mask() {
             constants.extend(Self::second_mask_constants(mode)?);
         }
-        if mode.has_third_read() {
-            constants.extend(Self::third_constants(ThirdLayout::EVEN)?);
-        } else if mode.has_odd_read() {
-            constants.extend(Self::third_constants(ThirdLayout::ODD)?);
+        if mode.has_third_read() || mode.has_odd_read() {
+            constants.extend(Self::third_constants(mode.third_layout())?);
+        }
+        if mode.is_combined() {
+            constants.push((before(COMBINED_JOIN_ENTRY)?, COMBINED_JOIN, true));
         }
         if mode.has_odd_half() {
             constants.extend(Self::half_constants());
@@ -945,7 +1064,11 @@ impl MaskTapes {
         Ok(Self(mask_tapes))
     }
 
-    fn extend_second_mask_addresses(addresses: &mut Vec<u32>) {
+    fn extend_second_mask_addresses(
+        addresses: &mut Vec<u32>,
+        mode: IterationMode,
+    ) {
+        let start = addresses.len();
         addresses.extend([
             SECOND_MASK_STAY,
             SECOND_MASK_WRAP,
@@ -960,6 +1083,9 @@ impl MaskTapes {
         addresses.extend(DOUBLE_MASKS);
         addresses.extend(DOUBLE_FLAG);
         addresses.extend(DOUBLE_SELECTED);
+        for address in addresses.iter_mut().skip(start) {
+            *address = mode.mask_address(*address);
+        }
     }
 
     fn extend_third_addresses(addresses: &mut Vec<u32>, layout: ThirdLayout) {
@@ -1099,12 +1225,15 @@ impl MaskTapes {
             addresses.sort_unstable();
         }
         if mode.has_second_mask() {
-            Self::extend_second_mask_addresses(&mut addresses);
+            Self::extend_second_mask_addresses(&mut addresses, mode);
         }
-        if mode.has_third_read() {
-            Self::extend_third_addresses(&mut addresses, ThirdLayout::EVEN);
-        } else if mode.has_odd_read() {
-            Self::extend_third_addresses(&mut addresses, ThirdLayout::ODD);
+        if mode.has_third_read() || mode.has_odd_read() {
+            Self::extend_third_addresses(&mut addresses, mode.third_layout());
+        }
+        if mode.is_combined() {
+            addresses.extend(COMBINED_VALUE);
+            addresses.extend(COMBINED_INCREMENT);
+            addresses.push(COMBINED_JOIN);
         }
         if mode.has_odd_half() {
             for (low, bit) in HALF_LOW_MASKS.into_iter().zip(HALF_BIT_MASKS) {
@@ -1185,7 +1314,10 @@ impl MaskTapes {
             (14_348_905, DOUBLE_MASKS[1], false),
             (14_348_905, DOUBLE_MASKS[2], false),
             (1, DOUBLE_MASKS[3], true),
-        ])
+        ]
+        .map(|(value, address, ones)| {
+            (value, mode.mask_address(address), ones)
+        }))
     }
 
     fn second_parity_constants(
@@ -1300,6 +1432,58 @@ impl IterationEmitter<'_, '_, '_> {
         )
     }
 
+    fn combined_arithmetic(
+        &mut self,
+        mode: IterationMode,
+    ) -> Result<CombinedArithmeticSites, BuildError> {
+        let mut even = Adder {
+            count: XOR_SUM_COUNT,
+            cursor: 0,
+            emitter: self.adder.emitter,
+            scratch: self.adder.scratch,
+        };
+        let _even_resets = IterationEmitter { adder: &mut even }
+            .reset_scratch(XOR_SUM_COUNT)?;
+        let sum = even.add_bounded(PHI_DEST[2], PHI_DEST[0], 6, false)?;
+        even.finish()?;
+        let even_sites = self.combined_arm(sum)?;
+        self.adder.emitter.pad_to_entry(
+            COMBINED_JOIN_ENTRY,
+            COMBINED_JOIN.checked_add(1).ok_or(LAYOUT)?,
+        )?;
+        let mut increment = Adder {
+            count: COMBINED_INCREMENT_COUNT,
+            cursor: 0,
+            emitter: self.adder.emitter,
+            scratch: self.adder.scratch,
+        };
+        let mut shared = IterationEmitter { adder: &mut increment };
+        let _increment_resets =
+            shared.reset_scratch(COMBINED_INCREMENT_COUNT)?;
+        let _sum =
+            shared
+                .adder
+                .add_bounded(COMBINED_VALUE[1], THREE, 6, true)?;
+        let increment_store = shared.copy_to(COMBINED_INCREMENT)?;
+        increment.finish()?;
+        let mask = self.second_mask(COMBINED_INCREMENT[1], mode)?;
+        Ok((mask, CombinedSites {
+            even: even_sites,
+            increment_store,
+        }))
+    }
+
+    fn combined_arm(
+        &mut self,
+        value: u32,
+    ) -> Result<CombinedArmSites, BuildError> {
+        self.adder.load(value)?;
+        let store = self.copy_to(COMBINED_VALUE)?;
+        self.adder.go(COMBINED_JOIN)?;
+        let transfer = self.adder.emitter.append_indirect()?;
+        Ok(CombinedArmSites { store, transfer })
+    }
+
     fn copy_dirty_word(
         &mut self,
         source: u32,
@@ -1360,8 +1544,11 @@ impl IterationEmitter<'_, '_, '_> {
     ) -> Result<[u32; 2], BuildError> {
         // Each digit is one iff the corresponding residual trit is one.
         // The required places 0,1,2,5 sum to 256, the maximum residual.
-        self.adder
-            .evaluate(b"0sxsypp", RESET_ONES, SECOND_SELECTED[1])?;
+        self.adder.evaluate(
+            b"0sxsypp",
+            RESET_ONES,
+            mode.mask_address(SECOND_SELECTED[1]),
+        )?;
         let mut conjunction = self.adder.copy()?;
         let aligned = self.adder.copy()?;
         for shift in 1u32..=5 {
@@ -1373,22 +1560,39 @@ impl IterationEmitter<'_, '_, '_> {
                 conjunction = self.adder.copy()?;
             }
         }
-        self.fold(&DOUBLE_MASKS)?;
-        let flag_store = self.copy_to(DOUBLE_FLAG)?;
-        let branch = self.select(DOUBLE_FLAG[1], 416)?;
-        self.selected_arm(
-            (mode.second_mask_entry(DOUBLE_STAY_ENTRY)?, DOUBLE_STAY),
-            SECOND_SELECTED[1],
-            (DOUBLE_SELECTED, DOUBLE_JOIN),
+        self.fold(&mode.mask_words(DOUBLE_MASKS))?;
+        let flag_store = self.copy_to(mode.mask_words(DOUBLE_FLAG))?;
+        let branch = self.select(
+            mode.mask_address(DOUBLE_FLAG[1]),
+            mode.mask_address(416),
         )?;
         self.selected_arm(
-            (mode.second_mask_entry(DOUBLE_WRAP_ENTRY)?, DOUBLE_WRAP),
+            (
+                mode.second_mask_entry(DOUBLE_STAY_ENTRY)?,
+                mode.mask_address(DOUBLE_STAY),
+            ),
+            mode.mask_address(SECOND_SELECTED[1]),
+            (
+                mode.mask_words(DOUBLE_SELECTED),
+                mode.mask_address(DOUBLE_JOIN),
+            ),
+        )?;
+        self.selected_arm(
+            (
+                mode.second_mask_entry(DOUBLE_WRAP_ENTRY)?,
+                mode.mask_address(DOUBLE_WRAP),
+            ),
             ZERO,
-            (DOUBLE_SELECTED, DOUBLE_JOIN),
+            (
+                mode.mask_words(DOUBLE_SELECTED),
+                mode.mask_address(DOUBLE_JOIN),
+            ),
         )?;
         self.adder.emitter.pad_to_entry(
             mode.second_mask_entry(DOUBLE_JOIN_ENTRY)?,
-            DOUBLE_JOIN.checked_add(1).ok_or(LAYOUT)?,
+            mode.mask_address(DOUBLE_JOIN)
+                .checked_add(1)
+                .ok_or(LAYOUT)?,
         )?;
         Ok([branch, flag_store])
     }
@@ -1805,34 +2009,45 @@ impl IterationEmitter<'_, '_, '_> {
         mode: IterationMode,
     ) -> Result<[u32; 2], BuildError> {
         let adjusted = self.adder.add(sum, OFFSET, 7)?;
-        self.fold(&SECOND_LOW_MASKS)?;
-        let _: u32 = self.copy_to(SECOND_ADJUSTED)?;
+        self.fold(&mode.mask_words(SECOND_LOW_MASKS))?;
+        let _: u32 = self.copy_to(mode.mask_words(SECOND_ADJUSTED))?;
         for _ in 0u32..6 {
             self.adder.go(adjusted)?;
             let _: u32 = self.adder.emitter.linear(RotateData)?;
         }
-        self.fold(&SECOND_FLAG_MASKS)?;
-        let flag_store = self.copy_to(SECOND_MASK_FLAG)?;
-        let branch = self.select(SECOND_MASK_FLAG[1], 344)?;
+        self.fold(&mode.mask_words(SECOND_FLAG_MASKS))?;
+        let flag_store = self.copy_to(mode.mask_words(SECOND_MASK_FLAG))?;
+        let branch = self.select(
+            mode.mask_address(SECOND_MASK_FLAG[1]),
+            mode.mask_address(344),
+        )?;
         self.selected_arm(
             (
                 mode.second_mask_entry(SECOND_MASK_STAY_ENTRY)?,
-                SECOND_MASK_STAY,
+                mode.mask_address(SECOND_MASK_STAY),
             ),
             sum,
-            (SECOND_SELECTED, SECOND_MASK_JOIN),
+            (
+                mode.mask_words(SECOND_SELECTED),
+                mode.mask_address(SECOND_MASK_JOIN),
+            ),
         )?;
         self.selected_arm(
             (
                 mode.second_mask_entry(SECOND_MASK_WRAP_ENTRY)?,
-                SECOND_MASK_WRAP,
+                mode.mask_address(SECOND_MASK_WRAP),
             ),
-            SECOND_ADJUSTED[1],
-            (SECOND_SELECTED, SECOND_MASK_JOIN),
+            mode.mask_address(SECOND_ADJUSTED[1]),
+            (
+                mode.mask_words(SECOND_SELECTED),
+                mode.mask_address(SECOND_MASK_JOIN),
+            ),
         )?;
         self.adder.emitter.pad_to_entry(
             mode.second_mask_entry(SECOND_MASK_JOIN_ENTRY)?,
-            SECOND_MASK_JOIN.checked_add(1).ok_or(LAYOUT)?,
+            mode.mask_address(SECOND_MASK_JOIN)
+                .checked_add(1)
+                .ok_or(LAYOUT)?,
         )?;
         Ok([branch, flag_store])
     }
@@ -1910,6 +2125,7 @@ impl IterationEmitter<'_, '_, '_> {
     ) -> Result<SecondAddSites, BuildError> {
         let count = match mode {
             IterationMode::First
+            | IterationMode::SecondCombinedRead
             | IterationMode::SecondOddHalf
             | IterationMode::SecondOddRead
             | IterationMode::SecondOddUpdate
@@ -1949,6 +2165,7 @@ impl IterationEmitter<'_, '_, '_> {
     ) -> Result<SecondArithmeticSites, BuildError> {
         let addition = match mode {
             IterationMode::First
+            | IterationMode::SecondCombinedRead
             | IterationMode::SecondOddHalf
             | IterationMode::SecondOddRead
             | IterationMode::SecondOddUpdate
@@ -2037,7 +2254,11 @@ impl IterationEmitter<'_, '_, '_> {
         let [first, first_store] = mask.once_wrapped(sum, mode)?;
         let [double, double_store] = mask.double_wrap(mode)?;
         let copies = [
-            mask.copy_dirty_word(DOUBLE_SELECTED[1], MASKED[0], MASKED_TEMP)?,
+            mask.copy_dirty_word(
+                mode.mask_address(DOUBLE_SELECTED[1]),
+                MASKED[0],
+                MASKED_TEMP,
+            )?,
             mask.copy_dirty_word(ZERO, MASKED[1], MASKED_TEMP)?,
         ];
         adder.finish()?;
@@ -2095,10 +2316,17 @@ impl IterationEmitter<'_, '_, '_> {
         } else {
             None
         };
-        let odd_halt = if let Some(sites) = &third {
-            sites.byte_halt
+        let combined_odd = if mode.is_combined() {
+            Some(self.combined_arm(XOR_RESULT)?)
         } else {
-            self.adder.emitter.append(Halt)?
+            None
+        };
+        let odd_halt = if let Some(sites) = &third {
+            Some(sites.byte_halt)
+        } else if mode.is_combined() {
+            None
+        } else {
+            Some(self.adder.emitter.append(Halt)?)
         };
         self.adder.emitter.pad_to_entry(
             mode.second_even_entry()?,
@@ -2107,6 +2335,7 @@ impl IterationEmitter<'_, '_, '_> {
         Ok((
             SecondParitySites {
                 branch,
+                combined_odd,
                 half,
                 xor,
                 update,
@@ -2149,9 +2378,15 @@ impl IterationEmitter<'_, '_, '_> {
         } else {
             (None, None)
         };
-        let (addition, mask) = self.second_arithmetic(mode)?;
+        let (addition, mask, combined) = if mode.is_combined() {
+            let (mask, combined) = self.combined_arithmetic(mode)?;
+            (None, Some(mask), Some(combined))
+        } else {
+            let (addition, mask) = self.second_arithmetic(mode)?;
+            (addition, mask, None)
+        };
         let third = if mode.has_third_read() {
-            Some(self.third_read(eof_low, eof_high, ThirdLayout::EVEN)?)
+            Some(self.third_read(eof_low, eof_high, mode.third_layout())?)
         } else {
             odd_third
         };
@@ -2169,6 +2404,7 @@ impl IterationEmitter<'_, '_, '_> {
             branch,
             byte_halt,
             byte_stores: [low, high],
+            combined,
             eof_halt,
             eof_stores: [eof_low_store, eof_high_store],
             header_branch,
@@ -2525,7 +2761,7 @@ fn parity_from_sites(
             .map_err(|_error| LAYOUT)?,
         incremented_address: second.incremented.ok_or(LAYOUT)?,
         lookup_code_address: parity.lookup,
-        odd_halt_code_address: parity.odd_halt,
+        odd_halt_code_address: parity.odd_halt.ok_or(LAYOUT)?,
         parity_address: SECOND_PARITY_FLAG,
         parity_store_code_address: parity.parity_store,
         pointer_address: SECOND_PARITY_POINTER,
@@ -2623,7 +2859,7 @@ pub fn build_relocated_second_odd_half_source(
         branch_code_address: parity.branch,
         iteration: iteration_from_sites(addition, &sites),
         low_xor_address: half.low_xor,
-        odd_halt_code_address: parity.odd_halt,
+        odd_halt_code_address: parity.odd_halt.ok_or(LAYOUT)?,
         quotient_addresses: half.quotients,
         remainder_addresses: half.remainders,
         result_store_code_addresses: half.result_stores,
@@ -2660,6 +2896,43 @@ pub fn build_relocated_second_odd_update_source(
     )?;
     let mut sites = candidate.ok_or(LAYOUT)?;
     odd_update_from_sites(addition, &mut sites)
+}
+
+/// Execute both second parity arms, a shared mask, and a real third input.
+/// The third successful byte still halts before arithmetic.
+/// # Errors
+/// Refuses unsupported profiles and exhausted physical layouts.
+pub fn build_relocated_second_combined_read_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSecondCombinedReadSource, BuildError> {
+    let (addition, candidate) = build(
+        profile,
+        WITH_COMBINED_READ,
+        Some(IterationMode::SecondCombinedRead),
+    )?;
+    let mut sites = candidate.ok_or(LAYOUT)?;
+    let combined = sites.second.combined.take().ok_or(LAYOUT)?;
+    let mask = sites.second.mask.take().ok_or(LAYOUT)?;
+    let third = sites.second.third.take().ok_or(LAYOUT)?;
+    let parity = sites.second.parity.take().ok_or(LAYOUT)?;
+    let odd = parity.combined_odd.ok_or(LAYOUT)?;
+    Ok(RelocatedSecondCombinedReadSource {
+        arm_stores: [combined.even.store, odd.store],
+        arm_transfers: [combined.even.transfer, odd.transfer],
+        increment: (COMBINED_INCREMENT[1], combined.increment_store),
+        iteration: iteration_from_sites(addition, &sites),
+        mask_branches: mask.branches,
+        mask_copies: mask.copies,
+        mask_flag_stores: mask.flag_stores,
+        parity_branch: parity.branch,
+        parity_store: parity.parity_store,
+        result_word: COMBINED_VALUE[1],
+        third_byte_halt: third.byte_halt,
+        third_commits: third.header.commits,
+        third_eof: [third.output, third.eof_halt],
+        third_input: third.input,
+        third_snapshots: third.header.snapshots,
+    })
 }
 
 /// Execute a real third input after the canonical odd second-byte update.
@@ -2728,7 +3001,7 @@ fn odd_xor_from_sites(
         iteration: iteration_from_sites(addition, sites),
         bit_addresses: XOR_BITS,
         copy_temporary_address: XOR_COPY_TEMP,
-        odd_halt_code_address: parity.odd_halt,
+        odd_halt_code_address: parity.odd_halt.ok_or(LAYOUT)?,
         table_lookups: xor.lookups,
         nibble_results: xor.nibbles,
         quotient_addresses: XOR_QUOTIENTS,
