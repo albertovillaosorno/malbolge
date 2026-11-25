@@ -31,14 +31,14 @@ use super::super::{
     unique_graphical_cell,
 };
 use super::{
-    BOOT_RETURN, BuildError, Emitter, LAYOUT, TAPE_ZERO, TapePlan,
+    BOOT_RETURN, BuildError, Emitter, LAYOUT, TAPE_BOUNDS, TAPE_ZERO, TapePlan,
     extended_prefix,
 };
 
-const POINTER: u32 = 7_174_469;
-const NORMALIZER: u32 = 7_174_473;
-const PARITY: u32 = 7_174_477;
-const ONES: u32 = 7_174_481;
+pub(super) const POINTER: u32 = 7_174_469;
+pub(super) const NORMALIZER: u32 = 7_174_473;
+pub(super) const PARITY: u32 = 7_174_477;
+pub(super) const ONES: u32 = 7_174_481;
 const SOURCE_CELLS: usize = 5_796;
 
 /// Guarded parity-selected physical code transfer, separate from output probe.
@@ -103,6 +103,42 @@ pub struct RelocatedLiveParitySource {
     pub pointer_store_code_address: u32,
     /// Graphical source including loader seed.
     pub source: Vec<u8>,
+}
+
+pub(super) struct ParityLookupSites {
+    pub(super) lookup: u32,
+    pub(super) pointer_jump: u32,
+    pub(super) pointer_store: u32,
+}
+
+pub(super) struct ParityTapes {
+    normalizer: Vec<u32>,
+    parity: Vec<u32>,
+    pointer: Vec<u32>,
+}
+
+impl ParityTapes {
+    pub(super) fn allocate(plan: &mut TapePlan) -> Result<Self, BuildError> {
+        let pointer = plan.tape(14_348_542, false)?;
+        let normalizer = plan.tape(14_348_905, false)?;
+        let parity = plan.tape(1, true)?;
+        Ok(Self {
+            normalizer,
+            parity,
+            pointer,
+        })
+    }
+
+    pub(super) fn store(
+        &self,
+        emitter: &mut Emitter<'_>,
+        zero: u32,
+    ) -> Result<(), BuildError> {
+        let _: u32 = emitter.store_tape(&self.pointer, POINTER, zero)?;
+        let _: u32 = emitter.store_tape(&self.normalizer, NORMALIZER, zero)?;
+        let _: u32 = emitter.store_tape(&self.parity, PARITY, ONES)?;
+        Ok(())
+    }
 }
 
 /// Emit a guarded branch on the actual computed parity bit.
@@ -180,17 +216,10 @@ pub fn build_relocated_live_parity_branch_source(
 ///
 /// # Errors
 /// Refuses unsupported profiles and impossible bounded tape geometry.
-#[expect(
-    clippy::too_many_lines,
-    reason = "keep the exact physical emission sequence auditable"
-)]
 pub fn build_relocated_live_parity_source(
     profile: &ProfileDescriptor,
 ) -> Result<RelocatedLiveParitySource, BuildError> {
-    use LinearOpcode::{
-        CrazyData, Halt, NoOperation, OutputByte, RelocateDataPointer,
-        RotateData,
-    };
+    use LinearOpcode::{Halt, NoOperation, OutputByte};
     let mut prefix = extended_prefix(profile)?;
     for (position, opcode) in
         [(108, NoOperation), (110, NoOperation), (120, Halt)]
@@ -204,22 +233,46 @@ pub fn build_relocated_live_parity_source(
         profile,
         source: prefix.source,
         source_cells: SOURCE_CELLS,
+        tape_bounds: TAPE_BOUNDS,
     };
     let mut tape = TapePlan::new();
-    let pointer = tape.tape(14_348_542, false)?;
-    let normalizer = tape.tape(14_348_905, false)?;
-    let parity = tape.tape(1, true)?;
-    for address in [POINTER, NORMALIZER, PARITY, ONES] {
-        emitter.walk(address)?;
-        let _: u32 = emitter.linear(CrazyData)?;
-        emitter.walk(address.checked_add(2).ok_or(LAYOUT)?)?;
-        let _: u32 = emitter.linear(CrazyData)?;
-    }
+    let parity_tapes = ParityTapes::allocate(&mut tape)?;
+    emitter.prepare_odd_pairs(&[POINTER, NORMALIZER, PARITY, ONES])?;
     emitter.prepare_tape(&tape)?;
-    let _: u32 = emitter.store_tape(&pointer, POINTER, TAPE_ZERO)?;
-    let _: u32 = emitter.store_tape(&normalizer, NORMALIZER, TAPE_ZERO)?;
-    let _: u32 = emitter.store_tape(&parity, PARITY, ONES)?;
+    parity_tapes.store(&mut emitter, TAPE_ZERO)?;
     let [raw, _high] = prefix.input_pair;
+    let lookup = emit_parity_lookup(&mut emitter, raw)?;
+    // The two data paths must independently reach BOOT_RETURN. Neither
+    // route reads the raw input, pointer scratch, or input-dependent mask.
+    emitter.append_route(b"jjojjoojjojooj")?;
+    let parity_store_code_address = emit_parity_result(&mut emitter)?;
+    let output_code_address = emitter.linear(OutputByte)?;
+    let byte_halt_code_address = emitter.append(Halt)?;
+    Ok(RelocatedLiveParitySource {
+        branch_code_address: prefix.branch_code_address,
+        byte_arm_code_address: 126,
+        byte_halt_code_address,
+        eof_halt_code_address: 120,
+        first_input_code_address: prefix.first_input_code_address,
+        input_pair: prefix.input_pair,
+        lookup_code_address: lookup.lookup,
+        output_code_address,
+        parity_address: PARITY,
+        parity_store_code_address,
+        pointer_address: POINTER,
+        pointer_jump_code_address: lookup.pointer_jump,
+        pointer_store_code_address: lookup.pointer_store,
+        source: emitter.finish()?,
+    })
+}
+
+/// Emit the raw-byte-preserving pointer computation and loader lookup.
+/// The following data route is profile/source dependent and remains explicit.
+pub(super) fn emit_parity_lookup(
+    emitter: &mut Emitter<'_>,
+    raw: u32,
+) -> Result<ParityLookupSites, BuildError> {
+    use LinearOpcode::{CrazyData, RelocateDataPointer, RotateData};
     for _ in 0u32..15 {
         emitter.go(raw)?;
         let _: u32 = emitter.linear(RotateData)?;
@@ -232,47 +285,19 @@ pub fn build_relocated_live_parity_source(
     let pointer_jump_code_address = emitter.append(RelocateDataPointer)?;
     let lookup_code_address = emitter.append(RotateData)?;
     let _: u32 = emitter.append(RelocateDataPointer)?;
-    // The two data paths must independently reach BOOT_RETURN. Neither
-    // route reads the raw input, pointer scratch, or input-dependent mask.
-    for opcode in [
-        RelocateDataPointer,
-        RelocateDataPointer,
-        NoOperation,
-        RelocateDataPointer,
-        RelocateDataPointer,
-        NoOperation,
-        NoOperation,
-        RelocateDataPointer,
-        RelocateDataPointer,
-        NoOperation,
-        RelocateDataPointer,
-        NoOperation,
-        NoOperation,
-        RelocateDataPointer,
-    ] {
-        let _: u32 = emitter.append(opcode)?;
-    }
+    Ok(ParityLookupSites {
+        lookup: lookup_code_address,
+        pointer_jump: pointer_jump_code_address,
+        pointer_store: pointer_store_code_address,
+    })
+}
+
+pub(super) fn emit_parity_result(
+    emitter: &mut Emitter<'_>,
+) -> Result<u32, BuildError> {
     emitter.data = BOOT_RETURN;
     emitter.go(NORMALIZER)?;
-    let _: u32 = emitter.linear(CrazyData)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.go(PARITY)?;
-    let parity_store_code_address = emitter.linear(CrazyData)?;
-    let output_code_address = emitter.linear(OutputByte)?;
-    let byte_halt_code_address = emitter.append(Halt)?;
-    Ok(RelocatedLiveParitySource {
-        branch_code_address: prefix.branch_code_address,
-        byte_arm_code_address: 126,
-        byte_halt_code_address,
-        eof_halt_code_address: 120,
-        first_input_code_address: prefix.first_input_code_address,
-        input_pair: prefix.input_pair,
-        lookup_code_address,
-        output_code_address,
-        parity_address: PARITY,
-        parity_store_code_address,
-        pointer_address: POINTER,
-        pointer_jump_code_address,
-        pointer_store_code_address,
-        source: emitter.finish()?,
-    })
+    emitter.linear(LinearOpcode::CrazyData)
 }

@@ -41,6 +41,20 @@ a compiler capability gap, not a reason to return to N+1.
 
 ## Current P2 delivery focus
 
+A single **47,814-cell composed physical image** now prepares shared
+marker tapes and genuinely writes both continuation pointers. C20353
+dispatches by the live first-input class to C30000 (byte) or C45000
+(EOF). Every successful byte preserves its raw pair and reaches its
+parity-selected halt via C32944 in 23,293 steps; EOF stores both
+canonical signed words and returns zero in 23,045 steps. Both paired
+full-image proofs and the source-bound empty return pass under the
+explicit `ComposedMarkerTape` class. Smaller classes, forged landings,
+omitted canonical stores and the unfinished byte return refuse their
+respective checks. The next gap is actual arithmetic on the byte
+arms, source-frame effects, phi/backedge, and whole-C publication.
+Evidence: `tests/compiler/relocated_eof_parity.rs`,
+`tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
+
 The guarded parity candidate now has a separate **real code transfer**
 variant. C5644 reads the computed Boolean at M7,174,477; a read-only
 data route selects M20=123 or M80=118, and C5686 jumps to C124 (even)

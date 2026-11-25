@@ -55,6 +55,9 @@ pub const MAX_EXPANDED_CODE_CELLS: usize = 128;
 /// The larger tape class leaves the default short-probe limits unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourcePhysicalTraceBudget {
+    /// At most 49,152 source cells, 24,576 steps and 1,024 expanded effect
+    /// sites.
+    ComposedMarkerTape,
     /// At most 8,192 source cells/steps and 512 expanded effect sites.
     MarkerTape,
     /// The original short-revisit limits and 128 expanded effect sites.
@@ -64,6 +67,7 @@ pub enum SourcePhysicalTraceBudget {
 impl SourcePhysicalTraceBudget {
     pub(super) const fn max_expanded_cells(self) -> usize {
         match self {
+            Self::ComposedMarkerTape => 1024,
             Self::MarkerTape => 512,
             Self::Short => MAX_EXPANDED_CODE_CELLS,
         }
@@ -71,6 +75,7 @@ impl SourcePhysicalTraceBudget {
 
     pub(super) const fn max_source_cells(self) -> usize {
         match self {
+            Self::ComposedMarkerTape => 49_152,
             Self::MarkerTape => 8192,
             Self::Short => MAX_REVISIT_SOURCE_CELLS,
         }
@@ -78,6 +83,7 @@ impl SourcePhysicalTraceBudget {
 
     pub(super) const fn max_steps(self) -> usize {
         match self {
+            Self::ComposedMarkerTape => 24_576,
             Self::MarkerTape => 8192,
             Self::Short => MAX_REVISIT_STEPS,
         }

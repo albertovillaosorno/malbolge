@@ -39,8 +39,8 @@ use super::layout::{
     AddressSelectedIndirectProof, AddressSelectedSourceReturnError,
     AddressSelectedSourceReturnProbe, SourceBranchLanding, SourceInputProbe,
     SourceInputTraceError, SourcePhysicalTraceBudget,
-    build_relocated_eof_branch_source, build_relocated_signed_eof_source,
-    verify_address_selected_indirect_guest,
+    build_relocated_eof_branch_source, build_relocated_eof_parity_source,
+    build_relocated_signed_eof_source, verify_address_selected_indirect_guest,
     verify_address_selected_indirect_guest_with_budget,
     verify_address_selected_source_return,
 };
@@ -646,5 +646,124 @@ fn relocated_signed_eof_binds_source_return_only() -> Result<(), String> {
             SourceInputTraceError::UnexpectedGuestInput
         ))
     );
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "exact original empty return and incomplete byte refusal"
+)]
+#[test]
+fn relocated_composed_eof_binds_source_return_only() -> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_eof_parity_source(current_profile())
+        .map_err(|error| format!("composed EOF: {error:?}"))?;
+    let physical = verify_address_selected_indirect_guest_with_budget(
+        current_profile(),
+        AddressSelectedIndirectProbe {
+            cases: [
+                AddressSelectedIndirectCase {
+                    input: &[0, 128],
+                    landing_address: guest.byte_entry,
+                    pointer_cell: 7_174_485,
+                },
+                AddressSelectedIndirectCase {
+                    input: &[],
+                    landing_address: guest.eof_entry,
+                    pointer_cell: 7_174_535,
+                },
+            ],
+            indirect_code_cell: guest.guard_code_address,
+            input_code_cell: guest.first_input_code_address,
+            selector_cell: guest.class_address,
+            selector_code_cell: guest.guard_selector_code_address,
+            selector_store_code_cell: guest.class_store_code_address,
+            source: &guest.source,
+            step_budget: 24_000,
+        },
+        SourcePhysicalTraceBudget::ComposedMarkerTape,
+    )
+    .map_err(|error| format!("composed route: {error:?}"))?;
+    // Only the reached EOF control and I/O reservations are authenticated.
+    // The unimplemented arithmetic blocks have nonoverlapping reservations
+    // in unused source cells, not executable source-C effects.
+    let blocks = [
+        block(0, 0, 75, 76),
+        block(1, 117, 20_353, 20_354),
+        block(2, 30_000, 32_944, 32_945),
+        block(3, 33_000, 33_004, 33_005),
+        block(4, 33_005, 33_009, 33_010),
+        block(5, 33_010, 33_017, 33_018),
+        block(6, 45_000, 47_697, 47_698),
+    ];
+    let pads = [
+        pad(0, 1, 98, 107),
+        pad(3, 5, 33_018, 33_023),
+        pad(4, 5, 33_023, 33_028),
+        pad(5, 1, 33_028, 33_037),
+    ];
+    let operations = [
+        operation(0, 1, 53),
+        operation(5, 2, 33_014),
+        operation(6, 0, 47_695),
+        operation(6, 1, 47_696),
+    ];
+    let reads = [READS[0], GuestCodeInputAnchor {
+        code_address: 33_014,
+        ..READS[1]
+    }];
+    let probe = AddressSelectedSourceReturnProbe {
+        branch: SourceBranchLanding {
+            false_landing: guest.eof_entry,
+            true_landing: guest.byte_entry,
+            ..BRANCH
+        },
+        effect_anchors: &EFFECTS,
+        operation_anchors: &operations,
+        proposals: GuestCodeProposals {
+            code_blocks: &blocks,
+            edge_pads: &pads,
+        },
+        source_input: SourceInputProbe {
+            anchors: &reads,
+            canonical: &wire,
+            frame_base: FRAME,
+            input: &[],
+            physical_source: &guest.source,
+            step_budget: 24_000,
+        },
+    };
+    let receipt = verify_address_selected_source_return(&physical, &probe)
+        .map_err(|error| format!("composed source EOF: {error:?}"))?;
+    assert_eq!(receipt.guest_output, [0]);
+    assert_eq!(receipt.bytes_consumed, 0);
+    let [input] = receipt.observations.as_slice() else {
+        return Err("missing source input".into());
+    };
+    assert_eq!(
+        (input.code_address, input.input),
+        (53, TraceInput::EndOfInput)
+    );
+    let [output] = receipt.output_sites.as_slice() else {
+        return Err("missing source output".into());
+    };
+    assert_eq!(
+        (
+            output.block,
+            output.ordinal,
+            output.code_address,
+            output.byte
+        ),
+        (6, 1, 47_696, 0)
+    );
+    let byte = AddressSelectedSourceReturnProbe {
+        source_input: SourceInputProbe {
+            input: &[0, 128],
+            ..probe.source_input
+        },
+        ..probe
+    };
+    assert!(verify_address_selected_source_return(&physical, &byte).is_err());
     Ok(())
 }

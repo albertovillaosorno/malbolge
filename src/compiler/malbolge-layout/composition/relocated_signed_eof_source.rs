@@ -27,9 +27,14 @@
 //! The byte arm remains incomplete. No source-level CFG or frame
 //! authorization follows from these physical candidate addresses.
 
+#[path = "relocated_eof_parity_source.rs"]
+mod relocated_eof_parity_source;
 #[path = "relocated_live_parity_source.rs"]
 mod relocated_live_parity_source;
 use malbolge::{ProfileDescriptor, current_profile};
+pub use relocated_eof_parity_source::{
+    RelocatedEofParitySource, build_relocated_eof_parity_source,
+};
 pub use relocated_live_parity_source::{
     RelocatedLiveParityBranchSource, RelocatedLiveParitySource,
     build_relocated_live_parity_branch_source,
@@ -38,9 +43,9 @@ pub use relocated_live_parity_source::{
 
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
 use super::{
-    LinearOpcode, RelocatedEofBranchSource, ZeroCellSourceError,
-    build_relocated_eof_branch_source, unique_graphical_cell,
-    unwritten_loader_word,
+    CodeVisitRequirement, LinearOpcode, RelocatedEofBranchSource,
+    ZeroCellSourceError, build_relocated_eof_branch_source, encode_code_visits,
+    unique_graphical_cell, unwritten_loader_word,
 };
 
 const FRAME: u32 = 7_174_417;
@@ -50,6 +55,10 @@ const BOOT_RETURN: u32 = 7_174_467;
 const TAPE_START: u32 = 7_174_501;
 const TAPE_LIMIT: u32 = 7_174_957;
 const TAPE_ZERO: u32 = 7_174_503;
+const TAPE_BOUNDS: TapeBounds = TapeBounds {
+    limit: TAPE_LIMIT,
+    start: TAPE_START,
+};
 const SOURCE_CELLS: usize = 6_642;
 const ROTATION_ORDER: [u32; 15] =
     [3, 2, 1, 0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4];
@@ -101,7 +110,14 @@ struct MarkerCopy {
     operand: u32,
 }
 
+#[derive(Clone, Copy)]
+struct TapeBounds {
+    limit: u32,
+    start: u32,
+}
+
 struct TapePlan {
+    bounds: TapeBounds,
     copies: Vec<MarkerCopy>,
     next_slot: u32,
 }
@@ -110,7 +126,7 @@ impl TapePlan {
     fn allocate(&mut self) -> Result<u32, BuildError> {
         let slot = self.next_slot;
         self.next_slot = slot.checked_add(4).ok_or(LAYOUT)?;
-        if self.next_slot > TAPE_LIMIT {
+        if self.next_slot > self.bounds.limit {
             return Err(LAYOUT);
         }
         Ok(slot)
@@ -136,10 +152,7 @@ impl TapePlan {
     }
 
     const fn new() -> Self {
-        Self {
-            copies: Vec::new(),
-            next_slot: TAPE_START,
-        }
+        Self::with_bounds(TAPE_BOUNDS)
     }
 
     const fn operands_for_digit(
@@ -173,6 +186,14 @@ impl TapePlan {
         }
         Ok(tape)
     }
+
+    const fn with_bounds(bounds: TapeBounds) -> Self {
+        Self {
+            bounds,
+            copies: Vec::new(),
+            next_slot: bounds.start,
+        }
+    }
 }
 
 /// Tracks only proposed straight-line D positions, not guest values or
@@ -182,6 +203,7 @@ struct Emitter<'profile> {
     profile: &'profile ProfileDescriptor,
     source: Vec<u8>,
     source_cells: usize,
+    tape_bounds: TapeBounds,
 }
 
 impl Emitter<'_> {
@@ -194,6 +216,31 @@ impl Emitter<'_> {
             .map_err(|_error| LAYOUT)?;
         self.source.push(byte);
         u32::try_from(position).map_err(|_error| LAYOUT)
+    }
+
+    fn append_indirect(&mut self) -> Result<u32, BuildError> {
+        let position = self.source.len();
+        if position >= self.source_cells {
+            return Err(LAYOUT);
+        }
+        let address = u32::try_from(position).map_err(|_error| LAYOUT)?;
+        let byte = encode_code_visits(self.profile, address, &[
+            CodeVisitRequirement::Decoded(b'i'),
+        ])
+        .map_err(|_error| LAYOUT)?;
+        self.source.push(byte);
+        Ok(address)
+    }
+
+    fn append_route(&mut self, route: &[u8]) -> Result<(), BuildError> {
+        for opcode in route {
+            let _: u32 = self.append(match opcode {
+                b'j' => LinearOpcode::RelocateDataPointer,
+                b'o' => LinearOpcode::NoOperation,
+                _ => return Err(LAYOUT),
+            })?;
+        }
+        Ok(())
     }
 
     fn finish(mut self) -> Result<Vec<u8>, BuildError> {
@@ -210,8 +257,8 @@ impl Emitter<'_> {
         for (address, expected) in [
             (FRAME, 37),
             (FRAME_RESET, 7_174_416),
-            (TAPE_START, 37),
-            (TAPE_LIMIT, 37),
+            (self.tape_bounds.start, 37),
+            (self.tape_bounds.limit, 37),
         ] {
             let cell = usize::try_from(address).map_err(|_error| LAYOUT)?;
             if unwritten_loader_word(&self.source, cell, self.profile)
@@ -243,6 +290,38 @@ impl Emitter<'_> {
         Ok(site)
     }
 
+    fn pad_to_entry(
+        &mut self,
+        entry: usize,
+        data: u32,
+    ) -> Result<(), BuildError> {
+        // The selected indirect transfer encrypts the virgin cell at entry-1.
+        if self.source.len() >= entry {
+            return Err(LAYOUT);
+        }
+        while self.source.len() < entry {
+            let _: u32 = self.append(LinearOpcode::NoOperation)?;
+        }
+        self.data = data;
+        Ok(())
+    }
+
+    fn prepare_odd_pairs(
+        &mut self,
+        addresses: &[u32],
+    ) -> Result<(), BuildError> {
+        use LinearOpcode::CrazyData;
+        // Starting with A=0, prepare alternating all-one/zero words. All
+        // intervening even cells retain their virgin reset pointer.
+        for &address in addresses {
+            self.walk(address)?;
+            let _: u32 = self.linear(CrazyData)?;
+            self.walk(address.checked_add(2).ok_or(LAYOUT)?)?;
+            let _: u32 = self.linear(CrazyData)?;
+        }
+        Ok(())
+    }
+
     fn prepare_pair(&mut self) -> Result<(), BuildError> {
         use LinearOpcode::{CrazyData, RotateData};
         // True EOF alone leaves all twos at M7,174,421. Rotating this
@@ -265,7 +344,7 @@ impl Emitter<'_> {
         use LinearOpcode::{CrazyData, RotateData};
         // Alternate all-one and zero writes to odd virgin loader cells.
         // The intervening even cells remain reusable frame-reset pointers.
-        for slot in (TAPE_START..plan.next_slot).step_by(4) {
+        for slot in (plan.bounds.start..plan.next_slot).step_by(4) {
             self.walk(slot)?;
             let _: u32 = self.linear(CrazyData)?;
             self.walk(slot.checked_add(2).ok_or(LAYOUT)?)?;
@@ -292,8 +371,7 @@ impl Emitter<'_> {
             FRAME_RESET
         } else if self.data == BOOT_RETURN {
             7_174_468
-        } else if ((7_174_468..=7_174_484).contains(&self.data)
-            || self.data >= TAPE_START)
+        } else if (7_174_468..=self.tape_bounds.limit).contains(&self.data)
             && self.data.is_multiple_of(2)
         {
             self.data
@@ -338,7 +416,7 @@ impl Emitter<'_> {
     }
 
     fn walk(&mut self, target: u32) -> Result<(), BuildError> {
-        if target < self.data || target > TAPE_LIMIT {
+        if target < self.data || target > self.tape_bounds.limit {
             return Err(LAYOUT);
         }
         for _ in self.data..target {
@@ -402,6 +480,7 @@ pub fn build_relocated_signed_eof_source(
         profile,
         source: prefix.source,
         source_cells: SOURCE_CELLS,
+        tape_bounds: TAPE_BOUNDS,
     };
     let mut tape = TapePlan::new();
     let [low_word, high_word] = encode_i32_cells(u32::MAX);

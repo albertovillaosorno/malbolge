@@ -12,6 +12,30 @@ D reads a known graphical source word or untouched loader-expanded word;
 input-tainted and unproven-written operands still refuse. There is no
 automatically emitted conditional branch, backward jump, or helper.
 
+### Composed signed EOF and byte parity (2026-11-24)
+
+`build_relocated_eof_parity_source` emits one 47,814-cell image. A
+shared 300-slot marker tape constructs both forward continuation
+pointers (M7,174,485=29,999 and M7,174,535=44,999). The original
+C53 input and C99 class write feed C20265's selector and C20353's
+actual indirect transfer. Bytes enter C30000, preserve their raw pair
+and compute parity at C32867. C32944 selects the even C124 or odd C119
+halt. True EOF enters C45000, physically writes the signed pair
+at C46089/C47472, and emits zero at C47696 before C47697 halts.
+All 256 byte classes (23,293 steps each) and EOF (23,045 steps) pass
+normative replay. Omitting either signed store still emits zero but
+fails the canonical pair check.
+
+The explicit `ComposedMarkerTape` resource class admits up to 49,152
+source cells, 24,576 steps and 1,024 expanded effect sites. Both
+paired route proofs reconcile the same complete image; the shorter
+classes and a forged landing refuse. The original source-bound empty
+return join passes with C53/C20353/C47696/C47697; the unfinished byte
+return refuses. These are physical control, storage and I/O observations,
+not a source-frame certificate. Arithmetic, phi moves and the backedge
+remain absent. See `tests/compiler/relocated_eof_parity.rs` and
+`tests/compiler/relocated_eof_source_binding.rs`.
+
 ### Parity-selected physical code transfer (2026-11-24)
 
 `build_relocated_live_parity_branch_source` preserves the guarded parity

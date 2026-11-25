@@ -296,7 +296,8 @@ fn authenticate_io_sites(
     budget: SourcePhysicalTraceBudget,
 ) -> Result<SourceIoSites, SourceInputTraceError> {
     let (max_source_cells, max_steps) = match budget {
-        SourcePhysicalTraceBudget::MarkerTape => {
+        SourcePhysicalTraceBudget::ComposedMarkerTape
+        | SourcePhysicalTraceBudget::MarkerTape => {
             (budget.max_source_cells(), budget.max_steps())
         },
         SourcePhysicalTraceBudget::Short => {

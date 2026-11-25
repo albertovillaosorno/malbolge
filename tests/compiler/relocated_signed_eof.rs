@@ -25,9 +25,8 @@
 //! Source-loaded signed C23 EOF storage through real ternary operations.
 
 use malbolge::{
-    ProfileMachine, ProfileRegisters, ProfileStepTrace, RunOutcome,
-    Termination, TraceInput, current_profile, decode_profile_instruction,
-    historical_profile,
+    ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
+    current_profile, decode_profile_instruction, historical_profile,
 };
 
 use super::layout::{
@@ -74,13 +73,9 @@ fn fork(
     initial: &ProfileMachine,
     input: Vec<u8>,
 ) -> Result<ProfileMachine, String> {
-    ProfileMachine::from_state(
-        current_profile(),
-        initial.memory().to_vec(),
-        input,
-        ProfileRegisters::default(),
-    )
-    .map_err(|error| error.to_string())
+    initial
+        .fork_with_input(input)
+        .map_err(|error| error.to_string())
 }
 
 #[expect(

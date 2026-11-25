@@ -28,6 +28,46 @@ or hundreds of individual documentation pages.
 
 ## Current Behavior
 
+### One composed signed EOF and parity image (2026-11-24)
+
+The 47,814-cell `build_relocated_eof_parity_source` preserves the
+first input at C53 and the exact C99 class write. The former early
+C118 dispatch now converges before shared tape preparation. Three
+hundred operand slots, with 100 marker copies, construct constants
+for both continuations and for byte parity and signed EOF. C19581
+and C20257 write 29,999 and 44,999 into M7,174,485 and M7,174,535,
+respectively. C20265 reads the original class; the following read-only
+D route selects one of those invariant words. The C20353 indirect
+transfer reaches C30000 for every successful byte or C45000 for EOF.
+
+The byte path computes the loader lookup at C32840, stores the
+Boolean at C32867, and selects a second real transfer at C32944.
+It reaches C124 on even and C119 on odd input. All 256 bytes retain
+their adjacent raw pair and consume exactly one byte without output
+in 23,293 instructions. True EOF bypasses this path, writes the
+canonical pair [4,644,102, 299] at C46089/C47472, writes zero to the
+original output operand at C47695, emits it at C47696 and halts at
+C47697 in 23,045 instructions. Both omitted signed-store controls
+still emit zero but leave an incorrect input pair.
+
+The new opt-in `ComposedMarkerTape` class bounds full-image replay
+at 49,152 source cells, 24,576 steps and 1,024 expanded effect sites,
+without changing the older classes, per-site event bounds or physical
+reconciliation rules. Independent paired proofs authenticate the
+byte/EOF class route and the parity route on this same source; a forged
+landing and the shorter resource classes refuse. The original source
+empty-input return join matches C53/C20353/C47696/C47697; the byte
+return is still refused. Placeholder reservations for unimplemented
+arithmetic are not executable source effects.
+
+This composes the two formerly separate physical experiments, not
+the complete C23 checksum. The signed EOF write is still a control-
+selected constant materialization, and the Boolean is scratch.
+Source-frame input and predicate authorization, XOR/add/mask,
+phi moves, the loop backedge and full publication remain open.
+Evidence: `tests/compiler/relocated_eof_parity.rs`,
+`tests/compiler/relocated_eof_source_binding.rs`.
+
 ### Parity-selected physical code transfer (2026-11-24)
 
 A separate 5,796-cell candidate retains the guarded byte-parity
