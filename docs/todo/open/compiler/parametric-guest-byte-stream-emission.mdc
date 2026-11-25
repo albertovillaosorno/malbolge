@@ -358,6 +358,11 @@ reads, two non-ones prefix reads, twelve single reversible reads,
 and restoration of all remaining reversible reads. Three omitted
 reads refuse. All 21 physical checksum, 38 source-recurrent and
 three original C23 pipeline tests pass.
+The optimized VM trace still has 144,948 non-no-operations before
+input. After the last paired-seed return is installed it executes
+805,314 steps, including 90,401 non-no-operations; before that
+boundary it executes 54,547 non-no-operations. Compact routes alone
+cannot close the publication gap for this instruction sequence.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

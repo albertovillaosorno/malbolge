@@ -14801,3 +14801,28 @@ count is now 1,338. The 21 physical checksum tests, 38 source-recurrent
 tests and three original C23 pipeline tests pass. This remains a
 finite physical witness, with the source-C publication gate unchanged
 at 100,000 steps and the general source-frame admission still open.
+
+A fresh pre-input instruction census of this optimized guest records
+1,011,597 no-operations, 78,558 data relocations, 42,084 crazy
+operations, 24,304 rotations and two code relocations. This leaves
+144,948 non-no-operations, compared with 146,277 before accumulator
+reuse. Of the no-operations, 397,037 occur in the near frame/root
+region M[7,174,400..7,174,499]. Partitioning the real instruction
+trace immediately after the last of the 80 paired-seed return cells
+receives its final pointer gives the following counts:
+
+| Trace segment | No-op | Data reloc. | Crazy | Rotate | Code reloc. |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Through return installation | 296,684 | 26,116 | 12,360 | 16,070 | 1 |
+| After return installation | 714,913 | 52,442 | 29,724 | 8,234 | 1 |
+
+The latter segment alone accounts for 805,314 steps, including
+90,401 non-no-operations. The earlier segment still needs 54,547
+non-no-operations. These are observed costs of the current physical
+strategy, not lower bounds for a different guest. A zero-walk
+variant of the same instruction sequence would still exceed the
+publication bound by 44,948 steps before the first input, even
+without charging any recurrent work. A subsequent experiment should
+therefore target fewer materialization and reload effects in the
+shared target phase, in addition to compact routes. The temporary
+trace instrumentation was removed after measurement.
