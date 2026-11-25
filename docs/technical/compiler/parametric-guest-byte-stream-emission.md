@@ -1007,6 +1007,35 @@ normalization, EOF arm, or checksum loop follows.** This is an input-driven
 *data-pointer discriminator* that a future linker may use, not a guest
 implementation of the original C `if` or release parity.
 
+A third source-loaded continuation now executes the **first original C23
+checksum EOF path**, though it does not compile the complete program.
+`build_adjacent_c32_zero_c37_eof_code_arm_source` preserves the C14/C17
+zero initializer, genuine C37 `/`, C50 raw low-word `p`, C51 zero high-word
+`*` and C64 input-derived `j`. A new C34 `*` deliberately leaves its
+XLAT2-encrypted code glyph at 86. C65 `j` selects D34 from initial C0 on
+true EOF, then reached C66 `i` reads that **physically encrypted** word
+and transfers to untouched C87 `<`; C88 `v` terminates at 69 steps.
+The output is one genuine zero byte, the empty-input C23 checksum result.
+
+A **257-class full normative VM branch sweep** found that successful
+bytes can reach C1, C61, C72, C86 or C7,174,460, not the EOF landing
+C87. Byte `0x17` instead fails an invalid-encryption-target check: the
+C34 preparatory rotation alters a later input-selected data operand.
+The input-derived pointers can address previously modified guest data,
+so a scalar loader-parity model is insufficient for non-EOF control.
+Thirteen regression guest prefixes cover these observed cases, real
+C14/C17/C37/C50/C51/C64/C65/C66 sites, the two original C32 result
+cells and the genuine EOF output/halt. Changing C34, C66, C87 or C88
+breaks the specific physical transfer/output/termination contract.
+
+No successful-byte path can be counted as a checksum iteration;
+indeed C1/C61 are previously encrypted code, not verified source-C
+branch arms. The original C23 program is **still explicitly refused**:
+its signed EOF local is raw N15 rather than `-1`, the source frame has
+extra preliminary writes, and arithmetic/phi/backedge/source-return
+linkage is absent. Matching the complete empty-stream oracle on this
+bounded guest prefix must never be promoted to full C23 acceptance.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend

@@ -41,6 +41,20 @@ classes, and a no-jump mutation witness this exact separation. C65
 halts: no guest code branch, signed EOF result, source-C conditional,
 or checksum iteration is claimed.
 
+`build_adjacent_c32_zero_c37_eof_code_arm_source` continues the same
+120-cell original checksum first-input prefix through a reached C66 `i`.
+The C34 preparatory rotation changes its encrypted source cell to 86.
+On true EOF, C64/C65 select D34 and C66 branches to fresh C87 `<`,
+followed by C88 `v`: the normative guest emits exactly one `00` byte
+and halts in 69 steps. That output is the independently expected **empty**
+C23 checksum. A 257-class full guest branch sweep found non-EOF
+landings C1, C61, C72, C86 and C7,174,460 and an invalid target for
+byte `0x17`; the code is **not** a complete non-EOF branch. Thirteen
+frozen-case regressions cover all observed landing classes, plus
+257-class first-pointer algebra and four negative mutations. Signed EOF
+storage, arithmetic, phi/backedge linkage and checksum publication are
+still absent.
+
 ### Physical code-cell reuse contract (2026-11-21)
 
 `encode_code_visits` selects a graphical source byte for an exact bounded

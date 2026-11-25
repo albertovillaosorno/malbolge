@@ -2679,3 +2679,208 @@ fn original_checksum_prefix_has_120_cell_graphical_reservation_tail()
     assert_eq!(matching, [(120, 93, 37), (120, 109, 37)]);
     Ok(())
 }
+
+// The original C23 program has a source `current != EOF` guard after the
+// first input. This finite guest now transfers *only the EOF case* to an
+// actual code arm and halts there. The non-EOF source arm is not linked;
+// no successful byte is claimed as a complete checksum execution.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "original C23 first input: true EOF code-arm and byte guard"
+)]
+fn original_checksum_first_eof_reaches_a_real_indirect_code_arm()
+-> Result<(), String> {
+    use malbolge::{TraceInput, encrypt_profile_cell};
+
+    let profile = current_profile();
+    let guest =
+        layout::build_adjacent_c32_zero_c37_eof_code_arm_source(profile)
+            .map_err(|error| format!("EOF code arm: {error:?}"))?;
+    let source = &guest.pointer.byte_pair.zero_pair.source;
+    assert_eq!(source.len(), 120);
+    assert_eq!(guest.eof_target_seed_code_address, 34);
+    assert_eq!(guest.branch_code_address, 66);
+    assert_eq!(guest.eof_output_code_address, 87);
+    assert_eq!(guest.eof_halt_code_address, 88);
+    assert_eq!(guest.pointer.pointer_code_address, 64);
+    assert_eq!(source[86], 125);
+    assert_eq!(encrypt_profile_cell(u32::from(source[34])), Some(86));
+    assert!(
+        source
+            .iter()
+            .enumerate()
+            .all(|(at, &glyph)| { graphical_tail(glyph, at) })
+    );
+
+    // The input-derived first pointer is zero only for true EOF. Its
+    // later dereference can read data modified by earlier guest operations;
+    // loader parity alone cannot prove the final code landing.
+    let ones = crazy(7_174_416, 0);
+    assert_eq!(ones, 7_174_453);
+    for class in 0..=256u16 {
+        let raw = u8::try_from(class).map_or(profile.eof_word(), u32::from);
+        let encoded = crazy(ones, raw);
+        let first = (encoded + 1) % profile.word_modulus();
+        assert_eq!(first == 0, class == 256, "class {class}");
+    }
+
+    let pristine = ProfileMachine::from_source(profile, source, Vec::new())
+        .map_err(|error| format!("source load: {error:?}"))?;
+    // All five success landing types and the invalid `0x17` case were
+    // discovered by a 257-class full normative VM sweep. The test pins
+    // each exceptional class, rather than presenting byte parity as a
+    // sufficient code-pointer proof.
+    for (class, expected_target) in [
+        (0u16, Some(1u32)),
+        (1, Some(61)),
+        (2, Some(61)),
+        (21, Some(7_174_460)),
+        (23, None),
+        (36, Some(86)),
+        (37, Some(86)),
+        (38, Some(72)),
+        (43, Some(86)),
+        (127, Some(1)),
+        (128, Some(1)),
+        (255, Some(61)),
+        (256, Some(87)),
+    ] {
+        let byte = u8::try_from(class).ok();
+        let input = byte.into_iter().collect::<Vec<_>>();
+        let mut vm = ProfileMachine::from_state(
+            profile,
+            pristine.memory().to_vec(),
+            input,
+            ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("guest initial state: {error:?}"))?;
+        let mut trace = Vec::new();
+        let limit = if class == 256 {
+            69
+        } else {
+            67
+        };
+        let outcome = vm.run_traced(limit, &mut |step| trace.push(*step));
+        if class == 256 {
+            assert_eq!(
+                outcome,
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 69,
+                })
+            );
+        } else if class == 23 {
+            assert!(
+                format!("{outcome:?}").contains("InvalidEncryptionTarget"),
+                "byte 0x17 must not be certified as a valid code arm"
+            );
+        } else {
+            assert_eq!(outcome, Ok(RunOutcome::BudgetExhausted { steps: 67 }));
+        }
+        assert_eq!(trace.len(), usize::try_from(limit).unwrap_or(0));
+        assert_eq!(trace[14].decoded, Some(b'p'));
+        assert_eq!(trace[17].decoded, Some(b'p'));
+        assert_eq!(trace[34].decoded, Some(b'*'));
+        assert_eq!(vm.memory_word(34), Ok(86));
+        assert_eq!(trace[37].decoded, Some(b'/'));
+        assert_eq!(
+            trace[37].input,
+            Some(byte.map_or(TraceInput::EndOfInput, TraceInput::Byte))
+        );
+        assert_eq!(trace[50].decoded, Some(b'p'));
+        assert_eq!(trace[51].decoded, Some(b'*'));
+        assert_eq!(trace[64].decoded, Some(b'j'));
+        assert_eq!(trace[65].decoded, Some(b'j'));
+        assert_eq!(trace[66].decoded, Some(b'i'));
+        assert_eq!(
+            trace[65].before.registers.data_pointer,
+            trace[64].after.registers.data_pointer
+        );
+        assert_eq!(
+            trace[66].before.registers.data_pointer,
+            trace[65].after.registers.data_pointer
+        );
+        if let Some(expected) = expected_target {
+            assert_eq!(
+                trace[66].after.registers.code_pointer, expected,
+                "class {class}"
+            );
+        }
+        assert_eq!(
+            vm.memory_word(7_174_419),
+            Ok(byte.map_or(profile.eof_word(), u32::from))
+        );
+        assert_eq!(vm.memory_word(7_174_420), Ok(0));
+        assert_eq!(vm.input_consumed(), usize::from(byte.is_some()));
+        if class == 256 {
+            assert_eq!(trace[67].decoded, Some(b'<'));
+            assert_eq!(trace[67].before.registers.code_pointer, 87);
+            assert_eq!(trace[67].before.registers.accumulator, 0);
+            assert_eq!(trace[68].decoded, Some(b'v'));
+            assert_eq!(trace[68].before.registers.code_pointer, 88);
+            assert_eq!(vm.output(), &[0]);
+        } else {
+            assert!(vm.output().is_empty());
+        }
+    }
+    assert_eq!(
+        layout::build_adjacent_c32_zero_c37_eof_code_arm_source(
+            historical_profile(),
+        ),
+        Err(layout::ZeroCellSourceError::UnsupportedProfile)
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "two exact source-site mutations"
+)]
+fn original_checksum_eof_code_arm_requires_both_branch_and_target()
+-> Result<(), String> {
+    let profile = current_profile();
+    let guest =
+        layout::build_adjacent_c32_zero_c37_eof_code_arm_source(profile)
+            .map_err(|error| format!("EOF guest builder: {error:?}"))?;
+    for (site, replacement, expected_transfer) in [
+        (34usize, b'o', 66u32),
+        (66usize, b'o', 67),
+        (87usize, b'o', 87),
+        (88usize, b'o', 87),
+    ] {
+        let mut source = guest.pointer.byte_pair.zero_pair.source.clone();
+        source[site] = encode(replacement, site)?;
+        let mut vm = ProfileMachine::from_source(profile, &source, Vec::new())
+            .map_err(|error| format!("mutant source load: {error:?}"))?;
+        let mut trace = Vec::new();
+        let outcome = vm.run_traced(69, &mut |step| trace.push(*step));
+        assert_ne!(
+            (outcome, vm.output().to_vec()),
+            (
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 69,
+                }),
+                vec![0]
+            ),
+            "mutation C{site} must not counterfeit the EOF output and halt"
+        );
+        if site == 34 || site == 66 {
+            assert_eq!(
+                trace[66].after.registers.code_pointer,
+                expected_transfer
+            );
+        } else if site == 87 {
+            assert_eq!(trace[67].decoded, Some(b'o'));
+            assert!(vm.output().is_empty());
+        } else {
+            assert_eq!(trace[68].decoded, Some(b'o'));
+        }
+    }
+    Ok(())
+}

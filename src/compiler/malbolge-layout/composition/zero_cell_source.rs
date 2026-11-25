@@ -38,7 +38,10 @@ use malbolge::{
     ProfileDescriptor, current_profile, encrypt_profile_cell, profile_crazy,
 };
 
-use super::{LinearOpcode, unique_graphical_cell, unwritten_loader_word};
+use super::{
+    CodeVisitRequirement, LinearOpcode, encode_code_visits,
+    unique_graphical_cell, unwritten_loader_word,
+};
 
 const C32_ZERO_CODE_CELLS: usize = 60;
 const C32_ZERO_INPUT_CODE_CELLS: usize = 31;
@@ -169,6 +172,32 @@ pub struct AdjacentC32ZeroC37EofPointerSource {
     pub halt_code_address: u32,
     /// C64 `j` reading encoded scratch after both result-word operations.
     pub pointer_code_address: u32,
+}
+
+/// An EOF-only executable code arm after the first C23 byte pair.
+///
+/// A benign C34 rotation changes its post-encryption code word from 65 to
+/// 86 without disturbing the later C37 input or C50/C51 stores. Following
+/// the genuine C64 EOF-derived pointer, C65 `j` selects D34 on EOF. C66 `i`
+/// then reads the *encrypted* C34 word and transfers to virgin C87 `<`
+/// followed by C88 `v`. A remains zero after the high-word rotation, so
+/// this physically emits the empty-input C23 checksum value of zero.
+/// Successful bytes can reach encrypted C1/C61, other unlinked sites, or
+/// invalid code (byte 0x17). These are **not** validated C23 loop arms. Only
+/// EOF termination and the preceding byte-pair storage are proven; there is no
+/// signed EOF conversion or linked checksum control flow.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdjacentC32ZeroC37EofCodeArmSource {
+    /// Reached C66 instruction performing an actual data-dependent `i`.
+    pub branch_code_address: u32,
+    /// First C34 `*` whose XLAT2 result is the EOF landing pointer.
+    pub eof_target_seed_code_address: u32,
+    /// The EOF-only C87 output instruction, unvisited on byte transfers.
+    pub eof_output_code_address: u32,
+    /// The EOF-only C88 halt after the actual zero checksum output.
+    pub eof_halt_code_address: u32,
+    /// Shared original input/byte-pair storage and C64 EOF data selection.
+    pub pointer: AdjacentC32ZeroC37EofPointerSource,
 }
 
 /// A genuine read-derived low-cell fold after two adjacent zero writes.
@@ -996,6 +1025,81 @@ pub fn build_adjacent_c32_zero_c37_eof_pointer_source(
         byte_pair,
         halt_code_address: 65,
         pointer_code_address: 64,
+    })
+}
+
+/// Execute the first input's **EOF-only** C23 code arm in a real N15 guest.
+///
+/// The C34 `*` modifies one external loader cell and gives its encrypted
+/// source word the value 86. C64 `j` reads the physically saved input class,
+/// C65 `j` reads either original source C0 (EOF) or expanded loader memory
+/// (successful byte), and C66 `i` performs a genuine input-dependent
+/// code-pointer transfer. Only true EOF lands on C87 `<` and C88 `v`,
+/// producing the first correct empty-stream checksum output. The non-EOF
+/// successful-byte landings are *not* linked or proved to reach the
+/// checksum's loop body; some encounter already-modified data words. The
+/// original C32 pair retains raw N15 EOF, not the canonical signed C23 -1. No
+/// checksum artifact is published.
+///
+/// # Errors
+///
+/// Refuses an unsupported profile, changed physical prefix or code encoding.
+pub fn build_adjacent_c32_zero_c37_eof_code_arm_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroC37EofCodeArmSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut pointer = build_adjacent_c32_zero_c37_eof_pointer_source(profile)?;
+    if pointer.byte_pair.zero_pair.source.len() != 120
+        || pointer.byte_pair.zero_pair.source.get(86) != Some(&125)
+        || pointer.byte_pair.low_store_code_address != 50
+        || pointer.byte_pair.high_store_code_address != 51
+        || pointer.pointer_code_address != 64
+    {
+        return Err(NoLoadableZero);
+    }
+    for (site, opcode) in [
+        (34usize, LinearOpcode::RotateData),
+        (65, LinearOpcode::RelocateDataPointer),
+        (87, LinearOpcode::OutputByte),
+        (88, LinearOpcode::Halt),
+    ] {
+        *pointer
+            .byte_pair
+            .zero_pair
+            .source
+            .get_mut(site)
+            .ok_or(NoLoadableZero)? =
+            unique_graphical_cell(profile, opcode, site)
+                .map_err(|_error| NoLoadableZero)?;
+    }
+    // This is an input-dependent code jump, not the layout encoder's
+    // forward-only static JumpForward contract.
+    *pointer
+        .byte_pair
+        .zero_pair
+        .source
+        .get_mut(66)
+        .ok_or(NoLoadableZero)? =
+        encode_code_visits(profile, 66, &[CodeVisitRequirement::Decoded(b'i')])
+            .map_err(|_error| NoLoadableZero)?;
+    // The EOF arm must read actual encrypted C34, never a guessed pointer.
+    let seed = u32::from(
+        *pointer
+            .byte_pair
+            .zero_pair
+            .source
+            .get(34)
+            .ok_or(NoLoadableZero)?,
+    );
+    if encrypt_profile_cell(seed) != Some(86) {
+        return Err(NoLoadableZero);
+    }
+    Ok(AdjacentC32ZeroC37EofCodeArmSource {
+        branch_code_address: 66,
+        eof_target_seed_code_address: 34,
+        eof_output_code_address: 87,
+        eof_halt_code_address: 88,
+        pointer,
     })
 }
 
