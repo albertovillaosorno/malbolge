@@ -25,7 +25,7 @@ mod source_recurrent_bootstrap_auxiliary;
 #[path = "source_recurrent_bootstrap_frame.rs"]
 mod source_recurrent_bootstrap_frame;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
@@ -221,7 +221,9 @@ pub(super) struct BootstrapTableTrace {
     classifier: ClassifierPlan,
     first_input: Option<usize>,
     receipt: Option<BootstrapReceipt>,
+    route_reads: BTreeSet<u32>,
     source_extent: u32,
+    state_words: [u32; 2],
 }
 
 impl BootstrapTableTrace {
@@ -267,19 +269,14 @@ impl BootstrapTableTrace {
         let (tables, _, auxiliary, frame, unreachable, mut last) =
             self.receipt()?;
         let input = self.first_input.ok_or(Error::GuestTransitionMismatch)?;
-        let consumed = self.cells.values().filter(|cell| cell.consumed);
-        if consumed
-            .clone()
-            .filter(|cell| cell.expected.output_site().is_some())
-            .count()
-            != 2
-            || consumed
-                .filter(|cell| cell.expected.rotation_site().is_some())
-                .count()
-                != 3
+        if self
+            .route_reads
+            .iter()
+            .any(|address| !route.words.contains_key(address))
         {
             return Err(Error::GuestTransitionMismatch);
         }
+        self.verify_consumed()?;
         for (&address, cell) in &self.cells {
             if vm
                 .memory_word(address)
@@ -345,6 +342,10 @@ impl BootstrapTableTrace {
             }
             insert(&mut plan, address, Expected::RouteCandidate)?;
         }
+        let state_words = probe.loop_probe.state.words;
+        if state_words.iter().any(|address| plan.contains_key(address)) {
+            return Err(Error::InvalidTransitionBinding);
+        }
         let mut cells = BTreeMap::new();
         for (address, expected) in plan {
             if address < source_extent
@@ -367,7 +368,9 @@ impl BootstrapTableTrace {
             classifier,
             first_input: None,
             receipt: None,
+            route_reads: BTreeSet::new(),
             source_extent,
+            state_words,
         })
     }
 
@@ -397,13 +400,15 @@ impl BootstrapTableTrace {
         {
             return Err(Error::GuestTransitionMismatch);
         }
-        if let Some(read) = trace.memory_reads.data
-            && let Some(cell) = self.cells.get(&read.address)
-            && read.value != cell.value
+        self.observe_read(trace)?;
+        let address = trace.before.registers.data_pointer;
+        if self.receipt.is_some()
+            && let Some(write) = trace.memory_delta.data
+            && (!self.cells.contains_key(&write.address)
+                && !self.state_words.contains(&write.address))
         {
             return Err(Error::GuestTransitionMismatch);
         }
-        let address = trace.before.registers.data_pointer;
         if let Some(write) = trace.memory_delta.data
             && write.address != address
             && self.cells.contains_key(&write.address)
@@ -414,6 +419,11 @@ impl BootstrapTableTrace {
             && let Some(cell) = self.cells.get_mut(&address)
         {
             if trace.before.registers.code_pointer >= self.source_extent {
+                return Err(Error::GuestTransitionMismatch);
+            }
+            if self.receipt.is_some()
+                && matches!(cell.expected, Expected::RouteCandidate)
+            {
                 return Err(Error::GuestTransitionMismatch);
             }
             cell.observe(trace, index, self.receipt.is_some())?;
@@ -427,8 +437,48 @@ impl BootstrapTableTrace {
         Ok(())
     }
 
+    fn observe_read(&mut self, trace: &ProfileStepTrace) -> Result<(), Error> {
+        let Some(read) = trace.memory_reads.data else {
+            return Ok(());
+        };
+        let initialized = self.receipt.is_some();
+        let Some(cell) = self.cells.get(&read.address) else {
+            return if initialized && !self.state_words.contains(&read.address) {
+                Err(Error::GuestTransitionMismatch)
+            } else {
+                Ok(())
+            };
+        };
+        if read.value != cell.value
+            || (initialized && matches!(cell.expected, Expected::Untouched))
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        if initialized && matches!(cell.expected, Expected::RouteCandidate) {
+            let _new = self.route_reads.insert(read.address);
+        }
+        Ok(())
+    }
+
     pub(super) fn receipt(&self) -> Result<BootstrapReceipt, Error> {
         self.receipt.ok_or(Error::GuestTransitionMismatch)
+    }
+
+    fn verify_consumed(&self) -> Result<(), Error> {
+        let consumed = self.cells.values().filter(|cell| cell.consumed);
+        if consumed
+            .clone()
+            .filter(|cell| cell.expected.output_site().is_some())
+            .count()
+            != 2
+            || consumed
+                .filter(|cell| cell.expected.rotation_site().is_some())
+                .count()
+                != 3
+        {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        Ok(())
     }
 }
 

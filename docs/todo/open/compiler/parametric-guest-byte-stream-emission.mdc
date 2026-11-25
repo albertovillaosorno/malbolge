@@ -405,6 +405,11 @@ paired return commit. The late shortcuts reduce total steps but add
 forward-chain diagnostic on the earlier shared target schedule finds
 only 19 to 22 potentially omitted reloads; no rewrite is retained.
 This is not a lower bound on an alternative representation.
+The source-bound bootstrap receipt now refuses post-input data accesses
+outside the admitted data footprint, including impossible carry slots
+and unused route candidates; three read-mutation controls preserve the
+actual empty-input I/O but fail the proof. The five frozen guest replays
+and four unvisited-materialization regressions pass.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

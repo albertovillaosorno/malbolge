@@ -14996,3 +14996,19 @@ not validated savings or an exhaustive optimum. No chain rewrite was
 retained. The next substantial improvement should reduce the number of
 materialized targets or repeated seed reads rather than merely reorder
 these fixed stores. The census instrumentation was removed.
+
+The post-input bootstrap receipt now closes the observed data-address
+footprint. A data read must belong to the independently admitted table,
+auxiliary or mutable-frame plan, a required immutable route word, or
+the separately checked carried-state pair. Reads from the 256 untouched
+impossible carry slots refuse; every observed candidate-route address
+must belong to the independently derived final route map. Unplanned
+data writes and post-input arithmetic on route candidates also refuse.
+A full empty-input replay with three additional read observations
+checks a word outside the plan, an impossible carry slot and an unused
+route candidate. The first two fail immediately and the third fails
+when the exact route map is reconciled. The unmodified trace, all five
+frozen full-guest replays and the four unvisited-materialization
+regressions pass. This closes the address footprint for observed data
+accesses; it does not attest arbitrary source frames or remove the
+100,000-step publication limit.

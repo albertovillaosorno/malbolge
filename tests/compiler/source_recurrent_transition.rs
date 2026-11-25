@@ -20,11 +20,13 @@
 // - Merge-When:
 //   - General source-frame verification subsumes both bindings.
 
+use core::iter::repeat_with;
 use core::mem::swap;
 
 use malbolge::{
     ProfileMachine, ProfileMemoryRead, ProfileMemoryWrite, ProfileStepTrace,
-    StepOutcome, current_profile, decode_profile_instruction, profile_crazy,
+    RunOutcome, StepOutcome, current_profile, decode_profile_instruction,
+    profile_crazy,
 };
 
 use super::super::super::super::{
@@ -601,6 +603,142 @@ fn source_recurrent_transition_rejects_bootstrap_code_trace_mutations()
         forbidden_bootstrap_accesses(&probe, (prior_index, prior), address)?;
     }
     Ok(())
+}
+
+fn extra_read_controls(
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    boot: &ProfileMachine,
+) -> Result<Vec<ProfileMemoryRead>, String> {
+    let unused_route = probe
+        .loop_probe
+        .guard
+        .eof_landings
+        .into_iter()
+        .min()
+        .ok_or("missing EOF landing")?
+        .saturating_sub(1);
+    [
+        current_profile().memory_words().saturating_sub(1),
+        probe.tables[3].saturating_add(676),
+        unused_route,
+    ]
+    .into_iter()
+    .map(|address| {
+        boot.memory_word(address)
+            .map(|value| ProfileMemoryRead { address, value })
+            .map_err(|error| error.to_string())
+    })
+    .collect::<Result<Vec<_>, _>>()
+}
+
+fn replay_extra_reads(
+    guest: &RelocatedRecurrentChecksumSource,
+    probe: &SourceRecurrentTransitionProbe<'_>,
+    projected: &SourceProjection,
+    source_sha256: [u8; 32],
+) -> Result<(), String> {
+    let boot = terminal_boot(guest)?;
+    let reads = extra_read_controls(probe, &boot)?;
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut journals = repeat_with(|| {
+        let audit = TransitionTrace::with_bootstrap(probe, &vm)
+            .map_err(|error| format!("geometry: {error:?}"))?;
+        Ok(ReplayJournal::new(None, None, source_sha256, Some(audit)))
+    })
+    .take(reads.len().saturating_add(1))
+    .collect::<Result<Vec<_>, String>>()?;
+    let mut started = false;
+    let mut mutated = false;
+    let outcome = vm
+        .run_traced(2_000_000, &mut |trace| {
+            started |= trace.input.is_some();
+            if started && !mutated && trace.decoded == Some(b'o') {
+                for (journal, read) in journals.iter_mut().skip(1).zip(&reads) {
+                    let mut altered = *trace;
+                    altered.memory_reads.data = Some(*read);
+                    journal.observe(&altered, projected);
+                }
+                if let Some(baseline) = journals.first_mut() {
+                    baseline.observe(trace, projected);
+                }
+                mutated = true;
+            } else {
+                for journal in &mut journals {
+                    journal.observe(trace, projected);
+                }
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    if !mutated {
+        return Err("missing post-input no-op for mutation".to_owned());
+    }
+    verify_extra_reads(journals, outcome, projected, &vm)
+}
+
+fn verify_extra_reads(
+    journals: Vec<ReplayJournal>,
+    outcome: RunOutcome,
+    projected: &SourceProjection,
+    vm: &ProfileMachine,
+) -> Result<(), String> {
+    let mut results = journals.into_iter();
+    let baseline = results.next().ok_or("missing baseline")?;
+    let _proof = baseline
+        .finish(outcome, projected, vm)
+        .map_err(|error| format!("actual trace: {error:?}"))?;
+    for (index, journal) in results.enumerate() {
+        // The first two reads fail immediately. An unused route-tape word
+        // is in the broad candidate range, but not in the admitted route.
+        let expected = if index == 2 {
+            None
+        } else {
+            Some(Error::GuestTransitionMismatch)
+        };
+        if journal.failed != expected {
+            return Err(format!("wrong immediate result for control {index}"));
+        }
+        if !matches!(
+            journal.finish(outcome, projected, vm),
+            Err(Error::GuestTransitionMismatch)
+        ) {
+            return Err(format!("accepted extra read control {index}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_extra_data_reads() -> Result<(), String>
+{
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let stream = [];
+    let probe = proposal(&wire, &stream, &guest)?;
+    let cfg = admit_probe(probe.loop_probe.guard.io)
+        .map_err(|error| format!("source: {error:?}"))?;
+    let [function] = cfg.functions.as_slice() else {
+        return Err("one checksum function required".to_owned());
+    };
+    let guard = GuardPlan::new(function, probe.loop_probe.guard.source_header)
+        .map_err(|error| format!("guard: {error:?}"))?;
+    let state = StatePlan::new(function, &probe.loop_probe.state)
+        .map_err(|error| format!("state: {error:?}"))?;
+    let parity = ParityPlan::new(function, &probe.loop_probe, guard.phi)
+        .map_err(|error| format!("parity: {error:?}"))?;
+    let projected =
+        project_function_with_plans(function, &stream, &ProjectionPlans {
+            guard: Some(&guard),
+            state: Some(&state),
+            transition: Some(&parity),
+        })
+        .map_err(|error| format!("source: {error:?}"))?;
+    replay_extra_reads(&guest, &probe, &projected, cfg.source_sha256)
 }
 
 #[test]
