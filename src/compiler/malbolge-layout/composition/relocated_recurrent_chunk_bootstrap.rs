@@ -770,16 +770,29 @@ fn store_seed(
 fn fast_load(
     emitter: &mut Emitter<'_>,
     seed: ChunkSeedAccess,
-    accumulator_ones: bool,
+    (inverse, accumulator): (u32, Option<u32>),
     routing: &SeedRouting<'_>,
 ) -> Result<(), BuildError> {
+    // The preceding target's final store produces its exact value in A.
+    // When that value is known, use a fold only if it preserves the
+    // selected seed (or its immutable prefix) and produces the inverse.
     if let ChunkSeedAccess::Shared(SeedAccess::ImmutablePair(prefix)) = seed {
-        if !accumulator_ones {
-            fast_rotate(emitter, NEAR_ONES)?;
+        let operand = prefix.checked_add(2).ok_or(LAYOUT)?;
+        if accumulator
+            .is_some_and(|acc| profile_crazy(inverse, acc, 15) == inverse)
+        {
+            go_seed(emitter, operand, routing)?;
+        } else {
+            let prefix_word = immutable_seed_prefix(inverse, 15)?;
+            if !accumulator.is_some_and(|acc| {
+                profile_crazy(prefix_word, acc, 15) == prefix_word
+            }) {
+                fast_rotate(emitter, NEAR_ONES)?;
+            }
+            go_seed(emitter, prefix, routing)?;
+            let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+            emitter.walk(operand)?;
         }
-        go_seed(emitter, prefix, routing)?;
-        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
-        emitter.walk(prefix.checked_add(2).ok_or(LAYOUT)?)?;
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
         // Every paired seed has a dedicated target-directory return in
         // the following even word. This preserves A and avoids the frame
@@ -793,8 +806,16 @@ fn fast_load(
             return Err(LAYOUT);
         },
     };
-    for _ in 0..2u32 {
-        fast_rotate(emitter, NEAR_TWOS)?;
+    if accumulator.is_some_and(|acc| profile_crazy(inverse, acc, 15) == inverse)
+    {
+        go_seed(emitter, address, routing)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        return after_store(emitter);
+    }
+    for pass in 0..2u32 {
+        if pass != 0 || accumulator != Some(ALL_TWOS) {
+            fast_rotate(emitter, NEAR_TWOS)?;
+        }
         go_seed(emitter, address, routing)?;
         let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
         after_store(emitter)?;
@@ -1280,6 +1301,21 @@ fn initialize_late_seed_roots(
     Ok(())
 }
 
+fn plan_nonuniform_seeds(
+    emitter: &Emitter<'_>,
+    words: &Words,
+    extra: (u32, u32),
+) -> Result<SeedPlan, BuildError> {
+    // Uniform inverses already have immutable rotate operands near the
+    // frame. Reserve paired and reversible seed slots for other values.
+    let seed_words = words
+        .iter()
+        .filter(|(_, value)| !matches!(**value, 0 | ALL_ONES | ALL_TWOS))
+        .map(|(&address, &value)| (address, value))
+        .collect();
+    plan_seeds_with_pairs(emitter, &seed_words, (2, &[]), (Some(extra), 80))
+}
+
 pub(super) fn initialize_chunk_seeds(
     emitter: &mut Emitter<'_>,
     words: &Words,
@@ -1310,8 +1346,7 @@ pub(super) fn initialize_chunk_seeds(
     {
         return Err(LAYOUT);
     }
-    let seed_plan =
-        plan_seeds_with_pairs(emitter, words, (2, &[]), (Some(extra), 80))?;
+    let seed_plan = plan_nonuniform_seeds(emitter, words, extra)?;
     prepare_chunk_bank(emitter, &near)?;
     let mut scratch = initialize_chunk_roots(emitter, roots)?;
     initialize_late_seed_roots(emitter, &mut scratch)?;
@@ -1547,6 +1582,9 @@ fn materialize_chunk_words(
         anchors,
         (direct, routing.extra),
     )?;
+    // The preceding cluster sweep need not leave a known accumulator.
+    // Each subsequent normalization or final store establishes it again.
+    let mut accumulator = None;
     for (&address, &value) in words {
         if !(CAPTURE..emitter.tape_bounds.limit).contains(&address) {
             return Err(LAYOUT);
@@ -1566,10 +1604,24 @@ fn materialize_chunk_words(
         if normalized {
             fast_rotate(emitter, NEAR_ZERO)?;
             fast_store(emitter, address, anchors, reset)?;
+            accumulator = Some(ALL_ONES);
         }
-        let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
-        fast_load(emitter, seed, normalized, &routing)?;
+        if accumulator != Some(inverse) {
+            let constant = match inverse {
+                0 => Some(NEAR_ZERO),
+                ALL_ONES => Some(NEAR_ONES),
+                ALL_TWOS => Some(NEAR_TWOS),
+                _ => None,
+            };
+            if let Some(operand) = constant {
+                fast_rotate(emitter, operand)?;
+            } else {
+                let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
+                fast_load(emitter, seed, (inverse, accumulator), &routing)?;
+            }
+        }
         fast_store(emitter, address, anchors, reset)?;
+        accumulator = Some(value);
     }
     Ok(())
 }

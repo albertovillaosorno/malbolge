@@ -14768,3 +14768,36 @@ would therefore still miss the 100,000-step publication ceiling. This
 is a measured constraint on the present strategy, not a lower bound
 on alternative layouts. Investigate fewer materialization and reload
 effects alongside compact addressing before further schedule tuning.
+
+
+A second three-trit mask bank at the next chunk position was tried in
+the same bounded guest. It avoided the full fifteen-rotation cycle
+for scratch changes restricted to the two low chunks. Direct
+initialization took 1,170,128 steps to first input. Grouping its
+mask stores by inverse value and omitting the unused identity mask
+reduced this to 1,163,465 steps, with all five frozen vectors passing.
+The 148-step saving did not justify the extra bank; it was discarded.
+
+Shared target materialization instead tracks the known accumulator
+produced by each completed store or normalization. A paired inverse
+can skip its prefix when the scalar crazy fold preserves the inverse;
+otherwise its immutable prefix can be read without reloading all
+ones only when that fold preserves the prefix. Reversible seeds
+use a single fixed-point read when possible, falling back to two
+all-two folds. An already-held inverse requires no seed load. The
+three uniform inverses use existing immutable rotate operands, so
+seed allocation excludes those values and gives the available pair
+slots to other repeated inverses. The target plan, source extent,
+and recurrent byte/EOF paths are unchanged.
+
+The normative VM reaches first input in 1,156,545 steps, saving
+7,068 steps against 1,163,613. The physical bound is 1,158,000 steps.
+An independent executed-read census authenticates 328 direct
+paired-inverse folds, two non-ones prefix folds and twelve
+single reversible-seed folds; all preserve their operand. Every
+remaining reversible read restores the original seed before another
+fold. Three omitted-read controls refuse; the scratch shortcut
+count is now 1,338. The 21 physical checksum tests, 38 source-recurrent
+tests and three original C23 pipeline tests pass. This remains a
+finite physical witness, with the source-C publication gate unchanged
+at 100,000 steps and the general source-frame admission still open.

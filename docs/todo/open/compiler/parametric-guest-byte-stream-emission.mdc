@@ -349,6 +349,15 @@ saved only 168 steps on frozen vectors and was not retained. An actual
 VM trace counts 1,017,336 address-walk no-operations and 146,277 other
 instructions before input: removing walks alone cannot make this
 unchanged operation sequence meet the publication ceiling.
+A second shifted mask bank saved only 148 steps after initialization
+and was discarded. Known-accumulator seed reads, reuse of held inverses,
+and direct uniform-constant loads with nonuniform seed allocation
+reduce first input to 1,156,545 steps under a 1,158,000-step physical
+bound. Independent replay authenticates 328 direct paired-inverse
+reads, two non-ones prefix reads, twelve single reversible reads,
+and restoration of all remaining reversible reads. Three omitted
+reads refuse. All 21 physical checksum, 38 source-recurrent and
+three original C23 pipeline tests pass.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

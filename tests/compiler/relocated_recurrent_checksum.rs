@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_165_000;
+const BOOT_BUDGET: usize = 1_158_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -65,6 +65,7 @@ type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
 type DirectTargetReceipt = (usize, [u32; 2]);
 type ShortcutReceipt = ([u32; 3], usize);
+type SharedReadReceipt = ([usize; 3], [u32; 3]);
 
 #[derive(Clone, Copy)]
 enum TargetRouteProgress {
@@ -1034,6 +1035,147 @@ impl ByteAudit {
 
 // Enumerate exact arithmetic visits independently of the route builder.
 // Any extra write, even through a legitimate reusable instruction, refuses.
+// Authenticate the shorter reads using actual operand and accumulator
+// values. A pair may skip its prefix only when the inverse itself is a
+// fixed point of the observed fold. A non-ones prefix read must likewise
+// leave the prefix intact. Neither case may rely on emitter metadata.
+#[derive(Default)]
+struct SharedReadAudit {
+    direct_reads: usize,
+    installed: BTreeSet<u32>,
+    last_producer: Option<u32>,
+    pending_restore: Option<(u32, u32)>,
+    prefix_reads: usize,
+    reversible_reads: usize,
+    sites: [Option<u32>; 3],
+}
+
+impl SharedReadAudit {
+    fn finish(self) -> Result<SharedReadReceipt, String> {
+        if self.installed.len() != 80 || self.pending_restore.is_some() {
+            return Err("incomplete shared seed reads".to_owned());
+        }
+        let [Some(direct), Some(prefix), Some(reversible)] = self.sites else {
+            return Err("missing shortened seed read".to_owned());
+        };
+        Ok((
+            [self.direct_reads, self.prefix_reads, self.reversible_reads],
+            [direct, prefix, reversible],
+        ))
+    }
+
+    fn install_return(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+        opcode: Option<u8>,
+    ) -> Result<(), String> {
+        if opcode != Some(b'p') || !seed_return_address(address) {
+            return advance_boot(vm);
+        }
+        let _trace = step(vm)?;
+        if word(vm, address)? == SEED_RETURN_TARGET.saturating_sub(1) {
+            let _inserted = self.installed.insert(address);
+        }
+        Ok(())
+    }
+
+    fn observe(
+        &mut self,
+        vm: &mut ProfileMachine,
+        opcode: Option<u8>,
+    ) -> Result<(), String> {
+        let address = vm.registers().data_pointer;
+        if self.installed.len() != 80 {
+            return self.install_return(vm, address, opcode);
+        }
+        if opcode == Some(b'p') && !address.is_multiple_of(2) {
+            if (7_174_611..=7_174_929).contains(&address) {
+                self.paired_read(vm, address)?;
+            } else if (7_174_931..7_174_970).contains(&address)
+                || (7_175_601..7_176_586).contains(&address)
+            {
+                self.reversible_read(vm, address)?;
+            } else {
+                self.other_effect(vm, opcode)?;
+            }
+        } else {
+            self.other_effect(vm, opcode)?;
+        }
+        if matches!(opcode, Some(b'p' | b'*')) {
+            self.last_producer = Some(address);
+        }
+        Ok(())
+    }
+
+    fn other_effect(
+        &self,
+        vm: &mut ProfileMachine,
+        opcode: Option<u8>,
+    ) -> Result<(), String> {
+        if self.pending_restore.is_some() && opcode == Some(b'p') {
+            return Err("unrestored seed before another fold".to_owned());
+        }
+        advance_boot(vm)
+    }
+
+    fn paired_read(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+    ) -> Result<(), String> {
+        let registers = vm.registers();
+        let old = word(vm, address)?;
+        if independent_crazy(old, registers.accumulator) != old
+            || self.pending_restore.is_some()
+        {
+            return Err("invalid immutable seed read".to_owned());
+        }
+        check_store(&step(vm)?, address, old, old)?;
+        if address.rem_euclid(4) == 1
+            && self.last_producer != address.checked_sub(2)
+        {
+            self.direct_reads = self.direct_reads.saturating_add(1);
+            let _site = self.sites[0].get_or_insert(registers.code_pointer);
+        } else if address.rem_euclid(4) == 3 && registers.accumulator != ONES {
+            self.prefix_reads = self.prefix_reads.saturating_add(1);
+            let _site = self.sites[1].get_or_insert(registers.code_pointer);
+        }
+        Ok(())
+    }
+
+    fn reversible_read(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+    ) -> Result<(), String> {
+        let registers = vm.registers();
+        let old = word(vm, address)?;
+        let new = independent_crazy(old, registers.accumulator);
+        check_store(&step(vm)?, address, old, new)?;
+        if let Some((pending, original)) = self.pending_restore.take() {
+            if pending != address
+                || new != original
+                || registers.accumulator != EOF
+            {
+                return Err("reversible seed was not restored".to_owned());
+            }
+        } else if old == new {
+            if registers.accumulator == EOF {
+                return Err("unexpected uniform reversible seed".to_owned());
+            }
+            self.reversible_reads = self.reversible_reads.saturating_add(1);
+            let _site = self.sites[2].get_or_insert(registers.code_pointer);
+        } else {
+            if registers.accumulator != EOF {
+                return Err("incorrect reversible seed reload".to_owned());
+            }
+            self.pending_restore = Some((address, old));
+        }
+        Ok(())
+    }
+}
+
 fn expected_arithmetic(
     guest: &RelocatedRecurrentChecksumSource,
     addresses: [u32; 5],
@@ -2334,7 +2476,7 @@ fn relocated_recurrent_checksum_omitted_scratch_constants_refuses()
 -> Result<(), String> {
     let guest = source()?;
     let (sites, selections) = audit_scratch_constants(&guest)?;
-    if selections != 1_333 {
+    if selections != 1_338 {
         return Err(format!("unexpected shortcut count: {selections}"));
     }
     for site in sites {
@@ -2536,6 +2678,49 @@ fn audit_seed_returns(
         "only {} inverse-seed returns executed",
         visited.len()
     ))
+}
+
+fn audit_shared_reads(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<SharedReadReceipt, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = SharedReadAudit::default();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            check_materialized_tables(&vm)?;
+            return audit.finish();
+        }
+        let code = vm.registers().code_pointer;
+        let opcode = decode_profile_instruction(word(&vm, code)?, code);
+        audit.observe(&mut vm, opcode)?;
+    }
+    Err("missing shared-read first input".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_shared_reads_preserve_seeds()
+-> Result<(), String> {
+    let guest = source()?;
+    let (counts, sites) = audit_shared_reads(&guest)?;
+    if counts != [328, 2, 12] {
+        return Err(format!(
+            "incorrect shortened seed read census: {counts:?}"
+        ));
+    }
+    for site in sites {
+        let modified = omit_site(&guest, site)?;
+        if audit_shared_reads(&modified)
+            .is_ok_and(|(actual, _)| actual == counts)
+        {
+            return Err("accepted omitted shortened seed read".to_owned());
+        }
+    }
+    Ok(())
 }
 
 #[test]
