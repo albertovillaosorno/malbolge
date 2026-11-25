@@ -13896,3 +13896,31 @@ Omitting the restoring store and selecting the historical profile
 refuse. Bootstrap is bounded by 3,600,000 instructions in this test.
 This is a reusable indexed data-access witness, not the full checksum
 or its compact, source-authenticated execution.
+
+### Recurrent two-bit checksum transition
+
+The separate 4,270,106-cell `build_relocated_recurrent_mod4_source`
+image retains the recurrent capture and EOF classifier. Four encoded
+persistent states select four 729-cell table rows. Two physical crazy
+folds combine the actual captured byte with the prior state to index
+M7179192 + 729 * state + 729 - byte. The 1,024 initialized table
+entries select one of four immutable records containing the next
+encoded state. The pair of indexed stores reads and restores the
+selected record; a scratch word preserves its inverse while the
+capture and index are reset. Two reversible scratch loads and a final
+physical store commit the new state, and the scratch reset completes
+before the backedge. Successful byte paths emit nothing. At EOF,
+column two followed by six real rotations decodes the state to an
+accumulator whose low byte is exactly the projected checksum.
+
+A 2,561-byte deterministic stream visits every one of the 1,024
+projected-state/input-byte pairs in the normative guest. Eight
+additional short streams cover every state on both physical EOF
+landings. Independent replay checks the joint index, selected seed,
+restoring store, scratch reset, committed state, EOF and output. Four
+omitted-effect controls and the historical profile refuse. The
+independent checksum oracle also checks the projection property for
+all 65,536 full-checksum/input-byte pairs. The bootstrap is bounded by
+4,200,000 instructions. This is a real recurrent two-bit projection,
+not full-byte arithmetic or source-C admission; the original P2
+100,000-step publication witness remains unlinked.

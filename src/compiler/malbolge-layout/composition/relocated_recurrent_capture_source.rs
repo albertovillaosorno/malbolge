@@ -24,6 +24,8 @@
 
 #[path = "relocated_recurrent_indexed_source.rs"]
 mod relocated_recurrent_indexed_source;
+#[path = "relocated_recurrent_mod4_source.rs"]
+mod relocated_recurrent_mod4_source;
 #[path = "relocated_recurrent_parity_source.rs"]
 mod relocated_recurrent_parity_source;
 #[path = "relocated_recurrent_reload_source.rs"]
@@ -35,6 +37,9 @@ use std::collections::BTreeMap;
 use malbolge::{ProfileDescriptor, profile_crazy};
 pub use relocated_recurrent_indexed_source::{
     RelocatedRecurrentIndexedSource, build_relocated_recurrent_indexed_source,
+};
+pub use relocated_recurrent_mod4_source::{
+    RelocatedRecurrentMod4Source, build_relocated_recurrent_mod4_source,
 };
 pub use relocated_recurrent_parity_source::{
     RelocatedRecurrentParitySource, build_relocated_recurrent_parity_source,
