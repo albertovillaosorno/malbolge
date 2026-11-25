@@ -27,7 +27,7 @@ use std::collections::BTreeMap;
 use malbolge::{
     ProfileMachine, ProfileStepTrace, RunOutcome, Termination, TraceInput,
     current_profile, decode_profile_instruction, encrypt_profile_cell,
-    historical_profile, profile_crazy,
+    historical_profile, profile_crazy, profile_rotate,
 };
 
 use super::super::crazy as independent_crazy;
@@ -1625,6 +1625,83 @@ fn relocated_second_parity_rejects_omitted_lookup() -> Result<(), String> {
     assert!(
         check_second_parity_route(&guest, &initial, &trace, 255).is_err(),
         "missing physical rotate must fail parity witness: {outcome:?}"
+    );
+    Ok(())
+}
+
+// Four crazy gates implement tritwise Boolean AND on 0/1 words.
+fn boolean_word_and(left: u32, right: u32) -> u32 {
+    independent_crazy(
+        left,
+        independent_crazy(
+            independent_crazy(left, left),
+            independent_crazy(right, 14_348_906),
+        ),
+    )
+}
+
+// On 0..=256 only, the one trits at positions 0, 1, 2, and 5
+// identify 256: their place values already sum to 256. This avoids
+// a second general carry circuit, but is not yet emitted guest code.
+fn second_wrap_flag(value: u32) -> u32 {
+    let matches_one = independent_crazy(0, independent_crazy(7_174_453, value));
+    let mut aligned = matches_one;
+    let mut conjunction = matches_one;
+    for shift in 1u32..=5 {
+        aligned = profile_rotate(aligned, 14_348_907);
+        if matches!(shift, 1 | 2 | 5) {
+            conjunction = boolean_word_and(conjunction, aligned);
+        }
+    }
+    [1, 14_348_905, 14_348_905, 1]
+        .into_iter()
+        .fold(conjunction, |accumulator, data| {
+            independent_crazy(data, accumulator)
+        })
+}
+
+#[test]
+fn second_wrap_flag_covers_exact_single_wrap_domain() {
+    for value in 0..=256 {
+        assert_eq!(
+            second_wrap_flag(value),
+            u32::from(value == 256),
+            "exact N15 Boolean for once-wrapped {value}"
+        );
+    }
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exhaustive even-byte C arithmetic domain"
+)]
+#[test]
+fn second_even_mask_needs_exactly_one_double_wrap_case() -> Result<(), String> {
+    let mut double_wrap = Vec::new();
+    for first in 0..=u8::MAX {
+        for second in (0..=254u8).step_by(2) {
+            let total = u32::from(first.wrapping_add(3))
+                .checked_add(u32::from(second))
+                .and_then(|sum| sum.checked_add(3))
+                .ok_or("sum overflow")?;
+            let once = if total >= 256 {
+                total.checked_sub(256).ok_or("wrap underflow")?
+            } else {
+                total
+            };
+            let result = if second_wrap_flag(once) == 1 {
+                double_wrap.push((first, second));
+                0
+            } else {
+                once
+            };
+            assert_eq!(result, total & 255, "mask after {first}, {second}");
+        }
+    }
+    assert_eq!(
+        double_wrap,
+        [(252, 254)],
+        "one-subtraction mask fails only at the maximum even sum"
     );
     Ok(())
 }

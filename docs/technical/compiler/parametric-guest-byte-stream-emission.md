@@ -13418,3 +13418,19 @@ capacity. Canonical second masking remains open: the first mask's
 one subtraction is insufficient at 512 (the source pair 252, 254).
 Neither arm reads a third byte or admits a reusable code visit, and
 no whole-C guest is published.
+
+
+The even-arm double-wrap prerequisite now has an exhaustive host
+algebra witness. Across all 32,768 first-byte/even-second-byte pairs,
+subtracting 256 once (when the sum is at least 256) leaves 0..256.
+Only (252, 254) leaves 256 instead of the C mask result zero. On that
+bounded residual domain, the trits at positions 0, 1, 2 and 5 all
+being one is equivalent to equality with 256: their place values
+already total 256. `p(0, p(ones, value))` marks the one trits. Rotate
+that Boolean word by one, two and five positions, then combine with
+the four-gate Boolean AND `p(x, p(p(x,x), p(y,twos)))`. Four existing
+flag-mask folds isolate the low trit. The test checks the complete
+257-value residual domain against exact 0/1 and all even pairs against
+`total & 255`, including the sole double-wrap case. This can avoid a
+second general carry pass for masking, but it is not yet emitted,
+allocated or independently replayed as guest code.
