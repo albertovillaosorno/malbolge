@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_790_000;
+const BOOT_BUDGET: usize = 1_715_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -789,6 +789,18 @@ fn check_chunk_mask_bank(vm: &ProfileMachine) -> Result<(), String> {
 // Independent physical audit of the two-hop seed directory. The address
 // bank is intentionally not obtained from the production planner.
 fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
+    for (root, predecessor) in [
+        (7_174_475, 7_174_674),
+        (7_174_477, 7_174_738),
+        (7_174_479, 7_174_802),
+        (7_174_481, 7_174_866),
+    ] {
+        if word(vm, root)? != predecessor
+            || word(vm, plus(root, 1)?)? != 7_174_416
+        {
+            return Err(format!("incorrect direct seed root M{root}"));
+        }
+    }
     let mut address = 7_176_721;
     if word(vm, 7_174_489)? != 7_176_720 {
         return Err("missing seed directory root".to_owned());
@@ -1343,6 +1355,69 @@ fn relocated_recurrent_checksum_omitted_target_page_refuses()
                 "target page mutation did not affect a used route".to_owned()
             );
         }
+    }
+    Ok(())
+}
+
+// Observe each short route, including its actual source-side predecessor.
+fn audit_direct_seed_roots(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<(), String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut remaining =
+        BTreeSet::from([7_174_475, 7_174_477, 7_174_479, 7_174_481]);
+    for _ in 0..BOOT_BUDGET {
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        if remaining.contains(&address)
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'j')
+        {
+            let landing = plus(
+                7_174_675,
+                mul(address.saturating_sub(7_174_475).div_euclid(2), 64)?,
+            )?;
+            let trace = step(&mut vm)?;
+            if trace.memory_reads.data.map(|read| read.value)
+                != landing.checked_sub(1)
+                || trace.after.registers.data_pointer != landing
+                || trace.after.registers.accumulator != registers.accumulator
+                || trace.memory_delta.data.is_some()
+            {
+                return Err(format!("wrong direct seed jump M{address}"));
+            }
+            let _removed = remaining.remove(&address);
+            if remaining.is_empty() {
+                return Ok(());
+            }
+        } else if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature bootstrap termination".to_owned());
+        }
+    }
+    Err("missing executed direct seed root".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_direct_seed_root_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    audit_direct_seed_roots(&guest)?;
+    let site = materialization_site(&guest, (7_174_475, 7_174_674))?;
+    let modified = omit_site(&guest, site)?;
+    if let Ok(mutated) = boot(&modified)
+        && (check_seed_directory(&mutated).is_ok()
+            || check_materialized_tables(&mutated).is_ok())
+    {
+        return Err("accepted omitted direct seed root".to_owned());
     }
     Ok(())
 }

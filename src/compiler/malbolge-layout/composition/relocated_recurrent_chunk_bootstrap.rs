@@ -62,6 +62,13 @@ const ELEMENTARY_COLUMNS: [u32; 7] = [8, 17, 20, 23, 24, 25, 27];
 const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
 const DIRECTORY_BANK: u32 = 7_176_721;
 const DIRECTORY_STRIDE: u32 = 48;
+// Four short direct entries into the frequently used paired seed bank.
+const HOT_SEED_ROOTS: [(u32, u32); 4] = [
+    (7_174_475, SEEDS + 64),
+    (7_174_477, SEEDS + 128),
+    (7_174_479, SEEDS + 192),
+    (7_174_481, SEEDS + 256),
+];
 const DIRECTORY_END: u32 = 7_176_900;
 const TARGET_RETURN: u32 = 7_174_491;
 const TARGET_ROOTS: [u32; 12] = [
@@ -455,7 +462,7 @@ fn seed_path(
     routing: &SeedRouting<'_>,
 ) -> Result<SeedPathCost, BuildError> {
     let extra = routing.extra;
-    let (root, base) = if (extra.0..extra.1).contains(&address) {
+    let (mut root, mut base) = if (extra.0..extra.1).contains(&address) {
         (EXTRA_SEED_ANCHOR, extra.0)
     } else {
         (SEED_ANCHOR, SEEDS)
@@ -467,9 +474,24 @@ fn seed_path(
         .rev()
         .find(|&(_, page)| page <= address)
         .ok_or(LAYOUT)?;
-    let direct = root
+    let mut direct = root
         .checked_add(address.checked_sub(base).ok_or(LAYOUT)?)
         .ok_or(LAYOUT)?;
+    if !(extra.0..extra.1).contains(&address) {
+        for (candidate_root, candidate_base) in HOT_SEED_ROOTS {
+            if candidate_base > address {
+                continue;
+            }
+            let cost = candidate_root
+                .checked_add(address.checked_sub(candidate_base).ok_or(LAYOUT)?)
+                .ok_or(LAYOUT)?;
+            if cost < direct {
+                direct = cost;
+                root = candidate_root;
+                base = candidate_base;
+            }
+        }
+    }
     let indirect = SEED_DIRECTORY
         .checked_add(slot.checked_sub(DIRECTORY_BANK).ok_or(LAYOUT)?)
         .and_then(|value| value.checked_add(1))
@@ -1010,6 +1032,9 @@ pub(super) fn initialize_chunk_seeds(
         (SEED_DIRECTORY, previous(DIRECTORY_BANK)?),
     ];
     let mut roots = target_roots(words, anchors, emitter.tape_bounds.limit)?;
+    for (address, landing) in HOT_SEED_ROOTS {
+        roots.push((address, previous(landing)?));
+    }
     roots.sort_unstable_by_key(|&(_, value)| value);
     if words.range(extra.0..=extra.1).next().is_some()
         || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()

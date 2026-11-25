@@ -14419,3 +14419,17 @@ steps. Local column reads and their trit effects are checked against
 the independent crazy table; omission of the real spike or either
 column store must fail the physical witness. The original 100,000-step
 publication gate is unchanged; this is not a source-frame proof.
+
+Four previously unused near-frame odd words at M7,174,475..481
+now select direct entries 64, 128, 192 and 256 cells into the paired
+inverse-seed bank. Their pointers are synthesized by the same physical
+chunk scratch after the frame reset; their adjacent reset words remain
+virgin. The seed planner compares these direct paths, the original
+bank roots and the existing two-hop directory before ranking the seed
+slots. The frozen physical image reaches first input in 1,706,890
+steps (77,333 fewer), with unchanged source extent and byte-path bounds.
+The physical bootstrap bound is 1,715,000 steps. An independent trace
+observes each of the four direct jumps, and omission of one actual
+root store invalidates the guest. All existing directory, table and
+factored-edge checks remain applicable. This still exceeds the original
+100,000-step publication gate.
