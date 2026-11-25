@@ -62,9 +62,24 @@ The original proposed code sites have changed, some scratch cells borrow
 unattributed source-frame addresses, and the raw EOF pair still is not
 the signed C23 pair. The byte arm does not execute checksum arithmetic
 or its phi/backedge, and no source checksum capsule is published.
-The strict guest-written-pointer gate also needs a distinct proof for
-this input-dependent *address* selection: the two final pointer words
-are encrypted code cells, not input-derived crazy/rotate stores.
+The separate `verify_address_selected_indirect_guest` gate now proves
+this input-dependent *address* selection with paired normative runs.
+Each of the 256 byte inputs is compared independently with true EOF.
+Both must execute exactly one common input before the transfer, have
+identical fetched code prefixes, write distinct selector values at the
+same live store, and reach the same selector jump. The verifier
+reconstructs D through the subsequent read-only no-op/jump sequence
+and compares the full pre-read write/encryption histories of every
+downstream operand across both runs, including operands reached in
+only one arm. The pointer cells and landings must differ. This
+separates the changing address from a changing lookup value.
+
+The original strict guest-written-pointer gate still refuses these
+two encrypted pointer cells. Negative controls reject forged sites,
+landings, identical input cases, and a real inserted route rotate
+even though both original landings still occur. This paired proof is
+finite physical evidence, not source-C predicate storage, a source
+return certificate, or universal equivalence outside its inputs.
 See `tests/compiler/relocated_eof_branch.rs`.
 
 ### Source-known narrow C23 scalar casts (2026-11-24)

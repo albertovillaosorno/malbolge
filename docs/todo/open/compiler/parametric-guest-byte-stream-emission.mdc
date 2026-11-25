@@ -49,10 +49,13 @@ The byte arm consumes a genuine second input and halts without output
 in 121 steps; the EOF arm physically writes M7,174,455=0 and emits zero
 in 136 steps. The independent full-image journal reconciles every first
 byte/EOF class, two second-EOF boundary cases and four omitted-effect
-controls. Next: authenticate the input-derived *address* lineage of the
-C118 transfer, normalize signed EOF, reserve the relocated effects,
-implement arithmetic and phi/backedge, and rerun the unchanged whole
-checksum. Scratch frame writes and the incomplete byte arm prohibit
+controls. The paired address-selection gate now replays each byte
+against EOF, verifies the shared input, live selector, read-only
+D route and invariant downstream operand histories, and refuses
+forged claims. The existing pointer-value writer gate still refuses
+these encrypted operands. Next: normalize signed EOF, bind the
+relocated effects to source control, implement arithmetic and
+phi/backedge, and rerun the unchanged whole checksum. Scratch frame writes and the incomplete byte arm prohibit
 publication. Evidence: `tests/compiler/relocated_eof_branch.rs` and the
 P2 technical contract.
 

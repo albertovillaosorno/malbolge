@@ -33,9 +33,12 @@ use malbolge::{
 };
 
 use super::layout::{
-    RelocatedEofBranchSource, SourcePhysicalImageTrace, SourcePhysicalIoEvent,
-    SourcePhysicalWordEffect, build_relocated_eof_branch_source,
-    verify_source_physical_image_trace,
+    AddressSelectedIndirectCase, AddressSelectedIndirectError,
+    AddressSelectedIndirectProbe, RelocatedEofBranchSource,
+    SourcePhysicalImageTrace, SourcePhysicalIoEvent, SourcePhysicalWordEffect,
+    SourceWrittenIndirectGuestError, SourceWrittenIndirectGuestProbe,
+    build_relocated_eof_branch_source, verify_address_selected_indirect_guest,
+    verify_source_physical_image_trace, verify_source_written_indirect_guest,
 };
 
 const CHECKSUM_LOW: u32 = 7_174_417;
@@ -390,8 +393,17 @@ fn assert_byte_arm(
 fn byte_matrix(range: RangeInclusive<u8>) -> Result<(), String> {
     let guest = plan()?;
     for first in range {
-        let journal = image(&guest.source, &[first, 0xa5, 0x5a])?;
-        assert_byte_arm(&journal, first, Some(0xa5))?;
+        let input = [first, 0xa5, 0x5a];
+        let proof = verify_address_selected_indirect_guest(
+            current_profile(),
+            address_probe(&guest.source, &input),
+        )
+        .map_err(|error| {
+            format!("byte {first}: paired address proof {error:?}")
+        })?;
+        let [byte, eof] = proof.cases();
+        assert_byte_arm(byte.journal(), first, Some(0xa5))?;
+        assert_common_prefix(eof.journal(), None)?;
     }
     Ok(())
 }
@@ -495,13 +507,21 @@ fn relocated_eof_arm_materializes_and_emits_zero() -> Result<(), String> {
 }
 
 fn omit(source: &[u8], position: usize) -> Result<Vec<u8>, String> {
+    replace_opcode(source, position, b'o')
+}
+
+fn replace_opcode(
+    source: &[u8],
+    position: usize,
+    opcode: u8,
+) -> Result<Vec<u8>, String> {
     let mut mutant = source.to_vec();
     let site = u32::try_from(position).map_err(|error| error.to_string())?;
     *mutant.get_mut(position).ok_or("invalid mutation site")? = (33..=126u8)
         .find(|&cell| {
-            decode_profile_instruction(u32::from(cell), site) == Some(b'o')
+            decode_profile_instruction(u32::from(cell), site) == Some(opcode)
         })
-        .ok_or("missing no-op encoding")?;
+        .ok_or("missing instruction encoding")?;
     Ok(mutant)
 }
 
@@ -570,6 +590,242 @@ fn omitted_discriminator_branch_read_and_output_store_are_observable()
         final_word(&missing_write, OUTPUT),
         None,
         "output operand was not written"
+    );
+    Ok(())
+}
+
+const fn address_probe<'source>(
+    source: &'source [u8],
+    input: &'source [u8],
+) -> AddressSelectedIndirectProbe<'source> {
+    AddressSelectedIndirectProbe {
+        cases: [
+            AddressSelectedIndirectCase {
+                input,
+                landing_address: 120,
+                pointer_cell: 117,
+            },
+            AddressSelectedIndirectCase {
+                input: &[],
+                landing_address: 126,
+                pointer_cell: 48,
+            },
+        ],
+        indirect_code_cell: 118,
+        input_code_cell: 53,
+        selector_cell: MASK,
+        selector_code_cell: 107,
+        selector_store_code_cell: 99,
+        source,
+        step_budget: 136,
+    }
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "assert independently reconstructed paired physical evidence"
+)]
+#[test]
+fn paired_address_selection_authenticates_byte_and_eof() -> Result<(), String> {
+    let guest = plan()?;
+    let input = [0xff, 0xa5];
+    let proof = verify_address_selected_indirect_guest(
+        current_profile(),
+        address_probe(&guest.source, &input),
+    )
+    .map_err(|error| format!("paired address proof: {error:?}"))?;
+    let [byte, eof] = proof.cases();
+    assert_eq!(proof.source(), guest.source, "same admitted source");
+    assert_eq!(byte.input(), input, "exact byte stream");
+    assert!(eof.input().is_empty(), "real EOF stream");
+    assert_eq!(
+        byte.input_origin(),
+        (TraceInput::Byte(0xff), 53),
+        "byte input"
+    );
+    assert_eq!(
+        eof.input_origin(),
+        (TraceInput::EndOfInput, 53),
+        "EOF input"
+    );
+    assert_route_receipt(byte, BYTE_CLASS, 117, 120);
+    assert_route_receipt(eof, EOF_CLASS, 48, 126);
+    assert_byte_arm(byte.journal(), 0xff, Some(0xa5))?;
+    assert_common_prefix(eof.journal(), None)?;
+    Ok(())
+}
+
+fn assert_route_receipt(
+    case: &super::layout::AddressSelectedIndirectCaseProof,
+    class: u32,
+    pointer: u32,
+    landing: u32,
+) {
+    assert_eq!(case.selector_write().after, class, "reached class write");
+    assert_eq!(case.selector_write().code_address, 99, "actual class store");
+    assert_eq!(
+        case.route().first().map(|read| read.code_address),
+        Some(107),
+        "first selector jump"
+    );
+    assert_eq!(
+        case.route().get(1).map(|read| read.data_address),
+        class.checked_add(1),
+        "first selected route operand"
+    );
+    assert_eq!(
+        case.transfer().data_address,
+        pointer,
+        "actual selected address"
+    );
+    assert_eq!(
+        case.transfer().value.checked_add(1),
+        Some(landing),
+        "actual selected pointer word"
+    );
+    assert_eq!(case.landing_address(), landing, "actual landing");
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "negative controls distinguish proof boundaries"
+)]
+#[test]
+fn address_selection_rejects_false_claims() -> Result<(), String> {
+    let guest = plan()?;
+    let probe = address_probe(&guest.source, &[0]);
+    let mut wrong_pointer = probe;
+    let [byte, eof] = &mut wrong_pointer.cases;
+    byte.pointer_cell = eof.pointer_cell;
+    let mut wrong_landing = probe;
+    let [byte_landing, eof_landing] = &mut wrong_landing.cases;
+    byte_landing.landing_address = eof_landing.landing_address;
+    let [same_byte, _] = probe.cases;
+    let controls = [
+        (wrong_pointer, AddressSelectedIndirectError::InvalidTransfer),
+        (wrong_landing, AddressSelectedIndirectError::InvalidTransfer),
+        (
+            AddressSelectedIndirectProbe {
+                input_code_cell: 54,
+                ..probe
+            },
+            AddressSelectedIndirectError::InvalidInput,
+        ),
+        (
+            AddressSelectedIndirectProbe {
+                selector_store_code_cell: 97,
+                ..probe
+            },
+            AddressSelectedIndirectError::InvalidSelector,
+        ),
+        (
+            AddressSelectedIndirectProbe {
+                selector_cell: RAW_LOW,
+                ..probe
+            },
+            AddressSelectedIndirectError::InvalidSelector,
+        ),
+        (
+            AddressSelectedIndirectProbe {
+                cases: [same_byte, same_byte],
+                ..probe
+            },
+            AddressSelectedIndirectError::NonDistinctCases,
+        ),
+        (
+            AddressSelectedIndirectProbe {
+                step_budget: 120,
+                ..probe
+            },
+            AddressSelectedIndirectError::InvalidTermination,
+        ),
+    ];
+    for (bad, expected) in controls {
+        assert_eq!(
+            verify_address_selected_indirect_guest(current_profile(), bad),
+            Err(expected),
+            "refuse forged physical witness {bad:?}"
+        );
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual mutation and independent writer-only gate refusals"
+)]
+#[test]
+fn address_selection_preserves_writer_gate() -> Result<(), String> {
+    let guest = plan()?;
+    let probe = address_probe(&guest.source, &[0]);
+    let mutant = omit(&guest.source, 118)?;
+    assert!(
+        verify_address_selected_indirect_guest(
+            current_profile(),
+            address_probe(&mutant, &[0])
+        )
+        .is_err(),
+        "missing transfer cannot supply evidence"
+    );
+    assert_eq!(
+        verify_address_selected_indirect_guest(historical_profile(), probe),
+        Err(AddressSelectedIndirectError::InvalidBound),
+        "N10 profile must not authenticate N15 source"
+    );
+    for case in probe.cases {
+        assert_eq!(
+            verify_source_written_indirect_guest(
+                current_profile(),
+                SourceWrittenIndirectGuestProbe {
+                    allowed_landings: &[120, 126],
+                    indirect_code_cell: 118,
+                    input: case.input,
+                    pointer_cell: case.pointer_cell,
+                    source: probe.source,
+                    step_budget: probe.step_budget,
+                },
+            ),
+            Err(SourceWrittenIndirectGuestError::MissingGuestPointerWrite),
+            "address selection does not constitute a guest pointer-value write"
+        );
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual route mutation preserves landings but must be refused"
+)]
+#[test]
+fn address_selection_refuses_route_write_despite_matching_arms()
+-> Result<(), String> {
+    let guest = plan()?;
+    let mutant = replace_opcode(&guest.source, 111, b'*')?;
+    for (input, landing) in [(&[0u8][..], 120), (&[][..], 126)] {
+        let journal = image(&mutant, input)?;
+        assert_eq!(
+            journal
+                .code_fetches
+                .get(119)
+                .map(|fetch| fetch.code_address),
+            Some(landing),
+            "mutation still physically reaches the expected arm"
+        );
+        assert!(
+            journal
+                .data_writes
+                .iter()
+                .any(|write| write.code_address == 111),
+            "the route really executes a rotate store"
+        );
+    }
+    assert_eq!(
+        verify_address_selected_indirect_guest(
+            current_profile(),
+            address_probe(&mutant, &[0])
+        ),
+        Err(AddressSelectedIndirectError::InvalidRoute),
+        "an intervening data write invalidates a read-only route proof"
     );
     Ok(())
 }

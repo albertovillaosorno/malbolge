@@ -32,6 +32,14 @@ pair is not signed C23, scratch writes are not source-frame authorized,
 and no linked phi/backedge or published checksum is claimed. The final
 indirect pointer is selected by an input-derived **address**, not by
 a guest-written input-derived word at the final pointer cell.
+`verify_address_selected_indirect_guest` separately authenticates
+paired counterfactual inputs with identical code prefixes, a common
+live selector write, a read-only D route, and identical prior
+write/encryption histories of all downstream lookup cells. Every
+successful byte is paired with true EOF. Forged anchors, duplicate
+outcomes and a real route mutation are refused; the original strict
+guest-written-pointer verifier remains unchanged. The new evidence
+does not certify the source-C predicate or a complete return path.
 
 ### Real first C23 input-result byte pair, still not signed EOF (2026-11-24)
 
