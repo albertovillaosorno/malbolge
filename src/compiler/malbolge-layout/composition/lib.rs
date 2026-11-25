@@ -254,6 +254,7 @@ pub use zero_cell_source::{
     build_adjacent_c32_zero_c37_raw_pointer_source,
     build_adjacent_c32_zero_source,
     build_adjacent_c32_zero_then_c37_input_source,
+    build_adjacent_c32_zero_then_c37_reserved_source,
     build_adjacent_c32_zero_then_input_source,
     build_guest_byte_c32_pair_echo_source,
     build_guest_byte_c32_pair_eof_classify_source,

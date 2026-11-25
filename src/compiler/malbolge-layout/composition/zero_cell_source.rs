@@ -756,6 +756,67 @@ pub fn build_adjacent_c32_zero_then_c37_input_source(
     Ok(candidate)
 }
 
+/// Extend the authentic C23 entry prefix to 120 graphical source cells.
+///
+/// Preserves the C14/C17 zero writes and C37 read while accommodating the
+/// original checksum's 106-cell full-CFG *reservation proposal*, without a
+/// fictitious 256-cell source length.
+/// Unreached C60..C117 remain graphical no-ops, and the independently
+/// searched two-byte C118/C119 loader tail (93, 37) restores the mandatory
+/// M126=7,174,416 / M127=37 pointer words after their old C60/C61 seeds
+/// move. The 39 reached instructions are unchanged. This does **not** emit
+/// any of the remaining CFG operations, phi copies, signed `getchar` stores
+/// or control edges: C38 still halts before even the first signed store.
+/// Source-authenticated placement and independent VM execution are required
+/// of the caller; the constructor alone proves only source geometry.
+///
+/// # Errors
+///
+/// Refuses unsupported profiles, unexpected original seed geometry, or a
+/// non-graphical new tail / invalid loader recurrence.
+pub fn build_adjacent_c32_zero_then_c37_reserved_source(
+    profile: &ProfileDescriptor,
+) -> Result<AdjacentC32ZeroSource, ZeroCellSourceError> {
+    use ZeroCellSourceError::NoLoadableZero;
+    let mut candidate = build_adjacent_c32_zero_then_c37_input_source(profile)?;
+    if candidate.source.len() != 62
+        || candidate.input_code_address != Some(37)
+        || candidate.zero_low_code_address != 17
+        || candidate.zero_high_code_address != 14
+    {
+        return Err(NoLoadableZero);
+    }
+    candidate.source.truncate(60);
+    for site in 60usize..118 {
+        let byte =
+            unique_graphical_cell(profile, LinearOpcode::NoOperation, site)
+                .map_err(|_error| NoLoadableZero)?;
+        candidate.source.push(byte);
+    }
+    for (site, byte) in [(118usize, 93u8), (119, 37)] {
+        if unique_graphical_cell(
+            profile,
+            LinearOpcode::SkippedDataByte { byte: u32::from(byte) },
+            site,
+        ) != Ok(byte)
+        {
+            return Err(NoLoadableZero);
+        }
+        candidate.source.push(byte);
+    }
+    if candidate.source.len() != 120
+        || unwritten_loader_word(&candidate.source, 126, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != 7_174_416
+        || unwritten_loader_word(&candidate.source, 127, profile)
+            .map_err(|_error| NoLoadableZero)?
+            != 37
+    {
+        return Err(NoLoadableZero);
+    }
+    Ok(candidate)
+}
+
 /// Continue the source-loaded C14/C17 zero initializer and C37 `/` through
 /// a real input-dependent scratch store, data-pointer reentry and low write.
 ///

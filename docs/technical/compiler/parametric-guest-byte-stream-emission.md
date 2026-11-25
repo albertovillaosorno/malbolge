@@ -939,6 +939,24 @@ its real `v` halt. This source-linked **effect prefix** is neither a complete
 source block nor a linked C23 checksum guest and does not authorize target
 publication. Regression: `tests/compiler_adjacent_zero_source.rs`.
 
+A further source-loader composition resolves the **physical length** mismatch
+for this prefix: `build_adjacent_c32_zero_then_c37_reserved_source` emits 120
+actual graphical cells rather than the earlier 62-cell body. C0..C38 retain
+the identical reached VM path; C60..C117 are unreached graphical no-ops,
+and the C118/C119 tail `(93, 37)` restores loader M126=7,174,416 and
+M127=37. Source-locked placement of the **whole** unchanged seven-block
+checksum with those C14/C17/C37 operation anchors fits a 106-cell minimum
+reservation (105 refuses); all its block and phi-pad intervals now fit inside
+those 120 physically present source cells. A finite exhaustive 21-length by
+64-tail search finds only `(120,93,37)` and `(120,109,37)` within the
+restricted unchanged-M126/M127 loader family for lengths 106..126; longer
+source bodies overwrite M126 with a small graphical byte. This establishes a
+new loader-compatible code-capacity **candidate**, not executable missing
+source operations: C38 still halts, no C23 signed result words are written,
+and the reserved branch/phi/loop sites are still unimplemented. It permits
+future actual code to replace the presently inert reserved cells only after
+independent VM and original-C23 source verification.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend

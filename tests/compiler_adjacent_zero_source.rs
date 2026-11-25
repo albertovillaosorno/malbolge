@@ -1898,8 +1898,10 @@ fn original_checksum_first_literal_and_input_have_physical_guest_sites()
         .collect::<Result<Vec<_>, _>>()?;
 
     let profile = current_profile();
-    let guest = layout::build_adjacent_c32_zero_then_c37_input_source(profile)
-        .map_err(|error| format!("real zero source: {error:?}"))?;
+    let guest =
+        layout::build_adjacent_c32_zero_then_c37_reserved_source(profile)
+            .map_err(|error| format!("real reserved source: {error:?}"))?;
+    assert_eq!(guest.source.len(), 120);
     let physical = ProfileMachine::from_source(profile, &guest.source, vec![])
         .map_err(|error| format!("source load: {error:?}"))?;
     let frame_base = guest.zero_low_address;
@@ -1941,7 +1943,7 @@ fn original_checksum_first_literal_and_input_have_physical_guest_sites()
             phi_anchors: &[],
             phi_entries: &[],
             phi_exits: &[],
-            source_cells: 256,
+            source_cells: 120,
         },
     )
     .map_err(|error| format!("checksum source placement: {error:?}"))?;
@@ -1986,6 +1988,26 @@ fn original_checksum_first_literal_and_input_have_physical_guest_sites()
     assert_eq!(plan.code_blocks[0].start, 0);
     assert_eq!(plan.operation_sites[0].start, guest.zero_high_code_address);
     assert_eq!(plan.relocated.state_placements[0].base, frame_base);
+    // Anchoring the original first literal at C14/C17 and input at C37
+    // increases the whole seven-block source reservation from its abstract
+    // 71-word minimum. The real 62-byte probe cannot host this complete plan.
+    for source_cells in [105, 106] {
+        let candidate = plan_source_locked_cfg_with_function_entry_anchors(
+            &GuestCodeFunctionEntryPlacement {
+                canonical: &wire,
+                control_anchors: &[],
+                effect_anchors: &effects,
+                frame_base,
+                function_entries: &entries,
+                operation_anchors: &[input_anchor],
+                phi_anchors: &[],
+                phi_entries: &[],
+                phi_exits: &[],
+                source_cells,
+            },
+        );
+        assert_eq!(candidate.is_ok(), source_cells == 106);
+    }
 
     // Replay the entire initially graphical source with the normative N15 VM.
     // Four stdin vectors exercise the source-anchored raw guest input site.
@@ -2118,5 +2140,75 @@ fn original_checksum_first_literal_and_input_have_physical_guest_sites()
     assert_eq!(missing.input_consumed(), 0);
     assert_eq!(missing.memory_word(guest.zero_low_address), Ok(0));
     assert_eq!(missing.memory_word(guest.zero_high_address), Ok(0));
+    Ok(())
+}
+
+// An exhaustive physical-loader-tail search for the *unchanged* C10 reentry.
+// Source-authenticated full-CFG reservation needs 106 code cells. This finds
+// the graphical tail that allows a 120-cell actual source to preserve M126 and
+// M127; it is not proof of an executable phi/control/checksum suffix.
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::excessive_nesting,
+    clippy::panic_in_result_fn,
+    reason = "finite 21-length by 64-tail loader-census and source proof"
+)]
+fn original_checksum_prefix_has_120_cell_graphical_reservation_tail()
+-> Result<(), String> {
+    let profile = current_profile();
+    let original =
+        layout::build_adjacent_c32_zero_then_c37_input_source(profile)
+            .map_err(|error| format!("physical prefix source: {error:?}"))?;
+    let loader = ProfileMachine::from_source(profile, &original.source, vec![])
+        .map_err(|error| format!("physical prefix loader: {error:?}"))?;
+    assert_eq!(original.source.len(), 62);
+    let required = (
+        loader.memory_word(126).map_err(|error| error.to_string())?,
+        loader.memory_word(127).map_err(|error| error.to_string())?,
+    );
+    assert_eq!(required, (7_174_416, 37));
+
+    // Once the source spans C127, M126 cannot have this mandatory large
+    // loader word: an authored graphical source byte is at most 126.
+    // For 106..=126 the loader recurrence depends only on the last two
+    // source bytes. Exhaust all 8*8 admissible opcode bytes at each length.
+    let mut eligible = 0usize;
+    let mut matching = Vec::new();
+    for length in 106usize..=126 {
+        for first in 33u8..=126 {
+            if !decode_profile_instruction(
+                u32::from(first),
+                u32::try_from(length.saturating_sub(2)).unwrap_or(u32::MAX),
+            )
+            .is_some_and(|opcode| b"ji*p</vo".contains(&opcode))
+            {
+                continue;
+            }
+            for second in 33u8..=126 {
+                if !decode_profile_instruction(
+                    u32::from(second),
+                    u32::try_from(length.saturating_sub(1)).unwrap_or(u32::MAX),
+                )
+                .is_some_and(|opcode| b"ji*p</vo".contains(&opcode))
+                {
+                    continue;
+                }
+                eligible = eligible.saturating_add(1);
+                let (mut before_previous, mut previous) =
+                    (u32::from(first), u32::from(second));
+                for _ in length..=127 {
+                    let next = crazy(before_previous, previous);
+                    before_previous = previous;
+                    previous = next;
+                }
+                if (before_previous, previous) == required {
+                    matching.push((length, first, second));
+                }
+            }
+        }
+    }
+    assert_eq!(eligible, 21 * 64);
+    assert_eq!(matching, [(120, 93, 37), (120, 109, 37)]);
     Ok(())
 }
