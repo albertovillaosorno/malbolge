@@ -13975,3 +13975,23 @@ the historical profile, and all 65,536
 full-state/raw-byte host projection pairs are checked. This is still
 only a low-nibble projection: carry propagation, high-nibble
 arithmetic, compact execution and source-C admission are open.
+
+### Factorized recurrent five-bit checksum transition
+
+The same bounded projection builder now produces a distinct 5,610,170-cell
+image through `build_relocated_recurrent_mod32_source`. It uses 32 raw
+projection records, 256 raw-byte pointers and 1,024 joint transition
+pointers, with 81-cell state rows starting at M7207056. Its immutable
+state records start at M7209700; the marker tape starts at M7211001.
+The aligned high prefix allows four actual EOF rotations to emit the
+five-bit checksum. The physical capture and immutable indexed reads,
+two-fold dirty resets, state commit and backedge are unchanged.
+The bootstrap is bounded by 5,500,000 instructions.
+
+Independent replay visits all 8,192 projected-state/raw-byte pairs
+exactly once in a single Euler circuit. Short streams cover all 64
+state/EOF combinations; the same eight omitted-effect controls and
+historical-profile refusal apply. The independent checksum oracle
+checks both four- and five-bit projections across all 65,536
+full-state/raw-byte pairs. The bounded witnesses remain distinct
+from complete eight-bit arithmetic and source-frame admission.

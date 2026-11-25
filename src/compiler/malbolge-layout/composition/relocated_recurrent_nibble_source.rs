@@ -8,7 +8,7 @@
 //   - LICENSE
 // Boundary-Contract:
 // - Owns:
-//   - Recurrent physical four-bit checksum state and EOF output.
+//   - Recurrent physical projected checksum state and EOF output.
 // - Must-Not:
 //   - Claim complete eight-bit checksum execution or source-C admission.
 // - Allows:
@@ -20,7 +20,7 @@
 // - Merge-When:
 //   - Complete recurrent checksum arithmetic subsumes the projection.
 // - Summary:
-//   - Factor byte selection from four-bit recurrent state transitions.
+//   - Factor byte selection from bounded recurrent state transitions.
 
 use malbolge::{ProfileDescriptor, profile_crazy};
 
@@ -43,17 +43,46 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_280_001,
     start: 7_201_001,
 };
-const CODE_BASE: u32 = 4_002_044;
-const TERMINAL: u32 = 4_012_044;
-const SOURCE_CELLS: usize = 4_012_170;
+#[derive(Clone, Copy)]
+struct Projection {
+    code_base: u32,
+    terminal: u32,
+    source_cells: usize,
+    count: u32,
+    row: u32,
+    state_table: u32,
+    state_seeds: u32,
+    rotations: u32,
+    tape_start: u32,
+}
+const NIBBLE: Projection = Projection {
+    code_base: 4_002_044,
+    terminal: 4_012_044,
+    source_cells: 4_012_170,
+    count: 16,
+    row: 27,
+    state_table: 7_199_010,
+    state_seeds: 7_200_000,
+    rotations: 3,
+    tape_start: BOUNDS.start,
+};
+const MOD32: Projection = Projection {
+    code_base: 5_600_044,
+    terminal: 5_610_044,
+    source_cells: 5_610_170,
+    count: 32,
+    row: 81,
+    state_table: 7_207_056,
+    state_seeds: 7_209_700,
+    rotations: 4,
+    tape_start: 7_211_001,
+};
 // Six complemented low trits select a raw-byte table entry.
-// The selected seed transforms the nibble into three complemented trits;
-// the state table then uses a 27-cell row. Its aligned high prefix also
-// allows EOF to decode the projected state using three rotations.
+// The selected seed transforms the projected byte into complemented trits.
+// The state table uses an aligned power-of-three row; its high prefix
+// allows EOF to decode the projected state using the matching rotations.
 const RAW_TABLE: u32 = 7_195_959;
 const RAW_SEEDS: u32 = 7_197_000;
-const STATE_TABLE: u32 = 7_199_010;
-const STATE_SEEDS: u32 = 7_200_000;
 const POINTER: u32 = 7_175_140;
 const POINTER_CONSTANTS: [u32; 3] = [7_175_150, 7_175_152, 7_175_154];
 const RAW_MASK_SEED: u32 = 7_175_160;
@@ -61,9 +90,9 @@ const RAW_MASK_PREFIX: u32 = 7_175_164;
 const RAW_LOOKUP_CONSTANT: u32 = 7_175_058;
 const STATE_LOOKUP_CONSTANT: u32 = 7_175_176;
 
-/// Recurrent four-bit checksum projection through two indexed lookups.
+/// Recurrent bounded checksum projection through two indexed lookups.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RelocatedRecurrentNibbleSource {
+pub struct RelocatedRecurrentProjectionSource {
     /// Actual capture, dispatch, reset and terminal sites.
     pub capture: RelocatedRecurrentCaptureSource,
     /// Two physical recurrent load stores.
@@ -91,26 +120,38 @@ fn raw_mask(profile: &ProfileDescriptor) -> Result<u32, BuildError> {
 fn state_mask(
     profile: &ProfileDescriptor,
     state: u32,
+    projection: Projection,
 ) -> Result<u32, BuildError> {
-    let base = STATE_TABLE
-        .checked_add(state.checked_mul(27).ok_or(LAYOUT)?)
+    let base = projection
+        .state_table
+        .checked_add(state.checked_mul(projection.row).ok_or(LAYOUT)?)
         .ok_or(LAYOUT)?;
     profile_crazy(base, ALL_TWOS, profile.word_trits())
-        .checked_add(13)
+        .checked_add(
+            projection
+                .row
+                .checked_sub(1)
+                .and_then(|value| value.checked_div(2))
+                .ok_or(LAYOUT)?,
+        )
         .ok_or(LAYOUT)
 }
 
-fn next_state(state: u32, nibble: u32) -> Result<u32, BuildError> {
-    let update = if nibble.is_multiple_of(2) {
-        state.checked_add(nibble).ok_or(LAYOUT)?
+fn next_state(state: u32, low: u32, mask: u32) -> Result<u32, BuildError> {
+    let update = if low.is_multiple_of(2) {
+        state.checked_add(low).ok_or(LAYOUT)?
     } else {
-        state ^ nibble
+        state ^ low
     };
-    Ok(update.checked_add(3).ok_or(LAYOUT)? & 15)
+    Ok(update.checked_add(3).ok_or(LAYOUT)? & mask)
 }
 
-fn words(profile: &ProfileDescriptor) -> Result<Words, BuildError> {
-    let mut words = data_words(state_mask(profile, 0)?, TERMINAL)?;
+fn words(
+    profile: &ProfileDescriptor,
+    projection: Projection,
+) -> Result<Words, BuildError> {
+    let mut words =
+        data_words(state_mask(profile, 0, projection)?, projection.terminal)?;
     let mask = raw_mask(profile)?;
     for (address, value) in [
         (POINTER, mask),
@@ -158,10 +199,11 @@ fn raw_records(
     profile: &ProfileDescriptor,
     route: &mut Route<'_>,
     raw_lookup: &AccessBlock,
+    projection: Projection,
 ) -> Result<(), BuildError> {
-    let masks = (0..16u32)
-        .map(|nibble| {
-            let encoded = profile_crazy(ALL_ONES, nibble, profile.word_trits());
+    let masks = (0..projection.count)
+        .map(|low| {
+            let encoded = profile_crazy(ALL_ONES, low, profile.word_trits());
             profile_crazy(encoded, ALL_TWOS, profile.word_trits())
         })
         .collect::<Vec<_>>();
@@ -180,7 +222,10 @@ fn raw_records(
         insert(
             route.words,
             address,
-            previous(seed_address(RAW_SEEDS, byte & 15)?)?,
+            previous(seed_address(
+                RAW_SEEDS,
+                byte & projection.count.checked_sub(1).ok_or(LAYOUT)?,
+            )?)?,
         )?;
     }
     Ok(())
@@ -190,27 +235,40 @@ fn state_records(
     profile: &ProfileDescriptor,
     route: &mut Route<'_>,
     lookup: &AccessBlock,
+    projection: Projection,
 ) -> Result<(), BuildError> {
-    let masks = (0..16u32)
-        .map(|state| state_mask(profile, state))
+    let masks = (0..projection.count)
+        .map(|state| state_mask(profile, state, projection))
         .collect::<Result<Vec<_>, _>>()?;
-    immutable_records(profile, route, lookup, (STATE, STATE_SEEDS), &masks)?;
-    for state in 0..16u32 {
-        let end = STATE_TABLE
+    immutable_records(
+        profile,
+        route,
+        lookup,
+        (STATE, projection.state_seeds),
+        &masks,
+    )?;
+    for state in 0..projection.count {
+        let end = projection
+            .state_table
             .checked_add(
-                27u32
+                projection
+                    .row
                     .checked_mul(state.checked_add(1).ok_or(LAYOUT)?)
                     .ok_or(LAYOUT)?,
             )
             .ok_or(LAYOUT)?;
-        for nibble in 0..16u32 {
-            let address = end.checked_sub(nibble).ok_or(LAYOUT)?;
+        for low in 0..projection.count {
+            let address = end.checked_sub(low).ok_or(LAYOUT)?;
             insert(
                 route.words,
                 address,
                 previous(seed_address(
-                    STATE_SEEDS,
-                    next_state(state, nibble)?,
+                    projection.state_seeds,
+                    next_state(
+                        state,
+                        low,
+                        projection.count.checked_sub(1).ok_or(LAYOUT)?,
+                    )?,
                 )?)?,
             )?;
         }
@@ -251,6 +309,7 @@ fn byte_route(
     blocks: &Mod4Blocks,
     lookups: [&AccessBlock; 2],
     words: &mut Words,
+    projection: Projection,
 ) -> Result<(), BuildError> {
     let [raw_lookup, state_lookup] = lookups;
     let mut bridge = Route {
@@ -272,10 +331,10 @@ fn byte_route(
     route.call_ready(first, CAPTURE)?;
     route.call_ready(first, POINTER)?;
     route.call_ready(&blocks.capture.rotate, RAW_LOOKUP_CONSTANT)?;
-    raw_records(profile, &mut route, raw_lookup)?;
+    raw_records(profile, &mut route, raw_lookup, projection)?;
     route.call_ready(first, STATE)?;
     route.call_ready(&blocks.capture.rotate, STATE_LOOKUP_CONSTANT)?;
-    state_records(profile, &mut route, state_lookup)?;
+    state_records(profile, &mut route, state_lookup, projection)?;
     route.call_ready(&blocks.capture.crazy, SCRATCH)?;
     reset(&mut route, &blocks.capture, STATE, STATE_CONSTANTS)?;
     reset(&mut route, &blocks.capture, CAPTURE, CONSTANTS)?;
@@ -288,7 +347,7 @@ fn byte_route(
         route.call_ready(&blocks.capture.crazy, address)?;
     }
     route.enter_ready(&blocks.capture.branch, LOOP_RETURN)?;
-    if route.cursor >= RAW_TABLE {
+    if route.cursor >= RAW_TABLE.min(projection.state_table) {
         return Err(LAYOUT);
     }
     Ok(())
@@ -308,16 +367,48 @@ fn lookup_sites(block: &AccessBlock) -> Result<[u32; 2], BuildError> {
 /// Refuses unsupported profiles or exhausted physical layout.
 pub fn build_relocated_recurrent_nibble_source(
     profile: &ProfileDescriptor,
-) -> Result<RelocatedRecurrentNibbleSource, BuildError> {
-    let mut emitter = bootstrap(profile, SOURCE_CELLS, BOUNDS)?;
-    let blocks = Mod4Blocks::new(profile, CODE_BASE)?;
-    let state_lookup =
-        AccessBlock::indexed_immutable_load(profile, code(CODE_BASE, 11, 0)?)?;
-    let raw_lookup =
-        AccessBlock::indexed_immutable_load(profile, code(CODE_BASE, 13, 0)?)?;
-    let mut words = words(profile)?;
+) -> Result<RelocatedRecurrentProjectionSource, BuildError> {
+    build_projection(profile, NIBBLE)
+}
+
+/// Execute the low five bits of the mutable checksum until physical EOF.
+///
+/// Uses 256 raw-byte records and 1,024 joint projected transitions.
+/// # Errors
+/// Refuses unsupported profiles or exhausted physical layout.
+pub fn build_relocated_recurrent_mod32_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedRecurrentProjectionSource, BuildError> {
+    build_projection(profile, MOD32)
+}
+
+fn build_projection(
+    profile: &ProfileDescriptor,
+    projection: Projection,
+) -> Result<RelocatedRecurrentProjectionSource, BuildError> {
+    let bounds = TapeBounds {
+        start: projection.tape_start,
+        ..BOUNDS
+    };
+    let mut emitter = bootstrap(profile, projection.source_cells, bounds)?;
+    let blocks = Mod4Blocks::new(profile, projection.code_base)?;
+    let state_lookup = AccessBlock::indexed_immutable_load(
+        profile,
+        code(projection.code_base, 11, 0)?,
+    )?;
+    let raw_lookup = AccessBlock::indexed_immutable_load(
+        profile,
+        code(projection.code_base, 13, 0)?,
+    )?;
+    let mut words = words(profile, projection)?;
     let entry = main_route(&blocks.capture, &mut words)?;
-    byte_route(profile, &blocks, [&raw_lookup, &state_lookup], &mut words)?;
+    byte_route(
+        profile,
+        &blocks,
+        [&raw_lookup, &state_lookup],
+        &mut words,
+        projection,
+    )?;
     let anchors = spaced_anchors(&words, 224)?;
     initialize_with_extra_seeds(
         &mut emitter,
@@ -336,10 +427,11 @@ pub fn build_relocated_recurrent_nibble_source(
     {
         block.emit(&mut emitter)?;
     }
-    let (output, halt) = emit_terminal(&mut emitter, TERMINAL, 3)?;
+    let (output, halt) =
+        emit_terminal(&mut emitter, projection.terminal, projection.rotations)?;
     let [first, second, third] = &blocks.capture.reset;
     let [load_first, load_second] = &blocks.load;
-    Ok(RelocatedRecurrentNibbleSource {
+    Ok(RelocatedRecurrentProjectionSource {
         capture: RelocatedRecurrentCaptureSource {
             branch: blocks.capture.branch.operation_site()?,
             capture: CAPTURE,
@@ -362,6 +454,6 @@ pub fn build_relocated_recurrent_nibble_source(
         raw_lookup: lookup_sites(&raw_lookup)?,
         scratch: SCRATCH,
         state: STATE,
-        terminal: TERMINAL,
+        terminal: projection.terminal,
     })
 }

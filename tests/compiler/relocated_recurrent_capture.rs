@@ -97,7 +97,8 @@ fn check_bootstrap_anchors(vm: &ProfileMachine) -> Result<(), String> {
         return Err("incorrect near-frame constants or anchors".to_owned());
     }
     let first = word(vm, 7_174_475)?;
-    if ![7_183_000, 7_186_000, 7_190_000, 7_201_000].contains(&first) {
+    if ![7_183_000, 7_186_000, 7_190_000, 7_201_000, 7_211_000].contains(&first)
+    {
         return Err("incorrect first tape anchor".to_owned());
     }
     let mut prior = first;

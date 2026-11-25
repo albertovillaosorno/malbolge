@@ -44,7 +44,8 @@ pub use relocated_recurrent_mod4_source::{
     RelocatedRecurrentMod4Source, build_relocated_recurrent_mod4_source,
 };
 pub use relocated_recurrent_nibble_source::{
-    RelocatedRecurrentNibbleSource, build_relocated_recurrent_nibble_source,
+    RelocatedRecurrentProjectionSource, build_relocated_recurrent_mod32_source,
+    build_relocated_recurrent_nibble_source,
 };
 pub use relocated_recurrent_parity_source::{
     RelocatedRecurrentParitySource, build_relocated_recurrent_parity_source,

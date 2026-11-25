@@ -30,7 +30,8 @@ use malbolge::{
 };
 
 use super::super::super::super::layout::{
-    RelocatedRecurrentNibbleSource, ZeroCellSourceError,
+    RelocatedRecurrentProjectionSource, ZeroCellSourceError,
+    build_relocated_recurrent_mod32_source,
     build_relocated_recurrent_nibble_source,
 };
 use super::{
@@ -39,10 +40,31 @@ use super::{
 };
 
 const BOOT_BUDGET: usize = 3_950_000;
+const MOD32_BOOT_BUDGET: usize = 5_500_000;
 const RAW_TABLE: u32 = 7_195_959;
 const RAW_SEEDS: u32 = 7_197_000;
-const STATE_TABLE: u32 = 7_199_010;
-const STATE_SEEDS: u32 = 7_200_000;
+#[derive(Clone, Copy)]
+struct Projection {
+    mask: u8,
+    row: u32,
+    state_table: u32,
+    state_seeds: u32,
+    rotations: u32,
+}
+const NIBBLE: Projection = Projection {
+    mask: 15,
+    row: 27,
+    state_table: 7_199_010,
+    state_seeds: 7_200_000,
+    rotations: 3,
+};
+const MOD32: Projection = Projection {
+    mask: 31,
+    row: 81,
+    state_table: 7_207_056,
+    state_seeds: 7_209_700,
+    rotations: 4,
+};
 const STATE_CONSTANTS: [u32; 3] = [7_175_060, 7_175_062, 7_175_064];
 const SCRATCH_CONSTANTS: [u32; 3] = [7_175_070, 7_175_072, 7_175_074];
 const POINTER_CONSTANTS: [u32; 3] = [7_175_150, 7_175_152, 7_175_154];
@@ -50,7 +72,7 @@ const POINTER_CONSTANTS: [u32; 3] = [7_175_150, 7_175_152, 7_175_154];
 type RawProjection = (u32, u32, u32);
 type StackEntry = (u8, Option<u8>);
 
-fn source() -> Result<RelocatedRecurrentNibbleSource, String> {
+fn source() -> Result<RelocatedRecurrentProjectionSource, String> {
     build_relocated_recurrent_nibble_source(current_profile())
         .map_err(|error| format!("nibble source: {error:?}"))
 }
@@ -63,15 +85,25 @@ const fn checksum(state: u8, byte: u8) -> u8 {
     }
 }
 
-fn state_row(state: u8) -> Result<u32, String> {
+fn state_row(state: u8, projection: Projection) -> Result<u32, String> {
     plus(
-        STATE_TABLE,
-        u32::from(state).checked_mul(27).ok_or("state row")?,
+        projection.state_table,
+        u32::from(state)
+            .checked_mul(projection.row)
+            .ok_or("state row")?,
     )
 }
 
-fn mask(state: u8) -> Result<u32, String> {
-    plus(independent_crazy(state_row(state)?, EOF), 13)
+fn mask(state: u8, projection: Projection) -> Result<u32, String> {
+    plus(
+        independent_crazy(state_row(state, projection)?, EOF),
+        projection
+            .row
+            .checked_sub(1)
+            .ok_or("row")?
+            .checked_div(2)
+            .ok_or("half row")?,
+    )
 }
 
 fn raw_mask() -> Result<u32, String> {
@@ -98,7 +130,7 @@ fn immutable_prefix(mut value: u32) -> Result<u32, String> {
 
 fn lookup(
     vm: &mut ProfileMachine,
-    guest: &RelocatedRecurrentNibbleSource,
+    guest: &RelocatedRecurrentProjectionSource,
     (sites, operand): ([u32; 2], u32),
     (pointer, seed, expected): (u32, u32, u32),
 ) -> Result<u32, String> {
@@ -134,7 +166,7 @@ fn lookup(
 
 fn rotate_constant(
     vm: &mut ProfileMachine,
-    guest: &RelocatedRecurrentNibbleSource,
+    guest: &RelocatedRecurrentProjectionSource,
     address: u32,
     value: u32,
 ) -> Result<(), String> {
@@ -144,8 +176,9 @@ fn rotate_constant(
 
 fn raw_projection(
     vm: &mut ProfileMachine,
-    guest: &RelocatedRecurrentNibbleSource,
+    guest: &RelocatedRecurrentProjectionSource,
     (byte, encoded): (u8, u32),
+    projection: Projection,
 ) -> Result<RawProjection, String> {
     let base = &guest.capture;
     let [first, _] = guest.load;
@@ -161,7 +194,7 @@ fn raw_projection(
         return Err("wrong raw-byte index".to_owned());
     }
     rotate_constant(vm, guest, 7_175_058, ONES)?;
-    let nibble = byte & 15;
+    let nibble = byte & projection.mask;
     let projected =
         independent_crazy(independent_crazy(ONES, u32::from(nibble)), EOF);
     let actual = lookup(
@@ -192,7 +225,7 @@ fn reset_operand(
 
 fn restore(
     vm: &mut ProfileMachine,
-    guest: &RelocatedRecurrentNibbleSource,
+    guest: &RelocatedRecurrentProjectionSource,
     (seed, destination, inverse): (u32, u32, u32),
     constants: [u32; 2],
 ) -> Result<u32, String> {
@@ -211,20 +244,28 @@ fn restore(
 
 fn transition(
     vm: &mut ProfileMachine,
-    guest: &RelocatedRecurrentNibbleSource,
+    guest: &RelocatedRecurrentProjectionSource,
     (byte, encoded): (u8, u32),
     (prior, next): (u8, u8),
+    projection: Projection,
 ) -> Result<(), String> {
     let base = &guest.capture;
     let [first, _] = guest.load;
     let (transformed, raw_pointer, projected) =
-        raw_projection(vm, guest, (byte, encoded))?;
-    let pointer =
-        fold(vm, base, (first, guest.state), (mask(prior)?, projected))?;
+        raw_projection(vm, guest, (byte, encoded), projection)?;
+    let pointer = fold(
+        vm,
+        base,
+        (first, guest.state),
+        (mask(prior, projection)?, projected),
+    )?;
     if pointer
-        != plus(state_row(prior)?, 26)?
-            .checked_sub(u32::from(byte & 15))
-            .ok_or("state index")?
+        != plus(
+            state_row(prior, projection)?,
+            projection.row.checked_sub(1).ok_or("row")?,
+        )?
+        .checked_sub(u32::from(byte & projection.mask))
+        .ok_or("state index")?
     {
         return Err("wrong nibble transition index".to_owned());
     }
@@ -233,7 +274,11 @@ fn transition(
         vm,
         guest,
         (guest.lookup, guest.state),
-        (pointer, seed_address(STATE_SEEDS, next)?, mask(next)?),
+        (
+            pointer,
+            seed_address(projection.state_seeds, next)?,
+            mask(next, projection)?,
+        ),
     )?;
     let inverse =
         fold(vm, base, (base.crazy, guest.scratch), (ONES, selected))?;
@@ -242,7 +287,7 @@ fn transition(
     let actual = restore(vm, guest, (guest.scratch, guest.state, inverse), [
         7_175_054, 7_175_056,
     ])?;
-    if actual != mask(next)? {
+    if actual != mask(next, projection)? {
         return Err("wrong committed nibble".to_owned());
     }
     reset_operand(vm, base, (guest.scratch, inverse), SCRATCH_CONSTANTS)?;
@@ -265,9 +310,10 @@ fn transition(
 
 fn check_terminal(
     vm: &mut ProfileMachine,
-    guest: &RelocatedRecurrentNibbleSource,
+    guest: &RelocatedRecurrentProjectionSource,
     class: u32,
     expected: u8,
+    projection: Projection,
 ) -> Result<(), String> {
     let base = &guest.capture;
     let load = effect(vm, base, guest.terminal, b'*')?;
@@ -276,12 +322,17 @@ fn check_terminal(
         vm,
         base,
         (plus(guest.terminal, 2)?, guest.state),
-        (mask(expected)?, EOF),
+        (mask(expected, projection)?, EOF),
     )?;
-    if state != plus(state_row(expected)?, 26)? {
+    if state
+        != plus(
+            state_row(expected, projection)?,
+            projection.row.checked_sub(1).ok_or("row")?,
+        )?
+    {
         return Err("wrong terminal state decode".to_owned());
     }
-    for offset in 0..3u32 {
+    for offset in 0..projection.rotations {
         let site = plus(
             guest.terminal,
             plus(4, offset.checked_mul(2).ok_or("rotation site")?)?,
@@ -325,8 +376,9 @@ fn check_terminal(
 
 fn run(
     boot: &ProfileMachine,
-    guest: &RelocatedRecurrentNibbleSource,
+    guest: &RelocatedRecurrentProjectionSource,
     stream: &[u8],
+    projection: Projection,
 ) -> Result<(), String> {
     let mut vm = boot
         .fork_with_input(stream.to_vec())
@@ -335,8 +387,8 @@ fn run(
     let mut classifier = INITIAL;
     let mut full = 0u8;
     for &byte in stream {
-        let prior = full & 15;
-        if word(&vm, guest.state)? != mask(prior)?
+        let prior = full & projection.mask;
+        if word(&vm, guest.state)? != mask(prior, projection)?
             || word(&vm, guest.scratch)? != ONES
             || word(&vm, guest.pointer)? != raw_mask()?
         {
@@ -349,7 +401,13 @@ fn run(
             (TraceInput::Byte(byte), BYTE),
         )?;
         full = checksum(full, byte);
-        transition(&mut vm, guest, (byte, encoded), (prior, full & 15))?;
+        transition(
+            &mut vm,
+            guest,
+            (byte, encoded),
+            (prior, full & projection.mask),
+            projection,
+        )?;
     }
     let class = if stream.len() & 1 == 1 {
         EOF_ODD
@@ -363,24 +421,29 @@ fn run(
         (TraceInput::EndOfInput, class),
     )?;
     if encoded != EOF
-        || word(&vm, guest.state)? != mask(full & 15)?
+        || word(&vm, guest.state)? != mask(full & projection.mask, projection)?
         || word(&vm, guest.scratch)? != ONES
         || word(&vm, guest.pointer)? != raw_mask()?
         || !vm.output().is_empty()
     {
         return Err("EOF changed state or byte path emitted output".to_owned());
     }
-    check_terminal(&mut vm, guest, class, full & 15)?;
-    if vm.input_consumed() != stream.len() || vm.output() != [full & 15] {
+    check_terminal(&mut vm, guest, class, full & projection.mask, projection)?;
+    if vm.input_consumed() != stream.len()
+        || vm.output() != [full & projection.mask]
+    {
         return Err("wrong final checksum projection".to_owned());
     }
     Ok(())
 }
 
-// All 16*256 edges are balanced: each byte acts as a permutation on
-// the sixteen states. Build an Euler circuit, then authenticate its census.
-fn transition_stream() -> Result<Vec<u8>, String> {
-    let mut next_byte = [0u16; 16];
+// All projected-state/raw-byte edges are balanced: each byte acts as a
+// permutation on the states. Build an Euler circuit and check its census.
+fn transition_stream(projection: Projection) -> Result<Vec<u8>, String> {
+    let count = usize::from(projection.mask)
+        .checked_add(1)
+        .ok_or("state count")?;
+    let mut next_byte = vec![0u16; count];
     let mut stack = vec![(0u8, None)];
     let mut stream = Vec::new();
     while let Some((state, incoming)) = stack.last().copied() {
@@ -391,7 +454,7 @@ fn transition_stream() -> Result<Vec<u8>, String> {
             let byte =
                 u8::try_from(*counter).map_err(|error| error.to_string())?;
             *counter = counter.checked_add(1).ok_or("counter overflow")?;
-            stack.push((checksum(state, byte) & 15, Some(byte)));
+            stack.push((checksum(state, byte) & projection.mask, Some(byte)));
         } else {
             let _: Option<StackEntry> = stack.pop();
             if let Some(byte) = incoming {
@@ -427,7 +490,7 @@ fn relocated_recurrent_nibble_all_transitions_and_eof() -> Result<(), String> {
             return Err("unstable immutable seed pair".to_owned());
         }
     }
-    let census = transition_stream()?;
+    let census = transition_stream(NIBBLE)?;
     let mut visited = BTreeSet::new();
     let mut state = 0u8;
     for &byte in &census {
@@ -437,16 +500,16 @@ fn relocated_recurrent_nibble_all_transitions_and_eof() -> Result<(), String> {
     if census.len() != 4_096 || visited.len() != 4_096 {
         return Err("incomplete raw/state transition census".to_owned());
     }
-    run(&boot, &guest, &census)?;
-    run(&boot, &guest, &[])?;
+    run(&boot, &guest, &census, NIBBLE)?;
+    run(&boot, &guest, &[], NIBBLE)?;
     for expected in 0..16u8 {
         let odd = [expected.wrapping_sub(3) & 15];
         let second = (0..16u8)
             .find(|byte| checksum(3, *byte) & 15 == expected)
             .ok_or("no even EOF witness")?;
         let even = [0, second];
-        run(&boot, &guest, &odd)?;
-        run(&boot, &guest, &even)?;
+        run(&boot, &guest, &odd, NIBBLE)?;
+        run(&boot, &guest, &even, NIBBLE)?;
     }
     Ok(())
 }
@@ -470,10 +533,12 @@ fn relocated_recurrent_nibble_immutable_read_and_reset_algebra()
 fn relocated_recurrent_nibble_is_checksum_projection() {
     for state in 0..=255u8 {
         for byte in 0..=255u8 {
-            assert_eq!(
-                checksum(state, byte) & 15,
-                checksum(state & 15, byte) & 15
-            );
+            for projection in [NIBBLE, MOD32] {
+                assert_eq!(
+                    checksum(state, byte) & projection.mask,
+                    checksum(state & projection.mask, byte) & projection.mask
+                );
+            }
         }
     }
 }
@@ -484,11 +549,29 @@ fn relocated_recurrent_nibble_refuses_other_profile() {
         build_relocated_recurrent_nibble_source(historical_profile()),
         Err(ZeroCellSourceError::UnsupportedProfile)
     );
+    assert_eq!(
+        build_relocated_recurrent_mod32_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile)
+    );
 }
 
 #[test]
 fn relocated_recurrent_nibble_omitted_effects_refuse() -> Result<(), String> {
-    let guest = source()?;
+    omitted_effects(&source()?, NIBBLE, BOOT_BUDGET)
+}
+
+#[test]
+fn relocated_recurrent_mod32_omitted_effects_refuse() -> Result<(), String> {
+    let guest = build_relocated_recurrent_mod32_source(current_profile())
+        .map_err(|error| format!("mod32 source: {error:?}"))?;
+    omitted_effects(&guest, MOD32, MOD32_BOOT_BUDGET)
+}
+
+fn omitted_effects(
+    guest: &RelocatedRecurrentProjectionSource,
+    projection: Projection,
+    budget: usize,
+) -> Result<(), String> {
     let [prefix, value] = guest.lookup;
     let [raw_prefix, raw_value] = guest.raw_lookup;
     let [_, reset, _] = guest.capture.reset;
@@ -514,10 +597,43 @@ fn relocated_recurrent_nibble_omitted_effects_refuse() -> Result<(), String> {
             .source
             .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
             .ok_or("missing mutation site")? = noop;
-        let boot = enter(&modified.capture, BOOT_BUDGET)?;
-        if run(&boot, &modified, &[0, 255]).is_ok() {
+        let boot = enter(&modified.capture, budget)?;
+        if run(&boot, &modified, &[0, 255], projection).is_ok() {
             return Err(format!("accepted omitted state effect C{site}"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn relocated_recurrent_mod32_all_transitions_and_eof() -> Result<(), String> {
+    let guest = build_relocated_recurrent_mod32_source(current_profile())
+        .map_err(|error| format!("mod32 source: {error:?}"))?;
+    let boot = enter(&guest.capture, MOD32_BOOT_BUDGET)?;
+    if word(&boot, 7_174_475)? != 7_211_000
+        || guest.capture.source.len() != 5_610_170
+    {
+        return Err("incorrect five-bit geometry".to_owned());
+    }
+    let census = transition_stream(MOD32)?;
+    let mut visited = BTreeSet::new();
+    let mut state = 0u8;
+    for &byte in &census {
+        let _: bool = visited.insert((state & 31, byte));
+        state = checksum(state, byte);
+    }
+    if census.len() != 8_192 || visited.len() != 8_192 {
+        return Err("incomplete five-bit transition census".to_owned());
+    }
+    run(&boot, &guest, &census, MOD32)?;
+    run(&boot, &guest, &[], MOD32)?;
+    for expected in 0..32u8 {
+        let odd = [expected.wrapping_sub(3) & 31];
+        let second = (0..32u8)
+            .find(|byte| checksum(3, *byte) & 31 == expected)
+            .ok_or("no five-bit even EOF witness")?;
+        run(&boot, &guest, &odd, MOD32)?;
+        run(&boot, &guest, &[0, second], MOD32)?;
     }
     Ok(())
 }
