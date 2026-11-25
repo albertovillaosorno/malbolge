@@ -14940,3 +14940,28 @@ target. Only two ordered targets were compatible, and both already
 avoid the inverse reload. Neither the extra analysis nor its temporary
 instrumentation is retained. This does not exclude more substantial
 changes to the target schedule or representation.
+
+The next physical reduction batches normalization of the 80 paired
+return cells. Seven alternating sweeps execute 158 normalization
+stores (80 produce all ones, 78 produce zero), followed by the original
+80 inverse commits. The independent audit reconstructs the sweep from
+cell ordinals, checks each old word, accumulator, new word and jump,
+and refuses an omitted representative of each of the three store
+classes. No partially normalized return may serve as a reset.
+This change alone saves 845 instructions.
+
+The remaining uniform-operand resets at M7,174,472 and M7,174,470
+can also be retired after the return bank is installed. Their two-store
+initializers install predecessors 7,174,490 and 7,174,476, respectively.
+The all-one reset is retired last, after scratch synthesis no longer
+needs it. The seed directory at M7,174,474 is also reachable after an
+all-one load. The independently observed late selections are 1,707,
+646 and 3,472 for M7,174,474, M7,174,472 and M7,174,470, respectively.
+All six stores and three representative selections have omission
+controls. The scratch-constant route gains one selection during setup.
+
+The combined reduction reaches first input in 1,056,247 steps, a
+further 36,358 below 1,092,605. The fixed physical source extent,
+checksum cases and 100,000-step publication limit remain unchanged;
+the physical witness ceiling is 1,058,000. These routing reductions
+are not a proof that the source-C publication budget is reachable.

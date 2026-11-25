@@ -391,6 +391,13 @@ vectors. After all 80 paired returns, two physical stores retire the
 old even reset M7,174,474; 1,471 observed selections use the new
 pointer while M7,174,484 remains virgin. Three omitted effects refuse.
 All 24 focused physical tests pass; the new ceiling is 1,094,000.
+Seven paired-return normalization sweeps then replace individual
+zero reloads; independent traces require 158 alternating stores,
+80 final commits and all return jumps. Two more late reset cells
+(M7,174,472 and M7,174,470) become directory shortcuts. All three
+late routes have six checked stores, 5,825 selections and nine
+omitted-effect controls. The combined physical first-input count is
+1,056,247, with a 1,058,000-step ceiling and unchanged source extent.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

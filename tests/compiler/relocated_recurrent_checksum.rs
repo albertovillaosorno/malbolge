@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_094_000;
+const BOOT_BUDGET: usize = 1_058_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -56,12 +56,16 @@ const SHORTCUT_ADDRESS: u32 = 7_174_447;
 const SHORTCUT_PREDECESSOR: u32 = 7_174_468;
 const FRAME_DIRECTORY_ADDRESS: u32 = 7_174_419;
 const FRAME_DIRECTORY_PREDECESSOR: u32 = 7_174_490;
-const LATE_DIRECTORY_ADDRESS: u32 = 7_174_474;
-const LATE_DIRECTORY_PREDECESSOR: u32 = 7_174_488;
+const LATE_DIRECTORY_ROUTES: [LateRoute; 3] = [
+    (7_174_474, 7_174_488, 1_707),
+    (7_174_472, 7_174_490, 646),
+    (7_174_470, 7_174_476, 3_472),
+];
 
 type ArithmeticVisit = (u32, u32);
 type DirectoryPage = (u32, u32);
 type LocalColumnSites = BTreeMap<u32, u32>;
+type LateRoute = (u32, u32, usize);
 type BootReplay = (ProfileMachine, usize);
 type HighEdge = (u8, u8, u8, u32);
 type LowEdge = (u8, u8);
@@ -543,10 +547,14 @@ struct LateDirectoryAudit {
 }
 
 impl LateDirectoryAudit {
-    fn finish(mut self, vm: &ProfileMachine) -> Result<Vec<u32>, String> {
+    fn finish(
+        mut self,
+        vm: &ProfileMachine,
+        (address, predecessor, selections): (u32, u32, usize),
+    ) -> Result<Vec<u32>, String> {
         if self.sites.len() != 2
-            || self.selections != 1_471
-            || word(vm, LATE_DIRECTORY_ADDRESS)? != LATE_DIRECTORY_PREDECESSOR
+            || self.selections != selections
+            || word(vm, address)? != predecessor
             || word(vm, 7_174_484)? != 7_174_416
         {
             return Err("incomplete late directory".to_owned());
@@ -556,18 +564,22 @@ impl LateDirectoryAudit {
         Ok(self.sites)
     }
 
-    fn select(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+    fn select(
+        &mut self,
+        vm: &mut ProfileMachine,
+        (address, installed): (u32, u32),
+    ) -> Result<(), String> {
         let trace = step(vm)?;
         let predecessor = match self.sites.len() {
             0 => 7_174_416,
-            2 => LATE_DIRECTORY_PREDECESSOR,
+            2 => installed,
             _ => return Err("jump through partial late directory".to_owned()),
         };
         if trace
             .memory_reads
             .data
             .map(|read| (read.address, read.value))
-            != Some((LATE_DIRECTORY_ADDRESS, predecessor))
+            != Some((address, predecessor))
             || trace.after.registers.data_pointer != plus(predecessor, 1)?
         {
             return Err("incorrect late directory selection".to_owned());
@@ -582,15 +594,15 @@ impl LateDirectoryAudit {
         Ok(())
     }
 
-    fn store(&mut self, vm: &mut ProfileMachine) -> Result<(), String> {
+    fn store(
+        &mut self,
+        vm: &mut ProfileMachine,
+        (address, predecessor): (u32, u32),
+    ) -> Result<(), String> {
         let regs = vm.registers();
         let (old, acc, new) = match self.sites.len() {
             0 => (7_174_416, 0, ONES),
-            1 => (
-                ONES,
-                independent_crazy(ONES, LATE_DIRECTORY_PREDECESSOR),
-                LATE_DIRECTORY_PREDECESSOR,
-            ),
+            1 => (ONES, independent_crazy(ONES, predecessor), predecessor),
             _ => return Err("repeated late directory store".to_owned()),
         };
         if self.returns.len() != 80
@@ -601,7 +613,7 @@ impl LateDirectoryAudit {
                 "premature or incorrect late directory store".to_owned()
             );
         }
-        check_store(&step(vm)?, LATE_DIRECTORY_ADDRESS, old, new)?;
+        check_store(&step(vm)?, address, old, new)?;
         self.sites.push(regs.code_pointer);
         Ok(())
     }
@@ -2627,7 +2639,7 @@ fn relocated_recurrent_checksum_omitted_scratch_constants_refuses()
 -> Result<(), String> {
     let guest = source()?;
     let (sites, selections) = audit_scratch_constants(&guest)?;
-    if selections != 1_339 {
+    if selections != 1_340 {
         return Err(format!("unexpected shortcut count: {selections}"));
     }
     for site in sites {
@@ -2695,6 +2707,7 @@ fn relocated_recurrent_checksum_omitted_frame_directory_refuses()
 
 fn audit_late_directory(
     guest: &RelocatedRecurrentChecksumSource,
+    route: LateRoute,
 ) -> Result<Vec<u32>, String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
@@ -2705,7 +2718,7 @@ fn audit_late_directory(
     let mut audit = LateDirectoryAudit::default();
     for _ in 0..BOOT_BUDGET {
         if is_input(&vm, guest)? {
-            return audit.finish(&vm);
+            return audit.finish(&vm, route);
         }
         let regs = vm.registers();
         let address = regs.data_pointer;
@@ -2713,14 +2726,14 @@ fn audit_late_directory(
             word(&vm, regs.code_pointer)?,
             regs.code_pointer,
         );
-        if address == LATE_DIRECTORY_ADDRESS {
+        if address == route.0 {
             match opcode {
                 Some(b'p') => {
-                    audit.store(&mut vm)?;
+                    audit.store(&mut vm, (route.0, route.1))?;
                     continue;
                 },
                 Some(b'j') => {
-                    audit.select(&mut vm)?;
+                    audit.select(&mut vm, (route.0, route.1))?;
                     continue;
                 },
                 Some(b'o') => {},
@@ -2742,12 +2755,14 @@ fn audit_late_directory(
 fn relocated_recurrent_checksum_omitted_late_directory_refuses()
 -> Result<(), String> {
     let guest = source()?;
-    for site in audit_late_directory(&guest)? {
-        let modified = omit_site(&guest, site)?;
-        if audit_late_directory(&modified).is_ok() {
-            return Err(format!(
-                "accepted omitted late directory effect C{site}"
-            ));
+    for route in LATE_DIRECTORY_ROUTES {
+        for site in audit_late_directory(&guest, route)? {
+            let modified = omit_site(&guest, site)?;
+            if audit_late_directory(&modified, route).is_ok() {
+                return Err(format!(
+                    "accepted omitted late directory effect C{site}"
+                ));
+            }
         }
     }
     Ok(())
@@ -2900,11 +2915,86 @@ fn relocated_recurrent_checksum_omitted_direct_target_effects_refuse()
     Ok(())
 }
 
-// Independently trace the initialized returns; earlier virgin reset
-// jumps through the same slots are not evidence of a direct return.
+// Reconstruct the sweep independently from the ordinal of each return
+// cell. Each pass consumes the even ordinals and zeroes the odd ones.
+fn return_store_plan() -> Vec<[u32; 4]> {
+    let mut plan = Vec::new();
+    for stride in [1u32, 2, 4, 8, 16, 32, 64] {
+        let old = if stride == 1 {
+            7_174_416
+        } else {
+            0
+        };
+        for index in 0..80u32.div_euclid(stride) {
+            let ordinal = stride.saturating_mul(index.saturating_add(1));
+            let address = SEED_RETURN_BASE
+                .saturating_add(ordinal.saturating_sub(1).saturating_mul(4));
+            let (acc, new) = if index.is_multiple_of(2) {
+                (0, ONES)
+            } else {
+                (ONES, 0)
+            };
+            plan.push([address, old, acc, new]);
+        }
+    }
+    let value = SEED_RETURN_TARGET.saturating_sub(1);
+    let inverse = independent_crazy(ONES, value);
+    for address in (SEED_RETURN_BASE..=SEED_RETURN_END).step_by(4) {
+        plan.push([address, ONES, inverse, value]);
+    }
+    plan
+}
+
+// A return cell can be selected only in its virgin or final state.
+// Check the actual jump, including unchanged A and memory.
+fn trace_seed_return_jump(
+    vm: &mut ProfileMachine,
+    visited: &mut BTreeSet<u32>,
+) -> Result<(), String> {
+    let registers = vm.registers();
+    let address = registers.data_pointer;
+    let old = word(vm, address)?;
+    if !matches!(old, 7_174_416 | 7_174_490) {
+        return Err("selected a partially prepared return".to_owned());
+    }
+    let trace = step(vm)?;
+    if trace.after.registers.data_pointer != plus(old, 1)? {
+        return Err("incorrect inverse-seed jump".to_owned());
+    }
+    routing(&trace, u32::MAX)?;
+    if old == 7_174_490 {
+        let _added = visited.insert(address);
+    }
+    Ok(())
+}
+
+fn trace_seed_return_store(
+    vm: &mut ProfileMachine,
+    &[address, old, acc, new]: &[u32; 4],
+    sites: &mut [Option<u32>; 3],
+) -> Result<(), String> {
+    let regs = vm.registers();
+    if regs.data_pointer != address || regs.accumulator != acc {
+        return Err("wrong return sweep effect".to_owned());
+    }
+    check_store(&step(vm)?, address, old, new)?;
+    let class = match new {
+        ONES => 0,
+        0 => 1,
+        _ => 2,
+    };
+    let _first = sites
+        .get_mut(class)
+        .ok_or("return class")?
+        .get_or_insert(regs.code_pointer);
+    Ok(())
+}
+
+// Observe every normalization and commit as well as every reset/jump
+// through the bank. Return representatives of all three store classes.
 fn audit_seed_returns(
     guest: &RelocatedRecurrentChecksumSource,
-) -> Result<(), String> {
+) -> Result<[u32; 3], String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
         &guest.capture.source,
@@ -2912,37 +3002,45 @@ fn audit_seed_returns(
     )
     .map_err(|error| error.to_string())?;
     let mut visited = BTreeSet::new();
+    let plan = return_store_plan();
+    let mut stores = 0usize;
+    let mut sites = [None; 3];
     for _ in 0..BOOT_BUDGET {
-        let registers = vm.registers();
-        let address = registers.data_pointer;
-        let direct = seed_return_address(address)
-            && word(&vm, address)? == SEED_RETURN_TARGET.saturating_sub(1)
-            && decode_profile_instruction(
-                word(&vm, registers.code_pointer)?,
-                registers.code_pointer,
-            ) == Some(b'j');
-        if direct {
-            let trace = step(&mut vm)?;
-            if trace.after.registers.data_pointer != SEED_RETURN_TARGET
-                || trace.after.registers.accumulator != registers.accumulator
-                || trace.memory_delta.data.is_some()
-            {
-                return Err("incorrect direct inverse-seed jump".to_owned());
+        if is_input(&vm, guest)? {
+            check_seed_returns(&vm)?;
+            if stores != plan.len() || visited.len() != 80 {
+                return Err("incomplete inverse-seed return audit".to_owned());
             }
-            let _: bool = visited.insert(address);
-            if visited.len() == 80 {
-                return Ok(());
-            }
-        } else if vm.step().map_err(|error| error.to_string())?
-            != StepOutcome::Continued
-        {
-            return Err("premature bootstrap termination".to_owned());
+            let [Some(ones), Some(zero), Some(commit)] = sites else {
+                return Err("missing return store representative".to_owned());
+            };
+            return Ok([ones, zero, commit]);
         }
+        let regs = vm.registers();
+        if seed_return_address(regs.data_pointer) {
+            match decode_profile_instruction(
+                word(&vm, regs.code_pointer)?,
+                regs.code_pointer,
+            ) {
+                Some(b'p') => {
+                    let expected = plan
+                        .get(stores)
+                        .ok_or("unexpected inverse-seed return store")?;
+                    trace_seed_return_store(&mut vm, expected, &mut sites)?;
+                    stores = stores.saturating_add(1);
+                    continue;
+                },
+                Some(b'j') => {
+                    trace_seed_return_jump(&mut vm, &mut visited)?;
+                    continue;
+                },
+                Some(b'o') => {},
+                _ => return Err("unexpected return bank effect".to_owned()),
+            }
+        }
+        advance_boot(&mut vm)?;
     }
-    Err(format!(
-        "only {} inverse-seed returns executed",
-        visited.len()
-    ))
+    Err("missing first input after return bank".to_owned())
 }
 
 fn audit_shared_reads(
@@ -3073,16 +3171,11 @@ fn relocated_recurrent_checksum_shared_reads_preserve_seeds()
 fn relocated_recurrent_checksum_omitted_seed_return_refuses()
 -> Result<(), String> {
     let guest = source()?;
-    audit_seed_returns(&guest)?;
-    let site = materialization_site(
-        &guest,
-        (SEED_RETURN_BASE, SEED_RETURN_TARGET.saturating_sub(1)),
-    )?;
-    let modified = omit_site(&guest, site)?;
-    if audit_seed_returns(&modified).is_ok()
-        || boot(&modified).is_ok_and(|vm| check_seed_returns(&vm).is_ok())
-    {
-        return Err("accepted omitted inverse-seed return".to_owned());
+    for site in audit_seed_returns(&guest)? {
+        let modified = omit_site(&guest, site)?;
+        if audit_seed_returns(&modified).is_ok() {
+            return Err("accepted omitted inverse-seed return".to_owned());
+        }
     }
     Ok(())
 }

@@ -71,6 +71,9 @@ const ELEMENTARY_COLUMNS: [u32; 7] = [8, 17, 20, 23, 24, 25, 27];
 // operand tape. Its odd pointers leave each even reset word virgin.
 const SEED_DIRECTORY: u32 = ANCHOR_START + 2;
 const LATE_SEED_DIRECTORY: u32 = NEAR_TWOS + 1;
+const LATE_TARGET_DIRECTORY: u32 = NEAR_ZERO + 1;
+const LATE_HOT_SEED: u32 = NEAR_ONES + 1;
+const LATE_HOT_LANDING: u32 = 7_174_477;
 const LATE_ROOT_RESET: u32 = 7_174_484;
 const DIRECTORY_BANK: u32 = 7_176_721;
 const DIRECTORY_STRIDE: u32 = 48;
@@ -567,6 +570,23 @@ pub(super) fn go_target(
     address: u32,
     anchors: &[(TargetSlot, u32)],
 ) -> Result<(), BuildError> {
+    go_target_in_phase(emitter, address, anchors, true)
+}
+
+fn go_target_in_phase(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+    anchors: &[(TargetSlot, u32)],
+    late: bool,
+) -> Result<(), BuildError> {
+    if late && (LATE_HOT_SEED..=LATE_TARGET_DIRECTORY).contains(&emitter.data) {
+        emitter.walk(LATE_TARGET_DIRECTORY)?;
+        emitter.jump(TARGET_RETURN)?;
+    } else if late && (NEAR_TWOS..=LATE_SEED_DIRECTORY).contains(&emitter.data)
+    {
+        emitter.walk(LATE_SEED_DIRECTORY)?;
+        emitter.jump(SEED_DIRECTORY)?;
+    }
     let (path, base) = anchors
         .iter()
         .copied()
@@ -606,9 +626,9 @@ fn fast_store(
     emitter: &mut Emitter<'_>,
     address: u32,
     anchors: &[(TargetSlot, u32)],
-    reset: u32,
+    (reset, late): (u32, bool),
 ) -> Result<(), BuildError> {
-    go_target(emitter, address, anchors)?;
+    go_target_in_phase(emitter, address, anchors, late)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(reset)
 }
@@ -715,7 +735,10 @@ fn go_seed(
     let (path, _) = seed_path(address, routing)?;
     match path {
         SeedPath::Page { slot, page } => {
-            if routing.late_directory && emitter.data == LATE_SEED_DIRECTORY {
+            if routing.late_directory
+                && (NEAR_ONES + 1..=LATE_SEED_DIRECTORY).contains(&emitter.data)
+            {
+                emitter.walk(LATE_SEED_DIRECTORY)?;
                 emitter.jump(SEED_DIRECTORY)?;
             } else {
                 fast_go(emitter, SEED_DIRECTORY)?;
@@ -725,6 +748,12 @@ fn go_seed(
             emitter.jump(page)?;
         },
         SeedPath::Direct { root, base } => {
+            if routing.late_directory
+                && emitter.data == LATE_HOT_SEED
+                && root >= LATE_HOT_LANDING
+            {
+                emitter.jump(LATE_HOT_LANDING)?;
+            }
             fast_go(emitter, root)?;
             emitter.jump(base)?;
         },
@@ -998,18 +1027,41 @@ fn initialize_seed_returns(
     returns.sort_unstable();
     let value = previous(TARGET_RETURN)?;
     let inverse = profile_crazy(ALL_ONES, value, 15);
-    let normalize = profile_crazy(7_174_416, inverse, 15) != value;
+    if returns.iter().any(|&address| {
+        !address.is_multiple_of(2) || !(SEEDS..7_174_970).contains(&address)
+    }) {
+        return Err(LAYOUT);
+    }
+    if profile_crazy(7_174_416, inverse, 15) != value {
+        normalize_seed_returns(emitter, &returns, routing)?;
+    }
     for address in returns {
-        if !address.is_multiple_of(2) || !(SEEDS..7_174_970).contains(&address)
-        {
-            return Err(LAYOUT);
-        }
-        if normalize {
-            fast_rotate(emitter, NEAR_ZERO)?;
-            store_seed(emitter, address, routing)?;
-        }
         scratch.synthesize(emitter, inverse)?;
         store_seed(emitter, address, routing)?;
+    }
+    Ok(())
+}
+
+// Every return cell starts with only zero/one trits. Alternate
+// normalization over the still-pending addresses, then revisit the
+// zeroed half. Neither a zeroed return nor a prepared return is a reset.
+fn normalize_seed_returns(
+    emitter: &mut Emitter<'_>,
+    returns: &[u32],
+    routing: &SeedRouting<'_>,
+) -> Result<(), BuildError> {
+    let mut pending = returns.to_vec();
+    while let Some(&first) = pending.first() {
+        fast_rotate(emitter, NEAR_ZERO)?;
+        go_seed(emitter, first, routing)?;
+        for &address in &pending {
+            emitter.walk(address)?;
+            let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        }
+        // The following even cell belongs to the next pair's prefix
+        // gap, not to a return slot in this sweep.
+        after_store(emitter)?;
+        pending = pending.into_iter().skip(1).step_by(2).collect();
     }
     Ok(())
 }
@@ -1311,25 +1363,41 @@ fn initialize_chunk_roots(
     Ok(scratch)
 }
 
-// Retire the even cell following the all-two operand only after all
-// inverse-seed returns are installed. The final shared phase can use it
-// to jump directly to the seed directory rather than walking fifteen
-// cells; M7,174,484 remains the virgin near-root reset.
-fn initialize_late_seed_directory(
+// Retire the even cells following the uniform operands only after all
+// inverse-seed returns are installed. The final shared phase can jump
+// into the directories; M7,174,484 remains a virgin near-root reset.
+fn initialize_late_directory(
+    emitter: &mut Emitter<'_>,
+    scratch: &mut ChunkWord,
+    (address, landing): (u32, u32),
+) -> Result<(), BuildError> {
+    fast_rotate(emitter, NEAR_ZERO)?;
+    if emitter.data > address {
+        emitter.walk(LATE_ROOT_RESET)?;
+    }
+    fast_go(emitter, address)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    emitter.walk(LATE_ROOT_RESET)?;
+    scratch
+        .synthesize(emitter, profile_crazy(ALL_ONES, previous(landing)?, 15))?;
+    fast_go(emitter, address)?;
+    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+    emitter.walk(LATE_ROOT_RESET)
+}
+
+fn initialize_late_directories(
     emitter: &mut Emitter<'_>,
     scratch: &mut ChunkWord,
 ) -> Result<(), BuildError> {
-    fast_rotate(emitter, NEAR_ZERO)?;
-    fast_go(emitter, LATE_SEED_DIRECTORY)?;
-    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
-    emitter.walk(LATE_ROOT_RESET)?;
-    scratch.synthesize(
-        emitter,
-        profile_crazy(ALL_ONES, previous(SEED_DIRECTORY)?, 15),
-    )?;
-    fast_go(emitter, LATE_SEED_DIRECTORY)?;
-    let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
-    emitter.walk(LATE_ROOT_RESET)
+    // Leave the all-one reset until last: scratch synthesis still uses it.
+    for route in [
+        (LATE_SEED_DIRECTORY, SEED_DIRECTORY),
+        (LATE_TARGET_DIRECTORY, TARGET_RETURN),
+        (LATE_HOT_SEED, LATE_HOT_LANDING),
+    ] {
+        initialize_late_directory(emitter, scratch, route)?;
+    }
+    Ok(())
 }
 
 fn initialize_late_seed_roots(
@@ -1429,7 +1497,7 @@ pub(super) fn initialize_chunk_seeds(
         (&seed_addresses, &routing, seeds, &mut scratch),
     )?;
     initialize_seed_returns(emitter, &seed_addresses, &routing, &mut scratch)?;
-    initialize_late_seed_directory(emitter, &mut scratch)?;
+    initialize_late_directories(emitter, &mut scratch)?;
     routing.late_directory = true;
     materialize_chunk_words(
         emitter,
@@ -1519,10 +1587,10 @@ fn initialize_materialization(
             )?;
             if needs_normalization(address, inverse, value) {
                 fast_rotate(emitter, NEAR_ZERO)?;
-                fast_store(emitter, address, anchors, reset)?;
+                fast_store(emitter, address, anchors, (reset, false))?;
             }
             scratch.synthesize(emitter, inverse)?;
-            fast_store(emitter, address, anchors, reset)?;
+            fast_store(emitter, address, anchors, (reset, false))?;
         } else {
             if needs_normalization(address, inverse, value) {
                 fast_rotate(emitter, NEAR_ZERO)?;
@@ -1663,7 +1731,7 @@ fn materialize_chunk_words(
             && !pre_normalized.contains(&address);
         if normalized {
             fast_rotate(emitter, NEAR_ZERO)?;
-            fast_store(emitter, address, anchors, reset)?;
+            fast_store(emitter, address, anchors, (reset, true))?;
             accumulator = Some(ALL_ONES);
         }
         if accumulator != Some(inverse) {
@@ -1680,7 +1748,7 @@ fn materialize_chunk_words(
                 fast_load(emitter, seed, (inverse, accumulator), &routing)?;
             }
         }
-        fast_store(emitter, address, anchors, reset)?;
+        fast_store(emitter, address, anchors, (reset, true))?;
         accumulator = Some(value);
     }
     Ok(())
