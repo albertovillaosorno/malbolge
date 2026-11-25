@@ -50,7 +50,10 @@ indirect landing from C1 to C7,174,454; the original first-byte
 classifier builder stays unmodified. This does **not** implement the
 source's branch, arithmetic, signed EOF result, complete state frame,
 loop, or checksum publication. Evidence: the P2 compiler contract and
-`tests/compiler_adjacent_zero_source.rs`.
+`tests/compiler_adjacent_zero_source.rs`. The independent complete
+physical-image journal additionally certifies exactly two new writes
+and unchanged EOF I/O, while byte zero records C58 as C65's last
+physical operand writer. No source-C branch is therefore promoted.
 
 A new opt-in joined branch/I/O/source-effect gate authenticates **the
 physical address of every guest output opcode** against the proposed

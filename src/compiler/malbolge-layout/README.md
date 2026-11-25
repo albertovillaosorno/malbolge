@@ -67,6 +67,10 @@ for byte zero its C66 transfer changes from C1 to C7,174,454 because
 the first new store modifies an input-addressed loader word. This
 EOF-only operand witness is not a source-C CFG linker, signed EOF
 conversion, arithmetic implementation or publishable checksum.
+The independent full-image journal corroborates both additional
+physical `p` stores and the unchanged EOF I/O order. For byte zero it
+also names C58 as the last writer of C65's mutated loader operand,
+proving why the altered code pointer cannot pass source-C CFG admission.
 
 ### Physical code-cell reuse contract (2026-11-21)
 

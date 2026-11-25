@@ -1069,6 +1069,17 @@ a complete source-frame effect journal, signed EOF conversion, verified
 two-arm dispatch or a publishable C23 target. Evidence:
 `tests/compiler_adjacent_zero_source.rs`. P2 remains open.
 
+The complete-prefix `verify_source_physical_image_trace` journal further
+independently proves the 70-step EOF image has **exactly two extra**
+reached guest data writes, C58 to M7,174,454 and C59 to the original
+source output operand M7,174,455. All original physical data writes
+and the actual EOF input/output events remain unchanged. Its separate
+byte-zero 67-step journal identifies C58 as the **last physical writer**
+read by C65 `j`: the original loader value 7,174,416 is replaced by
+7,174,453, which explains the changed C66 code-pointer target. These
+causal records are independent of final-word and output-byte equality;
+they still do not admit the source-C branch or executable checksum.
+
 ### Source-function entry before the first physical operation (2026-11-23)
 
 A complete C23 EOF-checksum compile was retried through the pinned frontend

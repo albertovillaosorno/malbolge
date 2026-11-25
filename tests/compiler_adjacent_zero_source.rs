@@ -3250,3 +3250,161 @@ fn original_checksum_eof_operand_refuses_full_byte_branch_claim()
     assert_eq!(format!("{old_outcome:?}"), format!("{new_outcome:?}"));
     Ok(())
 }
+
+// Independent, complete physical-memory journal: the new writes must exist
+// as executed effects, not only as final VM snapshots or an output byte.
+// This is still strictly an EOF-path witness, not source-C effect admission.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "one bounded source image and precise N15 physical I/O journal"
+)]
+fn original_checksum_eof_operand_has_independent_guest_write_journal()
+-> Result<(), String> {
+    use layout::{
+        SourcePhysicalDataWrite, SourcePhysicalIoEvent,
+        verify_source_physical_image_trace,
+    };
+    use malbolge::TraceInput;
+
+    let profile = current_profile();
+    let baseline =
+        layout::build_adjacent_c32_zero_c37_eof_code_arm_source(profile)
+            .map_err(|error| format!("original C23 arm: {error:?}"))?;
+    let variant =
+        layout::build_adjacent_c32_zero_c37_eof_operand_source(profile)
+            .map_err(|error| format!("EOF output-operand arm: {error:?}"))?;
+    let original = verify_source_physical_image_trace(
+        profile,
+        &baseline.pointer.byte_pair.zero_pair.source,
+        &[],
+        70,
+    )
+    .map_err(|error| format!("original physical image: {error:?}"))?;
+    let image = verify_source_physical_image_trace(
+        profile,
+        &variant.code_arm.pointer.byte_pair.zero_pair.source,
+        &[],
+        70,
+    )
+    .map_err(|error| format!("operand physical image: {error:?}"))?;
+    assert_eq!(original.source.outcome, RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 70,
+    });
+    assert_eq!(image.source.outcome, original.source.outcome);
+    assert_eq!(image.io_events, [
+        SourcePhysicalIoEvent::Input {
+            code_address: 37,
+            raw_word: profile.eof_word(),
+            read: TraceInput::EndOfInput,
+            trace_index: 37,
+        },
+        SourcePhysicalIoEvent::Output {
+            code_address: 88,
+            accumulator: 0,
+            byte: 0,
+            trace_index: 68,
+        },
+    ]);
+    assert_eq!(image.io_events, original.io_events);
+    assert_eq!(image.data_writes.len(), original.data_writes.len() + 2);
+    assert_eq!(
+        &image.data_writes[..original.data_writes.len()],
+        original.data_writes
+    );
+    let new_writes = &image.data_writes[original.data_writes.len()..];
+    assert_eq!(new_writes, [
+        SourcePhysicalDataWrite {
+            code_address: variant.prime_code_address,
+            data_address: 7_174_454,
+            before: 7_174_416,
+            after: 7_174_453,
+            last_word_effect: None,
+            opcode: b'p',
+            trace_index: 58,
+        },
+        SourcePhysicalDataWrite {
+            code_address: variant.output_store_code_address,
+            data_address: variant.output_data_address,
+            before: 37,
+            after: 0,
+            last_word_effect: None,
+            opcode: b'p',
+            trace_index: 59,
+        },
+    ]);
+    Ok(())
+}
+
+// The all-input-word branch refusal has a causal guest provenance: C58
+// overwrites exactly the expanded loader word C65 reads for byte zero.
+// Independent source and expanded-memory journals must expose that edge.
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact input-zero physical read-after-write journal"
+)]
+fn original_checksum_eof_operand_byte_branch_reads_priming_write()
+-> Result<(), String> {
+    use layout::{
+        SourcePhysicalWordEffect, verify_source_physical_image_trace,
+    };
+    let profile = current_profile();
+    let original =
+        layout::build_adjacent_c32_zero_c37_eof_code_arm_source(profile)
+            .map_err(|error| format!("original guest: {error:?}"))?;
+    let variant =
+        layout::build_adjacent_c32_zero_c37_eof_operand_source(profile)
+            .map_err(|error| format!("operand guest: {error:?}"))?;
+    let baseline = verify_source_physical_image_trace(
+        profile,
+        &original.pointer.byte_pair.zero_pair.source,
+        &[0],
+        67,
+    )
+    .map_err(|error| format!("original byte-zero image: {error:?}"))?;
+    let rewritten = verify_source_physical_image_trace(
+        profile,
+        &variant.code_arm.pointer.byte_pair.zero_pair.source,
+        &[0],
+        67,
+    )
+    .map_err(|error| format!("operand byte-zero image: {error:?}"))?;
+    assert_eq!(baseline.source.outcome, RunOutcome::BudgetExhausted {
+        steps: 67
+    });
+    assert_eq!(rewritten.source.outcome, baseline.source.outcome);
+    let read = |journal: &layout::SourcePhysicalImageTrace, step| {
+        journal
+            .data_reads
+            .iter()
+            .find(|read| read.trace_index == step)
+            .copied()
+    };
+    let before = read(&baseline, 65).ok_or("missing original C65 j")?;
+    let after = read(&rewritten, 65).ok_or("missing rewritten C65 j")?;
+    assert_eq!((before.code_address, before.opcode), (65, b'j'));
+    assert_eq!((after.code_address, after.opcode), (65, b'j'));
+    assert_eq!(before.data_address, 7_174_454);
+    assert_eq!(after.data_address, before.data_address);
+    assert_eq!(before.value, 7_174_416);
+    assert_eq!(after.value, 7_174_453);
+    assert_eq!(before.last_word_effect, None);
+    assert_eq!(
+        after.last_word_effect,
+        Some(SourcePhysicalWordEffect::DataWrite { trace_index: 58 })
+    );
+    assert_eq!(after.last_data_write_step, Some(58));
+    let before_branch =
+        read(&baseline, 66).ok_or("missing original branch target")?;
+    let after_branch =
+        read(&rewritten, 66).ok_or("missing rewritten branch target")?;
+    assert_eq!(before_branch.opcode, b'i');
+    assert_eq!(after_branch.opcode, b'i');
+    assert_eq!(before_branch.data_address, 7_174_417);
+    assert_eq!(after_branch.data_address, 7_174_454);
+    assert_eq!(before_branch.value, 0);
+    assert_eq!(after_branch.value, 7_174_453);
+    Ok(())
+}
