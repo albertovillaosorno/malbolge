@@ -33,14 +33,16 @@ use malbolge::{
 use super::super::crazy as independent_crazy;
 use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
-    RelocatedSecondAddSource, ZeroCellSourceError,
-    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
-    build_relocated_second_add_source,
+    RelocatedSecondAddSource, RelocatedSecondParityAddSource,
+    ZeroCellSourceError, build_relocated_dirty_phi_source,
+    build_relocated_first_iteration_source, build_relocated_second_add_source,
+    build_relocated_second_parity_add_source,
 };
 use super::{at, check_transfer, check_write, word};
 
 const ITERATION_BUDGET: usize = 700_000;
 const SECOND_ADD_BUDGET: usize = 2_600_000;
+const SECOND_PARITY_ADD_BUDGET: usize = 4_400_000;
 
 #[derive(Default)]
 struct ScratchReplay {
@@ -1106,19 +1108,15 @@ fn check_scratch_replay(
     guest: &RelocatedSecondAddSource,
     replay: &ScratchReplay,
 ) -> Result<(), String> {
-    assert_eq!(
-        guest.scratch_resets.len(),
-        168,
-        "six carry rounds consume 168 scratch words"
-    );
+    let count = guest.scratch_resets.len();
     assert_eq!(
         replay.resets.len(),
-        504,
+        count.checked_mul(3).ok_or("reset count overflow")?,
         "all reset effects must be reached in order"
     );
     assert_eq!(
         replay.prior.len(),
-        168,
+        count,
         "all reused words must have been written by the first arithmetic pass"
     );
     assert!(
@@ -1203,6 +1201,9 @@ fn check_second_add(
 fn relocated_second_add_reuses_dirty_arithmetic_scratch() -> Result<(), String>
 {
     let guest = second_add_source()?;
+    if guest.scratch_resets.len() != 168 {
+        return Err("six carry rounds must reuse 168 scratch words".into());
+    }
     let initial = ProfileMachine::from_source(
         current_profile(),
         &guest.iteration.addition.source,
@@ -1314,6 +1315,316 @@ fn relocated_second_add_rejects_omitted_scratch_reset() -> Result<(), String> {
     assert!(
         check_scratch_replay(&guest, &replay).is_err(),
         "no-op reset must fail physical replay"
+    );
+    Ok(())
+}
+
+fn parity_add_source() -> Result<RelocatedSecondParityAddSource, String> {
+    build_relocated_second_parity_add_source(current_profile())
+        .map_err(|error| format!("second parity source: {error:?}"))
+}
+
+fn check_second_parity_route(
+    guest: &RelocatedSecondParityAddSource,
+    initial: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    second: u8,
+) -> Result<(), String> {
+    let pointer = 14_346_720u32
+        .checked_add(u32::from(second))
+        .ok_or("pointer overflow")?;
+    let address = pointer.checked_add(1).ok_or("lookup overflow")?;
+    let parity = u32::from(second & 1);
+    check_write(
+        trace,
+        guest.pointer_store_code_address,
+        guest.pointer_address,
+        pointer,
+    )?;
+    let lookup = at(trace, guest.lookup_code_address)?;
+    let read = lookup.memory_reads.data.ok_or("missing lookup read")?;
+    let rotated = if parity == 0 {
+        4_782_981
+    } else {
+        2_391_472
+    };
+    if lookup.decoded != Some(b'*')
+        || read.address != address
+        || read.value != word(initial, address)?
+        || lookup.after.registers.accumulator != rotated
+    {
+        return Err(format!("invalid second virgin lookup for {second}"));
+    }
+    check_write(
+        trace,
+        guest.parity_store_code_address,
+        guest.parity_address,
+        parity,
+    )
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact parity-selected arithmetic and halt"
+)]
+fn check_second_parity_result(
+    guest: &RelocatedSecondParityAddSource,
+    machine: &ProfileMachine,
+    trace: &[ProfileStepTrace],
+    input: [u8; 2],
+) -> Result<(), String> {
+    let [first, second] = input;
+    if second & 1 == 0 {
+        check_transfer(
+            trace,
+            guest.branch_code_address,
+            7_174_787,
+            guest.even_entry,
+        )?;
+        assert!(
+            at(trace, guest.odd_halt_code_address).is_err(),
+            "even path must bypass odd halt"
+        );
+        let sum = u32::from(first.wrapping_add(3))
+            .checked_add(u32::from(second))
+            .ok_or("sum overflow")?;
+        assert_eq!(
+            word(machine, guest.addition.sum_address)?,
+            sum,
+            "actual even sum must match both committed operands"
+        );
+        assert_eq!(
+            word(machine, guest.incremented_address)?,
+            sum.checked_add(3).ok_or("increment overflow")?,
+            "full incremented sum before masking"
+        );
+    } else {
+        check_transfer(
+            trace,
+            guest.branch_code_address,
+            7_174_797,
+            guest.odd_halt_code_address,
+        )?;
+        assert!(
+            at(
+                trace,
+                guest.addition.iteration.second_byte_halt_code_address
+            )
+            .is_err(),
+            "odd path must bypass even halt"
+        );
+    }
+    check_second_parity_preserved(guest, machine, input)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "second parity preserves first lookup and header operands"
+)]
+fn check_second_parity_preserved(
+    guest: &RelocatedSecondParityAddSource,
+    machine: &ProfileMachine,
+    input: [u8; 2],
+) -> Result<(), String> {
+    let [first, second] = input;
+    let first_lookup = 14_348_179u32
+        .checked_add(u32::from(first))
+        .ok_or("first pointer overflow")?;
+    let expected = if first & 1 == 0 {
+        4_782_981
+    } else {
+        2_391_472
+    };
+    assert_eq!(
+        word(machine, first_lookup)?,
+        expected,
+        "second lookup must not rotate first lookup word again"
+    );
+    for (address, value) in guest
+        .addition
+        .iteration
+        .phi_header_words
+        .into_iter()
+        .zip([u32::from(second), 0, u32::from(first.wrapping_add(3)), 0])
+    {
+        assert_eq!(
+            word(machine, address)?,
+            value,
+            "committed operand must survive"
+        );
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "live parity and ordered reused arithmetic"
+)]
+fn check_second_parity_add(
+    guest: &RelocatedSecondParityAddSource,
+    initial: &ProfileMachine,
+    first: u8,
+    second: u8,
+) -> Result<(), String> {
+    let mut machine = initial
+        .fork_with_input(vec![first, second, 42])
+        .map_err(|error| error.to_string())?;
+    let wanted = [
+        guest.pointer_store_code_address,
+        guest.lookup_code_address,
+        guest.parity_store_code_address,
+        guest.branch_code_address,
+        guest.odd_halt_code_address,
+        guest.addition.iteration.second_byte_halt_code_address,
+    ];
+    let reset_sites = guest
+        .addition
+        .scratch_resets
+        .iter()
+        .flat_map(|reset| reset.code_addresses)
+        .collect::<Vec<_>>();
+    let mut replay = ScratchReplay::default();
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(SECOND_PARITY_ADD_BUDGET, &mut |step| {
+            if wanted.contains(&step.before.registers.code_pointer) {
+                trace.push(*step);
+            }
+            record_second_add(&guest.addition, &reset_sites, &mut replay, step);
+        })
+        .map_err(|error| error.to_string())?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "first={first} second={second} {outcome:?}"
+    );
+    check_second_parity_route(guest, initial, &trace, second)?;
+    check_second_parity_result(guest, &machine, &trace, [first, second])?;
+    if second & 1 == 0 {
+        check_scratch_replay(&guest.addition, &replay)?;
+    } else {
+        assert!(
+            replay.resets.is_empty(),
+            "odd arm must not reset even arithmetic scratch"
+        );
+    }
+    assert_eq!(machine.input_consumed(), 2, "third byte must remain unread");
+    assert!(
+        machine.output().is_empty(),
+        "unfinished paths must not output"
+    );
+    Ok(())
+}
+
+#[test]
+fn relocated_second_parity_selects_actual_even_add() -> Result<(), String> {
+    let guest = parity_add_source()?;
+    if guest.addition.scratch_resets.len() != 336 {
+        return Err("twelve carry rounds must reuse 336 scratch words".into());
+    }
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.addition.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for (first, second) in
+        [(0, 0), (0, 1), (1, 1), (252, 254), (255, 255), (253, 128)]
+    {
+        check_second_parity_add(&guest, &initial, first, second)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF bypasses both second parity arms"
+)]
+#[test]
+fn relocated_second_parity_preserves_eof() -> Result<(), String> {
+    let guest = parity_add_source()?;
+    assert_eq!(
+        build_relocated_second_parity_add_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile)
+    );
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.addition.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for (input, expected) in [(vec![], 0), (vec![252], 255), (vec![255], 2)] {
+        let count = input.len();
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(SECOND_PARITY_ADD_BUDGET, &mut |step| {
+                reached |= step.before.registers.code_pointer
+                    == guest.lookup_code_address;
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(!reached, "EOF must bypass second parity lookup");
+        assert_eq!(machine.input_consumed(), count);
+        assert_eq!(machine.output(), &[expected]);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "second parity omitted-lookup negative control"
+)]
+#[test]
+fn relocated_second_parity_rejects_omitted_lookup() -> Result<(), String> {
+    let guest = parity_add_source()?;
+    let mut source = guest.addition.iteration.addition.source.clone();
+    let site = guest.lookup_code_address;
+    let noop = (33..=126u8)
+        .find(|&cell| {
+            decode_profile_instruction(u32::from(cell), site) == Some(b'o')
+        })
+        .ok_or("missing no-op")?;
+    let position = usize::try_from(site).map_err(|error| error.to_string())?;
+    *source.get_mut(position).ok_or("missing lookup cell")? = noop;
+    let initial =
+        ProfileMachine::from_source(current_profile(), &source, vec![])
+            .map_err(|error| error.to_string())?;
+    let mut machine = initial
+        .fork_with_input(vec![255, 255, 42])
+        .map_err(|error| error.to_string())?;
+    let mut trace = Vec::new();
+    let outcome = machine
+        .run_traced(SECOND_PARITY_ADD_BUDGET, &mut |step| {
+            if [
+                guest.pointer_store_code_address,
+                guest.lookup_code_address,
+                guest.parity_store_code_address,
+            ]
+            .contains(&step.before.registers.code_pointer)
+            {
+                trace.push(*step);
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    assert_eq!(
+        at(&trace, site)?.decoded,
+        Some(b'o'),
+        "negative control must reach the replaced lookup"
+    );
+    assert!(
+        check_second_parity_route(&guest, &initial, &trace, 255).is_err(),
+        "missing physical rotate must fail parity witness: {outcome:?}"
     );
     Ok(())
 }

@@ -28,9 +28,10 @@ mod relocated_first_iteration_source;
 use malbolge::ProfileDescriptor;
 pub use relocated_first_iteration_source::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
-    RelocatedSecondAddSource, ScratchResetSite,
+    RelocatedSecondAddSource, RelocatedSecondParityAddSource, ScratchResetSite,
     build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
     build_relocated_second_add_source,
+    build_relocated_second_parity_add_source,
 };
 use relocated_first_iteration_source::{
     IterationMode, IterationSites, MaskTapes, emit_iteration,
@@ -334,8 +335,8 @@ fn build(
         POINTER, NORMALIZER, PARITY, ONES, 7_174_485, TWOS, THREE, ANCHOR,
         7_174_501, 7_174_511, JOIN, 7_174_519, 7_174_523, MERGED, 7_174_535,
     ])?;
-    if iteration_mode.is_some() {
-        MaskTapes::prepare(&mut emitter)?;
+    if let Some(mode) = iteration_mode {
+        MaskTapes::prepare(&mut emitter, mode)?;
     }
     emitter.prepare_tape(&plan)?;
     let _: u32 = emitter.store_tape(&byte, 7_174_485, ZERO)?;

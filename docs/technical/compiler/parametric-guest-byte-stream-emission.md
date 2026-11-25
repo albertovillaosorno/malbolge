@@ -13390,3 +13390,31 @@ second checksum update: the probe deliberately adds for both parities,
 never reads a third byte, and does not emit on the second-byte path.
 Second-byte parity selection, nonzero XOR, the additional +3 and
 canonical mask, reusable code visits and source admission remain open.
+
+
+### Live second parity and even-arm increment
+
+A separate 4,513,848-cell source branches on the actual second current
+phi word, not a host-provided class. Its second pointer mask targets
+`14346720 + byte`, so the rotate is at M14346721..14346976, disjoint
+from the first lookup range M14348179..14348434 and with the same
+six-word loader phase. Fresh masks normalize the result to Boolean
+M7174777; the indirect transfer selects M7174787 (C1020000, even)
+or M7174797 (C1010000, odd). Odd halts without XOR. Even resets all
+336 previously written arithmetic scratch words and executes two six-
+round additions: checksum plus current, then that sum plus three.
+Six binary-pair traces check the virgin lookup operand, rotation,
+Boolean store, actual branch, 1,008 ordered reset effects on even
+paths, preserved first lookup and header words, and both unmasked
+sums, including the maximum 512. The omitted-lookup control is
+rejected by the physical checker. Earlier EOF still returns zero or
+the first committed checksum, and the historical profile refuses.
+
+An oversized 5,077,848-cell variant terminated on a non-graphical
+cell before the second read; shrinking below the earlier loader-data
+route restored the successful replay. Source length and untouched
+loader routes are physical constraints, not freely extensible code
+capacity. Canonical second masking remains open: the first mask's
+one subtraction is insufficient at 512 (the source pair 252, 254).
+Neither arm reads a third byte or admits a reusable code visit, and
+no whole-C guest is published.

@@ -62,8 +62,12 @@ scratch words and computes the full unsigned sum of both committed
 header operands, including 510. All 504 reset effects are checked
 against earlier stores; omission and EOF-bypass controls pass. The
 probe adds regardless of parity and does not read a third byte. The
-code cells remain fresh. Second parity, nonzero XOR, +3/masking, code
-restoration, and complete source-frame routing remain open. Evidence:
+code cells remain fresh. A 4,513,848-cell variant now computes second
+parity in a disjoint virgin loader window, branches to an actual even
+addition and increment by three (336 reused words, 1,008 resets), or
+halts on odd. Full even sum plus three reaches 512, exposing the need
+for a second wrap at that boundary. Nonzero XOR, canonical masking,
+code restoration, and complete source-frame routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

@@ -30,10 +30,11 @@ use super::super::super::LinearOpcode::{
     CrazyData, Halt, InputWord, NoOperation, OutputByte, RelocateDataPointer,
     RotateData,
 };
+use super::super::BOOT_RETURN;
 use super::{
     Adder, BuildError, Emitter, FRAME, Geometry, LAYOUT, ONES,
-    RelocatedFirstByteAddSource, TWOS, TapeBounds, TapePlan, ZERO, before,
-    build, scratch_address,
+    RelocatedFirstByteAddSource, THREE, TWOS, TapeBounds, TapePlan, ZERO,
+    before, build, scratch_address,
 };
 
 const MASK_COUNT: u32 = 364;
@@ -80,6 +81,25 @@ const HEADER_MASKS: [u32; 4] = [7_174_749, 7_174_753, 7_174_757, 7_174_761];
 const HEADER_FLAG: [u32; 2] = [7_174_765, 7_174_769];
 const HEADER_BYTE: u32 = 7_174_773;
 const HEADER_EOF: u32 = 7_174_783;
+const SECOND_PARITY_POINTER: u32 = 7_174_637;
+const SECOND_PARITY_NORMALIZER: u32 = 7_174_641;
+const SECOND_PARITY_FLAG: u32 = 7_174_777;
+const SECOND_PARITY_EVEN: u32 = 7_174_787;
+const SECOND_PARITY_ONES: u32 = 7_174_791;
+const SECOND_PARITY_ODD: u32 = 7_174_797;
+const SECOND_PARITY_WORDS: [u32; 6] = [
+    SECOND_PARITY_POINTER,
+    SECOND_PARITY_NORMALIZER,
+    SECOND_PARITY_FLAG,
+    SECOND_PARITY_EVEN,
+    SECOND_PARITY_ONES,
+    SECOND_PARITY_ODD,
+];
+// The second high-loader window is displaced by 2 * 3^6. The two
+// byte-indexed ranges remain disjoint and retain the same six-word phase.
+const SECOND_PARITY_MASK: u32 = 14_347_084;
+const SECOND_PARITY_ODD_ENTRY: usize = 1_010_000;
+const SECOND_PARITY_EVEN_ENTRY: usize = 1_020_000;
 
 const WITH_MASK: Geometry = Geometry {
     bounds: MASK_BOUNDS,
@@ -102,6 +122,13 @@ const HEADER_BYTE_ENTRY: usize = 1_000_000;
 const HEADER_EOF_ENTRY: usize = 1_010_000;
 const SECOND_ADD_HEADER_EOF_ENTRY: usize = 2_700_000;
 const SECOND_ADD_COUNT: u32 = 168;
+const SECOND_PARITY_ADD_COUNT: u32 = 336;
+const SECOND_PARITY_HEADER_EOF_ENTRY: usize = 4_450_000;
+const WITH_SECOND_PARITY_ADD: Geometry = Geometry {
+    cells: 4_513_848,
+    eof_entry: 4_490_000,
+    ..WITH_MASK
+};
 const WITH_SECOND_ADD: Geometry = Geometry {
     cells: 2_821_848,
     eof_entry: 2_800_000,
@@ -112,6 +139,7 @@ const WITH_SECOND_ADD: Geometry = Geometry {
 pub(super) enum IterationMode {
     First,
     SecondAdd,
+    SecondParityAdd,
 }
 
 impl IterationMode {
@@ -119,6 +147,7 @@ impl IterationMode {
         match self {
             Self::First => HEADER_EOF_ENTRY,
             Self::SecondAdd => SECOND_ADD_HEADER_EOF_ENTRY,
+            Self::SecondParityAdd => SECOND_PARITY_HEADER_EOF_ENTRY,
         }
     }
 }
@@ -221,7 +250,42 @@ pub struct RelocatedSecondAddSource {
     pub sum_address: u32,
 }
 
+/// A live second-byte parity branch followed by the actual even addition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSecondParityAddSource {
+    /// The existing second-addition candidate, now reachable only on even
+    /// bytes.
+    pub addition: RelocatedSecondAddSource,
+    /// Reached branch selecting the even or odd byte continuation.
+    pub branch_code_address: u32,
+    /// First code cell of the even addition arm.
+    pub even_entry: u32,
+    /// Full even-arm sum plus three, before canonical masking.
+    pub incremented_address: u32,
+    /// Real rotate of the selected second lookup word.
+    pub lookup_code_address: u32,
+    /// Odd path halts before the unfinished XOR.
+    pub odd_halt_code_address: u32,
+    /// Boolean parity data word.
+    pub parity_address: u32,
+    /// Actual Boolean parity store.
+    pub parity_store_code_address: u32,
+    /// Data pointer selected from the second high-loader window.
+    pub pointer_address: u32,
+    /// Real store of the byte-indexed second lookup pointer.
+    pub pointer_store_code_address: u32,
+}
+
+struct SecondParitySites {
+    branch: u32,
+    lookup: u32,
+    odd_halt: u32,
+    parity_store: u32,
+    pointer_store: u32,
+}
+
 struct SecondAddSites {
+    incremented: Option<u32>,
     scratch_resets: Vec<ScratchResetSite>,
     sum_address: u32,
 }
@@ -254,6 +318,7 @@ struct SecondSites {
     input: u32,
     output: u32,
     output_store: u32,
+    parity: Option<SecondParitySites>,
     phi_commits: [u32; 4],
     phi_snapshots: [u32; 4],
     phi_transfers: [u32; 2],
@@ -271,12 +336,11 @@ impl MaskTapes {
         plan: &mut TapePlan,
         mode: IterationMode,
     ) -> Result<Self, BuildError> {
-        let mut mask_tapes = Vec::new();
         // For low six trits, preserve via two row-one folds. The high
         // trits of the offset sum are zero or one: row two then row zero
         // maps either to zero. To extract a single arbitrary trit, the
         // four other-digit rows 0,2,2,0 annihilate all three possibilities.
-        for (value, address, baseline_ones) in [
+        let mut constants = vec![
             (before(STAY_ENTRY)?, STAY, true),
             (before(WRAP_ENTRY)?, WRAP, true),
             (before(MASK_JOIN_ENTRY)?, MASK_JOIN, true),
@@ -300,7 +364,18 @@ impl MaskTapes {
             (1, HEADER_MASKS[3], true),
             (before(HEADER_BYTE_ENTRY)?, HEADER_BYTE, true),
             (before(mode.header_eof_entry())?, HEADER_EOF, true),
-        ] {
+        ];
+        if matches!(mode, IterationMode::SecondParityAdd) {
+            constants.extend([
+                (SECOND_PARITY_MASK, SECOND_PARITY_POINTER, false),
+                (14_348_905, SECOND_PARITY_NORMALIZER, false),
+                (1, SECOND_PARITY_FLAG, true),
+                (before(SECOND_PARITY_EVEN_ENTRY)?, SECOND_PARITY_EVEN, true),
+                (before(SECOND_PARITY_ODD_ENTRY)?, SECOND_PARITY_ODD, true),
+            ]);
+        }
+        let mut mask_tapes = Vec::new();
+        for (value, address, baseline_ones) in constants {
             let baseline = if baseline_ones {
                 ONES
             } else {
@@ -315,8 +390,11 @@ impl MaskTapes {
         Ok(Self(mask_tapes))
     }
 
-    pub(super) fn prepare(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
-        emitter.prepare_odd_pairs(&[
+    pub(super) fn prepare(
+        emitter: &mut Emitter<'_>,
+        mode: IterationMode,
+    ) -> Result<(), BuildError> {
+        let mut addresses = vec![
             STAY,
             WRAP,
             MASK_JOIN,
@@ -366,8 +444,12 @@ impl MaskTapes {
             HEADER_FLAG[1],
             HEADER_BYTE,
             HEADER_EOF,
-        ])?;
-        Ok(())
+        ];
+        if matches!(mode, IterationMode::SecondParityAdd) {
+            addresses.extend(SECOND_PARITY_WORDS);
+            addresses.sort_unstable();
+        }
+        emitter.prepare_odd_pairs(&addresses)
     }
 
     pub(super) fn store(
@@ -576,15 +658,23 @@ impl IterationEmitter<'_, '_, '_> {
         Ok(sites)
     }
 
-    fn second_add(&mut self) -> Result<SecondAddSites, BuildError> {
+    fn second_add(
+        &mut self,
+        mode: IterationMode,
+    ) -> Result<SecondAddSites, BuildError> {
+        let count = match mode {
+            IterationMode::First => return Err(LAYOUT),
+            IterationMode::SecondAdd => SECOND_ADD_COUNT,
+            IterationMode::SecondParityAdd => SECOND_PARITY_ADD_COUNT,
+        };
         let mut adder = Adder {
-            count: SECOND_ADD_COUNT,
+            count,
             cursor: 0,
             emitter: self.adder.emitter,
             scratch: MASK_SCRATCH,
         };
         let mut scratch_resets = Vec::new();
-        for slot in 0..SECOND_ADD_COUNT {
+        for slot in 0..count {
             let address = scratch_address(MASK_SCRATCH, slot)?;
             let mut continuation = IterationEmitter { adder: &mut adder };
             scratch_resets.push(ScratchResetSite {
@@ -593,11 +683,30 @@ impl IterationEmitter<'_, '_, '_> {
             });
         }
         let sum_address = adder.add(PHI_DEST[2], PHI_DEST[0], 6)?;
+        let incremented = if matches!(mode, IterationMode::SecondParityAdd) {
+            Some(adder.add(sum_address, THREE, 6)?)
+        } else {
+            None
+        };
         adder.finish()?;
         Ok(SecondAddSites {
+            incremented,
             scratch_resets,
             sum_address,
         })
+    }
+
+    fn second_byte_arm(&mut self) -> Result<[u32; 3], BuildError> {
+        self.adder
+            .emitter
+            .pad_to_entry(SECOND_BYTE_ENTRY, 7_174_646)?;
+        let high = self.prepare_byte_pair(SECOND_PAIR)?;
+        self.adder.load(SECOND_RAW[1])?;
+        let low = self.copy_to([SECOND_PAIR_TEMP, SECOND_PAIR[0]])?;
+        self.adder.go(PHI_JOIN)?;
+        let byte_transfer = self.adder.emitter.append_indirect()?;
+
+        Ok([low, high, byte_transfer])
     }
 
     fn second_eof_output(&mut self) -> Result<[u32; 3], BuildError> {
@@ -610,6 +719,41 @@ impl IterationEmitter<'_, '_, '_> {
         let output = self.adder.emitter.linear(OutputByte)?;
         let halt = self.adder.emitter.append(Halt)?;
         Ok([store, output, halt])
+    }
+
+    fn second_parity(&mut self) -> Result<SecondParitySites, BuildError> {
+        self.adder.load(PHI_DEST[0])?;
+        self.adder.go(SECOND_PARITY_ONES)?;
+        let _: u32 = self.adder.emitter.linear(CrazyData)?;
+        self.adder.go(SECOND_PARITY_POINTER)?;
+        let pointer_store = self.adder.emitter.linear(CrazyData)?;
+        self.adder.go(SECOND_PARITY_POINTER)?;
+        let _: u32 = self.adder.emitter.append(RelocateDataPointer)?;
+        let lookup = self.adder.emitter.append(RotateData)?;
+        let _: u32 = self.adder.emitter.append(RelocateDataPointer)?;
+        self.adder.emitter.append_route(b"ojojoojjjjoojoj")?;
+        self.adder.emitter.data = BOOT_RETURN;
+        self.adder.go(SECOND_PARITY_NORMALIZER)?;
+        let _: u32 = self.adder.emitter.linear(CrazyData)?;
+        self.adder.go(SECOND_PARITY_FLAG)?;
+        let parity_store = self.adder.emitter.linear(CrazyData)?;
+        let branch = self.select(SECOND_PARITY_FLAG, 330)?;
+        self.adder.emitter.pad_to_entry(
+            SECOND_PARITY_ODD_ENTRY,
+            SECOND_PARITY_ODD.checked_add(1).ok_or(LAYOUT)?,
+        )?;
+        let odd_halt = self.adder.emitter.append(Halt)?;
+        self.adder.emitter.pad_to_entry(
+            SECOND_PARITY_EVEN_ENTRY,
+            SECOND_PARITY_EVEN.checked_add(1).ok_or(LAYOUT)?,
+        )?;
+        Ok(SecondParitySites {
+            branch,
+            lookup,
+            odd_halt,
+            parity_store,
+            pointer_store,
+        })
     }
 
     fn second_read(
@@ -626,14 +770,7 @@ impl IterationEmitter<'_, '_, '_> {
             commits: phi_commits,
             snapshots: phi_snapshots,
         } = self.header()?;
-        self.adder
-            .emitter
-            .pad_to_entry(SECOND_BYTE_ENTRY, 7_174_646)?;
-        let high = self.prepare_byte_pair(SECOND_PAIR)?;
-        self.adder.load(SECOND_RAW[1])?;
-        let low = self.copy_to([SECOND_PAIR_TEMP, SECOND_PAIR[0]])?;
-        self.adder.go(PHI_JOIN)?;
-        let byte_transfer = self.adder.emitter.append_indirect()?;
+        let [low, high, byte_transfer] = self.second_byte_arm()?;
 
         self.adder
             .emitter
@@ -652,9 +789,16 @@ impl IterationEmitter<'_, '_, '_> {
         self.adder
             .emitter
             .pad_to_entry(HEADER_BYTE_ENTRY, 7_174_774)?;
+        let parity = if matches!(mode, IterationMode::SecondParityAdd) {
+            Some(self.second_parity()?)
+        } else {
+            None
+        };
         let addition = match mode {
             IterationMode::First => None,
-            IterationMode::SecondAdd => Some(self.second_add()?),
+            IterationMode::SecondAdd | IterationMode::SecondParityAdd => {
+                Some(self.second_add(mode)?)
+            },
         };
         let byte_halt = self.adder.emitter.append(Halt)?;
         self.adder
@@ -672,6 +816,7 @@ impl IterationEmitter<'_, '_, '_> {
             input,
             output,
             output_store,
+            parity,
             phi_commits,
             phi_snapshots,
             phi_transfers: [byte_transfer, eof_transfer],
@@ -822,6 +967,44 @@ pub fn build_relocated_second_add_source(
         iteration: iteration_from_sites(addition, &sites),
         scratch_resets: second.scratch_resets,
         sum_address: second.sum_address,
+    })
+}
+
+/// Branch on the second byte's live parity and compute the even sum plus three.
+///
+/// The second lookup uses a disjoint virgin loader window. Odd bytes halt
+/// before XOR; even bytes halt before canonical masking. This is not a complete
+/// second iteration or an admitted reusable loop.
+///
+/// # Errors
+/// Refuses unsupported profiles or exhausted bounded geometry.
+pub fn build_relocated_second_parity_add_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSecondParityAddSource, BuildError> {
+    let (addition, candidate) = build(
+        profile,
+        WITH_SECOND_PARITY_ADD,
+        Some(IterationMode::SecondParityAdd),
+    )?;
+    let mut sites = candidate.ok_or(LAYOUT)?;
+    let second = sites.second.addition.take().ok_or(LAYOUT)?;
+    let parity = sites.second.parity.take().ok_or(LAYOUT)?;
+    Ok(RelocatedSecondParityAddSource {
+        addition: RelocatedSecondAddSource {
+            iteration: iteration_from_sites(addition, &sites),
+            scratch_resets: second.scratch_resets,
+            sum_address: second.sum_address,
+        },
+        branch_code_address: parity.branch,
+        even_entry: u32::try_from(SECOND_PARITY_EVEN_ENTRY)
+            .map_err(|_error| LAYOUT)?,
+        incremented_address: second.incremented.ok_or(LAYOUT)?,
+        lookup_code_address: parity.lookup,
+        odd_halt_code_address: parity.odd_halt,
+        parity_address: SECOND_PARITY_FLAG,
+        parity_store_code_address: parity.parity_store,
+        pointer_address: SECOND_PARITY_POINTER,
+        pointer_store_code_address: parity.pointer_store,
     })
 }
 
