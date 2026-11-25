@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_595_000;
+const BOOT_BUDGET: usize = 1_495_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -61,6 +61,104 @@ type LowEdge = (u8, u8);
 type FactoredEdges = (LowEdge, HighEdge);
 type FrozenVectors = [(&'static [u8], usize); 5];
 type DirectTargetReceipt = (usize, [u32; 2]);
+
+// Authenticate the two actual stores at every root, and every page
+// selection after initialization, not just the final memory snapshot.
+#[derive(Default)]
+struct ChunkPageAudit {
+    commit_site: Option<u32>,
+    installed: BTreeSet<u32>,
+    jump_site: Option<u32>,
+    normalized: BTreeSet<u32>,
+    selected: BTreeSet<u32>,
+}
+
+impl ChunkPageAudit {
+    fn finish(&self, vm: &ProfileMachine) -> Result<[u32; 2], String> {
+        check_chunk_pages(vm)?;
+        if self.normalized.len() != 7
+            || self.installed.len() != 7
+            || self.selected.len() != 7
+        {
+            return Err("missing chunk page effects".to_owned());
+        }
+        Ok([
+            self.commit_site.ok_or("missing chunk page commit")?,
+            self.jump_site.ok_or("missing chunk page jump")?,
+        ])
+    }
+
+    fn jump(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+        expected: u32,
+    ) -> Result<(), String> {
+        if !self.installed.contains(&address) {
+            return Err("uninitialized chunk page jump".to_owned());
+        }
+        let trace = step(vm)?;
+        if trace.memory_reads.data.map(|read| read.value) != Some(expected)
+            || trace.after.registers.data_pointer != plus(expected, 1)?
+            || trace.after.registers.accumulator
+                != trace.before.registers.accumulator
+            || trace.memory_delta.data.is_some()
+        {
+            return Err("wrong chunk page jump".to_owned());
+        }
+        let _selected = self.selected.insert(address);
+        let _site = self
+            .jump_site
+            .get_or_insert(trace.before.registers.code_pointer);
+        Ok(())
+    }
+
+    fn observe(&mut self, vm: &mut ProfileMachine) -> Result<bool, String> {
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        if !(7_176_587..=7_176_599).contains(&address)
+            || address.is_multiple_of(2)
+        {
+            return Ok(false);
+        }
+        let page = address.saturating_sub(7_176_587).div_euclid(2);
+        let expected = plus(7_176_600, mul(page, 16)?)?;
+        match decode_profile_instruction(
+            word(vm, registers.code_pointer)?,
+            registers.code_pointer,
+        ) {
+            Some(b'p') => self.store(vm, address, expected)?,
+            Some(b'j') => self.jump(vm, address, expected)?,
+            Some(b'*') => return Err("rotated chunk page".to_owned()),
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    fn store(
+        &mut self,
+        vm: &mut ProfileMachine,
+        address: u32,
+        expected: u32,
+    ) -> Result<(), String> {
+        let (old, new, acc) = if self.normalized.insert(address) {
+            (37, ONES, 0)
+        } else if self.installed.insert(address) {
+            (ONES, expected, independent_crazy(ONES, expected))
+        } else {
+            return Err("rewritten chunk page".to_owned());
+        };
+        let registers = vm.registers();
+        if registers.accumulator != acc {
+            return Err("wrong chunk page producer".to_owned());
+        }
+        check_store(&step(vm)?, address, old, new)?;
+        if new == expected {
+            let _site = self.commit_site.get_or_insert(registers.code_pointer);
+        }
+        Ok(())
+    }
+}
 
 #[derive(Default)]
 struct DirectSeedAudit {
@@ -985,10 +1083,29 @@ fn check_bootstrap_columns(vm: &ProfileMachine) -> Result<(), String> {
     Ok(())
 }
 
+// Independent directory geometry: all seven roots are immutable
+// predecessors of four consecutive mask pairs, with virgin resets.
+fn check_chunk_pages(vm: &ProfileMachine) -> Result<(), String> {
+    if word(vm, 7_174_487)? != 7_176_586 {
+        return Err("wrong chunk directory root".to_owned());
+    }
+    for page in 0..7u32 {
+        let slot = plus(7_176_587, mul(page, 2)?)?;
+        let predecessor = plus(7_176_600, mul(page, 16)?)?;
+        if word(vm, slot)? != predecessor
+            || word(vm, plus(slot, 1)?)? != 7_174_416
+        {
+            return Err(format!("wrong chunk page M{slot}"));
+        }
+    }
+    Ok(())
+}
+
 // Every mask remains immutable after synthesizing the page and seed
 // banks, including the special return-pointer mask at the final pair.
 fn check_chunk_mask_bank(vm: &ProfileMachine) -> Result<(), String> {
     check_bootstrap_columns(vm)?;
+    check_chunk_pages(vm)?;
     if word(vm, 7_174_442)? != 7_174_440 || word(vm, 7_174_445)? != 7_174_440 {
         return Err("incorrect scratch return pointers".to_owned());
     }
@@ -1037,7 +1154,7 @@ fn check_seed_directory(vm: &ProfileMachine) -> Result<(), String> {
         return Err("missing seed directory root".to_owned());
     }
     for (start, end) in
-        [(7_174_611u32, 7_174_970u32), (7_175_601u32, 7_176_600u32)]
+        [(7_174_611u32, 7_174_970u32), (7_175_601u32, 7_176_586u32)]
     {
         for base in (start..end).step_by(48) {
             if word(vm, address)?
@@ -1435,6 +1552,45 @@ fn relocated_recurrent_checksum_omitted_derived_chunk_mask_refuses()
         && check_chunk_mask_bank(&mutated).is_ok()
     {
         return Err("accepted omitted derived chunk mask".to_owned());
+    }
+    Ok(())
+}
+
+fn audit_chunk_pages(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<[u32; 2], String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut audit = ChunkPageAudit::default();
+    for _ in 0..BOOT_BUDGET {
+        if is_input(&vm, guest)? {
+            return audit.finish(&vm);
+        }
+        if audit.observe(&mut vm)? {
+            continue;
+        }
+        if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature chunk page termination".to_owned());
+        }
+    }
+    Err("missing first input after chunk pages".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_chunk_page_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    for site in audit_chunk_pages(&guest)? {
+        let modified = omit_site(&guest, site)?;
+        if audit_chunk_pages(&modified).is_ok() {
+            return Err("accepted omitted chunk page effect".to_owned());
+        }
     }
     Ok(())
 }

@@ -798,7 +798,7 @@ pub fn build_relocated_recurrent_checksum_source(
         &mut emitter,
         &words,
         &anchors,
-        (7_175_601, 7_176_600),
+        (7_175_601, 7_176_586),
     )?;
     go_target(&mut emitter, entry, &anchors)?;
     let _: u32 = emitter.append_indirect()?;

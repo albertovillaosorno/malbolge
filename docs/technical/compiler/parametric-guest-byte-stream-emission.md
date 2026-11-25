@@ -14504,3 +14504,25 @@ or an inconsistent source checkpoint, is refused. All 31 recurrent
 source I/O, guard, state, loop and transition tests pass, including the
 512 terminal forks. This bounded receipt does not yet authenticate the
 remaining bootstrap, all SSA storage or the publication resource gate.
+
+
+The chunk-mask bank now uses seven immutable four-pair pages. The
+near root M7,174,487 points to M7,176,587; the seven odd directory
+words encode the page predecessors of the unchanged mask bank at
+M7,176,601. The slow initializer first constructs all mask pairs
+and all page pointers through direct walks. Fast synthesis then
+jumps through the selected page before reading the immutable
+mask. Every page has an untouched even reset neighbor. The extra
+seed reservation ends before the new directory, and the original
+mask and runtime table geometry is unchanged.
+
+Independent trace replay requires two ordered crazy stores at each
+page root (virgin normalization and inverse commit), use of all seven
+roots, exact pointer reads and data-pointer landings, preserved A,
+and no later mutation of the installed roots. Omitting a real page
+commit or its selected jump refuses. The five frozen streams and the complete factored
+transition/EOF census still pass. The fixed 2,318,854-cell image
+reaches first input in 1,491,992 steps, 97,402 fewer than the prior
+layout; the physical regression ceiling is now 1,495,000 steps.
+All 16 physical checksum and 31 source-recurrent tests pass. The
+original 100,000-step source-C publication limit remains unchanged.

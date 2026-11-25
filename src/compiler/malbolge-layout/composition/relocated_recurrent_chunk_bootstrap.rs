@@ -52,7 +52,14 @@ const CHUNK_NEXT: u32 = CHUNK_SCRATCH + 1;
 const CHUNK_TWOS: u32 = CHUNK_SCRATCH + 2;
 const CHUNK_RETURN: u32 = CHUNK_SCRATCH + 4;
 const CHUNK_ANCHOR: u32 = ANCHOR_START;
+// Seven immutable pointers cover four mask pairs each. They precede
+// the mask bank so the bootstrap can still walk to virgin masks before
+// installing the pointers. The fast path uses a two-hop page lookup.
+const CHUNK_PAGE_BANK: u32 = 7_176_587;
+const CHUNK_PAGE_WIDTH: u32 = 4;
+const CHUNK_PAGE_COUNT: u32 = 7;
 const CHUNK_BANK: u32 = 7_176_601;
+const CHUNK_END: u32 = CHUNK_BANK + 111;
 const CHUNK_RESET: u32 = 7_174_468;
 // Each elementary mask changes at most one of the three low trits.
 // The final mask is the initial scratch-return pointer.
@@ -99,6 +106,7 @@ const TARGET_PAGE_COUNT: u32 = 24;
 const TARGET_DIRECT_START: u32 = 7_174_515;
 
 type ChunkMasks = Vec<(u32, u32)>;
+type ChunkPage = (u32, u32);
 type SeedDirectory = Vec<(u32, u32)>;
 type SeedPathCost = (SeedPath, u32);
 
@@ -231,6 +239,23 @@ fn reset_chunk_word(
     chunk_access(emitter, address, LinearOpcode::CrazyData)
 }
 
+fn chunk_page(page: u32) -> Result<ChunkPage, BuildError> {
+    if page >= CHUNK_PAGE_COUNT {
+        return Err(LAYOUT);
+    }
+    let slot = CHUNK_PAGE_BANK
+        .checked_add(page.checked_mul(2).ok_or(LAYOUT)?)
+        .ok_or(LAYOUT)?;
+    let base = CHUNK_BANK
+        .checked_add(
+            page.checked_mul(CHUNK_PAGE_WIDTH)
+                .and_then(|value| value.checked_mul(4))
+                .ok_or(LAYOUT)?,
+        )
+        .ok_or(LAYOUT)?;
+    Ok((slot, base))
+}
+
 fn read_chunk_mask(
     emitter: &mut Emitter<'_>,
     index: u32,
@@ -241,7 +266,12 @@ fn read_chunk_mask(
         .ok_or(LAYOUT)?;
     chunk_rotate(emitter, NEAR_ONES, fast)?;
     emitter.go(CHUNK_ANCHOR)?;
-    emitter.jump(CHUNK_BANK)?;
+    emitter.jump(CHUNK_PAGE_BANK)?;
+    if fast {
+        let (slot, base) = chunk_page(index.div_euclid(CHUNK_PAGE_WIDTH))?;
+        emitter.walk(slot)?;
+        emitter.jump(base)?;
+    }
     emitter.walk(address)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(address.checked_add(2).ok_or(LAYOUT)?)?;
@@ -748,7 +778,7 @@ fn initialize_chunk_masks(
     emitter: &mut Emitter<'_>,
     masks: &[(u32, u32)],
 ) -> Result<(), BuildError> {
-    let anchors = [(CHUNK_ANCHOR, CHUNK_BANK)];
+    let anchors = [(CHUNK_ANCHOR, CHUNK_PAGE_BANK)];
     for &(address, value) in masks {
         if elementary_mask(address) {
             continue;
@@ -768,7 +798,7 @@ fn initialize_chunk_masks(
 fn initialize_chunk_returns(
     emitter: &mut Emitter<'_>,
 ) -> Result<(), BuildError> {
-    let anchor = [(CHUNK_ANCHOR, CHUNK_BANK)];
+    let anchor = [(CHUNK_ANCHOR, CHUNK_PAGE_BANK)];
     for index in 0..27u32 {
         let address = CHUNK_BANK
             .checked_add(index.checked_mul(4).ok_or(LAYOUT)?)
@@ -1019,7 +1049,7 @@ fn prepare_elementary_masks(
             emitter.walk(7_174_492)?;
         }
     }
-    let anchors = [(CHUNK_ANCHOR, CHUNK_BANK)];
+    let anchors = [(CHUNK_ANCHOR, CHUNK_PAGE_BANK)];
     for &(address, value) in masks {
         if !elementary_mask(address) {
             continue;
@@ -1051,6 +1081,22 @@ fn prepare_chunk_bank(
     read_chunk_mask(emitter, 27, false)?;
     chunk_access(emitter, CHUNK_NEXT, LinearOpcode::CrazyData)?;
     initialize_chunk_masks(emitter, &masks)?;
+    initialize_chunk_pages(emitter)
+}
+
+fn initialize_chunk_pages(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
+    let anchors = [(CHUNK_ANCHOR, CHUNK_PAGE_BANK)];
+    for page in 0..CHUNK_PAGE_COUNT {
+        let (address, landing) = chunk_page(page)?;
+        rotate(emitter, NEAR_ZERO)?;
+        store_anchored(emitter, address, &anchors)?;
+        chunk_word(
+            emitter,
+            profile_crazy(ALL_ONES, previous(landing)?, 15),
+            false,
+        )?;
+        store_anchored(emitter, address, &anchors)?;
+    }
     Ok(())
 }
 
@@ -1112,7 +1158,7 @@ pub(super) fn initialize_chunk_seeds(
     let near = [
         (SEED_ANCHOR, previous(SEEDS)?),
         (EXTRA_SEED_ANCHOR, previous(extra.0)?),
-        (CHUNK_ANCHOR, previous(CHUNK_BANK)?),
+        (CHUNK_ANCHOR, previous(CHUNK_PAGE_BANK)?),
         (SEED_DIRECTORY, previous(DIRECTORY_BANK)?),
     ];
     let mut roots = target_roots(words, anchors, emitter.tape_bounds.limit)?;
@@ -1126,9 +1172,9 @@ pub(super) fn initialize_chunk_seeds(
         .keys()
         .any(|address| !(CAPTURE..emitter.tape_bounds.limit).contains(address))
         || words.range(extra.0..=extra.1).next().is_some()
-        || words.range(CHUNK_BANK..=CHUNK_BANK + 111).next().is_some()
+        || words.range(CHUNK_PAGE_BANK..=CHUNK_END).next().is_some()
         || words.range(DIRECTORY_BANK..=DIRECTORY_END).next().is_some()
-        || extra.1 >= CHUNK_BANK
+        || extra.1 >= CHUNK_PAGE_BANK
         || DIRECTORY_END >= emitter.tape_bounds.start
     {
         return Err(LAYOUT);

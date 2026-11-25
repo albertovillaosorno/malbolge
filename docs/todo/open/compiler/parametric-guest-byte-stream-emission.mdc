@@ -285,6 +285,11 @@ state writes and the required high-word normalization from the loaded
 predecessors, original graphical cells and projected source value.
 All 40 relocated recurrent and 31 source-recurrent tests pass; the
 original whole-C test still explicitly refuses without publication.
+Seven immutable four-mask pages now shorten chunk access during
+bootstrap. All 14 page stores and the actual selections of each
+page are independently authenticated; omitted commit or jump refuses.
+The same image reaches first input in 1,491,992 steps, 97,402 fewer.
+All 16 physical checksum and 31 source-recurrent tests pass.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.
