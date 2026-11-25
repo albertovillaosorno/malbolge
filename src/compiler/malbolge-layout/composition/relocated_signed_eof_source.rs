@@ -447,8 +447,22 @@ impl Emitter<'_> {
         target: u32,
         baseline: u32,
     ) -> Result<u32, BuildError> {
+        self.store_tape_with_anchor(tape, target, baseline, None)
+    }
+
+    fn store_tape_with_anchor(
+        &mut self,
+        tape: &[u32],
+        target: u32,
+        baseline: u32,
+        anchor: Option<(u32, u32)>,
+    ) -> Result<u32, BuildError> {
         self.go(baseline)?;
         let _: u32 = self.linear(LinearOpcode::RotateData)?;
+        if let Some((address, base)) = anchor {
+            self.go(address)?;
+            self.jump(base)?;
+        }
         for &operand in tape {
             self.walk(operand)?;
             let _: u32 = self.linear(LinearOpcode::CrazyData)?;

@@ -13691,7 +13691,7 @@ remain open.
 
 ### Recurrent lossless input capture and dirty reset
 
-A separate 2,560,152-cell candidate uses multi-cell recurrent access
+A separate 1,660,196-cell candidate uses multi-cell recurrent access
 blocks to preserve a raw input across real EOF dispatch. Its bootstrap
 does not consume input. The image uses the existing M122 bootstrap
 return pointer instead of depending on the virgin return word
@@ -13703,12 +13703,17 @@ Seven immutable route anchors select nearby route segments rather than
 walking from the bootstrap frame for each store. They initially reduced
 the source from 6,410,016 to 3,510,210 cells; near-frame uniform
 constants then reduced it to 3,360,186 cells. Moving the anchors to
-M7174481 through M7174505, adding the inverse-seed table anchor at
-M7174475, and assigning the nearest seed addresses by descending use
-frequency now reduce the source to 2,560,152 cells. The normative
-first-input bootstrap executes 2,433,399 instructions.
+M7174487 through M7174511, adding the inverse-seed table anchor at
+M7174483, and assigning the nearest seed addresses by descending use
+frequency first reduce the source to 2,560,152 cells. Four additional
+guest-materialized anchors at M7174475, M7174477, M7174479 and M7174481
+partition the original marker operand tape into aligned quarters.
+The seed and route-anchor stores enter the nearest earlier partition
+rather than walking from the frame through the entire tape each time.
+This reduces the source to 1,660,196 cells; the normative first-input
+bootstrap executes 1,332,604 instructions.
 
-At C2550107 a real input supplies a byte or EOF. The first C2550186
+At C1650151 a real input supplies a byte or EOF. The first C1650230
 crazy writes M7175000, initially all ones, swapping trits zero and one
 and preserving two. The inverse is the same digitwise operation, so
 the saved word contains every raw input trit. Six further calls to the
@@ -13716,7 +13721,7 @@ same physical crazy site mutate M7175010, M7175012, M7175014, M7175016,
 M7175018 and M7175020. They use the encoded input: trits 6 and 7 are one
 for bytes and two for EOF. The initial words are 5832, 5103, 0,
 14329224, 728 and 13122. The resulting class is M7180650 on every byte,
-M7178463 on odd EOF and M7179921 on even EOF. C2550689 relocates D
+M7178463 on odd EOF and M7179921 on even EOF. C1650733 relocates D
 through the actual class word without overwriting the capture.
 
 A recurrent access envelope begins with a data relocation, then zero
@@ -13735,12 +13740,12 @@ arbitrary recurrent schedule.
 
 The byte continuation uses a second relocation to the local reset
 route. It rotates three immutable uniform words to load all ones, all
-twos and zero. C2550314, C2550408 and C2550502 then apply those constants
+twos and zero. C1650358, C1650452 and C1650546 then apply those constants
 to the same dirty M7175000. Their one-, two- and three-cell suffixes
 select different neighboring return operands, avoiding a conflicting
 return pointer at a fixed data location. The last fold restores all
 ones for the next input. EOF leaves the captured all-two word intact
-and reaches C2559942, C2559943 and C2559944 for actual length parity
+and reaches C1659986, C1659987 and C1659988 for actual length parity
 rotation, output and halt.
 
 The independent replay verifies the captured encoding against the
@@ -13757,7 +13762,7 @@ guest reload of the captured byte, or the original C checksum.
 
 ### Recurrent guest reload of the captured byte
 
-A separate 4,720,178-cell image recovers the original input after the
+A separate 2,420,186-cell image recovers the original input after the
 actual EOF dispatch. It changes the route schedule from before-call
 restoration to after-call restoration, except for the branch block,
 which is restored on the selected byte continuation and on the
@@ -13775,28 +13780,29 @@ instead of the original more distant uniform words for each route
 store. The full image is reduced by another 300,048 cells, preserving
 the tail's valid positional decode. The near-frame route and
 seed anchors and frequency-ordered seed table reduce the image
-further to 4,720,178 cells. The normative bootstrap executes
-4,677,122 steps before the first input.
+further to 4,720,178 cells. The four aligned marker-tape anchors
+reduce it again to 2,420,186 cells. The normative bootstrap executes
+2,162,503 steps before the first input.
 
-The input at C4700075 and seven folds at C4700154 capture and classify
+The input at C2400083 and seven folds at C2400162 capture and classify
 each byte exactly as in the preceding witness. After the real branch
-at C4700657, the byte route rotates two separate all-two constants
-and invokes C4700752 and C4700846 on the same capture M7175000. With
+at C2400665, the byte route rotates two separate all-two constants
+and invokes C2400760 and C2400854 on the same capture M7175000. With
 an all-two accumulator the crazy column permutes trits one and two,
 leaving zero unchanged. The first store changes the capture and the
 second restores it, leaving the encoded input in A. The four- and
 five-cell inert suffixes allow separate return operands for these
 two accesses.
 
-A further C4700154 store into the all-one M7175080 applies the
+A further C2400162 store into the all-one M7175080 applies the
 inverse zero/one permutation, so both A and the destination contain
-the actual raw byte. C4700919 emits that recovered byte. The three
-dirty reset stores at C4700282, C4700376 and C4700470 apply to each
+the actual raw byte. C2400927 emits that recovered byte. The three
+dirty reset stores at C2400290, C2400384 and C2400478 apply to each
 of the two words using distinct constant operands. The byte arm
 restores both words to all ones before a real relocation backedge.
 EOF bypasses the reload and echo, preserves the all-two capture
-and leaves the raw slot at its reset baseline. C4719948 through
-C4719950 perform the terminal parity rotation, output and halt.
+and leaves the raw slot at its reset baseline. C2419956 through
+C2419958 perform the terminal parity rotation, output and halt.
 
 The independent checker verifies every physical reload, inverse
 store, echo, reset, branch and intervening routing effect for empty,
@@ -13810,7 +13816,7 @@ original source-frame admission.
 
 ### Recurrent input-dependent checksum-bit projection
 
-A separate 4,920,116-cell image executes the low bit of the original
+A separate 2,370,084-cell image executes the low bit of the original
 mutable C checksum recurrence. Unlike length parity, this state depends
 on the actual byte value. For both XOR and addition the low bit before
 the final increment is the old low bit XOR the input low bit. Adding
@@ -13853,9 +13859,11 @@ zero, high-byte, repeated odd, mixed parity, and ascending/descending
 all-byte sequences; the expected output is the low bit of the full
 eight-bit checksum computed by a separate oracle. Six omitted-effect
 controls (three selector relocations, transform, final rotation and
-output) and the historical profile refuse. The same near-frame anchors and
-frequency-ordered seeds reduce the original 6,420,168-cell image to
-4,920,116 cells. The normative bootstrap executes 4,341,413 steps
-before the first input, within its 4,400,000-instruction bound; this is not a compact runtime, a full eight-bit
-checksum, or independent source-frame admission. Original whole-C
+output) and the historical profile refuse. The same near-frame anchors
+and frequency-ordered seeds reduce the original 6,420,168-cell image to
+4,920,116 cells; four aligned marker-tape anchors reduce it further to
+2,370,084 cells. The normative bootstrap executes 2,005,692 steps
+before the first input, within its 2,050,000-instruction bound. This is
+not a compact runtime, a full eight-bit checksum, or independent
+source-frame admission. Original whole-C
 publication still requires those remaining obligations.

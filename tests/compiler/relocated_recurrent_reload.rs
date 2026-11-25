@@ -36,7 +36,7 @@ use super::{
     effect, enter, fold, select, stop, word,
 };
 
-const RELOAD_BOOT_BUDGET: usize = 4_690_000;
+const RELOAD_BOOT_BUDGET: usize = 2_200_000;
 const LOAD_CONSTANTS: [u32; 2] = [7_175_050, 7_175_052];
 const RAW_CONSTANTS: [u32; 3] = [7_175_060, 7_175_062, 7_175_064];
 
@@ -154,7 +154,7 @@ fn run_reload(
 #[test]
 fn relocated_recurrent_reload_all_bytes_and_eof() -> Result<(), String> {
     let guest = reload_source()?;
-    if guest.capture.source.len() != 4_720_178 {
+    if guest.capture.source.len() != 2_420_186 {
         return Err("recurrent reload image size regressed".to_owned());
     }
     let boot = enter(&guest.capture, RELOAD_BOOT_BUDGET)?;

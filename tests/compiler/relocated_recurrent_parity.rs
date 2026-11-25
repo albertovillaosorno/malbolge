@@ -37,7 +37,7 @@ use super::{
     effect, enter, fold, plus, prev, routing, select, word,
 };
 
-const BOOT_BUDGET: usize = 4_400_000;
+const BOOT_BUDGET: usize = 2_050_000;
 const POINTER_CONSTANTS: [u32; 3] = [7_175_060, 7_175_062, 7_175_064];
 
 fn source() -> Result<RelocatedRecurrentParitySource, String> {
@@ -230,7 +230,7 @@ fn run_parity(
 #[test]
 fn relocated_recurrent_parity_all_bytes_and_eof() -> Result<(), String> {
     let guest = source()?;
-    if guest.capture.source.len() != 4_920_116 {
+    if guest.capture.source.len() != 2_370_084 {
         return Err("parity source size regressed".to_owned());
     }
     let boot = enter(&guest.capture, BOOT_BUDGET)?;

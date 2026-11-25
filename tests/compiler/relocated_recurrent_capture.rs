@@ -47,7 +47,7 @@ const BYTE: u32 = 7_180_650;
 const EOF_ODD: u32 = 7_178_463;
 const EOF_EVEN: u32 = 7_179_921;
 const CONSTANTS: [u32; 3] = [7_175_040, 7_175_042, 7_175_044];
-const BOOT_BUDGET: usize = 2_500_000;
+const BOOT_BUDGET: usize = 1_400_000;
 const EFFECT_BUDGET: usize = 2_048;
 
 fn source() -> Result<RelocatedRecurrentCaptureSource, String> {
@@ -73,12 +73,30 @@ fn enter(
             invariant(&vm, guest, INITIAL)?;
             if word(&vm, 7_174_471)? != 0
                 || word(&vm, 7_174_473)? != EOF
-                || word(&vm, 7_174_475)? != 7_174_610
-                || word(&vm, 7_174_481)? != 7_174_999
+                || word(&vm, 7_174_483)? != 7_174_610
+                || word(&vm, 7_174_487)? != 7_174_999
             {
                 return Err(
                     "incorrect near-frame constants or anchors".to_owned()
                 );
+            }
+            let first = word(&vm, 7_174_475)?;
+            if ![7_183_000, 7_186_000].contains(&first) {
+                return Err("incorrect first tape anchor".to_owned());
+            }
+            let mut prior = first;
+            for address in [7_174_477, 7_174_479, 7_174_481] {
+                let next = word(&vm, address)?;
+                if next <= prior
+                    || next >= 7_280_001
+                    || !next
+                        .checked_sub(prior)
+                        .ok_or("tape anchor order")?
+                        .is_multiple_of(4)
+                {
+                    return Err("incorrect aligned tape anchor".to_owned());
+                }
+                prior = next;
             }
             return Ok(vm);
         }
@@ -415,7 +433,7 @@ fn run(
 fn relocated_recurrent_capture_all_bytes_and_both_eof_landings()
 -> Result<(), String> {
     let guest = source()?;
-    if guest.source.len() != 2_560_152 {
+    if guest.source.len() != 1_660_196 {
         return Err("recurrent capture image size regressed".to_owned());
     }
     let boot = enter(&guest, BOOT_BUDGET)?;

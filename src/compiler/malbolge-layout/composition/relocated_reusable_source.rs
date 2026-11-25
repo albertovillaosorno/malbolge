@@ -51,6 +51,7 @@ const BOUNDS: TapeBounds = TapeBounds {
 const ONES: u32 = 7_174_601;
 const ZERO: u32 = 7_174_603;
 const TWOS: u32 = 7_174_605;
+const TAPE_ANCHORS: [u32; 4] = [7_174_475, 7_174_477, 7_174_479, 7_174_481];
 const PRIME: u32 = 7_174_671;
 const ROUTE: u32 = 7_174_700;
 const STATE: u32 = 7_174_705;
@@ -158,7 +159,7 @@ fn initialize_words_with_anchors(
     let mut destinations = Vec::new();
     // Near anchors may precede the uniform marker constants, but must
     // leave the even frame-reset cells and the bootstrap return intact.
-    let mut prior = 7_174_473;
+    let mut prior = 7_174_481;
     for &(address, value) in near {
         if address <= prior || address >= ONES || address.is_multiple_of(2) {
             return Err(LAYOUT);
@@ -174,15 +175,53 @@ fn initialize_words_with_anchors(
         prior = address;
         destinations.push((address, plan.tape(value, false)?));
     }
+    // Partition the original operand tape into four aligned segments.
+    // These additional anchor tapes come after the original operands;
+    // initialize them before using their pointers for the seed stores.
+    let mut anchor_tapes = Vec::new();
+    if !near.is_empty() {
+        let start = plan.bounds.start;
+        let slots = plan.next_slot.checked_sub(start).ok_or(LAYOUT)? / 4;
+        for (index, address) in TAPE_ANCHORS.into_iter().enumerate() {
+            let index = u32::try_from(index).map_err(|_error| LAYOUT)?;
+            let offset = (slots.checked_mul(index).ok_or(LAYOUT)? / 4)
+                .checked_mul(4)
+                .ok_or(LAYOUT)?;
+            let base = start.checked_add(offset).ok_or(LAYOUT)?;
+            let tape = plan.tape(base.checked_sub(1).ok_or(LAYOUT)?, false)?;
+            anchor_tapes.push((address, base, tape));
+        }
+    }
     emitter.prepare_odd_pairs(&[ONES, TWOS])?;
     emitter.prepare_tape(&plan)?;
     let _: u32 = emitter.store_tape(&twos, TWOS, ZERO)?;
+    let mut anchors = Vec::new();
+    for (address, base, tape) in anchor_tapes {
+        store_planned_word(emitter, address, &tape, &anchors)?;
+        anchors.push((address, base));
+    }
     for (address, tape) in destinations {
-        reset_word(emitter, address)?;
-        let _: u32 = emitter.store_tape(&tape, address, ZERO)?;
-        after_store(emitter)?;
+        store_planned_word(emitter, address, &tape, &anchors)?;
     }
     Ok(())
+}
+
+fn store_planned_word(
+    emitter: &mut Emitter<'_>,
+    address: u32,
+    tape: &[u32],
+    anchors: &[(u32, u32)],
+) -> Result<(), BuildError> {
+    reset_word(emitter, address)?;
+    let anchor = tape.first().and_then(|first| {
+        anchors
+            .iter()
+            .copied()
+            .rev()
+            .find(|(_, base)| base <= first)
+    });
+    let _: u32 = emitter.store_tape_with_anchor(tape, address, ZERO, anchor)?;
+    after_store(emitter)
 }
 
 fn append_words(

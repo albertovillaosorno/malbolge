@@ -50,24 +50,24 @@ const BOUNDS: TapeBounds = TapeBounds {
     limit: 7_240_001,
     start: 7_183_001,
 };
-const SOURCE_CELLS: usize = 2_560_152;
-const CODE_BASE: u32 = 2_549_942;
+const SOURCE_CELLS: usize = 1_660_196;
+const CODE_BASE: u32 = 1_649_986;
 // These virgin odd cells are outside the prefix's frame and return pair.
 const NEAR_ZERO: u32 = 7_174_471;
 const NEAR_TWOS: u32 = 7_174_473;
-const SEED_ANCHOR: u32 = 7_174_475;
-const ANCHOR_START: u32 = 7_174_481;
+const SEED_ANCHOR: u32 = 7_174_483;
+const ANCHOR_START: u32 = 7_174_487;
 const ANCHOR_END: u32 = ONES;
 const SEEDS: u32 = 7_174_611;
 const SEED_END: u32 = 7_174_951;
 const ANCHORS: [(u32, u32); 7] = [
     (ANCHOR_START, CAPTURE),
-    (7_174_485, MAIN_ROUTE),
-    (7_174_489, BOOT_ROUTE),
-    (7_174_493, RESET_ROUTE),
-    (7_174_497, 7_178_464),
-    (7_174_501, 7_179_922),
-    (7_174_505, 7_180_651),
+    (7_174_491, MAIN_ROUTE),
+    (7_174_495, BOOT_ROUTE),
+    (7_174_499, RESET_ROUTE),
+    (7_174_503, 7_178_464),
+    (7_174_507, 7_179_922),
+    (7_174_511, 7_180_651),
 ];
 const CAPTURE: u32 = 7_175_000;
 const STATES: [u32; 6] = [
@@ -81,7 +81,7 @@ const RESET_ROUTE: u32 = 7_177_000;
 const BYTE: u32 = 7_180_650;
 const BYTE_ROUTE_POINTER: u32 = 7_180_670;
 const EOF: [u32; 2] = [7_178_463, 7_179_921];
-const TERMINAL: u32 = 2_559_942;
+const TERMINAL: u32 = 1_659_986;
 const ALL_ONES: u32 = 7_174_453;
 const ALL_TWOS: u32 = 14_348_906;
 // The captured raw word swaps 0 and 1, preserving 2. In particular
