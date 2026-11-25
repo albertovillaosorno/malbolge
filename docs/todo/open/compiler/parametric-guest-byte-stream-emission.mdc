@@ -292,6 +292,9 @@ The same image reaches first input in 1,491,992 steps, 97,402 fewer.
 All 16 physical checksum and 31 source-recurrent tests pass.
 Scratch-aware seed and singleton ordering reduces the same bootstrap
 to 1,482,923 steps (9,069 fewer), with all 47 tests passing again.
+Reusing both local immutable columns for fast scratch folds reaches
+first input in 1,477,595 steps; independently omitted reads refuse.
+All 17 physical and 31 source-recurrent tests pass.
 Next: authenticate the remaining bootstrap and all source-frame
 placements, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

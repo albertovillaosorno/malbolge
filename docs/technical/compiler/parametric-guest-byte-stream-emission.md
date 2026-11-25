@@ -14540,3 +14540,15 @@ than numeric ordering, in the same 2,318,854-cell image. The physical
 ceiling is 1,485,000 steps. All 16 physical and 31 source-recurrent tests
 pass, including direct commit, reset and seed omission controls. The
 100,000-step source-C publication limit remains unchanged.
+
+Fast synthesis now reuses the two immutable local low-trit columns
+for masks 24 and 25. After the second immutable read, the data pointer
+walks forward directly to the scratch instead of consulting the remote
+mask directory and its return pointer. Independent replay identifies
+both reads after installation of the fast return bank, checks the exact
+operands, unchanged columns, forward walk and consuming scratch fold,
+and rejects omission of either selected column read. The frozen guest
+reaches first input in 1,477,595 steps, 5,328 fewer, without changing
+its extent. The physical regression ceiling is now 1,480,000 steps;
+all 17 physical and 31 source-recurrent tests pass. The separate
+100,000-step source-C publication limit remains unchanged.

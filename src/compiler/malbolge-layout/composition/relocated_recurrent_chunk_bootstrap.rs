@@ -288,11 +288,28 @@ fn apply_chunk_column(
     column: u32,
     fast: bool,
 ) -> Result<(), BuildError> {
-    read_chunk_mask(emitter, column, fast)?;
-    if fast {
-        emitter.jump(CHUNK_SCRATCH)?;
+    // The two local immutable columns already encode masks 24 and 25.
+    // After their second fold, a short forward walk reaches the scratch
+    // directly rather than taking a page lookup and an indirect return.
+    if fast && matches!(column, 24 | 25) {
+        let prefix = if column == 24 {
+            BOOT_ZERO_PREFIX
+        } else {
+            BOOT_ONE_PREFIX
+        };
+        fast_rotate(emitter, NEAR_ONES)?;
+        emitter.go(prefix)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        emitter.walk(prefix.checked_add(2).ok_or(LAYOUT)?)?;
+        let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
+        emitter.walk(CHUNK_SCRATCH)?;
     } else {
-        emitter.go(CHUNK_SCRATCH)?;
+        read_chunk_mask(emitter, column, fast)?;
+        if fast {
+            emitter.jump(CHUNK_SCRATCH)?;
+        } else {
+            emitter.go(CHUNK_SCRATCH)?;
+        }
     }
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     emitter.walk(CHUNK_TWOS)?;

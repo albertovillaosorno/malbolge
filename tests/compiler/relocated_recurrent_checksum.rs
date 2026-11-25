@@ -39,7 +39,7 @@ use super::{
     independent_crazy, invariant, plus, routing, step, word,
 };
 
-const BOOT_BUDGET: usize = 1_485_000;
+const BOOT_BUDGET: usize = 1_480_000;
 const SEED_RETURN_BASE: u32 = 7_174_614;
 const SEED_RETURN_END: u32 = 7_174_930;
 const SEED_RETURN_TARGET: u32 = 7_174_491;
@@ -55,6 +55,7 @@ const EOF_SCRATCH: u32 = 7_180_900;
 
 type ArithmeticVisit = (u32, u32);
 type DirectoryPage = (u32, u32);
+type LocalColumnSites = BTreeMap<u32, u32>;
 type BootReplay = (ProfileMachine, usize);
 type HighEdge = (u8, u8, u8, u32);
 type LowEdge = (u8, u8);
@@ -1535,6 +1536,106 @@ fn relocated_recurrent_checksum_omitted_bootstrap_column_refuses()
             && check_materialized_tables(&mutated).is_ok()
         {
             return Err(format!("accepted omitted local column M{address}"));
+        }
+    }
+    Ok(())
+}
+
+// The local columns are used again after the fast scratch-return bank
+// has been installed. Authenticate both immutable reads and the actual
+// forward walk to their consuming scratch fold.
+fn local_column_effect(
+    vm: &mut ProfileMachine,
+    address: u32,
+) -> Result<u32, String> {
+    let prefix = if address == 7_174_429 {
+        2
+    } else {
+        0
+    };
+    let mask = EOF
+        .checked_sub(if prefix == 2 {
+            2
+        } else {
+            1
+        })
+        .ok_or("local column mask")?;
+    let first = step(vm)?;
+    if first.decoded != Some(b'p') || first.before.registers.accumulator != ONES
+    {
+        return Err("wrong fast local prefix input".to_owned());
+    }
+    check_store(&first, address, prefix, prefix)?;
+    let between = step(vm)?;
+    if between.decoded != Some(b'o') {
+        return Err("nonlinear local prefix walk".to_owned());
+    }
+    routing(&between, u32::MAX)?;
+    let second = step(vm)?;
+    if second.decoded != Some(b'p')
+        || second.before.registers.accumulator != prefix
+    {
+        return Err("wrong fast local column input".to_owned());
+    }
+    check_store(&second, plus(address, 2)?, mask, mask)?;
+    for _ in plus(address, 3)?..7_174_441 {
+        let walk = step(vm)?;
+        if walk.decoded != Some(b'o') {
+            return Err("nonlinear local column walk".to_owned());
+        }
+        routing(&walk, u32::MAX)?;
+    }
+    let scratch = word(vm, 7_174_441)?;
+    let fold = step(vm)?;
+    if fold.decoded != Some(b'p') || fold.before.registers.accumulator != mask {
+        return Err("wrong fast local scratch input".to_owned());
+    }
+    check_store(&fold, 7_174_441, scratch, independent_crazy(scratch, mask))?;
+    Ok(second.before.registers.code_pointer)
+}
+
+fn fast_local_column_sites(
+    guest: &RelocatedRecurrentChecksumSource,
+) -> Result<LocalColumnSites, String> {
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        &guest.capture.source,
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut sites = BTreeMap::new();
+    for _ in 0..BOOT_BUDGET {
+        let registers = vm.registers();
+        let address = registers.data_pointer;
+        if matches!(address, 7_174_429 | 7_174_433)
+            && word(&vm, 7_176_604)? == 7_174_440
+            && decode_profile_instruction(
+                word(&vm, registers.code_pointer)?,
+                registers.code_pointer,
+            ) == Some(b'p')
+        {
+            let site = local_column_effect(&mut vm, address)?;
+            let _previous = sites.insert(address, site);
+            if sites.len() == 2 {
+                return Ok(sites);
+            }
+        } else if vm.step().map_err(|error| error.to_string())?
+            != StepOutcome::Continued
+        {
+            return Err("premature local column termination".to_owned());
+        }
+    }
+    Err("missing fast local column reads".to_owned())
+}
+
+#[test]
+fn relocated_recurrent_checksum_omitted_fast_local_column_read_refuses()
+-> Result<(), String> {
+    let guest = source()?;
+    for site in fast_local_column_sites(&guest)?.into_values() {
+        let modified = omit_site(&guest, site)?;
+        if fast_local_column_sites(&modified).is_ok() {
+            return Err("accepted omitted fast local column read".to_owned());
         }
     }
     Ok(())
