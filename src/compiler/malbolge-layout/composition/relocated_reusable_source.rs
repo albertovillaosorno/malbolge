@@ -22,7 +22,13 @@
 // - Summary:
 //   - Reprime two-cycle instruction cells by actual indirect transfers.
 
+#[path = "relocated_reusable_guard_source.rs"]
+mod relocated_reusable_guard_source;
+
 use malbolge::{ProfileDescriptor, encrypt_profile_cell};
+pub use relocated_reusable_guard_source::{
+    RelocatedReusableGuardSource, build_relocated_reusable_guard_source,
+};
 
 use super::super::LinearOpcode;
 use super::relocated_eof_parity_source::composed_prefix;
@@ -125,26 +131,20 @@ fn route_words() -> Result<[u32; 12], BuildError> {
     ])
 }
 
-fn initialize(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
-    let mut plan = TapePlan::with_bounds(BOUNDS);
+fn initialize_words(
+    emitter: &mut Emitter<'_>,
+    words: &[(u32, u32)],
+) -> Result<(), BuildError> {
+    let mut plan = TapePlan::with_bounds(emitter.tape_bounds);
     let twos = plan.tape(ALL_TWOS, false)?;
     let mut destinations = Vec::new();
-    let prime = [
-        CRAZY,
-        OUTPUT,
-        RELOCATE,
-        CONTINUATION.checked_sub(1).ok_or(LAYOUT)?,
-    ];
-    for (start, values) in [
-        (PRIME, prime.as_slice()),
-        (ROUTE, route_words()?.as_slice()),
-    ] {
-        for (offset, value) in values.iter().copied().enumerate() {
-            let address = start
-                .checked_add(u32::try_from(offset).map_err(|_error| LAYOUT)?)
-                .ok_or(LAYOUT)?;
-            destinations.push((address, plan.tape(value, false)?));
+    let mut prior = TWOS;
+    for &(address, value) in words {
+        if address <= prior || address >= emitter.tape_bounds.start {
+            return Err(LAYOUT);
         }
+        prior = address;
+        destinations.push((address, plan.tape(value, false)?));
     }
     emitter.prepare_odd_pairs(&[ONES, TWOS])?;
     emitter.prepare_tape(&plan)?;
@@ -155,6 +155,32 @@ fn initialize(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
         after_store(emitter)?;
     }
     Ok(())
+}
+
+fn append_words(
+    destinations: &mut Vec<(u32, u32)>,
+    start: u32,
+    values: &[u32],
+) -> Result<(), BuildError> {
+    for (offset, value) in values.iter().copied().enumerate() {
+        let address = start
+            .checked_add(u32::try_from(offset).map_err(|_error| LAYOUT)?)
+            .ok_or(LAYOUT)?;
+        destinations.push((address, value));
+    }
+    Ok(())
+}
+
+fn initialize(emitter: &mut Emitter<'_>) -> Result<(), BuildError> {
+    let mut destinations = Vec::new();
+    append_words(&mut destinations, PRIME, &[
+        CRAZY,
+        OUTPUT,
+        RELOCATE,
+        CONTINUATION.checked_sub(1).ok_or(LAYOUT)?,
+    ])?;
+    append_words(&mut destinations, ROUTE, &route_words()?)?;
+    initialize_words(emitter, &destinations)
 }
 
 /// Emit a source-loaded loop that physically reuses four instructions.

@@ -13657,3 +13657,33 @@ recurrent physical kernel, not the checksum loop: its initial prefix
 consumes an input and its recurrent path does not terminate on EOF.
 EOF dispatch, recurrent checksum arithmetic and source-frame admission
 remain separate obligations.
+
+
+### Recurrent EOF dispatch and length parity
+
+A 1,050,042-cell image replaces the bootstrap input with a canonical
+no-op and sends every byte and EOF to one recurrent physical input.
+Four crazy folds reuse C1010022; a fifth fold at C1020014 uses the
+four-phase encryption orbit * -> r -> } -> i -> *. In its first phase
+that cell performs crazy; in its second phase it relocates D using
+the same dirty operand M7174718. Indirect transfers restore the active
+phases without fetching the other two states.
+
+The five dirty classifier words retain enough state to distinguish
+byte-count parity. Trits 6 and 7 of every input byte are zero, while
+both EOF trits are two. The byte result is M7180650 for every history;
+odd EOF selects M7178463 and even EOF selects M7179921. An independent
+finite-state closure check covers all ternary input sequences at each
+other trit and the reachable paired states at trits 6 and 7 with a
+parity bit. The two EOF landings supply 3 or 0 to a common terminal
+rotation, output and halt. Actual stdout contains exactly one byte,
+the length modulo two, without a host-selected branch.
+
+Normative replay checks each fold, transfer, encryption phase, state
+invariant and terminal effect for empty, one-byte, two-byte, ascending
+256-byte and descending 256-byte streams. Omitting terminal rotation,
+output or halt refuses; the historical profile also refuses. This is
+a complete recurrent length-parity witness, not the original
+input-dependent checksum. Preserving the raw input through dispatch,
+recurrent checksum arithmetic and independent source-frame admission
+remain open.

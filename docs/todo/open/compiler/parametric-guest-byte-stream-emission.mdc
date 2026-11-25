@@ -100,8 +100,13 @@ controls pass. A separate 154,128-cell kernel restores actual input,
 crazy, output and data relocation cells through indirect transfers on
 the F/J encryption orbit. All 256 sequential byte values and repeated
 EOF authenticate the dirty recurrence. It deliberately does not halt
-on EOF. Recurrent checksum control and complete source-frame routing
-remain open. Evidence:
+on EOF. A separate 1,050,042-cell recurrent guard consumes every byte,
+classifies actual EOF with five dirty folds and a four-phase mixed
+instruction, then outputs byte-count parity and halts. Independent
+per-trit closure and five traced streams cover both EOF landings;
+omitted rotation, output and halt refuse. Raw input preservation,
+recurrent checksum arithmetic and complete source-frame routing remain
+open. Evidence: `tests/compiler/relocated_reusable_guard.rs`,
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

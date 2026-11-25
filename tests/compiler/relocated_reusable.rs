@@ -22,6 +22,9 @@
 // - Summary:
 //   - Authenticate every transfer in the recurrent four-operation kernel.
 
+#[path = "relocated_reusable_guard.rs"]
+mod relocated_reusable_guard;
+
 use malbolge::{
     ProfileMachine, ProfileStepTrace, StepOutcome, TraceInput, current_profile,
     decode_profile_instruction, encrypt_profile_cell, historical_profile,
