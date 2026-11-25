@@ -14965,3 +14965,34 @@ further 36,358 below 1,092,605. The fixed physical source extent,
 checksum cases and 100,000-step publication limit remain unchanged;
 the physical witness ceiling is 1,058,000. These routing reductions
 are not a proof that the source-C publication budget is reachable.
+
+A fresh normative execution census at the combined reduction measures
+actual decoded operations through first input, split at completion of
+the 80 paired-seed return stores. It checks the materialized tables
+and return words before recording the totals:
+
+| Segment | Walks | Rotations | Data relocations | Crazy | Code relocations |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Through last return | 291,450 | 16,000 | 25,935 | 12,441 | 1 |
+| After last return | 616,316 | 8,016 | 55,761 | 30,326 | 1 |
+
+Of the 1,056,247 steps, 907,766 are walks and 148,481 are other
+instructions. The post-return segment accounts for 710,420 steps,
+including 94,104 non-walk operations. The current sequence therefore
+still exceeds the publication ceiling by 48,481 operations even in
+the hypothetical absence of walks. Compared with the previous
+fast-page census, 62,524 walks were removed at the cost of 5,665
+additional non-walk operations. This tradeoff improves the physical
+witness but does not resolve the publication resource constraint.
+
+A bounded reordering diagnostic on the earlier 7,029-target shared
+schedule also considered forward chains whose next store could consume
+the preceding target value directly. With the earlier recorded virgin
+or normalized operand states fixed, only 80 targets had any compatible
+predecessor value in that schedule. Greedy forward chains with maximum
+address gaps of 16, 32, 64 and 128 identified 19, 21, 21 and 22
+potentially omitted reloads, respectively. These are candidate counts,
+not validated savings or an exhaustive optimum. No chain rewrite was
+retained. The next substantial improvement should reduce the number of
+materialized targets or repeated seed reads rather than merely reorder
+these fixed stores. The census instrumentation was removed.
