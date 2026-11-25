@@ -414,6 +414,12 @@ The recurrent checker additionally verifies fetch, opcode-dependent data
 access and encryption roles in both source-loaded and checkpoint replays.
 Six trace-mutation controls refuse; all five frozen full replays and 512
 terminal-byte/phase forks pass. No guest instruction budget is changed.
+A finite inert-suffix lower-bound test covers 13 canonical access
+shapes across all 94 phases. The retained phases minimize restoration
+instruction count. Five alternative phase combinations were measured
+with actual materialized tables and frozen VM I/O; the best startup
+saving is 5,437 steps but every alternative exceeds the frozen
+post-input limits. No phase rewrite or budget increase is retained.
 Next: authenticate the remaining source-frame placements and physical
 control effects, then close the resource gap through a substantially more
 compact execution strategy rather than raising the publication limit.

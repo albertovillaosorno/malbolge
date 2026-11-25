@@ -15028,3 +15028,43 @@ The prior three extra-read controls now all refuse immediately, before
 route-map reconciliation. All five source-loaded vectors and 512
 terminal-byte/phase checkpoint forks pass. These are physical trace
 checks, not general SSA placement or source publication.
+
+A finite restoration bound now distinguishes route-pointer count from
+runtime instruction count. For each cell, every jump targeting an
+earlier cell must consume an inert decode in that cell's encryption
+orbit. Starting from its once-executed character, count the minimum
+encryptions that both restore the original character and expose at
+least the preceding cell's required number of inert phases. The last
+cell's count bounds the number of suffix jumps, and the sum across
+cells bounds the executed restoration instructions. The recursive
+scheduler attains both bounds across the 13 canonical checksum shapes
+and all 94 phases (1,222 shape/phase pairs); the retained phase for
+each shape minimizes the instruction count. This is a bound for the
+existing suffix-jump mechanism and fixed instruction shapes, not for
+arbitrary code or a compact checksum representation.
+
+A temporary physical trial minimized stored restoration pointers
+instead of executed instructions for the carry envelope (phase 83 to
+72), the three indexed immutable loads (67 to 74), and the first
+reversible load envelope (93 to 3). For each variant, a normative VM
+checked the materialized factored tables, untouched impossible carry
+slots and actual input/output and halt for all five frozen vectors.
+
+| Phase selection | First-input steps | One-byte steps after bootstrap | Four-byte steps after bootstrap |
+| --- | ---: | ---: | ---: |
+| Retained | 1,056,247 | 11,859 | 46,098 |
+| Carry | 1,051,063 | 11,919 | 46,338 |
+| Indexed | 1,061,515 | 11,928 | 46,374 |
+| First load | 1,055,526 | 12,604 | 49,078 |
+| Carry and first load | 1,051,852 | 12,664 | 49,318 |
+| All three changes | 1,050,810 | 12,733 | 49,594 |
+
+The source extent remains 2,318,854 cells for all trials. The best
+measured bootstrap reduction is 5,437 steps (less than 1%), while all
+alternatives exceed the retained frozen post-input budgets. These
+exploratory VM runs used a separate bounded diagnostic allowance,
+not the publication gate or the independent full source-bound proof.
+No production phase changes, diagnostic allowance or temporary
+instrumentation remain. The next resource reduction should change
+the access mechanism or representation, not merely retune these
+canonical phases.

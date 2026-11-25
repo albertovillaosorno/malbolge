@@ -379,3 +379,7 @@ fn encrypt(cell: u8) -> Result<u8, BuildError> {
         .and_then(|value| u8::try_from(value).ok())
         .ok_or(LAYOUT)
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/recurrent_access_preparation.rs"]
+mod tests;
