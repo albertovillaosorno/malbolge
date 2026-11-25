@@ -13554,3 +13554,32 @@ source checksum pair. The even and odd arithmetic are still separate
 physical candidates. Reusable code, the shared next input and complete
 independent source-frame admission remain open; the original C23
 program still refuses publication.
+
+
+### Canonical second-odd update
+
+The division stages can exploit the shrinking operand domain. Starting
+with maxima 255, 127, 63, 31, 15, 7, 3 and 1, the inclusive parity
+prefix needs respectively 3, 3, 2, 2, 2, 1, 1 and 0 stages. The host
+checker exhausts each of these domains; all previous physical vectors
+remain valid. The odd XOR halt moves from C4654507 to C3955269,
+freeing 699,238 executable cells within the same loader geometry.
+
+A second 4,750,164-cell image uses that space to finish the odd
+update. From the preserved binary XOR bits, a Boolean OR of the low
+two bits followed by six AND folds detects exactly 253..255. A separate
+three-gate expression on the low two bits produces the wrapped
+residual 0, 1 or 2. The guest adds three to the raw XOR word in six
+carry rounds and selects the original incremented word or the wrapped
+residual through two actual indirect transfers. The common dirty copy
+sequence writes the canonical pair M7174451/M7174452. The successful
+(100, 127, 42) guest writes [27, 0] and halts at C4613833 after
+4,305,665 steps with two input bytes consumed and no output.
+
+Twelve traced vectors authenticate the full XOR, both predicate and
+increment scratch resets, the overflow flag and residual stores,
+selected continuation, and both final dirty stores. The host algebra
+checks all 256 XOR values against the exact C mask. Five bypass
+vectors and two omitted-store controls pass. Earlier even arithmetic
+and third-read witnesses remain separate: the odd update has no
+third read, reusable instruction schedule, or source-frame admission.

@@ -84,9 +84,13 @@ omitted-result control pass. Independent host algebra checks all
 physical image now executes all eight stages, restores the dirty masks,
 reconstructs both binary nibbles through actual table lookups, and
 saves their sum. Twenty-two traced vectors cover all table indices;
-five bypass vectors and two omitted-store controls pass. Odd increment
-and mask, shared next input, reusable code and complete source-frame
-routing remain open. Evidence:
+five bypass vectors and two omitted-store controls pass. The shrinking
+quotient bounds remove 699,238 executable cells, making room for a
+separate odd update variant: it evaluates the overflow predicate, adds
+three, chooses the wrapped residual, and writes the canonical pair.
+Twelve traced vectors, all 256 host-algebra cases, five bypasses and
+two omitted-effect controls pass. The shared next input, reusable code
+and complete source-frame routing remain open. Evidence:
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.
 

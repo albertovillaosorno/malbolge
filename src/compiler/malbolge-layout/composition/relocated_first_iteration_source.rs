@@ -211,6 +211,10 @@ const HALF_BIT_MASKS: [[u32; 4]; 2] = [
     [7_174_849, 7_174_853, 7_174_857, 7_174_861],
 ];
 const HALF_COUNT: u32 = 132;
+// After each division the maximum input halves. Inclusive prefix parity
+// needs only enough stages to cover its remaining ternary digits.
+const XOR_PREFIX_COUNTS: [u32; 8] = [3, 3, 2, 2, 2, 1, 1, 0];
+const PREFIX_SHIFTS: [u32; 3] = [1, 2, 4];
 const BOOL_XOR: &[u8] = b"0sxsysys2psxpppp";
 const HALF_QUOTIENT: &[u8] = b"xsxsys2ppp";
 const WITH_ODD_HALF: Geometry = Geometry {
@@ -247,6 +251,20 @@ const XOR_MASK_COMPLEMENTS: [u32; 4] =
     [7_174_089, 14_348_178, 7_174_452, 14_348_904];
 const XOR_RECONSTRUCTION_COUNT: u32 = 128;
 const XOR_SUM_COUNT: u32 = 168;
+// The odd increment overflows precisely for XOR bytes 253, 254 and 255.
+const XOR_UPDATE_FLAG: [u32; 2] = [7_174_953, 7_174_957];
+const XOR_UPDATE_STAY: u32 = 7_174_963;
+const XOR_UPDATE_WRAP: u32 = 7_174_973;
+const XOR_UPDATE_JOIN: u32 = 7_174_983;
+const XOR_UPDATE_SELECTED: [u32; 2] = [7_174_987, 7_174_991];
+const XOR_UPDATE_RESIDUAL: [u32; 2] = [7_174_995, 7_174_999];
+const XOR_UPDATE_STAY_ENTRY: usize = 4_570_000;
+const XOR_UPDATE_WRAP_ENTRY: usize = 4_590_000;
+const XOR_UPDATE_JOIN_ENTRY: usize = 4_610_000;
+const XOR_UPDATE_PREDICATE_COUNT: u32 = 76;
+const BOOL_AND: &[u8] = b"xsxsxpsys2ppp";
+const BOOL_OR: &[u8] = b"xs2psxs2psypp";
+const XOR_WRAP_RESIDUAL: &[u8] = b"xsysxs2ppp";
 const WITH_ODD_XOR: Geometry = Geometry {
     bounds: TapeBounds {
         limit: 7_192_001,
@@ -261,6 +279,12 @@ const WITH_ODD_XOR: Geometry = Geometry {
     scratch: 7_190_001,
     ..WITH_MASK
 };
+const WITH_ODD_UPDATE: Geometry = Geometry {
+    even_entry: 960_000,
+    join_entry: 965_000,
+    odd_entry: 962_000,
+    ..WITH_ODD_XOR
+};
 const WITH_SECOND_ADD: Geometry = Geometry {
     cells: 2_821_848,
     eof_entry: 2_800_000,
@@ -274,13 +298,16 @@ pub(super) enum IterationMode {
     SecondEvenMask,
     SecondEvenRead,
     SecondOddHalf,
+    SecondOddUpdate,
     SecondOddXor,
     SecondParityAdd,
 }
 
 impl IterationMode {
     fn first_entry(self, entry: usize) -> Result<usize, BuildError> {
-        if self.has_odd_xor() {
+        if self.has_odd_update() {
+            entry.checked_add(630_000).ok_or(LAYOUT)
+        } else if self.has_odd_xor() {
             entry.checked_add(600_000).ok_or(LAYOUT)
         } else if self.has_third_read() {
             entry.checked_add(300_000).ok_or(LAYOUT)
@@ -292,11 +319,18 @@ impl IterationMode {
     }
 
     const fn has_odd_half(self) -> bool {
-        matches!(self, Self::SecondOddHalf | Self::SecondOddXor)
+        matches!(
+            self,
+            Self::SecondOddHalf | Self::SecondOddXor | Self::SecondOddUpdate
+        )
     }
 
     const fn has_odd_xor(self) -> bool {
-        matches!(self, Self::SecondOddXor)
+        matches!(self, Self::SecondOddXor | Self::SecondOddUpdate)
+    }
+
+    const fn has_odd_update(self) -> bool {
+        matches!(self, Self::SecondOddUpdate)
     }
 
     const fn has_second_mask(self) -> bool {
@@ -310,6 +344,7 @@ impl IterationMode {
                 | Self::SecondEvenMask
                 | Self::SecondEvenRead
                 | Self::SecondOddHalf
+                | Self::SecondOddUpdate
                 | Self::SecondOddXor
         )
     }
@@ -326,7 +361,7 @@ impl IterationMode {
             Self::SecondEvenMask => SECOND_MASK_HEADER_EOF_ENTRY,
             Self::SecondEvenRead => 4_150_000,
             Self::SecondOddHalf => 2_150_000,
-            Self::SecondOddXor => 4_705_000,
+            Self::SecondOddXor | Self::SecondOddUpdate => 4_705_000,
         }
     }
 
@@ -617,7 +652,7 @@ pub struct RelocatedSecondOddXorSource {
     pub iteration: RelocatedFirstIterationSource,
     /// Eight persistent XOR bit words, in increasing binary significance.
     pub bit_addresses: [u32; 8],
-    /// Physical halt after the reconstructed result.
+    /// Physical halt on the odd path, after any selected update.
     pub odd_halt_code_address: u32,
     /// Two lookup-site pairs (the second store restores the table word).
     pub table_lookups: [[u32; 2]; 2],
@@ -637,6 +672,39 @@ pub struct RelocatedSecondOddXorSource {
     pub xor_copy: DirtyPhiCopySites,
     /// Resets before the final nibble sum.
     pub sum_resets: Vec<ScratchResetSite>,
+}
+
+/// Odd second-byte XOR, increment, and canonical masked storage.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelocatedSecondOddUpdateSource {
+    /// The actual eight-bit XOR computation before the update.
+    pub xor: RelocatedSecondOddXorSource,
+    /// All resets before evaluating the overflow predicate.
+    pub predicate_resets: Vec<ScratchResetSite>,
+    /// All resets before adding three.
+    pub increment_resets: Vec<ScratchResetSite>,
+    /// Actual Boolean overflow address and final store.
+    pub flag: (u32, u32),
+    /// Actual overflow-selected branch.
+    pub branch_code_address: u32,
+    /// Candidate residual address and actual store.
+    pub residual: (u32, u32),
+    /// Incremented, still-unmasked checksum word.
+    pub incremented_address: u32,
+    /// Canonical source mask pair.
+    pub result_pair: [u32; 2],
+    /// The actual dirty copies to the canonical low and high words.
+    pub result_copies: [DirtyPhiCopySites; 2],
+}
+
+struct OddUpdateSites {
+    branch: u32,
+    flag: u32,
+    incremented: u32,
+    increment_resets: Vec<ScratchResetSite>,
+    predicate_resets: Vec<ScratchResetSite>,
+    residual: u32,
+    result_copies: [DirtyPhiCopySites; 2],
 }
 
 struct OddXorSites {
@@ -668,6 +736,7 @@ struct SecondParitySites {
     branch: u32,
     half: Option<OddHalfSites>,
     xor: Option<OddXorSites>,
+    update: Option<OddUpdateSites>,
     lookup: u32,
     odd_halt: u32,
     parity_store: u32,
@@ -744,6 +813,13 @@ impl MaskTapes {
         }
         if mode.has_odd_xor() {
             constants.extend(Self::xor_constants()?);
+        }
+        if mode.has_odd_update() {
+            constants.extend([
+                (before(XOR_UPDATE_STAY_ENTRY)?, XOR_UPDATE_STAY, true),
+                (before(XOR_UPDATE_WRAP_ENTRY)?, XOR_UPDATE_WRAP, true),
+                (before(XOR_UPDATE_JOIN_ENTRY)?, XOR_UPDATE_JOIN, true),
+            ]);
         }
         let mut mask_tapes = Vec::new();
         for (value, address, baseline_ones) in constants {
@@ -939,6 +1015,17 @@ impl MaskTapes {
                     addresses.push(xor_table_address(base, nibble)?);
                 }
             }
+            addresses.sort_unstable();
+        }
+        if mode.has_odd_update() {
+            addresses.extend(XOR_UPDATE_FLAG);
+            addresses.extend([
+                XOR_UPDATE_STAY,
+                XOR_UPDATE_WRAP,
+                XOR_UPDATE_JOIN,
+            ]);
+            addresses.extend(XOR_UPDATE_SELECTED);
+            addresses.extend(XOR_UPDATE_RESIDUAL);
             addresses.sort_unstable();
         }
         emitter.prepare_odd_pairs(&addresses)
@@ -1201,12 +1288,16 @@ impl IterationEmitter<'_, '_, '_> {
         &mut self,
         value: u32,
         masks: HalfMasks,
+        prefix_count: u32,
     ) -> Result<HalfCopies, BuildError> {
         let (low_masks, bit_masks) = masks;
         // Boolean trits for exactly the odd ternary digits.
         self.adder.evaluate(b"0sxsypp", RESET_ONES, value)?;
         let mut prefix = self.adder.copy()?;
-        for shift in [1u32, 2, 4] {
+        for shift in PREFIX_SHIFTS
+            .into_iter()
+            .take(usize::try_from(prefix_count).map_err(|_| LAYOUT)?)
+        {
             let aligned = self.rotated_copy(prefix, shift)?;
             self.adder.evaluate(BOOL_XOR, prefix, aligned)?;
             prefix = self.adder.copy()?;
@@ -1298,29 +1389,32 @@ impl IterationEmitter<'_, '_, '_> {
     }
 
     fn odd_half(&mut self) -> Result<OddHalfSites, BuildError> {
-        self.odd_half_values([PHI_DEST[2], PHI_DEST[0]])
+        self.odd_half_values([PHI_DEST[2], PHI_DEST[0]], 3)
     }
 
     fn odd_half_values(
         &mut self,
         values: [u32; 2],
+        prefix_count: u32,
     ) -> Result<OddHalfSites, BuildError> {
+        let skipped = 3u32.checked_sub(prefix_count).ok_or(LAYOUT)?;
+        let count = HALF_COUNT.checked_sub(28 * skipped).ok_or(LAYOUT)?;
         let mut adder = Adder {
-            count: HALF_COUNT,
+            count,
             cursor: 0,
             emitter: self.adder.emitter,
             scratch: self.adder.scratch,
         };
         let mut half = IterationEmitter { adder: &mut adder };
-        let resets = half.reset_scratch(HALF_COUNT)?;
+        let resets = half.reset_scratch(count)?;
         let [left_low, right_low] = HALF_LOW_MASKS;
         let [left_bit, right_bit] = HALF_BIT_MASKS;
         let [
             (left_q, checksum_quotient_site),
             (left_r, checksum_bit_site),
-        ] = half.halve(values[0], (left_low, left_bit))?;
+        ] = half.halve(values[0], (left_low, left_bit), prefix_count)?;
         let [(right_q, byte_quotient_site), (right_r, byte_bit_site)] =
-            half.halve(values[1], (right_low, right_bit))?;
+            half.halve(values[1], (right_low, right_bit), prefix_count)?;
         half.adder.evaluate(BOOL_XOR, left_r, right_r)?;
         let (low_xor, xor_store) = half.copy_result()?;
         adder.finish()?;
@@ -1344,13 +1438,14 @@ impl IterationEmitter<'_, '_, '_> {
         values: [u32; 2],
         bit: u32,
         restore: bool,
+        prefix_count: u32,
     ) -> Result<OddXorStepSites, BuildError> {
         let mask_restores = if restore {
             self.restore_half_masks()?
         } else {
             Vec::new()
         };
-        let half = self.odd_half_values(values)?;
+        let half = self.odd_half_values(values, prefix_count)?;
         let [left_q, right_q] = half.quotients;
         let [left_r, right_r] = half.remainders;
         let quotient_copies = [
@@ -1447,8 +1542,13 @@ impl IterationEmitter<'_, '_, '_> {
     fn odd_xor(&mut self) -> Result<OddXorSites, BuildError> {
         let mut steps = Vec::new();
         let mut values = [PHI_DEST[2], PHI_DEST[0]];
-        for bit in XOR_BITS {
-            steps.push(self.odd_xor_step(values, bit, !steps.is_empty())?);
+        for (bit, count) in XOR_BITS.into_iter().zip(XOR_PREFIX_COUNTS) {
+            steps.push(self.odd_xor_step(
+                values,
+                bit,
+                !steps.is_empty(),
+                count,
+            )?);
             values = XOR_QUOTIENTS;
         }
         let mut adder = Adder {
@@ -1499,6 +1599,81 @@ impl IterationEmitter<'_, '_, '_> {
             sum_resets,
             xor: XOR_RESULT,
             xor_copy,
+        })
+    }
+
+    fn odd_update_predicate(&mut self) -> Result<(u32, u32), BuildError> {
+        let [b0, b1, b2, b3, b4, b5, b6, b7] = XOR_BITS;
+        // XOR >= 253 iff all six high bits are set and at least one
+        // low bit is set. The entire predicate remains a Boolean word.
+        self.adder.evaluate(BOOL_OR, b0, b1)?;
+        let mut overflow = self.adder.copy()?;
+        for bit in [b2, b3, b4, b5, b6, b7] {
+            self.adder.evaluate(BOOL_AND, overflow, bit)?;
+            overflow = self.adder.copy()?;
+        }
+        let flag = self.copy_to(XOR_UPDATE_FLAG)?;
+        // For overflow values 253..255, the wrapped byte is 0, 1 or 2.
+        // The circuit on the low bits produces 0, 0, 1, 2 and clears
+        // all high trits (the unused 00 input also maps to zero).
+        self.adder.evaluate(XOR_WRAP_RESIDUAL, b1, b0)?;
+        let residual = self.copy_to(XOR_UPDATE_RESIDUAL)?;
+        Ok((flag, residual))
+    }
+
+    fn odd_update(&mut self) -> Result<OddUpdateSites, BuildError> {
+        let mut predicate = Adder {
+            count: XOR_UPDATE_PREDICATE_COUNT,
+            cursor: 0,
+            emitter: self.adder.emitter,
+            scratch: self.adder.scratch,
+        };
+        let mut emitter = IterationEmitter { adder: &mut predicate };
+        let predicate_resets =
+            emitter.reset_scratch(XOR_UPDATE_PREDICATE_COUNT)?;
+        let (flag, residual) = emitter.odd_update_predicate()?;
+        predicate.finish()?;
+        let mut increment = Adder {
+            count: XOR_SUM_COUNT,
+            cursor: 0,
+            emitter: self.adder.emitter,
+            scratch: self.adder.scratch,
+        };
+        let increment_resets = IterationEmitter { adder: &mut increment }
+            .reset_scratch(XOR_SUM_COUNT)?;
+        let incremented = increment.add(XOR_RESULT, THREE, 6)?;
+        increment.finish()?;
+        let branch = self.select(XOR_UPDATE_FLAG[1], 506)?;
+        self.selected_arm(
+            (XOR_UPDATE_STAY_ENTRY, XOR_UPDATE_STAY),
+            incremented,
+            (XOR_UPDATE_SELECTED, XOR_UPDATE_JOIN),
+        )?;
+        self.selected_arm(
+            (XOR_UPDATE_WRAP_ENTRY, XOR_UPDATE_WRAP),
+            XOR_UPDATE_RESIDUAL[1],
+            (XOR_UPDATE_SELECTED, XOR_UPDATE_JOIN),
+        )?;
+        self.adder.emitter.pad_to_entry(
+            XOR_UPDATE_JOIN_ENTRY,
+            XOR_UPDATE_JOIN.checked_add(1).ok_or(LAYOUT)?,
+        )?;
+        let result_copies = [
+            self.copy_dirty_word(
+                XOR_UPDATE_SELECTED[1],
+                MASKED[0],
+                MASKED_TEMP,
+            )?,
+            self.copy_dirty_word(ZERO, MASKED[1], MASKED_TEMP)?,
+        ];
+        Ok(OddUpdateSites {
+            branch,
+            flag,
+            incremented,
+            increment_resets,
+            predicate_resets,
+            residual,
+            result_copies,
         })
     }
 
@@ -1614,6 +1789,7 @@ impl IterationEmitter<'_, '_, '_> {
         let count = match mode {
             IterationMode::First
             | IterationMode::SecondOddHalf
+            | IterationMode::SecondOddUpdate
             | IterationMode::SecondOddXor => {
                 return Err(LAYOUT);
             },
@@ -1651,6 +1827,7 @@ impl IterationEmitter<'_, '_, '_> {
         let addition = match mode {
             IterationMode::First
             | IterationMode::SecondOddHalf
+            | IterationMode::SecondOddUpdate
             | IterationMode::SecondOddXor => None,
             IterationMode::SecondAdd
             | IterationMode::SecondParityAdd
@@ -1782,6 +1959,11 @@ impl IterationEmitter<'_, '_, '_> {
         } else {
             None
         };
+        let update = if mode.has_odd_update() {
+            Some(self.odd_update()?)
+        } else {
+            None
+        };
         let odd_halt = self.adder.emitter.append(Halt)?;
         self.adder.emitter.pad_to_entry(
             mode.second_even_entry()?,
@@ -1791,6 +1973,7 @@ impl IterationEmitter<'_, '_, '_> {
             branch,
             half,
             xor,
+            update,
             lookup,
             odd_halt,
             parity_store,
@@ -2304,11 +2487,51 @@ pub fn build_relocated_second_odd_xor_source(
     let mode = IterationMode::SecondOddXor;
     let (addition, candidate) = build(profile, WITH_ODD_XOR, Some(mode))?;
     let mut sites = candidate.ok_or(LAYOUT)?;
+    odd_xor_from_sites(addition, &mut sites)
+}
+
+/// Execute the odd second-byte update through the canonical checksum pair.
+/// This is still a bounded one-shot guest, not a reusable loop.
+///
+/// # Errors
+/// Refuses unsupported profiles and exhausted physical layouts.
+pub fn build_relocated_second_odd_update_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedSecondOddUpdateSource, BuildError> {
+    let (addition, candidate) = build(
+        profile,
+        WITH_ODD_UPDATE,
+        Some(IterationMode::SecondOddUpdate),
+    )?;
+    let mut sites = candidate.ok_or(LAYOUT)?;
+    let update = sites
+        .second
+        .parity
+        .as_mut()
+        .and_then(|parity| parity.update.take())
+        .ok_or(LAYOUT)?;
+    Ok(RelocatedSecondOddUpdateSource {
+        xor: odd_xor_from_sites(addition, &mut sites)?,
+        predicate_resets: update.predicate_resets,
+        increment_resets: update.increment_resets,
+        flag: (XOR_UPDATE_FLAG[1], update.flag),
+        branch_code_address: update.branch,
+        residual: (XOR_UPDATE_RESIDUAL[1], update.residual),
+        incremented_address: update.incremented,
+        result_pair: MASKED,
+        result_copies: update.result_copies,
+    })
+}
+
+fn odd_xor_from_sites(
+    addition: RelocatedFirstByteAddSource,
+    sites: &mut IterationSites,
+) -> Result<RelocatedSecondOddXorSource, BuildError> {
     let mut parity = sites.second.parity.take().ok_or(LAYOUT)?;
     let xor = parity.xor.take().ok_or(LAYOUT)?;
     Ok(RelocatedSecondOddXorSource {
         branch_code_address: parity.branch,
-        iteration: iteration_from_sites(addition, &sites),
+        iteration: iteration_from_sites(addition, sites),
         bit_addresses: XOR_BITS,
         copy_temporary_address: XOR_COPY_TEMP,
         odd_halt_code_address: parity.odd_halt,

@@ -35,12 +35,13 @@ use super::super::layout::{
     DirtyPhiCopySites, RelocatedDirtyPhiSource, RelocatedFirstIterationSource,
     RelocatedSecondAddSource, RelocatedSecondEvenMaskSource,
     RelocatedSecondEvenReadSource, RelocatedSecondOddHalfSource,
-    RelocatedSecondOddXorSource, RelocatedSecondParityAddSource,
-    ScratchResetSite, ZeroCellSourceError, build_relocated_dirty_phi_source,
-    build_relocated_first_iteration_source, build_relocated_second_add_source,
-    build_relocated_second_even_mask_source,
+    RelocatedSecondOddUpdateSource, RelocatedSecondOddXorSource,
+    RelocatedSecondParityAddSource, ScratchResetSite, ZeroCellSourceError,
+    build_relocated_dirty_phi_source, build_relocated_first_iteration_source,
+    build_relocated_second_add_source, build_relocated_second_even_mask_source,
     build_relocated_second_even_read_source,
     build_relocated_second_odd_half_source,
+    build_relocated_second_odd_update_source,
     build_relocated_second_odd_xor_source,
     build_relocated_second_parity_add_source,
 };
@@ -2767,8 +2768,12 @@ fn boolean_word_xor(left: u32, right: u32) -> u32 {
 }
 
 fn half_word(value: u32) -> [u32; 2] {
+    half_word_bounded(value, 3)
+}
+
+fn half_word_bounded(value: u32, prefix_count: usize) -> [u32; 2] {
     let mut prefix = independent_crazy(0, independent_crazy(7_174_453, value));
-    for shift in [1u32, 2, 4] {
+    for shift in [1u32, 2, 4].into_iter().take(prefix_count) {
         let aligned =
             (0..shift).fold(prefix, |word, _| profile_rotate(word, 14_348_907));
         prefix = boolean_word_xor(prefix, aligned);
@@ -2919,9 +2924,15 @@ fn trace_xor(
     guest: &RelocatedSecondOddXorSource,
     machine: &mut ProfileMachine,
 ) -> Result<(RunOutcome, OddXorTrace), String> {
-    let reset_sites = xor_reset_sites(guest);
+    trace_xor_effects(machine, xor_reset_sites(guest), xor_effect_sites(guest))
+}
+
+fn trace_xor_effects(
+    machine: &mut ProfileMachine,
+    reset_sites: BTreeMap<u32, u32>,
+    wanted: BTreeSet<u32>,
+) -> Result<(RunOutcome, OddXorTrace), String> {
     let addresses = reset_sites.values().copied().collect::<BTreeSet<_>>();
-    let wanted = xor_effect_sites(guest);
     let mut trace = OddXorTrace::default();
     let outcome = machine
         .run_traced(ODD_XOR_BUDGET, &mut |step| {
@@ -3001,7 +3012,11 @@ fn check_xor_step(
         .bit_addresses
         .get(index)
         .ok_or("missing XOR bit address")?;
-    assert_eq!(stage.scratch_resets.len(), 132);
+    let counts = [132, 132, 104, 104, 104, 76, 76, 48];
+    assert_eq!(
+        stage.scratch_resets.len(),
+        *counts.get(index).ok_or("stage size")?
+    );
     assert_eq!(
         stage.mask_restores.len(),
         if index == 0 {
@@ -3117,11 +3132,26 @@ fn check_xor_vector(
         }),
         "{outcome:?}"
     );
+    check_xor_result(guest, &machine, &trace, [first, second], 1_610_000)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "complete physical XOR evidence"
+)]
+fn check_xor_result(
+    guest: &RelocatedSecondOddXorSource,
+    machine: &ProfileMachine,
+    trace: &OddXorTrace,
+    input: [u8; 2],
+    odd_entry: u32,
+) -> Result<(), String> {
+    let [first, second] = input;
     check_transfer(
         &trace.effects,
         guest.branch_code_address,
         7_174_797,
-        1_610_000,
+        odd_entry,
     )?;
     assert_eq!(
         at(&trace.effects, guest.odd_halt_code_address)?.decoded,
@@ -3131,19 +3161,19 @@ fn check_xor_vector(
     let right = u32::from(second);
     let xor = left ^ right;
     for index in 0..8 {
-        check_xor_step(guest, &trace, index, [left >> index, right >> index])?;
+        check_xor_step(guest, trace, index, [left >> index, right >> index])?;
     }
     for reset in guest.reconstruction_resets.iter().chain(&guest.sum_resets) {
-        check_xor_reset(&trace, *reset)?;
+        check_xor_reset(trace, *reset)?;
     }
-    check_xor_tables(guest, &machine, &trace, xor)?;
-    check_xor_copy(guest, &trace, guest.xor_copy, guest.xor_address, xor)?;
-    assert_eq!(word(&machine, guest.xor_address)?, xor);
+    check_xor_tables(guest, machine, trace, xor)?;
+    check_xor_copy(guest, trace, guest.xor_copy, guest.xor_address, xor)?;
+    assert_eq!(word(machine, guest.xor_address)?, xor);
     for (index, address) in guest.bit_addresses.into_iter().enumerate() {
-        assert_eq!(word(&machine, address)?, (xor >> index) & 1);
+        assert_eq!(word(machine, address)?, (xor >> index) & 1);
     }
     for address in guest.quotient_addresses {
-        assert_eq!(word(&machine, address)?, 0);
+        assert_eq!(word(machine, address)?, 0);
     }
     for (address, value) in guest
         .iteration
@@ -3151,7 +3181,7 @@ fn check_xor_vector(
         .into_iter()
         .zip([right, 0, left, 0])
     {
-        assert_eq!(word(&machine, address)?, value);
+        assert_eq!(word(machine, address)?, value);
     }
     assert_eq!(machine.input_consumed(), 2);
     assert!(machine.output().is_empty());
@@ -3166,6 +3196,7 @@ fn check_xor_vector(
 fn relocated_second_odd_xor_boundaries() -> Result<(), String> {
     let guest = odd_xor_source()?;
     assert_eq!(guest.iteration.addition.source.len(), ODD_XOR_BUDGET);
+    assert_eq!(guest.odd_halt_code_address, 3_955_269);
     assert_eq!(guest.steps.len(), 8);
     assert_eq!(guest.reconstruction_resets.len(), 128);
     assert_eq!(guest.sum_resets.len(), 168);
@@ -3292,6 +3323,277 @@ fn relocated_second_odd_xor_rejects_omitted_effects() -> Result<(), String> {
             check_write(&trace, site, address, value).is_err(),
             "omission accepted: {outcome:?}"
         );
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exhaust all shrinking operand domains"
+)]
+#[test]
+fn relocated_second_odd_xor_bounded_prefix_algebra() -> Result<(), String> {
+    for (stage, rounds) in [3, 3, 2, 2, 2, 1, 1, 0].into_iter().enumerate() {
+        for word in 0..=(255u32 >> stage) {
+            assert_eq!(half_word_bounded(word, rounds), [word >> 1, word & 1]);
+        }
+    }
+    Ok(())
+}
+
+fn odd_update_source() -> Result<RelocatedSecondOddUpdateSource, String> {
+    build_relocated_second_odd_update_source(current_profile())
+        .map_err(|error| format!("odd update source: {error:?}"))
+}
+
+fn trace_odd_update(
+    guest: &RelocatedSecondOddUpdateSource,
+    machine: &mut ProfileMachine,
+) -> Result<(RunOutcome, OddXorTrace), String> {
+    let mut resets = xor_reset_sites(&guest.xor);
+    let mut wanted = xor_effect_sites(&guest.xor);
+    for reset in guest.predicate_resets.iter().chain(&guest.increment_resets) {
+        let _: Option<u32> =
+            resets.insert(reset.code_addresses[0], reset.address);
+        wanted.extend(reset.code_addresses);
+    }
+    for (copy, dest) in guest.result_copies.into_iter().zip(guest.result_pair) {
+        let _: Option<u32> = resets.insert(copy.temporary_resets[0], 7_174_633);
+        let _: Option<u32> = resets.insert(copy.destination_resets[0], dest);
+        wanted.extend(dirty_sites(copy));
+    }
+    wanted.extend([guest.branch_code_address, guest.flag.1, guest.residual.1]);
+    trace_xor_effects(machine, resets, wanted)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "canonical odd update and its physical effects"
+)]
+fn check_odd_update(
+    guest: &RelocatedSecondOddUpdateSource,
+    initial: &ProfileMachine,
+    first: u8,
+    second: u8,
+) -> Result<(), String> {
+    let mut machine = initial
+        .fork_with_input(vec![first, second, 42])
+        .map_err(|error| error.to_string())?;
+    let (outcome, trace) = trace_odd_update(guest, &mut machine)?;
+    assert!(
+        matches!(outcome, RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            ..
+        }),
+        "{outcome:?}"
+    );
+    check_xor_result(&guest.xor, &machine, &trace, [first, second], 1_640_000)?;
+    let xor = u32::from(first.wrapping_add(3) ^ second);
+    let sum = xor + 3;
+    let flag = u32::from(sum > 255);
+    let residual = if xor & 2 == 0 {
+        0
+    } else {
+        1 + (xor & 1)
+    };
+    for reset in guest.predicate_resets.iter().chain(&guest.increment_resets) {
+        check_xor_reset(&trace, *reset)?;
+    }
+    check_write(&trace.effects, guest.flag.1, guest.flag.0, flag)?;
+    check_write(&trace.effects, guest.residual.1, guest.residual.0, residual)?;
+    let (pointer, entry) = if flag == 0 {
+        (7_174_963, 4_570_000)
+    } else {
+        (7_174_973, 4_590_000)
+    };
+    check_transfer(&trace.effects, guest.branch_code_address, pointer, entry)?;
+    assert_eq!(word(&machine, guest.incremented_address)?, sum);
+    for ((copy, address), expected) in guest
+        .result_copies
+        .into_iter()
+        .zip(guest.result_pair)
+        .zip([sum & 255, 0])
+    {
+        check_xor_reset(&trace, ScratchResetSite {
+            address: 7_174_633,
+            code_addresses: copy.temporary_resets,
+        })?;
+        check_xor_reset(&trace, ScratchResetSite {
+            address,
+            code_addresses: copy.destination_resets,
+        })?;
+        check_write(
+            &trace.effects,
+            copy.temporary_store,
+            7_174_633,
+            independent_crazy(7_174_453, expected),
+        )?;
+        check_write(&trace.effects, copy.destination_store, address, expected)?;
+        assert_eq!(word(&machine, address)?, expected);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real odd update across the overflow boundary"
+)]
+#[test]
+fn relocated_second_odd_update_boundaries() -> Result<(), String> {
+    let guest = odd_update_source()?;
+    assert_eq!(guest.xor.iteration.addition.source.len(), ODD_XOR_BUDGET);
+    assert_eq!(guest.xor.odd_halt_code_address, 4_613_833);
+    assert_eq!(guest.predicate_resets.len(), 76);
+    assert_eq!(guest.increment_resets.len(), 168);
+    assert_eq!(guest.result_pair, [7_174_451, 7_174_452]);
+    assert_eq!(
+        build_relocated_second_odd_update_source(historical_profile()),
+        Err(ZeroCellSourceError::UnsupportedProfile)
+    );
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.xor.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for xor in [0u8, 1, 24, 128, 251, 252, 253, 254, 255] {
+        let second = 127;
+        let first = (xor ^ second).wrapping_sub(3);
+        check_odd_update(&guest, &initial, first, second)?;
+    }
+    for (first, second) in [(0, 255), (253, 255), (255, 1)] {
+        check_odd_update(&guest, &initial, first, second)?;
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "earlier EOF and even input bypass the odd update"
+)]
+#[test]
+fn relocated_second_odd_update_bypasses() -> Result<(), String> {
+    let guest = odd_update_source()?;
+    let initial = ProfileMachine::from_source(
+        current_profile(),
+        &guest.xor.iteration.addition.source,
+        vec![],
+    )
+    .map_err(|error| error.to_string())?;
+    for (input, expected) in [
+        (vec![], vec![0]),
+        (vec![252], vec![255]),
+        (vec![255], vec![2]),
+        (vec![0, 2, 42], vec![]),
+        (vec![252, 254, 42], vec![]),
+    ] {
+        let count = input.len().min(2);
+        let mut machine = initial
+            .fork_with_input(input)
+            .map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let outcome = machine
+            .run_traced(ODD_XOR_BUDGET, &mut |step| {
+                reached |= step.before.registers.code_pointer
+                    == guest.branch_code_address;
+            })
+            .map_err(|error| error.to_string())?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                ..
+            }),
+            "{outcome:?}"
+        );
+        assert!(!reached);
+        assert_eq!(machine.input_consumed(), count);
+        assert_eq!(machine.output(), expected);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "omit actual overflow and canonical result stores"
+)]
+#[test]
+fn relocated_second_odd_update_rejects_omissions() -> Result<(), String> {
+    let guest = odd_update_source()?;
+    for (site, address, expected) in [
+        (guest.flag.1, guest.flag.0, 1),
+        (
+            guest.result_copies[1].destination_store,
+            guest.result_pair[1],
+            0,
+        ),
+    ] {
+        let mut source = guest.xor.iteration.addition.source.clone();
+        let noop = (33..=126u8)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), site) == Some(b'o')
+            })
+            .ok_or("missing no-op")?;
+        *source
+            .get_mut(usize::try_from(site).map_err(|error| error.to_string())?)
+            .ok_or("missing code cell")? = noop;
+        let mut machine =
+            ProfileMachine::from_source(current_profile(), &source, vec![
+                253, 255, 42,
+            ])
+            .map_err(|error| error.to_string())?;
+        let mut trace = Vec::new();
+        let outcome = machine
+            .run_traced(ODD_XOR_BUDGET, &mut |step| {
+                if step.before.registers.code_pointer == site {
+                    trace.push(*step);
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        assert_eq!(at(&trace, site)?.decoded, Some(b'o'));
+        assert!(
+            check_write(&trace, site, address, expected).is_err(),
+            "omission accepted: {outcome:?}"
+        );
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exhaustive byte predicate and residual algebra"
+)]
+#[test]
+fn relocated_second_odd_update_algebra() -> Result<(), String> {
+    let and = |x, y| {
+        independent_crazy(
+            x,
+            independent_crazy(
+                independent_crazy(x, x),
+                independent_crazy(y, 14_348_906),
+            ),
+        )
+    };
+    let or = |x, y| {
+        independent_crazy(
+            independent_crazy(x, 14_348_906),
+            independent_crazy(independent_crazy(x, 14_348_906), y),
+        )
+    };
+    for xor in 0..=255u32 {
+        let bit = |shift: u32| (xor >> shift) & 1u32;
+        let overflow = (2..8)
+            .fold(or(bit(0), bit(1)), |flag, shift| and(flag, bit(shift)));
+        let residual = independent_crazy(
+            bit(1),
+            independent_crazy(bit(0), independent_crazy(bit(1), 14_348_906)),
+        );
+        assert_eq!(overflow, u32::from(xor + 3 > 255));
+        let selected = if overflow == 0 {
+            xor + 3
+        } else {
+            residual
+        };
+        assert_eq!(selected, (xor + 3) & 255);
     }
     Ok(())
 }
