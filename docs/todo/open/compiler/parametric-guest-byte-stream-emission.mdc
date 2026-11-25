@@ -251,6 +251,14 @@ the target directory. All 80 actual accumulator-preserving jumps and
 an omitted-store control pass independent replay. The unchanged source
 extent reaches first input in 1,985,206 steps under a 2,000,000-step
 bound; the internal seed-pair reset words remain virgin.
+A bounded alternate phase sweep and per-seed landing experiment
+retain that faster uniform-root geometry. The source-bound replay
+now requires all nine ordered arithmetic effects of each high/low
+scratch commit: selected immutable result, dirty table predecessor,
+two-fold state reset, scratch rotation, exact state store and
+restored scratch. Wrong or aliased scratch and reset geometry, a
+wrong valid rotation site and an omitted physical rotation refuse.
+Raw-pointer preparation and restoration are not yet fully bound.
 Compact execution and complete source-frame routing remain open;
 the 100,000-step publication bound remains unmet. Evidence:
 `tests/compiler/relocated_recurrent_checksum.rs`,

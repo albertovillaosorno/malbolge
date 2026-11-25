@@ -22,7 +22,7 @@
 
 use core::mem::swap;
 
-use malbolge::current_profile;
+use malbolge::{current_profile, decode_profile_instruction};
 
 use super::super::super::super::{
     RelocatedRecurrentChecksumSource, build_relocated_recurrent_checksum_source,
@@ -34,9 +34,9 @@ use super::super::source_recurrent_io_tests::{
 use super::super::source_recurrent_state::source_recurrent_state_tests;
 use super::{
     Error, GuardPlan, ParityPlan, ProjectionPlans, SourceRecurrentLoopProbe,
-    SourceRecurrentTransitionProbe, SourceTransitionValue, StatePlan,
-    TernaryCfgTerminator, admit_probe, project_function_with_plans,
-    verify_source_recurrent_transition,
+    SourceRecurrentTransitionCheckpoint, SourceRecurrentTransitionProbe,
+    SourceTransitionValue, StatePlan, TernaryCfgTerminator, admit_probe,
+    project_function_with_plans, verify_source_recurrent_transition,
 };
 
 fn proposal<'source>(
@@ -53,6 +53,11 @@ fn proposal<'source>(
             state: source_recurrent_state_tests::proposal(wire, stream, guest)?,
         },
         output_scratch: 7_180_900,
+        reset_addresses: [guest.capture.reset[0], guest.capture.reset[1]],
+        reset_constants: [[7_180_832, 7_180_840], [7_180_836, 7_180_844]],
+        rotate_address: guest.capture.rotate,
+        scratch_rotate_address: guest.scratch_rotate,
+        scratch_words: guest.scratch,
         seeds: [7_211_000, 7_243_100, 7_211_200, 7_243_400],
         tables: [7_208_352, 7_242_615, 7_209_081, 7_223_661],
         terminal_address: guest.terminal,
@@ -94,6 +99,7 @@ fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
                 || receipt.arm_value != value
                 || receipt.condition != 11
                 || receipt.source_block != 2
+                || !ordered_scratch_chains(receipt)
                 || receipt.lookup_indices.len() != 16
                 || receipt.lookup_indices.windows(2).any(
                     |pair| matches!(pair, [first, second] if first >= second),
@@ -108,6 +114,110 @@ fn source_recurrent_transition_frozen_guest_replays() -> Result<(), String> {
         {
             return Err("wrong terminal receipt".to_owned());
         }
+    }
+    Ok(())
+}
+
+fn ordered_scratch_chains(
+    receipt: &SourceRecurrentTransitionCheckpoint,
+) -> bool {
+    let [low, high] = receipt.commit_effect_indices;
+    let ordered = |indices: &[usize; 9]| {
+        indices
+            .windows(2)
+            .all(|pair| matches!(pair, [first, second] if first < second))
+    };
+    ordered(&low)
+        && ordered(&high)
+        && low.get(5).copied() == receipt.commit_indices.first().copied()
+        && high.get(5).copied() == receipt.commit_indices.last().copied()
+        && receipt.lookup_indices.get(11) < high.first()
+        && high.last() < receipt.lookup_indices.get(12)
+        && receipt.lookup_indices.last() < low.first()
+        && low
+            .last()
+            .is_some_and(|last| *last < receipt.next_input_index)
+}
+
+#[test]
+fn source_recurrent_transition_rejects_wrong_scratch_geometry()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let guest = build_relocated_recurrent_checksum_source(current_profile())
+        .map_err(|error| format!("guest: {error:?}"))?;
+    let probe = proposal(&wire, &[255], &guest)?;
+    let [low, high] = probe.scratch_words;
+    for invalid in [
+        SourceRecurrentTransitionProbe {
+            scratch_words: [low, low],
+            ..probe
+        },
+        SourceRecurrentTransitionProbe {
+            scratch_words: [low, probe.output_scratch],
+            ..probe
+        },
+        SourceRecurrentTransitionProbe {
+            scratch_words: [probe.tables[0].saturating_add(729), high],
+            ..probe
+        },
+        SourceRecurrentTransitionProbe {
+            scratch_rotate_address: probe.rotate_address,
+            ..probe
+        },
+    ] {
+        if verify_source_recurrent_transition(&invalid)
+            != Err(Error::InvalidTransitionBinding)
+        {
+            return Err("aliased scratch geometry accepted".to_owned());
+        }
+    }
+    let [low_constants, high_constants] = probe.reset_constants;
+    for invalid in [
+        SourceRecurrentTransitionProbe {
+            scratch_words: [high, low],
+            ..probe
+        },
+        SourceRecurrentTransitionProbe {
+            reset_constants: [high_constants, low_constants],
+            ..probe
+        },
+        SourceRecurrentTransitionProbe {
+            scratch_rotate_address: guest.terminal,
+            ..probe
+        },
+    ] {
+        if verify_source_recurrent_transition(&invalid)
+            != Err(Error::GuestTransitionMismatch)
+        {
+            return Err("wrong actual scratch route accepted".to_owned());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_recurrent_transition_rejects_omitted_scratch_rotation()
+-> Result<(), String> {
+    let wire = checksum_wire()?;
+    let mut guest =
+        build_relocated_recurrent_checksum_source(current_profile())
+            .map_err(|error| format!("guest: {error:?}"))?;
+    let address = guest.scratch_rotate;
+    let noop = (33u8..=126)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), address) == Some(b'o')
+        })
+        .ok_or("no noop encoding")?;
+    *guest
+        .capture
+        .source
+        .get_mut(usize::try_from(address).map_err(|error| error.to_string())?)
+        .ok_or("missing scratch rotation")? = noop;
+    let probe = proposal(&wire, &[255], &guest)?;
+    if verify_source_recurrent_transition(&probe)
+        != Err(Error::InvalidTransitionBinding)
+    {
+        return Err("omitted physical scratch rotation accepted".to_owned());
     }
     Ok(())
 }

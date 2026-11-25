@@ -14198,6 +14198,22 @@ construction with `NoLoadableZero`. Retain the faster
 2,318,854-cell geometry (2,102,518 steps); source size alone
 is not a reliable predictor of execution cost.
 
+After the dedicated inverse-seed returns, another bounded phase sweep
+passed the frozen vectors at five alternate extents:
+
+| Source cells | Bootstrap steps |
+| ---: | ---: |
+| 2,206,054 | 2,088,729 |
+| 2,303,814 | 2,073,742 |
+| 2,311,334 | 2,062,686 |
+| 2,326,374 | 2,053,698 |
+| 2,333,894 | 2,013,825 |
+
+None beats the retained 2,318,854-cell, 1,985,206-step geometry.
+A per-seed specialized target landing reached first input in
+1,980,031 steps, but its additional route planner and fallback paths
+saved only 5,175 steps; retain the uniform target-root return.
+
 A separate signed-input guard replay derives the canonical signed phi
 and its inequality to the materialized minus-one constant. The two
 incoming phi values must each originate in the corresponding source
@@ -14249,6 +14265,22 @@ an attestation of all intermediate SSA storage, all physical control
 edges or any unexecuted table entry; publication remains refused
 under the original 100,000-step ceiling.
 Evidence: `tests/compiler/source_recurrent_transition.rs`.
+
+The transition replay now also requires all nine actual arithmetic
+effects of each high and low commit. The selected immutable result
+must enter an all-one scratch, the dirty state must contain the
+selected table predecessor, and two crazy folds after a uniform
+rotation must reset that state to all ones. The actual scratch
+rotation must recover the inverse of the independently encoded next
+nibble. Its final store must agree with the next source checkpoint,
+and a second uniform rotation and two folds must restore the scratch.
+Both ordered nine-effect index arrays are recorded; unexpected
+scratch effects outside the chains refuse. Aliased scratch/constant
+geometry, swapped scratch words and reset constants, a different
+valid rotation site and an omitted physical rotation refuse. This
+still does not attest all pre-lookup raw-pointer preparation or the
+post-commit raw-pointer restoration, the complete source frame or
+publication.
 
 The terminal extension binds the canonical EOF block's truncation of
 the carried unsigned phi, sole byte output and void return to the

@@ -49,6 +49,16 @@ pub struct SourceRecurrentTransitionProbe<'source> {
     pub loop_probe: SourceRecurrentLoopProbe<'source>,
     /// Expanded scratch word used by both EOF contribution stores.
     pub output_scratch: u32,
+    /// Reusable first and second dirty-reset crazy sites.
+    pub reset_addresses: [u32; 2],
+    /// Uniform rotation constants for state and scratch, low/high order.
+    pub reset_constants: [[u32; 2]; 2],
+    /// Shared uniform constant rotation instruction.
+    pub rotate_address: u32,
+    /// Rotation site for the two dirty result scratches.
+    pub scratch_rotate_address: u32,
+    /// Low and high physical intermediate scratch words.
+    pub scratch_words: [u32; 2],
     /// Record banks in raw-low, low, raw-high and high order.
     pub seeds: [u32; 4],
     /// Index tables in raw-low, low, raw-high and high order.
@@ -66,6 +76,8 @@ pub struct SourceRecurrentTransitionCheckpoint {
     pub arm_value: u32,
     /// Independently derived carry from the low-nibble transition.
     pub carry: u32,
+    /// Nine actual arithmetic effects of each low/high scratch commit.
+    pub commit_effect_indices: [[usize; 9]; 2],
     /// Final low and high stores, in state-word order.
     pub commit_indices: [usize; 2],
     /// Canonical parity predicate SSA identity.
@@ -540,7 +552,8 @@ fn verify_pairs(
 ///
 /// # Errors
 /// Refuses incompatible loop probes, nonmatching source operations, missing,
-/// mutated or out-of-order indexed effects and incorrect carried-state commits.
+/// mutated or out-of-order indexed effects, scratch transfers, dirty resets
+/// and incorrect carried-state commits.
 pub fn verify_source_recurrent_transition(
     probe: &SourceRecurrentTransitionProbe<'_>,
 ) -> Result<SourceRecurrentTransitionProof, Error> {

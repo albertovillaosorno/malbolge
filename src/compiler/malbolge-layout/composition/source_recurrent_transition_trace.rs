@@ -23,6 +23,8 @@
 
 //! Replay the physical indexed effects of a selected source transition.
 
+#[path = "source_recurrent_commit_trace.rs"]
+mod source_recurrent_commit_trace;
 #[path = "source_recurrent_terminal_trace.rs"]
 mod source_recurrent_terminal_trace;
 
@@ -32,6 +34,7 @@ use malbolge::{
     ProfileStepTrace, TraceInput, current_profile, decode_profile_instruction,
     profile_crazy,
 };
+use source_recurrent_commit_trace::{CommitGeometry, CommitTrace};
 use source_recurrent_terminal_trace::TerminalTrace;
 
 use super::super::{Effect, Error, ProjectedIo};
@@ -129,13 +132,12 @@ impl LookupStep {
 }
 
 struct Geometry {
-    commit: (u32, u32),
+    commit: CommitGeometry,
     encoding: [[u32; 16]; 2],
     lookup_sites: [[u32; 2]; 5],
     seeds: [u32; 4],
     sites: BTreeMap<u32, u32>,
     tables: [u32; 4],
-    words: [u32; 2],
 }
 
 impl Geometry {
@@ -168,17 +170,15 @@ impl Geometry {
                 )?;
             }
         }
-        let commit =
-            validate_site(source, &mut sites, probe.commit_address, b'p')?;
+        let commit = CommitGeometry::new(probe, &sites)?;
         validate_data_geometry(probe)?;
         Ok(Self {
-            commit: (probe.commit_address, commit),
+            commit,
             encoding: probe.loop_probe.state.encoding,
             lookup_sites: probe.lookup,
             seeds: probe.seeds,
             sites,
             tables: probe.tables,
-            words: probe.loop_probe.state.words,
         })
     }
 
@@ -242,34 +242,26 @@ impl Geometry {
 
 struct PendingTransition {
     carry: u32,
-    commits: [Option<usize>; 2],
+    chains: [Option<[usize; 9]>; 2],
     expected: Vec<LookupStep>,
     indices: Vec<usize>,
     input_index: usize,
+    pending_commit: Option<CommitTrace>,
     source: SourceTransitionValue,
 }
 
 impl PendingTransition {
-    fn commit(
+    fn begin_commit(
         &mut self,
         geometry: &Geometry,
-        trace: &ProfileStepTrace,
-        index: usize,
+        step: LookupStep,
     ) -> Result<(), Error> {
-        let [low, high] = geometry.words;
-        let address = trace.before.registers.data_pointer;
-        let (slot, nibble) = if address == high
-            && self.indices.len() == 12
-            && self.commits == [None, None]
-        {
-            (1, self.source.next_state >> 4u32)
-        } else if address == low
-            && self.indices.len() == 16
-            && self.commits.first() == Some(&None)
-            && self.commits.last().is_some_and(Option::is_some)
-        {
-            (0, self.source.next_state & 15)
-        } else {
+        let (slot, nibble) = match self.indices.len() {
+            12 => (1, self.source.next_state >> 4u32),
+            16 => (0, self.source.next_state & 15),
+            _ => return Ok(()),
+        };
+        let LookupKind::Value(lookup) = step.kind else {
             return Err(Error::GuestTransitionMismatch);
         };
         let value = *geometry
@@ -277,37 +269,20 @@ impl PendingTransition {
             .get(slot)
             .and_then(|row| row.get(usize::from(nibble)))
             .ok_or(Error::InvalidTransitionBinding)?;
-        let data = trace
-            .memory_reads
-            .data
-            .ok_or(Error::GuestTransitionMismatch)?;
-        let before = trace.before.registers;
-        let after = trace.after.registers;
-        if trace.fetched_cell != Some(geometry.commit.1)
-            || trace.decoded != Some(b'p')
-            || trace.result.is_err()
-            || data.address != address
-            || after.accumulator != value
-            || profile_crazy(
-                data.value,
-                before.accumulator,
-                current_profile().word_trits(),
-            ) != value
-            || trace
-                .memory_delta
-                .data
-                .map_or(data.value != value, |write| {
-                    write.address != address
-                        || write.before != data.value
-                        || write.after != value
-                })
-        {
-            return Err(Error::GuestTransitionMismatch);
-        }
-        *self
-            .commits
-            .get_mut(slot)
-            .ok_or(Error::GuestTransitionMismatch)? = Some(index);
+        // The state was the selected table predecessor before its
+        // two-fold dirty reset. Bind that old value as well.
+        let first = if slot == 1 {
+            9
+        } else {
+            12
+        };
+        let dirty_state = self
+            .expected
+            .get(first)
+            .and_then(|entry| entry.address.checked_sub(1))
+            .ok_or(Error::InvalidTransitionBinding)?;
+        self.pending_commit =
+            Some(CommitTrace::new(slot, value, lookup, dirty_state));
         Ok(())
     }
 
@@ -316,10 +291,11 @@ impl PendingTransition {
         next: ProjectedIo,
         index: usize,
     ) -> Result<SourceRecurrentTransitionCheckpoint, Error> {
-        let [Some(low), Some(high)] = self.commits else {
+        let [Some(low), Some(high)] = self.chains else {
             return Err(Error::GuestTransitionMismatch);
         };
-        if self.indices.len() != self.expected.len()
+        if self.pending_commit.is_some()
+            || self.indices.len() != self.expected.len()
             || !matches!(next.effect, Effect::Input(_))
             || next.state.map(|state| state.value)
                 != Some(self.source.next_state)
@@ -331,7 +307,11 @@ impl PendingTransition {
             arm_result: source.arm_result,
             arm_value: source.arm_value,
             carry: self.carry,
-            commit_indices: [low, high],
+            commit_effect_indices: [low, high],
+            commit_indices: [
+                *low.get(5).ok_or(Error::GuestTransitionMismatch)?,
+                *high.get(5).ok_or(Error::GuestTransitionMismatch)?,
+            ],
             condition: source.condition,
             input_index: self.input_index,
             lookup_indices: self.indices,
@@ -356,10 +336,11 @@ impl PendingTransition {
         let (expectations, carry) = lookup_expectations(geometry, source)?;
         Ok(Self {
             carry,
-            commits: [None, None],
+            chains: [None, None],
             expected: geometry.steps(expectations)?,
             indices: Vec::with_capacity(16),
             input_index: index,
+            pending_commit: None,
             source,
         })
     }
@@ -372,13 +353,18 @@ impl PendingTransition {
     ) -> Result<(), Error> {
         let before = trace.before.registers;
         let site = before.code_pointer;
-        if site == geometry.commit.0 {
-            if trace.decoded == Some(b'p')
-                && geometry.words.contains(&before.data_pointer)
-            {
-                self.commit(geometry, trace, index)?;
+        if self.pending_commit.is_some() {
+            if matches!(trace.decoded, Some(b'p' | b'*')) {
+                return self.observe_commit(geometry, trace, index);
             }
-        } else if geometry.sites.contains_key(&site)
+            if geometry.sites.contains_key(&site) && trace.decoded == Some(b'j')
+            {
+                return Err(Error::GuestTransitionMismatch);
+            }
+        } else if geometry.commit.is_unbound_effect(trace) {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        if geometry.sites.contains_key(&site)
             && matches!(trace.decoded, Some(b'j' | b'p' | b'*'))
         {
             let step = self
@@ -387,7 +373,33 @@ impl PendingTransition {
                 .ok_or(Error::GuestTransitionMismatch)?;
             step.verify(trace)?;
             self.indices.push(index);
+            self.begin_commit(geometry, *step)?;
         }
+        Ok(())
+    }
+
+    fn observe_commit(
+        &mut self,
+        geometry: &Geometry,
+        trace: &ProfileStepTrace,
+        index: usize,
+    ) -> Result<(), Error> {
+        let chain = self
+            .pending_commit
+            .as_mut()
+            .ok_or(Error::GuestTransitionMismatch)?;
+        let Some(indices) = chain.observe(&geometry.commit, trace, index)?
+        else {
+            return Ok(());
+        };
+        let slot = self
+            .chains
+            .get_mut(chain.slot)
+            .ok_or(Error::GuestTransitionMismatch)?;
+        if slot.replace(indices).is_some() {
+            return Err(Error::GuestTransitionMismatch);
+        }
+        self.pending_commit = None;
         Ok(())
     }
 }
@@ -474,7 +486,9 @@ fn validate_data_geometry(
         .into_iter()
         .chain(guard.classifier_words)
         .chain(guard.eof_landings)
-        .chain([guard.capture_word, guard.byte_landing, probe.output_scratch]);
+        .chain([guard.capture_word, guard.byte_landing, probe.output_scratch])
+        .chain(probe.scratch_words)
+        .chain(probe.reset_constants.into_iter().flatten());
     for (index, (start, end)) in ranges.iter().copied().enumerate() {
         if usize::try_from(start)
             .map_or(true, |address| address < source_length)
