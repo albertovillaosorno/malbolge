@@ -13748,3 +13748,46 @@ two parity trits and both reachable high-trit states. Omitting the
 terminal output refuses; the historical profile also refuses. This
 is a bounded physical witness, not source-frame admission, an actual
 guest reload of the captured byte, or the original C checksum.
+
+
+### Recurrent guest reload of the captured byte
+
+A separate 6,450,060-cell image recovers the original input after the
+actual EOF dispatch. It changes the route schedule from before-call
+restoration to after-call restoration, except for the branch block,
+which is restored on the selected byte continuation and on the
+backedge. The first entry skips the latter restoration because the
+source already contains the clean phase. This avoids duplicating
+long bootstrap priming routes. The guest materializes 1267 route and
+operand words, 115 inverse seeds and 19 near-frame route anchors.
+The two-word seed stride leaves the next even reset pointer virgin.
+
+The input at C6430145 and seven folds at C6430224 capture and classify
+each byte exactly as in the preceding witness. After the real branch
+at C6430727, the byte route rotates two separate all-two constants
+and invokes C6430822 and C6430916 on the same capture M7175000. With
+an all-two accumulator the crazy column permutes trits one and two,
+leaving zero unchanged. The first store changes the capture and the
+second restores it, leaving the encoded input in A. The four- and
+five-cell inert suffixes allow separate return operands for these
+two accesses.
+
+A further C6430224 store into the all-one M7175080 applies the
+inverse zero/one permutation, so both A and the destination contain
+the actual raw byte. C6430989 emits that recovered byte. The three
+dirty reset stores at C6430352, C6430446 and C6430540 apply to each
+of the two words using distinct constant operands. The byte arm
+restores both words to all ones before a real relocation backedge.
+EOF bypasses the reload and echo, preserves the all-two capture
+and leaves the raw slot at its reset baseline. C6450000 through
+C6450002 perform the terminal parity rotation, output and halt.
+
+The independent checker verifies every physical reload, inverse
+store, echo, reset, branch and intervening routing effect for empty,
+one-byte, two-byte, ascending 256-byte and descending 257-byte
+streams. The output is the exact input stream followed by its length
+parity byte. Each omitted reversible load and the omitted echo
+refuses; the historical profile refuses as well. The recovered raw
+word is now physically available for the next arithmetic experiment.
+This image deliberately does not claim checksum arithmetic or
+original source-frame admission.

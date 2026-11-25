@@ -22,9 +22,15 @@
 // - Summary:
 //   - Capture the raw word before dirty classification and reset its slot.
 
+#[path = "relocated_recurrent_reload_source.rs"]
+mod relocated_recurrent_reload_source;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{ProfileDescriptor, profile_crazy};
+pub use relocated_recurrent_reload_source::{
+    RelocatedRecurrentReloadSource, build_relocated_recurrent_reload_source,
+};
 
 use super::super::super::{LinearOpcode, unique_graphical_cell};
 use super::super::relocated_eof_parity_source::composed_prefix;
@@ -122,12 +128,34 @@ impl Route<'_> {
         )
     }
 
+    fn call_ready(
+        &mut self,
+        block: &AccessBlock,
+        operand: u32,
+    ) -> Result<(), BuildError> {
+        self.enter_ready(block, operand)?;
+        let continuation = operand
+            .checked_add(block.after)
+            .and_then(|value| value.checked_add(1))
+            .ok_or(LAYOUT)?;
+        insert(self.words, continuation, previous(self.cursor)?)?;
+        self.prepare(block, false)
+    }
+
     fn enter(
         &mut self,
         block: &AccessBlock,
         operand: u32,
     ) -> Result<(), BuildError> {
         self.prepare(block, false)?;
+        self.enter_ready(block, operand)
+    }
+
+    fn enter_ready(
+        &mut self,
+        block: &AccessBlock,
+        operand: u32,
+    ) -> Result<(), BuildError> {
         insert(self.words, self.cursor, previous(block.start)?)?;
         let pointer = operand
             .checked_sub(block.before)
@@ -161,25 +189,25 @@ struct Blocks {
 }
 
 impl Blocks {
-    fn new(profile: &ProfileDescriptor) -> Result<Self, BuildError> {
+    fn new(profile: &ProfileDescriptor, base: u32) -> Result<Self, BuildError> {
         use LinearOpcode::{
             CrazyData, InputWord, RelocateDataPointer, RotateData,
         };
         Ok(Self {
             branch: access(
                 profile,
-                (7, 92),
+                (base, 7, 92),
                 RelocateDataPointer,
                 (0, 0, false),
             )?,
-            crazy: access(profile, (2, 58), CrazyData, (1, 0, true))?,
-            input: access(profile, (1, 74), InputWord, (0, 0, true))?,
+            crazy: access(profile, (base, 2, 58), CrazyData, (1, 0, true))?,
+            input: access(profile, (base, 1, 74), InputWord, (0, 0, true))?,
             reset: [
-                access(profile, (3, 93), CrazyData, (0, 1, true))?,
-                access(profile, (4, 93), CrazyData, (0, 2, true))?,
-                access(profile, (5, 93), CrazyData, (0, 3, true))?,
+                access(profile, (base, 3, 93), CrazyData, (0, 1, true))?,
+                access(profile, (base, 4, 93), CrazyData, (0, 2, true))?,
+                access(profile, (base, 5, 93), CrazyData, (0, 3, true))?,
             ],
-            rotate: access(profile, (6, 29), RotateData, (0, 0, true))?,
+            rotate: access(profile, (base, 6, 29), RotateData, (0, 0, true))?,
         })
     }
 
@@ -215,22 +243,21 @@ fn insert(
 
 fn access(
     profile: &ProfileDescriptor,
-    placement: (u32, u32),
+    placement: (u32, u32, u32),
     opcode: LinearOpcode,
     shape: (u32, u32, bool),
 ) -> Result<AccessBlock, BuildError> {
-    let (index, phase) = placement;
+    let (base, index, phase) = placement;
     let (before, after, return_to_route) = shape;
-    AccessBlock::new(profile, code(index, phase)?, opcode, AccessShape {
+    AccessBlock::new(profile, code(base, index, phase)?, opcode, AccessShape {
         after,
         before,
         return_to_route,
     })
 }
 
-fn code(index: u32, phase: u32) -> Result<u32, BuildError> {
-    CODE_BASE
-        .checked_sub(CODE_BASE.rem_euclid(94))
+fn code(base: u32, index: u32, phase: u32) -> Result<u32, BuildError> {
+    base.checked_sub(base.rem_euclid(94))
         .and_then(|value| value.checked_add(index.checked_mul(94)?))
         .and_then(|value| value.checked_add(phase))
         .ok_or(LAYOUT)
@@ -328,6 +355,8 @@ fn crazy(emitter: &mut Emitter<'_>, address: u32) -> Result<(), BuildError> {
 fn initialize(
     emitter: &mut Emitter<'_>,
     words: &Words,
+    anchors: &[(u32, u32)],
+    stride: u32,
 ) -> Result<(), BuildError> {
     let values = words.values().copied().collect::<BTreeSet<_>>();
     let mut seed_addresses = BTreeMap::new();
@@ -337,7 +366,7 @@ fn initialize(
             .checked_add(
                 u32::try_from(index)
                     .map_err(|_error| LAYOUT)?
-                    .checked_mul(4)
+                    .checked_mul(stride)
                     .ok_or(LAYOUT)?,
             )
             .ok_or(LAYOUT)?;
@@ -349,22 +378,22 @@ fn initialize(
         seeds.push((address, inverse));
         let _: Option<u32> = seed_addresses.insert(value, address);
     }
-    for (anchor, base) in ANCHORS {
+    for &(anchor, base) in anchors {
         seeds.push((anchor, previous(base)?));
     }
     initialize_words(emitter, &seeds)?;
     for (&address, &value) in words {
-        if !(CAPTURE..BOUNDS.start).contains(&address) {
+        if !(CAPTURE..emitter.tape_bounds.start).contains(&address) {
             return Err(LAYOUT);
         }
         rotate(emitter, ZERO)?;
-        store_anchored(emitter, address)?;
+        store_anchored(emitter, address, anchors)?;
         let seed = *seed_addresses.get(&value).ok_or(LAYOUT)?;
         for _ in 0..2u8 {
             rotate(emitter, TWOS)?;
             crazy(emitter, seed)?;
         }
-        store_anchored(emitter, address)?;
+        store_anchored(emitter, address, anchors)?;
     }
     Ok(())
 }
@@ -374,9 +403,11 @@ fn initialize(
 fn go_anchored(
     emitter: &mut Emitter<'_>,
     address: u32,
+    anchors: &[(u32, u32)],
 ) -> Result<(), BuildError> {
-    let (anchor, base) = ANCHORS
-        .into_iter()
+    let (anchor, base) = anchors
+        .iter()
+        .copied()
         .rev()
         .find(|(_, base)| *base <= address)
         .ok_or(LAYOUT)?;
@@ -388,26 +419,22 @@ fn go_anchored(
 fn store_anchored(
     emitter: &mut Emitter<'_>,
     address: u32,
+    anchors: &[(u32, u32)],
 ) -> Result<(), BuildError> {
-    go_anchored(emitter, address)?;
+    go_anchored(emitter, address, anchors)?;
     let _: u32 = emitter.linear(LinearOpcode::CrazyData)?;
     after_store(emitter)
 }
 
-/// Construct a recurrent raw-input capture across real EOF dispatch.
-///
-/// A bounded phase-restoration route permits four distinct physical
-/// accesses to one dirty operand. The byte arm resets that word; EOF
-/// leaves the captured encoding intact and emits length parity.
-///
-/// # Errors
-/// Refuses unsupported profiles and exhausted physical route geometry.
-pub fn build_relocated_recurrent_capture_source(
+fn bootstrap(
     profile: &ProfileDescriptor,
-) -> Result<RelocatedRecurrentCaptureSource, BuildError> {
+    source_cells: usize,
+    tape_bounds: TapeBounds,
+) -> Result<Emitter<'_>, BuildError> {
+    if source_cells > 6_554_440 {
+        return Err(LAYOUT);
+    }
     let mut prefix = composed_prefix(profile)?;
-    let blocks = Blocks::new(profile)?;
-    let words = routes(&blocks)?;
     let bootstrap_input = usize::try_from(prefix.first_input_code_address)
         .map_err(|_error| LAYOUT)?;
     *prefix.source.get_mut(bootstrap_input).ok_or(LAYOUT)? =
@@ -421,8 +448,8 @@ pub fn build_relocated_recurrent_capture_source(
         data: 7_174_418,
         profile,
         source: prefix.source,
-        source_cells: SOURCE_CELLS,
-        tape_bounds: BOUNDS,
+        source_cells,
+        tape_bounds,
     };
     // Use the prepared bootstrap return instead of depending on the
     // distant loader return word at M4,782,982.
@@ -435,8 +462,25 @@ pub fn build_relocated_recurrent_capture_source(
     emitter.walk(7_174_468)?;
     emitter.jump(FRAME)?;
     let _: u32 = emitter.linear(LinearOpcode::RotateData)?;
-    initialize(&mut emitter, &words)?;
-    go_anchored(&mut emitter, BOOT_ROUTE)?;
+    Ok(emitter)
+}
+
+/// Construct a recurrent raw-input capture across real EOF dispatch.
+///
+/// A bounded phase-restoration route permits four distinct physical
+/// accesses to one dirty operand. The byte arm resets that word; EOF
+/// leaves the captured encoding intact and emits length parity.
+///
+/// # Errors
+/// Refuses unsupported profiles and exhausted physical route geometry.
+pub fn build_relocated_recurrent_capture_source(
+    profile: &ProfileDescriptor,
+) -> Result<RelocatedRecurrentCaptureSource, BuildError> {
+    let mut emitter = bootstrap(profile, SOURCE_CELLS, BOUNDS)?;
+    let blocks = Blocks::new(profile, CODE_BASE)?;
+    let words = routes(&blocks)?;
+    initialize(&mut emitter, &words, &ANCHORS, 4)?;
+    go_anchored(&mut emitter, BOOT_ROUTE, &ANCHORS)?;
     let _: u32 = emitter.append_indirect()?;
     for block in blocks.ordered() {
         block.emit(&mut emitter)?;

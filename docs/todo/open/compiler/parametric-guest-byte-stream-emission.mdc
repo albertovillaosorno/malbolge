@@ -112,9 +112,15 @@ blocks; four distinct physical stores share one operand with different
 return offsets. Seven guest-initialized immutable bootstrap anchors
 reduce the original 6,410,016-cell image by 2,899,806 cells. All bytes
 in both orders, both EOF landings, independent
-trit closure and an omitted-output control pass. Guest recovery of the
-raw accumulator for arithmetic, recurrent checksum arithmetic and
-complete source-frame routing remain open. Evidence:
+trit closure and an omitted-output control pass. A separate 6,450,060-cell
+image now restores recurrent access blocks after calls, reloads the
+saved encoding with two reversible stores and recovers the original
+byte in a second dirty word. The real byte arm emits that recovered
+byte, restores both slots and takes the backedge; EOF skips reloading.
+All bytes in both orders, both EOF routes and omitted-load/echo
+controls pass. Recurrent checksum arithmetic and complete
+source-frame routing remain open. Evidence:
+`tests/compiler/relocated_recurrent_reload.rs`,
 `tests/compiler/relocated_recurrent_capture.rs`, `tests/compiler/relocated_reusable_guard.rs`,
 `tests/compiler/relocated_first_iteration.rs`,
 `tests/compiler/relocated_eof_source_binding.rs` and the P2 contract.

@@ -22,6 +22,9 @@
 // - Summary:
 //   - Prove one dirty capture slot survives dispatch and is reused.
 
+#[path = "relocated_recurrent_reload.rs"]
+mod relocated_recurrent_reload;
+
 use std::collections::BTreeSet;
 
 use malbolge::{
@@ -52,6 +55,7 @@ fn source() -> Result<RelocatedRecurrentCaptureSource, String> {
 
 fn enter(
     guest: &RelocatedRecurrentCaptureSource,
+    budget: usize,
 ) -> Result<ProfileMachine, String> {
     let mut vm = ProfileMachine::from_source(
         current_profile(),
@@ -59,7 +63,7 @@ fn enter(
         Vec::new(),
     )
     .map_err(|error| error.to_string())?;
-    for _ in 0..BOOT_BUDGET {
+    for _ in 0..budget {
         if vm.registers().code_pointer == guest.input
             && decode_profile_instruction(word(&vm, guest.input)?, guest.input)
                 == Some(b'/')
@@ -392,7 +396,7 @@ fn run(
 fn relocated_recurrent_capture_all_bytes_and_both_eof_landings()
 -> Result<(), String> {
     let guest = source()?;
-    let boot = enter(&guest)?;
+    let boot = enter(&guest, BOOT_BUDGET)?;
     for stream in [
         vec![],
         vec![255],
@@ -504,7 +508,7 @@ fn relocated_recurrent_capture_omitted_output_refuses() -> Result<(), String> {
             usize::try_from(guest.output).map_err(|error| error.to_string())?,
         )
         .ok_or("missing output cell")? = noop;
-    let boot = enter(&guest)?;
+    let boot = enter(&guest, BOOT_BUDGET)?;
     if run(&boot, &guest, &[0, 255]).is_ok() {
         return Err("accepted omitted physical EOF output".to_owned());
     }

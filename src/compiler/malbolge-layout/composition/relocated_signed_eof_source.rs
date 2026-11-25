@@ -68,9 +68,11 @@ pub use relocated_live_parity_source::{
 };
 
 pub use relocated_reusable_source::{
-    RelocatedRecurrentCaptureSource, RelocatedReusableGuardSource,
+    RelocatedRecurrentCaptureSource, RelocatedRecurrentReloadSource,
+    RelocatedReusableGuardSource,
     RelocatedReusableSource, build_relocated_recurrent_capture_source,
-    build_relocated_reusable_guard_source, build_relocated_reusable_source,
+    build_relocated_recurrent_reload_source, build_relocated_reusable_guard_source,
+    build_relocated_reusable_source,
 };
 
 use super::typed_cfg_adapter::state_storage::encode_i32_cells;
